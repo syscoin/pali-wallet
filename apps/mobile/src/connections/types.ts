@@ -54,6 +54,7 @@ type NativeSigningReviewBase = Readonly<{
 export type NativeMessageReview = NativeSigningReviewBase &
   Readonly<{
     kind: 'message';
+    smartAccount: boolean;
     method: DappMessageMethod;
     message: string | null;
     typedData: string | null;

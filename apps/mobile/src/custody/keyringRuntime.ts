@@ -38,7 +38,11 @@ import { parseDecimalAmount } from '../core/amounts.ts';
 import { createNativeSmartOperation } from '../smartAccount/runtime.ts';
 import { createSmartAccountCallsExecutions, normalizeDappCallsRequest } from '../../../../source/shared/dappCalls.ts';
 import { captureSmartAccountCallsIdentity } from '../../../../source/shared/dappCallsStatus.ts';
-import { getSmartAccountLocalEcdsaOwners, type SmartAccountLocalOwner } from '../../../../source/utils/smartAccount/signOperation.ts';
+import {
+  getSmartAccountLocalEcdsaOwners,
+  signSmartAccountEcdsaOperation,
+  type SmartAccountLocalOwner,
+} from '../../../../source/utils/smartAccount/signOperation.ts';
 import type { NativeSmartOperationPorts } from '../smartAccount/runtime.ts';
 import { snapshotSmartAccountDappTransaction } from '../../../../source/shared/smartAccountDappTransaction.ts';
 import { summarizeApproval, decodeApprovalData } from '../../../../source/shared/approval.ts';
@@ -65,6 +69,10 @@ import { createNativeSmartAccountProvider } from '../smartAccount/provider.ts';
 import type { NativeConnectionHost } from '../connections/host.ts';
 import { createDeviceUnlockEnrollment } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { DeviceUnlockControls } from '@sidhujag/sysweb3-keyring/cjs/keyring-core.js';
+import {
+  prepareSmartAccountMessage,
+  encodeSmartAccountMessageSignature,
+} from '../../../../source/utils/smartAccount/messageSigning.ts';
 import { matchesDappMessageRequest, readDappMessageRequest } from '../../../../source/shared/dappMessageRequest.ts';
 import { openNativeConnectionRepository, type NativeConnectionRepository } from '../connections/storage.ts';
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
@@ -2302,7 +2310,7 @@ export function createKeyringRuntimeFactory(
                   action: null,
                   terminal: 'executed',
                   transactionHash: null,
-                  canAbandon: false,
+                  canAbandon: true,
                 };
               check();
               if (pending)
@@ -2783,6 +2791,61 @@ export function createKeyringRuntimeFactory(
               check();
               return { snapshot, selected, account, network, approval, check };
             };
+            const findLocalEcdsaOwner = (
+              address: string
+            ): SmartAccountLocalOwner | null => {
+              for (const type of ['HDAccount', 'Imported'] as const) {
+                const owner = Object.values(state.accounts[type]).find(
+                  (entry) =>
+                    !entry.isSmartAccount &&
+                    !entry.isLedgerWallet &&
+                    !entry.isTrezorWallet &&
+                    entry.address.toLowerCase() === address.toLowerCase()
+                );
+                if (owner)
+                  return {
+                    id: owner.id,
+                    type: type as SmartAccountLocalOwner['type'],
+                  };
+              }
+              return null;
+            };
+            const supportsLocalEcdsaSmartAccount = (accountId: string) => {
+              assertOwner();
+              const record = catalogueSnapshot?.accounts.find(
+                (entry) => entry.id === accountId
+              );
+              if (
+                !record ||
+                record.type !== 'SmartAccount' ||
+                record.slip44 !== 60
+              )
+                return false;
+              const saved = state.accounts.SmartAccount[record.index];
+              const network = catalogueSnapshot!.networks.find(
+                (entry) => entry.id === catalogueSnapshot!.active.networkId
+              );
+              if (
+                !keyring.isUnlocked() ||
+                !saved?.smartAccount ||
+                !network ||
+                saved.smartAccount.chainId !== Number(network.chainId)
+              )
+                return false;
+              try {
+                requireSmartAccountAddressIdentity(
+                  saved,
+                  Number(network.chainId)
+                );
+                getSmartAccountLocalEcdsaOwners(
+                  saved.smartAccount,
+                  findLocalEcdsaOwner
+                );
+                return true;
+              } catch {
+                return false;
+              }
+            };
             return Object.freeze({
               repository,
               walletBindingId,
@@ -2792,48 +2855,8 @@ export function createKeyringRuntimeFactory(
                 return generation;
               },
               calls: repository.calls,
-              supportsAtomicCalls(accountId) {
-                assertOwner();
-                const record = catalogueSnapshot?.accounts.find(
-                  (entry) => entry.id === accountId
-                );
-                if (!record || record.type !== 'SmartAccount' || record.slip44 !== 60)
-                  return false;
-                const saved = state.accounts.SmartAccount[record.index];
-                const network = catalogueSnapshot!.networks.find(
-                  (entry) => entry.id === catalogueSnapshot!.active.networkId
-                );
-                if (
-                  !keyring.isUnlocked() ||
-                  !saved?.smartAccount ||
-                  !network ||
-                  saved.smartAccount.chainId !== Number(network.chainId)
-                )
-                  return false;
-                try {
-                  requireSmartAccountAddressIdentity(saved, Number(network.chainId));
-                  getSmartAccountLocalEcdsaOwners(saved.smartAccount, (address) => {
-                    for (const type of ['HDAccount', 'Imported'] as const) {
-                      const owner = Object.values(state.accounts[type]).find(
-                        (entry) =>
-                          !entry.isSmartAccount &&
-                          !entry.isLedgerWallet &&
-                          !entry.isTrezorWallet &&
-                          entry.address.toLowerCase() === address.toLowerCase()
-                      );
-                      if (owner)
-                        return {
-                          id: owner.id,
-                          type: type as SmartAccountLocalOwner['type'],
-                        };
-                    }
-                    return null;
-                  });
-                  return true;
-                } catch {
-                  return false;
-                }
-              },
+              supportsAtomicCalls: supportsLocalEcdsaSmartAccount,
+              supportsSmartAccountMessages: supportsLocalEcdsaSmartAccount,
               async readCallsStatus(origin, id, assertRequestCurrent) {
                 const snapshot = catalogueSnapshot;
                 const guard = () => {
@@ -3062,7 +3085,6 @@ export function createKeyringRuntimeFactory(
                 );
                 if (
                   !selected ||
-                  selected.type === 'SmartAccount' ||
                   selected.id !== input.accountId ||
                   selected.slip44 !== 60 ||
                   snapshot.active.networkId !== input.networkId ||
@@ -3121,6 +3143,99 @@ export function createKeyringRuntimeFactory(
                       throw new KeyringRuntimeError('CANCELLED');
                   };
                   guard();
+                  if (selected.type === 'SmartAccount') {
+                    if (
+                      !account?.smartAccount ||
+                      account.smartAccount.chainId !== Number(network.chainId)
+                    )
+                      throw new KeyringRuntimeError('INVALID_INPUT');
+                    requireSmartAccountAddressIdentity(
+                      account,
+                      Number(network.chainId)
+                    );
+                    const prepared = prepareSmartAccountMessage({
+                      accountAddress: account.address,
+                      chainId: Number(network.chainId),
+                      request,
+                    });
+                    const rpc = new EvmTransferReadRpc(network, {
+                      fetch: dependencies.connectionFetch ?? walletFetch,
+                    });
+                    const provider = createNativeSmartAccountProvider(
+                      network,
+                      rpc,
+                      approval.signal,
+                      guard
+                    );
+                    const metadata = await readSmartAccountValidatorMetadata({
+                      account: account as IKeyringAccountState & {
+                        smartAccount: NonNullable<
+                          IKeyringAccountState['smartAccount']
+                        >;
+                      },
+                      chainId: Number(network.chainId),
+                      provider,
+                      assertCurrent: guard,
+                    });
+                    guard();
+                    const validator = metadata.auth?.validator;
+                    if (!validator)
+                      throw new KeyringRuntimeError('INVALID_INPUT');
+                    const { owners } = getSmartAccountLocalEcdsaOwners(
+                      metadata,
+                      findLocalEcdsaOwner
+                    );
+                    for (const { address, owner } of owners) {
+                      const record = state.accounts[owner.type][owner.id];
+                      if (!record)
+                        throw new KeyringRuntimeError('INVALID_INPUT');
+                      approval.bindSigner(
+                        `native-smart-message:${owner.type}:${owner.id}`,
+                        () =>
+                          state.accounts[owner.type][owner.id] === record &&
+                          record.address.toLowerCase() === address.toLowerCase()
+                      );
+                    }
+                    guard();
+                    const signature = await signSmartAccountEcdsaOperation({
+                      metadata,
+                      actionHash: prepared.actionHash,
+                      findOwner: findLocalEcdsaOwner,
+                      assertCurrent: guard,
+                      async signOwner(address, digest, owner) {
+                        guard();
+                        const signature =
+                          await ring.ethereumTransaction.ethSign(
+                            [address, digest],
+                            {
+                              selectedAccount: {
+                                id: selected.index,
+                                type: selected.type,
+                                expectedAddress: selected.address,
+                              },
+                              targetAccount: {
+                                id: owner.id,
+                                type: owner.type,
+                                expectedAddress: address,
+                              },
+                              assertCurrent: guard,
+                            }
+                          );
+                        guard();
+                        if (
+                          typeof signature !== 'string' ||
+                          !/^0x[0-9a-f]{130}$/i.test(signature)
+                        )
+                          throw new KeyringRuntimeError('OPERATION_FAILED');
+                        return signature;
+                      },
+                    });
+                    guard();
+                    return encodeSmartAccountMessageSignature(prepared, {
+                      validator,
+                      signature,
+                    });
+                  }
                   const transactions = ring.ethereumTransaction;
                   const args =
                     request.method === 'personal_sign'

@@ -426,7 +426,9 @@ export function NativeGuardianRecoveryView({
             state.phase === 'cleared'
               ? 'Recovery tracking cleared'
               : state.phase === 'complete'
-              ? 'Recovery complete'
+              ? state.metadataRefresh === 'failed'
+                ? 'Recovery confirmed'
+                : 'Recovery complete'
               : 'Recover smart account'
           }
           subtitle={networkLabel}
@@ -439,7 +441,12 @@ export function NativeGuardianRecoveryView({
           </Text>
           {state.intent && (
             <>
-              <Text style={s.label}>Replacement owner</Text>
+              <Text style={s.label}>
+                {state.phase === 'complete' &&
+                state.metadataRefresh === 'failed'
+                  ? 'Replacement owner in saved recovery'
+                  : 'Replacement owner'}
+              </Text>
               <Text selectable style={s.address}>
                 {state.intent.replacement.address}
               </Text>
@@ -603,26 +610,29 @@ export function NativeGuardianRecoveryView({
             {activityError}
           </Text>
         )}
-        {!!state.error && (
-          <Text accessibilityRole="alert" style={s.error}>
-            {state.error}
-          </Text>
-        )}
+        {!!state.error &&
+          !(
+            state.phase === 'complete' && state.metadataRefresh === 'failed'
+          ) && (
+            <Text accessibilityRole="alert" style={s.error}>
+              {state.error}
+            </Text>
+          )}
         {state.phase === 'complete' && (
           <Notice
             title={
               state.metadataRefresh === 'failed'
-                ? 'Recovery confirmed'
+                ? 'Wallet update incomplete'
                 : 'Replacement owner active'
             }
             body={
               state.metadataRefresh === 'failed'
-                ? 'The recovery is complete on-chain. Refresh the saved account metadata to finish updating this wallet.'
+                ? 'The recovery executed on-chain. This wallet has not adopted the observed account metadata. Refresh it or clear local recovery tracking.'
                 : 'This account now uses the replacement owner.'
             }
           />
         )}
-        {state.metadataRefresh === 'failed' && (
+        {state.phase === 'complete' && state.metadataRefresh === 'failed' && (
           <Button
             title="Refresh account metadata"
             onPress={() =>

@@ -40,13 +40,14 @@ function fixture(
     capabilities?: boolean;
     batch?: boolean;
     smart?: boolean;
+    smartMessages?: boolean;
     secondAccount?: boolean;
     restoring?: boolean;
     openFailures?: number;
     inventoryFailures?: number;
   } = {}
 ) {
-  const { secondAccount = false, smart = false } = options;
+  const { secondAccount = false, smart = false, smartMessages = false } = options;
   let snapshot: CustodySnapshot = {
     phase: 'ready',
     revision: 1,
@@ -150,6 +151,7 @@ function fixture(
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
     walletBindingId: 'd4'.repeat(32),
     supportsAtomicCalls: () => Boolean(options.smart && options.batch),
+    supportsSmartAccountMessages: () => Boolean(options.smart && options.smartMessages),
     async prepareCalls(input, check) {
       check(); await preparationWait; check();
       assert(options.batch && options.smart);
@@ -181,7 +183,7 @@ function fixture(
       signatures.push(input.request);
       await signWait;
       input.approval.assertCurrent();
-      return '0x' + '12'.repeat(65);
+      return options.smart ? '0x' + '33'.repeat(20) + '12'.repeat(65) : '0x' + '12'.repeat(65);
     },
     async prepareTransaction(input, check) {
       check();
@@ -425,7 +427,7 @@ function fixture(
           approved++;
           assert.equal(
             namespaces.eip155!.methods.includes('personal_sign'),
-            !smart
+            !smart || smartMessages
           );
           await approveWait;
           Object.assign(session, { namespaces });
@@ -1344,6 +1346,7 @@ async function connectedFixture(
     capabilities?: boolean;
     batch?: boolean;
     smart?: boolean;
+    smartMessages?: boolean;
     secondAccount?: boolean;
     accountId?: string;
     verification?: WalletConnectVerification;
@@ -2814,3 +2817,85 @@ for (const transition of ['lock', 'chain', 'expiry'] as const) {
     } finally { held.resolve(); await f.controller.dispose(); }
   });
 }
+
+
+async function connectedSmartMessages() {
+  return connectedFixture({ smart: true, smartMessages: true, accountId: 'smart:60:0' });
+}
+
+for (const [method, payload] of [
+  ['personal_sign', 'Smart account message'],
+  ['eth_signTypedData_v4', typedMessage],
+] as const) test(`eligible Smart ${method} uses the same review and preserves its extended signature`, async () => {
+  const f = await connectedSmartMessages();
+  try {
+    const methods = f.session.namespaces.eip155!.methods;
+    assert(methods.includes('personal_sign'));
+    assert(methods.includes('eth_signTypedData_v4'));
+    assert(!methods.includes('eth_signTypedData'));
+    assert(!methods.includes('eth_signTypedData_v3'));
+    const params = method === 'personal_sign' ? [payload, ADDRESS] : [ADDRESS, payload];
+    const review = await messageRequest(f, method, params);
+    assert(review?.kind === 'message');
+    assert.equal(review.smartAccount, true);
+    assert.equal(review.address, ADDRESS);
+    assert.equal(review.chainId, '1');
+    assert.equal(review.origin, ORIGIN);
+    assert.equal(f.signatures.length, 0);
+    await f.view.approveRequest(review.id, review.revision, false);
+    assert.equal(f.signatures.length, 1);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: '0x' + '33'.repeat(20) + '12'.repeat(65) } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const method of ['eth_signTypedData', 'eth_signTypedData_v3']) test(`Smart message capability rejects ${method} before creating a review`, async () => {
+  const f = await connectedSmartMessages();
+  try {
+    const params = method === 'eth_signTypedData'
+      ? [ADDRESS, [{ name: 'text', type: 'string', value: 'message' }]] : [ADDRESS, typedMessage];
+    await messageRequest(f, method, params);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.signatures.length, 0);
+    assert.equal((f.responses.at(-1) as any).result.error.code, 4100);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const retire of ['lock', 'grant', 'expiry', 'network'] as const) test(`Smart signing result is suppressed after ${retire} while signing`, async () => {
+  const f = await connectedSmartMessages();
+  let release!: () => void;
+  try {
+    const review = await messageRequest(f);
+    assert(review?.kind === 'message');
+    f.setSignWait(new Promise<void>(resolve => { release = resolve; }));
+    const signing = f.view.approveRequest(review.id, review.revision, false);
+    const rejected = assert.rejects(signing);
+    await settle();
+    if (retire === 'lock') f.lock();
+    else if (retire === 'grant') await f.view.disconnect(f.view.getSnapshot().sessions[0]!.id);
+    else if (retire === 'network') f.selectChain(2);
+    else f.event({ type: 'request-expired', id: 10 });
+    release(); await rejected;
+    assert.equal(f.responses.some((row: any) => row.result.result), false);
+    assert.equal(f.handedOff.some((row: any) => row.result.result), false);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+test('Smart response handoff rechecks expiry after the transport wait', async () => {
+  const f = await connectedSmartMessages();
+  let release!: () => void;
+  const now = Date.now;
+  let currentTime = now();
+  Date.now = () => currentTime;
+  try {
+    const review = await messageRequest(f, 'eth_signTypedData_v4', [ADDRESS, typedMessage]);
+    assert(review?.kind === 'message');
+    f.setResponseWait(new Promise<void>(resolve => { release = resolve; }));
+    const signing = f.view.approveRequest(review.id, review.revision, false);
+    const rejected = assert.rejects(signing);
+    await settle();
+    currentTime += 300001;
+    release(); await rejected;
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.handedOff.some((row: any) => row.result.result), false);
+  } finally { Date.now = now; release?.(); await f.controller.dispose(); }
+});

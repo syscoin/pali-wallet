@@ -7,6 +7,7 @@ const query = new URLSearchParams(window.location.search);
 const warning = query.has('warning');
 const initialReview: NativeMessageReview = {
   kind: 'message',
+  smartAccount: query.has('smart'),
   id: 'message-1',
   revision: 7,
   method: query.has('typed') ? 'eth_signTypedData_v4' : 'personal_sign',
@@ -18,7 +19,7 @@ const initialReview: NativeMessageReview = {
   chainId: '1',
   expiresAt: Date.now() + 300000,
   message: query.has('typed') ? null : 'Sign in to Example app.\nNonce: 12345678',
-  typedData: query.has('typed') ? JSON.stringify({ domain: { name: 'Example', chainId: '1' }, message: { contents: 'Review every field', finalField: 'End of signed data' } }, null, 2) : null,
+  typedData: query.has('typed') ? JSON.stringify({ domain: { name: 'Example', chainId: query.has('cross-domain') ? '10' : '1' }, message: { contents: 'Review every field', finalField: 'End of signed data' } }, null, 2) : null,
   order: null,
   error: query.has('delivery-uncertain') ? 'DELIVERY_UNCERTAIN' : query.has('invalid-origin') ? 'SITE_MISMATCH' : query.has('blocked') ? 'SIGNER_MISMATCH' : null,
   verification: { validation: query.has('invalid-origin') ? 'INVALID' : query.has('unverified') ? 'UNKNOWN' : 'VALID', isScam: false },

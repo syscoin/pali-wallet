@@ -9,7 +9,7 @@ import type {
 } from 'types/network';
 import { BigNumber, defaultAbiCoder } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
-import { hexConcat, hexDataSlice, isHexString } from 'utils/ethersV6Compat';
+import { hexDataSlice, isHexString } from 'utils/ethersV6Compat';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
   IEvmTransactionContext,
@@ -27,6 +27,7 @@ import {
   getInstalledValidatorModule,
   getInstalledValidatorModuleByAddress,
 } from './modules';
+import type { SmartAccountAuthenticatorSignature } from './signature';
 
 type ControllerEmitter = (
   methods: string[],
@@ -487,11 +488,7 @@ export const prepareSmartAccountFeeQuote = async ({
   };
 };
 
-export type SmartAccountAuthenticatorSignature = {
-  proof?: unknown;
-  signature: string;
-  validator?: string;
-};
+export type { SmartAccountAuthenticatorSignature } from './signature';
 
 export type SmartAccountExternalSignatureRequest = {
   actionHash: string;
@@ -1095,16 +1092,7 @@ export const signSmartAccountActionHash = async (params: {
   };
 };
 
-export const encodeSmartAccountAuthenticatorSignature = (
-  signature: SmartAccountAuthenticatorSignature | string
-) => {
-  if (typeof signature === 'string') {
-    return signature;
-  }
-  return signature.validator
-    ? hexConcat([getAddress(signature.validator), signature.signature])
-    : signature.signature;
-};
+export { encodeSmartAccountAuthenticatorSignature } from './signature';
 
 export const signAndSubmitSmartAccountExecutions = async (
   params: SubmitSmartAccountExecutionsParams

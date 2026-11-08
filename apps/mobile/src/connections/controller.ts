@@ -380,7 +380,11 @@ export class NativeConnectionsController {
   ): readonly string[] {
     return METHODS.filter((method) => {
       if (accountType === 'SmartAccount' && isDappMessageMethod(method))
-        return false;
+        return (
+          (method === 'personal_sign' || method === 'eth_signTypedData_v4') &&
+          !!accountId &&
+          this.host?.supportsSmartAccountMessages(accountId) === true
+        );
       if (method === 'wallet_sendCalls')
         return (
           !accountType ||
@@ -1646,6 +1650,7 @@ export class NativeConnectionsController {
             }
           : {
               kind: 'message' as const,
+              smartAccount: account.type === 'SmartAccount',
               method: request.method,
               message: personal?.message ?? null,
               typedData:

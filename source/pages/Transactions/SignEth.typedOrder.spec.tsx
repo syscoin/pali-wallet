@@ -9,7 +9,8 @@ import {
 import React from 'react';
 
 import fixtures from '../../../tests/fixtures/typedOrderRequests.json';
-import { signPaliErc7739TypedDataV4 } from 'utils/smartAccount';
+import { signSmartAccountActionHash } from 'utils/smartAccount';
+import { prepareSmartAccountMessage } from 'utils/smartAccount/messageSigning';
 
 import EthSign from './SignEth';
 
@@ -46,7 +47,14 @@ jest.mock('utils/errorHandling', () => ({
 jest.mock('utils/network', () => ({ getNetworkChain: () => 'ethereum' }));
 jest.mock('utils/smartAccount', () => ({
   assertPaliErc7739TypedDataV4Method: jest.fn(),
-  signPaliErc7739TypedDataV4: jest.fn(async () => '0xsmart-signature'),
+  signSmartAccountActionHash: jest.fn(async () => ({
+    validator: '0x' + '22'.repeat(20),
+    signature: '0x1234',
+  })),
+  getSmartAccountLocalOwnerContexts: jest.fn(() => ({})),
+  encodeSmartAccountAuthenticatorSignature: jest.requireActual(
+    'utils/smartAccount/signature'
+  ).encodeSmartAccountAuthenticatorSignature,
 }));
 jest.mock('components/Loading', () => ({
   LoadingComponent: () => null,
@@ -113,6 +121,7 @@ beforeEach(() => {
     if (path.at(-1) === 'checkAddressBlacklist')
       return { isBlacklisted: false, severity: 'low' };
     if (path.at(-1) === 'hydrateSmartAccount') return { chainId: 1 };
+    if (path.at(-1) === 'getWalletSessionGeneration') return 1;
     throw new Error(`Unexpected controller call: ${path.join('.')}`);
   });
   jest.spyOn(window, 'close').mockImplementation(() => undefined);
@@ -160,7 +169,7 @@ describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
         );
         await act(async () => mockConfirm());
         expect(mockEmitter).not.toHaveBeenCalled();
-        expect(signPaliErc7739TypedDataV4).not.toHaveBeenCalled();
+        expect(signSmartAccountActionHash).not.toHaveBeenCalled();
         expect(window.close).not.toHaveBeenCalled();
       }
     );
@@ -233,13 +242,20 @@ it('keeps contract-account typed signing with an independent order creator', asy
   expect(screen.getByText('send.nftOrderNoReturn')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() =>
-    expect(signPaliErc7739TypedDataV4).toHaveBeenCalledTimes(1)
+    expect(signSmartAccountActionHash).toHaveBeenCalledTimes(1)
   );
-  expect(signPaliErc7739TypedDataV4).toHaveBeenCalledWith(
+  expect(signSmartAccountActionHash).toHaveBeenCalledWith(
     expect.objectContaining({
-      accountAddress: ADDRESS,
-      chainId: 1,
-      typedData: fixtures.OrderComponents,
+      actionHash: prepareSmartAccountMessage({
+        accountAddress: ADDRESS,
+        chainId: 1,
+        request: {
+          method: 'eth_signTypedData_v4',
+          address: ADDRESS,
+          version: 'V4',
+          typedData: fixtures.OrderComponents,
+        },
+      }).actionHash,
     })
   );
   expect(signCalls()).toHaveLength(0);

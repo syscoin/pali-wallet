@@ -102,3 +102,27 @@ test('explains uncertain delivery without offering another signature or rejectio
   await page.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(page.getByText('Request completed')).toBeVisible();
 });
+
+
+for (const typed of [false, true]) test(`identifies the Smart-account ${typed ? 'V4' : 'personal'} signature without another approval`, async ({ page }, info) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  const base = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4204';
+  await page.goto(`${base}/?message-review&smart${typed ? '&typed&cross-domain' : ''}`);
+  await expect(page.getByText('Smart account signature · Your smart account will authorize this request with its configured signing method.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Ethereum · Chain ID 1', { exact: true })).toBeVisible();
+  await expect(page.getByText('0x2222222222222222222222222222222222222222', { exact: true })).toBeVisible();
+  if (typed) await expect(page.getByText(/"chainId": "10"/)).toHaveCount(1);
+  expect(await page.evaluate(() => window.__nativeMessageReviewFixture.calls())).toEqual([]);
+  await page.screenshot({ path: info.outputPath(`smart-message-${typed ? 'v4' : 'personal'}-top-320.png`) });
+  const sign = page.getByRole('button', { name: typed ? 'Sign typed data' : 'Sign message', exact: true });
+  await sign.scrollIntoViewIfNeeded();
+  await expect(sign).toBeInViewport({ ratio: 0.999 });
+  expect((await sign.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  const reject = page.getByRole('button', { name: 'Reject', exact: true });
+  await reject.scrollIntoViewIfNeeded();
+  await expect(reject).toBeInViewport({ ratio: 0.999 });
+  await page.screenshot({ path: info.outputPath(`smart-message-${typed ? 'v4' : 'personal'}-bottom-320.png`) });
+  await sign.click();
+  await expect(page.getByText('Request completed', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeMessageReviewFixture.calls())).toEqual([{ method: 'approveRequest', args: ['message-1', 7, false] }]);
+});

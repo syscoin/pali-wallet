@@ -115,8 +115,10 @@ export function NativeGuardianRecoveryFixture() {
             });
           check();
           let phase: 'new' | 'pending' | 'ready' | 'executed' = query.has(
-            'ready'
+            'executed-owner-change'
           )
+            ? 'executed'
+            : query.has('ready')
             ? 'ready'
             : query.has('resume')
             ? 'pending'
@@ -204,6 +206,8 @@ export function NativeGuardianRecoveryFixture() {
               },
               async reconcile() {
                 events.push('metadata');
+                if (query.has('executed-owner-change'))
+                  throw Error('Recovery owner changed after execution');
                 if (metadataFailed) {
                   metadataFailed = false;
                   throw Error('Metadata read unavailable');
