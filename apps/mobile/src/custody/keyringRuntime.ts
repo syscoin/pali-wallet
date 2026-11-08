@@ -1230,17 +1230,6 @@ export function createKeyringRuntimeFactory(
                 assertOwner();
                 return generation;
               },
-              async activateRequestAccount(accountId, assertRequestCurrent) {
-                assertOwner();
-                checkGuard(assertRequestCurrent);
-                if (!keyring.isUnlocked() || !catalogueSnapshot)
-                  throw new KeyringRuntimeError('NOT_READY');
-                const selection = accounts.reserve(
-                  { kind: 'select', id: accountId },
-                  catalogueSnapshot.revision
-                );
-                await selection.execute(assertRequestCurrent);
-              },
               async prepareTransaction(input, assertRequestCurrent) {
                 assertOwner(); checkGuard(assertRequestCurrent);
                 const snapshot = catalogueSnapshot, ring = keyring, captured = generation, approval = input.approval;

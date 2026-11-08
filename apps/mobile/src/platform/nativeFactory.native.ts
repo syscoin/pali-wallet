@@ -99,6 +99,7 @@ export function createNativeWalletControllers() {
   }, { preferences: securityPreferences, assertActive });
   const connections = new NativeConnectionsController({
     source: authority,
+    activateAccount: (accountId, revision, guard) => authority.selectConnectionAccount(accountId, revision, guard),
     preparePlatform: prepareWalletConnectRuntime,
     async openHost() {
       if (!runtime) throw new CustodyOperationError('NOT_READY');

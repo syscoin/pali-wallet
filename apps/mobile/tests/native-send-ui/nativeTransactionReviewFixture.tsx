@@ -72,7 +72,7 @@ export function NativeTransactionReviewFixture() {
     getSnapshot: () => ({ revision: review?.revision ?? 0, status: 'ready', accounts: [], selectedAccountId: null,
       network: null, proposals: [], sessions: [], signingReview: review, error: null }),
     subscribe: unavailable, pair: unavailable, approve: unavailable,
-    reject: unavailable, disconnect: unavailable, cancel: unavailable,
+    reject: unavailable, disconnect: unavailable, cancel: unavailable, retry: unavailable,
     async activateRequestAccount(...args) {
       calls.push({ method: 'activateRequestAccount', args });
       setReview((current) => current && { ...current, revision: current.revision + 1, needsAccountSwitch: false });

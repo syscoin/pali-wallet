@@ -42,6 +42,7 @@ const controller: NativeConnectionsView = {
   async approveRequest() { throw new Error('Message signing is outside this fixture'); },
   async rejectRequest() { throw new Error('Message signing is outside this fixture'); },
   async activateRequestAccount() { throw new Error('Message signing is outside this fixture'); },
+  async retry() { calls.push({ method: 'retry', args: [] }); publish({ ...snapshot, status: 'ready', error: null }); },
   cancel() { calls.push({ method: 'cancel', args: [] }); publish({ ...snapshot, status: 'ready', proposals: [] }); },
 };
 
@@ -53,6 +54,7 @@ declare global {
       fail(): void;
       incoming(entry: NativePairingEntry): void;
       locked(value: boolean): void;
+      unavailable(): void;
     };
   }
 }
@@ -66,6 +68,7 @@ window.__nativeConnectionsFixture = {
   fail() { publish({ ...snapshot, error: 'CONTEXT_CHANGED' }); },
   incoming(entry) { receiveEntry?.(entry); },
   locked(value) { publish({ ...snapshot, status: value ? 'locked' : 'ready' }); },
+  unavailable() { publish({ ...snapshot, status: 'unavailable', error: 'CONNECTION_UNAVAILABLE' }); },
 };
 
 export function NativeConnectionsFixture() {

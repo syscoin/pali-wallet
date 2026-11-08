@@ -121,5 +121,6 @@ export type NativeConnectionsView = Readonly<{
   rejectRequest(id: string): Promise<void>;
   activateRequestAccount(id: string, revision: number): Promise<void>;
   editApprovalAmount(id: string, revision: number, amount: string): Promise<void>;
+  retry(): Promise<void>;
   cancel(): void;
 }>;
