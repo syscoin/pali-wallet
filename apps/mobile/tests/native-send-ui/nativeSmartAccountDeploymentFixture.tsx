@@ -20,6 +20,7 @@ const maximumPrefundUnits = longValues
   : '3000000000000000';
 type FixturePhase =
   | 'authorize'
+  | 'pending-predecessor'
   | 'fund-account'
   | 'submit-deployment'
   | 'waiting'
@@ -89,7 +90,9 @@ function show(phase: FixturePhase) {
     ...snapshot,
     revision: snapshot.revision + 1,
     phase:
-      phase === 'fund-account' || phase === 'submit-deployment'
+      phase === 'pending-predecessor'
+        ? 'preparing'
+        : phase === 'fund-account' || phase === 'submit-deployment'
         ? 'review-fee'
         : phase,
     payerReview:
@@ -100,7 +103,9 @@ function show(phase: FixturePhase) {
       ? transactionHash
       : null,
     error:
-      phase === 'failed'
+      phase === 'pending-predecessor'
+        ? 'Waiting for the network to include the earlier pending operation.'
+        : phase === 'failed'
         ? 'The network could not confirm this deployment. Check the latest transaction before trying again.'
         : null,
   });
@@ -109,6 +114,7 @@ function show(phase: FixturePhase) {
 
 const phases: FixturePhase[] = [
   'authorize',
+  'pending-predecessor',
   'fund-account',
   'submit-deployment',
   'waiting',
