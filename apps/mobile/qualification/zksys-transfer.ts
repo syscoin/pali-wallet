@@ -353,6 +353,7 @@ export async function qualifyNativeZksysTransfer(
             type: '0x2',
             chainId: '0xdee1',
             nonce: '0x0',
+            accessList: [],
             maxFeePerGas: '0x19',
             maxPriorityFeePerGas: '0x0',
           },
