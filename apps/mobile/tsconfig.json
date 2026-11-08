@@ -34,6 +34,7 @@
       "@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/ownedUtxoRpc.d.ts"
       ],
+      "axios": ["./node_modules/axios/index.d.ts"],
       "bitcoinjs-lib": ["./node_modules/bitcoinjs-lib"],
       "ethers/abi": ["./node_modules/ethers/lib.esm/abi/index.d.ts"],
       "ethers/address": ["./node_modules/ethers/lib.esm/address/index.d.ts"],
