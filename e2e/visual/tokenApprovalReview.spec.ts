@@ -91,6 +91,7 @@ async function withWallet(
 ) {
   const previous = { ...E2E_CONFIG };
   const stepPrefix = decimals === 8 ? '' : `${name}: `;
+  const fixture = createIsolatedVaultFixture();
   const server = await startUtxoFixtureServer();
   Object.assign(E2E_CONFIG, {
     seedPhrase: UTXO_FIXTURE_SEED,
@@ -106,7 +107,7 @@ async function withWallet(
     });
     const routes = await installIsolatedVaultRoutes(
       wallet.context,
-      createIsolatedVaultFixture(),
+      fixture,
       server.url
     );
     const abi = AbiCoder.defaultAbiCoder();
@@ -127,6 +128,14 @@ async function withWallet(
       const calls = Array.isArray(rpc) ? rpc : [rpc];
       const replies = calls.map((call: any) => {
         let result: unknown;
+        if (
+          call.method === 'eth_getBalance' &&
+          fixture.evmAddresses.some(
+            (address) => address.toLowerCase() === call.params[0]?.toLowerCase()
+          ) &&
+          ['latest', 'pending', '0x1'].includes(call.params[1])
+        )
+          result = '0x56bc75e2d63100000';
         if (call.method === 'eth_estimateGas') result = '0x5208';
         if (call.method === 'eth_gasPrice' && networkGasPrice)
           result = networkGasPrice;
@@ -951,6 +960,12 @@ test('approval metadata from a retired wallet context cannot supply allowance un
           popup,
           'cancel the retired approval before retrying',
           async () => {
+            await expect(
+              popup.getByText(en.send.potentialMistake, { exact: true })
+            ).toBeVisible();
+            await popup
+              .getByRole('button', { name: en.settings.gotIt, exact: true })
+              .click();
             const rejected = await dismissRejectedApproval({
               click: () =>
                 popup
@@ -1129,6 +1144,7 @@ test('unresolved ENS approval retains visible keyboard cancellation in a small w
 
 test('transaction review freezes fee and nonce edits during a delayed balance refresh', async ({}, info) => {
   test.setTimeout(120000);
+  const observedSubmissions: string[] = [];
   await withWallet('transaction-review-edit-lock', async (wallet, origin) => {
     const { dapp, address } = await connect(wallet, origin);
     const { request, popup } = await wallet.step(
@@ -1175,17 +1191,29 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
     const balanceStarted = new Promise<void>((resolve) => {
       markBalanceStarted = resolve;
     });
-    // Delay only a read. The fixture remains unfunded and the launch-time
+    const heldReads: Promise<void>[] = [];
+    // Delay only a read. Balances remain synthetic and the launch-time
     // deny proxy continues to reject every unhandled external request.
     await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
       const rpc = route.request().postDataJSON();
       const calls = Array.isArray(rpc) ? rpc : [rpc];
-      if (calls.some((call: any) => call.method === 'eth_getBalance')) {
-        markBalanceStarted();
+      observedSubmissions.push(
+        ...calls
+          .filter((call: any) => /^eth_send/.test(call.method))
+          .map((call: any) => call.method)
+      );
+      if (!calls.some((call: any) => call.method === 'eth_getBalance'))
+        return route.fallback();
+      let finished!: () => void;
+      heldReads.push(new Promise<void>((resolve) => (finished = resolve)));
+      markBalanceStarted();
+      try {
         await balanceGate;
+        await route.fallback();
+      } finally {
+        finished();
       }
-      await route.fallback();
     });
     try {
       await popupStep(
@@ -1220,12 +1248,17 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
       await popupStep(
         wallet,
         popup,
-        'close the unfunded fixture approval without broadcasting',
+        'close the pending approval and retain its uncertain outcome',
         async () => {
           await popup.close();
           releaseBalance();
+          await Promise.all(heldReads);
           const rejected = await settle(dapp, request);
-          expect(rejected.error?.code).toBe(4001);
+          expect(rejected.error).toEqual({
+            code: -32603,
+            message:
+              'Transaction submission outcome is unknown. Check the wallet activity and chain before submitting again.',
+          });
           expect(rejected.result).toBeUndefined();
         }
       );
@@ -1233,6 +1266,8 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
       releaseBalance();
     }
   });
+  // The context is now disposed. No send RPC was observed before or after release.
+  expect(observedSubmissions).toEqual([]);
 });
 
 // Append to tokenApprovalReview.spec.ts. This reuses its real wallet/dapp setup.

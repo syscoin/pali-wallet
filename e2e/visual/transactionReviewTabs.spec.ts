@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { AbiCoder, Interface, id } from 'ethers';
+import { AbiCoder, Interface, getAddress, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
@@ -78,6 +78,14 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
       }
       const replies = calls.map((call: any) => {
         let result: unknown;
+        if (
+          call.method === 'eth_getBalance' &&
+          fixture.evmAddresses.some(
+            (address) => address.toLowerCase() === call.params[0]?.toLowerCase()
+          ) &&
+          ['latest', 'pending', '0x1'].includes(call.params[1])
+        )
+          result = '0x56bc75e2d63100000';
         if (call.method === 'eth_estimateGas') result = '0x5208';
         if (call.method === 'eth_feeHistory')
           result = {
@@ -237,7 +245,7 @@ test('external transaction review exposes exact Data and Hex through keyboard ta
         await copyFrom.click();
         expect(
           await popup.evaluate(() => (window as any).__reviewCopies)
-        ).toEqual([connected.result[0]]);
+        ).toEqual([getAddress(connected.result[0])]);
         await expect(
           popup.getByText(en.home.addressCopied, { exact: true })
         ).toHaveCount(0);

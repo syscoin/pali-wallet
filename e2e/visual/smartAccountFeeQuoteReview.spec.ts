@@ -249,7 +249,16 @@ for (const width of [400, 320]) {
         const payload = route.request().postDataJSON();
         const calls = Array.isArray(payload) ? payload : [payload];
         const override = (call: any): string | undefined => {
-          if (isNonce(call)) return abi.encode(['uint256'], [0]);
+          if (isNonce(call)) {
+            const parsed = paliEntryPointInterface.parseTransaction({
+              data: call.params[0].data,
+            })!;
+            // EntryPoint returns the requested key in the high 192 bits.
+            return abi.encode(
+              ['uint256'],
+              [BigInt(parsed.args[1]) << BigInt(64)]
+            );
+          }
           if (
             call.method === 'eth_estimateGas' &&
             call.params?.[0]?.to?.toLowerCase() ===
