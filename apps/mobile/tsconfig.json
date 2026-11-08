@@ -22,6 +22,9 @@
       "@sidhujag/sysweb3-network": [
         "./node_modules/@sidhujag/sysweb3-network/types/index.d.ts"
       ],
+      "@sidhujag/sysweb3-network/cjs/evm.js": [
+        "./node_modules/@sidhujag/sysweb3-network/types/evm.d.ts"
+      ],
       "@sidhujag/sysweb3-network/cjs/coin-utils.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/coin-utils.d.ts"
       ],
