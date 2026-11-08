@@ -168,6 +168,12 @@ describe('smart-account creation passkey ownership and retention', () => {
       activeNetwork: { chainId: CHAIN_ID },
     });
     emitter = jest.fn(async ([, method]: string[], params: any[]) => {
+      if (
+        method === 'setAccount' ||
+        method === 'registerSmartAccountOnChain' ||
+        method === 'connect'
+      )
+        return undefined;
       if (method === 'createSmartAccount')
         return {
           id: 1,
@@ -179,10 +185,19 @@ describe('smart-account creation passkey ownership and retention', () => {
         return { hasNativeGas: true };
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: params[1],
+          executionContextId: 'public-passkey-execution',
           actionHash: `0x${'77'.repeat(32)}`,
           smartAccount: bootstrap,
           executions: params[0],
         };
+      if (method === 'assertSmartAccountExecutionContext') {
+        expect(params).toEqual([
+          'public-passkey-execution',
+          `0x${'77'.repeat(32)}`,
+        ]);
+        return undefined;
+      }
       if (method === 'signSmartAccountActionDigestInternal')
         return `0x${'88'.repeat(65)}`;
       if (method === 'submitSmartAccountExecution' && walletPasskeyFlow) {
@@ -216,7 +231,9 @@ describe('smart-account creation passkey ownership and retention', () => {
           ],
         };
       }
-      return { hash: `0x${'99'.repeat(32)}` };
+      if (method === 'submitSmartAccountExecution')
+        return { hash: `0x${'99'.repeat(32)}` };
+      throw new Error(`Unexpected fixture controller method: ${method}`);
     });
     (useController as jest.Mock).mockReturnValue({
       controllerEmitter: emitter,
