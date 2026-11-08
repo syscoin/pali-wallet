@@ -45,13 +45,34 @@ test('portable recovery output is exercised in the existing CI budget and upload
   const manifest = JSON.parse(fs.readFileSync(path.join(mobile, 'package.json')));
   assert.equal(manifest.scripts['test:recovery-ui'], 'node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts');
   const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/mobile.yml'), 'utf8'));
-  const job = workflow.jobs.validate;
-  assert.equal(job['timeout-minutes'], 20);
-  assert.equal(job.defaults.run['working-directory'], 'apps/mobile');
-  for (const command of ['npm run lint', 'npm run typecheck', 'npm test', 'npm run build:web', 'npm run test:ui', 'npm run test:activity-ui', 'npm run test:watch-ui -- --workers=2', 'npm run test:faucet-ui', 'npm run test:recovery-ui'])
-    assert.equal(job.steps.filter((step) => step.run === command).length, 1, command);
-  for (const platform of ['android', 'ios']) assert(job.steps.some((step) => step.run?.startsWith(`npx --no-install expo export --platform ${platform} `)));
-  const upload = job.steps.find((step) => step.name === 'Upload browser failure evidence');
+  const { foundation, browser, validate } = workflow.jobs;
+  for (const job of [foundation, browser]) {
+    assert.equal(job['timeout-minutes'], 20);
+    assert.equal(job.defaults.run['working-directory'], 'apps/mobile');
+  }
+  for (const command of ['npm run lint', 'npm run typecheck', 'npm test'])
+    assert.equal(foundation.steps.filter((step) => step.run === command).length, 1, command);
+  assert.equal(browser.steps.find(step => step.run === 'npm run build:web').if, "matrix.suite == 'preview'");
+  assert.equal(browser.strategy['fail-fast'], false);
+  assert.deepEqual(browser.strategy.matrix.include.map(entry => entry.command), [
+    'npm run test:ui', 'npm run test:activity-ui', 'npm run test:watch-ui -- --workers=2',
+    'npm run test:faucet-ui', 'npm run test:recovery-ui',
+  ]);
+  for (const platform of ['android', 'ios']) assert(foundation.steps.some((step) => step.run?.startsWith(`npx --no-install expo export --platform ${platform} `)));
+  assert.equal(validate.name, 'Mobile types, behavior and bundles');
+  assert.equal(validate.if, 'always()');
+  assert.deepEqual(validate.needs, ['foundation', 'browser']);
+  const { spawnSync } = require('node:child_process');
+  const aggregate = validate.steps[0];
+  for (const status of ['success', 'failure', 'cancelled', 'skipped']) {
+    for (const other of ['success', 'failure', 'cancelled', 'skipped']) {
+      const result = spawnSync('/bin/bash', ['-e', '-c', aggregate.run], {
+        env: { FOUNDATION_RESULT: status, BROWSER_RESULT: other },
+      });
+      assert.equal(result.status === 0, status === 'success' && other === 'success');
+    }
+  }
+  const upload = browser.steps.find((step) => step.name === 'Upload browser failure evidence');
   assert.equal(upload.if, 'failure()');
   const includes = upload.with.path.split('\n').map((line) => line.trim());
   assert(includes.includes('apps/mobile/test-results/'), 'existing recursive upload must include the recovery output directory');
