@@ -83,6 +83,31 @@ const absent = (): SmartAccountAuthenticatorPorts => ({
   slhDsa: null,
 });
 
+it('collects threshold owners without overlapping custody and stops after a rejected owner', async () => {
+  let active = false;
+  const visited: number[] = [];
+  const signActionHash = jest.fn(async ({ owner }: any) => {
+    if (active) throw new Error('BUSY');
+    active = true;
+    visited.push(owner.id);
+    await Promise.resolve();
+    active = false;
+    return signatures[owner.id];
+  });
+  const request = {
+    smartAccount: metadata(2),
+    actionHash: digest,
+    assertBeforeAuthentication: async () => undefined,
+    authenticatorContexts: { ecdsa: { localOwners, signActionHash } },
+  };
+  await extensionSign(request);
+  expect(visited).toEqual([0, 1]);
+  signActionHash.mockClear();
+  signActionHash.mockRejectedValueOnce(new Error('owner session ended'));
+  await expect(extensionSign(request)).rejects.toThrow('owner session ended');
+  expect(signActionHash).toHaveBeenCalledTimes(1);
+});
+
 it.each([false, true])(
   'both host entry points preserve digest, owner order and threshold bytes (hydrated: %s)',
   async (hydrated) => {

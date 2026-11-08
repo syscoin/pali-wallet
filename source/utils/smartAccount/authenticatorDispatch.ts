@@ -223,9 +223,10 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
     const threshold = context.validator.config.threshold;
 
     if (runtimeContext?.signActionHash && localOwners.length >= threshold) {
-      const signatures = await Promise.all(
-        localOwners.slice(0, threshold).map((owner) =>
-          runtimeContext.signActionHash({
+      const signatures: string[] = [];
+      for (const owner of localOwners.slice(0, threshold)) {
+        signatures.push(
+          await runtimeContext.signActionHash({
             actionHash: context.actionHash,
             ...(context.executionContextId
               ? { executionContextId: context.executionContextId }
@@ -233,8 +234,8 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
             owner,
             validator: context.validator.address,
           })
-        )
-      );
+        );
+      }
 
       return {
         proof:

@@ -2004,6 +2004,42 @@ for (const method of ['eth_signTypedData', 'eth_signTypedData_v3'] as const) tes
 });
 
 
+test('Smart native transfers collect the configured local ECDSA threshold before payer review', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create', label: 'Second transaction owner', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Two transaction owners', password: PASSWORD });
+    const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
+    assert.equal(owners.length, 2);
+    f.deployed(); f.fundedSmart(); f.holdReceipts();
+    f.observedEcdsaOwners(owners.map(owner => owner.address), 2);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222',
+      { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const pending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.signatures.length, 2);
+    assert.deepEqual(f.signatures.map(signed => signed.address.toLowerCase()), owners.map(owner => owner.address.toLowerCase()));
+    assert.equal(f.submitted.length, 0);
+    operation.confirmPayer(review.id);
+    await pending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    const outer = Transaction.from(f.submitted[0]!);
+    const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', outer.data);
+    const signatures = f.signatures.map(signed => signed.signature);
+    assert(operations[0].signature.endsWith(coder.encode(['bytes[]'], [signatures]).slice(2)));
+    signatures.forEach((signature, index) => {
+      assert.equal(recoverAddress(f.signatures[index]!.digest, signature).toLowerCase(), owners[index]!.address.toLowerCase());
+    });
+  } finally { operation?.dispose(); await f.close(); }
+});
+
 test('Smart message signing assembles the configured local ECDSA threshold using the existing SDK', async () => {
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
