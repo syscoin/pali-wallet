@@ -1,4 +1,9 @@
 import {
+  formatTokenUnits,
+  type Erc20Metadata,
+} from '../../../../source/shared/erc20';
+import type { NativeTokenView } from '../portfolio/nativeTokens';
+import {
   NativePortfolioController,
   type PublicCustodySource,
 } from '../portfolio/nativePortfolio';
@@ -27,12 +32,17 @@ import { NativeSendInput, nativeTransferFailure } from './NativeSend';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 import { Button, colors, Header, Notice, Screen, styles, Text } from '../ui';
 
+const emptySubscribe = () => () => undefined;
+const emptyInventory = () => null;
+
 export function NativeSmartAccountSend({
   open,
   context,
   accountLabel,
   source,
   reader,
+  token,
+  tokenView,
   onBack,
 }: {
   open(
@@ -44,6 +54,8 @@ export function NativeSmartAccountSend({
   accountLabel: string;
   source: PublicCustodySource;
   reader: BalanceReader;
+  token?: Erc20Metadata;
+  tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
   onBack(): void;
 }) {
   const portfolio = useMemo(
@@ -55,7 +67,31 @@ export function NativeSmartAccountSend({
     portfolio.getSnapshot,
     portfolio.getSnapshot
   );
-  useLayoutEffect(() => portfolio.connect(), [portfolio]);
+  const inventory = useSyncExternalStore(
+    tokenView?.subscribe ?? emptySubscribe,
+    tokenView?.getSnapshot ?? emptyInventory,
+    tokenView?.getSnapshot ?? emptyInventory
+  );
+  useLayoutEffect(
+    () => (token ? tokenView?.connect() : portfolio.connect()),
+    [portfolio, token, tokenView]
+  );
+  const selectedToken =
+    token &&
+    inventory?.items.find(
+      (item) => item.metadata.contractAddress === token.contractAddress
+    );
+  const symbol = token?.symbol ?? context.symbol;
+  const displayedBalance = token
+    ? selectedToken?.status === 'available' && selectedToken.units !== null
+      ? formatTokenUnits(selectedToken.units, token.decimals)
+      : null
+    : balance.status === 'available' && balance.units !== null
+    ? formatBaseUnits(balance.units, context.decimals)
+    : null;
+  const loadingBalance = token
+    ? selectedToken?.status === 'loading'
+    : balance.status === 'loading';
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
   const [maximum, setMaximum] = useState(false);
@@ -88,7 +124,11 @@ export function NativeSmartAccountSend({
     try {
       const operation = await open(
         recipient,
-        maximum ? { kind: 'maximum' } : { kind: 'exact', amount },
+        token
+          ? { kind: 'erc20', contractAddress: token.contractAddress, amount }
+          : maximum
+          ? { kind: 'maximum' }
+          : { kind: 'exact', amount },
         check
       );
       if (!current.active) {
@@ -99,7 +139,15 @@ export function NativeSmartAccountSend({
       setController(operation);
     } catch (error) {
       if (current.active)
-        setError(nativeTransferFailure(error, context, 'coin', false, false));
+        setError(
+          nativeTransferFailure(
+            error,
+            context,
+            token ? 'token' : 'coin',
+            false,
+            false
+          )
+        );
     } finally {
       current.busy = false;
       if (current.active) setBusy(false);
@@ -124,14 +172,20 @@ export function NativeSmartAccountSend({
             {accountLabel} · {context.name}
           </Text>
           <Text style={styles.muted}>
-            {balance.status === 'available' && balance.units !== null
-              ? `Balance ${formatBaseUnits(balance.units, context.decimals)} ${
-                  context.symbol
-                }`
-              : balance.status === 'loading'
+            {displayedBalance !== null
+              ? `Balance ${displayedBalance} ${symbol}`
+              : loadingBalance
               ? 'Loading balance…'
               : 'Balance unavailable'}
           </Text>
+          {token && (
+            <>
+              <Text style={styles.muted}>{token.name}</Text>
+              <Text selectable style={styles.muted}>
+                {token.contractAddress}
+              </Text>
+            </>
+          )}
           <NativeSendInput
             label="Recipient address"
             value={recipient}
@@ -140,7 +194,7 @@ export function NativeSmartAccountSend({
             placeholder="0x…"
           />
           <NativeSendInput
-            label={`Amount (${context.symbol})`}
+            label={`Amount (${symbol})`}
             value={amount}
             onChange={(value) => {
               setMaximum(false);
@@ -149,22 +203,24 @@ export function NativeSmartAccountSend({
             busy={busy}
             keyboardType="decimal-pad"
           />
-          <Button
-            title={maximum ? 'MAX selected' : 'MAX'}
-            variant="quiet"
-            disabled={
-              busy ||
-              balance.status !== 'available' ||
-              !balance.units ||
-              BigInt(balance.units) <= BigInt(0)
-            }
-            onPress={() => {
-              if (!busy && balance.units) {
-                setMaximum(true);
-                setAmount(formatBaseUnits(balance.units, context.decimals));
+          {!token && (
+            <Button
+              title={maximum ? 'MAX selected' : 'MAX'}
+              variant="quiet"
+              disabled={
+                busy ||
+                balance.status !== 'available' ||
+                !balance.units ||
+                BigInt(balance.units) <= BigInt(0)
               }
-            }}
-          />
+              onPress={() => {
+                if (!busy && balance.units) {
+                  setMaximum(true);
+                  setAmount(formatBaseUnits(balance.units, context.decimals));
+                }
+              }}
+            />
+          )}
           {error ? (
             <Notice title="Check transfer" body={error} tone="amber" />
           ) : null}

@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet, Transaction } from 'ethers';
 import {
+  encodeErc20Transfer,
+  type Erc20Metadata,
+} from '../../../source/shared/erc20.ts';
+import {
   decodeRetainedSmartAccountTransfer,
   observeSmartAccountActivity,
 } from '../../../source/wallet/smartAccountActivity.ts';
@@ -17,14 +21,17 @@ const account = '0x1111111111111111111111111111111111111111';
 const recipient = '0x2222222222222222222222222222222222222222';
 const payer = new Wallet('0x' + '33'.repeat(32));
 const blockHash = '0x' + '44'.repeat(32);
-async function signed() {
+async function signed(token?: Erc20Metadata) {
   const operation = {
     sender: account,
     nonce: 7n,
     initCode: '0x',
     callData: paliSmartAccountInterface.encodeFunctionData('execute', [
       ERC7579_MODE_SINGLE_DEFAULT,
-      recipient + 9n.toString(16).padStart(64, '0'),
+      (token?.contractAddress ?? recipient) +
+        (token
+          ? '0'.repeat(64) + encodeErc20Transfer(recipient, '9').slice(2)
+          : 9n.toString(16).padStart(64, '0')),
     ]),
     accountGasLimits:
       '0x' + '00'.repeat(12) + '000186a0' + '00'.repeat(12) + '000186a0',
@@ -60,6 +67,7 @@ async function signed() {
     metadata: {
       smartAccountExecution: true,
       smartAccountExecutionFrom: account,
+      ...(token ? { smartAccountToken: token } : {}),
     },
   };
   const transfer = decodeRetainedSmartAccountTransfer(entry, account)!;
@@ -185,5 +193,31 @@ test('outer success without the exact inner event cannot confirm a Smart transfe
       () => undefined
     ),
     /outcome unavailable/
+  );
+});
+
+test('Smart ERC20 Activity binds display metadata to the authenticated inner token contract', async () => {
+  const token = {
+    contractAddress: '0x5555555555555555555555555555555555555555',
+    name: 'Token',
+    symbol: 'TKN',
+    decimals: 255,
+  };
+  const { entry, transfer } = await signed(token);
+  assert.equal(transfer.amountUnits, '9');
+  assert.equal(transfer.recipient, recipient);
+  assert.deepEqual(transfer.token, token);
+  assert.equal(
+    decodeRetainedSmartAccountTransfer(
+      {
+        ...entry,
+        metadata: {
+          ...entry.metadata,
+          smartAccountToken: { ...token, contractAddress: account },
+        },
+      },
+      account
+    ),
+    null
   );
 });

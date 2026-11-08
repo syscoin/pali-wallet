@@ -1,3 +1,8 @@
+import {
+  createErc20Policy,
+  decodeErc20Transfer,
+  type Erc20Metadata,
+} from '../shared/erc20.ts';
 import { getAddress } from 'ethers/address';
 import { Transaction } from 'ethers/transaction';
 import {
@@ -19,6 +24,8 @@ import {
 } from '../shared/evmTransactionObservation.ts';
 import type { EvmRetainedSignedRecord } from './evmSignedRecords.ts';
 
+const tokenPolicy = createErc20Policy(getAddress);
+
 export type SmartAccountActivityIdentity = Readonly<{
   payer: string;
   operationHash: string;
@@ -39,6 +46,7 @@ export type RetainedSmartAccountTransfer = Readonly<{
   recipient: string;
   amountUnits: string;
   maximumAccountCharge: string;
+  token?: Erc20Metadata;
   operationHash: string;
   operationNonce: string;
 }>;
@@ -107,7 +115,7 @@ export function decodeRetainedSmartAccountTransfer(
     if (
       mode !== ERC7579_MODE_SINGLE_DEFAULT ||
       typeof calldata !== 'string' ||
-      calldata.length !== 106
+      calldata.length < 106
     )
       return null;
     if (
@@ -116,8 +124,20 @@ export function decodeRetainedSmartAccountTransfer(
         .toLowerCase() !== operation.callData.toLowerCase()
     )
       return null;
-    const recipient = getAddress('0x' + calldata.slice(2, 42));
-    const amountUnits = BigInt('0x' + calldata.slice(42, 106)).toString();
+    const executionTarget = getAddress('0x' + calldata.slice(2, 42));
+    const nativeValue = BigInt('0x' + calldata.slice(42, 106));
+    const data = '0x' + calldata.slice(106);
+    let recipient = executionTarget,
+      amountUnits = nativeValue.toString();
+    let token: Erc20Metadata | undefined;
+    if (data !== '0x') {
+      if (nativeValue !== BigInt(0)) return null;
+      const transfer = decodeErc20Transfer(data);
+      token = tokenPolicy.parseMetadata(entry.metadata?.smartAccountToken);
+      if (token.contractAddress !== executionTarget) return null;
+      recipient = getAddress(transfer.recipient);
+      amountUnits = transfer.amountUnits;
+    }
     if (amountUnits === '0') return null;
     const operationHash = getSmartAccountUserOpHash(operation, chainId);
     if (
@@ -132,6 +152,7 @@ export function decodeRetainedSmartAccountTransfer(
       amountUnits,
       operationHash,
       operationNonce: operation.nonce,
+      ...(token ? { token } : {}),
       maximumAccountCharge:
         getSmartAccountUserOpRequiredPrefund(operation).toString(),
     });

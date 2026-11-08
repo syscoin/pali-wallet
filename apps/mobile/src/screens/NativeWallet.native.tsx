@@ -233,7 +233,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const origin = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
     if (next === 'send') {
       if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
-        !canSign && !((canSendUtxo || canSendSmart) && sendTarget.kind === 'native'))) return;
+        !canSign && !(canSendUtxo && sendTarget.kind === 'native' || canSendSmart && (sendTarget.kind === 'native' || sendTarget.kind === 'token')))) return;
       const sender = owner?.account?.address.toLowerCase();
       const recipientPicker = sendTarget.kind === 'native' && canSign && local && sender &&
         capturedCatalogue?.accounts.some(({ address }) => address.toLowerCase() !== sender)
@@ -825,8 +825,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   </>;
   else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountOperationRoute
     open={openSmartDeployment} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && sendTarget?.kind === 'native' && canSendSmart && openSmartSend && snapshot.account && publicSource && balanceReader)
-    return <NativeSmartAccountSend source={publicSource} reader={balanceReader} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'token') && canSendSmart && openSmartSend && snapshot.account && publicSource && balanceReader)
+    return <NativeSmartAccountSend source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
     ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
@@ -851,7 +851,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
     onSend={canSign || canSendUtxo || canSendSmart ? () => openStage('send', { kind: 'native' }) : undefined}
     onSendSysx={canSendSpt ? () => openStage('send', { kind: 'spt' }) : undefined}
-    onSendToken={canSign ? (token) => openStage('send', { kind: 'token', token }) : undefined}
+    onSendToken={canSign || canSendSmart ? (token) => openStage('send', { kind: 'token', token }) : undefined}
     onSendCollectible={canSign ? (collectible) => openStage('send', { kind: 'collectible', collectible }) : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}

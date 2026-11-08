@@ -542,17 +542,25 @@ for (const back of ['Android', 'screen'] as const)
   });
 
 
-test('Smart account native Send uses its owned operation route while token and NFT actions remain gated', async () => {
+test('Smart native and ERC20 sends use the owned operation route while NFT actions remain gated', async () => {
   const f = await mounted(true, true);
   try {
     const portfolio = find(f.render(), node => node.type === 'NativePortfolio');
     assert(portfolio);
     assert.equal(typeof portfolio.props.onSend, 'function');
-    assert.equal(portfolio.props.onSendToken, undefined);
+    assert.equal(typeof portfolio.props.onSendToken, 'function');
     assert.equal(portfolio.props.onSendCollectible, undefined);
     portfolio.props.onSend();
     const route = f.render();
     assert.equal(route.type, 'NativeSmartAccountSend');
+    assert.equal(f.hardwareBack(), true);
+    const returned = find(f.render(), node => node.type === 'NativePortfolio');
+    assert(returned);
+    const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 6, name: 'Token', symbol: 'TKN' };
+    returned.props.onSendToken(token);
+    const tokenRoute = f.render();
+    assert.equal(tokenRoute.type, 'NativeSmartAccountSend');
+    assert.equal(tokenRoute.props.token, token);
     assert.equal(f.hardwareBack(), true);
     assert(find(f.render(), node => node.type === 'NativePortfolio'));
     assert.equal(f.exits(), 0);

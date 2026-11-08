@@ -1,3 +1,4 @@
+import { formatTokenUnits } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -93,6 +94,7 @@ function fixture() {
       ),
     },
     '../core/amounts': { formatBaseUnits },
+    '../../../../source/shared/erc20': { formatTokenUnits },
     '../custody/networkContext': { getNativeSendContext },
   };
   runInNewContext(code, {
@@ -229,6 +231,18 @@ test('native Smart transfer review binds the recipient and exact amount to autho
   assert.match(text(tree), new RegExp(recipient));
   assert.match(text(tree), /0.000000000000000009 ETH/);
   assert.doesNotMatch(text(tree), /This operation sends no assets/);
+  button(tree, 'Authorize transfer')();
+  assert.deepEqual(f.calls.authorize, [4]);
+});
+
+
+test('Smart token authorization shows exact 255-decimal units and the contract', () => {
+  const f = fixture();
+  const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 255, name: 'Exact token', symbol: 'EXACT' };
+  f.update({ intent: { kind: 'erc20-transfer', token, recipient: '0x2222222222222222222222222222222222222222', amountUnits: '9' } });
+  const tree = f.render();
+  assert(text(tree).includes(token.contractAddress));
+  assert(text(tree).includes('0.' + '0'.repeat(254) + '9'));
   button(tree, 'Authorize transfer')();
   assert.deepEqual(f.calls.authorize, [4]);
 });

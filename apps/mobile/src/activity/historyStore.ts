@@ -136,7 +136,6 @@ export function validateArchivedActivity(
     ]);
     if (
       !data.accountId.startsWith('smart:') ||
-      data.token !== undefined ||
       typeof identity.payer !== 'string' ||
       getAddress(identity.payer) !== identity.payer ||
       typeof identity.operationHash !== 'string' ||

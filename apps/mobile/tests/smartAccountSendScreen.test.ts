@@ -1,3 +1,4 @@
+import { formatTokenUnits, type Erc20Metadata } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -30,7 +31,7 @@ const code = ts.transpileModule(source, {
     esModuleInterop: true,
   },
 }).outputText;
-function fixture(open: (...args: any[]) => Promise<any>) {
+function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata) {
   const cells: any[] = [],
     cleanups: (() => void)[] = [];
   let index = 0;
@@ -99,6 +100,7 @@ function fixture(open: (...args: any[]) => Promise<any>) {
       },
     },
     '../core/amounts': { formatBaseUnits },
+    '../../../../source/shared/erc20': { formatTokenUnits },
     './NativeSend': {
       NativeSendInput: 'Input',
       nativeTransferFailure: (error: Error) =>
@@ -136,6 +138,8 @@ function fixture(open: (...args: any[]) => Promise<any>) {
       accountLabel: 'Smart account',
       source: {},
       reader: {},
+      token, tokenView: token ? { subscribe: () => () => {}, connect: () => () => {},
+        getSnapshot: () => ({ items: [{ metadata: token, status: 'available', units: '100' }] }) } : undefined,
       onBack() {},
     }) as Element;
   };
@@ -255,5 +259,23 @@ for (const editAmount of [false, true]) test(`MAX selection ${editAmount ? 'clea
     f.press(); await tick();
     assert.equal(selected.kind, editAmount ? 'exact' : 'maximum');
     if (editAmount) assert.equal(selected.amount, '1');
+  } finally { f.close(); }
+});
+
+
+test('Smart token form presents the selected contract and routes exact decimal input', async () => {
+  const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 255, name: 'Exact token', symbol: 'EXACT' };
+  let request: any;
+  const f = fixture(async (_recipient, amount) => { request = amount; return { dispose() {} }; }, token);
+  try {
+    assert(all(f.render()).some(node => node.children.includes(token.contractAddress)));
+    assert.equal(all(f.render()).filter(node => node.type === 'Button' && String(node.props.title).startsWith('MAX')).length, 0);
+    f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
+    const amount = '0.' + '0'.repeat(254) + '9';
+    f.edit('Amount (EXACT)', amount);
+    f.press(); await tick();
+    assert.equal(request.kind, 'erc20');
+    assert.equal(request.contractAddress, token.contractAddress);
+    assert.equal(request.amount, amount);
   } finally { f.close(); }
 });

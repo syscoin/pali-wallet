@@ -229,3 +229,66 @@ test('MAX keeps the exact refined amount in the narrow authorization screen', as
     page.getByText('Transfer submitted', { exact: true })
   ).toBeVisible();
 });
+
+test('Smart ERC20 transfer keeps token identity and payer fee reviews separate on a narrow screen', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/?smart-currency=1&token=1');
+  await expect(
+    page.getByText('Balance 100.0 TOK', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'MAX', exact: true })
+  ).toHaveCount(0);
+  await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
+  await page.getByLabel('Amount (TOK)', { exact: true }).fill('1.234567');
+  await page
+    .getByRole('button', { name: 'Review transfer', exact: true })
+    .click();
+  await expect(page.getByText('1.234567', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('0x5555555555555555555555555555555555555555', {
+      exact: true,
+    })
+  ).toBeVisible();
+  await contained(page);
+  await page.screenshot({
+    path: test.info().outputPath('smart-token-review-320.png'),
+  });
+  const authorize = page.getByRole('button', {
+    name: 'Authorize transfer',
+    exact: true,
+  });
+  await authorize.scrollIntoViewIfNeeded();
+  await expect(authorize).toBeInViewport();
+  await authorize.click();
+  const confirm = page.getByRole('button', {
+    name: 'Confirm transfer',
+    exact: true,
+  });
+  const close = page.getByRole('button', { name: 'Close', exact: true });
+  await close.scrollIntoViewIfNeeded();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  );
+  await expect(confirm).toBeInViewport({ ratio: 0.999 });
+  await expect(close).toBeInViewport({ ratio: 0.999 });
+  await page.screenshot({
+    path: test.info().outputPath('smart-token-payer-320.png'),
+  });
+  await confirm.click();
+  await expect(
+    page.getByText('Transfer submitted', { exact: true })
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__nativeSmartCurrencyFixture.calls())
+  ).toEqual([
+    { method: 'open', value: '1234567' },
+    { method: 'authorize' },
+    { method: 'submit' },
+  ]);
+});

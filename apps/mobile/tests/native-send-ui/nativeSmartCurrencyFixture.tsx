@@ -1,3 +1,6 @@
+import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer';
+import { parseTokenAmount } from '../../../../source/shared/erc20';
+import type { NativeTokenSnapshot } from '../../src/portfolio/nativeTokens';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum';
 import React, { useState } from 'react';
 import { NativeSmartAccountSend } from '../../src/screens/NativeSmartAccountSend';
@@ -22,6 +25,39 @@ const payer = '0x2222222222222222222222222222222222222222';
 const hash = '0x' + 'ab'.repeat(32);
 const calls: { method: string; value?: string }[] = [];
 const network = getNativeNetwork('ethereum');
+const token = query.has('token')
+  ? {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      name: 'Example token',
+      symbol: 'TOK',
+      decimals: 6,
+    }
+  : undefined;
+const tokenSnapshot: NativeTokenSnapshot = {
+  account: null,
+  status: 'ready',
+  items: token
+    ? [
+        {
+          metadata: token,
+          status: 'available',
+          units: '100000000',
+          updatedAt: 0,
+        },
+      ]
+    : [],
+  preview: null,
+  previewStatus: 'idle',
+  discovery: null,
+  busy: false,
+  error: null,
+};
+const tokenView = {
+  getSnapshot: () => tokenSnapshot,
+  subscribe: () => () => {},
+  connect: () => () => {},
+};
+
 const source: PublicCustodySource = {
   getSnapshot: () => ({
     phase: 'ready',
@@ -51,6 +87,8 @@ function open(
     const amountUnits =
       amount.kind === 'exact'
         ? parseDecimalAmount(amount.amount, 18).toString()
+        : amount.kind === 'erc20' && token
+        ? parseTokenAmount(amount.amount, token.decimals)
         : null;
     calls.push({ method: 'open', value: amountUnits ?? 'maximum' });
     return Promise.resolve(
@@ -58,7 +96,14 @@ function open(
         account,
         network,
         intent:
-          amountUnits === null
+          amount.kind === 'erc20' && token
+            ? {
+                kind: 'erc20-transfer',
+                recipient,
+                token,
+                amountUnits: amountUnits!,
+              }
+            : amountUnits === null
             ? { kind: 'native-max', recipient }
             : { kind: 'native-transfer', recipient, amountUnits },
         assertCurrent,
@@ -80,12 +125,28 @@ function open(
           const value = maximum
             ? BigInt(maximum.execution.value).toString()
             : amountUnits!;
+          const execution =
+            amount.kind === 'erc20' && token
+              ? buildSmartAccountErc20Transfer(
+                  token.contractAddress,
+                  recipient,
+                  value
+                )
+              : { target: recipient, data: '0x', value };
           return {
             kind: 'authorization',
-            intent: { kind: 'native-transfer', recipient, amountUnits: value },
+            intent:
+              amount.kind === 'erc20' && token
+                ? {
+                    kind: 'erc20-transfer',
+                    recipient,
+                    token,
+                    amountUnits: value,
+                  }
+                : { kind: 'native-transfer', recipient, amountUnits: value },
             operation: {
-              execution: { target: recipient, data: '0x', value },
-              executions: [{ target: recipient, data: '0x', value }],
+              execution,
+              executions: [execution],
               actionHash: hash,
               userOperation: {
                 nonce: '7',
@@ -166,6 +227,8 @@ export function NativeSmartCurrencyFixture() {
   ) : (
     <NativeSmartAccountSend
       open={open}
+      token={token}
+      tokenView={tokenView}
       source={source}
       reader={reader}
       context={getNativeSendContext(network)}
