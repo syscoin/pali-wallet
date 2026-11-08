@@ -2087,6 +2087,7 @@ it.each([
   const root = '0x' + '01'.repeat(32);
   const proof = '0x' + 'ab'.repeat(256);
   let forceCancel = false;
+  let reservedAttempt: IPrivacyWithdrawalAttempt | undefined;
   const send = jest.fn();
   const clear = jest.fn(async (attempt) =>
     f.controller.clearUnbroadcastWithdrawalAttempt(attempt, originalSession)
@@ -2122,6 +2123,7 @@ it.each([
       ].map((x) => BigInt(x).toString()),
     }),
     beforeSubmission: async (attempt) => {
+      reservedAttempt = attempt;
       captured.assertCurrent();
       await f.controller.reserveWithdrawalAttempt(attempt, originalSession);
       captured.assertCurrent();
@@ -2166,7 +2168,8 @@ it.each([
   const newSession = f.captureSession();
   const persisted = await f.create().getWithdrawalAttempt(saved.id, newSession);
   if (scenario === 'switch during committed write') {
-    expect(clear).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(clear).toHaveBeenCalledWith(reservedAttempt);
     expect(persisted).toMatchObject({ phase: 'unknown' });
     expect((await f.create().getNotes()).notes[0].phase).toBe('waiting');
     await expect(
