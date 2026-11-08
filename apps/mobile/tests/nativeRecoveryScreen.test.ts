@@ -12,6 +12,9 @@ import { findUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 import * as networkContext from '../src/custody/networkContext.ts';
+import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
+import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
+import type { NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
 
 type Element = { type: unknown; props: Record<string, unknown>; children: unknown[] };
 type Cell = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
@@ -29,7 +32,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
     plugins: [babelRequire.resolve('babel-plugin-syntax-hermes-parser'), babelRequire.resolve('@babel/plugin-transform-flow-strip-types'), babelRequire.resolve('@babel/plugin-transform-modules-commonjs')],
   }).code : ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   const module = { exports: {} as Record<string, unknown> };
-  runInNewContext(code, { module, exports: module.exports, Error, require(name: string) {
+  runInNewContext(code, { module, exports: module.exports, Error, AbortController, performance, setTimeout, clearTimeout, queueMicrotask, require(name: string) {
     assert.ok(Object.hasOwn(dependencies, name), `Unexpected import ${name}`); return dependencies[name];
   } });
   return module.exports;
@@ -87,7 +90,7 @@ function setup(phase = 'entry') {
     return { ...el, children: el.children.flat(Infinity).map(expand), props: { ...el.props, ...(el.props.footer ? { footer: expand(el.props.footer) } : {}) } };
   };
   const render = () => { cursor = 0; const result = (loaded.NativeRecovery as (props: object) => Element)({ flow }); layouts.splice(0).forEach((run) => run()); return expand(result) as Element; };
-  return { render, snapshot, calls, back, hook, native, ui, idle, component: loaded.NativeRecovery,
+  return { render, expand, snapshot, calls, back, hook, native, ui, idle, component: loaded.NativeRecovery,
     renderOwner(component: (props: object) => Element, props: object) { cursor = 0; const result = component(props); layouts.splice(0).forEach((run) => run()); return result; },
     renderFlow(value: unknown) { cursor = 0; const result = (loaded.NativeRecovery as (props: object) => Element)({ flow: value }); layouts.splice(0).forEach((run) => run()); return expand(result) as Element; },
     admission(value: boolean) { admitted = value; },
@@ -563,4 +566,248 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
   } finally {
     finishConfirmation(); finishDrain(); root.dispose(); await tick();
   }
+});
+
+test('actual native Sentry surface reviews once, copies only public data and retires held work on blur', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = setup();
+  const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
+  const common = {
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Row: 'Row' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  };
+  const secure = evaluate(load('NoteBackupPasswordField'), common);
+  const copied: string[] = [];
+  const view = evaluate(load('NativeSentryKeys'), {
+    ...common,
+    './NoteBackupPasswordField': secure,
+    '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
+    '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey, parseSentryKeyBatch },
+    'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } },
+  }).NativeSentryKeys as (props: object) => Element;
+  const secret = '13'.repeat(32), publicKey = '29'.repeat(48), password = 'fixture only passphrase';
+  const storedKey = Object.freeze({
+    id: 'public-id', network: 'mainnet', label: 'Node one', role: 'operator', scheme: 'bls-basic', publicKey,
+  } as const) satisfies SentryKeySummary;
+  let keys: readonly SentryKeySummary[] = [];
+  let scope!: AbortSignal;
+  let previewCount = 0, confirmCount = 0, removalCount = 0, closed = 0, cancels = 0;
+  let importReview: Awaited<ReturnType<NativeSentryKeyManagement['prepareImport']>> | undefined;
+  let removeReview: Awaited<ReturnType<NativeSentryKeyManagement['prepareRemoval']>>;
+  let hold: Promise<void> | undefined, busyConfirmation: Promise<void> | undefined;
+  const manager: NativeSentryKeyManagement = {
+    async list() { return keys; },
+    async prepareImport(input, role, scheme) {
+      previewCount++;
+      assert.equal(input, 'Node one | ' + secret);
+      assert.equal(role, 'operator'); assert.equal(scheme, 'bls-basic');
+      await hold;
+      return importReview = Object.freeze({
+        network: 'mainnet', expiresAt: performance.now() + 90_000,
+        keys: Object.freeze([{ label: 'Node one', role, scheme, publicKey }]),
+      });
+    },
+    async confirmImport(review, entered) {
+      assert.equal(review, importReview); assert.equal(entered, password);
+      if (busyConfirmation) {
+        await busyConfirmation;
+        throw Object.assign(new Error('BUSY'), { code: 'BUSY' });
+      }
+      confirmCount++;
+      return keys = [storedKey];
+    },
+    async prepareRemoval(id) {
+      assert.equal(id, storedKey.id);
+      return removeReview = Object.freeze({ key: storedKey, expiresAt: performance.now() + 90_000 });
+    },
+    async confirmRemoval(review, entered, backedUp) {
+      removalCount++;
+      assert.equal(review, removeReview); assert.equal(entered, password); assert.equal(backedUp, true);
+      keys = [];
+      return { removedKeyId: storedKey.id };
+    },
+    cancel() { cancels++; importReview = undefined; },
+    dispose() { closed++; },
+  };
+  const props = { networkLabel: 'Syscoin Mainnet', onBack() {}, async open(signal: AbortSignal, check: () => void) {
+    assert.equal(signal.aborted, false); scope = signal; check(); return manager;
+  } };
+  const render = () => f.expand(f.renderOwner(view, props)) as Element;
+  const activate = (node: Element) => (node.props.onPress as (event: object) => unknown)({ nativeEvent: {} });
+  const change = (node: Element, value: string) => (node.props.onChangeText as (value: string) => void)(value);
+  const openStored = () => {
+    const row = all(render()).find((item) => item.type === 'Row' && item.props.title === 'Node one');
+    assert.ok(row);
+    activate(row);
+  };
+  const draft = () => {
+    activate(button(render(), 'Import key'));
+    let form = render();
+    const name = field(form, 'Key label');
+    change(name, secret);
+    assert.equal(field(render(), 'Key label').props.value, '');
+    const ordinary = 'Sentry operator for node one at home 0x';
+    const pasted = ordinary + '24bc'.repeat(32);
+    const platformValue = typeof name.props.maxLength === 'number'
+      ? pasted.slice(0, name.props.maxLength) : pasted;
+    change(name, platformValue);
+    assert.equal(field(render(), 'Key label').props.value, '');
+    change(name, 'x'.repeat(80));
+    assert.equal(field(render(), 'Key label').props.value, 'x'.repeat(80));
+    change(name, 'x'.repeat(81));
+    assert.equal(field(render(), 'Key label').props.value, 'x'.repeat(80));
+    change(name, 'Node one');
+    const entry = field(form, 'Private key');
+    assert.equal(entry.props.secureTextEntry, true);
+    assert.equal(entry.props.autoComplete, 'off');
+    assert.equal(entry.props.maxLength, 1024);
+    change(entry, '0x' + '13'.repeat(64) + 'trailing');
+    assert.equal(field(render(), 'Private key').props.value, '');
+    change(entry, secret);
+    form = render();
+    return button(form, 'Review key');
+  };
+  try {
+    render(); await new Promise<void>((resolve) => setImmediate(resolve));
+    await activate(draft());
+    assert.equal(previewCount, 1);
+    assert.equal(confirmCount, 0);
+    let tree = render();
+    assert.match(text(tree), new RegExp(publicKey));
+    assert(!JSON.stringify(tree).includes(secret));
+    const confirmation = field(tree, 'Wallet password');
+    assert.equal(confirmation.props.value, '');
+    assert.equal(confirmation.props.secureTextEntry, true);
+    assert.equal(button(tree, 'Save key').props.disabled, true);
+    change(confirmation, password);
+    const save = button(render(), 'Save key');
+    const savePending = activate(save); activate(save);
+    await savePending;
+    assert.equal(confirmCount, 1);
+    openStored();
+    await activate(button(render(), 'Copy public key'));
+    assert.deepEqual(copied, [publicKey]);
+    await activate(button(render(), 'Remove key'));
+    tree = render();
+    change(field(tree, 'Wallet password'), password);
+    assert.equal(button(render(), 'Remove key').props.disabled, true);
+    activate(button(render(), 'Remove key'));
+    assert.equal(removalCount, 0);
+    const checkbox = all(render()).find((item) => item.props.accessibilityRole === 'checkbox');
+    assert.ok(checkbox); activate(checkbox);
+    await activate(button(render(), 'Remove key'));
+    assert.equal(removalCount, 1);
+    assert.equal(keys.length, 0);
+
+    await activate(draft());
+    change(field(render(), 'Wallet password'), password);
+    t.mock.timers.tick(90_000);
+    assert.match(text(render()), /Review expired/);
+    assert.equal(all(render()).filter((item) => item.type === 'TextInput').length, 0);
+    assert.equal(confirmCount, 1);
+
+    await activate(draft());
+    change(field(render(), 'Wallet password'), password);
+    const admitted = Promise.withResolvers<void>();
+    busyConfirmation = admitted.promise;
+    const blocked = activate(button(render(), 'Save key'));
+    assert.equal(field(render(), 'Wallet password').props.value, '');
+    const cancelsBeforeBusy = cancels;
+    admitted.resolve();
+    await blocked;
+    assert.equal(cancels, cancelsBeforeBusy + 1);
+    assert.equal(importReview, undefined);
+    assert.equal(all(render()).filter((item) => item.type === 'TextInput').length, 0);
+    assert.equal(confirmCount, 1);
+    busyConfirmation = undefined;
+    await activate(button(render(), 'Try again'));
+
+    const late = Promise.withResolvers<void>();
+    hold = late.promise;
+    const pending = activate(draft());
+    assert.equal(field(render(), 'Private key').props.value, '');
+    f.emit('blur');
+    assert.equal(scope.aborted, true);
+    late.resolve();
+    await pending;
+    assert.equal(closed, 1);
+    tree = render();
+    assert(!text(tree).includes(publicKey));
+    assert.equal(all(tree).filter((item) => item.type === 'TextInput').length, 0);
+    assert.equal(confirmCount, 1);
+  } finally { f.dispose(); }
+});
+
+test('Sentry batch paste reviews ordered public keys and rejects duplicates, oversize and stale clipboard results', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = setup();
+  const common = {
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Row: 'Row' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  };
+  const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
+  let clipboard = '', pendingClipboard: Promise<string> | undefined, confirmed = 0;
+  const view = evaluate(load('NativeSentryKeys'), {
+    ...common,
+    './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
+    '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
+    '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey },
+    'expo-clipboard': { getStringAsync: () => pendingClipboard ?? Promise.resolve(clipboard), setStringAsync: async () => true },
+  }).NativeSentryKeys as (props: object) => Element;
+  const manager: NativeSentryKeyManagement = {
+    list: async () => [],
+    async prepareImport(input, _role, scheme) {
+      const parsed = parseSentryKeyBatch(input, scheme);
+      if (parsed.issues.length) throw Object.assign(new Error('Invalid batch'), { code: 'INVALID_INPUT', issues: parsed.issues });
+      return { network: 'mainnet', expiresAt: performance.now() + 90000,
+        keys: parsed.entries.map(({ label }, index) => ({ label, role: 'operator', scheme: 'bls-basic', publicKey: (index ? '48' : '39').repeat(48) })) };
+    },
+    async confirmImport(review) { confirmed++; return review.keys.map((key, index) => ({ ...key, id: String(index), network: 'mainnet' })); },
+    prepareRemoval: async () => { throw new Error('Unused'); },
+    confirmRemoval: async () => { throw new Error('Unused'); },
+    cancel() {}, dispose() {},
+  };
+  const props = { networkLabel: 'Syscoin', onBack() {}, open: async () => manager };
+  const render = () => f.expand(f.renderOwner(view, props)) as Element;
+  const press = async (title: string) => (button(render(), title).props.onPress as () => Promise<void> | void)();
+  try {
+    render(); await new Promise<void>((resolve) => setImmediate(resolve));
+    await press('Import multiple keys');
+    assert.equal(all(render()).filter((node) => node.type === 'TextInput').length, 0);
+    clipboard = `One | ${'13'.repeat(32)}\nTwo | ${'13'.repeat(32)}`;
+    await press('Paste and review keys');
+    assert.match(text(render()), /Check the private key/);
+    assert(!JSON.stringify(render()).includes(clipboard));
+    clipboard = `One | ${'13'.repeat(32)}` + '\n'.repeat(6001);
+    await press('Paste and review keys');
+    assert.match(text(render()), /Check the private key/);
+    clipboard = `One | ${'13'.repeat(32)}\nTwo | ${'24'.repeat(32)}`;
+    await press('Paste and review keys');
+    let tree = render();
+    assert(text(tree).indexOf('One') < text(tree).indexOf('Two'));
+    assert(!JSON.stringify(tree).includes('13'.repeat(32)));
+    assert(!JSON.stringify(tree).includes('24'.repeat(32)));
+    (field(tree, 'Wallet password').props.onChangeText as (value: string) => void)('fixture password');
+    await press('Save keys');
+    assert.equal(confirmed, 1);
+    await press('Import multiple keys');
+    await press('Paste and review keys');
+    render();
+    t.mock.timers.tick(90000);
+    assert.match(text(render()), /Review expired/);
+    assert.equal(all(render()).filter((node) => node.type === 'TextInput').length, 0);
+    await press('Import multiple keys');
+    const late = Promise.withResolvers<string>();
+    pendingClipboard = late.promise;
+    const reading = press('Paste and review keys');
+    f.emit('blur');
+    late.resolve(clipboard);
+    await reading;
+    tree = render();
+    assert(!text(tree).includes('One'));
+    assert.equal(all(tree).filter((node) => node.type === 'TextInput').length, 0);
+    assert.equal(confirmed, 1);
+  } finally { f.dispose(); }
 });

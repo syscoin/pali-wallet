@@ -23,10 +23,11 @@ type Secret = Uint8Array<ArrayBuffer>;
 type KeyDetails = Readonly<Omit<SentryAuthorityKey, 'secretKey'>>;
 type PreparedKey = Readonly<{ key: KeyDetails; label: string; secret: Secret }>;
 export type SentryKeyImportReview = Readonly<{
+  expiresAt: number;
   network: SentryNetwork;
   keys: readonly Readonly<Omit<SentryKeySummary, 'id' | 'network'>>[];
 }>;
-export type SentryKeyRemovalReview = Readonly<{ key: PublicKey }>;
+export type SentryKeyRemovalReview = Readonly<{ expiresAt: number; key: PublicKey }>;
 /**
  * Borrow exact-sized input only until this call returns. The executor must
  * copy synchronously and settle only after any started native work has
@@ -293,6 +294,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
             keys.push({ key, label, secret });
           }
           const review: SentryKeyImportReview = Object.freeze({
+            expiresAt: approval.deadline,
             network,
             keys: Object.freeze(
               keys.map(({ label, key }) =>
@@ -351,7 +353,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
           return {
             approval,
             kind: 'remove' as const,
-            review: Object.freeze({ key }),
+            review: Object.freeze({ expiresAt: approval.deadline, key }),
           };
         })
       );

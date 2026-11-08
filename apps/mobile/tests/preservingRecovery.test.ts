@@ -1461,6 +1461,7 @@ test('Sentry key management keeps approvals public and bound to the selected wal
   try {
     await selectNetwork(dormant, 'syscoin');
     assert.equal(dormant.runtime.openSentryKeyManagement, undefined);
+    assert.equal(dormant.runtime.getSentryKeyNetwork, undefined);
   } finally {
     await dormant.close();
   }
@@ -1478,7 +1479,9 @@ test('Sentry key management keeps approvals public and bound to the selected wal
   try {
     const open = () => f.runtime.openSentryKeyManagement!(scope.signal, guard);
     await assert.rejects(open(), { code: 'NOT_READY' });
+    assert.equal(f.runtime.getSentryKeyNetwork!(), undefined);
     await selectNetwork(f, 'syscoin');
+    assert.equal(f.runtime.getSentryKeyNetwork!(), 'mainnet');
     const manager = await open();
     const shakeKey = '13'.repeat(16) + '24'.repeat(16) + '35'.repeat(16) + '46'.repeat(16);
     for (const offset of [0, 32]) {
