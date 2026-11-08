@@ -15,6 +15,7 @@ import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from '
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
 import { httpBuild, type HttpLaunch } from './http-contract.ts';
+import { withWalletConnectQualificationScope } from './walletconnect-scope.ts';
 import { makePublicPoolFailure, PUBLIC_POOL_FAILURE_FILE, publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -144,6 +145,7 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
+        const NativeWebSocket = globalThis.WebSocket;
         globalThis.fetch = (() => {
           networkCalls++;
           throw Error('QUALIFICATION_NETWORK_FORBIDDEN');
@@ -346,12 +348,18 @@ function QualificationApp() {
             if (candidateIdentity !== undefined) {
               if (typeof candidateIdentity !== 'string') throw Error('WALLETCONNECT_NATIVE_BUILD_INVALID');
               stage = 'native WalletConnect lifecycle';
-              const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
-              await prepareWalletConnectRuntime();
-              const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
-              const connectionEvidence = await qualifyNativeWalletConnect({ launch: parameters.http, build,
-                candidateIdentity, walletFetch, phase: parameters.phase, scenario: parameters.scenario,
-                platform: Platform.OS as 'ios' | 'android', sessionId: Constants.sessionId });
+              const { http: launch, phase, scenario } = parameters;
+              const connectionEvidence = await withWalletConnectQualificationScope({
+                crypto: nativeCrypto, WebSocket: NativeWebSocket, launch,
+                onForbidden() { networkCalls++; throw Error('QUALIFICATION_NETWORK_FORBIDDEN'); },
+              }, async () => {
+                const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
+                await prepareWalletConnectRuntime();
+                const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
+                return qualifyNativeWalletConnect({ launch, build,
+                  candidateIdentity, walletFetch, phase, scenario,
+                  platform: Platform.OS as 'ios' | 'android', sessionId: Constants.sessionId });
+              });
               const connectionDestination = `${FileSystem.documentDirectory}pali-native-walletconnect-${parameters.http.token}.json`;
               await FileSystem.writeAsStringAsync(`${connectionDestination}.tmp`, JSON.stringify(connectionEvidence));
               await FileSystem.moveAsync({ from: `${connectionDestination}.tmp`, to: connectionDestination });
