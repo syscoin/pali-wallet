@@ -141,17 +141,17 @@ describe('transaction cleanup preserves the public browsing caller', () => {
     sender = jest
       .fn()
       .mockRejectedValue(new Error('Insufficient funds for gas fees'));
+    const ethereumTransaction = {
+      web3Provider: {},
+      sendFormattedTransaction: sender,
+    };
     (getController as jest.Mock).mockReturnValue({
-      wallet: {
-        ethereumTransaction: {
-          web3Provider: {},
-          sendFormattedTransaction: sender,
-        },
-      },
+      wallet: { ethereumTransaction },
     });
     wallet = Object.create(MainController.prototype);
     wallet.getActiveKeyring = jest.fn(() => ({
       setVaultStateGetter: jest.fn(),
+      ethereumTransaction,
     }));
     wallet.sendAndSaveTransaction = jest.fn();
   });
