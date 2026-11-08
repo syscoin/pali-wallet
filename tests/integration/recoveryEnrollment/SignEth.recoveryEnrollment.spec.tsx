@@ -42,7 +42,7 @@ jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
 jest.mock('hooks/index', () => ({
   useQueryData: () => mockQuery,
@@ -80,9 +80,11 @@ jest.mock('components/index', () => ({
 
 const TEST_KEY = `0x${'11'.repeat(32)}`; // Public test key, never funded publicly.
 const owner = new Wallet(TEST_KEY);
+const mockTranslate = (key: string) => key;
 let mockState: any;
 let mockQuery: any;
 let mockMetadata: any;
+let mockWalletSessionGeneration = 0;
 let mockApproval: ReturnType<typeof captureMessageSignApproval>;
 let backend: ChildProcess;
 let backendInfo: any;
@@ -116,6 +118,11 @@ const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
   if (method.at(-1) === 'hydrateSmartAccount') return mockMetadata;
   if (method.at(-1) === 'checkAddressBlacklist')
     return { isBlacklisted: false, severity: 'low' };
+  if (method.at(-1) === 'getWalletSessionGeneration') {
+    expect(method).toEqual(['wallet', 'getWalletSessionGeneration']);
+    expect(args).toEqual([]);
+    return mockWalletSessionGeneration;
+  }
   expect(method).toEqual(['wallet', 'signSmartAccountMessageDigest']);
   expect(args).toEqual([
     { address: owner.address, id: 0, type: 'HDAccount' },
@@ -180,13 +187,14 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-async function sign(
+async function reviewSign(
   message: string,
   account = backendInfo.accountAddress,
   chainId = 57057
 ) {
   jest.mocked(dispatchBackgroundEvent).mockClear();
   mockEmitter.mockClear();
+  mockWalletSessionGeneration = 0;
   const authData = defaultAbiCoder.encode(
     ['address[]', 'uint64'],
     [[owner.address], 1]
@@ -256,7 +264,7 @@ async function sign(
   };
   mockApproval = captureMessageSignApproval({
     method: 'personal_sign',
-    getWalletSessionGeneration: () => 0,
+    getWalletSessionGeneration: () => mockWalletSessionGeneration,
     host: mockQuery.host,
     params: mockQuery,
     sender: {
@@ -276,6 +284,19 @@ async function sign(
     expect((confirm as HTMLButtonElement).disabled).toBe(false)
   );
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  return { confirm, original, view };
+}
+
+async function sign(
+  message: string,
+  account = backendInfo.accountAddress,
+  chainId = 57057
+) {
+  const { confirm, original, view } = await reviewSign(
+    message,
+    account,
+    chainId
+  );
   fireEvent.click(confirm);
   await waitFor(() => expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1));
   expect(mockQuery).toEqual(original);
@@ -364,3 +385,32 @@ it('enrolls with actual Pali personal_sign output on a real account and rejects 
     );
   }
 }, 90000);
+
+it('rejects a wallet-session change before authenticating a recovery signature', async () => {
+  const { confirm } = await reviewSign('Recovery enrollment session guard');
+  const controllerCall = mockEmitter.getMockImplementation()!;
+  let generationReads = 0;
+  mockEmitter.mockImplementation(async (method, args) => {
+    const result = await controllerCall(method, args);
+    if (method.at(-1) === 'getWalletSessionGeneration') {
+      generationReads += 1;
+      if (generationReads === 1) mockWalletSessionGeneration += 1;
+    }
+    return result;
+  });
+  try {
+    fireEvent.click(confirm);
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Signing request changed'
+    );
+    expect(generationReads).toBe(2);
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([method]) => method.at(-1) === 'signSmartAccountMessageDigest'
+      )
+    ).toHaveLength(0);
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  } finally {
+    mockEmitter.mockImplementation(controllerCall);
+  }
+});
