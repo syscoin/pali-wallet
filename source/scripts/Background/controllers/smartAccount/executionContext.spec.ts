@@ -8,11 +8,14 @@ jest.mock('utils/ethersV6Compat', () => ({
   ...jest.requireActual('utils/ethersV6Compat'),
   Contract: jest.fn(),
 }));
-jest.mock('utils/smartAccount', () => ({
-  ...jest.requireActual('utils/smartAccount'),
+jest.mock('utils/smartAccount/gas', () => ({
+  ...jest.requireActual('utils/smartAccount/gas'),
   estimateSmartAccountUserOpGas: jest.fn(),
+}));
+jest.mock('utils/smartAccount/adapter', () => ({
+  ...jest.requireActual('utils/smartAccount/adapter'),
   toPaliSmartAccount: jest.fn(
-    jest.requireActual('utils/smartAccount').toPaliSmartAccount
+    jest.requireActual('utils/smartAccount/adapter').toPaliSmartAccount
   ),
 }));
 
@@ -115,7 +118,7 @@ describe('smart-account execution approval context', () => {
     jest
       .mocked(toPaliSmartAccount)
       .mockImplementation(
-        jest.requireActual('utils/smartAccount').toPaliSmartAccount
+        jest.requireActual('utils/smartAccount/adapter').toPaliSmartAccount
       );
     generation = 9;
     state = {
