@@ -9,7 +9,7 @@ import {
   keccak256,
   toBeHex,
   toUtf8Bytes,
-} from 'utils/ethersV6Compat';
+} from '../ethersV6Compat.ts';
 
 export const PALI_ERC7739_DOMAIN_NAME = 'pali.smart-account.erc1271';
 export const PALI_ERC7739_DOMAIN_VERSION = '1';

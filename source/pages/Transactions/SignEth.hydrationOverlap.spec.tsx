@@ -157,3 +157,35 @@ it('a settled metadata read takes the same request through one signing and succe
   expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
   expect(window.close).toHaveBeenCalledTimes(1);
 });
+
+it('does not authenticate or sign an older payload after the displayed request changes during hydration', async () => {
+  let release!: (value: typeof metadata) => void;
+  const held = new Promise<typeof metadata>((resolve) => {
+    release = resolve;
+  });
+  mockEmitter.mockImplementation(async (path) =>
+    path.at(-1) === 'hydrateSmartAccount' ? held : 1
+  );
+  const originalMessage = mockQuery[0];
+  const view = render(<EthSign />);
+  try {
+    await act(async () => jest.advanceTimersByTime(100));
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'hydrateSmartAccount'],
+      [0],
+      300000
+    );
+    mockQuery[0] = '0x6368616e676564';
+    view.rerender(<EthSign />);
+    await act(async () => {
+      release(metadata);
+      await held;
+    });
+    expect(mockSign).not.toHaveBeenCalled();
+    expect(mockLocalOwnerContexts).not.toHaveBeenCalled();
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  } finally {
+    mockQuery[0] = originalMessage;
+  }
+});

@@ -14,12 +14,7 @@ import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { createDappApprovalLifetime } from 'utils/dappApprovalLifetime';
 import { matchAttestedDappOrigin } from 'utils/dappOrigin';
-import {
-  getPaliErc7739PersonalSignHash,
-  buildPaliErc7739TypedDataRequest,
-  type PaliErc7739TypedData,
-  hashPersonalSignMessage,
-} from 'utils/smartAccount/erc7739';
+import { prepareSmartAccountMessage } from 'utils/smartAccount/messageSigning';
 import { getInstalledValidatorModuleByAddress } from 'utils/smartAccount/modules';
 
 import type { IEnhancedRequestContext } from '../controllers/message-handler/types';
@@ -214,17 +209,11 @@ export const captureMessageSignApproval = ({
       if (!validator) return;
 
       const getDigest = () =>
-        request.method === 'personal_sign'
-          ? getPaliErc7739PersonalSignHash({
-              accountAddress: address,
-              chainId,
-              hash: hashPersonalSignMessage(request.message),
-            })
-          : buildPaliErc7739TypedDataRequest({
-              accountAddress: address,
-              chainId,
-              typedData: request.typedData as PaliErc7739TypedData,
-            }).actionHash;
+        prepareSmartAccountMessage({
+          accountAddress: address,
+          chainId,
+          request,
+        }).actionHash;
       const hasMetadata = (next: typeof accounts) => {
         const account = next[type]?.[id];
         return account?.isSmartAccount && account.smartAccount === metadata;
