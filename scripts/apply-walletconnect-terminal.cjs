@@ -13,19 +13,45 @@ const identity = `core.${manifest.coreSource}.utils.${
   manifest.utilsSource
 }.sha256.${digest(fs.readFileSync(manifestFile))}`;
 
+// Installation packages must belong to this checkout. Following a linked
+// node_modules, package directory or output file could mutate another worktree.
+function localTarget(root, target) {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative))
+    throw Error('Dependency patch target escapes its installation');
+  let current = fs.realpathSync(root);
+  for (const part of relative.split(path.sep)) {
+    current = path.join(current, part);
+    try {
+      if (fs.lstatSync(current).isSymbolicLink())
+        throw Error('Dependency patch refuses linked installation targets');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+  }
+  return current;
+}
+
 function inspectPackages(mobileRoot, applying) {
+  mobileRoot = fs.realpathSync(mobileRoot);
   const updates = [];
   for (const pkg of manifest.packages) {
-    const directory = path.join(mobileRoot, 'node_modules', pkg.name);
+    const directory = localTarget(
+      mobileRoot,
+      path.join(mobileRoot, 'node_modules', pkg.name)
+    );
     const metadata = JSON.parse(
-      fs.readFileSync(path.join(directory, 'package.json'), 'utf8')
+      fs.readFileSync(
+        localTarget(mobileRoot, path.join(directory, 'package.json')),
+        'utf8'
+      )
     );
     if (metadata.name !== pkg.name || metadata.version !== pkg.version)
       throw Error(
         `WalletConnect terminal patch requires ${pkg.name}@${pkg.version}`
       );
     for (const file of pkg.files) {
-      const target = path.join(directory, file.path);
+      const target = localTarget(mobileRoot, path.join(directory, file.path));
       const actual = fs.existsSync(target)
         ? digest(fs.readFileSync(target))
         : null;
