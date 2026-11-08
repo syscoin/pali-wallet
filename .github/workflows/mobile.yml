@@ -174,7 +174,7 @@ jobs:
       - name: Run browser suite
         run: ${{ matrix.command }}
       - name: Upload browser failure evidence
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: mobile-browser-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
