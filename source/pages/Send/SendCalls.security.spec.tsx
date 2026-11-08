@@ -184,6 +184,43 @@ describe('sendCalls submission lifecycle', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  it('budgets only wire call data, excluding wallet-added popup metadata', async () => {
+    mockQuery.walletOnlyMetadata = 'internal'.repeat(100000);
+    await signButton(await initialize()).props.onClick();
+    expect(sends()).toHaveLength(2);
+    expect(records()).toContainEqual(
+      expect.objectContaining({
+        failed: false,
+        submissionCompleted: true,
+        txHashes: [HASH, HASH],
+      })
+    );
+  });
+
+  it('keeps reviewed call bytes while an ENS batch lookup is pending', async () => {
+    const lookup = deferred<Record<string, string>>();
+    mockQuery.calls = [
+      { to: 'first.eth', value: '0x1', data: '0x1234' },
+      { to: 'second.eth', value: '0x2', data: '0x5678' },
+    ];
+    mockControllerEmitter.mockImplementation(async ([, method]) => {
+      if (method === 'batchResolveEns') return lookup.promise;
+      if (method === 'getRecommendedNonceForBatch') return 5;
+      if (method === 'sendAndSaveEthTransaction') return { hash: HASH };
+      return undefined;
+    });
+    const running = signButton(await initialize()).props.onClick();
+    await settle();
+    mockQuery.calls[0].value = '0xff';
+    mockQuery.calls[0].data = '0xdead';
+    lookup.resolve({
+      'first.eth': `0x${'2'.repeat(40)}`,
+      'second.eth': `0x${'3'.repeat(40)}`,
+    });
+    await running;
+    expect(sends()[0][1][0]).toMatchObject({ value: '0x1', data: '0x1234' });
+  });
+
   it.each([undefined, false])(
     'blocks same-popup retry and later calls after an unknown send (marker %s)',
     async (transactionNotBroadcast) => {
