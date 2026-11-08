@@ -11,9 +11,18 @@ import {
 } from './walletconnect-contract.ts';
 
 const SUBSTAGES = ['init', 'pair', 'request', 'close'] as const;
+const INITIALIZATION_STAGES = [
+  'sdk-import',
+  'transport-open',
+  'core-create',
+  'core-ready',
+  'client-init',
+  'client-ready',
+] as const;
 const ERROR_NAMES = [
   'Error',
   'TypeError',
+  'ReferenceError',
   'RangeError',
   'SyntaxError',
   'AbortError',
@@ -47,11 +56,19 @@ const COUNT_KEYS = [
   'invalid',
 ] as const;
 
-export type WalletConnectQualificationDiagnostic = Readonly<{
-  substage: (typeof SUBSTAGES)[number];
+type ErrorDiagnostic = Readonly<{
   errorName: (typeof ERROR_NAMES)[number];
   errorCode: (typeof ERROR_CODES)[number];
+}>;
+type InitializationDiagnostic = Readonly<{
+  stage: (typeof INITIALIZATION_STAGES)[number];
+  errorName?: ErrorDiagnostic['errorName'];
+  errorCode?: ErrorDiagnostic['errorCode'];
+}>;
+export type WalletConnectQualificationDiagnostic = ErrorDiagnostic & Readonly<{
+  substage: (typeof SUBSTAGES)[number];
   counts?: WalletConnectAudit;
+  initialization?: InitializationDiagnostic;
 }>;
 
 function ownField(value: unknown, key: string): unknown {
@@ -81,15 +98,31 @@ function validCounts(value: unknown): value is WalletConnectAudit {
   );
 }
 
+function validInitialization(value: unknown): value is InitializationDiagnostic {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const name = ownField(value, 'errorName');
+  const code = ownField(value, 'errorCode');
+  const keys = name === undefined && code === undefined
+    ? ['stage']
+    : ['errorCode', 'errorName', 'stage'];
+  return Object.keys(value).sort().join(',') === keys.join(',') &&
+    (INITIALIZATION_STAGES as readonly unknown[]).includes(ownField(value, 'stage')) &&
+    (keys.length === 1 || (
+      (ERROR_NAMES as readonly unknown[]).includes(name) &&
+      (ERROR_CODES as readonly unknown[]).includes(code)
+    ));
+}
+
 export function isWalletConnectQualificationDiagnostic(
   value: unknown
 ): value is WalletConnectQualificationDiagnostic {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const counts = ownField(value, 'counts');
-  const keys =
-    counts === undefined
-      ? ['errorCode', 'errorName', 'substage']
-      : ['counts', 'errorCode', 'errorName', 'substage'];
+  const initialization = ownField(value, 'initialization');
+  const keys = ['errorCode', 'errorName', 'substage',
+    ...(counts === undefined ? [] : ['counts']),
+    ...(initialization === undefined ? [] : ['initialization']),
+  ].sort();
   return (
     Object.keys(value).sort().join(',') === keys.join(',') &&
     (SUBSTAGES as readonly unknown[]).includes(ownField(value, 'substage')) &&
@@ -99,8 +132,46 @@ export function isWalletConnectQualificationDiagnostic(
     (ERROR_CODES as readonly unknown[]).includes(
       ownField(value, 'errorCode')
     ) &&
-    (counts === undefined || validCounts(counts))
+    (counts === undefined || validCounts(counts)) &&
+    (initialization === undefined || (
+      ownField(value, 'substage') === 'init' && validInitialization(initialization)
+    ))
   );
+}
+
+/** Project immediately; never retain an SDK exception or arbitrary error text. */
+function errorDiagnostic(error: unknown): ErrorDiagnostic {
+  let name = ownField(error, 'name');
+  if (name === undefined) {
+    try {
+      name =
+        error instanceof TypeError
+          ? 'TypeError'
+          : error instanceof ReferenceError
+          ? 'ReferenceError'
+          : error instanceof RangeError
+          ? 'RangeError'
+          : error instanceof SyntaxError
+          ? 'SyntaxError'
+          : error instanceof Error
+          ? 'Error'
+          : 'UnknownError';
+    } catch {
+      name = 'UnknownError';
+    }
+  }
+  const code = ownField(error, 'code');
+  const message = ownField(error, 'message');
+  return Object.freeze({
+    errorName: (ERROR_NAMES as readonly unknown[]).includes(name)
+      ? (name as ErrorDiagnostic['errorName'])
+      : 'UnknownError',
+    errorCode: (ERROR_CODES as readonly unknown[]).includes(code)
+      ? (code as ErrorDiagnostic['errorCode'])
+      : (ERROR_CODES as readonly unknown[]).includes(message)
+      ? (message as ErrorDiagnostic['errorCode'])
+      : 'UNCLASSIFIED',
+  });
 }
 
 export class WalletConnectQualificationError extends Error {
@@ -108,39 +179,17 @@ export class WalletConnectQualificationError extends Error {
   constructor(
     substage: WalletConnectQualificationDiagnostic['substage'],
     error: unknown,
-    counts?: WalletConnectAudit
+    counts?: WalletConnectAudit,
+    initialization?: InitializationDiagnostic
   ) {
     super('WALLETCONNECT_NATIVE_QUALIFICATION_FAILED');
-    let name = ownField(error, 'name');
-    if (name === undefined) {
-      try {
-        name =
-          error instanceof TypeError
-            ? 'TypeError'
-            : error instanceof RangeError
-            ? 'RangeError'
-            : error instanceof SyntaxError
-            ? 'SyntaxError'
-            : error instanceof Error
-            ? 'Error'
-            : 'UnknownError';
-      } catch {
-        name = 'UnknownError';
-      }
-    }
-    const code = ownField(error, 'code');
-    const message = ownField(error, 'message');
     this.diagnostic = Object.freeze({
       substage,
-      errorName: (ERROR_NAMES as readonly unknown[]).includes(name)
-        ? (name as WalletConnectQualificationDiagnostic['errorName'])
-        : 'UnknownError',
-      errorCode: (ERROR_CODES as readonly unknown[]).includes(code)
-        ? (code as WalletConnectQualificationDiagnostic['errorCode'])
-        : (ERROR_CODES as readonly unknown[]).includes(message)
-        ? (message as WalletConnectQualificationDiagnostic['errorCode'])
-        : 'UNCLASSIFIED',
+      ...errorDiagnostic(error),
       ...(validCounts(counts) ? { counts: Object.freeze({ ...counts }) } : {}),
+      ...(substage === 'init' && validInitialization(initialization)
+        ? { initialization: Object.freeze({ ...initialization }) }
+        : {}),
     });
   }
 }
@@ -183,6 +232,7 @@ export async function qualifyNativeWalletConnect(options: {
 }): Promise<WalletConnectReport> {
   let lastCounts: WalletConnectAudit | undefined;
   let firstFailure: WalletConnectQualificationError | undefined;
+  let initialization: InitializationDiagnostic = Object.freeze({ stage: 'sdk-import' });
   const run = async <T>(
     substage: WalletConnectQualificationDiagnostic['substage'],
     operation: () => Promise<T>
@@ -193,7 +243,8 @@ export async function qualifyNativeWalletConnect(options: {
       firstFailure ??=
         error instanceof WalletConnectQualificationError
           ? error
-          : new WalletConnectQualificationError(substage, error, lastCounts);
+          : new WalletConnectQualificationError(substage, error, lastCounts,
+            substage === 'init' ? initialization : undefined);
       throw firstFailure;
     }
   };
@@ -230,6 +281,7 @@ export async function qualifyNativeWalletConnect(options: {
       };
     });
   for (const pending of [false, true]) {
+    initialization = Object.freeze({ stage: 'transport-open' });
     const owner = new AbortController();
     const values = new Map<string, unknown>();
     let core: InstanceType<typeof Core> | undefined;
@@ -263,21 +315,35 @@ export async function qualifyNativeWalletConnect(options: {
       requestExpirySeconds: SESSION_REQUEST_EXPIRY_BOUNDARIES,
       parseUri,
       createCore(input) {
-        core = new Core({
-          ...input,
-          relayUrl: `ws://127.0.0.1:${launch.port}/${launch.token}/${
-            pending ? 'wc-pending' : 'wc-open'
-          }`,
-        });
-        return core;
+        initialization = Object.freeze({ stage: 'core-create' });
+        try {
+          core = new Core({
+            ...input,
+            relayUrl: `ws://127.0.0.1:${launch.port}/${launch.token}/${
+              pending ? 'wc-pending' : 'wc-open'
+            }`,
+          });
+          initialization = Object.freeze({ stage: 'core-ready' });
+          return core;
+        } catch (error) {
+          initialization = Object.freeze({ stage: 'core-create', ...errorDiagnostic(error) });
+          throw error;
+        }
       },
       async initialize(input) {
-        client = await SignClient.init({
-          ...input,
-          core: core!,
-          metadata: { ...input.metadata, icons: [...input.metadata.icons] },
-        });
-        return client;
+        initialization = Object.freeze({ stage: 'client-init' });
+        try {
+          client = await SignClient.init({
+            ...input,
+            core: core!,
+            metadata: { ...input.metadata, icons: [...input.metadata.icons] },
+          });
+          initialization = Object.freeze({ stage: 'client-ready' });
+          return client;
+        } catch (error) {
+          initialization = Object.freeze({ stage: 'client-init', ...errorDiagnostic(error) });
+          throw error;
+        }
       },
     };
     const transport = await run('init', () =>
