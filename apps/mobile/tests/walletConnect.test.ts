@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   openWalletConnectTransport,
+  isWalletConnectCleanupFailure,
   type WalletConnectSdk,
   type WalletConnectTransportEvent,
   type WalletConnectProposal,
@@ -1002,6 +1003,61 @@ test('close joins both public terminal disposals and preserves cleanup failure',
   clientClosed.release();
   await rejected;
   assert.equal(finished, true);
+});
+
+test('failed initialization retains a private cleanup failure brand', async () => {
+  const f = fixture();
+  f.setInitialize(async () => {
+    throw new Error('private initialization failure');
+  });
+  f.core.dispose = async () => {
+    throw new Error('private cleanup failure');
+  };
+  await assert.rejects(openWalletConnectTransport(f.options), (error) => {
+    assert(error instanceof Error);
+    assert.equal(error.message, 'CONNECTION_UNAVAILABLE');
+    assert.equal(isWalletConnectCleanupFailure(error), true);
+    assert.equal('cause' in error, false);
+    assert.equal(JSON.stringify(error).includes('private'), false);
+    return true;
+  });
+  assert.equal(
+    isWalletConnectCleanupFailure(
+      Object.assign(new Error('CONNECTION_UNAVAILABLE'), {
+        cleanupFailed: true,
+      })
+    ),
+    false
+  );
+  assert.equal(
+    isWalletConnectCleanupFailure(
+      new Proxy(
+        {},
+        {
+          get() {
+            throw new Error('Untrusted field access');
+          },
+        }
+      )
+    ),
+    false
+  );
+});
+
+test('successful cleanup of failed initialization permits a new transport', async () => {
+  const f = fixture();
+  let attempts = 0;
+  f.setInitialize(async () => {
+    if (++attempts === 1) throw new Error('private initialization failure');
+  });
+  await assert.rejects(openWalletConnectTransport(f.options), (error) => {
+    assert.equal(isWalletConnectCleanupFailure(error), false);
+    return true;
+  });
+  assert(f.calls.includes('core-dispose'));
+  const transport = await openWalletConnectTransport(f.options);
+  assert.equal(attempts, 2);
+  await transport.close();
 });
 
 test('retirement during Core construction disposes the unpublished Core', async () => {
