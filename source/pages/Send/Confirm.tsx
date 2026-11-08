@@ -1,3 +1,4 @@
+import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
 import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
 import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
@@ -47,14 +48,8 @@ import {
   getTrustedEvmRecipients,
 } from 'utils/addressPoisoning';
 import { handleTransactionError } from 'utils/errorHandling';
-import {
-  formatEther,
-  formatUnits,
-  parseUnits,
-  toEthersBigNumberish,
-} from 'utils/ethersV6Compat';
+import { formatEther, formatUnits, parseUnits } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
-import { Interface } from 'utils/ethersV6Compat';
 import { getLocalEvmRecipients } from 'utils/evmRecipients';
 import {
   EVM_SIGNED_STORAGE_FULL,
@@ -82,7 +77,6 @@ import {
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
-import { getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
 import { parseWalletErc20SendAmount } from './erc20SendAmount';
@@ -867,34 +861,24 @@ export const SendConfirm = () => {
             ),
           };
         } else {
-          const tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
-          const abi = new Interface(
-            transactionType === TransactionType.ERC721
-              ? await getErc721Abi()
-              : await getErc1155Abi()
-          );
-          execution.data =
-            transactionType === TransactionType.ERC721
-              ? abi.encodeFunctionData(
-                  'safeTransferFrom(address,address,uint256)',
-                  [
-                    activeAccount.address,
-                    target,
-                    toEthersBigNumberish(BigNumber.from(tokenId)),
-                  ]
-                )
-              : abi.encodeFunctionData(
-                  'safeTransferFrom(address,address,uint256,uint256,bytes)',
-                  [
-                    activeAccount.address,
-                    target,
-                    toEthersBigNumberish(BigNumber.from(tokenId)),
-                    toEthersBigNumberish(
-                      BigNumber.from(String(basicTxValues.amount))
-                    ),
-                    '0x',
-                  ]
-                );
+          execution = {
+            ...buildSmartAccountNftTransfer({
+              kind: 'nft-transfer',
+              chainId: String(activeNetwork.chainId),
+              from: activeAccount.address,
+              contractAddress: basicTxValues.token.contractAddress,
+              recipient: target,
+              tokenStandard:
+                transactionType === TransactionType.ERC721
+                  ? 'ERC-721'
+                  : 'ERC-1155',
+              tokenId: normalizeNftTokenId(basicTxValues.token.tokenId),
+              amountUnits:
+                transactionType === TransactionType.ERC721
+                  ? '1'
+                  : parseErc20Units(String(basicTxValues.amount)),
+            }),
+          };
         }
       }
       const assertQuoteCurrent = () => {

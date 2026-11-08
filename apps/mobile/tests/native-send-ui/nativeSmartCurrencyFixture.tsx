@@ -1,3 +1,6 @@
+import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer';
+import { snapshotNftTransferIntent } from '../../../../source/shared/nftTransfer';
+import type { SavedCollectible } from '../../src/portfolio/tokenRegistry';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer';
 import { parseTokenAmount } from '../../../../source/shared/erc20';
 import type { NativeTokenSnapshot } from '../../src/portfolio/nativeTokens';
@@ -33,6 +36,19 @@ const token = query.has('token')
       decimals: 6,
     }
   : undefined;
+const collectible: SavedCollectible | undefined =
+  query.get('nft') === '721'
+    ? {
+        contractAddress: '0x6666666666666666666666666666666666666666',
+        tokenStandard: 'ERC-721',
+      }
+    : query.get('nft') === '1155'
+    ? {
+        contractAddress: '0x6666666666666666666666666666666666666666',
+        tokenStandard: 'ERC-1155',
+        tokenId: '7',
+      }
+    : undefined;
 const tokenSnapshot: NativeTokenSnapshot = {
   account: null,
   status: 'ready',
@@ -84,19 +100,34 @@ function open(
 ) {
   try {
     recipient = normalizePublicAddress(recipient, 'ethereum');
-    const amountUnits =
-      amount.kind === 'exact'
-        ? parseDecimalAmount(amount.amount, 18).toString()
-        : amount.kind === 'erc20' && token
-        ? parseTokenAmount(amount.amount, token.decimals)
-        : null;
+    const nft =
+      amount.kind === 'nft'
+        ? snapshotNftTransferIntent({
+            kind: 'nft-transfer',
+            chainId: network.chainId,
+            from: account,
+            contractAddress: amount.collectible.contractAddress,
+            tokenStandard: amount.collectible.tokenStandard,
+            recipient,
+            tokenId: amount.tokenId,
+            amountUnits: amount.amountUnits,
+          })
+        : undefined;
+    const amountUnits = nft
+      ? nft.amountUnits
+      : amount.kind === 'exact'
+      ? parseDecimalAmount(amount.amount, 18).toString()
+      : amount.kind === 'erc20' && token
+      ? parseTokenAmount(amount.amount, token.decimals)
+      : null;
     calls.push({ method: 'open', value: amountUnits ?? 'maximum' });
     return Promise.resolve(
       new NativeSmartAccountOperation({
         account,
         network,
         intent:
-          amount.kind === 'erc20' && token
+          nft ??
+          (amount.kind === 'erc20' && token
             ? {
                 kind: 'erc20-transfer',
                 recipient,
@@ -105,7 +136,7 @@ function open(
               }
             : amountUnits === null
             ? { kind: 'native-max', recipient }
-            : { kind: 'native-transfer', recipient, amountUnits },
+            : { kind: 'native-transfer', recipient, amountUnits }),
         assertCurrent,
         async prepare() {
           if (query.has('prepare-unavailable'))
@@ -125,25 +156,27 @@ function open(
           const value = maximum
             ? BigInt(maximum.execution.value).toString()
             : amountUnits!;
-          const execution =
-            amount.kind === 'erc20' && token
-              ? buildSmartAccountErc20Transfer(
-                  token.contractAddress,
-                  recipient,
-                  value
-                )
-              : { target: recipient, data: '0x', value };
+          const execution = nft
+            ? buildSmartAccountNftTransfer(nft)
+            : amount.kind === 'erc20' && token
+            ? buildSmartAccountErc20Transfer(
+                token.contractAddress,
+                recipient,
+                value
+              )
+            : { target: recipient, data: '0x', value };
           return {
             kind: 'authorization',
             intent:
-              amount.kind === 'erc20' && token
+              nft ??
+              (amount.kind === 'erc20' && token
                 ? {
                     kind: 'erc20-transfer',
                     recipient,
                     token,
                     amountUnits: value,
                   }
-                : { kind: 'native-transfer', recipient, amountUnits: value },
+                : { kind: 'native-transfer', recipient, amountUnits: value }),
             operation: {
               execution,
               executions: [execution],
@@ -228,6 +261,7 @@ export function NativeSmartCurrencyFixture() {
     <NativeSmartAccountSend
       open={open}
       token={token}
+      collectible={collectible}
       tokenView={tokenView}
       source={source}
       reader={reader}

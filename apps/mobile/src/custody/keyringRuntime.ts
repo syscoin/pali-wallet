@@ -1,3 +1,4 @@
+import { snapshotNftTransferSelection } from './nftTransferAdmission.ts';
 import { NATIVE_EVM_FEE_FUNDING, type EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
@@ -1755,6 +1756,20 @@ export function createKeyringRuntimeFactory(
                 check();
                 intent = Object.freeze({ kind: 'erc20-transfer', token, recipient: request.target,
                   amountUnits: parseTokenAmount(request.amount, token.decimals) });
+              } else if (amount.kind === 'nft') {
+                const saved = snapshotSavedCollectible(amount.collectible);
+                const request = Object.freeze({ tokenId: amount.tokenId, amountUnits: amount.amountUnits, recipient: target });
+                const captured = generation, snapshot = catalogueSnapshot;
+                const check = () => { current(captured); checkGuard(assertOwner); if (catalogueSnapshot !== snapshot) throw new KeyringRuntimeError('CANCELLED'); };
+                intent = await tokenOperation(check, async (scope, guard) => {
+                  const inventory = await tokens.load(scope, guard); guard();
+                  const owned = inventory.collectibles?.find(item => item.contractAddress === saved.contractAddress && item.tokenStandard === saved.tokenStandard &&
+                    (item.tokenStandard !== 'ERC-1155' || saved.tokenStandard === 'ERC-1155' && item.tokenId === saved.tokenId));
+                  if (!owned) throw new KeyringRuntimeError('NOT_READY');
+                  const network = getNativeNetwork(scope.network, snapshot!.networks);
+                  return snapshotNftTransferSelection({ network, owner: scope.address, saved: owned }, request, network);
+                });
+                check();
               } else throw new KeyringRuntimeError('INVALID_INPUT');
             } catch (error) { if (error instanceof KeyringRuntimeError) throw error; throw new KeyringRuntimeError('INVALID_INPUT'); }
             return openSmartAccountOperation(intent, assertOwner);
@@ -2311,6 +2326,7 @@ export function createKeyringRuntimeFactory(
                   nonce: transfer.entry.nonce, createdAt: transfer.entry.createdAt,
                   recipient: transfer.recipient, amountUnits: transfer.amountUnits, maximumFeeUnits: transfer.maximumAccountCharge,
                   ...(transfer.token ? { token: transfer.token } : {}),
+                  ...(transfer.collectibleTransfer ? { collectibleTransfer: transfer.collectibleTransfer } : {}),
                   smartAccount: { payer: normalizePublicAddress(transfer.entry.from, scope.network.id), operationHash: transfer.operationHash, operationNonce: transfer.operationNonce },
                 } : saved?.archived.find(item => item.hash === hash);
                 if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');

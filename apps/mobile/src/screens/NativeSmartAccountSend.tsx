@@ -1,5 +1,8 @@
+import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
+import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
   formatTokenUnits,
+  parseErc20Units,
   type Erc20Metadata,
 } from '../../../../source/shared/erc20';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
@@ -43,6 +46,7 @@ export function NativeSmartAccountSend({
   reader,
   token,
   tokenView,
+  collectible,
   onBack,
 }: {
   open(
@@ -55,6 +59,7 @@ export function NativeSmartAccountSend({
   source: PublicCustodySource;
   reader: BalanceReader;
   token?: Erc20Metadata;
+  collectible?: SavedCollectible;
   tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
   onBack(): void;
 }) {
@@ -73,8 +78,13 @@ export function NativeSmartAccountSend({
     tokenView?.getSnapshot ?? emptyInventory
   );
   useLayoutEffect(
-    () => (token ? tokenView?.connect() : portfolio.connect()),
-    [portfolio, token, tokenView]
+    () =>
+      collectible
+        ? undefined
+        : token
+        ? tokenView?.connect()
+        : portfolio.connect(),
+    [portfolio, token, tokenView, collectible]
   );
   const selectedToken =
     token &&
@@ -93,7 +103,12 @@ export function NativeSmartAccountSend({
     ? selectedToken?.status === 'loading'
     : balance.status === 'loading';
   const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const [amount, setAmount] = useState(
+    collectible?.tokenStandard === 'ERC-721' ? '1' : ''
+  );
+  const [tokenId, setTokenId] = useState(
+    collectible?.tokenStandard === 'ERC-1155' ? collectible.tokenId : ''
+  );
   const [maximum, setMaximum] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -122,13 +137,40 @@ export function NativeSmartAccountSend({
       if (!current.active) throw new Error('SMART_OPERATION_EXPIRED');
     };
     try {
+      let nftRequest: NativeSmartAccountAmount | undefined;
+      if (collectible) {
+        let id: string, quantity: string;
+        try {
+          id = normalizeNftTokenId(tokenId.trim());
+        } catch {
+          setError('Enter a valid token ID.');
+          return;
+        }
+        try {
+          quantity =
+            collectible.tokenStandard === 'ERC-721'
+              ? '1'
+              : parseErc20Units(amount.trim());
+          if (quantity === '0') throw new Error('Empty quantity');
+        } catch {
+          setError('Enter a whole quantity greater than zero.');
+          return;
+        }
+        nftRequest = {
+          kind: 'nft',
+          collectible,
+          tokenId: id,
+          amountUnits: quantity,
+        };
+      }
       const operation = await open(
         recipient,
-        token
-          ? { kind: 'erc20', contractAddress: token.contractAddress, amount }
-          : maximum
-          ? { kind: 'maximum' }
-          : { kind: 'exact', amount },
+        nftRequest ??
+          (token
+            ? { kind: 'erc20', contractAddress: token.contractAddress, amount }
+            : maximum
+            ? { kind: 'maximum' }
+            : { kind: 'exact', amount }),
         check
       );
       if (!current.active) {
@@ -143,7 +185,7 @@ export function NativeSmartAccountSend({
           nativeTransferFailure(
             error,
             context,
-            token ? 'token' : 'coin',
+            collectible ? 'collectible' : token ? 'token' : 'coin',
             false,
             false
           )
@@ -171,13 +213,23 @@ export function NativeSmartAccountSend({
           <Text style={styles.muted}>
             {accountLabel} · {context.name}
           </Text>
-          <Text style={styles.muted}>
-            {displayedBalance !== null
-              ? `Balance ${displayedBalance} ${symbol}`
-              : loadingBalance
-              ? 'Loading balance…'
-              : 'Balance unavailable'}
-          </Text>
+          {!collectible && (
+            <Text style={styles.muted}>
+              {displayedBalance !== null
+                ? `Balance ${displayedBalance} ${symbol}`
+                : loadingBalance
+                ? 'Loading balance…'
+                : 'Balance unavailable'}
+            </Text>
+          )}
+          {collectible && (
+            <>
+              <Text style={styles.muted}>{collectible.tokenStandard}</Text>
+              <Text selectable style={styles.muted}>
+                {collectible.contractAddress}
+              </Text>
+            </>
+          )}
           {token && (
             <>
               <Text style={styles.muted}>{token.name}</Text>
@@ -193,17 +245,33 @@ export function NativeSmartAccountSend({
             busy={busy}
             placeholder="0x…"
           />
-          <NativeSendInput
-            label={`Amount (${symbol})`}
-            value={amount}
-            onChange={(value) => {
-              setMaximum(false);
-              setAmount(value);
-            }}
-            busy={busy}
-            keyboardType="decimal-pad"
-          />
-          {!token && (
+          {collectible?.tokenStandard === 'ERC-721' && (
+            <NativeSendInput
+              label="Token ID"
+              value={tokenId}
+              onChange={setTokenId}
+              busy={busy}
+              keyboardType="number-pad"
+            />
+          )}
+          {collectible?.tokenStandard === 'ERC-1155' && (
+            <Text style={styles.muted}>Token ID {collectible.tokenId}</Text>
+          )}
+          {collectible?.tokenStandard !== 'ERC-721' && (
+            <>
+              <NativeSendInput
+                label={collectible ? 'Quantity' : `Amount (${symbol})`}
+                value={amount}
+                onChange={(value) => {
+                  setMaximum(false);
+                  setAmount(value);
+                }}
+                busy={busy}
+                keyboardType="decimal-pad"
+              />
+            </>
+          )}
+          {!token && !collectible && (
             <Button
               title={maximum ? 'MAX selected' : 'MAX'}
               variant="quiet"
@@ -227,7 +295,9 @@ export function NativeSmartAccountSend({
           {busy ? <ActivityIndicator color={colors.pink} /> : null}
           <Button
             title="Review transfer"
-            disabled={busy || !recipient || !amount}
+            disabled={
+              busy || !recipient || !amount || (!!collectible && !tokenId)
+            }
             onPress={() => void review()}
           />
         </Screen>
