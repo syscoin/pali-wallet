@@ -107,6 +107,13 @@ test('actual removal route separates password from destructive confirmation at 3
   expect((await audit(page)).commits).toBe(0);
   await page.screenshot({ path: testInfo.outputPath('wallet-removal-confirm-large-text.png') });
   await button(page, 'Cancel').click();
+  // Authorization retired the old producers before taking the snapshot.
+  // Cancelling preserves the wallet and reopens a locked controller bundle.
+  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  expect((await audit(page)).commits).toBe(0);
+  await unlock(page);
+  await page.getByRole('tab', { name: 'Settings', exact: true }).click();
+  await button(page, /^Security & backups/).click();
   await expect(ready(page)).toBeVisible();
 });
 
