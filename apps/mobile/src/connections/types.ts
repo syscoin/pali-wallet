@@ -78,6 +78,16 @@ export type NativeTransactionReview = NativeSigningReviewBase &
     decimals: number;
     broadcastHash: string | null;
     approval: ApprovalSummary | null;
+    batch?: Readonly<{
+      phase: 'preparing' | 'review' | 'submitting' | 'failed' | 'unknown' | 'complete';
+      index: number;
+      calls: readonly Readonly<{
+        to: string | null;
+        value: string;
+        status: string;
+        hash?: string;
+      }>[];
+    }>;
   }>;
 
 export type NativeSmartTransactionReview = NativeSigningReviewBase &

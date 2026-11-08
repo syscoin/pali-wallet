@@ -233,7 +233,7 @@ function fixture(
           guard();
           input.approval.assertCurrent();
           transactions.push(fee.transaction);
-          const hash = '0x' + '34'.repeat(32);
+          const hash = options.batch ? '0x' + BigInt(transaction.nonce).toString(16).padStart(64, '0') : '0x' + '34'.repeat(32);
           onBroadcast(hash);
           return hash;
         },
@@ -1389,7 +1389,7 @@ async function messageRequest(
 }
 
 for (const smart of [false, true])
-  test(`capabilities are negotiated without native batching for ${
+  test(`capabilities reflect native batching support for ${
     smart ? 'Smart' : 'software'
   } accounts`, async () => {
     const f = await connectedFixture({
@@ -1405,7 +1405,7 @@ for (const smart of [false, true])
       await messageRequest(f, 'wallet_getCapabilities', [ADDRESS]);
       assert.deepEqual(f.responses.at(-1), {
         id: 10,
-        result: { result: { '0x1': {} } },
+        result: { result: { '0x1': smart ? {} : { atomic: { status: 'unsupported' } } } },
       });
       assert.equal(f.view.getSnapshot().signingReview, null);
       assert.equal(f.signatures.length, 0);
@@ -1418,10 +1418,10 @@ for (const smart of [false, true])
   });
 
 for (const [params, expected] of [
-  [undefined, { '0x1': {} }],
-  [[], { '0x1': {} }],
-  [[ADDRESS, ['0x01']], { '0x1': {} }],
-  [[ADDRESS, ['0x1', '0x2']], { '0x1': {} }],
+  [undefined, { '0x1': { atomic: { status: 'unsupported' } } }],
+  [[], { '0x1': { atomic: { status: 'unsupported' } } }],
+  [[ADDRESS, ['0x01']], { '0x1': { atomic: { status: 'unsupported' } } }],
+  [[ADDRESS, ['0x1', '0x2']], { '0x1': { atomic: { status: 'unsupported' } } }],
   [[ADDRESS, ['0x2']], {}],
   [[ADDRESS, []], {}],
 ] as const)
@@ -1510,7 +1510,7 @@ test('capabilities use the granted non-active account without selecting it', asy
     await messageRequest(f, 'wallet_getCapabilities', [`0x${'22'.repeat(20)}`]);
     assert.deepEqual(f.responses.at(-1), {
       id: 10,
-      result: { result: { '0x1': {} } },
+      result: { result: { '0x1': { atomic: { status: 'unsupported' } } } },
     });
     assert.equal(f.view.getSnapshot().selectedAccountId, 'hd:60:0');
     assert.equal(f.view.getSnapshot().signingReview, null);
@@ -2607,13 +2607,13 @@ test('Smart queued requests prepare only when foreground and retain distinct pen
 });
 
 
-test('Smart batch capability is advertised only by an eligible account', async () => {
+test('batch capability distinguishes Smart atomic and EOA sequential support', async () => {
   for (const smart of [true, false]) {
     const f = await connectedFixture({ smart, batch: true, capabilities: true, accountId: smart ? 'smart:60:0' : 'hd:60:0' });
     try {
       await messageRequest(f, 'wallet_getCapabilities', [ADDRESS]);
-      assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { '0x1': smart ? { atomic: { status: 'supported' } } : {} } } });
-      assert.equal(f.session.namespaces.eip155!.methods.includes('wallet_sendCalls'), smart);
+      assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { '0x1': { atomic: { status: smart ? 'supported' : 'unsupported' } } } } });
+      assert.equal(f.session.namespaces.eip155!.methods.includes('wallet_sendCalls'), true);
     } finally { await f.controller.dispose(); }
   }
 });
@@ -2747,3 +2747,70 @@ for (const change of ['get-expired', 'show-expired', 'show-dismissed'])
       assert(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x123abc'));
     } finally { Date.now = readNow; release?.(); await f.controller.dispose(); }
   });
+
+test('EOA calls keep one review, require each fee consent and return the durable bundle ID', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
+      calls: [{ to: '0x' + '22'.repeat(20), value: '0x1' }, { to: '0x' + '33'.repeat(20), value: '0x2' }] }]);
+    assert(review?.kind === 'transaction' && review.batch);
+    assert.equal(review.batch.index, 0); assert.equal(f.transactions.length, 0);
+    await f.view.approveRequest(review.id, review.revision, false);
+    const next = f.view.getSnapshot().signingReview;
+    assert(next?.kind === 'transaction' && next.batch);
+    assert.equal(next.id, review.id); assert.equal(next.batch.index, 1);
+    assert.equal(f.transactions.length, 1); assert.equal(f.responses.length, 0);
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+    await f.view.approveRequest(next.id, f.view.getSnapshot().revision, false);
+    assert.equal(f.transactions.length, 2);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0x1234', capabilities: {} } } });
+    const stored = await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x1234');
+    assert.equal(stored?.txHashes.length, 2);
+    assert.equal(stored?.atomic, false);
+  } finally { await f.controller.dispose(); }
+});
+
+test('rejecting a partially acknowledged EOA batch returns its status ID and never resends', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xabcd', atomicRequired: false,
+      calls: [{ to: ADDRESS }, { to: ADDRESS }] }]);
+    assert(review?.kind === 'transaction');
+    await f.view.approveRequest(review.id, review.revision, false);
+    await f.view.rejectRequest(review.id); await settle(); await settle();
+    assert.equal(f.transactions.length, 1);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0xabcd', capabilities: {} } } });
+    const stored = await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0xabcd');
+    assert.equal(stored?.failed, true);
+    assert.equal(stored?.submissionCompleted, true);
+  } finally { await f.controller.dispose(); }
+});
+
+test('an EOA atomic-required batch is refused before reservation or preparation', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xdead', atomicRequired: true, calls: [{ to: ADDRESS }] }]);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.preparedTransactions.length, 0);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 5760);
+    assert.equal(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0xdead'), null);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const transition of ['lock', 'chain', 'expiry'] as const) {
+  test(`a held EOA batch quote is retired on ${transition}`, async () => {
+    const f = await connectedFixture({ batch: true }), held = Promise.withResolvers<void>();
+    try {
+      f.setPreparationWait(held.promise);
+      const request = messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x9876', atomicRequired: false, calls: [{ to: ADDRESS }, { to: ADDRESS }] }]);
+      await settle();
+      if (transition === 'lock') f.lock();
+      else if (transition === 'chain') f.selectChain(2);
+      else f.event({ type: 'request-expired', id: 10 });
+      held.resolve(); await request; await settle();
+      assert.equal(f.view.getSnapshot().signingReview, null);
+      assert.equal(f.transactions.length, 0);
+      assert.equal(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x9876'), null);
+    } finally { held.resolve(); await f.controller.dispose(); }
+  });
+}

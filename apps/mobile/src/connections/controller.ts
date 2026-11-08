@@ -7,6 +7,7 @@ import {
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
+import { createNativeEoaCalls, type NativeEoaCalls } from './eoaCalls.ts';
 import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import {
   normalizeDappCapabilitiesRequest,
@@ -127,6 +128,8 @@ type PendingSigning = {
   prepared?: NativePreparedConnectionTransaction;
   smart?: NativeSmartAccountOperation;
   unsubscribeSmart?: () => void;
+  eoa?: NativeEoaCalls;
+  unsubscribeEoa?: () => void;
   broadcastHash?: string;
   requestExpiresAt: number;
   sourceRevision: number;
@@ -381,6 +384,7 @@ export class NativeConnectionsController {
       if (method === 'wallet_sendCalls')
         return (
           !accountType ||
+          accountType === 'HDAccount' || accountType === 'Imported' ||
           (accountType === 'SmartAccount' &&
             !!accountId &&
             this.host?.supportsAtomicCalls(accountId) === true)
@@ -389,7 +393,7 @@ export class NativeConnectionsController {
         method === 'wallet_getCallsStatus' ||
         method === 'wallet_showCallsStatus'
       )
-        return !accountType || accountType === 'SmartAccount';
+        return !accountType || accountType === 'SmartAccount' || accountType === 'HDAccount' || accountType === 'Imported';
       return true;
     });
   }
@@ -1104,8 +1108,8 @@ export class NativeConnectionsController {
                 ? {
                     chainId: context.network.chainId,
                     batchSupported:
-                      nativeAccount!.type === 'SmartAccount' &&
-                      this.host!.supportsAtomicCalls(nativeAccount!.id),
+                      nativeAccount!.type === 'HDAccount' || nativeAccount!.type === 'Imported' ||
+                      nativeAccount!.type === 'SmartAccount' && this.host!.supportsAtomicCalls(nativeAccount!.id),
                     atomicSupported:
                       nativeAccount!.type === 'SmartAccount' &&
                       this.host!.supportsAtomicCalls(nativeAccount!.id),
@@ -1373,6 +1377,8 @@ export class NativeConnectionsController {
         .catch(() => undefined);
     message.unsubscribeSmart?.();
     message.smart?.dispose();
+    message.unsubscribeEoa?.();
+    message.eoa?.dispose();
     message.approval?.dispose();
     clearTimeout(message.timer);
     this.publish();
@@ -1380,7 +1386,7 @@ export class NativeConnectionsController {
     if (
       !respond ||
       message.dispatched ||
-      message.broadcastHash ||
+      (message.broadcastHash && !message.eoa) ||
       this.disposed ||
       !this.transport
     )
@@ -1397,7 +1403,9 @@ export class NativeConnectionsController {
       .respond(
         message.session.binding,
         message.wire.id,
-        { error: { code: 4001, message: 'User rejected or request expired' } },
+        message.eoa && message.broadcastHash && message.request.method === 'wallet_sendCalls'
+          ? { result: { id: message.request.bundleId, capabilities: {} } }
+          : { error: { code: 4001, message: 'User rejected or request expired' } },
         guard,
         () => undefined
       )
@@ -1491,7 +1499,7 @@ export class NativeConnectionsController {
           account.type === 'SmartAccount' &&
           this.host!.supportsAtomicCalls(account.id);
         assertDappCallsAtomicSupport(calls, supported);
-        if (!supported)
+        if (!supported && account.type !== 'HDAccount' && account.type !== 'Imported')
           throw new EthereumRpcErrorHandler(
             4200,
             'Smart atomic calls are unavailable for this account'
@@ -1506,7 +1514,7 @@ export class NativeConnectionsController {
             4100,
             'The requested account or network is no longer selected'
           );
-        createSmartAccountCallsExecutions(calls.calls);
+        if (supported) createSmartAccountCallsExecutions(calls.calls);
         request = {
           method: 'wallet_sendCalls',
           calls: Object.freeze({
@@ -1565,7 +1573,7 @@ export class NativeConnectionsController {
       const reserved = await registry.reserveSendCallsBundle(
         origin,
         request.bundleId,
-        { atomic: true, chainId: context.network.chainId, smartAccount: true },
+        { atomic: account.type === 'SmartAccount', chainId: context.network.chainId, smartAccount: account.type === 'SmartAccount' },
         request.reservationId,
         account.address
       );
@@ -1765,6 +1773,69 @@ export class NativeConnectionsController {
       }
     }
   }
+  private async prepareEoaCallsReview(message: PendingSigning) {
+    if (message.request.method !== 'wallet_sendCalls' || !message.approval) throw new Error('Invalid calls request');
+    if (message.eoa) return;
+    const approval = message.approval;
+    const request = message.request;
+    let advisories: NativeTransactionReview['advisories'] = [];
+    let warning = false;
+    const operation = createNativeEoaCalls({
+      calls: request.calls, origin: message.session.binding.origin,
+      bundleId: request.bundleId, reservationId: request.reservationId,
+      expiresAt: message.requestExpiresAt, registry: this.host!.calls,
+      assertCurrent: approval.assertCurrent,
+      onBroadcast: (hash) => { message.broadcastHash = hash; },
+      prepare: async (transaction) => {
+        approval.assertCurrent();
+        advisories = [];
+        warning = false;
+        const prepared = await this.host!.prepareTransaction({ accountId: message.accountId,
+          networkId: message.networkId, transaction, approval }, approval.assertCurrent);
+        approval.assertCurrent();
+        if ('operation' in prepared) { prepared.operation.dispose(); throw new Error('Expected an EOA review'); }
+        const result = await reviewDappAddressAdvisories({
+          targets: getBlacklistTargetsForEvmCall({ data: prepared.transaction.data,
+            to: prepared.transaction.to ?? undefined, tokenStandard: prepared.approval?.standardVerified
+              ? prepared.approval.tokenStandard : undefined }).map(({ address, type, method }) => ({ address, field: method ?? type })),
+          checkAddress: this.options.checkAddress, assertCurrent: approval.assertCurrent,
+          onWarning: (entry) => {
+            advisories = [entry]; warning = true;
+            message.review = Object.freeze({ ...message.review, advisories, requiresWarningAcknowledgement: true });
+            this.publish();
+          },
+        });
+        approval.assertCurrent();
+        advisories = Object.freeze(result.addresses);
+        warning = Boolean(result.warning);
+        return prepared;
+      },
+    });
+    message.eoa = operation;
+    const publish = () => {
+      if (this.requests.get(message.id) !== message || message.eoa !== operation) return;
+      const snapshot = operation.getSnapshot();
+      const prepared = snapshot.prepared;
+      message.busy = snapshot.phase === 'preparing' || snapshot.phase === 'submitting';
+      message.review = Object.freeze({ ...message.review, kind: 'transaction', method: 'wallet_sendCalls',
+        transaction: prepared?.transaction ?? null, maximumFeeUnits: prepared?.maximumFeeUnits ?? null,
+        maximumTotalUnits: prepared?.maximumTotalUnits ?? null, approval: prepared?.approval ?? null,
+        symbol: this.host!.context().network.currency, decimals: 18, broadcastHash: message.broadcastHash ?? null,
+        expiresAt: message.requestExpiresAt, advisories, requiresWarningAcknowledgement: warning,
+        batch: Object.freeze({ phase: snapshot.phase, index: snapshot.index,
+          calls: Object.freeze(request.calls.calls.map((call, index) => Object.freeze({
+            to: call.to ?? null, value: call.value, status: snapshot.progress[index]?.status ?? 'pending',
+            ...(snapshot.progress[index]?.hash ? { hash: snapshot.progress[index]!.hash } : {}),
+          }))),
+        }),
+      });
+      this.publish();
+    };
+    message.unsubscribeEoa = operation.subscribe(publish);
+    await operation.start();
+    approval.assertCurrent();
+    publish();
+  }
   private async prepareTransactionReview(message: PendingSigning) {
     if (
       !isTransactionRequest(message.request) ||
@@ -1774,6 +1845,11 @@ export class NativeConnectionsController {
     const approval = message.approval;
     if (!approval) throw new Error('Missing request approval');
     approval.assertCurrent();
+    if (message.request.method === 'wallet_sendCalls' &&
+      this.host!.context().accounts.find((account) => account.id === message.accountId)?.type !== 'SmartAccount') {
+      await this.prepareEoaCallsReview(message);
+      return;
+    }
     message.unsubscribeSmart?.();
     message.smart?.dispose();
     message.smart = undefined;
@@ -2022,7 +2098,8 @@ export class NativeConnectionsController {
     if (
       typeof acknowledgeWarning !== 'boolean' ||
       message.review.error ||
-      (message.review.requiresWarningAcknowledgement && !acknowledgeWarning) ||
+      (message.review.requiresWarningAcknowledgement && !acknowledgeWarning &&
+        !(message.review.kind === 'transaction' && message.review.batch?.phase === 'failed')) ||
       this.host!.context().activeAccountId !== message.accountId
     )
       return failure('UNSUPPORTED_REQUEST');
@@ -2034,7 +2111,20 @@ export class NativeConnectionsController {
     try {
       let result: unknown;
       if (isTransactionRequest(message.request)) {
-        if (message.smart) {
+        if (message.eoa) {
+          const state = message.eoa.getSnapshot();
+          if (state.phase === 'failed') await message.eoa.start();
+          else await message.eoa.approve(state.revision);
+          approval.assertCurrent();
+          const next = message.eoa.getSnapshot();
+          if (next.phase !== 'complete' && next.phase !== 'unknown') {
+            message.busy = false;
+            this.publish();
+            return;
+          }
+          if (message.request.method !== 'wallet_sendCalls') throw new Error('Invalid calls response');
+          result = { id: message.request.bundleId, capabilities: {} };
+        } else if (message.smart) {
           await message.smart.authorize(message.smart.getSnapshot().revision);
           approval.assertCurrent();
           const snapshot = message.smart.getSnapshot();

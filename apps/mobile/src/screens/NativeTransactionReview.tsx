@@ -47,6 +47,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
 }) {
   const [acceptedRevision, setAcceptedRevision] = useState<number | null>(null);
   const [detailsRevision, setDetailsRevision] = useState<number | null>(null);
+  const [expandedCalls, setExpandedCalls] = useState<string | null>(null);
   const [approvalDraft, setApprovalDraft] = useState<{ id: string; transaction: NativeTransactionReview['transaction'] } | null>(null);
   const approvalDraftRef = useRef(approvalDraft);
   const editingApproval = approvalDraft?.id === review.id && approvalDraft.transaction === review.transaction;
@@ -61,7 +62,11 @@ export function NativeTransactionReviewScreen({ review, controller }: {
   };
   const acknowledged = acceptedRevision === review.revision;
   const detailsVisible = detailsRevision === review.revision;
-  const submitted = review.broadcastHash !== null || review.dispatched;
+  const batch = review.batch;
+  const callsKey = `${review.id}:${batch?.index}`;
+  const callsVisible = expandedCalls === callsKey;
+  const retry = batch?.phase === 'failed';
+  const submitted = review.dispatched || (batch ? batch.phase === 'unknown' || batch.phase === 'complete' : review.broadcastHash !== null);
   const close = () => { void controller.rejectRequest(review.id).catch(() => undefined); };
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -85,7 +90,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
   const amount = (units: string) => `${formatBaseUnits(units, review.decimals)} ${review.symbol}`;
 
   return <SafeAreaView edges={['top']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
-    <Header title="Review transaction" onBack={close} />
+    <Header title={batch ? 'Review calls' : 'Review transaction'} onBack={close} />
     <Card style={s.card}>
       <Text style={s.appName}>{review.appName}</Text>
       <Text selectable style={s.origin}>{review.origin}</Text>
@@ -97,9 +102,10 @@ export function NativeTransactionReviewScreen({ review, controller }: {
     </Card>
     {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
       onEditingChange={setApprovalEditing}
-      disabled={review.busy || submitted || review.needsAccountSwitch || review.error !== null}
+      disabled={!!batch || review.busy || submitted || review.needsAccountSwitch || review.error !== null}
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
     {transaction && <Card style={s.card}>
+      {batch && <Text accessibilityRole="header" style={s.sectionTitle}>Call {batch.index + 1} of {batch.calls.length}</Text>}
       <Text style={s.label}>{transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? 'Send' : 'Contract interaction'}</Text>
       <Text selectable style={s.amount}>{amount(transaction.value)}</Text>
       <Text style={s.label}>{transaction.to === null ? 'Destination' : 'To'}</Text>
@@ -113,6 +119,16 @@ export function NativeTransactionReviewScreen({ review, controller }: {
         expanded={detailsVisible} onPress={() => setDetailsRevision(detailsVisible ? null : review.revision)} />
     </Card>}
     {transaction && detailsVisible && <TransactionDetails key={`${review.id}:${review.revision}`} transaction={transaction} />}
+    {batch && <Card style={s.card}>
+      <Button title={callsVisible ? 'Hide calls' : `View all ${batch.calls.length} calls`} variant="quiet"
+        expanded={callsVisible} onPress={() => setExpandedCalls(callsVisible ? null : callsKey)} />
+      {callsVisible && batch.calls.map((call, index) => <View key={index} style={s.advisory}>
+        <Text style={s.account}>{index + 1}. {call.status}</Text>
+        <Text selectable style={s.address}>{call.to ?? 'New contract'}</Text>
+        <Text>{amount(BigInt(call.value).toString())}</Text>
+        {call.hash && <Text selectable style={s.address}>{call.hash}</Text>}
+      </View>)}
+    </Card>}
     {review.advisories.length > 0 && <Card style={s.card}>
       <Text accessibilityRole="header" style={s.sectionTitle}>Check these addresses</Text>
       {review.advisories.map((advisory, index) => <View key={`${advisory.field}-${index}`} style={s.advisory}>
@@ -128,19 +144,21 @@ export function NativeTransactionReviewScreen({ review, controller }: {
           <Text style={s.acknowledgementText}>I understand the address warning.</Text>
         </IdlePressable>}
     </Card>}
-    {review.broadcastHash && <Card style={s.card}>
+    {review.broadcastHash && !batch && <Card style={s.card}>
       <Text style={s.label}>Transaction ID</Text>
       <Text selectable style={s.address}>{review.broadcastHash}</Text>
     </Card>}
-    {showError && review.error && <Notice title={submitted ? 'Check transaction status' : 'Transaction unavailable'} body={reviewErrors[review.error]} />}
+    {showError && review.error && batch?.phase !== 'unknown' && <Notice title={submitted ? 'Check transaction status' : 'Transaction unavailable'} body={reviewErrors[review.error]} />}
+    {retry && <Notice title="Call not sent" body="Retry prepares a fresh review for the remaining calls. Completed calls stay saved." />}
+    {batch?.phase === 'unknown' && <Notice title="Check call status" body="Delivery is uncertain. Check Activity before sending another request." />}
     {review.needsAccountSwitch && !review.error && !submitted &&
       <Text style={s.muted}>Switch to {review.accountLabel} to review this transaction.</Text>}
     {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
       <Text>{submitted ? 'Sending transaction…' : transaction ? 'Please wait…' : 'Preparing transaction…'}</Text></View>}
-    {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : 'Confirm transaction'}
+    {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm transaction'}
       disabled={editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
-        (!prepared || review.requiresWarningAcknowledgement && !acknowledged)} onPress={approve} />}
-    <Button title={submitted ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
+        (!retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} />}
+    <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
   </Screen></KeyboardAvoidingView></SafeAreaView>;
 }
 
