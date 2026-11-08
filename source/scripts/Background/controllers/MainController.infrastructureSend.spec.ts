@@ -26,6 +26,8 @@ jest.mock('utils/navigationState', () => ({
   })),
 }));
 
+import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+
 import { getController } from '..';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -68,7 +70,11 @@ describe('infrastructure transaction broadcast boundary', () => {
           url: 'rpc-a',
         },
         activeAccount: account,
-        accounts: { HDAccount: { 0: { id: 0, address: 'payer-a' } } },
+        accounts: {
+          HDAccount: {
+            0: { id: 0, address: '0x1111111111111111111111111111111111111111' },
+          },
+        },
       },
     };
     jest.spyOn(store, 'getState').mockImplementation(() => currentState);
@@ -120,7 +126,10 @@ describe('infrastructure transaction broadcast boundary', () => {
         false,
         undefined,
         undefined,
-        { hardwareScope: { account: 'a', network: 'b' } }
+        {
+          hardwareScope: { account: 'a', network: 'b' },
+          genericDispatchId: 'consumed-review',
+        }
       )
     ).rejects.toMatchObject({
       message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
@@ -152,12 +161,13 @@ describe('infrastructure transaction broadcast boundary', () => {
       const transaction = {
         from: address,
         to: `0x${'22'.repeat(20)}`,
-        chainId: 1,
+        chainId: '1',
         data: '0x',
-        value: '0x1',
-        gasPrice: '0x1',
-        gasLimit: '0x5208',
-        ...(nonce === undefined ? {} : { nonce }),
+        value: '1',
+        type: 0,
+        gasPrice: '1',
+        gasLimit: '21000',
+        nonce: String(expected),
       };
       await expect(
         wallet.sendAndSaveEthTransaction(
@@ -165,20 +175,26 @@ describe('infrastructure transaction broadcast boundary', () => {
           true,
           undefined,
           undefined,
-          { hardwareScope: { account: 'a', network: 'b' } }
+          {
+            hardwareScope: { account: 'a', network: 'b' },
+            genericDispatchId: 'consumed-review',
+            dappNonceApproval: { nonce: expected, source },
+          }
         )
       ).resolves.toBe(response);
       expect(wallet.inspectOrdinaryEvmNonce).toHaveBeenCalledWith(
         expect.any(Object),
         address,
         expect.objectContaining({
-          reviewed: nonce === undefined ? undefined : { nonce, source },
+          reviewed: { nonce: expected, source },
         })
       );
       expect(send).toHaveBeenCalledWith(
-        { ...transaction, nonce: expected },
+        snapshotPreparedEvmTransaction(transaction),
         true,
-        expect.objectContaining({ walletNonce: { nonce: expected, source } })
+        expect.objectContaining({
+          walletNonce: { nonce: expected, source },
+        })
       );
     }
   );
@@ -372,7 +388,11 @@ describe('infrastructure transaction broadcast boundary', () => {
     currentState.vault = {
       ...currentState.vault,
       activeNetwork: { chainId: 2, kind: INetworkType.Ethereum, url: 'rpc-b' },
-      accounts: { HDAccount: { 0: { id: 0, address: 'payer-b' } } },
+      accounts: {
+        HDAccount: {
+          0: { id: 0, address: '0x2222222222222222222222222222222222222222' },
+        },
+      },
     };
     finishBroadcast(response);
     await rejected;
@@ -428,9 +448,14 @@ describe('infrastructure transaction broadcast boundary', () => {
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   });
 
+  // This unit section exercises the already-consumed dispatch boundary. The
+  // issued token and exact-envelope binding are covered by genericFeeReview tests.
   describe('approved EOA context', () => {
     const expectedContext = {
-      account: { ...account, address: 'payer-a' },
+      account: {
+        ...account,
+        address: '0x1111111111111111111111111111111111111111',
+      },
       chainId: 1,
       rpcUrl: 'rpc-a',
       sessionGeneration: 1,
@@ -462,11 +487,15 @@ describe('infrastructure transaction broadcast boundary', () => {
         events.push('ack');
       });
       const transaction = {
-        chainId: 1,
-        from: 'payer-a',
-        nonce: 7,
-        gasPrice: '0x1',
-        value: '0x1',
+        chainId: '1',
+        from: '0x1111111111111111111111111111111111111111',
+        nonce: '7',
+        gasPrice: '1',
+        type: 0,
+        to: '0x2222222222222222222222222222222222222222',
+        data: '0x',
+        gasLimit: '21000',
+        value: '1',
       };
       await expect(
         wallet.sendAndSaveEthTransaction(
@@ -477,6 +506,7 @@ describe('infrastructure transaction broadcast boundary', () => {
           {
             expectedContext,
             authorizeDapp: () => undefined,
+            genericDispatchId: 'consumed-review',
             dappNonceApproval: { nonce: 7, source: 'automatic' },
             onBroadcast,
           }
@@ -488,7 +518,7 @@ describe('infrastructure transaction broadcast boundary', () => {
         transactionNotBroadcast: false,
       });
       expect(send).toHaveBeenCalledWith(
-        transaction,
+        snapshotPreparedEvmTransaction(transaction),
         true,
         expect.objectContaining({
           walletNonce: { nonce: 7, source: 'automatic' },
@@ -509,6 +539,7 @@ describe('infrastructure transaction broadcast boundary', () => {
           {
             expectedContext,
             authorizeDapp: () => undefined,
+            genericDispatchId: 'consumed-review',
             dappNonceApproval: { nonce: 7, source: 'automatic' },
           }
         )
@@ -540,13 +571,18 @@ describe('infrastructure transaction broadcast boundary', () => {
         });
         await expect(
           wallet.sendAndSaveEthTransaction(
-            { chainId: 1, from: 'payer-a', nonce: 7 },
+            {
+              chainId: 1,
+              from: '0x1111111111111111111111111111111111111111',
+              nonce: 7,
+            },
             false,
             undefined,
             undefined,
             {
               expectedContext,
               authorizeDapp: () => undefined,
+              genericDispatchId: 'consumed-review',
               dappNonceApproval: { nonce: 7, source: 'automatic' },
             }
           )
@@ -559,8 +595,21 @@ describe('infrastructure transaction broadcast boundary', () => {
       }
     );
 
-    it('sets the approved chain and sender without mutating the caller transaction', async () => {
-      const params = { value: '0x1', nonce: 7 };
+    it('preserves the complete reviewed envelope without mutating the caller transaction', async () => {
+      const params = {
+        type: 2,
+        chainId: '1',
+        from: expectedContext.account.address,
+        to: '0x2222222222222222222222222222222222222222',
+        value: '1',
+        nonce: '7',
+        data: '0x',
+        gasLimit: '21000',
+        maxFeePerGas: '2',
+        maxPriorityFeePerGas: '1',
+        accessList: [],
+      };
+      const before = JSON.stringify(params);
       await wallet.sendAndSaveEthTransaction(
         params,
         false,
@@ -569,22 +618,26 @@ describe('infrastructure transaction broadcast boundary', () => {
         {
           expectedContext,
           authorizeDapp: () => undefined,
+          genericDispatchId: 'consumed-review',
           dappNonceApproval: { nonce: 7, source: 'automatic' },
         }
       );
       expect(send).toHaveBeenCalledWith(
-        { chainId: 1, from: 'payer-a', value: '0x1', nonce: 7 },
+        snapshotPreparedEvmTransaction(params),
         false,
         expect.objectContaining({
-          mode: 'specialized',
+          mode: 'reviewed-generic',
           assertCurrent: expect.any(Function),
           walletNonce: { nonce: 7, source: 'automatic' },
         })
       );
-      expect(params).toEqual({ value: '0x1', nonce: 7 });
+      expect(JSON.stringify(params)).toBe(before);
     });
 
-    it.each([{ chainId: 2 }, { from: 'payer-b' }])(
+    it.each([
+      { chainId: 2 },
+      { from: '0x2222222222222222222222222222222222222222' },
+    ])(
       'rejects parameters outside the approved context: %j',
       async (params) => {
         await expect(
@@ -596,6 +649,7 @@ describe('infrastructure transaction broadcast boundary', () => {
             {
               expectedContext,
               authorizeDapp: () => undefined,
+              genericDispatchId: 'consumed-review',
               dappNonceApproval: { nonce: 7, source: 'automatic' },
             }
           )
@@ -611,13 +665,26 @@ describe('infrastructure transaction broadcast boundary', () => {
       });
       await expect(
         wallet.sendAndSaveEthTransaction(
-          { chainId: 1, nonce: 7 },
+          {
+            type: 2,
+            chainId: '1',
+            from: expectedContext.account.address,
+            to: '0x2222222222222222222222222222222222222222',
+            nonce: '7',
+            value: '0',
+            data: '0x',
+            gasLimit: '21000',
+            maxFeePerGas: '2',
+            maxPriorityFeePerGas: '1',
+            accessList: [],
+          },
           false,
           undefined,
           undefined,
           {
             expectedContext,
             authorizeDapp: () => undefined,
+            genericDispatchId: 'consumed-review',
             dappNonceApproval: { nonce: 7, source: 'automatic' },
           }
         )

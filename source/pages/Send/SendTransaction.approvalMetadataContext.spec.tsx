@@ -11,6 +11,7 @@ import React from 'react';
 import { BigNumber, Interface } from 'utils/ethersV6Compat';
 import { saveNavigationState } from 'utils/navigationState';
 
+import { reviewedDappFeeFixture } from './fixtures/reviewedDappFee';
 import { SendTransaction } from './SendTransaction';
 
 const mockEmitter = jest.fn();
@@ -240,7 +241,25 @@ beforeEach(() => {
   mockGet.mockImplementation(async (key) => mockStorage[key] || null);
   mockSet.mockImplementation(async (key, value) => (mockStorage[key] = value));
   mockRemove.mockImplementation(async (key) => delete mockStorage[key]);
-  mockEmitter.mockImplementation(async ([, method]) => {
+  mockEmitter.mockImplementation(async ([, method], args = []) => {
+    if (method === 'getRecommendedEvmNonce') return 0;
+    if (
+      method === 'authorizeDappManualNonce' ||
+      method === 'discardNativeEvmFeeReview'
+    )
+      return true;
+    if (method === 'reviewDappEvmFee') {
+      const quote = await mockFee(args[0]);
+      return reviewedDappFeeFixture(args[0], {
+        gasLimit: quote.feeDetails.gasLimit,
+        maxFeePerGas: BigNumber.from(quote.feeDetails.maxFeePerGas ?? 2).mul(
+          1000000000
+        ),
+        maxPriorityFeePerGas: BigNumber.from(
+          quote.feeDetails.maxPriorityFeePerGas ?? 1
+        ).mul(1000000000),
+      });
+    }
     if (method === 'refreshActiveAccountBalances')
       return { nativeBalance: '1' };
     if (method === 'sendAndSaveEthTransaction')

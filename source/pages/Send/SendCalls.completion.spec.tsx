@@ -31,8 +31,28 @@ let mockApprove: () => Promise<void>;
 let mockReject: () => Promise<void>;
 let mockRecordGate: (descriptor: any) => Promise<void> | void;
 let mockStored: any;
+let mockFeeGate: (transaction: any) => any;
+let mockFeeId = 0;
 const HASH_A = '0x' + 'a'.repeat(64);
 const HASH_B = '0x' + 'b'.repeat(64);
+const mockFeeReview = (transaction: any) => ({
+  id: `fee-${transaction.nonce}-${transaction.to}-${mockFeeId++}`,
+  transaction: {
+    ...transaction,
+    chainId: String(transaction.chainId),
+    nonce: String(transaction.nonce),
+    value: BigInt(transaction.value ?? '0x0').toString(),
+    to: transaction.to ?? null,
+    type: 0,
+    gasLimit: '21000',
+    gasPrice: '2',
+  },
+  maximumFeeUnits: '42000',
+  maximumTotalUnits: (
+    BigInt(transaction.value ?? '0x0') + BigInt(42000)
+  ).toString(),
+  validForMs: 90000,
+});
 
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
@@ -116,8 +136,12 @@ beforeEach(() => {
     },
     calls: [{ to: `0x${'2'.repeat(40)}` }],
   };
+  mockFeeId = 0;
+  mockFeeGate = mockFeeReview;
   mockCleanup.mockResolvedValue(undefined);
-  mockEmitter.mockReset().mockImplementation(async ([, method]) => {
+  mockEmitter.mockReset().mockImplementation(async ([, method], args) => {
+    if (method === 'reviewDappEvmFee') return mockFeeGate(args[0]);
+    if (method === 'discardNativeEvmFeeReview') return undefined;
     if (method === 'getRecommendedNonceForBatch') return 5;
     if (method === 'sendAndSaveEthTransaction')
       return { hash: `0x${'a'.repeat(64)}` };
@@ -176,7 +200,8 @@ const pending = () => {
 };
 const prepare = async (
   smart = false,
-  send: (index: number) => any = (index) => ({ hash: index ? HASH_B : HASH_A })
+  send: (index: number) => any = (index) => ({ hash: index ? HASH_B : HASH_A }),
+  waitForReview = true
 ) => {
   let count = 0;
   await reserveSendCallsBundle(
@@ -187,6 +212,8 @@ const prepare = async (
     mockQuery.approvedContext.account.address
   );
   mockEmitter.mockImplementation(async (path, args) => {
+    if (path[1] === 'reviewDappEvmFee') return mockFeeGate(args[0]);
+    if (path[1] === 'discardNativeEvmFeeReview') return undefined;
     if (path[1] === 'getRecommendedNonceForBatch') return 5 + sends().length;
     if (path[1] === 'recordSendCallsBundle') {
       await mockRecordGate(args[2]);
@@ -219,17 +246,35 @@ const prepare = async (
       smartAccount: { chainId: 1 },
     });
   const view = render(<SendCalls />);
-  await waitFor(() =>
-    expect(
-      (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-        .disabled
-    ).toBe(false)
-  );
+  if (waitForReview)
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: smart ? 'send.sign' : /^buttons.confirm /,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
   return view;
 };
 const approve = async () => {
-  await act(async () => mockApprove());
-  await flush();
+  // Every call requires its own visible confirmation. Stop at a failed suffix.
+  for (let step = 0; step <= mockQuery.calls.length; step++) {
+    const button = screen.getByRole('button', {
+      name: /^(send.sign|buttons.confirm \d+\/\d+)$/,
+    }) as HTMLButtonElement;
+    if (
+      button.disabled ||
+      (step > 0 && !button.textContent?.startsWith('buttons.confirm'))
+    )
+      return;
+    await act(async () => {
+      void mockApprove();
+    });
+    await flush();
+    if (!screen.queryByRole('button', { name: /^buttons.confirm / })) return;
+  }
 };
 const close = async () => {
   await act(async () => mockReject());
@@ -400,8 +445,11 @@ it('does not return an earlier known hash as completion after a later unknown se
   await approve();
   expect(await status()).toBe(100);
   expect(
-    (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-      .disabled
+    (
+      screen.getByRole('button', {
+        name: /^(send.sign|buttons.confirm \d+\/\d+)$/,
+      }) as HTMLButtonElement
+    ).disabled
   ).toBe(true);
   await act(async () => mockApprove());
   expect(sends()).toHaveLength(2);
@@ -497,6 +545,11 @@ it('invalidates old completion while a newer admitted retry is pending', async (
     active = retry();
   });
   await flush();
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(3);
   await act(async () => retainedClose());
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(mockClose).not.toHaveBeenCalled();
@@ -624,8 +677,11 @@ it.each([false, true])(
     if (failRetirement) {
       expect(await status()).toBe(100);
       expect(
-        (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-          .disabled
+        (
+          screen.getByRole('button', {
+            name: /^(send.sign|buttons.confirm \d+\/\d+)$/,
+          }) as HTMLButtonElement
+        ).disabled
       ).toBe(true);
       await act(async () => mockApprove());
       expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
@@ -637,3 +693,123 @@ it.each([false, true])(
     }
   }
 );
+
+it('requires fresh visible consent for each call and ignores a previous call confirmation', async () => {
+  await prepare();
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 1/2' })
+  ).toBeTruthy();
+  expect(sends()).toHaveLength(0);
+  expect(
+    mockStored[mockQuery.host][mockQuery.bundleId].submissionStarted
+  ).not.toBe(true);
+  const firstConfirmation = mockApprove;
+  await act(async () => {
+    void firstConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 2/2' })
+  ).toBeTruthy();
+  expect(mockStored[mockQuery.host][mockQuery.bundleId].txHashes).toEqual([
+    HASH_A,
+  ]);
+  await act(async () => {
+    void firstConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(2);
+  expect(sends().map((call) => call[1][4].genericReviewId)).toEqual([
+    `fee-5-${mockQuery.calls[0].to}-0`,
+    `fee-6-${mockQuery.calls[1].to}-1`,
+  ]);
+});
+
+it('discards a late quote after the review view unmounts without starting submission', async () => {
+  const quotation = pending();
+  mockFeeGate = () => quotation.promise;
+  const view = await prepare(false, () => ({ hash: HASH_A }), false);
+  await flush();
+  const quoteCall = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'reviewDappEvmFee'
+  );
+  expect(quoteCall).toBeDefined();
+  expect(sends()).toHaveLength(0);
+  view.unmount();
+  await act(async () => quotation.resolve(mockFeeReview(quoteCall![1][0])));
+  await flush();
+  expect(sends()).toHaveLength(0);
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path, args]) =>
+        path[1] === 'recordSendCallsBundle' && args[2].submissionStarted
+    )
+  ).toBe(false);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'discardNativeEvmFeeReview'],
+    [`fee-5-${mockQuery.calls[0].to}-0`]
+  );
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it('expires a held quote and requires another explicit confirmation after retry', async () => {
+  await prepare();
+  const expiredConfirmation = mockApprove;
+  await act(async () => {
+    jest.advanceTimersByTime(90001);
+  });
+  await flush();
+  await act(async () => {
+    void expiredConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(0);
+  expect(
+    screen.queryByRole('button', { name: 'buttons.confirm 1/2' })
+  ).toBeNull();
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 1/2' })
+  ).toBeTruthy();
+  expect(sends()).toHaveLength(0);
+  await act(async () => {
+    void expiredConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(0);
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+});
+
+it('retains the acknowledged prefix when the next call is rejected at its fee review', async () => {
+  await prepare();
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 2/2' })
+  ).toBeTruthy();
+  await close();
+  expect(sends()).toHaveLength(1);
+  expect(mockStored[mockQuery.host][mockQuery.bundleId].txHashes).toEqual([
+    HASH_A,
+  ]);
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'sendCalls.' + mockQuery.host,
+    reply()
+  );
+});

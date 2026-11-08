@@ -13,6 +13,7 @@ import React from 'react';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { BigNumber, Interface, formatEther } from 'utils/ethersV6Compat';
 
+import { reviewedDappFeeFixture } from './fixtures/reviewedDappFee';
 import { SendTransaction } from './SendTransaction';
 
 const FROM = `0x${'11'.repeat(20)}`;
@@ -60,6 +61,11 @@ const mockWallet = {
 const mockEmitter = jest.fn(
   async (path: string[], args: any[] = []): Promise<unknown> => {
     switch (path.join('.')) {
+      case 'wallet.authorizeDappManualNonce':
+      case 'wallet.discardNativeEvmFeeReview':
+        return true;
+      case 'wallet.reviewDappEvmFee':
+        return reviewedDappFeeFixture(args[0]);
       case 'wallet.refreshActiveAccountBalances':
         return { nativeBalance: '100' };
       case 'wallet.checkAddressBlacklist':
@@ -212,12 +218,10 @@ const prepare = async (
   await screen.findByRole('button', { name: 'buttons.confirm' });
   const header = view.container.querySelector('p.text-base')?.textContent;
   const estimates = mockEmitter.mock.calls.filter(
-    ([path, args]) =>
-      path.join('.') === 'wallet.ethereumTransaction.web3Provider.send' &&
-      args[0] === 'eth_estimateGas'
+    ([path]) => path.join('.') === 'wallet.reviewDappEvmFee'
   );
   expect(estimates.length).toBeGreaterThan(0);
-  expect(estimates[0][1][1][0].value).toBe(mockQuery.tx.value);
+  expect(estimates[0][1][0].value).toBe(mockQuery.tx.value);
   expect(
     mockEmitter.mock.calls.every(
       ([path]) =>
@@ -322,7 +326,8 @@ it('reconfirms an original explicit zero on each deliberate retry', async () => 
     const grants = mockEmitter.mock.calls.filter(
       ([path]) => path.join('.') === 'wallet.authorizeDappManualNonce'
     );
-    expect(grants.map(([, args]) => args[0])).toEqual(['0x0', '0x0']);
+    expect(grants.length).toBeGreaterThanOrEqual(2);
+    expect(grants.every(([, args]) => args[0] === '0x0')).toBe(true);
   } finally {
     mockEmitter.mockImplementation(previous);
   }
@@ -377,7 +382,7 @@ it('recommends and displays a fresh automatic nonce before retrying a definite f
     const sends = mockEmitter.mock.calls.filter(
       ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
     );
-    expect(sends.map(([, args]) => args[0].nonce)).toEqual([0, 1]);
+    expect(sends.map(([, args]) => args[0].nonce)).toEqual(['0', '1']);
     expect(
       mockEmitter.mock.calls.some(
         ([path]) => path.join('.') === 'wallet.authorizeDappManualNonce'

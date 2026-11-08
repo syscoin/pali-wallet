@@ -20,6 +20,24 @@ let mockState: any;
 let mockQuery: any;
 let mockApprove: () => Promise<void>;
 let mockReject: () => Promise<void>;
+const mockFeeReview = (transaction: any) => ({
+  id: `fee-${transaction.nonce}-${transaction.to}`,
+  transaction: {
+    ...transaction,
+    chainId: String(transaction.chainId),
+    nonce: String(transaction.nonce),
+    value: BigInt(transaction.value ?? '0x0').toString(),
+    to: transaction.to ?? null,
+    type: 0,
+    gasLimit: '21000',
+    gasPrice: '2',
+  },
+  maximumFeeUnits: '42000',
+  maximumTotalUnits: (
+    BigInt(transaction.value ?? '0x0') + BigInt(42000)
+  ).toString(),
+  validForMs: 90000,
+});
 
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
@@ -42,7 +60,7 @@ jest.mock('components/index', () => ({
     if (variant === 'primary') mockApprove = onClick;
     if (variant === 'secondary') mockReject = onClick;
     return (
-      <button onClick={onClick} disabled={disabled}>
+      <button data-testid={variant} onClick={onClick} disabled={disabled}>
         {children}
       </button>
     );
@@ -89,24 +107,18 @@ const mount = async (smart = false) => {
   }
   render(<SendCalls />);
   await waitFor(() =>
-    expect(
-      (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-        .disabled
-    ).toBe(false)
+    expect((screen.getByTestId('primary') as HTMLButtonElement).disabled).toBe(
+      false
+    )
   );
 };
 const expectDisabled = () => {
-  expect(
-    (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-      .disabled
-  ).toBe(true);
-  expect(
-    (
-      screen.getByRole('button', {
-        name: 'buttons.reject',
-      }) as HTMLButtonElement
-    ).disabled
-  ).toBe(true);
+  expect((screen.getByTestId('primary') as HTMLButtonElement).disabled).toBe(
+    true
+  );
+  expect((screen.getByTestId('secondary') as HTMLButtonElement).disabled).toBe(
+    true
+  );
 };
 
 beforeEach(() => {
@@ -138,7 +150,9 @@ beforeEach(() => {
     calls: [{ to: `0x${'2'.repeat(40)}` }],
   };
   mockCleanup.mockResolvedValue(undefined);
-  mockEmitter.mockReset().mockImplementation(async ([, method]) => {
+  mockEmitter.mockReset().mockImplementation(async ([, method], args) => {
+    if (method === 'reviewDappEvmFee') return mockFeeReview(args[0]);
+    if (method === 'discardNativeEvmFeeReview') return undefined;
     if (method === 'getRecommendedNonceForBatch') return 5;
     if (method === 'sendAndSaveEthTransaction')
       return { hash: `0x${'a'.repeat(64)}` };
@@ -156,14 +170,26 @@ it.each([false, true])(
     await mount(smart);
     fireEvent.click(screen.getByRole('button', { name: 'buttons.reject' }));
     expectDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'send.sign' }));
-    expect(mockEmitter).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('primary'));
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path, args]) =>
+          path[1] === 'sendAndSaveEthTransaction' ||
+          (path[1] === 'recordSendCallsBundle' && args[2].submissionStarted)
+      )
+    ).toHaveLength(0);
     expect(mockSmartSubmit).not.toHaveBeenCalled();
     expect(mockClose).not.toHaveBeenCalled();
     await act(async () => cleanup.resolve());
     expect(mockClose).toHaveBeenCalledTimes(1);
     await act(async () => mockApprove());
-    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path, args]) =>
+          path[1] === 'sendAndSaveEthTransaction' ||
+          (path[1] === 'recordSendCallsBundle' && args[2].submissionStarted)
+      )
+    ).toHaveLength(0);
     expect(mockSmartSubmit).not.toHaveBeenCalled();
     expectDisabled();
   }
@@ -183,7 +209,13 @@ it.each([false, true])(
       await approve();
       void reject();
     });
-    expect(mockEmitter).not.toHaveBeenCalled();
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path, args]) =>
+          path[1] === 'sendAndSaveEthTransaction' ||
+          (path[1] === 'recordSendCallsBundle' && args[2].submissionStarted)
+      )
+    ).toHaveLength(0);
     expect(mockSmartSubmit).not.toHaveBeenCalled();
     expect(mockCleanup).toHaveBeenCalledTimes(1);
     expect(mockClose).not.toHaveBeenCalled();
@@ -205,12 +237,23 @@ it('cleanup failure keeps rejection terminal and closes without starting approva
   await act(async () => mockApprove());
   expectDisabled();
   expect(mockClose).toHaveBeenCalledTimes(1);
-  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path, args]) =>
+        path[1] === 'sendAndSaveEthTransaction' ||
+        (path[1] === 'recordSendCallsBundle' && args[2].submissionStarted)
+    )
+  ).toHaveLength(0);
 });
 
 it('Sign claims ownership before React commits, so a stale Reject cannot close it', async () => {
   const preparation = deferred();
-  mockEmitter.mockReturnValue(preparation.promise);
+  const initial = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, args) =>
+    path[1] === 'recordSendCallsBundle'
+      ? preparation.promise
+      : initial(path, args)
+  );
   await mount();
   const approve = mockApprove;
   const reject = mockReject;
@@ -219,7 +262,11 @@ it('Sign claims ownership before React commits, so a stale Reject cannot close i
     approving = approve();
     await reject();
   });
-  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path[1] === 'recordSendCallsBundle'
+    )
+  ).toHaveLength(1);
   expect(mockCleanup).not.toHaveBeenCalled();
   expect(mockClose).not.toHaveBeenCalled();
   await act(async () => {

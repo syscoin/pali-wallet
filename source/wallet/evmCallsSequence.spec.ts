@@ -44,8 +44,25 @@ function fixture(input: unknown = request) {
     async resolveAddress() {
       return other;
     },
-    async send(transaction, submissionId) {
-      events.push({ transaction, submissionId });
+    async prepare(transaction) {
+      events.push('review');
+      return Object.freeze({
+        transaction: Object.freeze({
+          ...transaction,
+          chainId: String(transaction.chainId),
+          nonce: String(transaction.nonce),
+          value: BigInt(transaction.value).toString(),
+          to: transaction.to ?? null,
+          type: 2 as const,
+          gasLimit: '65000',
+          accessList: [],
+          maxFeePerGas: '3',
+          maxPriorityFeePerGas: '1',
+        }),
+      });
+    },
+    async send(review, submissionId) {
+      events.push({ transaction: review.transaction, submissionId });
       return { hash: hashes[saved.length] };
     },
     async persistHash(hash) {
@@ -98,8 +115,32 @@ it('snapshots exact ordered calls and persists each hash before sending the next
     (x) => typeof x === 'object' && !Array.isArray(x)
   ) as any[];
   expect(sent.map((x) => x.transaction)).toEqual([
-    { from, to, value: '0x1', data: '0x', chainId: 1, nonce: 5 },
-    { from, to: other, value: '0x2', data: '0x1234', chainId: 1, nonce: 6 },
+    {
+      from,
+      to,
+      value: '1',
+      data: '0x',
+      chainId: '1',
+      nonce: '5',
+      type: 2,
+      gasLimit: '65000',
+      accessList: [],
+      maxFeePerGas: '3',
+      maxPriorityFeePerGas: '1',
+    },
+    {
+      from,
+      to: other,
+      value: '2',
+      data: '0x1234',
+      chainId: '1',
+      nonce: '6',
+      type: 2,
+      gasLimit: '65000',
+      accessList: [],
+      maxFeePerGas: '3',
+      maxPriorityFeePerGas: '1',
+    },
   ]);
 });
 
@@ -109,7 +150,7 @@ it('gives a reported valid hash priority over a no-broadcast error and advances 
   const result = await f.sequence.run({
     ...f.ports,
     async send(transaction) {
-      f.events.push(transaction.nonce);
+      f.events.push(Number(transaction.transaction.nonce));
       if (!sent++)
         throw Object.assign(new Error('lost acknowledgement'), {
           transactionHash: hashes[0],
@@ -130,7 +171,7 @@ it('retries only the first definitely unsent call and preserves the acknowledged
   const ports = {
     ...f.ports,
     async send(transaction: Parameters<EoaCallsPorts['send']>[0]) {
-      sent.push(transaction.nonce);
+      sent.push(Number(transaction.transaction.nonce));
       if (++count === 2)
         throw Object.assign(new Error('declined'), {
           transactionNotBroadcast: true,
@@ -251,6 +292,87 @@ it('requires explicit synchronous ownership and every side-effect port', async (
   expect(f.events).toEqual([]);
 });
 
+it('requires the fee-review port and never begins a cancelled review', async () => {
+  const f = fixture();
+  await expect(
+    f.sequence.run({ ...f.ports, prepare: undefined } as any)
+  ).rejects.toThrow('explicit host ports');
+  const result = await f.sequence.run({
+    ...f.ports,
+    async prepare() {
+      throw Object.assign(new Error('rejected'), { code: 4001 });
+    },
+  });
+  expect(result).toMatchObject({
+    status: 'finished',
+    failed: true,
+  });
+  expect(f.events).not.toContain('begin');
+  expect(f.progress.some((value) => value.failure?.kind === 'review')).toBe(
+    true
+  );
+});
+
+it('rejects a fee review for a changed execution before beginning an attempt', async () => {
+  const f = fixture();
+  const result = await f.sequence.run({
+    ...f.ports,
+    async prepare(transaction, index) {
+      const review = await f.ports.prepare(transaction, index);
+      return { ...review, transaction: { ...review.transaction, to: other } };
+    },
+  });
+  expect(result).toMatchObject({ status: 'finished', failed: true });
+  expect(f.events).not.toContain('begin');
+});
+
+it('re-reviews only the unsent suffix after another send claims a held call nonce', async () => {
+  const f = fixture(),
+    held = deferred();
+  const reviewed: number[] = [];
+  const attempted: number[] = [];
+  let nextAvailable = 5,
+    heldSecond = false;
+  const ports: EoaCallsPorts = {
+    ...f.ports,
+    async nonce() {
+      return Math.max(nextAvailable, 5 + f.saved.length);
+    },
+    async prepare(transaction, index) {
+      reviewed.push(transaction.nonce);
+      const review = await f.ports.prepare(transaction, index);
+      if (index === 1 && !heldSecond) {
+        heldSecond = true;
+        await held.promise;
+      }
+      return review;
+    },
+    async send(review) {
+      const nonce = Number(review.transaction.nonce);
+      attempted.push(nonce);
+      if (nonce < nextAvailable)
+        throw Object.assign(new Error('nonce changed'), {
+          transactionNotBroadcast: true,
+        });
+      return hashes[f.saved.length];
+    },
+  };
+  const first = f.sequence.run(ports);
+  while (!heldSecond) await Promise.resolve();
+  expect(f.events.filter((value) => value === 'begin')).toHaveLength(1);
+  expect(f.saved).toEqual([hashes[0]]);
+  nextAvailable = 7;
+  held.resolve();
+  expect(await first).toMatchObject({ failed: true, hashes: [hashes[0]] });
+  expect(await f.sequence.run(ports)).toMatchObject({
+    failed: false,
+    hashes: [hashes[1]],
+  });
+  expect(reviewed).toEqual([5, 6, 7]);
+  expect(attempted).toEqual([5, 6, 7]);
+  expect(f.saved).toEqual(hashes);
+});
+
 it('stops after a context-change error while retaining its acknowledged hash', async () => {
   const f = fixture();
   let calls = 0;
@@ -308,7 +430,19 @@ it('preserves a creation call without inventing a destination or resolving a nam
   await f.sequence.run({ ...f.ports, resolveAddress });
   expect(resolveAddress).not.toHaveBeenCalled();
   expect(f.events).toContainEqual({
-    transaction: { chainId: 1, from, value: '0x0', data: '0x1234', nonce: 5 },
+    transaction: {
+      chainId: '1',
+      from,
+      to: null,
+      value: '0',
+      data: '0x1234',
+      nonce: '5',
+      type: 2,
+      gasLimit: '65000',
+      accessList: [],
+      maxFeePerGas: '3',
+      maxPriorityFeePerGas: '1',
+    },
     submissionId: 'attempt',
   });
 });
@@ -360,3 +494,20 @@ it.each(['resolve', 'begin'])(
     ).toHaveLength(0);
   }
 );
+
+it('an attempted local signed hash without a node acknowledgement stops as unknown', async () => {
+  const f = fixture();
+  const result = await f.sequence.run({
+    ...f.ports,
+    async send() {
+      throw Object.assign(new Error('response lost'), {
+        signedTransactionHash: hashes[0],
+        transactionNotBroadcast: false,
+      });
+    },
+  });
+  expect(result).toMatchObject({ status: 'unknown', index: 0 });
+  expect(f.saved).toEqual([]);
+  expect(f.events.filter((value) => value === 'begin')).toHaveLength(1);
+  await expect(f.sequence.run(f.ports)).rejects.toThrow('unresolved');
+});

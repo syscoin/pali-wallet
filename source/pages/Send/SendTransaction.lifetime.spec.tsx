@@ -8,9 +8,15 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
-import { BigNumber, formatUnits, Interface } from 'utils/ethersV6Compat';
+import {
+  BigNumber,
+  formatUnits,
+  Interface,
+  parseUnits,
+} from 'utils/ethersV6Compat';
 import { saveNavigationState } from 'utils/navigationState';
 
+import { reviewedDappFeeFixture } from './fixtures/reviewedDappFee';
 import { SendTransaction } from './SendTransaction';
 
 const KEY = 'pali_navigation_state';
@@ -34,6 +40,8 @@ let mockAllowanceValue = '2';
 let mockAllowanceIsCustom = true;
 let mockAllowanceOpen = false;
 let mockFeeOpen = false;
+let mockRecommendedNonce = 0;
+let mockFeeReviewSerial = 0;
 let mockEditHandlers: {
   fee?: (value: any) => void;
   nonce?: (value: number) => void;
@@ -222,6 +230,8 @@ const delayCleanup = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockEmitter.mockReset();
+  mockFee.mockReset();
   mockStorage = {};
   mockButtonHandlers = {};
   mockShowSmartFeeEditor = false;
@@ -229,6 +239,8 @@ beforeEach(() => {
   mockAllowanceIsCustom = true;
   mockAllowanceOpen = false;
   mockFeeOpen = false;
+  mockRecommendedNonce = 0;
+  mockFeeReviewSerial = 0;
   mockEditHandlers = {};
   mockState = {
     vault: {
@@ -273,10 +285,32 @@ beforeEach(() => {
   mockGet.mockImplementation(async (key) => mockStorage[key] || null);
   mockSet.mockImplementation(async (key, value) => (mockStorage[key] = value));
   mockRemove.mockImplementation(async (key) => delete mockStorage[key]);
-  mockEmitter.mockImplementation(async ([, method]) => {
+  mockEmitter.mockImplementation(async ([, method], args) => {
     if (method === 'refreshActiveAccountBalances')
       return { nativeBalance: '1' };
     if (method === 'authorizeDappManualNonce') return true;
+    if (method === 'discardNativeEvmFeeReview') return undefined;
+    if (method === 'getRecommendedEvmNonce') return mockRecommendedNonce;
+    if (method === 'reviewDappEvmFee') {
+      const quote = await mockFee(args[0]);
+      if (quote.isInvalidTxData || quote.gasLimitError)
+        throw new Error('Quote unavailable');
+      return {
+        ...reviewedDappFeeFixture(args[0], {
+          gasLimit: quote.feeDetails.gasLimit,
+          gasPrice: parseUnits(String(quote.feeDetails.gasPrice ?? 2), 9),
+          maxFeePerGas: parseUnits(
+            String(quote.feeDetails.maxFeePerGas ?? 2),
+            9
+          ),
+          maxPriorityFeePerGas: parseUnits(
+            String(quote.feeDetails.maxPriorityFeePerGas ?? 1),
+            9
+          ),
+        }),
+        id: `lifetime-fee-${++mockFeeReviewSerial}`,
+      };
+    }
     if (method === 'sendAndSaveEthTransaction')
       return { hash: 'public-test-hash' };
     throw Error(`Unexpected method: ${method}`);
@@ -326,6 +360,7 @@ it.each(
       txMetadata: mockQuery.txMetadata,
     };
     const initialQuote = mockFee.getMockImplementation()!;
+    mockRecommendedNonce = 1;
     mockFee.mockImplementation(async (...args) => {
       const result = await initialQuote(...args);
       return { ...result, nonce: 1, formTx: { ...result.formTx, nonce: 1 } };
@@ -346,6 +381,7 @@ it.each(
       });
     }
     const quote = mockFee.getMockImplementation()!;
+    mockRecommendedNonce = 2;
     mockFee.mockImplementation(async (...args) => {
       const result = await quote(...args);
       return { ...result, nonce: 2, formTx: { ...result.formTx, nonce: 2 } };
@@ -383,7 +419,7 @@ it.each(
     const submitted = mockEmitter.mock.calls.find(
       ([path]) => path[1] === 'sendAndSaveEthTransaction'
     )![1][0];
-    expect(submitted.nonce).toBe(editedNonce ?? 2);
+    expect(submitted.nonce).toBe(String(editedNonce ?? 2));
     expect(submitted.data).toBe(expectedData);
     view.unmount();
   }
@@ -399,6 +435,7 @@ it('locks fee and nonce edits while an EOA confirmation waits for its balance re
   }));
   const view = await prepare();
   const staleEditors = { ...mockEditHandlers };
+  const quotesBeforeSubmit = mockFee.mock.calls.length;
   act(() => staleEditors.open!(true));
   expect(mockFeeOpen).toBe(true);
   let finishBalance!: (value: any) => void;
@@ -409,12 +446,14 @@ it('locks fee and nonce edits while an EOA confirmation waits for its balance re
   act(() => {
     pending = mockButtonHandlers['buttons.confirm']();
     // These old DOM handlers run before the disabled render is committed.
-    fireEvent.click(
-      screen.getByRole('button', { name: 'send.useDappFeeRequest' })
-    );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'send.useNetworkFeeSuggestion' })
-    );
+    staleEditors.nonce!(9);
+    staleEditors.fee!({
+      isCustom: true,
+      gasLimit: 30000,
+      gasPrice: 0,
+      maxFeePerGas: 9,
+      maxPriorityFeePerGas: 1,
+    });
   });
   act(() => {
     staleEditors.nonce!(7);
@@ -431,13 +470,7 @@ it('locks fee and nonce edits while an EOA confirmation waits for its balance re
     JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
   ).toMatchObject({ isCustom: false });
   expect(mockFeeOpen).toBe(false);
-  expect(
-    (
-      screen.getByRole('button', {
-        name: 'send.useDappFeeRequest',
-      }) as HTMLButtonElement
-    ).disabled
-  ).toBe(true);
+  expect(mockFee).toHaveBeenCalledTimes(quotesBeforeSubmit);
   expect(
     (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
   ).toBe(true);
@@ -464,7 +497,7 @@ it('locks fee and nonce edits while an EOA confirmation waits for its balance re
   const submitted = mockEmitter.mock.calls.find(
     ([path]) => path[1] === 'sendAndSaveEthTransaction'
   )![1][0];
-  expect(submitted.nonce).toBe(0);
+  expect(submitted.nonce).toBe('0');
   expect(BigNumber.from(submitted.maxFeePerGas).toString()).toBe('2000000000');
   view.unmount();
 });
@@ -512,9 +545,30 @@ it('unlocks fee and nonce edits for a retry after a known pre-submit failure', a
   mockShowSmartFeeEditor = true;
   const view = await prepare();
   const staleEditors = { ...mockEditHandlers };
-  mockEmitter.mockResolvedValueOnce({ nativeBalance: '0' });
+  const invoke = mockEmitter.getMockImplementation()!;
+  let rejected = false;
+  mockEmitter.mockImplementation((path, args, ...rest) => {
+    if (path[1] === 'sendAndSaveEthTransaction' && !rejected) {
+      rejected = true;
+      return Promise.reject(
+        Object.assign(new Error('Insufficient funds'), {
+          transactionNotBroadcast: true,
+        })
+      );
+    }
+    return invoke(path, args, ...rest);
+  });
   await act(async () => mockButtonHandlers['buttons.confirm']());
-  expect(mockAlert.error).toHaveBeenCalledWith('send.enoughFunds');
+  expect(mockAlert.error).toHaveBeenCalledWith('send.unableToCalculateFees');
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
   expect(
     (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).disabled
   ).toBe(false);
@@ -531,6 +585,15 @@ it('unlocks fee and nonce edits for a retry after a known pre-submit failure', a
   expect(
     JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
   ).toMatchObject({ isCustom: true, maxFeePerGas: 7 });
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
   await act(async () => mockButtonHandlers['buttons.confirm']());
   await waitFor(() =>
     expect(
@@ -539,16 +602,16 @@ it('unlocks fee and nonce edits for a retry after a known pre-submit failure', a
       )
     ).toBe(true)
   );
-  const submitted = mockEmitter.mock.calls.find(
-    ([path]) => path[1] === 'sendAndSaveEthTransaction'
-  )![1][0];
-  expect(submitted.nonce).toBe(7);
+  const submitted = mockEmitter.mock.calls
+    .filter(([path]) => path[1] === 'sendAndSaveEthTransaction')
+    .at(-1)![1][0];
+  expect(submitted.nonce).toBe('7');
   expect(BigNumber.from(submitted.maxFeePerGas).toString()).toBe('7000000000');
   view.unmount();
 });
 
 it.each([false, true])(
-  'preserves the app fee by default and uses the network suggestion only after a click (%s)',
+  'preserves the app fee by default and changes it only after an explicit fee edit (%s)',
   async (chooseSuggestion) => {
     mockQuery.tx.gasPrice = '0x3b9aca00';
     mockFee.mockImplementation(async () => ({
@@ -572,13 +635,30 @@ it.each([false, true])(
     }));
     await prepare();
     expect(screen.queryByText('send.dappFeeRaisedDescription')).toBeNull();
-    expect(
-      screen.getByText('send.customFeeBelowEstimateWarning')
-    ).toBeDefined();
-    if (chooseSuggestion)
-      fireEvent.click(
-        screen.getByRole('button', { name: 'send.useNetworkFeeSuggestion' })
+    const previousQuotes = mockFee.mock.calls.length;
+    if (chooseSuggestion) {
+      act(() =>
+        mockEditHandlers.fee!({
+          isCustom: true,
+          gasLimit: 21000,
+          gasPrice: 2,
+          maxFeePerGas: 0,
+          maxPriorityFeePerGas: 0,
+        })
       );
+      await waitFor(() =>
+        expect(mockFee.mock.calls.length).toBeGreaterThan(previousQuotes)
+      );
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'buttons.confirm',
+            }) as HTMLButtonElement
+          ).disabled
+        ).toBe(false)
+      );
+    }
     await act(async () => mockButtonHandlers['buttons.confirm']());
     const submitted = mockEmitter.mock.calls.find(
       ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
@@ -593,10 +673,20 @@ it.each([false, true])(
 
 it('rejects a malformed requested value without signing or latching the spinner', async () => {
   mockQuery.tx.value = 'invalid';
-  await prepare();
-  await act(async () => mockButtonHandlers['buttons.confirm']());
-  expect(mockEmitter).not.toHaveBeenCalled();
-  expect(mockAlert.error).toHaveBeenCalledWith('send.txWillFail');
+  render(<SendTransaction />);
+  await waitFor(() =>
+    expect(screen.getByText('send.unableToCalculateFees')).toBeDefined()
+  );
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(
+    (screen.getByRole('button', { name: 'receive.retry' }) as HTMLButtonElement)
+      .disabled
+  ).toBe(false);
   expect(
     (
       screen.getByRole('button', {
@@ -606,6 +696,51 @@ it('rejects a malformed requested value without signing or latching the spinner'
   ).toBe(false);
   await act(async () => mockButtonHandlers['buttons.cancel']());
   expect(mockClose).toHaveBeenCalledTimes(1);
+});
+
+it('requires a fresh quote and explicit confirmation after an initial EOA quote failure', async () => {
+  mockFee.mockRejectedValueOnce(new Error('Fee provider unavailable'));
+  render(<SendTransaction />);
+  await waitFor(() =>
+    expect(screen.getByText('send.unableToCalculateFees')).toBeDefined()
+  );
+  expect(screen.queryByRole('button', { name: 'buttons.confirm' })).toBeNull();
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.cancel',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(false);
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  });
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  expect(mockFee).toHaveBeenCalledTimes(2);
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  const submitted = mockEmitter.mock.calls.filter(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  );
+  expect(submitted).toHaveLength(1);
+  expect(submitted[0][1][4].genericReviewId).toBe('lifetime-fee-1');
 });
 
 it('requires an explicit refreshed quote after a fresh AA preparation exceeds the approved maximum', async () => {
@@ -884,7 +1019,10 @@ it.each([false, true])(
           false,
           undefined,
           undefined,
-          { expectedContext: approvedContextForTest() },
+          {
+            expectedContext: approvedContextForTest(),
+            genericReviewId: expect.stringMatching(/^lifetime-fee-/),
+          },
         ],
         10000
       );
@@ -1263,7 +1401,7 @@ it.each([
   { legacy: false, typed: true },
   { legacy: false, typed: true, zeroTipOnly: true },
 ])(
-  'honors zero legacy fees and zero tips while refusing zero EIP-1559 maxima %p',
+  'honors zero legacy fees and zero tips while reviewing a positive EIP-1559 maximum %p',
   async ({ legacy, typed, zeroTipOnly }) => {
     if (typed) mockQuery.tx.type = legacy ? '0x0' : '0x2';
     if (legacy) mockQuery.tx.gasPrice = '0x0';
@@ -1291,46 +1429,73 @@ it.each([
       isInvalidTxData: false,
       gasLimitError: false,
     }));
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, args, ...rest) => {
+      if (path[1] === 'reviewDappEvmFee' && !legacy && !zeroTipOnly)
+        return invoke(
+          path,
+          [{ ...args[0], maxFeePerGas: '0x77359400' }],
+          ...rest
+        );
+      return invoke(path, args, ...rest);
+    });
     await prepare();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'send.useDappFeeRequest' })
-    );
-    if (legacy || zeroTipOnly)
-      expect(
-        screen.getByText('send.customFeeBelowEstimateWarning')
-      ).toBeDefined();
     await act(async () => mockButtonHandlers['buttons.confirm']());
     const submitted = mockEmitter.mock.calls.find(
       ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
     );
-    if (legacy || zeroTipOnly) {
-      expect(submitted).toBeDefined();
-      if (legacy)
-        expect(BigNumber.from(submitted![1][0].gasPrice).isZero()).toBe(true);
-      else {
-        expect(BigNumber.from(submitted![1][0].maxFeePerGas).toString()).toBe(
-          '2000000000'
-        );
-        expect(
-          BigNumber.from(submitted![1][0].maxPriorityFeePerGas).isZero()
-        ).toBe(true);
-        expect(submitted![1][1]).toBe(false);
-        expect(submitted![1][0]).not.toHaveProperty('gasPrice');
-      }
-    } else {
-      expect(submitted).toBeUndefined();
-      expect(mockAlert.error).toHaveBeenCalledWith('send.invalidFeeRate');
-      expect(mockEmitter).not.toHaveBeenCalled();
+    expect(submitted).toBeDefined();
+    if (legacy)
+      expect(BigNumber.from(submitted![1][0].gasPrice).isZero()).toBe(true);
+    else {
+      expect(BigNumber.from(submitted![1][0].maxFeePerGas).toString()).toBe(
+        '2000000000'
+      );
       expect(
-        (
-          screen.getByRole('button', {
-            name: 'buttons.cancel',
-          }) as HTMLButtonElement
-        ).disabled
-      ).toBe(false);
+        BigNumber.from(submitted![1][0].maxPriorityFeePerGas).isZero()
+      ).toBe(true);
+      expect(submitted![1][1]).toBe(false);
+      expect(submitted![1][0]).not.toHaveProperty('gasPrice');
     }
   }
 );
+
+it('refuses an explicit zero EIP-1559 fee cap before submission', async () => {
+  await prepare();
+  const quoteCount = mockFee.mock.calls.length;
+  act(() =>
+    mockEditHandlers.fee!({
+      isCustom: true,
+      gasLimit: 21000,
+      gasPrice: 0,
+      maxFeePerGas: 0,
+      maxPriorityFeePerGas: 0,
+    })
+  );
+  await waitFor(() =>
+    expect(mockFee.mock.calls.length).toBeGreaterThan(quoteCount)
+  );
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  mockEmitter.mockClear();
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalledWith('send.invalidFeeRate');
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'buttons.cancel',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(false);
+});
 
 it('refuses smart-account review without account metadata before requesting a signature', async () => {
   mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
@@ -1581,27 +1746,31 @@ describe('SendTransaction error close lifetimes', () => {
     timeouts = jest.spyOn(globalThis, 'setTimeout');
     clearTimeouts = jest.spyOn(globalThis, 'clearTimeout');
   });
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => {
+    timeouts.mockRestore();
+    clearTimeouts.mockRestore();
+    jest.useRealTimers();
+  });
+
+  const useSmartAccount = () => {
+    mockState.vault.accounts.HDAccount[0].isSmartAccount = true;
+    mockState.vault.accounts.HDAccount[0].smartAccount = {};
+    // A nonzero transfer cannot use the separate gas-payer balance path.
+    mockQuery.tx.value = '0x1';
+  };
 
   it.each(['insufficient funds', 'submission error'])(
     'invalidates a prior %s close while a retry is in flight',
     async (failure) => {
-      // Automatic dapp failures now keep the review open for a fresh nonce.
-      // The explicit-nonce control retains the prior error-close behavior.
-      if (failure === 'submission error') mockQuery.tx.nonce = 0;
+      // EOA pre-broadcast failures now re-quote. The Smart path retains these
+      // error-close timers, so exercise their unchanged lifetime there.
+      useSmartAccount();
       await prepare();
       let timer: ReturnType<typeof closeTimer>;
       if (failure === 'insufficient funds') {
         timer = await refuseForInsufficientFunds();
       } else {
-        mockEmitter
-          .mockResolvedValueOnce({ nativeBalance: '1' })
-          .mockResolvedValueOnce(true) // Explicit nonce re-confirmation.
-          .mockRejectedValueOnce(
-            Object.assign(Error('RPC refused'), {
-              transactionNotBroadcast: true,
-            })
-          );
+        mockSmartSubmit.mockRejectedValueOnce(Error('Authenticator refused'));
         await act(async () => mockButtonHandlers['buttons.confirm']());
         timer = closeTimer(4000);
       }
@@ -1623,9 +1792,9 @@ describe('SendTransaction error close lifetimes', () => {
     const view = await prepare();
     try {
       let sends = 0;
-      mockEmitter.mockImplementation(async ([, method]) => {
-        if (method === 'refreshActiveAccountBalances')
-          return { nativeBalance: '1' };
+      const invoke = mockEmitter.getMockImplementation()!;
+      mockEmitter.mockImplementation(async (path, args, ...rest) => {
+        const method = path[1];
         if (method === 'getRecommendedEvmNonce') return 1;
         if (method === 'sendAndSaveEthTransaction') {
           if (++sends === 1)
@@ -1634,7 +1803,7 @@ describe('SendTransaction error close lifetimes', () => {
             });
           return { hash: 'public-test-hash' };
         }
-        throw Error(`Unexpected method: ${method}`);
+        return invoke(path, args, ...rest);
       });
       await act(async () => mockButtonHandlers['buttons.confirm']());
       expect(mockClose).not.toHaveBeenCalled();
@@ -1648,7 +1817,10 @@ describe('SendTransaction error close lifetimes', () => {
       const attempts = mockEmitter.mock.calls.filter(
         ([path]) => path[1] === 'sendAndSaveEthTransaction'
       );
-      expect(attempts.map(([, args]) => args[0].nonce)).toEqual([0, 1]);
+      expect(attempts.map(([, args]) => args[0].nonce)).toEqual(['0', '1']);
+      expect(attempts[1][1][4].genericReviewId).not.toBe(
+        attempts[0][1][4].genericReviewId
+      );
     } finally {
       view.unmount();
     }
@@ -1742,6 +1914,7 @@ describe('SendTransaction error close lifetimes', () => {
   });
 
   it('a first error cannot close the lifetime of a failed retry', async () => {
+    useSmartAccount();
     await prepare();
     const first = await refuseForInsufficientFunds();
     const second = await refuseForInsufficientFunds();
@@ -1755,6 +1928,7 @@ describe('SendTransaction error close lifetimes', () => {
   });
 
   it('an eligible error timer claims dismissal before cleanup can race a retry', async () => {
+    useSmartAccount();
     await prepare();
     const timer = await refuseForInsufficientFunds();
     const finishCleanup = delayCleanup();
@@ -1782,6 +1956,7 @@ describe('SendTransaction error close lifetimes', () => {
   });
 
   it('manual cancellation invalidates an exposed error timer callback', async () => {
+    useSmartAccount();
     await prepare();
     const timer = await refuseForInsufficientFunds();
     await act(async () => mockButtonHandlers['buttons.cancel']());
@@ -1794,6 +1969,7 @@ describe('SendTransaction error close lifetimes', () => {
   });
 
   it('unmount invalidates an exposed error timer callback', async () => {
+    useSmartAccount();
     const view = await prepare();
     const timer = await refuseForInsufficientFunds();
     view.unmount();
@@ -1805,6 +1981,7 @@ describe('SendTransaction error close lifetimes', () => {
   });
 
   it('unmount during error cleanup prevents its late close', async () => {
+    useSmartAccount();
     const view = await prepare();
     const timer = await refuseForInsufficientFunds();
     mockGet.mockClear();
@@ -1823,6 +2000,7 @@ describe('SendTransaction error close lifetimes', () => {
   });
 
   it('an eligible error timeout still closes at its existing deadline', async () => {
+    useSmartAccount();
     await prepare();
     await refuseForInsufficientFunds();
     await act(async () => {
@@ -1869,6 +2047,7 @@ describe('SendTransaction error close lifetimes', () => {
   );
 
   it('a fee estimation error close cannot interrupt a new confirmation attempt', async () => {
+    useSmartAccount();
     const view = await prepare();
     mockFee.mockRejectedValueOnce(Error('fee estimate failed'));
     mockQuery.tx = { ...mockQuery.tx, to: `0x${'33'.repeat(20)}` };

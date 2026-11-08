@@ -13,6 +13,8 @@ import React from 'react';
 
 import { SendConfirm } from 'pages/Send/Confirm';
 
+import { reviewedDappFeeFixture } from './fixtures/reviewedDappFee';
+
 let mockEIP1559 = true;
 let mockRefreshedBalance = '100';
 let mockRefreshFails = false;
@@ -206,6 +208,7 @@ afterEach(() => {
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getFreshNativeEvmGasLimit',
         'reviewNativeEvmFee',
+        'reviewWalletEvmFee',
         'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
         'sendAndSaveEthTransaction',
@@ -235,6 +238,8 @@ function prepare(quoteCount = 1) {
       expect(args[1]).toEqual(mockScope);
       return Promise.resolve(21000);
     }
+    if (method === 'reviewWalletEvmFee')
+      return Promise.resolve(reviewedDappFeeFixture(args[0]));
     if (method === 'reviewNativeEvmFee')
       return Promise.resolve({
         id: 'fixture-review',
@@ -563,5 +568,23 @@ it.each([false, true])(
       )
     );
     expect(submissionCalls()).toHaveLength(0);
+  }
+);
+
+it.each([false, true])(
+  'hardware confirmation uses the exact issued generic fee review (legacy=%s)',
+  async (legacy) => {
+    await ready(true, { legacy, hardware: true });
+    const reviewCall = mockEmitter.mock.calls.find(
+      ([path]) => path.at(-1) === 'reviewWalletEvmFee'
+    );
+    expect(reviewCall).toBeDefined();
+    const tx = await captureRefusedSubmission();
+    const sendCall = submissionCalls()[0];
+    expect(sendCall[1][4]).toEqual({
+      hardwareScope: mockScope,
+      genericReviewId: 'rendered-fee-review',
+    });
+    expect(tx).toEqual(reviewedDappFeeFixture(reviewCall![1][0]).transaction);
   }
 );

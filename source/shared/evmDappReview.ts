@@ -21,7 +21,7 @@ export type EvmDappDispatchValidation<NonceContext> = (
   assertCurrent: () => void
 ) => Promise<void>;
 
-export type EvmDappReview = Readonly<{
+export type EvmDappReview<Result = string> = Readonly<{
   coveredFeeUnits: string;
   expiresAtMonotonicMilliseconds: number;
   maximumFeeUnits: string;
@@ -29,11 +29,11 @@ export type EvmDappReview = Readonly<{
   submit(
     assertCurrent: () => void,
     onBroadcast: (hash: string) => void
-  ): Promise<string>;
+  ): Promise<Result>;
   transaction: PreparedEvmTransaction;
 }>;
 
-export type EvmDappReviewPorts<NonceContext> = Readonly<{
+export type EvmDappReviewPorts<NonceContext, Result> = Readonly<{
   assertCurrent(): void;
   chainId: string;
   nonceContext: NonceContext;
@@ -50,15 +50,15 @@ export type EvmDappReviewPorts<NonceContext> = Readonly<{
     assertCurrent: () => void,
     verifyDispatch: EvmDappDispatchValidation<NonceContext>,
     onBroadcast: (hash: string) => void
-  ): Promise<string>;
+  ): Promise<Result>;
   signal: AbortSignal;
 }>;
 
 /** Private one-use approval, held by the host controller until explicit user confirmation. */
-export async function prepareEvmDappReview<NonceContext>(
+export async function prepareEvmDappReview<NonceContext, Result>(
   input: unknown,
-  ports: EvmDappReviewPorts<NonceContext>
-): Promise<EvmDappReview> {
+  ports: EvmDappReviewPorts<NonceContext, Result>
+): Promise<EvmDappReview<Result>> {
   ports = Object.freeze({
     ...ports,
     assertCurrent: ports.assertCurrent.bind(ports),

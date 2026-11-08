@@ -1,3 +1,7 @@
+import {
+  snapshotPreparedEvmTransaction,
+  type PreparedEvmTransaction,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -56,6 +60,14 @@ interface ISendCallsData {
   reservationId: string;
   version: string;
 }
+
+type EoaFeeReview = Readonly<{
+  id: string;
+  maximumFeeUnits: string;
+  maximumTotalUnits: string;
+  transaction: PreparedEvmTransaction;
+  validForMs: number;
+}>;
 
 const formatDecodedCallValue = (value: any): string => {
   if (BigNumber.isBigNumber(value)) {
@@ -188,6 +200,21 @@ export const SendCalls = () => {
   const acknowledgedCallsRef = React.useRef(new Set<number>());
   const eoaSequenceRef =
     React.useRef<ReturnType<typeof createEoaCallsSequence>>();
+  const [eoaFeeReview, setEoaFeeReview] = useState<{
+    index: number;
+    quote: EoaFeeReview;
+  }>();
+  const eoaDecisionRef = React.useRef<{
+    expires: number;
+    index: number;
+    quote: EoaFeeReview;
+    reject(reason: Error): void;
+    resolve(value: EoaFeeReview): void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
+  const eoaRunRef = React.useRef<Promise<void>>();
+  const eoaLifetimeRef = React.useRef(0);
+  const eoaStartedRef = React.useRef(false);
   const durableHashesRef = React.useRef(new Set<string>());
   const terminalSubmissionRef = React.useRef<{ submissionId?: string }>();
   const pendingCompletionRef = React.useRef<{
@@ -352,6 +379,21 @@ export const SendCalls = () => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      eoaLifetimeRef.current++;
+      const decision = eoaDecisionRef.current;
+      eoaDecisionRef.current = undefined;
+      if (decision) {
+        clearTimeout(decision.timer);
+        decision.reject(
+          Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+            transactionNotBroadcast: true,
+          })
+        );
+        void controllerEmitter(
+          ['wallet', 'discardNativeEvmFeeReview'],
+          [decision.quote.id]
+        ).catch(() => undefined);
+      }
       clearTimeout(closeTimerRef.current);
     };
   }, []);
@@ -627,6 +669,7 @@ export const SendCalls = () => {
     )
       return;
     submissionInFlightRef.current = true;
+    const generation = eoaLifetimeRef.current;
     try {
       setIsPqSigning(false);
       setLoading(true);
@@ -914,6 +957,7 @@ export const SendCalls = () => {
         assertCurrent() {
           if (
             !mountedRef.current ||
+            generation !== eoaLifetimeRef.current ||
             settlementStartedRef.current ||
             rejectionStartedRef.current
           )
@@ -950,16 +994,68 @@ export const SendCalls = () => {
           return resolved;
         },
         begin: () => markSubmissionStarted(),
-        send: (transaction, submissionId) =>
+        async prepare(transaction, index): Promise<EoaFeeReview> {
+          const value = (await controllerEmitter(
+            ['wallet', 'reviewDappEvmFee'],
+            [transaction]
+          )) as EoaFeeReview;
+          const quote = Object.freeze({
+            ...value,
+            transaction: snapshotPreparedEvmTransaction(value.transaction),
+          });
+          if (
+            !mountedRef.current ||
+            generation !== eoaLifetimeRef.current ||
+            settlementStartedRef.current ||
+            !Number.isSafeInteger(quote.validForMs) ||
+            quote.validForMs <= 0 ||
+            quote.validForMs > 90_000 ||
+            typeof quote.id !== 'string'
+          ) {
+            void controllerEmitter(
+              ['wallet', 'discardNativeEvmFeeReview'],
+              [quote.id]
+            ).catch(() => undefined);
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+          }
+          return new Promise<EoaFeeReview>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              if (eoaDecisionRef.current?.quote !== quote) return;
+              eoaDecisionRef.current = undefined;
+              if (mountedRef.current) setEoaFeeReview(undefined);
+              void controllerEmitter(
+                ['wallet', 'discardNativeEvmFeeReview'],
+                [quote.id]
+              ).catch(() => undefined);
+              reject(
+                Object.assign(new Error(t('privacy.deposit.expired')), {
+                  transactionNotBroadcast: true,
+                })
+              );
+            }, quote.validForMs);
+            eoaDecisionRef.current = {
+              index,
+              quote,
+              timer,
+              expires: Date.now() + quote.validForMs,
+              resolve,
+              reject,
+            };
+            setEoaFeeReview({ index, quote });
+            setLoading(false);
+          });
+        },
+        send: (review, submissionId) =>
           controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
-              transaction,
-              false,
+              review.transaction,
+              review.transaction.type === 0,
               undefined,
               undefined,
               {
                 expectedContext: approvedContext,
+                genericReviewId: review.id,
                 sendCallsSubmissionId: submissionId,
               },
             ],
@@ -1042,7 +1138,73 @@ export const SendCalls = () => {
     }
   };
 
+  const startEoaBatch = () => {
+    const run = handleApprove();
+    eoaRunRef.current = run;
+    void run.finally(() => {
+      if (eoaRunRef.current === run) eoaRunRef.current = undefined;
+    });
+  };
+  const startEoaRef = React.useRef(startEoaBatch);
+  startEoaRef.current = startEoaBatch;
+  useEffect(() => {
+    if (
+      initialLoading ||
+      requestSmartAccount.supportsAtomicBatch ||
+      eoaStartedRef.current
+    )
+      return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled || eoaStartedRef.current || !mountedRef.current) return;
+      eoaStartedRef.current = true;
+      startEoaRef.current();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialLoading, requestSmartAccount.supportsAtomicBatch]);
+
+  const confirmEoaCall = (id: string) => {
+    const pending = eoaDecisionRef.current;
+    if (!pending || pending.quote.id !== id || !mountedRef.current || rejecting)
+      return;
+    eoaDecisionRef.current = undefined;
+    clearTimeout(pending.timer);
+    setEoaFeeReview(undefined);
+    if (Date.now() >= pending.expires) {
+      pending.reject(
+        Object.assign(new Error(t('privacy.deposit.expired')), {
+          transactionNotBroadcast: true,
+        })
+      );
+      return;
+    }
+    setLoading(true);
+    pending.resolve(pending.quote);
+  };
+
   const handleReject = async () => {
+    const decision = eoaDecisionRef.current;
+    if (decision && mountedRef.current && !settlementStartedRef.current) {
+      eoaDecisionRef.current = undefined;
+      clearTimeout(decision.timer);
+      setEoaFeeReview(undefined);
+      setRejecting(true);
+      decision.reject(
+        Object.assign(new Error('User rejected request'), {
+          code: 4001,
+          transactionNotBroadcast: true,
+        })
+      );
+      void controllerEmitter(
+        ['wallet', 'discardNativeEvmFeeReview'],
+        [decision.quote.id]
+      ).catch(() => undefined);
+      await eoaRunRef.current;
+      await finishPopup(canReturnBundleId());
+      return;
+    }
     if (
       !mountedRef.current ||
       settlementStartedRef.current ||
@@ -1359,6 +1521,25 @@ export const SendCalls = () => {
         </div>
 
         {/* Total value */}
+        {eoaFeeReview && (
+          <section
+            className="m-4 rounded-lg bg-bkg-2 p-4"
+            aria-label={t('send.networkFee')}
+          >
+            <p className="text-sm text-brand-gray200">
+              {t('transactions.replay.maximumFee')}
+            </p>
+            <p className="break-all text-lg font-bold text-brand-white">
+              {formatEther(eoaFeeReview.quote.maximumFeeUnits)}{' '}
+              {activeNetwork.currency}
+            </p>
+            <p className="mt-2 text-sm text-brand-gray200">{t('send.total')}</p>
+            <p className="break-all text-brand-white">
+              {formatEther(eoaFeeReview.quote.maximumTotalUnits)}{' '}
+              {activeNetwork.currency}
+            </p>
+          </section>
+        )}
         {requestSmartAccount.supportsAtomicBatch && (
           <div className="mt-4 p-4 bg-bkg-2 rounded-lg">
             <p className="text-sm text-brand-gray200">
@@ -1452,7 +1633,7 @@ export const SendCalls = () => {
             variant="secondary"
             type="button"
             onClick={handleReject}
-            disabled={loading || rejecting}
+            disabled={(loading && !eoaFeeReview) || rejecting}
           >
             {confirmed || canReturnBundleId() || pendingCompletionRef.current
               ? t('buttons.close')
@@ -1461,9 +1642,15 @@ export const SendCalls = () => {
           <Button
             variant="primary"
             type="button"
-            onClick={handleApprove}
+            onClick={() =>
+              requestSmartAccount.supportsAtomicBatch
+                ? void handleApprove()
+                : eoaFeeReview
+                ? confirmEoaCall(eoaFeeReview.quote.id)
+                : startEoaBatch()
+            }
             disabled={
-              loading ||
+              (loading && !eoaFeeReview) ||
               rejecting ||
               confirmed ||
               Boolean(pendingCompletionRef.current) ||
@@ -1471,9 +1658,13 @@ export const SendCalls = () => {
               !hasCurrentFeeQuote ||
               Boolean(feeQuoteError)
             }
-            loading={loading}
+            loading={loading && !eoaFeeReview}
           >
-            {loading
+            {eoaFeeReview
+              ? `${t('buttons.confirm')} ${eoaFeeReview.index + 1}/${
+                  callsData.calls.length
+                }`
+              : loading
               ? confirmed
                 ? t('send.sending')
                 : t('send.signing')
