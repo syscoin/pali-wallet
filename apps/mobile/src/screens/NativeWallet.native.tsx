@@ -1,3 +1,4 @@
+import { NativeSentryKeys } from './NativeSentryKeys';
 import { NativeSmartAccountSend } from './NativeSmartAccountSend';
 import { NativeSmartTransactionReviewScreen } from './NativeSmartTransactionReview';
 import { NativeSmartAccountOperationRoute } from './NativeSmartAccountOperation';
@@ -72,7 +73,7 @@ type SendTarget = Readonly<
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-capacity' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'smart-deploy';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-capacity' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'smart-deploy' | 'sentry-keys';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null) {
@@ -126,6 +127,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [recoveryOutcome, setRecoveryOutcome] = useState<RecoveryOutcome | null>(savedRecoveryOutcome);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
   const [balanceReader, setBalanceReader] = useState<Controllers['balanceReader'] | null>(null);
+  const [sentryKeys, setSentryKeys] = useState<Controllers['sentryKeys'] | null>(null);
+  const [sentryScope, setSentryScope] = useState<RootOrigin | null>(null);
   const [ledgerView, setLedgerView] = useState<NativeLedgerImportView | null>(null);
   const [ledgerConnection, setLedgerConnection] = useState<NativeLedgerConnectionView | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
@@ -195,6 +198,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     if (removal && !retainRemoval) { removalRef.current = null; setRemovalScope(null); }
     lockNoteRestore();
     rootOrigin.current = null;
+    setSentryScope(null);
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllers.current?.authentication?.cancel();
     controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
@@ -227,6 +231,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
+  const sentryAvailable = snapshot.phase === 'ready' && !!utxo && sentryKeys?.available() === true;
+  const sentryRoute = stage === 'sentry-keys' && sentryAvailable &&
+    sentryScope?.context === custodyContext(snapshot, catalogue)?.context;
   const openStage = (next: Stage, sendTarget?: SendTarget) => {
     const local = controllers.current;
     const owner = local?.authority.getSnapshot();
@@ -234,6 +241,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const current = custodyContext(owner, capturedCatalogue);
     if (stage !== 'choose' || AppState.currentState !== 'active' || !current) return;
     const origin = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
+    if (next === 'sentry-keys') {
+      if (!local?.sentryKeys.available()) return;
+      setSentryScope(origin);
+    }
     if (next === 'send') {
       if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
         !canSign && !(canSendUtxo && sendTarget.kind === 'native' || canSendSmart && (sendTarget.kind === 'native' || sendTarget.kind === 'token' || sendTarget.kind === 'collectible')))) return;
@@ -287,6 +298,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const current = readyContext();
     if (stage === 'smart-deploy' || stage === 'send' && selectedAccountType === 'SmartAccount') setCatalogue(controllers.current?.authority.getCatalogue() ?? null);
     setSendDraft(null);
+    setSentryScope(null);
     setStage('choose');
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
       shell.restoreRoot(origin.tab, origin.identity);
@@ -309,7 +321,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         }
         closeStage(); return true;
       }
-      if (stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory' || stage === 'note-import') && snapshot.phase === 'ready' ||
+      if (sentryRoute || stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory' || stage === 'note-import') && snapshot.phase === 'ready' ||
           stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
@@ -327,6 +339,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     cancelNoteRestore();
     detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
     controllers.current = null;
+    setSentryKeys(null); setSentryScope(null);
     if (rootOrigin.current?.stage === 'send') {
       rootOrigin.current = null;
       setSendDraft(null);
@@ -355,10 +368,15 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           if (mounted.current && controllers.current === local && local.authority.getSnapshot() === state) setDeviceUnlockStatus(null);
         });
       }
+      setSentryKeys(local.sentryKeys);
       setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setConnectionView(local.connections); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setOpenSmartDeployment(() => local.openSmartAccountDeployment); setOpenSmartSend(() => local.openSmartAccountSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
       const nextCatalogue = local.authority.getCatalogue();
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       const origin = rootOrigin.current;
+      if (origin?.stage === 'sentry-keys' && origin.context !== custodyContext(state, nextCatalogue)?.context) {
+        rootOrigin.current = null; setSentryScope(null);
+        setStage((current) => current === 'sentry-keys' ? 'choose' : current);
+      }
       if (origin?.stage === 'send' && origin.context !== custodyContext(state, nextCatalogue)?.context) {
         rootOrigin.current = null;
         setSendDraft(null);
@@ -686,6 +704,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }} />;
   if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeNetworks controller={networkView} onBack={closeStage} />;
+  if (sentryRoute && sentryKeys) return <NativeSentryKeys key={sentryScope!.context}
+    networkLabel={utxo!.name} open={sentryKeys.open} onBack={closeStage} />;
   if (stage === 'auto-lock' && snapshot.phase === 'ready' && saveIdle) return <AutoLockSettings mode="custody" save={saveIdle} onBack={closeStage} />;
   if (stage === 'private-notes' && snapshot.phase === 'ready') return <NativeNoteFilesMenu onBack={closeStage}
     onExport={() => { if (noteRestore.begin('export')) setStage('backup-notes'); }}
@@ -889,6 +909,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       networkLabel={utxo?.name ?? EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}
       onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined}
       onPrivateNotes={() => openStage('private-notes')}
+      onSentryKeys={sentryAvailable ? () => openStage('sentry-keys') : undefined}
       onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
     else content = <RealSettings navigation={shell.navigation} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} onAutoLock={() => openStage('auto-lock')}
       activityReset={canSign && catalogue && snapshot.account ? {

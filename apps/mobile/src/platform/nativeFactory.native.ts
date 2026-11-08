@@ -37,6 +37,7 @@ import type { OpenWalletStorage } from '../storage/types.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
 import type { NativeNoteImportRuntime } from '../custody/noteImport.ts';
 import type { NativeUtxoSend } from '../custody/utxoSend.ts';
+import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement.ts';
 
 async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
@@ -226,6 +227,21 @@ export function createNativeWalletControllers() {
     }
     return { selected, assertCurrent, observeFailure };
   };
+  const sentryKeys = Object.freeze({
+    available: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.(),
+    async open(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryKeyManagement> {
+      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+      const open = selected.openSentryKeyManagement;
+      if (!open) throw new CustodyOperationError('NOT_READY');
+      const manager = await observeFailure(() => open(lifetime, assertCurrent));
+      assertCurrent();
+      return Object.freeze<NativeSentryKeyManagement>({
+        ...manager,
+        confirmImport: (...args) => observeFailure(() => manager.confirmImport(...args)),
+        confirmRemoval: (...args) => observeFailure(() => manager.confirmRemoval(...args)),
+      });
+    },
+  });
   const resetActivity = async (assertOwner: () => void): Promise<void> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     await observeFailure(() => selected.resetActivity(assertCurrent, () => {
@@ -319,6 +335,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentryKeys, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

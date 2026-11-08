@@ -190,6 +190,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   readonly transfers?: NativeTransferRuntime;
   openUtxoSend?(assertCurrent: () => void): Promise<NativeUtxoSend>;
   /** Internal Sentry review and encrypted storage only. */
+  getSentryKeyNetwork?(): SentryNetwork | undefined;
   openSentryKeyManagement?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryKeyManagement>;
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
@@ -909,6 +910,16 @@ export function createKeyringRuntimeFactory(
             throw error;
           }
         };
+        const getSentryKeyNetwork = (): SentryNetwork | undefined => {
+          if (!keyring.isUnlocked() || !catalogueSnapshot) return undefined;
+          const registration = findUtxoNetwork(
+            catalogueSnapshot.active.networkId, catalogueSnapshot.utxoNetworks
+          );
+          return (Object.keys(SENTRY_NETWORKS) as SentryNetwork[]).find((name) =>
+            registration?.chainId === SENTRY_NETWORKS[name].chainId &&
+            registration.genesisHash === SENTRY_NETWORKS[name].genesisHash
+          );
+        };
         const openSentryKeyManagement: NonNullable<
           KeyringRuntime['openSentryKeyManagement']
         > = (lifetime, assertOwner) =>
@@ -928,16 +939,7 @@ export function createKeyringRuntimeFactory(
               checkGuard(assertOwner);
             });
             const identity = verifiedIdentity!;
-            const selected = catalogueSnapshot!;
-            const registration = findUtxoNetwork(
-              selected.active.networkId,
-              selected.utxoNetworks
-            );
-            const network = (Object.keys(SENTRY_NETWORKS) as SentryNetwork[]).find(
-              (name) =>
-                registration?.chainId === SENTRY_NETWORKS[name].chainId &&
-                registration.genesisHash === SENTRY_NETWORKS[name].genesisHash
-            );
+            const network = getSentryKeyNetwork();
             if (!network) throw new KeyringRuntimeError('NOT_READY');
             const root = sentryRootPublicIdentity(catalogue.privateRecords, network);
             const { createNativeSentryKeyManagement, NativeSentryKeysError } =
@@ -2239,7 +2241,7 @@ export function createKeyringRuntimeFactory(
           ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory,
             ...(dependencies.openPrivacyPool ? { openNoteImport } : {}) } : {}),
           ...(storage.sentryKeys && typeof dependencies.deriveSentryPublicKey === 'function'
-            ? { openSentryKeyManagement } : {}),
+            ? { getSentryKeyNetwork, openSentryKeyManagement } : {}),
           ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
           accounts,
           security: {
