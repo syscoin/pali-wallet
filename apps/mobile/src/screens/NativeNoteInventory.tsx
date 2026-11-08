@@ -5,6 +5,7 @@ import type { IPrivateNoteStatus } from '../../../../source/utils/privacy/privat
 import type { NativeNoteInventory as NoteInventory, NativeSavedNote } from '../custody/noteBackupRuntime';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 import { NativeNoteReveal } from './NativeNoteReveal';
+import { NativePrivateWithdrawal } from './NativePrivateWithdrawal';
 
 type Props = {
   readInventory(assertCurrent: () => void): Promise<NoteInventory>;
@@ -13,7 +14,7 @@ type Props = {
 };
 type State = { phase: 'loading' } | ({ source: Props['readInventory'] } & (
   { phase: 'error' | 'retired' } |
-  { phase: 'ready'; inventory: NoteInventory; page: number; selected: number | null; revealing: boolean }
+  { phase: 'ready'; inventory: NoteInventory; page: number; selected: number | null; revealing: boolean; withdrawing: boolean }
 ));
 type Owner = { live: boolean; request?: object };
 const LOADING = { phase: 'loading' } as const;
@@ -40,7 +41,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     };
     try {
       const inventory = await readInventory(assertCurrent);
-      if (isCurrent()) setState({ phase: 'ready', source: readInventory, inventory, page: 0, selected: null, revealing: false });
+      if (isCurrent()) setState({ phase: 'ready', source: readInventory, inventory, page: 0, selected: null, revealing: false, withdrawing: false });
     } catch {
       if (isCurrent()) setState({ phase: 'error', source: readInventory });
     } finally {
@@ -65,7 +66,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   }, [load, readInventory]);
 
   const view: State = 'source' in state && state.source === readInventory ? state : LOADING;
-  const updateReady = useCallback((changes: { page: number } | { selected: number | null } | { revealing: boolean }) => {
+  const updateReady = useCallback((changes: { page: number } | { selected: number | null } | { revealing: boolean } | { withdrawing: boolean }) => {
     if (!life.current.live) return;
     setState((current) => current === view && current.phase === 'ready' ? { ...current, ...changes } : current);
   }, [view]);
@@ -81,16 +82,33 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     onBack();
   }, [onBack, updateReady, view]);
   const revealing = view.phase === 'ready' && view.revealing;
+  const withdrawing = view.phase === 'ready' && view.withdrawing;
   useLayoutEffect(() => {
-    if (revealing) return;
+    if (revealing || withdrawing) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
     return () => subscription.remove();
-  }, [back, revealing]);
+  }, [back, revealing, withdrawing]);
 
   const notes = view.phase === 'ready' ? view.inventory.notes : [];
   const inventory = view.phase === 'ready' ? view.inventory : undefined;
   const note = view.phase === 'ready' && view.selected !== null ? notes[view.selected] : undefined;
   useLayoutEffect(() => { selectedNote.current = note; }, [note]);
+  const openWithdrawal = useCallback(async (signal: AbortSignal, assertCurrent: () => void) => {
+    const owner = life.current;
+    const check = () => {
+      if (!owner.live || selectedNote.current !== note || AppState.currentState !== 'active') throw new Error('CANCELLED');
+      assertCurrent();
+    };
+    check();
+    if (!note || !inventory?.openWithdrawal) throw new Error('UNAVAILABLE');
+    return inventory.openWithdrawal(note, signal, check);
+  }, [inventory, note]);
+  const closeWithdrawal = useCallback(() => {
+    if (!life.current.live || selectedNote.current !== note) return;
+    setInspection(null);
+    setState(LOADING);
+    void load();
+  }, [load, note]);
   const checked = inspection?.note === note ? inspection : null;
   const checkNote = async () => {
     const owner = life.current;
@@ -128,6 +146,8 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
 
   if (view.phase === 'ready' && revealing && note) return <NativeNoteReveal key={view.selected} inventory={view.inventory} note={note}
     onBack={() => updateReady({ revealing: false })} onLock={lock} />;
+  if (view.phase === 'ready' && withdrawing && note && inventory?.openWithdrawal) return <NativePrivateWithdrawal
+    key={view.selected} note={note} open={openWithdrawal} onBack={closeWithdrawal} />;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <Screen key={note ? 'detail' : 'list'} footer={<Button title="Lock wallet" variant="secondary" onPress={lock} />}>
@@ -146,6 +166,9 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
         {inventory?.checkNote && <Button title={checked?.phase === 'checking' ? 'Checking pool…' : checked?.status ? 'Check status again' : 'Check pool status'}
           variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => { void checkNote(); }} />}
         {checked?.phase === 'failed' && <Text accessibilityRole="alert" style={s.error}>Could not check this note. Try again.</Text>}
+        {inventory?.openWithdrawal && (checked?.status?.phase === 'verified' || note.reconciliation === 'withdrawal-history') && <Button
+          title={note.reconciliation === 'withdrawal-history' ? 'View withdrawal status' : 'Withdraw'}
+          disabled={checked?.phase === 'checking'} onPress={() => updateReady({ withdrawing: true })} />}
         <Button title="Back up this note" variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => updateReady({ revealing: true })} />
       </> : <>
         {view.phase === 'loading' && <Text accessibilityLiveRegion="polite" style={styles.muted}>Loading saved notes…</Text>}

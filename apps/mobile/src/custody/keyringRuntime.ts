@@ -1,3 +1,8 @@
+import { NativePrivateWithdrawal } from './privateWithdrawal.ts';
+import { createPrivacyWithdrawalsController, PRIVACY_WITHDRAWAL_GAS } from '../../../../source/wallet/privacyWithdrawals.ts';
+import { capturePrivateWithdrawalAttempt, privateWithdrawalUnsignedBytes } from '../../../../source/utils/privacy/withdrawalMetadata.ts';
+import type { IPrivacyWithdrawalsHost } from '../../../../source/utils/privacy/withdrawTypes.ts';
+import type { EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { openOwnedPrivatePool } from './ownedPrivatePool.ts';
 import { NativePrivateDeposit } from './privateDeposit.ts';
 import { createPrivacyTransactionsController } from '../../../../source/wallet/privacyTransactions.ts';
@@ -160,6 +165,11 @@ class NativePrivateSubmissionError extends Error {
   }
 }
 
+function supportsPrivateWithdrawal(type: string, account: IKeyringAccountState | undefined) {
+  return (type === 'HDAccount' || type === 'Imported') && !!account &&
+    !account.isLedgerWallet && !account.isTrezorWallet && !account.isSmartAccount;
+}
+
 export class KeyringRuntimeError extends CustodyRuntimeError {
   constructor(code: KeyringRuntimeError['code']) {
     super(code);
@@ -175,6 +185,11 @@ export type KeyringRuntimeDependencies = Readonly<{
   loadSdk?: () => Promise<SoftwareSdk>;
   createLedgerTransport?: (owner: NativeLedgerOwner) => Promise<NativeLedgerTransport>;
   openPrivacyPool?: (network: NativeNetworkRegistration, poolId: PrivacyPoolId, signal: AbortSignal, assertCurrent: () => void) => Promise<ReturnType<typeof createNativePrivacyPoolSync>>;
+  openPrivacyWithdrawal?: (signal: AbortSignal, assertCurrent: () => void) => Promise<Readonly<{
+    prove: IPrivacyWithdrawalsHost['prove'];
+    relayers: IPrivacyWithdrawalsHost['relayers'];
+    fetcher: typeof fetch;
+  }>>;
   assertActive?: () => void;
   deviceUnlock?: Pick<Parameters<typeof createDeviceUnlockEnrollment>[0], 'credentials' | 'randomId'>;
   readEvmRetirement: ((network: NativeNetworkRegistration, method: EvmSignedRetirementReadMethod,
@@ -674,7 +689,7 @@ export function createKeyringRuntimeFactory(
         }
         const enteredPrivateSubmissions = new WeakSet<object>();
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
-          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding) {
+          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy) {
           check();
           if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
           const signerType = selected.type, ring = keyring;
@@ -688,7 +703,7 @@ export function createKeyringRuntimeFactory(
           const planner = createNativeAutomaticNoncePlanner(signedRecords, { keyring: ring, assertCurrent: check },
             network.chainId, selected.address, network.rpcUrl);
           return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
-            network, rpc, signal, planner, funding, assertCurrent: check,
+            network, rpc, signal, planner, funding, gasPolicy, assertCurrent: check,
             readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
               network, owner: selected.address, contract, signal, assertCurrent, fetch,
             }),
@@ -1143,14 +1158,302 @@ export function createKeyringRuntimeFactory(
           openNotes(assertOwner, (notes, session) => {
             const network = catalogueSnapshot?.networks.find(item => item.id === catalogueSnapshot!.active.networkId);
             const openPool = dependencies.openPrivacyPool;
+            const selected = selectedAccount();
+            const account = state.accounts[selected.type][selected.index];
             return notes.readInventory(session, network?.chainId === '1' && openPool ? async (id, poolId, guard) => {
               const lifetime = new AbortController();
               const pool = await openOwnedPrivatePool(poolId,
                 (selected, signal) => openPool(network, selected, signal, guard), lifetime.signal, guard);
               try { await pool.refresh(); guard(); return await notes.readNoteStatus(session, id, pool.readNote); }
               finally { lifetime.abort(); await pool.dispose(); }
-            } : null);
+            } : null, network?.chainId === '1' && openPool && dependencies.openPrivacyWithdrawal && supportsPrivateWithdrawal(selected.type, account)
+              ? (id, poolId, restored, signal, guard) => openPrivateWithdrawal(id, poolId, restored, signal, guard)
+              : null);
           });
+        const openPrivateWithdrawal = async (
+          noteId: string,
+          poolId: PrivacyPoolId,
+          restored: boolean,
+          signal: AbortSignal,
+          assertOwner: () => void
+        ): Promise<NativePrivateWithdrawal> => {
+          const model = await openNotes(assertOwner, async (notes, session) => {
+            if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+            const captured = generation;
+            const selected = selectedAccount();
+            const snapshot = catalogueSnapshot;
+            const network = getNativeNetwork(
+              snapshot!.active.networkId,
+              snapshot!.networks
+            );
+            const openPool = dependencies.openPrivacyPool;
+            const openServices = dependencies.openPrivacyWithdrawal;
+            const account = state.accounts[selected.type][selected.index];
+            if (network.chainId !== '1' || !openPool || !openServices || !supportsPrivateWithdrawal(selected.type, account))
+              throw new Error('privacy_withdrawal_unsupported_account');
+            const canSign =
+              (selected.type === 'HDAccount' || selected.type === 'Imported') &&
+              !!account?.xprv;
+            const lifetime = new AbortController();
+            const abort = () => lifetime.abort();
+            const check = () => {
+              current(captured);
+              checkGuard(assertOwner);
+              session.assertCurrent();
+              if (
+                signal.aborted ||
+                lifetime.signal.aborted ||
+                catalogueSnapshot !== snapshot ||
+                selectedAccount() !== selected ||
+                state.accounts[selected.type][selected.index] !== account
+              )
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            check();
+            signal.addEventListener('abort', abort, { once: true });
+            let pool: Awaited<ReturnType<typeof openOwnedPrivatePool>> | undefined;
+            try {
+              const services = await openServices(lifetime.signal, check);
+              check();
+              pool = await openOwnedPrivatePool(
+                poolId,
+                (id, owner) => openPool(network, id, owner, check),
+                lifetime.signal,
+                check
+              );
+              check();
+              const ownedPool = pool;
+              const acknowledgementSession = privateDomainWalletSession(captured);
+              const vault = notes.openWithdrawal(
+                { ...session, assertCurrent: check },
+                acknowledgementSession,
+                ownedPool.readNote
+              );
+              const rpc = new EvmTransferReadRpc(network, {
+                fetch: dependencies.connectionFetch ?? walletFetch,
+              });
+              const planner = createNativeAutomaticNoncePlanner(
+                signedRecords,
+                { keyring, assertCurrent: check },
+                network.chainId,
+                selected.address,
+                network.rpcUrl
+              );
+              type Prepared = Awaited<ReturnType<typeof prepareOwnedEvmTransaction>>;
+              const prepared = new WeakMap<
+                IPrivacyDepositSession['context'],
+                {
+                  quote: Prepared;
+                  metadata: Readonly<Record<string, unknown>>;
+                }
+              >();
+              const withdrawal = new NativePrivateWithdrawal(
+                {
+                  assertCurrent: check,
+                  canSign,
+                  restored,
+                  noteId,
+                poolId,
+                  createWithdrawals(onProgress) {
+                    return createPrivacyWithdrawalsController(
+                      {
+                        captureSession(requireSigner = false) {
+                          check();
+                          if (!supportsPrivateWithdrawal(selected.type, account))
+                            throw new Error('privacy_withdrawal_unsupported_account');
+                          if (requireSigner && !canSign)
+                            throw new Error('privacy_withdrawal_unsupported_account');
+                          return {
+                            assertCurrent: check,
+                            context: {
+                              account: {
+                                id: selected.index,
+                                type: sdk.KeyringAccountType[selected.type],
+                                address: selected.address,
+                              },
+                              chainId: 1,
+                              rpcUrl: network.rpcUrl,
+                              slip44: 60,
+                              sessionGeneration: captured,
+                            },
+                          };
+                        },
+                        onProgress,
+                        prove: services.prove,
+                        relayers: services.relayers,
+                        async getSnapshot(id) {
+                          check();
+                          if (id !== poolId) throw new Error('privacy_note_invalid');
+                          return ownedPool.readSnapshot(id);
+                        },
+                        async withNote(id, _owner, use) {
+                          check();
+                          if (id !== noteId) throw new Error('privacy_note_missing');
+                          await ownedPool.refresh();
+                          check();
+                          return vault.withNote(id, use);
+                        },
+                        getWithdrawalAttempt(id) {
+                          check();
+                          if (id !== noteId) throw new Error('privacy_note_missing');
+                          return vault.getAttempt(id);
+                        },
+                        quoteDirectFees: () =>
+                          rpc.withdrawalFees(
+                            selected.address,
+                            planner,
+                            lifetime.signal,
+                            check
+                          ),
+                        quoteRelayerGasPrice: () =>
+                          rpc.withdrawalGasPrice(lifetime.signal, check),
+                        async beforeSubmission(attempt) {
+                          check();
+                          if (attempt.noteId !== noteId || attempt.poolId !== poolId)
+                            throw new Error('privacy_note_invalid');
+                          if (attempt.mode === 'direct') {
+                            if (!canSign)
+                              throw new Error('privacy_withdrawal_unsupported_account');
+                            const canonical = capturePrivateWithdrawalAttempt(attempt);
+                            const metadata = Object.freeze({
+                              privateWithdrawal: canonical,
+                            });
+                            const quote = await prepareOwnedEvmTransaction(
+                              attempt.transaction,
+                              selected,
+                              selected,
+                              lifetime.signal,
+                              check,
+                              metadata,
+                              NATIVE_EVM_FEE_FUNDING,
+                              { kind: 'fixed', gasLimit: PRIVACY_WITHDRAWAL_GAS }
+                            );
+                            check();
+                            if (
+                              privateWithdrawalUnsignedBytes(canonical) !==
+                              serializePreparedEvmTransaction(quote.transaction)
+                            )
+                              throw new Error('privacy_withdrawal_context_changed');
+                            prepared.set(attempt.context, { quote, metadata });
+                          }
+                          let fence!: () => void;
+                          await vault.reserve(attempt, (guard) => {
+                            fence = guard;
+                          });
+                          return () => {
+                            check();
+                            fence();
+                          };
+                        },
+                        async sendTransaction(
+                          _transaction,
+                          owner,
+                          onBroadcast,
+                          assertBeforeSign
+                        ) {
+                          const saved = prepared.get(owner.context);
+                          if (!saved)
+                            throw new NativePrivateSubmissionError({
+                              transactionNotBroadcast: true,
+                            });
+                          try {
+                            assertBeforeSign();
+                            const hash = await saved.quote.submit(
+                              assertBeforeSign,
+                              () => undefined
+                            );
+                            await onBroadcast({ hash });
+                            return { hash };
+                          } catch (error) {
+                            const failure = sdk.evmSubmissionFailure(error);
+                            throw new NativePrivateSubmissionError({
+                              transactionNotBroadcast:
+                                !enteredPrivateSubmissions.has(saved.metadata) ||
+                                failure?.transactionNotBroadcast === true,
+                              ...(failure?.signedTransactionHash
+                                ? {
+                                    signedTransactionHash:
+                                      failure.signedTransactionHash,
+                                  }
+                                : {}),
+                            });
+                          }
+                        },
+                        classifySubmissionFailure: (error) =>
+                          error instanceof NativePrivateSubmissionError
+                            ? error.failure
+                            : { transactionNotBroadcast: false },
+                        async recordSubmission(attempt, acknowledgement) {
+                          try {
+                            await vault.recordSubmission(attempt, acknowledgement);
+                          } finally {
+                            await finalizePrivateDomain();
+                          }
+                        },
+                        async recordNotBroadcast(attempt) {
+                          try {
+                            await vault.recordNotBroadcast(attempt);
+                          } finally {
+                            await finalizePrivateDomain();
+                          }
+                        },
+                        recordJobStatus: (id, attemptHash, acknowledgement) => {
+                          check();
+                          if (id !== noteId || !acknowledgement.jobId)
+                            throw new Error('privacy_withdrawal_ack_invalid');
+                          return vault.recordJobStatus(id, attemptHash, {
+                            jobId: acknowledgement.jobId,
+                            transactionHash: acknowledgement.transactionHash,
+                          });
+                        },
+                      },
+                      { fetcher: services.fetcher }
+                    );
+                  },
+                  async readNoteStatus() {
+                    await ownedPool.refresh();
+                    check();
+                    return vault.readStatus(noteId);
+                  },
+                  async reviewRestored(password) {
+                    await ownedPool.refresh();
+                    check();
+                    return vault.reviewRestored(noteId, password);
+                  },
+                  async close() {
+                    lifetime.abort();
+                    signal.removeEventListener('abort', abort);
+                    try {
+                      await ownedPool.dispose();
+                    } finally {
+                      await finalizePrivateDomain();
+                    }
+                  },
+                },
+                signal
+              );
+              return withdrawal;
+            } catch (error) {
+              lifetime.abort();
+              signal.removeEventListener('abort', abort);
+              try {
+                await pool?.dispose();
+              } finally {
+                await finalizePrivateDomain();
+              }
+              throw error;
+            }
+          });
+          try {
+            await model.refresh();
+            checkGuard(assertOwner);
+            if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+            return model;
+          } catch (error) {
+            await model.dispose();
+            throw error;
+          }
+        };
         const openPrivateDeposit: NonNullable<KeyringRuntime['openPrivateDeposit']> = (
           signal,
           assertOwner
@@ -1246,7 +1549,8 @@ export function createKeyringRuntimeFactory(
                   lifetime.signal,
                   check,
                   metadata,
-                  NATIVE_EVM_FEE_FUNDING
+                  NATIVE_EVM_FEE_FUNDING,
+                  { kind: 'estimate' }
                 );
                 check();
                 prepared.set(owner.context, { quote, metadata });
@@ -2674,7 +2978,8 @@ export function createKeyringRuntimeFactory(
                       smartAccountGuardianRecoveryFinalize: action === 'finalize',
                       smartAccountRecoveryAccount: account.address,
                     },
-                    NATIVE_EVM_FEE_FUNDING
+                    NATIVE_EVM_FEE_FUNDING,
+                  { kind: 'estimate' }
                   );
                   check();
                   return Object.freeze({
@@ -2801,7 +3106,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding);
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' });
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent, operation) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
@@ -3305,7 +3610,8 @@ export function createKeyringRuntimeFactory(
                   approval.signal,
                   check,
                   undefined,
-                  NATIVE_EVM_FEE_FUNDING
+                  NATIVE_EVM_FEE_FUNDING,
+                  { kind: 'estimate' }
                 );
               },
               signMessage(input) {

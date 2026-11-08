@@ -1339,5 +1339,36 @@ test('targeted note status reads only the selected protected note and refuses st
     'privacy_vault_session_changed'
   );
   expect(f.host.readNote).toHaveBeenCalledTimes(1);
+});
 
+test('unsigned deposit cleanup preserves a different exact retained attempt', async () => {
+  const f = await replayFixture();
+  const before = await f.vault.getDepositAttempt(f.note.id, f.session);
+  await expect(
+    f.vault.clearUnbroadcastDepositAttempt(
+      {
+        ...f.attempt,
+        intentId: '00000000-0000-4000-8000-000000000099',
+      },
+      f.session
+    )
+  ).rejects.toThrow('privacy_deposit_attempt_invalid');
+  expect(await f.vault.getDepositAttempt(f.note.id, f.session)).toEqual(before);
+});
+
+test('unsigned withdrawal cleanup preserves a different exact retained attempt', async () => {
+  const f = await withdrawalReplayFixture();
+  const before = await f.vault.getWithdrawalAttempt(f.note.id, f.session);
+  await expect(
+    f.vault.clearUnbroadcastWithdrawalAttempt(
+      {
+        ...f.attempt,
+        intentId: '00000000-0000-4000-8000-000000000099',
+      },
+      f.session
+    )
+  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+  expect(await f.vault.getWithdrawalAttempt(f.note.id, f.session)).toEqual(
+    before
+  );
 });

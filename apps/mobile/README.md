@@ -52,7 +52,9 @@ Settings → Auto-lock stores a device-local preference for custody and watch se
 
 ## Remaining implementation and qualification
 
-Remaining dapp methods, hardware transport and device qualification, additional smart-account authenticators, broader guardian recovery, privacy-pool operations and Sentry management remain outstanding. Biometric/passkey enrollment and login, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
+Saved-note direct and relayed withdrawal adapters and review UI are implemented as a qualification candidate. They reuse the shared proof, fixed-gas transaction and note-reservation paths. Native proof/resource qualification and production pool qualification remain required before release. Failed-withdrawal recovery and completed-note cleanup remain separate work.
+
+Remaining dapp methods, hardware transport and device qualification, additional smart-account authenticators, broader guardian recovery, privacy-pool qualification and Sentry management remain outstanding. Native biometric qualification, remaining passkey support, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
 
 The [shared-core audit](docs/shared-core-audit.md), [security requirements](SECURITY.md) and [native qualification contract](qualification/README.md) describe the host boundaries and release gates. Track live-network, physical-device and full user-journey acceptance separately from source implementation.
 
@@ -72,6 +74,8 @@ npm run web
 npm run ios       # macOS, full Xcode and iOS build dependencies
 npm run android   # Android SDK, Java and an emulator or device
 ```
+
+The `preios` and `preandroid` hooks download the pinned public proving key and run the shared proof-asset packager before the native build. Install the root Yarn dependencies as well as the mobile npm dependencies. The packager verifies asset hashes and removes its temporary key directory. A failed download or pin check stops the build. No proving key is downloaded during wallet operation.
 
 Native onboarding offers wallet creation, phrase restoration and watch-only accounts directly. Custody requires the native runtime checks. The package scripts disable Expo CLI telemetry. Over-the-air application updates are disabled in app configuration.
 

@@ -76,6 +76,40 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
         service: { origin: service.origin, assertCurrent() { service.assertCurrent(); assertCurrent(); } },
         transport: createNativePublicSnapshotTransport(), executeMerkleBatch: createNativePublicMerkleExecutor() });
     },
+    async openPrivacyWithdrawal(signal, assertCurrent) {
+      const [{ provePrivacyWithdrawal }, { runNativePrivacyProof }, { createPrivacyRelayerClient },
+        { nativePrivacyServiceSettings }] = await Promise.all([
+        import('../../../../source/utils/privacy/withdrawal.ts'),
+        import('../../modules/pali-private-prover'),
+        import('../../../../source/utils/privacy/relayers.ts'),
+        import('./privacyServiceSettings.native.ts'),
+      ]);
+      assertCurrent();
+      if (signal.aborted) throw new CustodyOperationError('CANCELLED');
+      const service = await nativePrivacyServiceSettings.capture();
+      const check = () => {
+        assertCurrent();
+        service.assertCurrent();
+        if (signal.aborted) throw new CustodyOperationError('CANCELLED');
+      };
+      check();
+      return {
+        fetcher: walletFetch as typeof fetch,
+        prove: (request, options) => provePrivacyWithdrawal(request, {
+          ...options,
+          runProof: runNativePrivacyProof,
+        }),
+        relayers: createPrivacyRelayerClient({
+          fetcher: walletFetch as typeof fetch,
+          getDirectoryUrl: async () => { check(); return `${service.origin}/api/privacy/v1/relayers`; },
+          getServiceRevision: nativePrivacyServiceSettings.getRevision,
+          assertServiceCurrent: (revision) => {
+            nativePrivacyServiceSettings.assertStable(revision);
+            check();
+          },
+        }),
+      };
+    },
     prepareSmartAccount(network, accountIndex, managementAddress, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).prepareSmartAccount(accountIndex, managementAddress, signal, guard);
     },

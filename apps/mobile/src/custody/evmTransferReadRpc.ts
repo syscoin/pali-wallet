@@ -1,4 +1,5 @@
-import { prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappTransactionRequest } from '../../../../source/shared/evmDappPreparation.ts';
+import { privacyWithdrawalFees } from '../../../../source/utils/privacy/withdrawalFees.ts';
+import { captureEvmGasPolicy, prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappTransactionRequest, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { getAddress } from 'ethers/address';
 import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees, planEvmSpeedUpFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { Transaction } from 'ethers/transaction';
@@ -681,16 +682,45 @@ export class EvmTransferReadRpc {
     }
     return Object.freeze({ transaction: tx, balanceUnits: balance.toString(), maximumFeeUnits: cost.maximumFee.toString(), totalUnits: cost.total.toString() });
   }
+  /** Public fee observations only; no note or proof is passed to this reader. */
+  withdrawalGasPrice(signal: AbortSignal, guard: () => void): Promise<string> {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const fees = await this.feeData(read, sampled, signal);
+      const price = fees.maxFeePerGas ?? fees.gasPrice;
+      if (!price || price <= BigInt(0)) return rejectRead('INVALID_RESPONSE');
+      await this.canonical(read, sampled);
+      return price.toString();
+    }, 'endpoint');
+  }
+
+  /** The shared fixed-gas formatter uses the ordinary nonce and spend-budget policy. */
+  withdrawalFees(from: string, planner: NativeAutomaticNoncePlanner, signal: AbortSignal, guard: () => void) {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const nonce = this.sampleSendNonce(read, from, sampled, undefined, planner);
+      const [plan, balance, fees] = await Promise.all([
+        nonce, this.readSendBalance(read, from, sampled, nonce), this.feeData(read, sampled, signal),
+      ]);
+      await this.canonical(read, sampled);
+      read.assertCurrent();
+      return privacyWithdrawalFees(fees, plan.nonce, balance);
+    }, 'endpoint');
+  }
+
   /** Generic dapp envelope through the same owned reads, nonce planner and fee policy. */
   prepareDapp(request: EvmDappTransactionRequest, signal: AbortSignal, guard: () => void,
-    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding): Promise<EvmDappPreparedQuote> {
+    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy): Promise<EvmDappPreparedQuote> {
+    gasPolicy = captureEvmGasPolicy(gasPolicy);
     return this.operation(signal, guard, async (read) => {
       try {
         return await prepareEvmDappQuote(request, {
           chainId: this.network.chainId,
           scope: this.network.registrationHash,
           funding,
-          gasPolicy: { kind: 'estimate' },
+          gasPolicy,
           assertCurrent: read.assertCurrent,
           read,
           now: this.monotonicMilliseconds,

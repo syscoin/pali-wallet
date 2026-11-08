@@ -78,8 +78,8 @@ export async function readPrivacyRelayerJob(
     pool = getPrivacyPool(fixed.poolId);
   const url = `${origin}/v1/jobs/${fixed.jobId}`;
   const abort = new AbortController();
-  let timer: ReturnType<typeof setTimeout>,
-    remove = () => undefined;
+  let timer: ReturnType<typeof setTimeout>;
+  let remove: () => void = () => undefined;
   const interrupted = new Promise<never>((_, reject) => {
     const cancel = () => {
       abort.abort();

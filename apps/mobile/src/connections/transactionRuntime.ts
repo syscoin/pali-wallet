@@ -1,3 +1,4 @@
+import { captureEvmGasPolicy, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import type { EvmDappFeeComparison } from '../../../../source/shared/evmDappFeePolicy.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { prepareEvmDappReview } from '../../../../source/shared/evmDappReview.ts';
@@ -24,6 +25,7 @@ type SignedTransaction = Readonly<{ rawTransaction: string; hash: string }>;
 type Ports = Readonly<{
   network: NativeNetworkRegistration;
   funding: EvmFeeFunding;
+  gasPolicy: EvmGasPolicy;
   rpc: EvmTransferReadRpc;
   signal: AbortSignal;
   planner: NativeAutomaticNoncePlanner;
@@ -36,6 +38,7 @@ type Ports = Readonly<{
 }>;
 
 export async function prepareNativeConnectionTransaction(input: unknown, ports: Ports): Promise<NativePreparedConnectionTransaction> {
+  const gasPolicy = captureEvmGasPolicy(ports.gasPolicy);
   const check = () => {
     guardedRead(ports.assertCurrent);
     if (ports.signal.aborted) throw new Error('CANCELLED');
@@ -48,7 +51,7 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
     now: ports.now ?? (() => Math.floor(performance.now())),
     assertCurrent: check,
     prepare: (request, assertCurrent, planner, approved) =>
-      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, planner, approved, ports.funding),
+      ports.rpc.prepareDapp(request, ports.signal, assertCurrent, planner, approved, ports.funding, gasPolicy),
     async send(transaction, assertCurrent, verifyDispatch, onBroadcast) {
       const signed = await ports.sign(transaction, assertCurrent);
       assertCurrent();

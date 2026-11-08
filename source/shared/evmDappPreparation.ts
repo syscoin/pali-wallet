@@ -118,13 +118,9 @@ function readBlock(value: unknown): EvmDappBlock {
   });
 }
 
-/** Initial quote and exact refresh use one fee, gas-bound and affordability policy. */
-export async function prepareEvmDappQuote<Sample extends NonceSample>(
-  input: EvmDappTransactionRequest,
-  ports: EvmDappPreparationPorts<Sample>,
-  approved?: EvmDappPreparedQuote
-): Promise<EvmDappPreparedQuote> {
-  const suppliedPolicy = ports.gasPolicy;
+/** Snapshot the internal policy before any asynchronous quote work. */
+export function captureEvmGasPolicy(value: EvmGasPolicy): EvmGasPolicy {
+  const suppliedPolicy = value;
   const kind =
     suppliedPolicy &&
     Object.getOwnPropertyDescriptor(suppliedPolicy, 'kind')?.value;
@@ -141,6 +137,16 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
       throw new EvmDappReviewRequiredError();
     gasPolicy = Object.freeze({ kind, gasLimit: gas.toString() });
   } else gasPolicy = Object.freeze({ kind });
+  return gasPolicy;
+}
+
+/** Initial quote and exact refresh use one fee, gas-bound and affordability policy. */
+export async function prepareEvmDappQuote<Sample extends NonceSample>(
+  input: EvmDappTransactionRequest,
+  ports: EvmDappPreparationPorts<Sample>,
+  approved?: EvmDappPreparedQuote
+): Promise<EvmDappPreparedQuote> {
+  const gasPolicy = captureEvmGasPolicy(ports.gasPolicy);
   ports = Object.freeze({
     ...ports,
     gasPolicy,

@@ -174,6 +174,12 @@ test.each([false, true])(
     expect(captured.context.sessionGeneration).toBe(7);
     expect(captured.expiresAt).toBe(60001);
     expect(Object.isFrozen(captured.context.account)).toBe(true);
+    expect(Object.getPrototypeOf(captured)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(captured.context)).toBe(Object.prototype);
+    expect(Object.getPrototypeOf(captured.context.account)).toBe(
+      Object.prototype
+    );
+    expect(Object.getPrototypeOf(captured.transaction)).toBe(Object.prototype);
     expect(Object.isFrozen(captured.transaction)).toBe(true);
     expect(readPrivateWithdrawalAttempt(await record(captured))).toEqual(
       captured
@@ -254,3 +260,16 @@ test('rejects mixed markers, unowned fields and accessors without evaluating the
     capturePrivateWithdrawalAttempt({ ...attempt(), extra: true })
   ).toThrow();
 });
+
+test.each(['01', '-1', 'not-a-quantity'])(
+  'invalid withdrawal quantity uses the withdrawal error contract (%s)',
+  (value) => {
+    const input = attempt();
+    expect(() =>
+      capturePrivateWithdrawalAttempt({
+        ...input,
+        transaction: { ...input.transaction, nonce: value },
+      })
+    ).toThrow('privacy_withdrawal_attempt_invalid');
+  }
+);

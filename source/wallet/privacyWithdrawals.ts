@@ -803,8 +803,7 @@ export function createPrivacyWithdrawalsController(
       submitting.add(attempt.noteId);
       for (const [key, entry] of intents)
         if (key === id || entry.attempt?.noteId === attempt.noteId) remove(key);
-      let reserved = false,
-        entered = false,
+      let entered = false,
         saved = false,
         conflict = false,
         pending: Promise<void> | undefined,
@@ -842,7 +841,6 @@ export function createPrivacyWithdrawalsController(
           current(intent);
         }
         const assertReservedCurrent = await host.beforeSubmission(attempt);
-        reserved = true;
         const assertBeforeSign = () => {
           current(intent);
           if (typeof assertReservedCurrent !== 'function')
@@ -898,8 +896,7 @@ export function createPrivacyWithdrawalsController(
           !failure.signedTransactionHash &&
           !acknowledgement
         ) {
-          if (reserved)
-            await host.recordNotBroadcast(attempt).catch(() => undefined);
+          await host.recordNotBroadcast(attempt).catch(() => undefined);
           throw sanitize(error);
         }
         const result: IPrivacyWithdrawalSubmission = {

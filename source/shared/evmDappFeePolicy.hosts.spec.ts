@@ -288,6 +288,7 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
     {}
   );
   const native = prepareNativeConnectionTransaction(input, {
+    gasPolicy: { kind: 'estimate' },
     funding: NATIVE_EVM_FEE_FUNDING,
     network: registration,
     rpc: read,

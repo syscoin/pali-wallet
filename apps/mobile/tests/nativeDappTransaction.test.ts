@@ -43,7 +43,7 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
   const rpc = new EvmTransferReadRpc(network, { fetch: fetcher, monotonicMilliseconds: () => now });
   const sender = new NativeTransferRpc({ registration: network, fetch: fetcher });
   const prepare = (input: unknown) => prepareNativeConnectionTransaction(input, {
-    funding, network, rpc, planner, signal: lifetime.signal, assertCurrent: guard, now: () => now,
+    funding, gasPolicy: { kind: 'estimate' }, network, rpc, planner, signal: lifetime.signal, assertCurrent: guard, now: () => now,
     async sign(transaction, assertCurrent) {
       assertCurrent(); signs++; signingHook(); assertCurrent();
       const rawTransaction = await wallet.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));

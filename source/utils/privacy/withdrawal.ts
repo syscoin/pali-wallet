@@ -91,12 +91,12 @@ function guard(
 function littleEndian(bytes: Uint8Array) {
   let value = BigInt(0);
   for (let i = bytes.length - 1; i >= 0; i--)
-    value = (value << BigInt(8)) + BigInt(bytes[i]);
+    value = (value << BigInt(8)) + BigInt(bytes[i]!);
   return value.toString();
 }
 function noteSecrets(note: string): { nullifier: string; secret: string } {
   // identifyClassicNote already validates network, amount, length and hex syntax.
-  const hex = note.trim().split('-0x')[1];
+  const hex = note.trim().split('-0x')[1]!;
   const bytes = new Uint8Array(62);
   try {
     for (let i = 0; i < bytes.length; i++)
@@ -220,8 +220,8 @@ export async function preparePrivacyWithdrawal(
       try {
         for (let level = 0; level < TREE_DEPTH; level++)
           root = pathIndices[level]
-            ? hashPair(pathElements[level], root)
-            : hashPair(root, pathElements[level]);
+            ? hashPair(pathElements[level]!, root)
+            : hashPair(root, pathElements[level]!);
       } catch {
         throw snapshotInvalid();
       }
@@ -252,7 +252,7 @@ export async function preparePrivacyWithdrawal(
         pathElements.push(nodes[index ^ 1] ?? zero);
         const next: string[] = [];
         for (let i = 0; i < nodes.length; i += 2) {
-          next.push(hashPair(nodes[i], nodes[i + 1] ?? zero));
+          next.push(hashPair(nodes[i]!, nodes[i + 1] ?? zero));
           completed++;
           if (completed % 128 === 0 || completed === total) await checkpoint();
         }

@@ -332,7 +332,6 @@ export function createPrivacyTransactionsController(
         if (key === id || other.attempt?.noteId === attempt.noteId)
           intents.delete(key);
       let senderEntered = false;
-      let reservationAcknowledged = false;
       let acknowledged: string | undefined;
       let saved = false;
       let acknowledgementConflict = false;
@@ -358,7 +357,6 @@ export function createPrivacyTransactionsController(
       };
       try {
         const assertReservedCurrent = await host.beforeSubmission(attempt);
-        reservationAcknowledged = true;
         const assertBeforeSign = () => {
           assertCurrent(intent.session);
           if (now() >= intent.expiresAt)
@@ -408,7 +406,7 @@ export function createPrivacyTransactionsController(
             !acknowledged)
         ) {
           try {
-            if (reservationAcknowledged) await host.recordNotBroadcast(attempt);
+            await host.recordNotBroadcast(attempt);
           } catch {
             /* Never reinterpret a persistence error as a broadcast. */
           }
