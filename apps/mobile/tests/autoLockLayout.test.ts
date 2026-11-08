@@ -17,8 +17,8 @@ const code = ts.transpileModule(
   { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }
 ).outputText;
 
-test('custody and watch auto-lock protect both safe areas around keyboard avoidance', () => {
-  for (const platform of ['android', 'ios']) {
+test('custody and watch auto-lock resize Android for the keyboard and preserve iOS padding and safe areas', () => {
+  for (const platform of ['android', 'ios', 'web']) {
     const screenStyle = { flex: 1, backgroundColor: '#071325' };
     const dependencies: Record<string, unknown> = {
       react: {
@@ -54,7 +54,7 @@ test('custody and watch auto-lock protect both safe areas around keyboard avoida
       const keyboard = tree.children[0];
       assert.ok(keyboard);
       assert.equal(keyboard.type, 'KeyboardAvoidingView');
-      assert.equal(keyboard.props.behavior, platform === 'ios' ? 'padding' : undefined);
+      assert.equal(keyboard.props.behavior, platform === 'ios' ? 'padding' : platform === 'android' ? 'height' : undefined);
       assert.equal(keyboard.props.style.flex, 1);
       const screen = keyboard.children[0];
       assert.ok(screen);
