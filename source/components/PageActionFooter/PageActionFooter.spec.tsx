@@ -32,6 +32,107 @@ it('does not create empty feedback or change the action when no error exists', (
   ).toBe(true);
 });
 
+it('reveals an in-flow footer when feedback appears without moving focus or repeating on unrelated renders', () => {
+  const content = (
+    <>
+      <input aria-label="Preference" />
+      <button>Save</button>
+    </>
+  );
+  const view = render(
+    <PageActionFooter includeInFlow>{content}</PageActionFooter>
+  );
+  const action = screen.getByRole('button', { name: 'Save' });
+  const footer = action.closest('[data-page-action-footer]')!;
+  const scroll = jest.fn();
+  Object.defineProperty(footer, 'scrollIntoView', {
+    value: scroll,
+    configurable: true,
+  });
+  const input = screen.getByRole('textbox', { name: 'Preference' });
+  input.focus();
+  expect(scroll).not.toHaveBeenCalled();
+
+  view.rerender(
+    <PageActionFooter includeInFlow error="Save failed">
+      {content}
+    </PageActionFooter>
+  );
+  expect(scroll).toHaveBeenCalledTimes(1);
+  expect(scroll).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+  expect(document.activeElement).toBe(input);
+
+  view.rerender(
+    <PageActionFooter
+      includeInFlow
+      className="updated"
+      error={<span>Save failed</span>}
+    >
+      {content}
+    </PageActionFooter>
+  );
+  expect(scroll).toHaveBeenCalledTimes(1);
+  view.rerender(<PageActionFooter includeInFlow>{content}</PageActionFooter>);
+  expect(scroll).toHaveBeenCalledTimes(1);
+  view.rerender(
+    <PageActionFooter includeInFlow error="Retry failed">
+      {content}
+    </PageActionFooter>
+  );
+  expect(scroll).toHaveBeenCalledTimes(2);
+});
+
+it('leaves a non-flow footer in place when feedback appears', () => {
+  const view = render(
+    <PageActionFooter>
+      <button>Save</button>
+    </PageActionFooter>
+  );
+  const footer = screen
+    .getByRole('button', { name: 'Save' })
+    .closest('[data-page-action-footer]')!;
+  const scroll = jest.fn();
+  Object.defineProperty(footer, 'scrollIntoView', {
+    value: scroll,
+    configurable: true,
+  });
+  view.rerender(
+    <PageActionFooter error="Save failed">
+      <button>Save</button>
+    </PageActionFooter>
+  );
+  expect(scroll).not.toHaveBeenCalled();
+});
+
+it('does not scroll on an initial render that already contains feedback', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    'scrollIntoView'
+  );
+  const scroll = jest.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: scroll,
+  });
+  try {
+    const view = render(
+      <PageActionFooter includeInFlow error="Existing feedback">
+        <button>Save</button>
+      </PageActionFooter>
+    );
+    expect(scroll).not.toHaveBeenCalled();
+    view.unmount();
+  } finally {
+    if (descriptor)
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'scrollIntoView',
+        descriptor
+      );
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  }
+});
+
 it('measures changing action height for native focus scrolling and cleans up', () => {
   const descriptor = Object.getOwnPropertyDescriptor(window, 'ResizeObserver');
   let notify: ResizeObserverCallback | undefined;
