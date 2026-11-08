@@ -196,6 +196,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
+    connections: { getSnapshot: () => ({ messageReview: null }), subscribe: () => () => {} },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async readRecoveryInventory() { return inventory; },
   };
@@ -253,6 +254,7 @@ async function walletFeedbackFixture() {
         publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
       } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
+    connections: { getSnapshot: () => ({ messageReview: null }), subscribe: () => () => {} },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {},
   };
