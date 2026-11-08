@@ -1,117 +1,67 @@
-import { Interface } from 'utils/ethersV6Compat';
+import { Interface } from 'ethers/abi';
 
-import { getBlacklistTargetsForEvmCall } from './evmCallBlacklist';
+import { getBlacklistTargetsForEvmCall } from '../shared/evmCallBlacklist.ts';
 
-const TOKEN = '0x1111111111111111111111111111111111111111';
-const SPENDER = '0x2222222222222222222222222222222222222222';
-const OPERATOR = '0x3333333333333333333333333333333333333333';
-const RECIPIENT = '0x4444444444444444444444444444444444444444';
+import { getBlacklistTargetsForEvmCallWithContractType } from './evmCallBlacklist';
+import { getContractType } from './validations';
 
-const ERC20_INTERFACE = new Interface([
+jest.mock('./validations', () => ({ getContractType: jest.fn() }));
+
+const token = '0x1111111111111111111111111111111111111111';
+const spender = '0x2222222222222222222222222222222222222222';
+const abi = new Interface([
   'function approve(address spender,uint256 amount)',
-  'function decreaseAllowance(address spender,uint256 subtractedValue)',
-  'function increaseAllowance(address spender,uint256 addedValue)',
+  'function transfer(address to,uint256 amount)',
 ]);
+const provider = {};
+const controller = {};
 
-const ERC721_INTERFACE = new Interface([
-  'function setApprovalForAll(address operator,bool approved)',
-]);
+beforeEach(() => jest.mocked(getContractType).mockReset());
 
-const ERC1155_INTERFACE = new Interface([
-  'function safeBatchTransferFrom(address from,address to,uint256[] ids,uint256[] amounts,bytes data)',
-]);
+describe('browser EVM blacklist contract-type adapter', () => {
+  it.each(['ERC-20', 'ERC-721'])(
+    'passes the resolved %s standard to the shared decoder',
+    async (tokenStandard) => {
+      const data = abi.encodeFunctionData('approve', [spender, 0]);
+      jest.mocked(getContractType).mockResolvedValue({ type: tokenStandard });
 
-describe('getBlacklistTargetsForEvmCall', () => {
-  it('includes the direct target and ERC20 approval spender', () => {
-    const targets = getBlacklistTargetsForEvmCall({
-      data: ERC20_INTERFACE.encodeFunctionData('approve', [SPENDER, 1]),
-      to: TOKEN,
-    });
+      const targets = await getBlacklistTargetsForEvmCallWithContractType({
+        controller,
+        data,
+        to: token,
+        web3Provider: provider,
+      });
 
-    expect(targets).toEqual([
-      { address: TOKEN, type: 'target' },
-      { address: SPENDER, method: 'approve', type: 'approval' },
-    ]);
+      expect(getContractType).toHaveBeenCalledTimes(1);
+      expect(getContractType).toHaveBeenCalledWith(token, provider, controller);
+      expect(targets).toEqual(
+        getBlacklistTargetsForEvmCall({ data, to: token, tokenStandard })
+      );
+    }
+  );
+
+  it('keeps unknown-standard approval targets when the type lookup fails', async () => {
+    const data = abi.encodeFunctionData('approve', [spender, 0]);
+    jest.mocked(getContractType).mockRejectedValue(new Error('Unavailable'));
+
+    expect(
+      await getBlacklistTargetsForEvmCallWithContractType({
+        data,
+        to: token,
+        web3Provider: provider,
+      })
+    ).toEqual(getBlacklistTargetsForEvmCall({ data, to: token }));
   });
 
-  it('allows ERC20 allowance reductions and revocations', () => {
-    const revokeTargets = getBlacklistTargetsForEvmCall({
-      data: ERC20_INTERFACE.encodeFunctionData('approve', [SPENDER, 0]),
-      tokenStandard: 'ERC-20',
-      to: TOKEN,
-    });
-    expect(revokeTargets).toEqual([{ address: TOKEN, type: 'target' }]);
-
-    const decreaseTargets = getBlacklistTargetsForEvmCall({
-      data: ERC20_INTERFACE.encodeFunctionData('decreaseAllowance', [
-        SPENDER,
-        1,
-      ]),
-      to: TOKEN,
-    });
-    expect(decreaseTargets).toEqual([{ address: TOKEN, type: 'target' }]);
-
-    const zeroIncreaseTargets = getBlacklistTargetsForEvmCall({
-      data: ERC20_INTERFACE.encodeFunctionData('increaseAllowance', [
-        SPENDER,
-        0,
-      ]),
-      to: TOKEN,
-    });
-    expect(zeroIncreaseTargets).toEqual([{ address: TOKEN, type: 'target' }]);
-  });
-
-  it('does not treat unknown zero approve calls as ERC20 revocations', () => {
-    const targets = getBlacklistTargetsForEvmCall({
-      data: ERC20_INTERFACE.encodeFunctionData('approve', [SPENDER, 0]),
-      to: TOKEN,
-    });
-
-    expect(targets).toEqual([
-      { address: TOKEN, type: 'target' },
-      { address: SPENDER, method: 'approve', type: 'approval' },
-    ]);
-  });
-
-  it('includes approved NFT operators but ignores revocations', () => {
-    const approvalTargets = getBlacklistTargetsForEvmCall({
-      data: ERC721_INTERFACE.encodeFunctionData('setApprovalForAll', [
-        OPERATOR,
-        true,
-      ]),
-    });
-    expect(approvalTargets).toEqual([
-      { address: OPERATOR, method: 'setApprovalForAll', type: 'approval' },
-    ]);
-
-    const revokeTargets = getBlacklistTargetsForEvmCall({
-      data: ERC721_INTERFACE.encodeFunctionData('setApprovalForAll', [
-        OPERATOR,
-        false,
-      ]),
-    });
-    expect(revokeTargets).toEqual([]);
-  });
-
-  it('extracts ERC1155 batch transfer recipients', () => {
-    const targets = getBlacklistTargetsForEvmCall({
-      data: ERC1155_INTERFACE.encodeFunctionData('safeBatchTransferFrom', [
-        SPENDER,
-        RECIPIENT,
-        [1, 2],
-        [10, 20],
-        '0x',
-      ]),
-      to: TOKEN,
-    });
-
-    expect(targets).toEqual([
-      { address: TOKEN, type: 'target' },
-      {
-        address: RECIPIENT,
-        method: 'safeBatchTransferFrom',
-        type: 'token-recipient',
-      },
-    ]);
+  it('does not fetch a contract type for a transfer', async () => {
+    const data = abi.encodeFunctionData('transfer', [spender, 1]);
+    expect(
+      await getBlacklistTargetsForEvmCallWithContractType({
+        data,
+        to: token,
+        web3Provider: provider,
+      })
+    ).toEqual(getBlacklistTargetsForEvmCall({ data, to: token }));
+    expect(getContractType).not.toHaveBeenCalled();
   });
 });
