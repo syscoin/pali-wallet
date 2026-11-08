@@ -40,6 +40,7 @@ function fixture(
     capabilities?: boolean;
     batch?: boolean;
     smart?: boolean;
+    imported?: boolean;
     smartMessages?: boolean;
     secondAccount?: boolean;
     restoring?: boolean;
@@ -48,6 +49,8 @@ function fixture(
   } = {}
 ) {
   const { secondAccount = false, smart = false, smartMessages = false } = options;
+  const firstAccountType = smart ? 'SmartAccount' : options.imported ? 'Imported' : 'HDAccount';
+  const firstAccountId = smart ? 'smart:60:0' : options.imported ? 'imported:60:0' : 'hd:60:0';
   let snapshot: CustodySnapshot = {
     phase: 'ready',
     revision: 1,
@@ -72,7 +75,7 @@ function fixture(
   let siteBlocked = false;
   let siteWait: Promise<void> = Promise.resolve();
   let blacklistedAddress = false;
-  let selectedAccountId = options.smart ? 'smart:60:0' : 'hd:60:0';
+  let selectedAccountId = firstAccountId;
   const responses: unknown[] = [],
     emissions: unknown[] = [],
     emissionScopes: string[] = [],
@@ -88,6 +91,10 @@ function fixture(
   let dispatchWait: Promise<void> = Promise.resolve();
   let dispatchFailure: Error | undefined;
   let callsStatusError: Error | undefined;
+  let callsStatusWait: Promise<void> = Promise.resolve();
+  const callsStatusReads: { origin: string; id: string }[] = [];
+  const callsStatusChains: number[] = [];
+  const callsStatusReceipts = new Map<number, ReadonlyMap<string, unknown>>();
   const handedOff: unknown[] = [];
   let emissionWait: Promise<void> = Promise.resolve();
   let pairWait: Promise<void> = Promise.resolve();
@@ -172,8 +179,18 @@ function fixture(
       return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)) };
     },
     async readCallsStatus(origin, id, guard) {
+      callsStatusReads.push({ origin, id });
+      await callsStatusWait;
+      guard();
       if (callsStatusError) throw callsStatusError;
-      return (await restoredRepository).calls.resolveCallsStatus({ assertCurrent: guard, forChain: () => null }, origin, id);
+      return (await restoredRepository).calls.resolveCallsStatus({
+        assertCurrent: guard,
+        forChain(chainId) {
+          callsStatusChains.push(chainId);
+          const receipts = callsStatusReceipts.get(chainId);
+          return receipts ? { async getTransactionReceipt(hash) { return receipts.get(hash) ?? null; } } : null;
+        },
+      }, origin, id);
     },
     assertOwner() {},
     sessionGeneration: () => snapshot.revision,
@@ -253,9 +270,9 @@ function fixture(
         ['ready', 'authenticating'].includes(snapshot.phase)
           ? [
               {
-                id: options.smart ? 'smart:60:0' : 'hd:60:0',
+                id: firstAccountId,
                 index: 0,
-                type: options.smart ? 'SmartAccount' : 'HDAccount',
+                type: firstAccountType,
                 address: ADDRESS,
                 xpub: 'private-host-public-xpub',
                 label: 'Account 1',
@@ -338,7 +355,7 @@ function fixture(
           [ORIGIN]: {
             host: ORIGIN,
             accountId: 0,
-            accountType: (options.smart ? 'SmartAccount' : 'HDAccount') as KeyringAccountType,
+            accountType: firstAccountType as KeyringAccountType,
             chain: 'ethereum' as INetwork['kind'],
             chainId: 1,
             date: 1,
@@ -479,6 +496,12 @@ function fixture(
       dispatchWait = value;
     },
     failCallsStatus(error: Error) { callsStatusError = error; },
+    callsStatusReads,
+    callsStatusChains,
+    setCallsStatusWait(value: Promise<void>) { callsStatusWait = value; },
+    setCallsStatusReceipts(chainId: number, receipts: ReadonlyMap<string, unknown>) {
+      callsStatusReceipts.set(chainId, receipts);
+    },
     failDispatch() {
       dispatchFailure = Error('Lost acknowledgment');
     },
@@ -1346,6 +1369,7 @@ async function connectedFixture(
     capabilities?: boolean;
     batch?: boolean;
     smart?: boolean;
+    imported?: boolean;
     smartMessages?: boolean;
     secondAccount?: boolean;
     accountId?: string;
@@ -2751,8 +2775,9 @@ for (const change of ['get-expired', 'show-expired', 'show-dismissed'])
     } finally { Date.now = readNow; release?.(); await f.controller.dispose(); }
   });
 
-test('EOA calls keep one review, require each fee consent and return the durable bundle ID', async () => {
-  const f = await connectedFixture({ batch: true });
+for (const imported of [false, true])
+test(`${imported ? 'Imported' : 'HD'} EOA calls keep each fee consent and expose their durable status after switching networks`, async () => {
+  const f = await connectedFixture({ batch: true, imported, accountId: imported ? 'imported:60:0' : 'hd:60:0' });
   try {
     const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', atomicRequired: false,
       calls: [{ to: '0x' + '22'.repeat(20), value: '0x1' }, { to: '0x' + '33'.repeat(20), value: '0x2' }] }]);
@@ -2770,8 +2795,105 @@ test('EOA calls keep one review, require each fee consent and return the durable
     const stored = await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x1234');
     assert.equal(stored?.txHashes.length, 2);
     assert.equal(stored?.atomic, false);
+    const receipts = new Map(stored!.txHashes.map((hash) => [hash, {
+      transactionHash: hash, status: '0x1', blockHash: '0x' + 'ab'.repeat(32),
+      blockNumber: '0x7', gasUsed: '0x5208', logs: [],
+    }]));
+    f.setCallsStatusReceipts(1, receipts);
+    f.selectChain(2);
+    await messageRequest(f, 'wallet_getCallsStatus', ['0x1234'], 11);
+    const status = (f.responses.at(-1) as { result: { result: { status: number; chainId: string; atomic: boolean; receipts: unknown[] } } }).result.result;
+    assert.equal(status.status, 200);
+    assert.equal(status.chainId, '0x1');
+    assert.equal(status.atomic, false);
+    assert.equal(status.receipts.length, 2);
+    assert.deepEqual(f.callsStatusChains, [1]);
+    const beforeShow = f.responses.length;
+    await messageRequest(f, 'wallet_showCallsStatus', ['0x1234'], 12);
+    const shown = f.view.getSnapshot().callsStatus;
+    assert(shown);
+    assert.deepEqual(shown.status, status);
+    assert.equal(f.responses.length, beforeShow);
+    await f.view.callsStatusShown(shown.id);
+    assert.deepEqual(f.responses.at(-1), { id: 12, result: { result: null } });
+    f.view.dismissCallsStatus(shown.id);
+    assert.deepEqual(f.callsStatusChains, [1, 1]);
+    assert.equal(f.transactions.length, 2);
   } finally { await f.controller.dispose(); }
 });
+
+for (const method of ['wallet_getCallsStatus', 'wallet_showCallsStatus']) {
+  for (const mismatch of ['origin', 'grant-chain', 'namespace-method', 'namespace-account']) {
+    test(`EOA ${method} rejects ${mismatch} before reading the bundle`, async () => {
+      const f = await connectedFixture({ batch: true });
+      try {
+        const session = structuredClone(f.session);
+        let chainId = 'eip155:1';
+        if (mismatch === 'origin') Object.assign(session, {
+          binding: { ...session.binding, origin: 'https://other.example' },
+        });
+        else if (mismatch === 'grant-chain') {
+          chainId = 'eip155:2';
+          Object.assign(f.session.namespaces.eip155!, {
+            accounts: [...f.session.namespaces.eip155!.accounts, `${chainId}:${ADDRESS}`],
+            chains: [...f.session.namespaces.eip155!.chains!, chainId],
+          });
+        } else if (mismatch === 'namespace-method') {
+          Object.assign(f.session.namespaces.eip155!, {
+            methods: f.session.namespaces.eip155!.methods.filter((entry) => entry !== method),
+          });
+        } else Object.assign(f.session.namespaces.eip155!, { accounts: [`eip155:1:0x${'22'.repeat(20)}`] });
+        f.event({ type: 'request', request: {
+          id: 10, session, chainId, method, params: ['0x1234'],
+          expiresAt: Date.now() + 300000, verification: UNKNOWN,
+        } });
+        await settle();
+        assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4100);
+        assert.deepEqual(f.callsStatusReads, []);
+        assert.equal(f.view.getSnapshot().callsStatus, null);
+      } finally { await f.controller.dispose(); }
+    });
+  }
+
+  test(`EOA ${method} cannot resolve another origin's durable bundle`, async () => {
+    const f = await connectedFixture({ batch: true, imported: true, accountId: 'imported:60:0' });
+    try {
+      await (await f.repository).calls.reserveSendCallsBundle('https://other.example', '0x1234', {
+        atomic: false, smartAccount: false, chainId: 1,
+      }, 'reserved', ADDRESS);
+      await messageRequest(f, method, ['0x1234']);
+      assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 5730);
+      assert.equal(f.view.getSnapshot().callsStatus, null);
+    } finally { await f.controller.dispose(); }
+  });
+
+  for (const retirement of ['lock', 'session', 'expiry']) {
+    test(`EOA ${method} suppresses a held status after ${retirement}`, async () => {
+      const f = await connectedFixture({ batch: true });
+      const held = Promise.withResolvers<void>();
+      const readNow = Date.now;
+      let now = readNow();
+      Date.now = () => now;
+      try {
+        await (await f.repository).calls.reserveSendCallsBundle(ORIGIN, '0x1234', {
+          atomic: false, smartAccount: false, chainId: 1,
+        }, 'reserved', ADDRESS);
+        f.setCallsStatusWait(held.promise);
+        await messageRequest(f, method, ['0x1234']);
+        assert.equal(f.callsStatusReads.length, 1);
+        if (retirement === 'lock') f.lock();
+        else if (retirement === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+        else now += 300001;
+        held.resolve();
+        await settle();
+        assert.deepEqual(f.handedOff, []);
+        assert.deepEqual(f.responses, []);
+        assert.equal(f.view.getSnapshot().callsStatus, null);
+        assert(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x1234'));
+      } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
+    });
+  }
+}
 
 test('rejecting a partially acknowledged EOA batch returns its status ID and never resends', async () => {
   const f = await connectedFixture({ batch: true });

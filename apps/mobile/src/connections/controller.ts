@@ -1143,8 +1143,13 @@ export class NativeConnectionsController {
         );
         const permitted =
           account &&
-          grant?.accountType === 'SmartAccount' &&
+          (grant?.accountType === 'HDAccount' ||
+            grant?.accountType === 'Imported' ||
+            grant?.accountType === 'SmartAccount') &&
+          grant.chain === 'ethereum' &&
           session &&
+          session.binding.origin === request.session.binding.origin &&
+          request.chainId === `eip155:${grant.chainId}` &&
           Object.values(session.namespaces).some(
             (namespace) =>
               namespace.methods.includes(request.method) &&
@@ -1154,7 +1159,11 @@ export class NativeConnectionsController {
                   `${request.chainId}:${account.address}`.toLowerCase()
               )
           );
-        if (!context.unlocked || !permitted)
+        if (
+          !context.unlocked ||
+          this.options.source.getSnapshot().phase !== 'ready' ||
+          !permitted
+        )
           throw new EthereumRpcErrorHandler(
             4100,
             'Method or account is not authorized'
