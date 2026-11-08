@@ -35,6 +35,16 @@ const Advanced = () => {
   });
   const [loading, setLoading] = useState<boolean>(false);
   const [saveError, setSaveError] = useState(false);
+  const [clearScope, setClearScope] = useState<ReturnType<
+    typeof getWalletNavigationScope
+  > | null>(null);
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState<'success' | 'error' | null>(
+    null
+  );
+  const { isBitcoinBased, activeAccount, accounts, activeNetwork } =
+    useSelector((state: RootState) => state.vault);
+  const account = accounts[activeAccount.type]?.[activeAccount.id];
   const submitting = useRef(false);
   const mounted = useRef(true);
   const submissionId = useRef(0);
@@ -63,6 +73,9 @@ const Advanced = () => {
     setLoading(false);
     setConfirmed(false);
     setSaveError(false);
+    setClearScope(null);
+    setClearing(false);
+    setClearResult(null);
   }, [walletScope.account, walletScope.network]);
 
   const ADVANCED_SETTINGS = ['refresh', 'autolock'];
@@ -139,6 +152,39 @@ const Advanced = () => {
     setIsOpenConfirmationModal(false);
   };
 
+  const clearActivity = async () => {
+    if (!clearScope || submitting.current) return;
+    submitting.current = true;
+    const id = ++submissionId.current;
+    const scope = clearScope;
+    const isCurrent = () => {
+      const current = getWalletNavigationScope();
+      return (
+        mounted.current &&
+        id === submissionId.current &&
+        current.account === scope.account &&
+        current.network === scope.network
+      );
+    };
+    setClearing(true);
+    setClearResult(null);
+    try {
+      await controllerEmitter(
+        ['wallet', 'clearEvmActivityAndNonce'],
+        [scope, 'clear-activity-and-nonce-data']
+      );
+      if (isCurrent()) setClearResult('success');
+    } catch {
+      if (isCurrent()) setClearResult('error');
+    } finally {
+      if (isCurrent()) {
+        submitting.current = false;
+        setClearing(false);
+        setClearScope(null);
+      }
+    }
+  };
+
   const onSubmit = async () => {
     if (!hasUnsavedChanges || !isAutolockValid || submitting.current) return;
 
@@ -206,6 +252,19 @@ const Advanced = () => {
         onClick={handleConfirmEnable}
       />
 
+      <ConfirmationModal
+        title={t('settings.clearActivityAndNonce')}
+        description={t('settings.clearActivityAndNonceWarning', {
+          account: account?.label || account?.address,
+          network: activeNetwork.label || activeNetwork.currency,
+        })}
+        show={clearScope !== null}
+        onClose={() => setClearScope(null)}
+        onClick={clearActivity}
+        buttonText={t('settings.clearActivityAndNonceConfirm')}
+        isButtonLoading={clearing}
+      />
+
       <Form
         validateMessages={{ default: '' }}
         className="flex flex-col gap-6 items-center justify-center text-center w-full"
@@ -239,7 +298,7 @@ const Advanced = () => {
                     <input
                       id={`advanced-${propName}`}
                       type="number"
-                      disabled={loading}
+                      disabled={loading || clearing}
                       aria-invalid={!isAutolockValid}
                       aria-describedby="advanced-autolock-hint"
                       value={
@@ -312,7 +371,7 @@ const Advanced = () => {
                 // Toggle switch for other settings
                 <Switch
                   id={`advanced-${propName}`}
-                  disabled={loading}
+                  disabled={loading || clearing}
                   checked={enabledProperties[propName] as boolean}
                   onChange={(checked) => handleSwitchChange(checked, propName)}
                   className="relative inline-flex items-center w-9 h-5 border border-brand-royalblue rounded-full"
@@ -331,7 +390,39 @@ const Advanced = () => {
           </Form.Item>
         ))}
 
+        {!isBitcoinBased && (
+          <section className="w-full border-t border-white/10 pt-6">
+            <Button
+              type="button"
+              variant="neutral"
+              className="text-brand-royalblue"
+              fullWidth
+              disabled={loading || clearing}
+              onClick={() => {
+                setClearResult(null);
+                setClearScope(getWalletNavigationScope());
+              }}
+            >
+              {t('settings.clearActivityAndNonce')}
+            </Button>
+            {clearResult && (
+              <p
+                role={clearResult === 'error' ? 'alert' : 'status'}
+                className="mt-3 text-sm"
+              >
+                {t(
+                  clearResult === 'success'
+                    ? 'settings.clearActivityAndNonceSuccess'
+                    : 'settings.clearActivityAndNonceFailed'
+                )}
+              </p>
+            )}
+          </section>
+        )}
+
         <PageActionFooter
+          className="advanced-settings-footer"
+          includeInFlow
           error={saveError ? t('settings.preferencesSaveFailed') : undefined}
         >
           <Button
@@ -340,7 +431,9 @@ const Advanced = () => {
             type="submit"
             loading={loading}
             fullWidth
-            disabled={!hasUnsavedChanges || !isAutolockValid || loading}
+            disabled={
+              !hasUnsavedChanges || !isAutolockValid || loading || clearing
+            }
           >
             {t('buttons.save')}
           </Button>

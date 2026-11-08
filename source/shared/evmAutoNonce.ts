@@ -63,34 +63,75 @@ export async function assertEvmAssetReservations(
   assertCurrent();
 }
 
-/** Local commitments beyond the chosen balance basis remain payable even across nonce gaps. */
-async function additionalNativeCost(
+export type EvmNativeReservations = Readonly<{
+  canonical: bigint;
+  pending: bigint;
+}>;
+
+/** Apply canonical commitments and conservative pending reservations. */
+export function availableEvmNativeBalance(
+  balances: Readonly<{ canonical: bigint; pending: bigint }>,
+  reservations: EvmNativeReservations,
+  state: 'latest' | 'pending'
+): bigint {
+  for (const value of [
+    balances.canonical,
+    balances.pending,
+    reservations.canonical,
+    reservations.pending,
+  ]) {
+    if (typeof value !== 'bigint' || value < BigInt(0))
+      throw new EvmAssetStateError('INVALID_RESPONSE');
+  }
+  const canonical = balances.canonical - reservations.canonical;
+  const pending =
+    state === 'latest' ? canonical : balances.pending - reservations.pending;
+  const available = canonical < pending ? canonical : pending;
+  return available > BigInt(0) ? available : BigInt(0);
+}
+
+/** Single-variant pending groups follow the node's ordinary pending view.
+ * Competing retained variants have unknown overlap and reserve their full cap. */
+async function nativeReservations(
   snapshot: EvmAutoNonceSnapshot,
   chainId: string,
   from: string,
-  minimumNonce: number,
+  latest: number,
+  pending: number,
   assertCurrent: () => void
-): Promise<bigint> {
+): Promise<EvmNativeReservations> {
   assertCurrent();
-  const reserved = new Map<number, bigint>();
-  let total = BigInt(0);
+  const groups = new Map<
+    number,
+    { competing: boolean; hash: string; maximum: bigint }
+  >();
+  let canonicalCost = BigInt(0);
   for (const entry of snapshot.retained) {
-    if (!sameSender(entry, chainId, from) || entry.nonce < minimumNonce)
-      continue;
+    if (!sameSender(entry, chainId, from) || entry.nonce < latest) continue;
     if (!validNonce(entry.nonce)) throw new Error('Invalid retained EVM nonce');
     assertCurrent();
     const cost = await snapshot.readMaximumCost(entry.hash);
     assertCurrent();
     if (typeof cost !== 'bigint' || cost < BigInt(0))
       throw new Error('Invalid retained EVM cost');
-    const previous = reserved.get(entry.nonce) ?? BigInt(0);
-    if (cost > previous) {
-      total += cost - previous;
-      reserved.set(entry.nonce, cost);
+    let group = groups.get(entry.nonce);
+    if (!group) {
+      group = { hash: entry.hash, maximum: BigInt(0), competing: false };
+      groups.set(entry.nonce, group);
+    }
+    group.competing ||= group.hash !== entry.hash;
+    if (cost > group.maximum) {
+      canonicalCost += cost - group.maximum;
+      group.maximum = cost;
     }
   }
+  let pendingCost = BigInt(0);
+  for (const [nonce, group] of groups) {
+    if (nonce >= Math.max(latest, pending) || group.competing)
+      pendingCost += group.maximum;
+  }
   assertCurrent();
-  return total;
+  return Object.freeze({ canonical: canonicalCost, pending: pendingCost });
 }
 
 /** The host supplies fresh evidence from the same captured RPC endpoint. A
@@ -103,7 +144,12 @@ type Selection =
   | Readonly<{ kind: 'unresolved'; nonce: number }>;
 
 export type EvmAutoNoncePlan =
-  | Readonly<{ additionalNativeCost: bigint; kind: 'ready'; nonce: number }>
+  | Readonly<{
+      balanceState: 'latest' | 'pending';
+      kind: 'ready';
+      nativeReservations: EvmNativeReservations;
+      nonce: number;
+    }>
   | Readonly<{ kind: 'unresolved'; nonce: number; reason?: 'asset-state' }>;
 
 const canStillBePending = ({ phase }: RetainedNonce) =>
@@ -338,18 +384,20 @@ export class EvmAutoNonceAcceptance {
           },
           assertCurrent
         );
-      const nativeCost = await additionalNativeCost(
+      const costs = await nativeReservations(
         snapshot,
         chainId,
         sender,
-        nonceOverride < pending ? latest : floor,
+        latest,
+        pending,
         assertCurrent
       );
       assertCurrent();
       return {
         kind: 'ready',
         nonce: nonceOverride,
-        additionalNativeCost: nativeCost,
+        nativeReservations: costs,
+        balanceState: pending < latest ? 'latest' : 'pending',
       };
     }
     const variants = new Map<number, RetainedNonce[]>();
@@ -427,16 +475,17 @@ export class EvmAutoNonceAcceptance {
         },
         assertCurrent
       );
-    const nativeCost =
+    const costs =
       selection.kind === 'ready'
-        ? await additionalNativeCost(
+        ? await nativeReservations(
             snapshot,
             chainId,
             sender,
-            floor,
+            latest,
+            pending,
             assertCurrent
           )
-        : BigInt(0);
+        : undefined;
     for (const { key, nonce, ticket } of usedAcknowledgements) {
       if (
         this.acknowledgements.get(key) !== ticket ||
@@ -447,7 +496,11 @@ export class EvmAutoNonceAcceptance {
     }
     assertCurrent();
     return selection.kind === 'ready'
-      ? { ...selection, additionalNativeCost: nativeCost }
+      ? {
+          ...selection,
+          nativeReservations: costs!,
+          balanceState: pending < latest ? 'latest' : 'pending',
+        }
       : selection;
   }
 }

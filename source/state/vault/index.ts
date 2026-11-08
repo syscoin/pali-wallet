@@ -823,6 +823,24 @@ const VaultState = createSlice({
         }
       }
     },
+    clearEvmAccountActivity(
+      state: IVaultState,
+      action: PayloadAction<{ address: string; chainId: number }>
+    ) {
+      const { address, chainId } = action.payload;
+      for (const type of Object.values(KeyringAccountType)) {
+        for (const [id, account] of Object.entries(
+          state.accounts[type] || {}
+        )) {
+          if (account.address?.toLowerCase() === address.toLowerCase()) {
+            const history = state.accountTransactions[type]?.[Number(id)];
+            if (history) delete history.ethereum[chainId];
+            if (account.evmTxCountByChainId)
+              delete account.evmTxCountByChainId[chainId];
+          }
+        }
+      }
+    },
     // Simple setter for transactions - no processing, just set the array
     setAccountTransactions(
       state: IVaultState,
@@ -1273,6 +1291,7 @@ export const {
   setAccountAssets,
   setSingleTransactionToState,
   setAccountTransactions,
+  clearEvmAccountActivity,
   setPasskeyCredentialProfile,
   setTransactionStatusToReplaced,
   setAccounts,

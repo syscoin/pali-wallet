@@ -309,6 +309,58 @@ test('clearing Security returns to its originating Settings tab', async ({ page 
   await expect(page.getByRole('textbox', { name: /password/i })).toHaveCount(0);
 });
 
+test('activity reset admits one same-turn double click and returns to Settings', async ({ page }, testInfo) => {
+  await openNative(page); await unlock(page); await chooseTab(page, 'Settings');
+  await page.getByRole('button', { name: /^Reset activity Clear local/ }).click();
+  await expect(page.getByRole('heading', { name: 'Reset activity', exact: true })).toBeVisible();
+  await expect(page.getByText('Transactions already held by the network remain pending and may still confirm.', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('activity-reset.png'), fullPage: true });
+  await page.evaluate(() => window.__watchFixture.delayActivityReset(true));
+  await page.getByRole('button', { name: 'Reset activity', exact: true }).evaluate((button) => {
+    (button as HTMLElement).click(); (button as HTMLElement).click();
+  });
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.events().filter(event => event === 'activity:reset:start').length)).toBe(1);
+  await expect(page.getByRole('button', { name: 'Resetting activity…', exact: true })).toBeDisabled();
+  await page.evaluate(() => window.__watchFixture.finishActivityReset());
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.events().filter(event => event === 'activity:reset:done').length)).toBe(1);
+});
+
+test('locking during activity reset prevents stale completion', async ({ page }) => {
+  await openNative(page); await unlock(page); await chooseTab(page, 'Settings');
+  await page.getByRole('button', { name: /^Reset activity Clear local/ }).click();
+  await page.evaluate(() => window.__watchFixture.delayActivityReset(true));
+  await page.getByRole('button', { name: 'Reset activity', exact: true }).click();
+  await page.evaluate(() => {
+    window.__watchFixture.lifecycle('background');
+    window.__watchFixture.lifecycle('active');
+    window.__watchFixture.finishActivityReset();
+  });
+  await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.events().includes('activity:reset:done'))).toBe(false);
+});
+
+test('activity reset remains readable with narrow large-text confirmation and error states', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 844 });
+  await openNative(page, '?font-scale=1.6'); await unlock(page); await chooseTab(page, 'Settings');
+  // RN Web ignores Dynamic Type. Enlarge the rendered body text for this layout check.
+  await page.addStyleTag({ content: `
+    [dir="auto"] { font-size: 24px !important; line-height: 1.4 !important; }
+    [data-testid^="main-tab-caption-"] { font-size: 15px !important; line-height: 21.25px !important; }
+  ` });
+  await page.getByRole('button', { name: /^Reset activity Clear local/ }).click();
+  await expect(page.getByRole('button', { name: 'Reset activity', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('confirmation-narrow.png'), fullPage: true });
+  await page.evaluate(() => window.__watchFixture.failActivityReset());
+  await page.getByRole('button', { name: 'Reset activity', exact: true }).click();
+  await expect(page.getByText('Activity reset incomplete', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Reset activity', exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('error-narrow.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Reset activity', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('success-narrow.png'), fullPage: true });
+});
+
 test('a changed native account invalidates the old originating tab before Back', async ({ page }) => {
   await openNative(page); await unlock(page); await openSecurity(page);
   await page.evaluate(() => window.__watchFixture.selectAccount('hd:60:1'));

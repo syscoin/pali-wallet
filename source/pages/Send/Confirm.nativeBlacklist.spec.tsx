@@ -315,6 +315,7 @@ beforeEach(() => {
           ]
         : [],
       readMaximumCost: jest.fn(),
+      readAssetDebit: jest.fn(),
     }),
   });
   mockWallet.withReceiptReadProvider = jest.fn(async (signal, _, read) =>
@@ -323,7 +324,12 @@ beforeEach(() => {
       verifyConfiguredChainId: async () => undefined,
       send: async (method: string) => {
         if (method === 'eth_getBlockByNumber')
-          return { gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+          return {
+            number: '0x20',
+            hash: '0x' + 'a'.repeat(64),
+            gasLimit: '0x1c9c380',
+            baseFeePerGas: '0x1',
+          };
         if (method === 'eth_getBalance') return mockPendingBalanceWei;
         if (method === 'eth_getTransactionCount') return mockPendingNonce;
         if (method === 'eth_estimateGas') return '0x5208';

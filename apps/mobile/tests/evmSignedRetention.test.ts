@@ -12,7 +12,6 @@ import {
   EvmSignedRecords,
   createEvmSignedRecordLifecycle,
   consumeSignedEvmCapacityRefusal,
-  type EvmSignedRetirementRead,
   type EvmSignedRecordStorage,
 } from '../../../source/wallet/evmSignedRecords.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
@@ -24,7 +23,6 @@ Object.defineProperty(globalThis, 'crypto', {
 const signer = new Wallet(`0x${'31'.repeat(32)}`);
 const otherSigner = new Wallet(`0x${'32'.repeat(32)}`);
 const chainId = '7654321';
-const finalHash = `0x${'ab'.repeat(32)}`;
 const domain = 'org.syscoin.pali.evm.signed.root.v1';
 const scope = { chainId, from: signer.address };
 
@@ -94,25 +92,6 @@ async function signed(nonce: number, wallet = signer, network = chainId) {
     },
   };
 }
-function finality(
-  nonce: number,
-  network = chainId
-): {
-  read: EvmSignedRetirementRead;
-  calls: [string, readonly unknown[]][];
-} {
-  const calls: [string, readonly unknown[]][] = [];
-  return {
-    calls,
-    async read(method, params) {
-      calls.push([method, params]);
-      if (method === 'eth_chainId') return `0x${BigInt(network).toString(16)}`;
-      if (method === 'eth_getBlockByNumber')
-        return { number: '0x20', hash: finalHash };
-      return `0x${nonce.toString(16)}`;
-    },
-  };
-}
 async function rootPayload(f: ReturnType<typeof fixture>) {
   const bundle = JSON.parse(f.value()!);
   const bytes = await f.session().keyring.decryptPrivateRecord({
@@ -143,302 +122,6 @@ async function replaceRoot(
   }
   f.replace(JSON.stringify(bundle));
 }
-
-test('finalized hash-bound nonce retires only its sender and chain below the floor', async () => {
-  const f = fixture();
-  const entries = await Promise.all([
-    signed(0),
-    signed(1),
-    signed(2),
-    signed(0, otherSigner),
-    signed(0, signer, '57'),
-  ]);
-  for (const entry of entries) await f.records.append(f.session(), entry);
-  const rpc = finality(2);
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, rpc.read),
-    2
-  );
-  assert.deepEqual(rpc.calls, [
-    ['eth_chainId', []],
-    ['eth_getBlockByNumber', ['finalized', false]],
-    [
-      'eth_getTransactionCount',
-      [
-        signer.address.toLowerCase(),
-        { blockHash: finalHash, requireCanonical: true },
-      ],
-    ],
-    ['eth_chainId', []],
-  ]);
-  const reopened = new EvmSignedRecords(f.port);
-  assert.deepEqual(
-    (await reopened.listSender(f.session(), chainId, signer.address)).map(
-      (e) => e.nonce
-    ),
-    [2]
-  );
-  for (const entry of entries.slice(3))
-    assert.equal(
-      (
-        await reopened.readExact(
-          f.session(),
-          entry.chainId,
-          entry.from,
-          entry.hash
-        )
-      )?.rawTransaction,
-      entry.rawTransaction
-    );
-  assert.deepEqual((await rootPayload(f)).nonceFloors, [
-    { chainId, from: signer.address.toLowerCase(), nonce: 2 },
-  ]);
-  assert.equal(JSON.parse(f.value()!).nonceFloors, undefined);
-  assert.equal(
-    (
-      await reopened.captureAutoNonceSnapshot(
-        f.session(),
-        chainId,
-        signer.address
-      )
-    ).minimumNonce,
-    2
-  );
-});
-
-test('floor-only restart blocks ordinary admission, prior replacement capability and stale replay', async () => {
-  const f = fixture(),
-    first = await signed(0);
-  await f.records.append(f.session(), first);
-  const oldBinding = await f.records.captureVerifiedReplacement(f.session(), {
-    chainId,
-    from: signer.address,
-    nonce: 0,
-    operation: 'speed-up',
-    originalHash: first.hash,
-  });
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(1).read),
-    1
-  );
-  const reopened = new EvmSignedRecords(f.port);
-  assert.equal(await reopened.validate(f.session()), 0);
-  assert.equal(
-    (
-      await reopened.captureAutoNonceSnapshot(
-        f.session(),
-        chainId,
-        signer.address
-      )
-    ).minimumNonce,
-    1
-  );
-  const belowFloor = /EVM_SIGNED_RECORD_NONCE_FINALIZED/;
-  await assert.rejects(reopened.append(f.session(), first), belowFloor);
-  await assert.rejects(
-    reopened.assertSpendingNonce(f.session(), chainId, signer.address, 0),
-    belowFloor
-  );
-  await assert.rejects(
-    reopened.captureVerifiedReplacement(f.session(), {
-      chainId,
-      from: signer.address,
-      nonce: 0,
-      operation: 'cancel',
-      originalHash: first.hash,
-    }),
-    belowFloor
-  );
-  await assert.rejects(
-    reopened.append(
-      f.session(),
-      {
-        ...first,
-        context: {
-          ...first.context,
-          operation: 'speed-up',
-          originalHash: first.hash,
-        },
-      },
-      undefined,
-      oldBinding
-    ),
-    belowFloor
-  );
-  let posts = 0;
-  await assert.rejects(
-    reopened.withReplayAdmission(
-      f.session(),
-      {
-        chainId,
-        from: signer.address,
-        nonce: 0,
-        hash: first.hash,
-        operation: 'send',
-      },
-      () => {
-        posts++;
-      }
-    ),
-    belowFloor
-  );
-  assert.equal(posts, 0);
-  const next = await signed(1);
-  await reopened.append(f.session(), next);
-  await reopened.updatePhase(
-    f.session(),
-    chainId,
-    signer.address,
-    next.hash,
-    'submitted'
-  );
-  assert.equal(
-    (
-      await reopened.captureAutoNonceSnapshot(
-        f.session(),
-        chainId,
-        signer.address
-      )
-    ).minimumNonce,
-    1
-  );
-});
-
-test('earlier authenticated root without floors remains readable and is preserved on retirement', async () => {
-  const f = fixture();
-  await f.records.append(f.session(), await signed(0));
-  const payload = await rootPayload(f);
-  delete payload.nonceFloors;
-  await replaceRoot(f, payload);
-  const reopened = new EvmSignedRecords(f.port);
-  assert.equal(await reopened.validate(f.session()), 1);
-  assert.equal(
-    await reopened.retireFinalized(f.session(), scope, finality(1).read),
-    1
-  );
-  assert.equal(await reopened.validate(f.session()), 0);
-  assert.equal((await rootPayload(f)).nonceFloors[0].nonce, 1);
-});
-
-test('unsupported finality, malformed quantities and switched endpoints preserve records', async () => {
-  const f = fixture();
-  await f.records.append(f.session(), await signed(0));
-  const before = f.value();
-  const chain = `0x${BigInt(chainId).toString(16)}`;
-  const cases: EvmSignedRetirementRead[] = [
-    async () => {
-      throw new Error('unsupported');
-    },
-    async () => '0x1',
-    async (method) => (method === 'eth_chainId' ? chain : null),
-    async (method) =>
-      method === 'eth_chainId' ? chain : { number: '0x00', hash: finalHash },
-    async (method) =>
-      method === 'eth_chainId'
-        ? chain
-        : method === 'eth_getBlockByNumber'
-        ? { number: '0x20', hash: finalHash }
-        : '0x20000000000000',
-  ];
-  let chainReads = 0;
-  const rpc = finality(1);
-  cases.push(async (method, params) =>
-    method === 'eth_chainId' && ++chainReads === 2
-      ? '0x1'
-      : rpc.read(method, params)
-  );
-  for (const read of cases) {
-    assert.equal(await f.records.retireFinalized(f.session(), scope, read), 0);
-    assert.equal(f.value(), before);
-  }
-});
-
-test('revocation during an RPC or atomic storage write prevents retirement', async () => {
-  for (const stage of ['read', 'commit']) {
-    const f = fixture();
-    await f.records.append(f.session(), await signed(0));
-    const before = f.value(),
-      rpc = finality(1),
-      commit = f.port.compareAndSet;
-    const read: EvmSignedRetirementRead = async (method, params) => {
-      if (stage === 'read' && method === 'eth_getTransactionCount') f.revoke();
-      return rpc.read(method, params);
-    };
-    if (stage === 'commit')
-      f.port.compareAndSet = async (...args) => {
-        f.revoke();
-        return commit(...args);
-      };
-    await assert.rejects(
-      f.records.retireFinalized(f.session(), scope, read),
-      /revoked/
-    );
-    assert.equal(f.value(), before);
-  }
-});
-
-test('CAS reload preserves a competing append while retiring finalized bytes', async () => {
-  const f = fixture(),
-    zero = await signed(0),
-    next = await signed(1);
-  await f.records.append(f.session(), zero);
-  const original = f.port.compareAndSet,
-    other = new EvmSignedRecords({ ...f.port });
-  f.port.compareAndSet = async (...args) => {
-    f.port.compareAndSet = original;
-    await other.append(f.session(), next);
-    return original(...args);
-  };
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(1).read),
-    1
-  );
-  assert.equal(
-    (await f.records.readExact(f.session(), chainId, signer.address, next.hash))
-      ?.rawTransaction,
-    next.rawTransaction
-  );
-  assert.equal(
-    await f.records.readExact(f.session(), chainId, signer.address, zero.hash),
-    null
-  );
-});
-
-test('nonce floor stays monotonic without storage growth for empty or unconsumed scopes', async () => {
-  const f = fixture();
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(5).read),
-    0
-  );
-  assert.equal(f.writes(), 0);
-  await f.records.append(f.session(), await signed(1));
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(1).read),
-    0
-  );
-  assert.equal(f.writes(), 1);
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(2).read),
-    1
-  );
-  const before = f.value();
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(1).read),
-    0
-  );
-  assert.equal(f.value(), before);
-});
-
-test('an authenticated root cannot retain entries below its nonce floor', async () => {
-  const f = fixture();
-  await f.records.append(f.session(), await signed(0));
-  const payload = await rootPayload(f);
-  payload.nonceFloors = [
-    { chainId, from: signer.address.toLowerCase(), nonce: 1 },
-  ];
-  await replaceRoot(f, payload);
-  await assert.rejects(f.records.validate(f.session()), /CORRUPT/);
-});
 
 async function fillToCapacity(
   f: ReturnType<typeof fixture>,
@@ -472,85 +155,225 @@ async function fillToCapacity(
   await f.records.append(f.session(), second, metadata);
 }
 
-test('capacity retires finalized bytes and retries the exact signed envelope before one POST', async () => {
-  const f = fixture();
-  await fillToCapacity(f);
-  const next = await signed(2),
-    rpc = finality(1),
-    session = f.session();
-  const boundary = captureEvmSubmission(
-    next.context,
-    session.assertCurrent,
-    () =>
-      createEvmSignedRecordLifecycle(f.records, session, {
-        retirementReadForChain: () => rpc.read,
-      })
-  );
-  let posts = 0;
-  const result = await submitSignedEvmTransaction(
-    next.rawTransaction,
-    ({ admit }) =>
-      admit(async () => {
-        posts++;
-        assert.equal(
-          (
-            await f.records.readExact(
-              session,
-              chainId,
-              signer.address,
-              next.hash
-            )
-          )?.rawTransaction,
-          next.rawTransaction
-        );
-        return next.hash;
-      }),
-    boundary,
-    undefined,
-    Transaction.from(next.rawTransaction).unsignedSerialized
-  );
-  assert.equal(result, next.hash);
-  assert.equal(posts, 1);
-  assert.equal(rpc.calls.length, 4);
+async function clear(f: ReturnType<typeof fixture>, store = f.records) {
+  const session = f.session();
+  return store.clearScope(session, {
+    profileId: await session.keyring.getPrivateRecordProfileId(),
+    ...scope,
+  });
+}
+test('clear removes selected sender/chain records and floors but preserves other scopes', async () => {
+  const f = fixture(),
+    entries = [
+      await signed(5),
+      await signed(0, otherSigner),
+      await signed(0, signer, '57'),
+    ];
+  for (const entry of entries) await f.records.append(f.session(), entry);
+  const payload = await rootPayload(f);
+  payload.nonceFloors = [
+    { chainId, from: signer.address.toLowerCase(), nonce: 5 },
+  ];
+  await replaceRoot(f, payload);
+  assert.equal(await clear(f), 1);
+  const reopened = new EvmSignedRecords(f.port);
+  assert.equal(await reopened.validate(f.session()), 2);
   assert.equal(
-    await f.records.readExact(
-      session,
-      chainId,
-      signer.address,
+    (
+      await reopened.captureAutoNonceSnapshot(
+        f.session(),
+        chainId,
+        signer.address
+      )
+    ).minimumNonce,
+    0
+  );
+  for (const entry of entries.slice(1))
+    assert.equal(
       (
-        await signed(0)
-      ).hash
-    ),
-    null
-  );
-  assert.equal(
-    (await f.records.captureAutoNonceSnapshot(session, chainId, signer.address))
-      .minimumNonce,
-    1
-  );
+        await reopened.readExact(
+          f.session(),
+          entry.chainId,
+          entry.from,
+          entry.hash
+        )
+      )?.rawTransaction,
+      entry.rawTransaction
+    );
+  assert.deepEqual((await rootPayload(f)).nonceFloors, []);
+  await reopened.append(f.session(), await signed(0));
 });
-
-test('unavailable finality retains genuine capacity refusal and normal sends have no finality reads', async () => {
+test('clear revokes an external replacement binding whose original was untracked', async () => {
+  const f = fixture(),
+    original = await signed(0),
+    binding = await f.records.captureVerifiedReplacement(f.session(), {
+      ...scope,
+      nonce: 0,
+      originalHash: original.hash,
+      operation: 'speed-up',
+    });
+  assert.equal(binding.expectedTipHash, null);
+  await clear(f);
+  const replacement = {
+    ...original,
+    context: {
+      ...original.context,
+      operation: 'speed-up' as const,
+      originalHash: original.hash,
+    },
+  };
+  await assert.rejects(
+    f.records.append(f.session(), replacement, undefined, binding),
+    /ORIGINAL_CHANGED/
+  );
+  assert.equal(await f.records.validate(f.session()), 0);
+});
+test('clear invalidates snapshots and a delayed signing lifecycle', async () => {
+  const f = fixture(),
+    first = await signed(0),
+    next = await signed(1);
+  await f.records.append(f.session(), first);
+  const old = f.session(),
+    snapshot = await f.records.captureAutoNonceSnapshot(
+      old,
+      chainId,
+      signer.address
+    ),
+    lifecycle = createEvmSignedRecordLifecycle(f.records, old, {
+      retirementReadForChain: null,
+    });
+  await clear(f);
+  await assert.rejects(snapshot.readMaximumCost(first.hash), /CONTEXT_CHANGED/);
+  await assert.rejects(lifecycle.persistSigned(next), /CONTEXT_CHANGED/);
+  await assert.rejects(
+    f.records.readExact(old, chainId, signer.address, first.hash),
+    /CONTEXT_CHANGED/
+  );
+  assert.equal(await f.records.validate(f.session()), 0);
+});
+test('clear blocks held dispatch before broadcast', async () => {
+  const f = fixture(),
+    first = await signed(0);
+  await f.records.append(f.session(), first);
+  let release!: () => void, entered!: () => void;
+  const waiting = new Promise<void>((r) => {
+      release = r;
+    }),
+    started = new Promise<void>((r) => {
+      entered = r;
+    });
+  let posts = 0;
+  const admission = f.records.withReplayAdmission(
+    f.session(),
+    { ...first, operation: 'send' },
+    () => {
+      posts++;
+    },
+    undefined,
+    {
+      assertCurrent() {},
+      async run() {
+        entered();
+        await waiting;
+      },
+    }
+  );
+  await started;
+  const resetSession = f.session();
+  const profileId = await resetSession.keyring.getPrivateRecordProfileId();
+  const resetting = f.records.clearScope(resetSession, { ...scope, profileId });
+  release();
+  await assert.rejects(admission, /CONTEXT_CHANGED/);
+  await resetting;
+  assert.equal(posts, 0);
+});
+test('persisted reset generation prevents another instance restoring stale signed bytes', async () => {
+  const f = fixture(),
+    first = await signed(0),
+    next = await signed(1);
+  await f.records.append(f.session(), first);
+  const other = new EvmSignedRecords({ ...f.port });
+  let release!: () => void, entered!: () => void;
+  const waiting = new Promise<void>((r) => {
+      release = r;
+    }),
+    started = new Promise<void>((r) => {
+      entered = r;
+    });
+  const session = f.session(),
+    encrypt = session.keyring.encryptPrivateRecord.bind(session.keyring);
+  let paused = false;
+  session.keyring.encryptPrivateRecord = async (input) => {
+    if (!paused) {
+      paused = true;
+      entered();
+      await waiting;
+    }
+    return encrypt(input);
+  };
+  const appending = f.records.append(session, next);
+  await started;
+  await clear(f, other);
+  release();
+  await assert.rejects(appending, /CONTEXT_CHANGED/);
+  assert.equal(await f.records.validate(f.session()), 0);
+});
+test('clear refuses a mismatched profile and revoked commit without erasing records', async () => {
+  const f = fixture();
+  await f.records.append(f.session(), await signed(0));
+  const before = f.value();
+  await assert.rejects(
+    f.records.clearScope(f.session(), {
+      ...scope,
+      profileId: '0x' + '12'.repeat(32),
+    }),
+    /CONTEXT_CHANGED/
+  );
+  assert.equal(f.value(), before);
+  const original = f.port.compareAndSet;
+  f.port.compareAndSet = async (...args) => {
+    f.revoke();
+    return original(...args);
+  };
+  await assert.rejects(clear(f), /revoked/);
+  assert.equal(f.value(), before);
+});
+test('existing authenticated manifests remain readable and invalid floors fail closed', async () => {
+  const f = fixture();
+  await f.records.append(f.session(), await signed(0));
+  const payload = await rootPayload(f);
+  delete payload.nonceFloors;
+  delete payload.resetGeneration;
+  await replaceRoot(f, payload);
+  const before = f.value();
+  assert.equal(await f.records.validate(f.session()), 1);
+  assert.equal(f.value(), before);
+  payload.nonceFloors = [
+    { chainId, from: signer.address.toLowerCase(), nonce: 1 },
+  ];
+  await replaceRoot(f, payload);
+  await assert.rejects(f.records.validate(f.session()), /CORRUPT/);
+});
+test('capacity refuses before POST and preserves bytes without RPC-driven deletion', async () => {
   const f = fixture();
   await fillToCapacity(f);
   const next = await signed(2),
-    session = f.session();
-  let reads = 0,
-    posts = 0;
-  const read: EvmSignedRetirementRead = async () => {
-    reads++;
-    throw new Error('unsupported');
-  };
+    session = f.session(),
+    before = f.value();
+  let reads = 0;
   const boundary = captureEvmSubmission(
     next.context,
     session.assertCurrent,
     () =>
       createEvmSignedRecordLifecycle(f.records, session, {
-        retirementReadForChain: () => read,
+        retirementReadForChain: () => async () => {
+          reads++;
+          return '0x5';
+        },
       })
   );
-  const before = f.value();
-  let failure: unknown;
+  let posts = 0,
+    failure: unknown;
   try {
     await submitSignedEvmTransaction(
       next.rawTransaction,
@@ -563,8 +386,8 @@ test('unavailable finality retains genuine capacity refusal and normal sends hav
       undefined,
       Transaction.from(next.rawTransaction).unsignedSerialized
     );
-  } catch (error) {
-    failure = error;
+  } catch (e) {
+    failure = e;
   }
   assert(failure instanceof Error);
   assert.equal(failure.message, 'EVM_SIGNED_RECORD_CAPACITY');
@@ -573,438 +396,721 @@ test('unavailable finality retains genuine capacity refusal and normal sends hav
     true
   );
   assert.equal(posts, 0);
-  assert.equal(reads, 1);
+  assert.equal(reads, 0);
   assert.equal(f.value(), before);
-  const healthy = fixture();
-  await createEvmSignedRecordLifecycle(healthy.records, healthy.session(), {
-    retirementReadForChain: () => read,
-  }).persistSigned(next);
-  assert.equal(reads, 1);
-});
-
-test('deadline expiry during encryption or the final CAS guard preserves the original bundle', async () => {
-  const descriptor = Object.getOwnPropertyDescriptor(performance, 'now');
-  const realNow = performance.now.bind(performance);
-  try {
-    for (const stage of ['encrypt', 'commit']) {
-      let clock = 0;
-      Object.defineProperty(performance, 'now', {
-        configurable: true,
-        value: () => clock,
-      });
-      const f = fixture();
-      await f.records.append(f.session(), await signed(0));
-      const before = f.value();
-      const session = f.session();
-      if (stage === 'encrypt') {
-        const original = session.keyring.encryptPrivateRecord.bind(
-          session.keyring
-        );
-        session.keyring.encryptPrivateRecord = async (input) => {
-          const result = await original(input);
-          clock = 12_001;
-          return result;
-        };
-      } else {
-        const original = f.port.compareAndSet;
-        f.port.compareAndSet = async (...args) => {
-          clock = 12_001;
-          return original(...args);
-        };
-      }
-      assert.equal(
-        await f.records.retireFinalized(session, scope, finality(1).read),
-        0
-      );
-      assert.equal(f.value(), before);
-    }
-  } finally {
-    if (descriptor) Object.defineProperty(performance, 'now', descriptor);
-    else {
-      delete (performance as unknown as Record<string, unknown>).now;
-      assert.equal(typeof realNow(), 'number');
-    }
-  }
-});
-
-test('floor manifest expansion beyond the SDK plaintext limit retains every signed record', async () => {
-  const f = fixture();
-  await f.records.append(f.session(), await signed(0));
-  const payload = await rootPayload(f);
-  const floors: { chainId: string; from: string; nonce: number }[] = [];
-  payload.nonceFloors = floors;
-  for (let address = 1; ; address++) {
-    floors.push({
-      chainId: '57',
-      from: `0x${address.toString(16).padStart(40, '0')}`,
-      nonce: 0,
-    });
-    if (Buffer.byteLength(JSON.stringify(payload)) > 64 * 1024) {
-      floors.pop();
-      break;
-    }
-  }
-  await replaceRoot(f, payload);
-  const before = f.value();
-  assert.equal(await f.records.validate(f.session()), 1);
   assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(1).read),
+    (
+      await f.records.captureAutoNonceSnapshot(
+        f.session(),
+        chainId,
+        signer.address
+      )
+    ).minimumNonce,
     0
   );
+  assert.equal(await clear(f), 2);
+  await createEvmSignedRecordLifecycle(f.records, f.session(), {
+    retirementReadForChain: null,
+  }).persistSigned(next);
+  assert.equal(await f.records.validate(f.session()), 1);
+});
+
+test('automatic cleanup requires a terminal group and exact finalized inclusion, without installing a floor', async () => {
+  const f = fixture();
+  await fillToCapacity(f);
+  const first = await signed(0),
+    second = await signed(1),
+    next = await signed(2);
+  for (const entry of [first, second])
+    await f.records.updatePhase(
+      f.session(),
+      chainId,
+      signer.address,
+      entry.hash,
+      'confirmed'
+    );
+  const blockHash = '0x' + 'ab'.repeat(32),
+    finalHash = '0x' + 'cd'.repeat(32);
+  let reads = 0,
+    posts = 0;
+  const read = async (
+    method: string,
+    params: readonly unknown[]
+  ): Promise<unknown> => {
+    reads++;
+    if (method === 'eth_chainId') return '0x' + BigInt(chainId).toString(16);
+    if (method === 'eth_getTransactionCount') return '0x5';
+    if (method === 'eth_getTransactionReceipt')
+      return {
+        transactionHash: params[0],
+        from: signer.address,
+        to: signer.address,
+        status: '0x1',
+        blockNumber: '0x10',
+        blockHash,
+        transactionIndex: params[0] === first.hash ? '0x0' : '0x1',
+      };
+    if (params[0] === '0x10')
+      return {
+        number: '0x10',
+        hash: blockHash,
+        gasLimit: '0x1c9c380',
+        transactions: [first.hash, second.hash],
+      };
+    return {
+      number: '0x20',
+      hash: finalHash,
+      gasLimit: '0x1c9c380',
+      transactions: [],
+    };
+  };
+  const session = f.session(),
+    boundary = captureEvmSubmission(next.context, session.assertCurrent, () =>
+      createEvmSignedRecordLifecycle(f.records, session, {
+        retirementReadForChain: () => read,
+      })
+    );
+  await submitSignedEvmTransaction(
+    next.rawTransaction,
+    ({ admit }) =>
+      admit(async () => {
+        posts++;
+        return next.hash;
+      }),
+    boundary,
+    undefined,
+    Transaction.from(next.rawTransaction).unsignedSerialized
+  );
+  assert.equal(posts, 1);
+  assert(reads > 0);
+  assert.equal(await f.records.validate(f.session()), 1);
+  assert.deepEqual((await rootPayload(f)).nonceFloors, []);
+  assert.equal(
+    (await f.records.readExact(f.session(), chainId, signer.address, next.hash))
+      ?.rawTransaction,
+    next.rawTransaction
+  );
+});
+
+test('unresolved replacement siblings and a receipt without indexed inclusion prevent cleanup', async () => {
+  const f = fixture(),
+    first = await signed(0);
+  await f.records.append(f.session(), first);
+  const binding = await f.records.captureVerifiedReplacement(f.session(), {
+    ...scope,
+    nonce: 0,
+    operation: 'speed-up',
+    originalHash: first.hash,
+  });
+  const raw = await signer.signTransaction({
+    type: 2,
+    chainId,
+    nonce: 0,
+    to: signer.address,
+    value: 1,
+    gasLimit: 21000,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  await f.records.append(
+    f.session(),
+    {
+      ...first,
+      rawTransaction: raw,
+      hash: Transaction.from(raw).hash!,
+      context: {
+        ...first.context,
+        operation: 'speed-up',
+        originalHash: first.hash,
+      },
+    },
+    undefined,
+    binding
+  );
+  await f.records.updatePhase(
+    f.session(),
+    chainId,
+    signer.address,
+    first.hash,
+    'confirmed'
+  );
+  let reads = 0;
+  assert.equal(
+    await f.records.retireFinalized(
+      f.session(),
+      scope,
+      async () => {
+        reads++;
+        return '0x5';
+      },
+      { removed: 0 }
+    ),
+    0
+  );
+  assert.equal(reads, 0);
+  assert.equal(await f.records.validate(f.session()), 2);
+  const g = fixture();
+  await g.records.append(g.session(), first);
+  await g.records.updatePhase(
+    g.session(),
+    chainId,
+    signer.address,
+    first.hash,
+    'confirmed'
+  );
+  const before = g.value();
+  assert.equal(
+    await g.records.retireFinalized(
+      g.session(),
+      scope,
+      async (method) => {
+        if (method === 'eth_chainId')
+          return '0x' + BigInt(chainId).toString(16);
+        if (method === 'eth_getTransactionReceipt')
+          return {
+            transactionHash: first.hash,
+            from: signer.address,
+            to: signer.address,
+            status: '0x1',
+            blockNumber: '0x10',
+            blockHash: '0x' + 'ab'.repeat(32),
+          };
+        return {
+          number: '0x10',
+          hash: '0x' + 'ab'.repeat(32),
+          gasLimit: '0x1c9c380',
+        };
+      },
+      { removed: 0 }
+    ),
+    0
+  );
+  assert.equal(g.value(), before);
+});
+
+function finalizedRead(entries: Awaited<ReturnType<typeof signed>>[]) {
+  const included = '0x' + 'ab'.repeat(32);
+  const finalized = '0x' + 'cd'.repeat(32);
+  return async (
+    method: string,
+    params: readonly unknown[]
+  ): Promise<unknown> => {
+    if (method === 'eth_chainId') return '0x' + BigInt(chainId).toString(16);
+    if (method === 'eth_getTransactionCount') return '0x100';
+    if (method === 'eth_getTransactionReceipt') {
+      const index = entries.findIndex((entry) => entry.hash === params[0]);
+      assert(index >= 0);
+      return {
+        transactionHash: entries[index]!.hash,
+        from: signer.address,
+        to: signer.address,
+        status: '0x1',
+        blockNumber: '0x10',
+        blockHash: included,
+        transactionIndex: '0x' + index.toString(16),
+      };
+    }
+    assert.equal(method, 'eth_getBlockByNumber');
+    if (params[0] === '0x10')
+      return {
+        number: '0x10',
+        hash: included,
+        gasLimit: '0x1c9c380',
+        transactions: entries.map((entry) => entry.hash),
+      };
+    assert(params[0] === 'finalized' || params[0] === '0x20');
+    return {
+      number: '0x20',
+      hash: finalized,
+      gasLimit: '0x1c9c380',
+      transactions: [],
+    };
+  };
+}
+async function terminalFixture(count = 1) {
+  const f = fixture();
+  const entries: Awaited<ReturnType<typeof signed>>[] = [];
+  for (let nonce = 0; nonce < count; nonce++) {
+    const entry = await signed(nonce);
+    entries.push(entry);
+    await f.records.append(f.session(), entry);
+    await f.records.updatePhase(
+      f.session(),
+      chainId,
+      signer.address,
+      entry.hash,
+      'confirmed'
+    );
+  }
+  return { f, entries, read: finalizedRead(entries) };
+}
+function hold() {
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return {
+    started,
+    release,
+    async wait() {
+      entered();
+      await waiting;
+    },
+  };
+}
+
+for (const change of ['missing receipt', 'changed outcome', 'reorg'] as const) {
+  test(`terminal cleanup preserves bytes when ${change} appears before commit`, async () => {
+    const { f, read } = await terminalFixture();
+    const before = f.value();
+    let receipts = 0;
+    const pruning = f.records.retireFinalized(
+      f.session(),
+      scope,
+      async (method, params) => {
+        const value = await read(method, params);
+        if (method === 'eth_getTransactionReceipt' && ++receipts === 2) {
+          if (change === 'missing receipt') return null;
+          return {
+            ...(value as object),
+            ...(change === 'changed outcome'
+              ? { status: '0x0' }
+              : { blockHash: '0x' + 'ef'.repeat(32) }),
+          };
+        }
+        return value;
+      },
+      { removed: 0 }
+    );
+    if (change === 'reorg') await assert.rejects(pruning, /CONTEXT_CHANGED/);
+    else assert.equal(await pruning, 0);
+    assert.equal(receipts, 2);
+    assert.equal(f.value(), before);
+    assert.equal(await f.records.validate(f.session()), 1);
+  });
+}
+
+for (const phase of ['read', 'commit'] as const) {
+  test(`terminal cleanup rejects a session revoked during ${phase}`, async () => {
+    const { f, read } = await terminalFixture();
+    const before = f.value(),
+      paused = hold();
+    const original = f.port.compareAndSet;
+    if (phase === 'commit')
+      f.port.compareAndSet = async (...args) => {
+        f.revoke();
+        return original(...args);
+      };
+    const pruning = f.records.retireFinalized(
+      f.session(),
+      scope,
+      async (method, params) => {
+        if (phase === 'read' && method === 'eth_getTransactionReceipt')
+          await paused.wait();
+        return read(method, params);
+      },
+      { removed: 0 }
+    );
+    const rejected = assert.rejects(pruning, /revoked/);
+    if (phase === 'read') {
+      await paused.started;
+      f.revoke();
+      paused.release();
+    }
+    await rejected;
+    assert.equal(f.value(), before);
+    assert.equal(await f.records.validate(f.session()), 1);
+  });
+}
+
+test('automatic terminal cleanup shares a 64-read budget across groups', async () => {
+  const { f, entries, read } = await terminalFixture(10);
+  let reads = 0;
+  const removed = await f.records.retireAvailableFinalized(
+    f.session(),
+    scope,
+    () => async (method, params) => {
+      reads++;
+      return read(method, params);
+    }
+  );
+  assert.equal(reads, 64);
+  const retainedCount = await f.records.validate(f.session());
+  assert(
+    retainedCount < entries.length,
+    'fixture must reclaim some completed groups before exhausting its budget'
+  );
+  assert(removed > 0 && removed < entries.length);
+  assert.equal(await f.records.validate(f.session()), entries.length - removed);
+  for (const entry of entries) {
+    const remaining = await f.records.readExact(
+      f.session(),
+      chainId,
+      signer.address,
+      entry.hash
+    );
+    if (remaining) assert.equal(remaining.rawTransaction, entry.rawTransaction);
+  }
+  assert.deepEqual((await rootPayload(f)).nonceFloors, []);
+});
+
+test('automatic terminal cleanup times out at 12 seconds and cannot apply a late response', async (t) => {
+  const { f, read } = await terminalFixture();
+  const before = f.value(),
+    paused = hold();
+  let clock = 0,
+    signal: AbortSignal | undefined;
+  t.mock.method(performance, 'now', () => clock);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pruning = f.records.retireAvailableFinalized(
+    f.session(),
+    scope,
+    (_chain, ownerSignal) => {
+      signal = ownerSignal;
+      return async (method, params) => {
+        await paused.wait();
+        return read(method, params);
+      };
+    }
+  );
+  await paused.started;
+  let settled = false;
+  void pruning.then(() => {
+    settled = true;
+  });
+  clock = 11_999;
+  t.mock.timers.tick(11_999);
+  await Promise.resolve();
+  assert.equal(settled, false);
+  clock = 12_000;
+  t.mock.timers.tick(1);
+  assert.equal(await pruning, 0);
+  assert.equal(signal?.aborted, true);
+  paused.release();
+  await f.records.validate(f.session());
   assert.equal(f.value(), before);
+});
+
+test('unsupported finality leaves completed and pending recovery bytes intact', async () => {
+  const { f, entries, read } = await terminalFixture();
+  const pending = await signed(1);
+  await f.records.append(f.session(), pending);
+  const before = f.value();
+  const removed = await f.records.retireAvailableFinalized(
+    f.session(),
+    scope,
+    () => async (method, params) => {
+      if (method === 'eth_getBlockByNumber' && params[0] === 'finalized')
+        throw Object.assign(new Error('Unsupported block tag'), {
+          code: -32602,
+        });
+      return read(method, params);
+    }
+  );
+  assert.equal(removed, 0);
+  assert.equal(f.value(), before);
+  for (const entry of [...entries, pending])
+    assert.equal(
+      (
+        await f.records.readExact(
+          f.session(),
+          chainId,
+          signer.address,
+          entry.hash
+        )
+      )?.rawTransaction,
+      entry.rawTransaction
+    );
+});
+
+test('a competing writer adding an unresolved sibling defeats terminal cleanup CAS', async () => {
+  const { f, entries, read } = await terminalFixture();
+  const first = entries[0]!,
+    other = new EvmSignedRecords({ ...f.port }),
+    paused = hold();
+  let receipts = 0;
+  const pruning = f.records.retireFinalized(
+    f.session(),
+    scope,
+    async (method, params) => {
+      if (method === 'eth_getTransactionReceipt' && ++receipts === 2)
+        await paused.wait();
+      return read(method, params);
+    },
+    { removed: 0 }
+  );
+  await paused.started;
+  // A separate host observes a reorg and prepares a legitimate fee replacement.
+  await other.updatePhase(
+    f.session(),
+    chainId,
+    signer.address,
+    first.hash,
+    'submitted'
+  );
+  const binding = await other.captureVerifiedReplacement(f.session(), {
+    ...scope,
+    nonce: 0,
+    operation: 'speed-up',
+    originalHash: first.hash,
+  });
+  const raw = await signer.signTransaction({
+    type: 2,
+    chainId,
+    nonce: 0,
+    to: signer.address,
+    value: 1,
+    gasLimit: 21000,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  await other.append(
+    f.session(),
+    {
+      ...first,
+      rawTransaction: raw,
+      hash: Transaction.from(raw).hash!,
+      context: {
+        ...first.context,
+        operation: 'speed-up',
+        originalHash: first.hash,
+      },
+    },
+    undefined,
+    binding
+  );
+  paused.release();
+  assert.equal(await pruning, 0);
+  assert.equal(await f.records.validate(f.session()), 2);
   assert.equal(
     (
       await f.records.readExact(
         f.session(),
         chainId,
         signer.address,
-        (
-          await signed(0)
-        ).hash
+        first.hash
       )
-    )?.nonce,
-    0
-  );
-});
-
-test('all replacement variants at a finalized nonce retire together', async () => {
-  const f = fixture(),
-    original = await signed(0);
-  await f.records.append(f.session(), original);
-  const binding = await f.records.captureVerifiedReplacement(f.session(), {
-    chainId,
-    from: signer.address,
-    nonce: 0,
-    originalHash: original.hash,
-    operation: 'speed-up',
-  });
-  const rawTransaction = await signer.signTransaction({
-    type: 2,
-    chainId,
-    nonce: 0,
-    to: signer.address,
-    value: 1,
-    gasLimit: 21_000,
-    maxFeePerGas: 6,
-    maxPriorityFeePerGas: 2,
-  });
-  const replacement = {
-    ...original,
-    rawTransaction,
-    hash: Transaction.from(rawTransaction).hash!,
-    context: {
-      ...original.context,
-      operation: 'speed-up' as const,
-      originalHash: original.hash,
-    },
-  };
-  await f.records.append(f.session(), replacement, undefined, binding);
-  assert.equal(
-    await f.records.retireFinalized(f.session(), scope, finality(1).read),
-    2
-  );
-  assert.equal(await f.records.validate(f.session()), 0);
-});
-
-test('a send frees finalized records belonging to another unfunded account on the same chain', async () => {
-  const f = fixture();
-  await fillToCapacity(f);
-  const next = await signed(0, otherSigner),
-    rpc = finality(2),
-    session = f.session();
-  const resolved: string[] = [];
-  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
-    retirementReadForChain: (network) => {
-      resolved.push(network);
-      return rpc.read;
-    },
-  });
-  await lifecycle.persistSigned(next);
-  assert.deepEqual(resolved, [chainId]);
-  assert.equal(rpc.calls.length, 4);
-  assert.equal(rpc.calls[2]![1][0], signer.address.toLowerCase());
-  assert.equal(
-    rpc.calls.some(([method]) => method === 'eth_getBalance'),
-    false
-  );
-  assert.deepEqual(
-    await f.records.listSender(session, chainId, signer.address),
-    []
+    )?.rawTransaction,
+    first.rawTransaction
   );
   assert.equal(
     (
       await f.records.readExact(
-        session,
+        f.session(),
         chainId,
-        otherSigner.address,
-        next.hash
+        signer.address,
+        Transaction.from(raw).hash!
       )
     )?.rawTransaction,
-    next.rawTransaction
+    raw
   );
 });
 
-test('another configured chain can free profile capacity without switching the active send', async () => {
-  const f = fixture();
-  await fillToCapacity(f, signer, '57');
-  const next = await signed(0, otherSigner),
-    rpc = finality(2, '57'),
-    session = f.session();
-  const resolved: string[] = [];
-  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
-    retirementReadForChain: (network) => {
-      resolved.push(network);
-      return network === '57' ? rpc.read : null;
-    },
-  });
-  await lifecycle.persistSigned(next);
-  assert.deepEqual(resolved, ['57']);
-  assert.equal(await f.records.validate(session), 1);
-  assert.equal(
-    (
-      await f.records.readExact(
-        session,
-        chainId,
-        otherSigner.address,
-        next.hash
-      )
-    )?.rawTransaction,
-    next.rawTransaction
-  );
-});
-
-test('cleanup preserves unknown routes and retires all available sender groups using one resolver per chain', async () => {
-  const f = fixture(),
-    session = f.session();
-  const unknown = await signed(0, signer, '57');
-  const first = await signed(0),
-    second = await signed(0, otherSigner);
-  for (const input of [unknown, first, second])
-    await f.records.append(session, input);
-  const rpc = finality(1),
-    resolved: string[] = [];
-  const removed = await f.records.retireAvailableFinalized(
-    session,
+test('the aggregate deadline reports groups already committed before a later read stalls', async (t) => {
+  const { f, entries, read } = await terminalFixture(2);
+  const paused = hold();
+  let clock = 0;
+  t.mock.method(performance, 'now', () => clock);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pruning = f.records.retireAvailableFinalized(
+    f.session(),
     scope,
-    (network) => {
-      resolved.push(network);
-      return network === chainId ? rpc.read : null;
+    () => async (method, params) => {
+      if (
+        method === 'eth_getTransactionReceipt' &&
+        params[0] === entries[1]!.hash
+      )
+        await paused.wait();
+      return read(method, params);
     }
   );
-  assert.equal(removed, 2);
-  assert.deepEqual(resolved, [chainId, '57']);
-  assert.equal(rpc.calls.length, 8);
-  assert.equal(
-    (await f.records.readExact(session, '57', signer.address, unknown.hash))
-      ?.rawTransaction,
-    unknown.rawTransaction
-  );
+  await paused.started;
+  try {
+    assert.equal(await f.records.validate(f.session()), 1);
+    clock = 12_000;
+    t.mock.timers.tick(12_000);
+    assert.equal(await pruning, 1);
+  } finally {
+    paused.release();
+  }
+  assert.equal(await f.records.validate(f.session()), 1);
 });
 
-test('capacity cleanup uses one total deadline across scopes and aborts the owned transport signal', async () => {
-  const f = fixture(),
-    session = f.session();
-  const first = await signed(0),
-    second = await signed(0, otherSigner);
-  await f.records.append(session, first);
-  await f.records.append(session, second);
-  const descriptor = Object.getOwnPropertyDescriptor(performance, 'now');
-  let clock = 0,
-    count = 0;
-  let signal: AbortSignal | undefined;
-  Object.defineProperty(performance, 'now', {
-    configurable: true,
-    value: () => clock,
-  });
-  try {
-    const rpc = finality(1);
-    const removed = await f.records.retireAvailableFinalized(
-      session,
-      scope,
-      (_network, ownedSignal) => {
-        signal = ownedSignal;
-        return async (method, params) => {
-          count++;
-          if (count === 4) clock = 11_000;
-          if (count === 5) clock = 12_001;
-          return rpc.read(method, params);
-        };
+test('a completed group beyond the read budget is reached on the next cleanup attempt', async () => {
+  const { f, entries, read } = await terminalFixture(17);
+  const later = entries[16]!;
+  let reads = 0;
+  const receipts: string[] = [];
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      reads++;
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] !== later.hash) return null;
       }
-    );
-    assert.equal(removed, 1);
-    assert.equal(count, 5);
-    assert.equal(signal?.aborted, true);
+      return read(method, params);
+    };
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    0
+  );
+  assert.equal(reads, 64);
+  assert.deepEqual(
+    receipts,
+    entries.slice(0, 16).map((entry) => entry.hash)
+  );
+  assert.equal(await f.records.validate(f.session()), 17);
+
+  reads = 0;
+  receipts.length = 0;
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    1
+  );
+  assert.equal(receipts[0], later.hash);
+  assert(reads <= 64);
+  assert.equal(
+    await f.records.readExact(f.session(), chainId, signer.address, later.hash),
+    null
+  );
+  assert.equal(await f.records.validate(f.session()), 16);
+  for (const entry of entries.slice(0, 16))
     assert.equal(
       (
         await f.records.readExact(
-          session,
+          f.session(),
           chainId,
-          otherSigner.address,
-          second.hash
+          signer.address,
+          entry.hash
         )
       )?.rawTransaction,
-      second.rawTransaction
+      entry.rawTransaction
     );
-  } finally {
-    if (descriptor) Object.defineProperty(performance, 'now', descriptor);
-    else delete (performance as unknown as Record<string, unknown>).now;
-  }
 });
 
-test('the 64-read limit continues past earlier unconsumed scopes on the next attempt', async () => {
-  const f = fixture(),
-    session = f.session();
-  const inputs = [];
-  for (let i = 50; i < 68; i++) {
-    const wallet = new Wallet(`0x${i.toString(16).padStart(64, '0')}`);
-    const input = await signed(0, wallet);
-    inputs.push(input);
-    await f.records.append(session, input);
-  }
-  const last = inputs.at(-1)!;
-  const rpc = finality(0);
-  let resolutions = 0,
-    calls = 0;
-  const resolver = () => {
-    resolutions++;
-    return async (
-      method: Parameters<EvmSignedRetirementRead>[0],
-      params: readonly unknown[]
-    ) => {
-      calls++;
-      if (
-        method === 'eth_getTransactionCount' &&
-        params[0] === last.from.toLowerCase()
-      )
-        return '0x1';
-      return rpc.read(method, params);
+test('an interrupted validation resumes before trailing groups after a 63-read prefix', async () => {
+  const { f, entries, read } = await terminalFixture(18);
+  const invalid = entries[15]!,
+    later = entries[16]!;
+  let reads = 0;
+  const receipts: string[] = [];
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      reads++;
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] !== invalid.hash && params[0] !== later.hash) return null;
+        if (params[0] === invalid.hash)
+          return {
+            transactionHash: invalid.hash,
+            from: signer.address,
+            to: signer.address,
+            status: '0x1',
+            blockNumber: '0x9',
+            blockHash: '0x' + 'ef'.repeat(32),
+            transactionIndex: '0x0',
+          };
+      }
+      if (method === 'eth_getBlockByNumber' && params[0] === '0x9')
+        return {
+          number: '0x9',
+          hash: '0x' + 'ff'.repeat(32),
+          gasLimit: '0x1c9c380',
+          transactions: [invalid.hash],
+        };
+      return read(method, params);
     };
-  };
   assert.equal(
-    await f.records.retireAvailableFinalized(session, scope, resolver),
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
     0
   );
-  assert.equal(calls, 64);
-  assert.equal(resolutions, 1);
-  calls = 0;
+  assert.equal(reads, 64);
+  assert.equal(receipts.length, 16);
+  receipts.length = 0;
+  reads = 0;
   assert.equal(
-    await f.records.retireAvailableFinalized(session, scope, resolver),
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
     1
   );
-  assert.equal(calls, 64);
-  assert.equal(resolutions, 2);
-  assert.equal(
-    await f.records.readExact(session, chainId, last.from, last.hash),
-    null
-  );
+  assert.equal(receipts[0], later.hash);
+  assert(reads <= 64);
+  assert.equal(await f.records.validate(f.session()), 17);
 });
 
-test('one persistence retry follows cleanup of multiple scopes when the first removal cannot free enough', async () => {
-  const f = fixture(),
-    session = f.session();
-  await f.records.append(session, await signed(0));
-  await fillToCapacity(f, otherSigner);
-  const newSigner = new Wallet(`0x${'33'.repeat(32)}`);
-  const next = await signed(0, newSigner),
-    metadata = { note: 'x'.repeat(8192) };
-  const firstOnly = fixture();
-  firstOnly.replace(f.value());
-  assert.equal(
-    await firstOnly.records.retireFinalized(
-      firstOnly.session(),
-      scope,
-      finality(2).read
-    ),
-    1
-  );
-  await assert.rejects(
-    firstOnly.records.append(firstOnly.session(), next, metadata),
-    /CAPACITY/
-  );
-
-  const rpc = finality(2);
-  const original = f.records.append.bind(f.records);
-  let appends = 0;
-  f.records.append = async (...args) => {
-    appends++;
-    return original(...args);
-  };
-  await createEvmSignedRecordLifecycle(f.records, session, {
-    metadata,
-    retirementReadForChain: () => rpc.read,
-  }).persistSigned(next);
-  assert.equal(appends, 2);
-  assert.equal(rpc.calls.length, 8);
-  assert.equal(await f.records.validate(session), 1);
-  assert.equal(
-    (await f.records.readExact(session, chainId, newSigner.address, next.hash))
-      ?.rawTransaction,
-    next.rawTransaction
-  );
-});
-
-test('a stalled preferred endpoint yields the next attempt to another healthy scope', async (t) => {
-  const f = fixture(),
-    session = f.session();
-  const preferred = await signed(0, signer, '57'),
-    healthy = await signed(0, otherSigner);
-  await f.records.append(session, preferred);
-  await f.records.append(session, healthy);
-  const rpc = finality(1);
-  let reachedStall: () => void = () => undefined;
-  let started = new Promise<void>((resolve) => {
-    reachedStall = resolve;
-  });
-  const resolver = (
-    network: string,
-    signal: AbortSignal
-  ): EvmSignedRetirementRead => {
-    if (network !== '57') return rpc.read;
-    return () =>
-      new Promise((_, reject) => {
-        signal.addEventListener('abort', () => reject(new Error('aborted')), {
-          once: true,
-        });
-        reachedStall();
-      });
-  };
+test('a timed-out receipt yields to the next completed group on the next attempt', async (t) => {
+  const { f, entries, read } = await terminalFixture(2);
+  const paused = hold();
+  let clock = 0,
+    stall = true;
+  const receipts: string[] = [];
+  t.mock.method(performance, 'now', () => clock);
   t.mock.timers.enable({ apis: ['setTimeout'] });
-  try {
-    const first = f.records.retireAvailableFinalized(
-      session,
-      preferred,
-      resolver
-    );
-    await started;
-    t.mock.timers.tick(12_000);
-    assert.equal(await first, 0);
-    started = new Promise<void>((resolve) => {
-      reachedStall = resolve;
-    });
-    const second = f.records.retireAvailableFinalized(
-      session,
-      preferred,
-      resolver
-    );
-    await started;
-    t.mock.timers.tick(12_000);
-    assert.equal(await second, 1);
-    assert.equal(
-      await f.records.readExact(
-        session,
-        chainId,
-        otherSigner.address,
-        healthy.hash
-      ),
-      null
-    );
-    assert.equal(
-      (await f.records.readExact(session, '57', signer.address, preferred.hash))
-        ?.rawTransaction,
-      preferred.rawTransaction
-    );
-    assert.equal(rpc.calls.length, 4);
-  } finally {
-    t.mock.timers.reset();
-  }
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] === entries[0]!.hash) {
+          if (stall) await paused.wait();
+          return null;
+        }
+      }
+      return read(method, params);
+    };
+  const first = f.records.retireAvailableFinalized(
+    f.session(),
+    scope,
+    resolveRead
+  );
+  await paused.started;
+  clock = 12_000;
+  t.mock.timers.tick(12_000);
+  assert.equal(await first, 0);
+  stall = false;
+  receipts.length = 0;
+  const second = f.records.retireAvailableFinalized(
+    f.session(),
+    scope,
+    resolveRead
+  );
+  assert.equal(await second, 1);
+  assert.equal(receipts[0], entries[1]!.hash);
+  paused.release();
+  assert.equal(await f.records.validate(f.session()), 1);
+});
+
+test('an elapsed deadline yields its group even before timeout callbacks run', async (t) => {
+  const { f, entries, read } = await terminalFixture(2);
+  let clock = 0,
+    jump = true;
+  const receipts: string[] = [];
+  t.mock.method(performance, 'now', () => clock);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] === entries[0]!.hash && jump) {
+          jump = false;
+          clock = 12_000;
+        }
+      }
+      return read(method, params);
+    };
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    0
+  );
+  receipts.length = 0;
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    2
+  );
+  assert.equal(receipts[0], entries[1]!.hash);
 });

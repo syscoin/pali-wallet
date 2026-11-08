@@ -74,7 +74,26 @@ jest.mock('components/index', () => ({
   ),
   DefaultModal: ({ show, title }: any) =>
     show ? <div role="dialog">{title}</div> : null,
-  ConfirmationModal: () => null,
+  ConfirmationModal: ({
+    show,
+    title,
+    description,
+    onClose,
+    onClick,
+    buttonText,
+    isButtonLoading,
+  }: any) =>
+    show ? (
+      <div role="dialog" aria-label={title}>
+        <p>{description}</p>
+        <button onClick={onClose} disabled={isButtonLoading}>
+          Dismiss
+        </button>
+        <button onClick={onClick} disabled={isButtonLoading}>
+          {buttonText || 'Confirm'}
+        </button>
+      </div>
+    ) : null,
 }));
 jest.mock('antd', () => {
   const Form: any = ({ children, onFinish }: any) => (
@@ -103,6 +122,7 @@ const setupTypeaheadUser = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockState.vault.isBitcoinBased = true;
   mockState.vaultGlobal.advancedSettings = { refresh: false, autolock: 5 };
   mockState.price.fiat = { asset: 'usd' };
   mockEmitter.mockResolvedValue(undefined);
@@ -516,4 +536,71 @@ it('centers the mounted Languages picker without changing its target or saving t
   });
   expectCenteredPickerContract('settings.setYourPreferredLanguage', 'English');
   expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it('shows EVM activity clearing only for EVM and requires its separate confirmation', async () => {
+  const view = render(<Advanced />);
+  expect(
+    screen.queryByRole('button', { name: 'settings.clearActivityAndNonce' })
+  ).toBeNull();
+  mockState.vault.isBitcoinBased = false;
+  view.rerender(<Advanced />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'settings.clearActivityAndNonce' })
+  );
+  expect(mockEmitter).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole('dialog', { name: 'settings.clearActivityAndNonce' })
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+  expect(mockEmitter).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'settings.clearActivityAndNonce' })
+  );
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.clearActivityAndNonceConfirm',
+    })
+  );
+  await screen.findByRole('status');
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'clearEvmActivityAndNonce'],
+    [
+      { account: 'account-a', network: 'network-a' },
+      'clear-activity-and-nonce-data',
+    ]
+  );
+});
+
+it('keeps activity-clear errors visible and prevents duplicate confirmation while pending', async () => {
+  mockState.vault.isBitcoinBased = false;
+  let reject!: (error: Error) => void;
+  mockEmitter.mockReturnValue(
+    new Promise((_resolve, fail) => {
+      reject = fail;
+    })
+  );
+  render(<Advanced />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'settings.clearActivityAndNonce' })
+  );
+  const confirm = screen.getByRole('button', {
+    name: 'settings.clearActivityAndNonceConfirm',
+  });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(confirm.hasAttribute('disabled')).toBe(true);
+  await act(async () => {
+    reject(new Error('storage failed'));
+  });
+  expect((await screen.findByRole('alert')).textContent).toBe(
+    'settings.clearActivityAndNonceFailed'
+  );
+  expect(
+    screen
+      .getByRole('button', { name: 'settings.clearActivityAndNonce' })
+      .hasAttribute('disabled')
+  ).toBe(false);
 });

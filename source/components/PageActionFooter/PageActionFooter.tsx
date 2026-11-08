@@ -1,4 +1,4 @@
-import React, { useLayoutEffect } from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 
 import { useToastFooter } from 'hooks/useToastFooter';
 
@@ -17,6 +17,19 @@ export const PageActionFooter = ({
   includeInFlow = false,
 }: IPageActionFooterProps) => {
   const footerRef = useToastFooter({ includeInFlow });
+  const hasError = Boolean(error);
+  const previousError = useRef(hasError);
+  useLayoutEffect(() => {
+    const appeared = hasError && !previousError.current;
+    previousError.current = hasError;
+    if (includeInFlow && appeared) {
+      // Revealing the existing action preserves keyboard focus and retry state.
+      footerRef.current?.scrollIntoView?.({
+        block: 'nearest',
+        inline: 'nearest',
+      });
+    }
+  }, [hasError, includeInFlow]);
   useLayoutEffect(() => {
     const footer = footerRef.current;
     const layout = footer?.closest<HTMLElement>(

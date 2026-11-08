@@ -63,6 +63,64 @@ describe('restored-note review authority', () => {
   );
 });
 
+describe('explicit activity reset sender authorization', () => {
+  it.each([
+    ['https://example.com', 'pali-extension', false],
+    ['chrome-extension://other/app.html', 'other', false],
+    ['chrome-extension://pali-extension/app.html', 'pali-extension', true],
+  ])(
+    'admits %s only as a trusted extension action',
+    async (url, id, allowed) => {
+      Object.assign(chrome.runtime, {
+        getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
+        id: 'pali-extension',
+      });
+      const clearEvmActivityAndNonce = jest.fn(async () => 2);
+      const sendResponse = jest.fn();
+      const logging = jest.spyOn(console, 'error').mockImplementation();
+      const scope = {
+        account: 'selected-account',
+        network: 'selected-network',
+      };
+      try {
+        handleMasterControllerResponses({
+          wallet: { clearEvmActivityAndNonce },
+        } as any);
+        const add = chrome.runtime.onMessage.addListener as jest.Mock;
+        const listener = add.mock.calls[add.mock.calls.length - 1][0];
+        const accepted = listener(
+          {
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['wallet', 'clearEvmActivityAndNonce'],
+              params: [scope, 'clear-activity-and-nonce-data'],
+            },
+          },
+          { id, url },
+          sendResponse
+        );
+        expect(accepted).toBe(allowed);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(clearEvmActivityAndNonce).toHaveBeenCalledTimes(allowed ? 1 : 0);
+        if (allowed) {
+          expect(clearEvmActivityAndNonce).toHaveBeenCalledWith(
+            scope,
+            'clear-activity-and-nonce-data'
+          );
+          expect(sendResponse).toHaveBeenCalledWith(2);
+        } else
+          expect(sendResponse).toHaveBeenCalledWith({
+            success: false,
+            error: 'Controller actions are not available from connected sites',
+          });
+        expect(isValidMethod('clearEvmActivityAndNonce')).toBe(false);
+      } finally {
+        logging.mockRestore();
+      }
+    }
+  );
+});
+
 describe('native approval controller submission lifecycle', () => {
   it.each([true, false, undefined])(
     'clears possible submission only for an actual controller transactionNotBroadcast=%s result',

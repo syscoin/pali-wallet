@@ -1,3 +1,4 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
@@ -31,6 +32,7 @@ function fixture() {
   const runtime = {
     async journal() {
       return {
+        planAutomaticNonce: emptyNoncePlanner,
         async load() {
           return null;
         },
@@ -166,7 +168,7 @@ for (const kind of ['base-fee', 'nonce'] as const) {
       assert.equal(state.hash, null);
       assert.match(state.message!, /check Activity for an existing transaction/);
       assert.doesNotMatch(state.message!, /pending|preserved/);
-      await assert.rejects(f.rpc.prepare(from, to, '1', new AbortController().signal), { code: 'INVALID_RESPONSE' });
+      await assert.rejects(f.rpc.prepare(from, to, '1', new AbortController().signal, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
       assert.deepEqual(f.counters(), {
         signatures: 0,
         writes: 0,

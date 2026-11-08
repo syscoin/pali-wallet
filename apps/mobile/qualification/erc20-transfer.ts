@@ -337,7 +337,8 @@ export async function qualifyNativeErc20Transfer(
         );
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
-        same([address, 'pending']);
+        expect(params.length === 2 && params[0] === address &&
+          ['pending', '0x123'].includes(params[1] as string));
         result = '0xde0b6b3a7640000';
       } else if (body.method === 'eth_gasPrice') { same([]); result = '0x2';
       } else if (body.method === 'eth_feeHistory') {

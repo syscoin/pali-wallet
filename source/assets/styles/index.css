@@ -66,6 +66,11 @@
   position: static;
 }
 
+/* Advanced recovery and Save remain reachable in the same scroll flow. */
+[data-navigation-scroll='wallet-layout'] .advanced-settings-footer {
+  position: static;
+}
+
 /* A funded wallet's warning precedes Forget in the normal scroll flow. */
 [data-navigation-scroll='wallet-layout'] .funded-forget-footer {
   position: static;

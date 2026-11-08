@@ -19,7 +19,7 @@ import type { NativeAccountView } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import type { CustodyRuntime } from '../../src/custody/types';
 import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
-import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
+import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, activityResetGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import type { NativeNoteInventory, NativeSavedNote } from '../../src/custody/noteBackupRuntime';
@@ -279,7 +279,7 @@ export function createNativeWalletControllers() {
     replay() { throw Error("Fixture has no retained signed transactions"); },
     async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
     async journal(guard) { guard(); return {
-      async planAutomaticNonce({ latest, pending }) { guard(); return { kind: 'ready', nonce: Math.max(latest, pending), additionalNativeCost: 0n }; },
+      async planAutomaticNonce({ latest, pending }) { guard(); return { kind: 'ready', nonce: Math.max(latest, pending), balanceState: 'pending', nativeReservations: { canonical: 0n, pending: 0n } }; },
       async assertSpendingNonce() { guard(); }, async load() { guard(); return null; },
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
       async transition() { throw Error('Fixture does not submit signatures'); } }; },
@@ -351,6 +351,15 @@ export function createNativeWalletControllers() {
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, keyExport, imports,
+    async resetActivity(check: () => void) {
+      check();
+      events.push('activity:reset:start');
+      activity.invalidate();
+      await activityResetGate();
+      check();
+      events.push('activity:reset:done');
+      await activity.refresh();
+    },
     ...(wifFixtureEnabled ? { async openUtxoSend() { throw Error('Synthetic UI fixture does not sign'); } } : {}),
     balanceReader: {
       ...createBalanceReader({ fetch: fixtureFetch }),

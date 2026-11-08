@@ -599,6 +599,11 @@
     "receipts": "Receipts"
   },
   "settings": {
+    "clearActivityAndNonce": "Clear activity and nonce data",
+    "clearActivityAndNonceWarning": "Clear saved activity and nonce data for {{account}} on {{network}}? Pending transactions can still execute. Saved transactions will no longer be available to retry.",
+    "clearActivityAndNonceConfirm": "Clear data",
+    "clearActivityAndNonceSuccess": "Activity and nonce data cleared.",
+    "clearActivityAndNonceFailed": "Could not complete the reset. Unlock the wallet and try again.",
     "legacyAddressType": "Legacy (P2PKH)",
     "connectedSiteCount": "{{count}} sites are connected to Pali Wallet.",
     "accountNumber": "Account {{number}}",

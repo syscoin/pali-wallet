@@ -13,6 +13,16 @@ let pendingUnlock: (() => void) | null = null;
 let pendingSign: (() => void) | null = null;
 let pendingImport: (() => void) | null = null;
 let pendingKeyRead: (() => void) | null = null;
+let releaseActivityReset: (() => void) | null = null;
+let delayActivityReset = false;
+let activityResetFailure = false;
+export function setDelayActivityReset(value: boolean) { delayActivityReset = value; }
+export function failActivityReset() { activityResetFailure = true; }
+export async function activityResetGate() {
+  if (delayActivityReset) await new Promise<void>((resolve) => { releaseActivityReset = resolve; });
+  if (activityResetFailure) { activityResetFailure = false; throw Error('Synthetic reset failure'); }
+}
+export function finishActivityReset() { delayActivityReset = false; releaseActivityReset?.(); releaseActivityReset = null; }
 export const PUBLIC_TEST_KEY = `0x${"1".repeat(64)}`;
 export let delayKeyRead = false;
 export let delayImport = false;

@@ -321,6 +321,11 @@ export class NativeTransfers {
     this.expiry = null;
     this.publish(initial());
   }
+  /** The reset owner must revoke the runtime generation before cancelling UI work. */
+  cancelForActivityReset(): void {
+    this.secretOperation = null;
+    this.cancel();
+  }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -717,6 +722,13 @@ export class NativeTransfers {
       throw error;
     }
   }
+  private async rejectDraftNonce(error: unknown, journal: NativeTransferJournalHandle, manual: boolean): Promise<never> {
+    if (manual && error instanceof EvmAutomaticNonceUnresolved && error.reason !== 'asset-state') {
+      await this.checkDraftNonce(journal, String(error.nonce), true);
+      throw new NativeTransferRpcError('REVIEW_REQUIRED');
+    }
+    throw error;
+  }
   prepare(recipient: string, amount: string, nonce?: string): Promise<void> {
     let units: string;
     let to: string;
@@ -743,7 +755,8 @@ export class NativeTransfers {
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
       const quote = await rpc.prepare(address, to, units, signal, nonceOverride,
-        nonceOverride === undefined ? journal.planAutomaticNonce : undefined);
+        journal.planAutomaticNonce).catch((error: unknown) =>
+          this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -801,7 +814,8 @@ export class NativeTransfers {
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
       const quote = await rpc.prepareToken(address, intent, signal, undefined, nonceOverride,
-        journal.planAutomaticNonce);
+        journal.planAutomaticNonce).catch((error: unknown) =>
+          this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -848,7 +862,10 @@ export class NativeTransfers {
       const selection = Object.freeze({ network, owner: address, saved: inventory.collectible });
       const quote = await withNftInventorySignal(signal, inventory.signal, (owned) =>
         rpc.prepareNft(selection, request, owned, guard, nonceOverride, journal.planAutomaticNonce))
-        .catch((error: unknown) => { guard(); throw error; });
+        .catch((error: unknown) => {
+          guard();
+          return this.rejectDraftNonce(error, journal, nonceOverride !== undefined);
+        });
       guard();
       await this.checkDraftNonce(journal, quote.envelope.nonce, nonceOverride !== undefined);
       guard();
@@ -907,9 +924,9 @@ export class NativeTransfers {
       };
       const journal = await runtime.journal(guard);
       guard();
-      const automatic = !approved.replacement && approved.public.nonceOverride === undefined;
-      const validatesAsset = !approved.replacement && (!!approved.public.intent || !!collectible);
-      const planner = automatic || validatesAsset ? journal.planAutomaticNonce : undefined;
+      const ordinary = !approved.replacement;
+      const validatesAsset = ordinary && (!!approved.public.intent || !!collectible);
+      const planner = journal.planAutomaticNonce;
       this.publish({
         phase: 'signing',
         review: approved.public,
@@ -988,7 +1005,7 @@ export class NativeTransfers {
         message: null,
       });
       let dispatchVerified = false;
-      const validateDispatch = automatic || validatesAsset;
+      const validateDispatch = ordinary;
       const assertDispatchAdmission = validateDispatch ? () => {
         guard();
         if (!dispatchVerified) throw new NativeTransferRpcError('REVIEW_REQUIRED');
@@ -1038,7 +1055,7 @@ export class NativeTransfers {
               mode: 'new-send',
               nonceOverride: approved.public.nonceOverride,
               intent: approved.public.intent,
-              assertDispatchAdmission,
+              assertDispatchAdmission: assertDispatchAdmission!,
               admit: atDispatch,
             });
           },

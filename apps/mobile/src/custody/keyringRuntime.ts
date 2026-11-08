@@ -133,6 +133,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   /** Selected software key only, consumed by the context-bound secret presentation flow. */
   readonly keyExport?: NativeHdKeyExportRuntime;
   readonly activity?: NativeActivityRuntime;
+  resetActivity(assertOwner: () => void, invalidateViews: () => void): Promise<void>;
   /** Local public token descriptors only; never exposes the underlying store. */
   readonly tokens?: NativeTokenRuntime & {
     addCollectible(revision: number, collectible: SavedCollectible, guard: () => void): Promise<NativeTokenInventory>;
@@ -236,7 +237,7 @@ export function createKeyringRuntimeFactory(
         let noteBackups: NoteRuntime | undefined;
         let noteStorageFault: 'unreported' | 'reopen' | undefined;
         const requireNoteReopen = () => { noteStorageFault ??= 'unreported'; };
-        const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || noteStorageFault === 'reopen';
+        const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || activityHistory.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || noteStorageFault === 'reopen';
         const revokeGeneration = () => {
           const next = ++generation;
           retireContextReadLifetime();
@@ -334,9 +335,15 @@ export function createKeyringRuntimeFactory(
           const task = Promise.resolve().then(() => operation(captured));
           const handled = task.catch(async (error: unknown) => {
             const wasCurrent = captured === generation && !closed;
+            if (!wasCurrent) {
+              if (!requiresReopen()) throw new KeyringRuntimeError('CANCELLED');
+              // Quarantine belongs to this storage owner, across session changes.
+              try { await lock(); } catch { closed = true; }
+              throw new KeyringRuntimeError('CLEANUP_FAILED');
+            }
             try { await lock(); }
             catch { closed = true; throw new KeyringRuntimeError('CLEANUP_FAILED'); }
-            if (!wasCurrent || closed) throw new KeyringRuntimeError('CANCELLED');
+            if (closed) throw new KeyringRuntimeError('CANCELLED');
             if (error instanceof KeyringRuntimeError) throw error;
             if (error instanceof TransferJournalError && error.code === 'PENDING_TRANSFER') throw new KeyringRuntimeError('PENDING_TRANSFER');
             if (error instanceof WalletCatalogueError && error.code === 'CATALOGUE_LIMIT') throw new KeyringRuntimeError('ACCOUNT_LIMIT');
@@ -344,7 +351,7 @@ export function createKeyringRuntimeFactory(
             if (error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED')
               throw new KeyringRuntimeError('AUTH_THROTTLED');
             throw new KeyringRuntimeError('OPERATION_FAILED');
-          }).finally(() => { active = null; });
+          }).finally(() => { if (active === handled) active = null; });
           active = handled;
           return handled;
         };
@@ -442,9 +449,8 @@ export function createKeyringRuntimeFactory(
           };
           check();
           const requiresReplacement = context.operation === 'cancel' || context.operation === 'speed-up';
-          const requiresAssetValidation = ['erc20', 'erc721', 'erc1155'].includes(context.operation);
           if (requiresReplacement !== (replacement !== undefined) || (replacement && verifyDispatch) ||
-              (requiresAssetValidation && !verifyDispatch))
+              (!requiresReplacement && !verifyDispatch))
             throw new NativeTransferError('EXPIRED');
           const session = { keyring, assertCurrent: check };
           const capturedCatalogue = catalogueSnapshot!;
@@ -1087,7 +1093,7 @@ export function createKeyringRuntimeFactory(
         const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks);
         const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number; type: NativeAccountType }> => {
           const captured = generation;
-          const guard = () => { current(captured); checkGuard(assertCurrent); if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
+          const guard = () => { current(captured); checkGuard(assertCurrent); if (reserved) throw new KeyringRuntimeError('BUSY'); if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
           guard();
           const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
           const networkId = catalogueSnapshot!.active.networkId;
@@ -1142,6 +1148,48 @@ export function createKeyringRuntimeFactory(
           return task;
         };
         return {
+          resetActivity(assertOwner, invalidateViews) {
+            if (closed || reserved || !canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
+            checkGuard(assertOwner);
+            const snapshot = catalogueSnapshot!, ring = keyring;
+            const selected = selectedAccount();
+            const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+            const prior = [active, ...pendingSubmissions];
+            const reservation = {};
+            reserved = reservation;
+            const captured = revokeGeneration();
+            const guard = () => {
+              current(captured); checkGuard(assertOwner);
+              if (reserved !== reservation || keyring !== ring || !ring.isUnlocked() ||
+                  catalogueSnapshot !== snapshot || selectedAccount() !== selected)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            const task = Promise.resolve().then(async () => {
+              guard();
+              await Promise.allSettled(prior);
+              guard();
+              const fingerprint = await dataBinding(captured, guard); guard();
+              const profileId = await ring.getPrivateRecordProfileId(); guard();
+              const session = signedRecords.captureSession({ keyring: ring, assertCurrent: guard });
+              await signedRecords.clearScope(session, { profileId, chainId: network.chainId, from: selected.address });
+              guard();
+              await activityHistory.clearScope(createActivityScope(fingerprint, selected.id, selected.address, network), guard);
+              guard();
+            }).catch(async (error: unknown) => {
+              if (requiresReopen()) {
+                try { await lock(); } catch { /* The storage owner remains quarantined. */ }
+                throw new KeyringRuntimeError('CLEANUP_FAILED');
+              }
+              throw error;
+            }).finally(() => {
+              if (reserved === reservation) reserved = null;
+              pendingSubmissions.delete(task);
+            });
+            pendingSubmissions.add(task);
+            try { checkGuard(invalidateViews); }
+            catch (error) { revokeGeneration(); return task.then(() => { throw error; }); }
+            return task;
+          },
           ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory } : {}),
           ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
           accounts,
@@ -1481,8 +1529,13 @@ export function createKeyringRuntimeFactory(
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
               const context: EvmSubmissionContext = { account: { id: selected.index, type: selected.type, address: selected.address },
                 network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl }, operation: 'send' };
-              const lifecycle = captureSignedSubmission(context, assertCurrent);
-              const check = () => { current(captured); lifecycle.assertCurrent(); };
+              const check = () => {
+                current(captured); checkGuard(assertCurrent);
+                const live = selectedAccount();
+                const currentNetwork = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+                if (live !== selected || currentNetwork.chainId !== network.chainId || currentNetwork.rpcUrl !== network.rpcUrl)
+                  throw new KeyringRuntimeError('CANCELLED');
+              };
               const replay = new EvmSignedReplay(signedRecords, () => ({ context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport }), options.now, options.randomBytes);
               return { prepare: replay.prepare.bind(replay), cancel: replay.cancel.bind(replay), list: replay.list.bind(replay), confirm(id) {
                 const work = replay.confirm(id);
@@ -1533,7 +1586,7 @@ export function createKeyringRuntimeFactory(
               });
             },
             async journal(assertCurrent) {
-              if (closed || !keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
+              if (closed || reserved || !keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
               if (!canSign()) throw new KeyringRuntimeError('NOT_READY');
               const captured = generation;
               current(captured); checkGuard(assertCurrent);

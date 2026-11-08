@@ -599,6 +599,11 @@
     "receipts": "レシート"
   },
   "settings": {
+    "clearActivityAndNonce": "アクティビティと nonce データを消去",
+    "clearActivityAndNonceWarning": "{{network}} の {{account}} の保存済みアクティビティと nonce データを消去しますか？保留中の取引は引き続き実行される可能性があります。保存済み取引は再送できなくなります。",
+    "clearActivityAndNonceConfirm": "データを消去",
+    "clearActivityAndNonceSuccess": "アクティビティと nonce データを消去しました。",
+    "clearActivityAndNonceFailed": "リセットを完了できませんでした。ウォレットのロックを解除して再試行してください。",
     "legacyAddressType": "従来形式 (P2PKH)",
     "connectedSiteCount": "{{count}} 件のサイトがPali Walletに接続中です。",
     "accountNumber": "アカウント {{number}}",

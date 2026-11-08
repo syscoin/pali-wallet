@@ -175,6 +175,16 @@ export function createNativeWalletControllers() {
     }
     return { selected, assertCurrent, observeFailure };
   };
+  const resetActivity = async (assertOwner: () => void): Promise<void> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    await observeFailure(() => selected.resetActivity(assertCurrent, () => {
+      transfers.cancelForActivityReset();
+      activity.invalidate();
+    }));
+    assertCurrent();
+    await activity.refresh();
+    assertCurrent();
+  };
   const openNoteBackup = async (assertOwner: () => void): Promise<NativeNoteBackupRuntime> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const open = selected.openNoteBackup;
@@ -241,6 +251,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

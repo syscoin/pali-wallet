@@ -1,3 +1,4 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
@@ -187,7 +188,7 @@ test('token quote simulates and estimates the exact call with separate token and
   const quote = await rpc.prepareToken(
     sender,
     intent,
-    new AbortController().signal
+    new AbortController().signal, undefined, undefined, emptyNoncePlanner
   );
   assert.equal(quote.transaction.to, contract);
   assert.equal(quote.transaction.value, '0');
@@ -211,7 +212,7 @@ test('token quote simulates and estimates the exact call with separate token and
   await fixture({ simulation: '0x' }).rpc.prepareToken(
     sender,
     intent,
-    new AbortController().signal
+    new AbortController().signal, undefined, undefined, emptyNoncePlanner
   );
 });
 test('token quote rejects false returns, changed precision, insufficient balances and inconsistent observations', async () => {
@@ -227,7 +228,7 @@ test('token quote rejects false returns, changed precision, insufficient balance
       fixture(options).rpc.prepareToken(
         sender,
         intent,
-        new AbortController().signal
+        new AbortController().signal, undefined, undefined, emptyNoncePlanner
       ),
       { code }
     );
@@ -244,8 +245,8 @@ test('token broadcast requires bound intent and completed held validation', asyn
   const bareAdmission = { mode: 'new-send' as const,
     admit: async (send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); return send(); },
   };
-  await assert.rejects(rpc.broadcast(raw, keccak256(raw), new AbortController().signal, bareAdmission), { code: 'INVALID_RESPONSE' });
-  await assert.rejects(rpc.broadcast(raw, keccak256(raw), new AbortController().signal, { ...bareAdmission, intent }), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(rpc.broadcast(raw, keccak256(raw), new AbortController().signal, bareAdmission as never), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(rpc.broadcast(raw, keccak256(raw), new AbortController().signal, { ...bareAdmission, intent } as never), { code: 'INVALID_RESPONSE' });
   assert.equal(requests.length, 0);
 
   const acceptance = new EvmAutoNonceAcceptance();

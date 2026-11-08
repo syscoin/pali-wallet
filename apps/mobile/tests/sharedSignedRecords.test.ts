@@ -466,7 +466,7 @@ test('automatic nonce advances only after an exact wire ACK and keeps that nonce
   assert.deepEqual(await plan(), { kind: 'unresolved', nonce: 0 });
   ack(first.hash);
   assert.equal(await submitted, first.hash);
-  assert.deepEqual(await plan(), { kind: 'ready', nonce: 1, additionalNativeCost: 126123n });
+  assert.deepEqual(await plan(), { kind: 'ready', nonce: 1, balanceState: 'pending', nativeReservations: {canonical: 126123n, pending: 126123n} });
 
   const next = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null,
     automaticNonceEndpoint: endpoint,
@@ -481,7 +481,7 @@ test('automatic nonce advances only after an exact wire ACK and keeps that nonce
   });
   await next.persistSigned(second);
   assert.equal(await next.dispatchSigned(second, async () => ({ hash: second.hash }), async () => undefined).then((response) => response.hash), second.hash);
-  assert.deepEqual(await plan(), { kind: 'ready', nonce: 2, additionalNativeCost: 252246n });
+  assert.deepEqual(await plan(), { kind: 'ready', nonce: 2, balanceState: 'pending', nativeReservations: {canonical: 252246n, pending: 252246n} });
 });
 
 test('after reorg, a previously accepted phase needs new pending evidence, including on reopen', async () => {
@@ -511,7 +511,7 @@ test('after reorg, a previously accepted phase needs new pending evidence, inclu
         assert.equal(hash, record.hash);
         return expected;
       },
-    }), { kind: 'ready', nonce: 1, additionalNativeCost: 126123n });
+    }), { kind: 'ready', nonce: 1, balanceState: 'pending', nativeReservations: {canonical: 126123n, pending: 126123n} });
   }
 });
 

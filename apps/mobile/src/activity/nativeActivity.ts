@@ -255,13 +255,8 @@ export class NativeActivity {
     )
       throw new ActivityError('CANCELLED');
   }
-  async refresh(): Promise<void> {
+  invalidate(): void {
     this.stop();
-    const generation = this.generation;
-    const revision = this.source.getSnapshot().revision;
-    this.request = new AbortController();
-    const signal = this.request.signal;
-    const guard = () => this.guard(generation, revision);
     this.candidates.clear();
     this.freshCandidates.clear();
     this.locals.clear();
@@ -275,6 +270,15 @@ export class NativeActivity {
     this.retainedObservations.clear();
     this.assets = [];
     this.cachedFallback = true;
+    this.publish(initial());
+  }
+  async refresh(): Promise<void> {
+    this.invalidate();
+    const generation = this.generation;
+    const revision = this.source.getSnapshot().revision;
+    this.request = new AbortController();
+    const signal = this.request.signal;
+    const guard = () => this.guard(generation, revision);
     this.publish({ ...initial(), status: 'loading' });
     try {
       const runtime = this.runtime();

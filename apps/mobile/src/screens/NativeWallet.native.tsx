@@ -36,7 +36,7 @@ import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
 import { NativeNetworks } from './NativeNetworks';
 import { createNativeNetworkView, type NativeNetworkView } from '../custody/networkView';
-import { getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
+import { getNativeNetwork, getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
 import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
@@ -685,7 +685,24 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined}
       onPrivateNotes={() => openStage('private-notes')}
       onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
-    else content = <RealSettings navigation={shell.navigation} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} onAutoLock={() => openStage('auto-lock')} onLock={revoke} onBack={() => shell.select('wallet')} />;
+    else content = <RealSettings navigation={shell.navigation} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} onAutoLock={() => openStage('auto-lock')}
+      activityReset={canSign && catalogue && snapshot.account ? {
+        scope: custodyContext(snapshot, catalogue)!.context,
+        networkLabel: getNativeNetwork(snapshot.account.network, catalogue.networks).name,
+        async reset(assertView) {
+          const local = controllers.current;
+          const expected = custodyContext(snapshot, catalogue)!.context;
+          const check = () => {
+            assertView();
+            if (!mounted.current || !local || local !== controllers.current || AppState.currentState !== 'active' ||
+                readyContext()?.context !== expected) throw new Error('CANCELLED');
+          };
+          check();
+          await local!.resetActivity(check);
+          check();
+        },
+      } : undefined}
+      onLock={revoke} onBack={() => shell.select('wallet')} />;
     return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive}>{content}</RealAppShell>;
   }
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;

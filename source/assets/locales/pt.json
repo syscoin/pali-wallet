@@ -599,6 +599,11 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "clearActivityAndNonce": "Limpar atividade e dados de nonce",
+    "clearActivityAndNonceWarning": "Limpar a atividade e os dados de nonce de {{account}} em {{network}}? As transações pendentes ainda podem ser executadas. As transações guardadas deixarão de estar disponíveis para tentar novamente.",
+    "clearActivityAndNonceConfirm": "Limpar dados",
+    "clearActivityAndNonceSuccess": "Atividade e dados de nonce limpos.",
+    "clearActivityAndNonceFailed": "Não foi possível concluir a reposição. Desbloqueie a carteira e tente novamente.",
     "legacyAddressType": "Legado (P2PKH)",
     "connectedSiteCount": "{{count}} sites estão conectados à Pali Wallet.",
     "accountNumber": "Conta {{number}}",

@@ -77,6 +77,7 @@ async function withController(
     reopen(): Promise<NativeTransfers>;
     confirmOnChain(raw: string): void;
     setPendingNonce(nonce: string): void;
+    setPendingBalance(balance: string): void;
     setCanonicalNonce(nonce: string): void;
     setExpectedEstimateNonce(nonce: string, tag: 'latest' | 'pending'): void;
     invalidateCancellationObservation(mode: ObservationFault, readNumber: 1 | 2): void;
@@ -141,6 +142,7 @@ async function withController(
   let hasHolding = true;
   let confirmed: Transaction | undefined;
   let pendingNonce: string | undefined;
+  let pendingBalance = '0xffffffffffff';
   let canonicalNonce: string | undefined;
     let expectedEstimateNonce: string | undefined;
     let expectedEstimateTag: 'latest' | 'pending' = 'pending';
@@ -241,9 +243,8 @@ async function withController(
           break;
         case 'eth_getBalance':
           assert.equal(call.params[0], owner);
-          assert.ok(call.params[1] === 'pending' || call.params[1] === 'latest');
-          result = expectedEstimateTag === 'latest' && call.params[1] === 'pending'
-            ? '0x1' : '0xffffffffffff';
+          assert.ok(call.params[1] === 'pending' || call.params[1] === 'latest' || call.params[1] === block.number);
+          result = call.params[1] === 'pending' ? pendingBalance : '0xffffffffffff';
           break;
         case 'eth_gasPrice':
           result = '0x65';
@@ -357,6 +358,7 @@ async function withController(
         return transfers;
       },
       setPendingNonce(nonce) { pendingNonce = nonce; },
+      setPendingBalance(balance) { pendingBalance = balance; },
       setCanonicalNonce(nonce) { canonicalNonce = nonce; },
       setExpectedEstimateNonce(nonce, tag) { expectedEstimateNonce = nonce; expectedEstimateTag = tag; },
       confirmOnChain(raw) { confirmed = Transaction.from(raw); confirmationsRead = 0; },
@@ -425,10 +427,14 @@ async function reviewCollectible(transfers: NativeTransfers, asset: Case) {
 
 test('collectible review preserves an explicit override below the external pending count', async () => {
   const asset = collectibleFixture('ERC-721');
-  await withController(asset, 'success', async ({ transfers, posted, setPendingNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
+  await withController(asset, 'success', async ({ transfers, posted, setPendingNonce, setPendingBalance, setExpectedEstimateNonce, acknowledgeCommit }) => {
     acknowledgeCommit();
     setPendingNonce('0x1');
     setExpectedEstimateNonce('0x0', 'latest');
+    setPendingBalance('0x1');
+    await assert.rejects(transfers.view.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units, '0'), { code: 'INSUFFICIENT_BALANCE' });
+    assert.equal(posted.length, 0);
+    setPendingBalance('0xffffffffffff');
     await transfers.view.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units, '0');
     const approved = transfers.getSnapshot().review!;
     assert.equal(approved.nonce, '0');

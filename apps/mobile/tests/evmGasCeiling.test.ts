@@ -1,3 +1,4 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
@@ -40,9 +41,9 @@ const current = () => undefined;
 for (const network of [getNativeNetwork('ethereum'), customEthereum]) {
   test(`${network.id} rejects the 14M estimate whose padding exceeds the protocol ceiling`, async () => {
     const f = fixture(network, 14000000n);
-    await assert.rejects(f.rpc.prepare(input, signal(), current), { code: 'INVALID_RESPONSE' });
+    await assert.rejects(f.rpc.prepare(input, signal(), current, undefined, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
     assert(!f.calls.includes('eth_sendRawTransaction'));
-    assert.equal((await fixture(network, 13981014n).rpc.prepare(input, signal(), current)).transaction.gasLimit, cap.toString());
+    assert.equal((await fixture(network, 13981014n).rpc.prepare(input, signal(), current, undefined, undefined, emptyNoncePlanner)).transaction.gasLimit, cap.toString());
   });
   test(`${network.id} rejects an over-cap approved envelope before requesting a fee quote`, async () => {
     assert.throws(() => snapshotUnsignedTransfer(envelope(network, cap + 1n), network), { code: 'INVALID_INPUT' });
@@ -53,15 +54,15 @@ for (const network of [getNativeNetwork('ethereum'), customEthereum]) {
 }
 
 test('an unrelated EVM chain keeps its own block bound instead of inheriting the Ethereum ceiling', async () => {
-  assert.equal((await fixture(custom, 14000000n).rpc.prepare(input, signal(), current)).transaction.gasLimit, '16800000');
+  assert.equal((await fixture(custom, 14000000n).rpc.prepare(input, signal(), current, undefined, undefined, emptyNoncePlanner)).transaction.gasLimit, '16800000');
   assert.equal(snapshotUnsignedTransfer(envelope(custom, cap + 1n), custom).gasLimit, (cap + 1n).toString());
-  await assert.rejects(fixture(custom, 14000000n, 16000000n).rpc.prepare(input, signal(), current), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(fixture(custom, 14000000n, 16000000n).rpc.prepare(input, signal(), current, undefined, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
 });
 
 for (const method of ['prepare', 'quoteFees'] as const) test(`${method} rechecks the approved envelope against a lower current block limit`, async () => {
   const network = getNativeNetwork('ethereum'), f = fixture(network, 21000n, 10000000n);
   const approved = envelope(network, 13000000n);
-  await assert.rejects(method === 'prepare' ? f.rpc.prepare(input, signal(), current, approved)
+  await assert.rejects(method === 'prepare' ? f.rpc.prepare(input, signal(), current, approved, undefined, emptyNoncePlanner)
     : f.rpc.quoteFees(approved, signal(), current), { code: 'REVIEW_REQUIRED' });
 });
 
@@ -87,10 +88,10 @@ for (const type of [0, 2] as const) test(`type ${type} raw broadcasting validate
       { headers: { 'content-type': 'application/json' } });
     } });
     if (accepted) {
-      assert.equal(await rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
-      assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId', 'eth_sendRawTransaction']);
+      assert.equal(await rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => undefined,  mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
+      assert.deepEqual(methods, ['eth_sendRawTransaction']);
     } else {
-      await assert.rejects(rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), { code: 'INVALID_RESPONSE' });
+      await assert.rejects(rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => undefined,  mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), { code: 'INVALID_RESPONSE' });
       assert.deepEqual(methods, []);
     }
   }

@@ -47,6 +47,7 @@ import vault, {
   setActiveAccount,
   setAccountLabel,
   setAccountAssets,
+  clearEvmAccountActivity,
   setAccountPropertyByIdAndType,
 } from './vault';
 import { IVaultState, IGlobalState } from './vault/types';
@@ -501,6 +502,7 @@ type ImportedRecoveryMutation =
     };
 
 type VaultMutationAction =
+  | ReturnType<typeof clearEvmAccountActivity>
   | ReturnType<typeof setAccountLabel>
   | ReturnType<typeof removeAccount>
   | ReturnType<typeof createAccount>
@@ -761,6 +763,21 @@ function persistVaultMutation(
     vaultCache.prepareSlip44Vault(sourceSlip44, store.getState().vault);
     removal?.retireSessions();
   });
+}
+
+/** Clear the selected EVM sender's public history across account aliases. */
+export function persistEvmActivityClear(
+  address: string,
+  chainId: number,
+  assertCurrent: () => void,
+  isSameWallet: () => boolean
+): Promise<void> {
+  return persistVaultMutation(
+    [clearEvmAccountActivity({ address, chainId })],
+    assertCurrent,
+    undefined,
+    isSameWallet
+  );
 }
 
 /** Stage a token membership edit without publishing its uncommitted list. */

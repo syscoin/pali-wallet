@@ -599,6 +599,11 @@
     "receipts": "Reçus"
   },
   "settings": {
+    "clearActivityAndNonce": "Effacer l’activité et les données de nonce",
+    "clearActivityAndNonceWarning": "Effacer l’activité et les données de nonce de {{account}} sur {{network}} ? Les transactions en attente peuvent encore être exécutées. Les transactions enregistrées ne pourront plus être renvoyées.",
+    "clearActivityAndNonceConfirm": "Effacer les données",
+    "clearActivityAndNonceSuccess": "Activité et données de nonce effacées.",
+    "clearActivityAndNonceFailed": "La réinitialisation a échoué. Déverrouillez le portefeuille et réessayez.",
     "legacyAddressType": "Classique (P2PKH)",
     "connectedSiteCount": "{{count}} sites sont connectés à Pali Wallet.",
     "accountNumber": "Compte {{number}}",

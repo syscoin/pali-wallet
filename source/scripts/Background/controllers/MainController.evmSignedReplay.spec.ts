@@ -165,6 +165,7 @@ beforeEach(() => {
     rawTransaction: raw,
   };
   records = {
+    captureSession: jest.fn((session) => session),
     readExact: jest.fn(async () => entry),
     readForObservation: jest.fn(async () => observed()),
     readPage: jest.fn(async () => ({ entries: [entry], nextCursor: null })),
@@ -1045,8 +1046,10 @@ describe('dapp automatic nonce recommendation', () => {
     });
     rpc.send = jest.fn(async (method: string, params: unknown[]) => {
       if (method === 'eth_chainId') return '0x7b';
+      if (method === 'eth_getBlockByNumber')
+        return { number: '0x10', hash: '0x' + 'a'.repeat(64) };
       if (method === 'eth_getTransactionCount')
-        return params[1] === 'latest' ? '0x0' : `0x${pending.toString(16)}`;
+        return params[1] === 'pending' ? `0x${pending.toString(16)}` : '0x0';
       if (method === 'eth_getTransactionByHash')
         return pendingObserved && params[0] === hash
           ? {
@@ -1067,7 +1070,7 @@ describe('dapp automatic nonce recommendation', () => {
       minimumNonce: 0,
       retained,
       readMaximumCost: async () => BigInt(21000),
-      touchesContract: async () => false,
+      readAssetDebit: async () => BigInt(0),
     }));
     // Compatible with the same captured-route helper used by the reviewed
     // native/token paths, while all requests remain synthetic and local.
@@ -1301,6 +1304,8 @@ it.each([
       signal: new AbortController().signal,
       verifyConfiguredChainId: jest.fn(async () => undefined),
       send: jest.fn(async (method: string, params: unknown[]) => {
+        if (method === 'eth_getBlockByNumber')
+          return { number: '0x10', hash: '0x' + 'a'.repeat(64) };
         if (method === 'eth_getTransactionCount')
           return params[1] === 'pending' && change === 'pending count'
             ? '0x1'
@@ -1392,6 +1397,8 @@ describe('legacy pending guard in the shared nonce inspector', () => {
       signal: new AbortController().signal,
       verifyConfiguredChainId: jest.fn(async () => undefined),
       send: jest.fn(async (method: string, params: unknown[]) => {
+        if (method === 'eth_getBlockByNumber')
+          return { number: '0x10', hash: '0x' + 'a'.repeat(64) };
         if (method === 'eth_getTransactionCount')
           return params[1] === 'pending' ? `0x${pending.toString(16)}` : '0x0';
         if (method === 'eth_getTransactionByHash') return pendingLookup;
@@ -1492,7 +1499,7 @@ describe('worker-owned token state at review and initial held POST', () => {
           if (params[1] === 'latest') {
             options.onLatest?.();
             latestReads++;
-            return options.advanceAfterBlock && latestReads > 1 ? '0x1' : '0x0';
+            return options.advanceAfterBlock && latestReads > 0 ? '0x1' : '0x0';
           }
           return '0x0';
         }
@@ -1567,9 +1574,17 @@ describe('worker-owned token state at review and initial held POST', () => {
     expect(good.verifyConfiguredChainId).toHaveBeenCalledTimes(2);
     expect(good.verifyConfiguredChainId).toHaveBeenNthCalledWith(1, true);
     expect(good.verifyConfiguredChainId).toHaveBeenNthCalledWith(2, true);
+    const simulationIndex = good.send.mock.calls.findIndex(
+      ([method, args]) =>
+        method === 'eth_call' && Boolean((args[0] as { from?: string }).from)
+    );
     expect(
       good.verifyConfiguredChainId.mock.invocationCallOrder[1]
-    ).toBeGreaterThan(Math.max(...good.send.mock.invocationCallOrder));
+    ).toBeGreaterThan(good.send.mock.invocationCallOrder[simulationIndex]);
+    expect(good.send).toHaveBeenLastCalledWith('eth_getBlockByNumber', [
+      '0x10',
+      false,
+    ]);
     const bad = rpcFixture({ staleBalance: true });
     await expect(
       wallet.inspectOrdinaryEvmNonce(
@@ -1768,7 +1783,11 @@ describe('worker-owned token state at review and initial held POST', () => {
         ([method, args]) =>
           method === 'eth_call' && Boolean((args[0] as { from?: string }).from)
       );
-      if (fault === 'none')
+      if (
+        fault === 'none' ||
+        scenario === 'plain nonce RPC failure' ||
+        scenario === 'wallet session revoked'
+      )
         expect(call?.[1][0]).toMatchObject({
           from: signer.address,
           to: token,
@@ -1974,6 +1993,16 @@ describe('worker-owned token state at review and initial held POST', () => {
       )
     ).toBeNull();
   });
+});
+
+it('captures the retained session before returning the signing lifecycle without reading other networks', () => {
+  wallet.captureFreshEvmRead = jest.fn();
+  const lifecycle = wallet.captureEvmSignedSubmission(keyring, context);
+  expect(records.captureSession).toHaveBeenCalledTimes(2);
+  expect(wallet.captureFreshEvmRead).not.toHaveBeenCalled();
+  expect(provider.send).not.toHaveBeenCalled();
+  wallet.advanceWalletSession();
+  expect(() => lifecycle.assertCurrent()).toThrow();
 });
 
 it('resolves saved-chain retirement from configured routes while preserving the active submission context', async () => {
