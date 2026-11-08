@@ -25,6 +25,7 @@ function publish(next: Partial<NativeLedgerSnapshot>) {
   for (const listener of listeners) listener();
 }
 const controller: NativeLedgerView = {
+  purpose: 'import',
   getSnapshot: () => snapshot,
   subscribe(listener) {
     listeners.add(listener);
@@ -93,7 +94,7 @@ export function NativeLedgerFixture() {
     <NativeLedger
       controller={controller}
       onBack={() => setPage('closed')}
-      onImported={() => setPage('imported')}
+      onFinished={() => setPage('imported')}
     />
   ) : (
     <Text>

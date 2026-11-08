@@ -266,7 +266,7 @@ export async function qualifyNativeNevmTransfer(
         maxFeePerGas: '3',
         maxPriorityFeePerGas: '1',
       },
-      guard
+      { assertCurrent: guard, signal: new AbortController().signal }
     );
     guard();
     const journal = await transfer.journal(guard);

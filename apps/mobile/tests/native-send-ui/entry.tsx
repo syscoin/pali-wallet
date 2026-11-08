@@ -9,6 +9,7 @@ import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { NativeConnectionsFixture } from './nativeConnectionsFixture';
+import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 import { NativeLedgerFixture } from './nativeLedgerFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
 import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
@@ -38,6 +39,7 @@ import type {
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
+const ledgerConnection = route.has('ledger-send') && !route.has('utxo-send') ? createLedgerConnectionFixture(sender) : undefined;
 // RN Web sets fontScale to 1 and rejects Dimensions.set in a browser. This
 // fixture-only hook sets the dimensions before the actual component mounts.
 if (route.get('font-scale') === '1.6') Dimensions.get('window').fontScale = 1.6;
@@ -84,7 +86,12 @@ const controller: NativeTransferView = {
     clearTimeout(expiry);
     publish(idle());
   },
-  async recover() {},
+  async recover() {
+    if (route.has('ledger-replay')) {
+      publishReview(recipient, '1000000000000000');
+      publish({ ...snapshot, review: { ...snapshot.review!, retry: true } });
+    }
+  },
   async loadMorePredecessors() {},
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
@@ -216,6 +223,7 @@ declare global {
   interface Window {
     __nativeSendFixture: {
       replaceReview(): Promise<void>;
+      expireReview(): void;
       refreshReview(): void;
       reviewId(): string | null;
       confirmations(): readonly { id: string }[];
@@ -227,6 +235,7 @@ declare global {
   }
 }
 window.__nativeSendFixture = {
+  expireReview: () => { clearTimeout(expiry); publish(idle()); },
   replaceReview: () => controller.prepare(recipient, '0.002'),
   refreshReview: () =>
     publish({
@@ -407,7 +416,9 @@ function Fixture() {
         )
       ) : (
         <NativeSend
+          savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
+          ledgerConnection={ledgerConnection}
           context={sendContext}
           replacement={replacement}
           recipientPicker={recipientPicker}

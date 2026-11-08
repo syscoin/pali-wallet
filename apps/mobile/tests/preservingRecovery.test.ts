@@ -575,15 +575,15 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
       assert.equal(plan.kind, 'ready');
       if (plan.kind === 'ready') assert.equal(plan.nonce, Number(approval.nonce));
     };
-    await assert.rejects(transfers.submit(raw, hash, guard, broadcast, undefined, undefined as never));
-    await assert.rejects(transfers.submit(raw, hash, guard, broadcast, undefined, approval));
+    await assert.rejects(transfers.submit(raw, hash, guard, { broadcast: broadcast, verifyChain: async () => undefined }, undefined, undefined as never));
+    await assert.rejects(transfers.submit(raw, hash, guard, { broadcast: broadcast, verifyChain: async () => undefined }, undefined, approval));
     await assert.rejects(
-      transfers.submit(raw, hash, guard, broadcast, undefined, { ...approval, nonce: '1' }, undefined, verifyDispatch),
+      transfers.submit(raw, hash, guard, { broadcast: broadcast, verifyChain: async () => undefined }, undefined, { ...approval, nonce: '1' }, undefined, verifyDispatch),
       { transactionNotBroadcast: true }
     );
     assert.deepEqual(f.read().signedRecords, before);
     assert.equal(broadcasts, 0);
-    await transfers.submit(raw, hash, guard, broadcast, undefined, approval, undefined, verifyDispatch);
+    await transfers.submit(raw, hash, guard, { broadcast: broadcast, verifyChain: async () => undefined }, undefined, approval, undefined, verifyDispatch);
     assert.equal(broadcasts, 1);
   } finally {
     await f.close();
@@ -622,7 +622,7 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     assert.equal(restored?.rawTransaction, raw);
     let broadcasts = 0;
     await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined,
-      ({ admit }) => admit(async () => { broadcasts++; return transaction.hash!; }), undefined, {
+      { broadcast: ({ admit }) => admit(async () => { broadcasts++; return transaction.hash!; }), verifyChain: async () => undefined }, undefined, {
         type: 2, accessList: [], chainId: '1', nonce: '0', from: importedWallet.address, to: sourceWallet.address,
         value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1',
       }));

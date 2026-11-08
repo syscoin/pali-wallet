@@ -9,23 +9,27 @@ import {
   ActivityIndicator,
   BackHandler,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   StyleSheet,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { NativeLedgerView } from '../custody/ledgerAccounts';
+import type {
+  NativeLedgerConnectionView,
+  NativeLedgerView,
+} from '../custody/ledgerAccounts';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 export function NativeLedger({
   controller,
   onBack,
-  onImported,
+  onFinished,
 }: {
   controller: NativeLedgerView;
   onBack(): void;
-  onImported(): void;
+  onFinished(): void;
 }) {
   const subscribe = useCallback(
     (listener: () => void) => controller.subscribe(listener),
@@ -37,10 +41,10 @@ export function NativeLedger({
     controller.getSnapshot
   );
   const lifetime = useRef({ active: true, busy: false });
-  const callbacks = useRef({ onBack, onImported });
+  const callbacks = useRef({ onBack, onFinished });
   useLayoutEffect(() => {
-    callbacks.current = { onBack, onImported };
-  }, [onBack, onImported]);
+    callbacks.current = { onBack, onFinished };
+  }, [onBack, onFinished]);
   const [label, setLabel] = useState('Ledger');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -72,7 +76,7 @@ export function NativeLedger({
     setError('');
     try {
       await operation();
-      if (owner.active && imported) callbacks.current.onImported();
+      if (owner.active && imported) callbacks.current.onFinished();
     } catch {
       if (owner.active)
         setError('The Ledger request could not be completed. Try again.');
@@ -81,12 +85,22 @@ export function NativeLedger({
       if (owner.active) setBusy(false);
     }
   };
+  const importingAccount = controller.purpose === 'import';
   const connecting = snapshot.phase === 'connecting';
   const importing = snapshot.phase === 'importing';
   const connected =
     (snapshot.phase === 'connected' || importing) && !!snapshot.address;
   const canScan = !busy && !connecting && !importing;
   const feedback = snapshot.error || error;
+  let actionLabel = 'Done';
+  if (importingAccount)
+    actionLabel = importing ? 'Adding account…' : 'Add Ledger account';
+  let description =
+    'Unlock your Ledger and turn on Bluetooth. Keep it nearby while connecting.';
+  if (connected)
+    description = importingAccount
+      ? 'Review the address and choose a name for this account.'
+      : 'Your Ledger is connected. Return to review and confirm the transaction.';
 
   return (
     <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
@@ -98,10 +112,18 @@ export function NativeLedger({
           footer={
             connected ? (
               <Button
-                title={importing ? 'Adding account…' : 'Add Ledger account'}
-                disabled={busy || importing || !label.trim()}
+                title={actionLabel}
+                disabled={
+                  busy || importing || (importingAccount && !label.trim())
+                }
                 onPress={() => {
-                  void run(() => controller.importAccount(label.trim()), true);
+                  void run(
+                    () =>
+                      controller.purpose === 'import'
+                        ? controller.importAccount(label.trim())
+                        : controller.finishConnection(),
+                    true
+                  );
                 }}
               />
             ) : undefined
@@ -112,11 +134,7 @@ export function NativeLedger({
             subtitle={snapshot.networkLabel || 'Hardware wallet'}
             onBack={close}
           />
-          <Text style={s.description}>
-            {connected
-              ? 'Review the address and choose a name for this account.'
-              : 'Unlock your Ledger and turn on Bluetooth. Keep it nearby while connecting.'}
-          </Text>
+          <Text style={s.description}>{description}</Text>
           {feedback ? (
             <Text accessibilityRole="alert" style={s.error}>
               {feedback}
@@ -133,17 +151,21 @@ export function NativeLedger({
               >
                 {snapshot.address}
               </Text>
-              <Text style={s.label}>Account name</Text>
-              <IdleTextInput
-                accessibilityLabel="Ledger account name"
-                value={label}
-                onChangeText={setLabel}
-                editable={!busy && !importing}
-                maxLength={64}
-                autoCorrect={false}
-                autoCapitalize="words"
-                style={s.input}
-              />
+              {importingAccount && (
+                <>
+                  <Text style={s.label}>Account name</Text>
+                  <IdleTextInput
+                    accessibilityLabel="Ledger account name"
+                    value={label}
+                    onChangeText={setLabel}
+                    editable={!busy && !importing}
+                    maxLength={64}
+                    autoCorrect={false}
+                    autoCapitalize="words"
+                    style={s.input}
+                  />
+                </>
+              )}
             </Card>
           ) : (
             <>
@@ -182,6 +204,31 @@ export function NativeLedger({
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+/** The send screen stays mounted underneath this account-bound connection flow. */
+export function NativeLedgerConnectionModal({
+  controller,
+  onClose,
+  onFinished,
+}: {
+  controller: NativeLedgerConnectionView;
+  onClose(): void;
+  onFinished(): void;
+}) {
+  const close = () => {
+    void controller.close().catch(() => undefined);
+    onClose();
+  };
+  return (
+    <Modal visible animationType="slide" onRequestClose={close}>
+      <NativeLedger
+        controller={controller}
+        onBack={onClose}
+        onFinished={onFinished}
+      />
+    </Modal>
   );
 }
 

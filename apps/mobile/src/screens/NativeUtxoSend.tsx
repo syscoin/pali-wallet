@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -27,6 +27,8 @@ import {
   styles,
   Text,
 } from '../ui';
+import { NativeLedgerConnectionModal } from './NativeLedger';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 import type { UtxoNetwork } from '../core/utxoNetworks';
@@ -62,13 +64,21 @@ export function NativeUtxoSendScreen({
   network,
   open,
   onBack,
+  ledgerConnection,
 }: {
   accountLabel: string;
+  ledgerConnection?: NativeLedgerConnectionView;
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
   open(assertCurrent: () => void): Promise<NativeUtxoSend>;
   onBack(): void;
 }) {
+  const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
+  const ledgerReady = useSyncExternalStore(
+    (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
+    () => ledgerConnection?.isConnected() ?? true,
+    () => false,
+  );
   const [send, setSend] = useState<NativeUtxoSend | null>(null);
   const [address, setAddress] = useState('');
   const [amount, setAmount] = useState('');
@@ -211,8 +221,9 @@ export function NativeUtxoSendScreen({
   const confirm = review && (
     <Button
       title={review.retryTxid ? 'Resend saved transfer' : 'Confirm and send'}
-      disabled={busy}
+      disabled={busy || !review.retryTxid && !ledgerReady}
       onPress={() => {
+        if (!review.retryTxid && ledgerConnection && !ledgerConnection.isConnected()) return;
         run(async (current) => {
           setReview(null);
           try {
@@ -252,6 +263,10 @@ export function NativeUtxoSendScreen({
             subtitle={subtitle}
             onBack={close}
           />
+          {ledgerConnection && !ledgerReady && review && !review.retryTxid && !outcome && <Button
+            title="Connect Ledger" disabled={busy}
+            onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
+          />}
           {outcome ? (
             <>
               <Notice
@@ -451,6 +466,13 @@ export function NativeUtxoSendScreen({
           )}
         </Screen>
       </KeyboardAvoidingView>
+      {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
+        controller={ledgerPicker}
+        onClose={() => setLedgerPicker(null)}
+        onFinished={() => {
+          setLedgerPicker(null);
+        }}
+      />}
     </SafeAreaView>
   );
 }
