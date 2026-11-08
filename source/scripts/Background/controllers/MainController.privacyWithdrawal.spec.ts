@@ -31,12 +31,13 @@ jest.mock('utils/slhDsa', () => ({
   clearSLHDSAXmssTreeCache: jest.fn().mockResolvedValue(undefined),
 }));
 
+import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { webcrypto } from 'crypto';
 import { Interface, Transaction } from 'ethers';
-import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
 import { getController } from '..';
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+import { createPrivacyWithdrawalsController } from '../../../wallet/privacyWithdrawals';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -51,7 +52,6 @@ import {
   captureGenericEvmFeeDispatch,
   markGenericEvmFeeSdkEntered,
 } from './nativeEvmFeeReviews';
-import { createPrivacyWithdrawalsController } from '../../../wallet/privacyWithdrawals';
 
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 const NOTE_ID = '00000000-0000-4000-8000-000000001000';
@@ -1006,6 +1006,7 @@ it('quotes relayer gas from chain and public fees only, without recipient or not
 
 it.each([
   'session invalidation after commit',
+  'session invalidation after commit when cleanup is unavailable',
   'healthy pre-sign invalidation',
   'sender entered with unknown outcome',
 ] as const)('real Main host and vault reservation: %s', async (scenario) => {
@@ -1062,7 +1063,13 @@ it.each([
   const review = await prepare(run.wallet);
   const committed = deferred(),
     release = deferred();
-  if (scenario === 'session invalidation after commit') {
+  const invalidatedAfterCommit = scenario.startsWith(
+    'session invalidation after commit'
+  );
+  const cleanupUnavailable =
+    scenario ===
+    'session invalidation after commit when cleanup is unavailable';
+  if (invalidatedAfterCommit) {
     const write = storage.setItem.getMockImplementation()!;
     storage.setItem.mockImplementationOnce(async (key, value) => {
       await write(key, value);
@@ -1088,13 +1095,16 @@ it.each([
       }
     );
   const clear = jest.spyOn(vault, 'clearUnbroadcastWithdrawalAttempt');
+  if (cleanupUnavailable)
+    clear.mockRejectedValueOnce(new Error('Synthetic cleanup storage refusal'));
   const result = run.controller.submitWithdrawal(review.intentId);
   const outcome =
     scenario === 'sender entered with unknown outcome'
       ? expect(result).resolves.toMatchObject({ phase: 'unknown' })
       : expect(result).rejects.toMatchObject({ transactionNotBroadcast: true });
-  if (scenario === 'session invalidation after commit') {
+  if (invalidatedAfterCommit) {
     await committed.promise;
+    expect(run.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
     run.wallet.walletSessionGeneration += 1;
     release.resolve();
   }
@@ -1104,8 +1114,8 @@ it.each([
   else expect(run.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   const session = run.wallet.capturePrivateVaultSession();
   const saved = await vault.getWithdrawalAttempt(NOTE_ID, session);
-  if (scenario === 'session invalidation after commit') {
-    expect(clear).not.toHaveBeenCalled();
+  if (cleanupUnavailable) {
+    expect(clear).toHaveBeenCalledTimes(1);
     expect(saved).toMatchObject({ phase: 'unknown' });
     expect((await vault.getNotes()).notes[0].phase).toBe('waiting');
     run.state.vault.activeAccount = {

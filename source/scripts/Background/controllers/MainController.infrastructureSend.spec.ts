@@ -35,6 +35,11 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 
 import MainController from './MainController';
+import {
+  issueGenericEvmFeeReview,
+  consumeGenericEvmFeeReview,
+  bindGenericEvmFeeDispatch,
+} from './nativeEvmFeeReviews';
 
 describe('infrastructure transaction broadcast boundary', () => {
   let wallet: any;
@@ -55,6 +60,61 @@ describe('infrastructure transaction broadcast boundary', () => {
   const metadata = {
     smartAccountInfrastructureDeployment: true,
     smartAccountInfrastructureId: 'factory',
+  };
+  const admitDispatch = (
+    input: unknown,
+    nonce: { nonce: number; source: 'automatic' | 'manual' }
+  ) => {
+    const transaction = snapshotPreparedEvmTransaction(input);
+    const vault = currentState.vault;
+    wallet.walletSessionGeneration ??= 1;
+    const context = {
+      account: { ...vault.activeAccount, address: transaction.from },
+      chainId: vault.activeNetwork.chainId,
+      rpcUrl: vault.activeNetwork.url,
+      slip44: currentState.vaultGlobal?.activeSlip44 ?? 60,
+      sessionGeneration: wallet.walletSessionGeneration,
+    };
+    const now = Math.floor(performance.now());
+    const maximumFee = (
+      BigInt(transaction.gasLimit) *
+      BigInt(
+        transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas
+      )
+    ).toString();
+    const authority = { kind: 'wallet' as const };
+    const id = issueGenericEvmFeeReview(
+      wallet,
+      {
+        transaction,
+        feeComparison: { recommendationOnly: true },
+        maximumFeeUnits: maximumFee,
+        maximumTotalUnits: (
+          BigInt(maximumFee) + BigInt(transaction.value)
+        ).toString(),
+        coveredFeeUnits: '0',
+        expiresAtMonotonicMilliseconds: now + 90_000,
+        async submit() {
+          throw new Error('Direct dispatch fixture only');
+        },
+      },
+      context,
+      nonce,
+      () => undefined,
+      now,
+      authority,
+      () => 'consumed-review'
+    ).id;
+    consumeGenericEvmFeeReview(
+      wallet,
+      id,
+      context,
+      () => undefined,
+      now,
+      authority
+    );
+    bindGenericEvmFeeDispatch(wallet, id, context, async () => undefined);
+    return id;
   };
 
   beforeEach(() => {
@@ -177,7 +237,10 @@ describe('infrastructure transaction broadcast boundary', () => {
           undefined,
           {
             hardwareScope: { account: 'a', network: 'b' },
-            genericDispatchId: 'consumed-review',
+            genericDispatchId: admitDispatch(transaction, {
+              nonce: expected,
+              source: source as 'automatic' | 'manual',
+            }),
             dappNonceApproval: { nonce: expected, source },
           }
         )
@@ -506,7 +569,10 @@ describe('infrastructure transaction broadcast boundary', () => {
           {
             expectedContext,
             authorizeDapp: () => undefined,
-            genericDispatchId: 'consumed-review',
+            genericDispatchId: admitDispatch(transaction, {
+              nonce: 7,
+              source: 'automatic',
+            }),
             dappNonceApproval: { nonce: 7, source: 'automatic' },
             onBroadcast,
           }
@@ -618,7 +684,10 @@ describe('infrastructure transaction broadcast boundary', () => {
         {
           expectedContext,
           authorizeDapp: () => undefined,
-          genericDispatchId: 'consumed-review',
+          genericDispatchId: admitDispatch(params, {
+            nonce: 7,
+            source: 'automatic',
+          }),
           dappNonceApproval: { nonce: 7, source: 'automatic' },
         }
       );
@@ -663,28 +732,32 @@ describe('infrastructure transaction broadcast boundary', () => {
         currentState.vault.activeNetwork.chainId = 2;
         return response;
       });
+      const transaction = {
+        type: 2,
+        chainId: '1',
+        from: expectedContext.account.address,
+        to: '0x2222222222222222222222222222222222222222',
+        nonce: '7',
+        value: '0',
+        data: '0x',
+        gasLimit: '21000',
+        maxFeePerGas: '2',
+        maxPriorityFeePerGas: '1',
+        accessList: [],
+      };
       await expect(
         wallet.sendAndSaveEthTransaction(
-          {
-            type: 2,
-            chainId: '1',
-            from: expectedContext.account.address,
-            to: '0x2222222222222222222222222222222222222222',
-            nonce: '7',
-            value: '0',
-            data: '0x',
-            gasLimit: '21000',
-            maxFeePerGas: '2',
-            maxPriorityFeePerGas: '1',
-            accessList: [],
-          },
+          transaction,
           false,
           undefined,
           undefined,
           {
             expectedContext,
             authorizeDapp: () => undefined,
-            genericDispatchId: 'consumed-review',
+            genericDispatchId: admitDispatch(transaction, {
+              nonce: 7,
+              source: 'automatic',
+            }),
             dappNonceApproval: { nonce: 7, source: 'automatic' },
           }
         )
