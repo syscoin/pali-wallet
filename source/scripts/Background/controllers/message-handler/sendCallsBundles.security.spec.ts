@@ -290,6 +290,8 @@ describe('sendCalls reservation submission boundary', () => {
     const provider = {
       getTransactionReceipt: async () => ({
         status: 1,
+        blockHash: `0x${'33'.repeat(32)}`,
+        logs: [],
         blockNumber: 1,
         gasUsed: 1,
         hash,
@@ -430,6 +432,7 @@ describe('sendCalls reservation submission boundary', () => {
     const provider = {
       getTransactionReceipt: async () => ({
         status: 1,
+        blockHash: `0x${'33'.repeat(32)}`,
         blockNumber: 1,
         gasUsed: 1,
         hash,
@@ -442,6 +445,7 @@ describe('sendCalls reservation submission boundary', () => {
     const reverted = {
       getTransactionReceipt: async () => ({
         status: 0,
+        blockHash: `0x${'33'.repeat(32)}`,
         blockNumber: 1,
         gasUsed: 1,
         hash,
@@ -471,6 +475,8 @@ describe('sendCalls reservation submission boundary', () => {
     const provider = {
       getTransactionReceipt: async () => ({
         status: 1,
+        blockHash: `0x${'33'.repeat(32)}`,
+        logs: [],
         blockNumber: 1,
         gasUsed: 1,
         hash,

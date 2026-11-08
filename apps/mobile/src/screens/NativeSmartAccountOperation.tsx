@@ -133,7 +133,11 @@ export function NativeSmartAccountOperationContent({
     );
   };
   const payer = state.payerReview;
-  const transfer = state.intent.kind !== 'deploy' ? state.intent : null;
+  const batch = state.intent.kind === 'dapp-batch' ? state.intent : null;
+  const transfer =
+    state.intent.kind !== 'deploy' && state.intent.kind !== 'dapp-batch'
+      ? state.intent
+      : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
     state.phase
   );
@@ -143,13 +147,17 @@ export function NativeSmartAccountOperationContent({
         <Header
           title={
             state.phase === 'authorize'
-              ? transfer
+              ? batch
+                ? 'Review calls'
+                : transfer
                 ? transfer.kind === 'dapp-call'
                   ? 'Review transaction'
                   : 'Review transfer'
                 : 'Authorize deployment'
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
+              : batch
+              ? 'Send calls'
               : transfer
               ? 'Send'
               : 'Deploy smart account'
@@ -164,6 +172,25 @@ export function NativeSmartAccountOperationContent({
           </Text>
           <Text style={s.label}>Chain ID {state.network.chainId}</Text>
         </Card>
+        {batch &&
+          batch.calls.map((call, index) => (
+            <Card key={index} style={s.card}>
+              <Text style={s.label}>
+                Call {index + 1} of {batch.calls.length}
+              </Text>
+              <Text selectable style={s.address}>
+                {call.to}
+              </Text>
+              {amount(BigInt(call.value).toString())}
+              <TransactionDetails
+                transaction={{
+                  to: call.to!,
+                  value: BigInt(call.value).toString(),
+                  data: call.data,
+                }}
+              />
+            </Card>
+          ))}
         {transfer && (
           <Card style={s.card}>
             {transfer.kind === 'erc20-transfer' && (
@@ -226,14 +253,18 @@ export function NativeSmartAccountOperationContent({
           <>
             <Notice
               title={
-                transfer
+                batch
+                  ? 'Authorize these calls'
+                  : transfer
                   ? transfer.kind === 'dapp-call'
                     ? 'Authorize this transaction'
                     : 'Authorize this transfer'
                   : 'Create this account on the network'
               }
               body={
-                transfer
+                batch
+                  ? 'Authorize the ordered calls together. The following review confirms the paying account and submission fee.'
+                  : transfer
                   ? transfer.kind === 'dapp-call'
                     ? 'Authorize this smart account transaction. The following review confirms the paying account and submission fee.'
                     : 'Authorize this smart account transfer. The following review confirms the paying account and submission fee.'
@@ -283,7 +314,9 @@ export function NativeSmartAccountOperationContent({
             </Card>
             <Button
               title={
-                transfer?.kind === 'dapp-call'
+                batch
+                  ? 'Authorize calls'
+                  : transfer?.kind === 'dapp-call'
                   ? 'Authorize transaction'
                   : transfer
                   ? 'Authorize transfer'
@@ -300,6 +333,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Fund the account charge'
+                  : batch
+                  ? 'Submit the authorized calls'
                   : transfer
                   ? transfer.kind === 'dapp-call'
                     ? 'Submit the authorized transaction'
@@ -309,6 +344,8 @@ export function NativeSmartAccountOperationContent({
               body={
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
+                  : batch
+                  ? 'This transaction submits the calls you authorized.'
                   : transfer
                   ? transfer.kind === 'dapp-call'
                     ? 'This transaction submits the operation you authorized.'
@@ -340,6 +377,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
+                  : batch
+                  ? 'Confirm calls'
                   : transfer
                   ? transfer.kind === 'dapp-call'
                     ? 'Confirm transaction'
@@ -359,6 +398,8 @@ export function NativeSmartAccountOperationContent({
                 ? state.error
                 : state.phase === 'waiting'
                 ? 'Waiting for the network…'
+                : batch
+                ? 'Preparing calls…'
                 : transfer
                 ? 'Preparing transfer…'
                 : 'Preparing deployment…'}
@@ -368,14 +409,18 @@ export function NativeSmartAccountOperationContent({
         {state.phase === 'complete' && (
           <Notice
             title={
-              transfer?.kind === 'dapp-call'
+              batch
+                ? 'Calls submitted'
+                : transfer?.kind === 'dapp-call'
                 ? 'Transaction submitted'
                 : transfer
                 ? 'Transfer submitted'
                 : 'Smart account deployed'
             }
             body={
-              transfer
+              batch
+                ? 'The connected app can check this call bundle’s status.'
+                : transfer
                 ? 'Follow this transaction in Activity.'
                 : 'Your account is available on this network.'
             }
@@ -384,7 +429,11 @@ export function NativeSmartAccountOperationContent({
         {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
-              transfer ? 'Check transfer status' : 'Check deployment status'
+              batch
+                ? 'Check calls status'
+                : transfer
+                ? 'Check transfer status'
+                : 'Check deployment status'
             }
             body={state.error}
             tone="amber"

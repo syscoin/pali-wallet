@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { v4 as uuidv4 } from 'uuid';
 
+import { createSmartAccountCallsExecutions } from '../../shared/dappCalls';
 import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -301,7 +302,7 @@ export const SendCalls = () => {
         activeNetwork.url !== approvedContext.rpcUrl
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      const executions: SmartAccountExecutionIntent[] = [];
+      const resolvedCalls: { data: string; to: string; value: string }[] = [];
       for (const call of quoteCalls) {
         const raw = String(call.to || '');
         let target = raw;
@@ -315,12 +316,13 @@ export const SendCalls = () => {
         }
         if (!/^0x[\da-f]{40}$/i.test(target))
           throw new Error(t('send.smartAccountContractDeploymentUnsupported'));
-        executions.push({
-          target,
+        resolvedCalls.push({
+          to: target,
           data: call.data || '0x',
           value: call.value || '0x0',
         });
       }
+      const executions = [...createSmartAccountCallsExecutions(resolvedCalls)];
       if (cancelled) return;
       const preparedQuote = await prepareSmartAccountFeeQuote({
         accountAddress: approvedContext.account.address,

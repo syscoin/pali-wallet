@@ -1,9 +1,15 @@
+import { getAddress } from 'ethers/address';
+
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
 } from '../utils/smartAccount/contracts.ts';
 import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
 
+import {
+  readEvmRpcHash,
+  readEvmRpcQuantity,
+} from './evmTransactionObservation.ts';
 import type { SmartAccountPackedUserOperation } from '../utils/smartAccount/account.ts';
 
 export type SmartAccountCallsIdentity = Readonly<{
@@ -12,6 +18,59 @@ export type SmartAccountCallsIdentity = Readonly<{
   sender: string;
   userOpHash: string;
 }>;
+
+/** Normalize ethers and raw JSON-RPC receipts through the existing exact validators. */
+export function normalizeDappCallsReceipt(value: any, expectedHash: string) {
+  if (value === null) return null;
+  const quantity = (input: unknown) => {
+    if (typeof input === 'number') {
+      if (!Number.isSafeInteger(input) || input < 0)
+        throw new Error('Invalid calls receipt quantity');
+      input = BigInt(input);
+    }
+    if (typeof input === 'bigint') input = `0x${input.toString(16)}`;
+    if (
+      input &&
+      typeof input === 'object' &&
+      'toHexString' in input &&
+      typeof input.toHexString === 'function'
+    ) {
+      const hex: unknown = input.toHexString();
+      if (typeof hex !== 'string' || !/^0x[\da-f]{1,64}$/i.test(hex))
+        throw new Error('Invalid calls receipt quantity');
+      input = `0x${BigInt(hex).toString(16)}`;
+    }
+    return readEvmRpcQuantity(input);
+  };
+  const hash = readEvmRpcHash(value?.hash ?? value?.transactionHash);
+  if (hash !== readEvmRpcHash(expectedHash))
+    throw new Error('Calls receipt hash changed');
+  const status = quantity(value.status);
+  if (status !== BigInt(0) && status !== BigInt(1))
+    throw new Error('Invalid calls receipt status');
+  if (!Array.isArray(value.logs)) throw new Error('Invalid calls receipt logs');
+  const logs = value.logs.map((log: any) => {
+    if (
+      !Array.isArray(log?.topics) ||
+      typeof log.data !== 'string' ||
+      !/^0x(?:[\da-f]{2})*$/i.test(log.data)
+    )
+      throw new Error('Invalid calls receipt log');
+    return {
+      address: getAddress(log.address),
+      data: log.data,
+      topics: log.topics.map(readEvmRpcHash),
+    };
+  });
+  return {
+    hash,
+    status: Number(status),
+    blockHash: readEvmRpcHash(value.blockHash),
+    blockNumber: `0x${quantity(value.blockNumber).toString(16)}`,
+    gasUsed: `0x${quantity(value.gasUsed).toString(16)}`,
+    logs,
+  };
+}
 
 /** Capture the operation prepared and authorized by the wallet. */
 export function captureSmartAccountCallsIdentity(

@@ -987,3 +987,68 @@ for (const kind of ['getter', 'oversized', 'cycle', 'serializer']) {
     }
   });
 }
+
+
+test('bundle metadata survives session disconnect, protocol updates and storage reopen', async () => {
+  const f = await fixture();
+  try {
+    let repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    await publish(repository);
+    const descriptor = { atomic: true, smartAccount: true, chainId: 1 };
+    const reserve = repository.calls.reserveSendCallsBundle(ORIGIN, '0x01', descriptor, 'attempt', '0x' + '11'.repeat(20));
+    await Promise.resolve();
+    await repository.transport.setItem('concurrent-key', { retained: true });
+    assert.equal(await reserve, true);
+    await repository.calls.recordSendCallsBundle(ORIGIN, '0x01', { ...descriptor, reservationId: 'attempt', submissionId: 'submit', submissionStarted: true, smartAccountIdentity: { chainId: 1, entryPoint: '0x433709009b8330fda32311df1c2afa402ed8d009', sender: '0x' + '11'.repeat(20), userOpHash: '0x' + '22'.repeat(32) }, txHashes: [] });
+    await repository.reconcileSessions([], current);
+    assert.deepEqual(repository.bindings(), []);
+    await repository.dispose();
+    await f.reopen();
+    repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    assert.deepEqual(await repository.transport.getItem('concurrent-key'), { retained: true });
+    assert.equal(await repository.calls.reserveSendCallsBundle(ORIGIN, '0x01', descriptor, 'again', '0x' + '11'.repeat(20)), false);
+    assert.equal((await repository.calls.resolveCallsStatus({ assertCurrent: current, forChain: () => null }, ORIGIN, '0x01')).status, 100);
+    await publish(repository);
+    assert.equal((await repository.calls.getStoredSendCallsBundle(ORIGIN, '0x01'))!.submissionStarted, true);
+  } finally { await f.close(); }
+});
+
+test('bundle metadata commit checks the owner while SQL is waiting', async () => {
+  const f = await fixture(), writing = latch();
+  let live = true;
+  try {
+    const repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner() { if (!live) throw new Error('retired'); } });
+    await repository.transport.setItem('retained', true);
+    f.setBefore(async (kind, sql) => { if (kind === 'run' && sql.startsWith('UPDATE keyring_records')) { writing.enter(); await writing.gate; } });
+    const update = repository.calls.reserveSendCallsBundle(ORIGIN, '0x02', { atomic: true, smartAccount: true, chainId: 1 }, 'attempt', '0x' + '11'.repeat(20));
+    const rejected = assert.rejects(update, { code: 'CONNECTION_STORAGE_UNAVAILABLE' });
+    await writing.reached; live = false; writing.release(); await rejected; f.setBefore();
+    const reopened = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    assert.equal(await reopened.calls.getStoredSendCallsBundle(ORIGIN, '0x02'), null);
+    assert.equal(await reopened.transport.getItem('retained'), true);
+  } finally { await f.close(); }
+});
+
+test('malformed stored bundle metadata fails before connection restoration', async () => {
+  const f = await fixture();
+  try {
+    await f.storage.keyringStorage.set(NATIVE_CONNECTION_STORAGE_KEY, { version: 1, walletBindingId: WALLET, sessions: [], transport: [], bundles: { [ORIGIN]: { '0x01': { chainId: 1 } } } });
+    await assert.rejects(openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current }));
+  } finally { await f.close(); }
+});
+
+test('bundle metadata uses the existing connection document budget for valid long IDs', async () => {
+  const f = await fixture();
+  try {
+    const repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    for (let index = 0; index < 16; index++) {
+      const id = '0x' + index.toString(16).padStart(4, '0') + 'a'.repeat(8188);
+      assert.equal(await repository.calls.reserveSendCallsBundle(ORIGIN, id, { atomic: true, smartAccount: true, chainId: 1 }, 'reserved', '0x' + '11'.repeat(20)), true);
+    }
+    const stored = await f.storage.keyringStorage.get(NATIVE_CONNECTION_STORAGE_KEY);
+    assert(JSON.stringify(stored).length > 64 * 1024);
+    await repository.dispose();
+    const reopened = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: WALLET, assertOwner: current });
+    assert(await reopened.calls.getStoredSendCallsBundle(ORIGIN, '0x000f' + 'a'.repeat(8188)));
+  } finally { await f.close(); }
+});

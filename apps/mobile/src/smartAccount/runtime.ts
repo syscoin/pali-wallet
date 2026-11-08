@@ -2,6 +2,10 @@ import {
   createSmartAccountPendingState,
   type SmartAccountPendingState,
 } from '../../../../source/utils/smartAccount/pendingState.ts';
+import {
+  createSmartAccountCallsExecutions,
+  normalizeDappCallsRequest,
+} from '../../../../source/shared/dappCalls.ts';
 import type { SmartAccountPendingRecords } from '../../../../source/wallet/evmSignedRecords.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
@@ -80,6 +84,10 @@ export type NativeSmartOperationPorts = Readonly<{
     guard: () => void
   ): Promise<unknown>;
   markDeployed(guard: () => void): Promise<void>;
+  submitBatch?(
+    prepared: PreparedSmartAccountOperation,
+    submit: () => Promise<string>
+  ): Promise<string>;
 }>;
 
 /** Native presentation and transport around the extension's shared operation engine. */
@@ -88,7 +96,18 @@ export function createNativeSmartOperation(
 ): NativeSmartAccountOperation {
   const account = ports.account;
   let metadata = account.smartAccount;
-  const intent = Object.freeze({ ...ports.intent });
+  const intent =
+    ports.intent.kind === 'dapp-batch'
+      ? Object.freeze({
+          kind: 'dapp-batch' as const,
+          calls: normalizeDappCallsRequest({
+            version: '2.0.0',
+            calls: ports.intent.calls,
+          }).calls,
+        })
+      : Object.freeze({ ...ports.intent });
+  if (intent.kind === 'dapp-batch' && typeof ports.submitBatch !== 'function')
+    throw new Error('Smart batch submission boundary is required');
   const chainId = Number(ports.network.chainId);
   let issued: PreparedSmartAccountOperation | undefined;
   let pending: SmartAccountPendingState;
@@ -129,7 +148,14 @@ export function createNativeSmartOperation(
       );
       const provider = pending.provider;
       await pending.verify();
-      if (intent.kind !== 'deploy') {
+      if (intent.kind === 'dapp-batch') {
+        for (const call of createSmartAccountCallsExecutions(intent.calls))
+          await assertSmartAccountTargetsAllowed(
+            getBlacklistTargetsForEvmCall({ to: call.target, data: call.data }),
+            ports.checkAddress,
+            assertCurrent
+          );
+      } else if (intent.kind !== 'deploy') {
         await assertSmartAccountTargetsAllowed(
           getBlacklistTargetsForEvmCall(
             intent.kind === 'nft-transfer'
@@ -272,7 +298,9 @@ export function createNativeSmartOperation(
         };
       }
       issued = await prepare(
-        intent.kind === 'deploy'
+        intent.kind === 'dapp-batch'
+          ? [...createSmartAccountCallsExecutions(intent.calls)]
+          : intent.kind === 'deploy'
           ? [{ target: account.address, data: '0x', value: '0x0' }]
           : intent.kind === 'nft-transfer'
           ? [{ ...buildSmartAccountNftTransfer(intent) }]
@@ -407,61 +435,66 @@ export function createNativeSmartOperation(
             ports.waitForReceipt(hash, quote.transaction, signal, guard),
         };
       };
-      const response = await submitSmartAccountOperation(
-        {
-          ...prepared,
-          accountId: account.id,
-          executionContextId: contextId,
-          signature,
-          waitForConfirmation: intent.kind === 'deploy',
-        },
-        {
-          chainId,
-          provider,
-          pending,
-          assertExpectedExecutionContext: () => {
-            throw new Error('Unexpected dapp provenance');
+      const submit = async () => {
+        const response = await submitSmartAccountOperation(
+          {
+            ...prepared,
+            accountId: account.id,
+            executionContextId: contextId,
+            signature,
+            waitForConfirmation: intent.kind === 'deploy',
           },
-          assertSmartAccountExecutionContext: assertContext,
-          getExecutionContext: (id) => {
-            assertContext(id);
-            return {
-              accountId: account.id,
-              gasPrice: prepared.gasPrice,
-              userOperation: prepared.userOperation,
-            };
+          {
+            chainId,
+            provider,
+            pending,
+            assertExpectedExecutionContext: () => {
+              throw new Error('Unexpected dapp provenance');
+            },
+            assertSmartAccountExecutionContext: assertContext,
+            getExecutionContext: (id) => {
+              assertContext(id);
+              return {
+                accountId: account.id,
+                gasPrice: prepared.gasPrice,
+                userOperation: prepared.userOperation,
+              };
+            },
+            getSmartAccountById: (id) => {
+              assertCurrent();
+              if (id !== account.id) throw new Error('SMART_OPERATION_EXPIRED');
+              return { account, metadata };
+            },
+            getWalletGasPayerAccount: (preferred, request, options) =>
+              selectSmartAccountGasPayer(
+                ports.wallet,
+                provider,
+                preferred,
+                request,
+                options
+              ),
+            getLocalNativeExecutionRecipients: () => [],
+            assertGasTankCoversTransaction: (request) =>
+              assertSmartAccountGasTankCredit(provider, request),
+            ensureDeploymentPrefund: (...args) =>
+              ensureSmartAccountDeploymentPrefund(provider, send, ...args),
+            sendTransaction: send,
+            invalidateMetadata: () => undefined,
           },
-          getSmartAccountById: (id) => {
-            assertCurrent();
-            if (id !== account.id) throw new Error('SMART_OPERATION_EXPIRED');
-            return { account, metadata };
-          },
-          getWalletGasPayerAccount: (preferred, request, options) =>
-            selectSmartAccountGasPayer(
-              ports.wallet,
-              provider,
-              preferred,
-              request,
-              options
-            ),
-          getLocalNativeExecutionRecipients: () => [],
-          assertGasTankCoversTransaction: (request) =>
-            assertSmartAccountGasTankCredit(provider, request),
-          ensureDeploymentPrefund: (...args) =>
-            ensureSmartAccountDeploymentPrefund(provider, send, ...args),
-          sendTransaction: send,
-          invalidateMetadata: () => undefined,
-        },
-        assertCurrent
-      );
-      assertCurrent();
-      if (intent.kind === 'deploy') {
-        if ((await provider.getCode(account.address)) === '0x')
-          throw new Error('Smart account deployment not observed');
+          assertCurrent
+        );
         assertCurrent();
-        await ports.markDeployed(assertCurrent);
-      }
-      return response.hash;
+        if (intent.kind === 'deploy') {
+          if ((await provider.getCode(account.address)) === '0x')
+            throw new Error('Smart account deployment not observed');
+          assertCurrent();
+          await ports.markDeployed(assertCurrent);
+        }
+        return response.hash;
+      };
+      return intent.kind === 'dapp-batch'
+        ? ports.submitBatch!(prepared, submit)
+        : submit();
     },
   });
 }

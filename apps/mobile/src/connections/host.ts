@@ -5,6 +5,8 @@ import type { INetwork } from '../../../../source/types/network.ts';
 import type { NativeConnectionRepository } from './storage.ts';
 import type { DappMessageRequest } from '../../../../source/shared/dappMessageRequest.ts';
 import type { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
+import type { DappCallsRequest } from '../../../../source/shared/dappCalls.ts';
+import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 
 export type NativeConnectionMessageSigning = Readonly<{
   accountId: string;
@@ -23,6 +25,7 @@ export type NativeConnectionTransactionSigning = Readonly<{
 export type NativePreparedSmartConnectionTransaction = Readonly<{
   operation: NativeSmartAccountOperation;
   approval: ApprovalSummary | null;
+  batchApprovals?: readonly (ApprovalSummary | null)[];
 }>;
 
 export type NativeConnectionAccount = Readonly<{
@@ -37,10 +40,29 @@ export type NativeConnectionAccount = Readonly<{
 /** Internal connection capabilities. This host never belongs in React state. */
 export type NativeConnectionHost = Readonly<{
   repository: NativeConnectionRepository;
+  calls: NativeConnectionRepository['calls'];
   walletBindingId: string;
   /** Stable wallet/runtime lifetime, deliberately independent of lock state. */
   assertOwner(): void;
   sessionGeneration(): number;
+  supportsAtomicCalls(accountId: string): boolean;
+  readCallsStatus(
+    origin: string,
+    id: string,
+    assertCurrent: () => void
+  ): Promise<CallsBundleStatus>;
+  prepareCalls(
+    input: Readonly<{
+      accountId: string;
+      networkId: string;
+      calls: DappCallsRequest;
+      origin: string;
+      bundleId: string;
+      reservationId: string;
+      approval: ReturnType<typeof createDappSigningApproval>;
+    }>,
+    assertCurrent: () => void
+  ): Promise<NativePreparedSmartConnectionTransaction>;
   signMessage(input: NativeConnectionMessageSigning): Promise<string>;
   prepareTransaction(
     input: NativeConnectionTransactionSigning,

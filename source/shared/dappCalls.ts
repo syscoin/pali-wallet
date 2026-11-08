@@ -174,3 +174,22 @@ export function assertDappCallsAtomicSupport(
       'Atomic wallet_sendCalls requires an active smart account on the selected chain.'
     );
 }
+
+/** Hosts resolve names first; the shared Smart encoder consumes exact ordered calls. */
+export function createSmartAccountCallsExecutions(calls: readonly DappCall[]) {
+  return Object.freeze(
+    calls.map((call) => {
+      if (typeof call.to !== 'string' || !/^0x[\da-f]{40}$/i.test(call.to))
+        throw new EthereumRpcErrorHandler(
+          4200,
+          'Smart account calls require a resolved destination address.'
+        );
+      const transaction = normalizeDappTransaction(call);
+      return Object.freeze({
+        target: transaction.to as string,
+        value: transaction.value ?? '0x0',
+        data: transaction.data,
+      });
+    })
+  );
+}

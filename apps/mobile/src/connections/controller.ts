@@ -1,3 +1,10 @@
+import {
+  normalizeDappCallsRequest,
+  assertDappCallsAtomicSupport,
+  createSmartAccountCallsExecutions,
+  type DappCallsRequest,
+} from '../../../../source/shared/dappCalls.ts';
+import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
 import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
@@ -57,6 +64,9 @@ const METHODS = Object.freeze([
   'eth_requestAccounts',
   'wallet_getCapabilities',
   'eth_sendTransaction',
+  'wallet_sendCalls',
+  'wallet_getCallsStatus',
+  'wallet_showCallsStatus',
   'personal_sign',
   'eth_signTypedData',
   'eth_signTypedData_v3',
@@ -74,6 +84,21 @@ type TransactionRequest = Readonly<{
   method: 'eth_sendTransaction';
   transaction: ReturnType<typeof normalizeDappTransaction>;
 }>;
+type CallsRequest = Readonly<{
+  method: 'wallet_sendCalls';
+  calls: DappCallsRequest;
+  bundleId: string;
+  reservationId: string;
+}>;
+type SigningRequest = DappMessageRequest | TransactionRequest | CallsRequest;
+function isTransactionRequest(
+  request: SigningRequest
+): request is TransactionRequest | CallsRequest {
+  return (
+    request.method === 'eth_sendTransaction' ||
+    request.method === 'wallet_sendCalls'
+  );
+}
 type PrivateSigningReview =
   | Omit<
       NativeMessageReview,
@@ -92,7 +117,7 @@ type PendingSigning = {
   wire: WalletConnectRequest;
   connection: Connected;
   session: WalletConnectSession;
-  request: DappMessageRequest | TransactionRequest;
+  request: SigningRequest;
   accountId: string;
   networkId: string;
   networkFingerprint: string;
@@ -152,6 +177,14 @@ const sessionEventChain = (session: WalletConnectSession, name: string) => {
 
 /** Native lifecycle and public view adapter. The common engine owns every grant. */
 export class NativeConnectionsController {
+  private callsStatus: Readonly<{
+    id: string;
+    origin: string;
+    status: CallsBundleStatus;
+  }> | null = null;
+  private statusSession: WalletConnectSession | undefined;
+  private statusResponse: ((shown: boolean) => Promise<void>) | undefined;
+  private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private host: NativeConnectionHost | undefined;
   private repository: NativeConnectionRepository | undefined;
   private transport: WalletConnectTransport | undefined;
@@ -187,6 +220,15 @@ export class NativeConnectionsController {
     this.options = options;
     this.snapshot = this.project();
     this.view = Object.freeze({
+      callsStatusShown: async (id) => {
+        if (this.callsStatus?.id !== id) return;
+        const respond = this.statusResponse;
+        this.statusResponse = undefined;
+        await respond?.(true);
+      },
+      dismissCallsStatus: (id) => {
+        if (this.callsStatus?.id === id) this.dismissStatus();
+      },
       getSnapshot: () => this.snapshot,
       subscribe: (listener: () => void) => {
         this.listeners.add(listener);
@@ -246,6 +288,7 @@ export class NativeConnectionsController {
     });
     this.unsubscribe = options.source.subscribe(() => {
       const phase = options.source.getSnapshot().phase;
+      if (phase !== 'ready') this.dismissStatus();
       if (phase !== 'ready' && (this.action || this.pairing)) this.cancel();
       this.revalidateSigningRequests();
       const previous = this.publishedScope;
@@ -328,10 +371,27 @@ export class NativeConnectionsController {
       ),
     ];
   }
-  private supportedMethods(accountType?: string): readonly string[] {
-    return accountType === 'SmartAccount'
-      ? METHODS.filter((method) => !isDappMessageMethod(method))
-      : METHODS;
+  private supportedMethods(
+    accountType?: string,
+    accountId?: string
+  ): readonly string[] {
+    return METHODS.filter((method) => {
+      if (accountType === 'SmartAccount' && isDappMessageMethod(method))
+        return false;
+      if (method === 'wallet_sendCalls')
+        return (
+          !accountType ||
+          (accountType === 'SmartAccount' &&
+            !!accountId &&
+            this.host?.supportsAtomicCalls(accountId) === true)
+        );
+      if (
+        method === 'wallet_getCallsStatus' ||
+        method === 'wallet_showCallsStatus'
+      )
+        return !accountType || accountType === 'SmartAccount';
+      return true;
+    });
   }
   private canApprove(
     proposal: WalletConnectProposal,
@@ -347,7 +407,7 @@ export class NativeConnectionsController {
     const chain = `eip155:${context.network.chainId}`;
     const account = context.accounts.find((value) => value.id === accountId);
     if (accountId && !account) return false;
-    const supported = this.supportedMethods(account?.type);
+    const supported = this.supportedMethods(account?.type, account?.id);
     return Object.entries(proposal.requiredNamespaces).every(([name, raw]) => {
       const requirement = raw as {
         chains?: string[];
@@ -375,6 +435,7 @@ export class NativeConnectionsController {
     }
     const evm = context?.network.kind === 'ethereum';
     return Object.freeze({
+      callsStatus: ready ? this.callsStatus : null,
       revision: this.revision,
       status: ready ? this.status : 'locked',
       selectedAccountId: ready && evm ? context!.activeAccountId : null,
@@ -439,6 +500,17 @@ export class NativeConnectionsController {
     });
   }
   private publish() {
+    if (
+      this.statusSession &&
+      (this.connections.get(sessionKey(this.statusSession))?.session !==
+        this.statusSession ||
+        !this.connections
+          .get(sessionKey(this.statusSession))
+          ?.engine.isConnected(this.statusSession.binding.origin))
+    ) {
+      this.dismissStatus();
+      return;
+    }
     this.revision++;
     this.snapshot = this.project();
     for (const listener of this.listeners) listener();
@@ -846,7 +918,7 @@ export class NativeConnectionsController {
           requested
             .flatMap((value) => value.methods ?? [])
             .filter((value) =>
-              this.supportedMethods(account.type).includes(value)
+              this.supportedMethods(account.type, account.id).includes(value)
             )
         ),
       ];
@@ -977,9 +1049,11 @@ export class NativeConnectionsController {
       )
         failure('CONTEXT_CHANGED');
     };
+    let responseGuard = guard;
     if (
       isDappMessageMethod(request.method) ||
-      request.method === 'eth_sendTransaction'
+      request.method === 'eth_sendTransaction' ||
+      request.method === 'wallet_sendCalls'
     ) {
       await this.queueSigningRequest(request);
       return;
@@ -993,8 +1067,13 @@ export class NativeConnectionsController {
         const account = connected.engine.getAccount(
           request.session.binding.origin
         );
+        const nativeAccount = context.accounts.find(
+          (entry) =>
+            entry.index === grant?.accountId && entry.type === grant.accountType
+        );
         const permitted =
           account &&
+          nativeAccount &&
           grant?.chain === 'ethereum' &&
           session?.binding.origin === request.session.binding.origin &&
           request.chainId === `eip155:${grant.chainId}` &&
@@ -1024,8 +1103,12 @@ export class NativeConnectionsController {
               context.network.chainId === grant.chainId
                 ? {
                     chainId: context.network.chainId,
-                    batchSupported: false,
-                    atomicSupported: false,
+                    batchSupported:
+                      nativeAccount!.type === 'SmartAccount' &&
+                      this.host!.supportsAtomicCalls(nativeAccount!.id),
+                    atomicSupported:
+                      nativeAccount!.type === 'SmartAccount' &&
+                      this.host!.supportsAtomicCalls(nativeAccount!.id),
                   }
                 : null,
           });
@@ -1033,6 +1116,105 @@ export class NativeConnectionsController {
       } catch (cause) {
         if (!(cause instanceof EthereumRpcErrorHandler)) throw cause;
         error = { code: cause.code, message: cause.message };
+      }
+    } else if (
+      request.method === 'wallet_getCallsStatus' ||
+      request.method === 'wallet_showCallsStatus'
+    ) {
+      const expiresAt = request.expiresAt;
+      const statusGuard = () => {
+        guard();
+        if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
+          failure('REQUEST_EXPIRED');
+      };
+      responseGuard = statusGuard;
+      try {
+        statusGuard();
+        const account = connected.engine.getAccount(
+          request.session.binding.origin
+        );
+        const permitted =
+          account &&
+          grant?.accountType === 'SmartAccount' &&
+          session &&
+          Object.values(session.namespaces).some(
+            (namespace) =>
+              namespace.methods.includes(request.method) &&
+              namespace.accounts.some(
+                (entry) =>
+                  entry.toLowerCase() ===
+                  `${request.chainId}:${account.address}`.toLowerCase()
+              )
+          );
+        if (!context.unlocked || !permitted)
+          throw new EthereumRpcErrorHandler(
+            4100,
+            'Method or account is not authorized'
+          );
+        if (
+          !Array.isArray(request.params) ||
+          request.params.length !== 1 ||
+          typeof request.params[0] !== 'string'
+        )
+          throw new EthereumRpcErrorHandler(
+            -32602,
+            'Expected a call bundle ID'
+          );
+        result = await this.host!.readCallsStatus(
+          request.session.binding.origin,
+          request.params[0],
+          statusGuard
+        );
+        statusGuard();
+        if (request.method === 'wallet_showCallsStatus') {
+          if (this.callsStatus)
+            throw new EthereumRpcErrorHandler(
+              -32005,
+              'A call status is already open'
+            );
+          const id = `status-${++this.serial}`;
+          this.statusSession = session;
+          this.callsStatus = Object.freeze({
+            id,
+            origin: request.session.binding.origin,
+            status: result as CallsBundleStatus,
+          });
+          this.statusResponse = async (shown) => {
+            const assertStatusCurrent = () => {
+              statusGuard();
+              if (shown && this.callsStatus?.id !== id)
+                failure('CONTEXT_CHANGED');
+            };
+            assertStatusCurrent();
+            await this.transport!.respond(
+              request.session.binding,
+              request.id,
+              shown
+                ? { result: null }
+                : {
+                    error: {
+                      code: 4001,
+                      message: 'User rejected or request expired',
+                    },
+                  },
+              assertStatusCurrent,
+              () => undefined
+            );
+          };
+          this.statusTimer = setTimeout(
+            () => this.dismissStatus(),
+            Math.max(0, request.expiresAt - Date.now())
+          );
+          this.publish();
+          return;
+        }
+      } catch (cause) {
+        const code =
+          cause instanceof Error && 'code' in cause ? cause.code : undefined;
+        error =
+          typeof code === 'number' && Number.isSafeInteger(code)
+            ? { code, message: (cause as Error).message }
+            : { code: -32603, message: 'Call status is unavailable' };
       }
     } else if (request.chainId !== `eip155:${context.network.chainId}`)
       error = { code: 4901, message: 'Requested chain is not selected' };
@@ -1053,7 +1235,7 @@ export class NativeConnectionsController {
       request.session.binding,
       request.id,
       error ? { error } : { result },
-      guard,
+      responseGuard,
       () => undefined
     );
   }
@@ -1074,6 +1256,16 @@ export class NativeConnectionsController {
     } catch {
       return null;
     }
+  }
+  private dismissStatus() {
+    if (!this.callsStatus && !this.statusResponse) return;
+    const respond = this.statusResponse;
+    this.statusResponse = undefined;
+    this.callsStatus = null;
+    this.statusSession = undefined;
+    clearTimeout(this.statusTimer);
+    void respond?.(false).catch(() => undefined);
+    this.publish();
   }
   private requestConnectionCurrent(message: PendingSigning): boolean {
     const snapshot = this.options.source.getSnapshot();
@@ -1171,6 +1363,14 @@ export class NativeConnectionsController {
   ): Promise<void> {
     if (this.requests.get(message.id) !== message) return Promise.resolve();
     this.requests.delete(message.id);
+    if (message.request.method === 'wallet_sendCalls')
+      void this.host?.calls
+        .releaseSendCallsBundleReservation(
+          message.session.binding.origin,
+          message.request.bundleId,
+          message.request.reservationId
+        )
+        .catch(() => undefined);
     message.unsubscribeSmart?.();
     message.smart?.dispose();
     message.approval?.dispose();
@@ -1243,7 +1443,7 @@ export class NativeConnectionsController {
         )
     );
     if (!permitted) return reject(4100, 'Method or account is not authorized');
-    if (!this.supportedMethods(account.type).includes(wire.method))
+    if (!this.supportedMethods(account.type, account.id).includes(wire.method))
       return reject(4200, 'Unsupported method');
     if (
       this.requests.size >= DAPP_REQUEST_LIMITS.pendingRequests ||
@@ -1260,7 +1460,7 @@ export class NativeConnectionsController {
       )
     )
       return;
-    let request: DappMessageRequest | TransactionRequest | undefined;
+    let request: SigningRequest | undefined;
     try {
       if (wire.method === 'eth_sendTransaction') {
         if (!Array.isArray(wire.params) || wire.params.length !== 1)
@@ -1280,6 +1480,43 @@ export class NativeConnectionsController {
           method: 'eth_sendTransaction',
           transaction: { ...transaction, from: account.address },
         };
+      } else if (wire.method === 'wallet_sendCalls') {
+        if (!Array.isArray(wire.params) || wire.params.length !== 1)
+          throw new EthereumRpcErrorHandler(
+            -32602,
+            'Expected one calls request'
+          );
+        const calls = normalizeDappCallsRequest(wire.params[0]);
+        const supported =
+          account.type === 'SmartAccount' &&
+          this.host!.supportsAtomicCalls(account.id);
+        assertDappCallsAtomicSupport(calls, supported);
+        if (!supported)
+          throw new EthereumRpcErrorHandler(
+            4200,
+            'Smart atomic calls are unavailable for this account'
+          );
+        if (
+          (calls.from &&
+            calls.from.toLowerCase() !== account.address.toLowerCase()) ||
+          (calls.chainId &&
+            BigInt(calls.chainId) !== BigInt(context.network.chainId))
+        )
+          throw new EthereumRpcErrorHandler(
+            4100,
+            'The requested account or network is no longer selected'
+          );
+        createSmartAccountCallsExecutions(calls.calls);
+        request = {
+          method: 'wallet_sendCalls',
+          calls: Object.freeze({
+            ...calls,
+            from: account.address,
+            chainId: String(context.network.chainId),
+          }),
+          bundleId: calls.id ?? this.host!.calls.generateWalletBundleId(),
+          reservationId: this.host!.calls.generateWalletBundleId(),
+        };
       } else {
         assertDappTypedDataValid(wire.method, wire.params);
         request = readDappMessageRequest(
@@ -1288,7 +1525,9 @@ export class NativeConnectionsController {
           account.address
         );
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof EthereumRpcErrorHandler)
+        return reject(error.code, error.message);
       /* Invalid requests never become signing capabilities. */
     }
     if (!request) return reject(-32602, 'Invalid signing request');
@@ -1308,7 +1547,7 @@ export class NativeConnectionsController {
       ? 'INVALID_MESSAGE'
       : null;
     const order =
-      request.method === 'eth_sendTransaction' ||
+      isTransactionRequest(request) ||
       request.method === 'personal_sign' ||
       request.version === 'V1'
         ? null
@@ -1320,6 +1559,41 @@ export class NativeConnectionsController {
     );
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
       return reject(4001, 'Request expired');
+    if (request.method === 'wallet_sendCalls') {
+      const registry = this.host!.calls;
+      const revision = this.options.source.getSnapshot().revision;
+      const reserved = await registry.reserveSendCallsBundle(
+        origin,
+        request.bundleId,
+        { atomic: true, chainId: context.network.chainId, smartAccount: true },
+        request.reservationId,
+        account.address
+      );
+      if (!reserved)
+        return reject(
+          5720,
+          'There is already a bundle submitted with this id (Duplicate ID).'
+        );
+      if (
+        this.disposed ||
+        this.options.source.getSnapshot().phase !== 'ready' ||
+        this.options.source.getSnapshot().revision !== revision ||
+        this.connections.get(sessionKey(wire.session)) !== connection ||
+        connection.engine.get(origin) !== grant ||
+        expiresAt <= Date.now()
+      ) {
+        await registry
+          .releaseSendCallsBundleReservation(
+            origin,
+            request.bundleId,
+            request.reservationId
+          )
+          .catch(() => undefined);
+        if (!this.disposed)
+          return reject(4001, 'Request expired or wallet context changed');
+        return;
+      }
+    }
     const id = `request-${++this.serial}`;
     const message: PendingSigning = {
       id,
@@ -1350,7 +1624,7 @@ export class NativeConnectionsController {
         error,
         advisories: Object.freeze([]),
         requiresWarningAcknowledgement: false,
-        ...(request.method === 'eth_sendTransaction'
+        ...(isTransactionRequest(request)
           ? {
               kind: 'transaction' as const,
               method: request.method,
@@ -1393,7 +1667,7 @@ export class NativeConnectionsController {
           ...message.review,
           error: 'BLOCKED_SITE',
         });
-      if (request.method === 'eth_sendTransaction') {
+      if (isTransactionRequest(request)) {
         if (
           this.requests.values().next().value === message &&
           context.activeAccountId === account.id &&
@@ -1443,7 +1717,7 @@ export class NativeConnectionsController {
       this.publish();
     } catch {
       if (
-        message.request.method === 'eth_sendTransaction' &&
+        isTransactionRequest(message.request) &&
         this.requestConnectionCurrent(message)
       ) {
         message.prepared = undefined;
@@ -1468,7 +1742,7 @@ export class NativeConnectionsController {
       message.prepared ||
       message.smart ||
       message.review.error ||
-      message.request.method !== 'eth_sendTransaction' ||
+      !isTransactionRequest(message.request) ||
       this.disposed ||
       this.options.source.getSnapshot().phase !== 'ready' ||
       this.host?.context().activeAccountId !== message.accountId
@@ -1493,7 +1767,7 @@ export class NativeConnectionsController {
   }
   private async prepareTransactionReview(message: PendingSigning) {
     if (
-      message.request.method !== 'eth_sendTransaction' ||
+      !isTransactionRequest(message.request) ||
       message.review.kind === 'message'
     )
       throw new Error('Invalid transaction request');
@@ -1504,15 +1778,29 @@ export class NativeConnectionsController {
     message.smart?.dispose();
     message.smart = undefined;
     message.unsubscribeSmart = undefined;
-    const prepared = await this.host!.prepareTransaction(
-      {
-        accountId: message.accountId,
-        networkId: message.networkId,
-        transaction: message.request.transaction,
-        approval,
-      },
-      approval.assertCurrent
-    );
+    const prepared =
+      message.request.method === 'wallet_sendCalls'
+        ? await this.host!.prepareCalls(
+            {
+              accountId: message.accountId,
+              networkId: message.networkId,
+              calls: message.request.calls,
+              origin: message.session.binding.origin,
+              bundleId: message.request.bundleId,
+              reservationId: message.request.reservationId,
+              approval,
+            },
+            approval.assertCurrent
+          )
+        : await this.host!.prepareTransaction(
+            {
+              accountId: message.accountId,
+              networkId: message.networkId,
+              transaction: message.request.transaction,
+              approval,
+            },
+            approval.assertCurrent
+          );
     try {
       approval.assertCurrent();
     } catch (error) {
@@ -1535,8 +1823,11 @@ export class NativeConnectionsController {
         message.review = Object.freeze({
           ...message.review,
           kind: 'smart-transaction',
-          method: 'eth_sendTransaction',
+          method: message.request.method as
+            | 'eth_sendTransaction'
+            | 'wallet_sendCalls',
           operation: snapshot,
+          batchApprovals: prepared.batchApprovals,
           approval: prepared.approval,
         });
         this.publish();
@@ -1546,18 +1837,30 @@ export class NativeConnectionsController {
       approval.assertCurrent();
       if (operation.getSnapshot().phase !== 'authorize')
         throw new Error('Smart operation unavailable');
-      const transaction = message.request.transaction;
+      const transactions =
+        message.request.method === 'wallet_sendCalls'
+          ? message.request.calls.calls
+          : [message.request.transaction];
       const advisories = await reviewDappAddressAdvisories({
-        targets: getBlacklistTargetsForEvmCall({
-          data: transaction.data ?? '0x',
-          to: transaction.to,
-          tokenStandard: prepared.approval?.standardVerified
-            ? prepared.approval.tokenStandard
-            : undefined,
-        }).map(({ address, type, method }) => ({
-          address,
-          field: method ?? type,
-        })),
+        targets: transactions.flatMap((transaction, index) => {
+          const summary =
+            message.request.method === 'wallet_sendCalls'
+              ? prepared.batchApprovals?.[index]
+              : prepared.approval;
+          return getBlacklistTargetsForEvmCall({
+            data: transaction.data ?? '0x',
+            to: transaction.to,
+            tokenStandard: summary?.standardVerified
+              ? summary.tokenStandard
+              : undefined,
+          }).map(({ address, type, method }) => ({
+            address,
+            field:
+              transactions.length > 1
+                ? `Call ${index + 1}: ${method ?? type}`
+                : method ?? type,
+          }));
+        }),
         checkAddress: this.options.checkAddress,
         assertCurrent: approval.assertCurrent,
         onWarning: (warning) => {
@@ -1729,8 +2032,8 @@ export class NativeConnectionsController {
     message.busy = true;
     this.publish();
     try {
-      let result: string;
-      if (message.request.method === 'eth_sendTransaction') {
+      let result: unknown;
+      if (isTransactionRequest(message.request)) {
         if (message.smart) {
           await message.smart.authorize(message.smart.getSnapshot().revision);
           approval.assertCurrent();
@@ -1742,7 +2045,10 @@ export class NativeConnectionsController {
           }
           if (snapshot.phase !== 'complete' || !snapshot.transactionHash)
             throw new Error('Smart operation ended');
-          result = snapshot.transactionHash;
+          result =
+            message.request.method === 'wallet_sendCalls'
+              ? { id: message.request.bundleId, capabilities: {} }
+              : snapshot.transactionHash;
         } else {
           if (!message.prepared) return failure('REQUEST_EXPIRED');
           result = await message.prepared.submit(
@@ -1840,7 +2146,7 @@ export class NativeConnectionsController {
       message.approval = this.captureSigningApproval(message);
       message.switching = false;
       message.switchRevision = undefined;
-      if (message.request.method === 'eth_sendTransaction')
+      if (isTransactionRequest(message.request))
         await this.prepareTransactionReview(message);
       message.busy = false;
       this.publish();
@@ -1880,6 +2186,7 @@ export class NativeConnectionsController {
   }
   async dispose(): Promise<void> {
     if (this.closing) return this.closing;
+    this.dismissStatus();
     for (const message of [...this.requests.values()])
       this.retireRequest(message, false);
     this.disposed = true;

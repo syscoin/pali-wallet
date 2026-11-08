@@ -1,3 +1,4 @@
+import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
 import { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -37,6 +38,7 @@ const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
     capabilities?: boolean;
+    batch?: boolean;
     smart?: boolean;
     secondAccount?: boolean;
     restoring?: boolean;
@@ -58,6 +60,7 @@ function fixture(
   const signatures: unknown[] = [];
   const transactions: unknown[] = [];
   let signWait: Promise<void> = Promise.resolve();
+  let storageWait: Promise<void> = Promise.resolve();
   let preparationError: Error | undefined;
   let beforePreparedReturn: (() => void) | undefined;
   let smartDisposals = 0;
@@ -83,6 +86,7 @@ function fixture(
   let responseWait: Promise<void> = Promise.resolve();
   let dispatchWait: Promise<void> = Promise.resolve();
   let dispatchFailure: Error | undefined;
+  let callsStatusError: Error | undefined;
   const handedOff: unknown[] = [];
   let emissionWait: Promise<void> = Promise.resolve();
   let pairWait: Promise<void> = Promise.resolve();
@@ -120,6 +124,7 @@ function fixture(
       return true;
     },
     compareAndSet: async (key, expected, value, _remove, guard) => {
+      await storageWait;
       guard?.();
       if (JSON.stringify(rows.get(key)) !== JSON.stringify(expected))
         return false;
@@ -142,8 +147,32 @@ function fixture(
       return true;
     },
   };
-  const host: Omit<NativeConnectionHost, 'repository'> = {
+  const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
     walletBindingId: 'd4'.repeat(32),
+    supportsAtomicCalls: () => Boolean(options.smart && options.batch),
+    async prepareCalls(input, check) {
+      check(); await preparationWait; check();
+      assert(options.batch && options.smart);
+      const intent = { kind: 'dapp-batch' as const, calls: input.calls.calls };
+      const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
+        chainId: '1', value: '0', data: '0x1234', nonce: '0', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
+      const operation = new NativeSmartAccountOperation({
+        account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
+        assertCurrent: () => { check(); input.approval.assertCurrent(); },
+        async prepare() { return { kind: 'authorization', intent, operation: { executions: createSmartAccountCallsExecutions(intent.calls), actionHash: '0x' + '66'.repeat(32),
+          userOperation: { nonce: '0', initCode: '0x', callData: '0x', accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1', gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03' } } as never }; },
+        async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
+        async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
+          await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
+          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash); return hash;
+        },
+      });
+      return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)) };
+    },
+    async readCallsStatus(origin, id, guard) {
+      if (callsStatusError) throw callsStatusError;
+      return (await restoredRepository).calls.resolveCallsStatus({ assertCurrent: guard, forChain: () => null }, origin, id);
+    },
     assertOwner() {},
     sessionGeneration: () => snapshot.revision,
     async signMessage(input) {
@@ -260,6 +289,7 @@ function fixture(
         chains: ['eip155:1'],
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
+          ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -284,6 +314,7 @@ function fixture(
         chains: ['eip155:1'],
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
+          ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -343,7 +374,7 @@ function fixture(
         };
       },
     },
-    openHost: async () => ({ ...host, repository: await restoredRepository }),
+    openHost: async () => { const repository = await restoredRepository; return { ...host, repository, calls: repository.calls }; },
     preparePlatform: async () => undefined,
     checkSite: async () => {
       await siteWait;
@@ -445,6 +476,7 @@ function fixture(
     setDispatchWait(value: Promise<void>) {
       dispatchWait = value;
     },
+    failCallsStatus(error: Error) { callsStatusError = error; },
     failDispatch() {
       dispatchFailure = Error('Lost acknowledgment');
     },
@@ -456,6 +488,7 @@ function fixture(
     preparedTransactions,
     setApprovalMetadata(value: ApprovalContractMetadata) { approvalMetadata = value; },
     setPreparationWait(value: Promise<void>) { preparationWait = value; },
+    setStorageWait(value: Promise<void>) { storageWait = value; },
     failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
     blockSite() {
       siteBlocked = true;
@@ -1309,6 +1342,7 @@ for (const retirement of [
 async function connectedFixture(
   options: {
     capabilities?: boolean;
+    batch?: boolean;
     smart?: boolean;
     secondAccount?: boolean;
     accountId?: string;
@@ -2571,3 +2605,145 @@ test('Smart queued requests prepare only when foreground and retain distinct pen
     assert.equal(f.transactions.length, 2);
   } finally { await f.controller.dispose(); }
 });
+
+
+test('Smart batch capability is advertised only by an eligible account', async () => {
+  for (const smart of [true, false]) {
+    const f = await connectedFixture({ smart, batch: true, capabilities: true, accountId: smart ? 'smart:60:0' : 'hd:60:0' });
+    try {
+      await messageRequest(f, 'wallet_getCapabilities', [ADDRESS]);
+      assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { '0x1': smart ? { atomic: { status: 'supported' } } : {} } } });
+      assert.equal(f.session.namespaces.eip155!.methods.includes('wallet_sendCalls'), smart);
+    } finally { await f.controller.dispose(); }
+  }
+});
+
+test('ordered Smart batch review uses two consents and returns a reserved bundle ID', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  try {
+    const calls = [{ to: '0x' + '22'.repeat(20), value: '0x9', data: '0x' }, { to: '0x' + '33'.repeat(20), data: '0x1234' }];
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0x1234', from: ADDRESS, atomicRequired: true, calls }]);
+    assert(review?.kind === 'smart-transaction');
+    assert.equal(review.method, 'wallet_sendCalls');
+    assert.equal(review.operation.intent.kind, 'dapp-batch');
+    assert.equal(f.transactions.length, 0);
+    const approving = f.view.approveRequest(review.id, review.revision, true);
+    for (let i = 0; i < 10 && !(f.view.getSnapshot().signingReview as typeof review)?.operation.payerReview; i++) await settle();
+    const payer = f.view.getSnapshot().signingReview;
+    assert(payer?.kind === 'smart-transaction' && payer.operation.payerReview);
+    assert.equal(f.transactions.length, 0);
+    await f.view.confirmSmartPayer(payer.id, payer.revision, payer.operation.payerReview.id);
+    await approving;
+    assert.equal(f.transactions.length, 1);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0x1234', capabilities: {} } } });
+  } finally { await f.controller.dispose(); }
+});
+
+test('status is origin bound and show status acknowledges only after it is rendered', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  try {
+    const repository = await f.repository;
+    await repository.calls.reserveSendCallsBundle(ORIGIN, '0xab', { atomic: true, smartAccount: true, chainId: 1 }, 'reserved', ADDRESS);
+    await messageRequest(f, 'wallet_showCallsStatus', ['0xab']);
+    assert.deepEqual(f.responses, []);
+    const view = f.view.getSnapshot().callsStatus;
+    assert(view); assert.equal(view.status.status, 100);
+    await f.view.callsStatusShown(view.id);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: null } });
+    f.view.dismissCallsStatus(view.id);
+    assert.equal(f.view.getSnapshot().callsStatus, null);
+    await messageRequest(f, 'wallet_getCallsStatus', ['0xab'], 11);
+    assert.equal((f.responses.at(-1) as any).result.result.status, 100);
+    await messageRequest(f, 'wallet_getCallsStatus', ['0xdead'], 12);
+    assert.equal((f.responses.at(-1) as any).result.error.code, 5730);
+  } finally { await f.controller.dispose(); }
+});
+
+test('duplicate Smart bundle IDs do not create a second review and rejection releases an unstarted ID', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  try {
+    const request = { version: '2.0.0', id: '0xff', calls: [{ to: ADDRESS }] };
+    const review = await messageRequest(f, 'wallet_sendCalls', [request]); assert(review);
+    await messageRequest(f, 'wallet_sendCalls', [request], 11);
+    assert.equal((f.responses.at(-1) as any).result.error.code, 5720);
+    await f.view.rejectRequest(review.id);
+    await settle();
+    assert.equal(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0xff'), null);
+  } finally { await f.controller.dispose(); }
+});
+
+
+test('closing an unshown status and session retirement preserve stored history', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  try {
+    const repository = await f.repository;
+    await repository.calls.reserveSendCallsBundle(ORIGIN, '0xabab', { atomic: true, smartAccount: true, chainId: 1 }, 'reserved', ADDRESS);
+    await messageRequest(f, 'wallet_showCallsStatus', ['0xabab']);
+    f.view.dismissCallsStatus(f.view.getSnapshot().callsStatus!.id); await settle();
+    assert.equal((f.responses.at(-1) as any).result.error.code, 4001);
+    await messageRequest(f, 'wallet_showCallsStatus', ['0xabab'], 11);
+    assert(f.view.getSnapshot().callsStatus);
+    f.event({ type: 'session-ended', topic: TOPIC }); await settle();
+    assert.equal(f.view.getSnapshot().callsStatus, null);
+    assert(await repository.calls.getStoredSendCallsBundle(ORIGIN, '0xabab'));
+  } finally { await f.controller.dispose(); }
+});
+
+
+test('a lock while reserving a batch releases the unstarted ID without publishing a review', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  let release!: () => void;
+  try {
+    f.setStorageWait(new Promise<void>(resolve => { release = resolve; }));
+    await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xdeadbeef', calls: [{ to: ADDRESS }] }]);
+    f.lock(); release();
+    for (let i = 0; i < 4; i++) await settle();
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0xdeadbeef'), null);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.transactions.length, 0);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+
+test('malformed receipt status errors cannot become invalid JSON-RPC error codes', async () => {
+  const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+  try {
+    f.failCallsStatus(Object.assign(new Error('Invalid receipt'), { code: 'INVALID_RESPONSE' }));
+    await messageRequest(f, 'wallet_getCallsStatus', ['0xab']);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { error: { code: -32603, message: 'Call status is unavailable' } } });
+    assert.equal(f.view.getSnapshot().callsStatus, null);
+  } finally { await f.controller.dispose(); }
+});
+
+
+for (const change of ['get-expired', 'show-expired', 'show-dismissed'])
+  test(`call status refuses late transport acknowledgement (${change})`, async () => {
+    const f = await connectedFixture({ smart: true, batch: true, accountId: 'smart:60:0' });
+    const readNow = Date.now;
+    let now = readNow(), release!: () => void;
+    Date.now = () => now;
+    try {
+      await (await f.repository).calls.reserveSendCallsBundle(ORIGIN, '0x123abc', { atomic: true, smartAccount: true, chainId: 1 }, 'reserved', ADDRESS);
+      if (change === 'get-expired') {
+        f.setResponseWait(new Promise<void>(resolve => { release = resolve; }));
+        await messageRequest(f, 'wallet_getCallsStatus', ['0x123abc']);
+        now += 300001;
+        release();
+        for (let i = 0; i < 4; i++) await settle();
+      } else {
+        await messageRequest(f, 'wallet_showCallsStatus', ['0x123abc']);
+        const view = f.view.getSnapshot().callsStatus;
+        assert(view);
+        f.setResponseWait(new Promise<void>(resolve => { release = resolve; }));
+        const response = f.view.callsStatusShown(view.id);
+        const rejected = assert.rejects(response, { code: change === 'show-expired' ? 'REQUEST_EXPIRED' : 'CONTEXT_CHANGED' });
+        if (change === 'show-expired') now += 300001;
+        f.view.dismissCallsStatus(view.id);
+        release(); await rejected;
+      }
+      assert.deepEqual(f.handedOff, []);
+      assert.deepEqual(f.responses, []);
+      assert(await (await f.repository).calls.getStoredSendCallsBundle(ORIGIN, '0x123abc'));
+    } finally { Date.now = readNow; release?.(); await f.controller.dispose(); }
+  });

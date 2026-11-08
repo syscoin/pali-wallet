@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, BackHandler, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import type { NativeConnectionError, NativeConnectionsView } from '../connections/types';
+import type { NativeConnectionError, NativeConnectionsView, NativeConnectionsSnapshot } from '../connections/types';
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import { DappSiteStatus } from './DappSiteStatus';
@@ -20,6 +20,70 @@ const ERRORS: Record<NativeConnectionError, string> = {
   SITE_MISMATCH: 'The requesting website does not match the app’s claimed address. The connection was blocked.',
   DELIVERY_UNCERTAIN: 'The signature was handed to WalletConnect, but delivery could not be confirmed. Check the requesting app before trying again.',
 };
+
+export function NativeCallsStatus({
+  view,
+  controller,
+}: {
+  view: NonNullable<NativeConnectionsSnapshot['callsStatus']>;
+  controller: NativeConnectionsView;
+}) {
+  const close = useCallback(
+    () => controller.dismissCallsStatus(view.id),
+    [controller, view.id]
+  );
+  useEffect(() => {
+    void controller.callsStatusShown(view.id).catch(() => undefined);
+    const subscription = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        close();
+        return true;
+      }
+    );
+    return () => subscription.remove();
+  }, [controller, view.id, close]);
+  const status = view.status;
+  const label =
+    (
+      {
+        100: 'Pending',
+        200: 'Confirmed',
+        400: 'Not submitted',
+        500: 'Reverted',
+        600: 'Partially reverted',
+      } as Record<number, string>
+    )[status.status] ?? String(status.status);
+  return (
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      edges={['top', 'bottom']}
+    >
+      <Screen>
+        <Header title="Call bundle status" onBack={close} />
+        <Text>{view.origin}</Text>
+        <Card style={{ padding: 20, gap: 12 }}>
+          <Text>{label}</Text>
+          <Text>Chain {BigInt(status.chainId).toString()}</Text>
+          <Text>{status.atomic ? 'Atomic calls' : 'Sequential calls'}</Text>
+          <Text selectable>{status.id}</Text>
+        </Card>
+        {status.receipts?.map((receipt) => (
+          <Card key={receipt.transactionHash} style={{ padding: 20, gap: 12 }}>
+            <Text>
+              {receipt.status === '0x1'
+                ? 'Transaction confirmed'
+                : 'Transaction reverted'}
+            </Text>
+            <Text selectable>{receipt.transactionHash}</Text>
+            <Text>Block {BigInt(receipt.blockNumber).toString()}</Text>
+          </Card>
+        ))}
+        <Button title="Close" variant="quiet" onPress={close} />
+      </Screen>
+    </SafeAreaView>
+  );
+}
 
 /** Receives public state only. Transport keys and signing handles stay in custody. */
 export function NativeConnections({ controller, onBack, incomingPairing, onPairingHandled, initialScan = false, onScanStarted, onScanFinished }: {

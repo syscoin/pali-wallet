@@ -95,6 +95,23 @@ export function NativeSmartTransactionReviewScreen({
               }}
             />
           )}
+          {review.batchApprovals?.map(
+            (summary, index) =>
+              summary && (
+                <React.Fragment key={index}>
+                  <Text>Call {index + 1} approval</Text>
+                  <ApprovalReview
+                    summary={{ ...summary, canEditAmount: false }}
+                    transaction={intent}
+                    disabled
+                    edit={async () => {
+                      throw new Error('Batch approval is read-only');
+                    }}
+                    onEditingChange={() => undefined}
+                  />
+                </React.Fragment>
+              )
+          )}
           {review.advisories.map((entry) => (
             <Notice
               key={entry.address + entry.field}

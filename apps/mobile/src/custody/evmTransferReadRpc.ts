@@ -29,6 +29,7 @@ const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> 
   eth_getTransactionReceipt: true,
 });
 const BLOCK_BYTES = 512 * 1024;
+const RECEIPT_BYTES = 1024 * 1024;
 const CODE_BYTES = 32 * 1024;
 type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
   'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount' | 'eth_getTransactionByHash';
@@ -154,7 +155,7 @@ export class EvmTransferReadRpc {
       if (!response.ok) return rejectRead('UNAVAILABLE');
       const contentType = response.headers.get('content-type');
       if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
-      const limit = method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
+      const limit = method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
       const text = await cancellable(boundedResponseText(response, controller.signal, limit), controller.signal);
       guardedRead(guard);
       const result = object(JSON.parse(text));

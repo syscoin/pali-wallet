@@ -2,6 +2,7 @@ import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.
 import {
   assertSmartAccountCallsIdentity,
   getSmartAccountCallsOutcome,
+  normalizeDappCallsReceipt,
 } from '../shared/dappCallsStatus.ts';
 import cleanErrorStack from '../utils/cleanErrorStack.ts';
 import {
@@ -28,6 +29,83 @@ export type CallsBundleStore = Record<
   string,
   Record<string, IStoredSendCallsBundle>
 >;
+/** Public bundle metadata is validated independently of any signing authority. */
+export function assertCallsBundleStore(
+  value: unknown
+): asserts value is CallsBundleStore {
+  const object = (input: unknown): Record<string, any> => {
+    if (
+      !input ||
+      typeof input !== 'object' ||
+      Array.isArray(input) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(input))
+    )
+      throw new Error('Invalid calls bundle metadata');
+    return input as Record<string, any>;
+  };
+  for (const [origin, entries] of Object.entries(object(value))) {
+    if (!origin || origin.length > 2048)
+      throw new Error('Invalid calls bundle origin');
+    for (const [id, input] of Object.entries(object(entries))) {
+      const entry = object(input);
+      if (
+        !/^0x[\da-f]+$/i.test(id) ||
+        id.length > 8194 ||
+        typeof entry.atomic !== 'boolean' ||
+        typeof entry.smartAccount !== 'boolean' ||
+        !Number.isSafeInteger(entry.chainId) ||
+        entry.chainId <= 0 ||
+        !Number.isSafeInteger(entry.createdAt) ||
+        entry.createdAt < 0 ||
+        !Array.isArray(entry.txHashes) ||
+        entry.txHashes.length > 50 ||
+        entry.txHashes.some(
+          (hash: unknown) =>
+            typeof hash !== 'string' || !/^0x[\da-f]{64}$/i.test(hash)
+        )
+      )
+        throw new Error('Invalid calls bundle metadata');
+      for (const field of [
+        'pending',
+        'failed',
+        'submissionStarted',
+        'submissionCompleted',
+        'submissionNotBroadcast',
+      ])
+        if (entry[field] !== undefined && typeof entry[field] !== 'boolean')
+          throw new Error('Invalid calls bundle state');
+      for (const field of [
+        'reservationId',
+        'submissionId',
+        'previousSubmissionId',
+      ])
+        if (
+          entry[field] !== undefined &&
+          (typeof entry[field] !== 'string' ||
+            !entry[field] ||
+            entry[field].length > 8194)
+        )
+          throw new Error('Invalid calls bundle attempt');
+      if (
+        entry.sender !== undefined &&
+        (typeof entry.sender !== 'string' ||
+          !/^0x[\da-f]{40}$/i.test(entry.sender))
+      )
+        throw new Error('Invalid calls bundle sender');
+      if (entry.smartAccountIdentity !== undefined) {
+        assertSmartAccountCallsIdentity(
+          entry.smartAccountIdentity,
+          entry.chainId
+        );
+        if (
+          !entry.smartAccount ||
+          entry.smartAccountIdentity.sender !== entry.sender
+        )
+          throw new Error('Invalid calls bundle identity');
+      }
+    }
+  }
+}
 export type CallsBundlePorts = Readonly<{
   assertCurrent(): void;
   now(): number;
@@ -44,6 +122,25 @@ export type CallsStatusRpc = Readonly<{
   forChain(chainId: number): Readonly<{
     getTransactionReceipt(hash: string): Promise<any>;
   }> | null;
+}>;
+export type CallsBundleStatus = Readonly<{
+  atomic: boolean;
+  chainId: string;
+  id: string;
+  receipts?: readonly Readonly<{
+    blockHash: string;
+    blockNumber: string;
+    gasUsed: string;
+    logs: readonly Readonly<{
+      address: string;
+      data: string;
+      topics: readonly string[];
+    }>[];
+    status: '0x0' | '0x1';
+    transactionHash: string;
+  }>[];
+  status: number;
+  version: '2.0.0';
 }>;
 export type EoaSendCallsReservation = Readonly<{
   host: string;
@@ -334,7 +431,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       ) {
         return;
       }
-      delete storeData[host][id];
+      delete storeData[host]![id];
       await writeBundleStore(storeData);
     });
 
@@ -359,7 +456,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
         const storeData = await readBundleStore();
         const bundle = storeData[host]?.[id];
         if (!bundle || !matches(bundle) || bundle.txHashes.length !== 0) return;
-        delete storeData[host][id];
+        delete storeData[host]![id];
         await writeBundleStore(storeData);
       });
   }
@@ -389,7 +486,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
     rpc: CallsStatusRpc,
     host: string,
     id: string
-  ): Promise<any> => {
+  ): Promise<CallsBundleStatus> => {
     if (
       typeof rpc?.assertCurrent !== 'function' ||
       typeof rpc.forChain !== 'function'
@@ -451,7 +548,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
           .getTransactionReceipt(hash)
           .catch(() => null);
         checkQuery();
-        return receipt;
+        return normalizeDappCallsReceipt(receipt, hash);
       })
     );
     checkQuery();
@@ -482,7 +579,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       .filter((receipt) => Boolean(receipt))
       .map((receipt: any) => ({
         blockHash: receipt.blockHash,
-        blockNumber: `0x${Number(receipt.blockNumber).toString(16)}`,
+        blockNumber: `0x${BigInt(receipt.blockNumber).toString(16)}`,
         gasUsed:
           typeof receipt.gasUsed?.toHexString === 'function'
             ? receipt.gasUsed.toHexString()
@@ -492,7 +589,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
           data: log.data,
           topics: log.topics,
         })),
-        status: receipt.status === 0 ? '0x0' : '0x1',
+        status: receipt.status === 0 ? ('0x0' as const) : ('0x1' as const),
         transactionHash: receipt.hash,
       }));
 

@@ -74,7 +74,7 @@ export async function qualifyNativeWalletConnect(options: {
     const values = new Map<string, unknown>();
     let core: InstanceType<typeof Core> | undefined;
     let client: InstanceType<typeof SignClient> | undefined;
-    const repository: NativeConnectionRepository = {
+    const repository: Omit<NativeConnectionRepository, 'calls'> = {
       assertHealthy() {},
       bindings: () => [],
       async reconcileSessions() {

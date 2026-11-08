@@ -310,3 +310,17 @@ test('the native retirement adapter reclaims a confirmed journal entry after exa
  assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 2);
  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
 });
+
+
+test('receipt reads accept bounded batch logs while preserving scalar and receipt limits', async () => {
+ const logs = Array.from({ length: 50 }, (_, index) => ({ address: to, topics: [hash, hash, hash],
+   data: '0x' + index.toString(16).padStart(64, '0'), blockHash, transactionHash: hash, logIndex: '0x' + index.toString(16) }));
+ const receipt = { transactionHash: hash, blockHash, blockNumber: '0x1', gasUsed: '0x5208', status: '0x1', logs };
+ assert(JSON.stringify(receipt).length > 16 * 1024);
+ const f = fixture(custom, call => call.method === 'eth_getTransactionReceipt' ? receipt : undefined);
+ assert.deepEqual(await f.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined), receipt);
+ const tooLarge = fixture(custom, call => call.method === 'eth_getTransactionReceipt' ? { ...receipt, padding: 'x'.repeat(1024 * 1024) } : undefined);
+ await assert.rejects(tooLarge.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined), { code: 'UNAVAILABLE' });
+ const scalar = fixture(custom, call => call.method === 'eth_getBalance' ? '0x' + '1'.repeat(16 * 1024) : undefined);
+ await assert.rejects(scalar.rpc.smartAccountRead('eth_getBalance', [from, 'pending'], signal(), () => undefined), { code: 'UNAVAILABLE' });
+});

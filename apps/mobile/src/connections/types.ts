@@ -3,6 +3,7 @@ import type { WalletConnectVerification } from './walletConnect.ts';
 import type { DappMessageMethod } from '../../../../source/shared/dappMessageRequest.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
+import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 
 export type NativeConnectionError =
   | 'INVALID_LINK'
@@ -69,7 +70,7 @@ export type NativeMessageReview = NativeSigningReviewBase &
 export type NativeTransactionReview = NativeSigningReviewBase &
   Readonly<{
     kind: 'transaction';
-    method: 'eth_sendTransaction';
+    method: 'eth_sendTransaction' | 'wallet_sendCalls';
     transaction: PreparedEvmTransaction | null;
     maximumFeeUnits: string | null;
     maximumTotalUnits: string | null;
@@ -82,9 +83,10 @@ export type NativeTransactionReview = NativeSigningReviewBase &
 export type NativeSmartTransactionReview = NativeSigningReviewBase &
   Readonly<{
     kind: 'smart-transaction';
-    method: 'eth_sendTransaction';
+    method: 'eth_sendTransaction' | 'wallet_sendCalls';
     operation: NativeSmartAccountOperationSnapshot;
     approval: ApprovalSummary | null;
+    batchApprovals?: readonly (ApprovalSummary | null)[];
   }>;
 
 export type NativeSigningReview =
@@ -93,6 +95,11 @@ export type NativeSigningReview =
   | NativeSmartTransactionReview;
 
 export type NativeConnectionsSnapshot = Readonly<{
+  callsStatus: Readonly<{
+    id: string;
+    origin: string;
+    status: CallsBundleStatus;
+  }> | null;
   revision: number;
   status: 'locked' | 'ready' | 'pairing' | 'approving' | 'unavailable';
   selectedAccountId: string | null;
@@ -119,6 +126,8 @@ export type NativeConnectionsSnapshot = Readonly<{
 
 /** Public view commands carry identifiers only, never transport or keyring handles. */
 export type NativeConnectionsView = Readonly<{
+  callsStatusShown(id: string): Promise<void>;
+  dismissCallsStatus(id: string): void;
   getSnapshot(): NativeConnectionsSnapshot;
   subscribe(listener: () => void): () => void;
   pair(uri: string): Promise<void>;

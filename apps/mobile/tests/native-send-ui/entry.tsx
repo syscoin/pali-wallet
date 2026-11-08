@@ -1,3 +1,4 @@
+import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
 import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
 import { NativeNoteImportFixture } from './nativeNoteImportFixture';
 import { NativeSmartDappFixture } from './nativeSmartDappFixture';
@@ -380,7 +381,9 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('smart-dapp') ? (
+      {new URLSearchParams(window.location.search).has('smart-batch') ? (
+        <NativeSmartBatchFixture />
+      ) : new URLSearchParams(window.location.search).has('smart-dapp') ? (
         <NativeSmartDappFixture />
       ) : new URLSearchParams(window.location.search).has('note-import') ? (
         <NativeNoteImportFixture />

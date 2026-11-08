@@ -1,4 +1,8 @@
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
+import {
+  createSmartAccountCallsExecutions,
+  type DappCall,
+} from '../../../../source/shared/dappCalls.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import type { SavedCollectible } from '../portfolio/tokenRegistry.ts';
@@ -15,6 +19,7 @@ import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/s
 
 export type NativeSmartAccountResolvedIntent =
   | Readonly<{ kind: 'deploy' }>
+  | Readonly<{ kind: 'dapp-batch'; calls: readonly DappCall[] }>
   | Readonly<{
       kind: 'native-transfer';
       recipient: string;
@@ -251,8 +256,28 @@ export class NativeSmartAccountOperation {
       }
       const prepared = result.operation;
       const intent = result.intent;
-      if (intent.kind !== 'deploy') {
+      if (intent.kind === 'dapp-batch') {
         const requested = this.host.intent;
+        if (requested.kind !== 'dapp-batch' || requested.calls !== intent.calls)
+          throw new Error('SMART_OPERATION_EXPIRED');
+        const expected = createSmartAccountCallsExecutions(intent.calls);
+        if (
+          prepared.executions.length !== expected.length ||
+          expected.some((entry, index) => {
+            const actual = prepared.executions[index];
+            return (
+              !actual ||
+              actual.target.toLowerCase() !== entry.target.toLowerCase() ||
+              actual.data !== entry.data ||
+              BigInt(actual.value) !== BigInt(entry.value)
+            );
+          })
+        )
+          throw new Error('SMART_OPERATION_EXPIRED');
+      } else if (intent.kind !== 'deploy') {
+        const requested = this.host.intent;
+        if (requested.kind === 'dapp-batch')
+          throw new Error('SMART_OPERATION_EXPIRED');
         const expected =
           intent.kind === 'nft-transfer'
             ? buildSmartAccountNftTransfer(intent)

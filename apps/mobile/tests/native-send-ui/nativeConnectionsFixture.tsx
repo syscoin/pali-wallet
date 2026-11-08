@@ -17,6 +17,7 @@ let snapshot: NativeConnectionsSnapshot = {
   proposals: [],
   sessions: [],
   signingReview: null,
+  callsStatus: null,
   error: null,
 };
 const calls: { method: string; args: unknown[] }[] = [];
@@ -27,6 +28,8 @@ const publish = (next: NativeConnectionsSnapshot) => {
   for (const listener of listeners) listener();
 };
 const controller: NativeConnectionsView = {
+    async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
   async editApprovalAmount() { throw new Error('Transaction editing is outside this fixture'); },
   getSnapshot: () => snapshot,

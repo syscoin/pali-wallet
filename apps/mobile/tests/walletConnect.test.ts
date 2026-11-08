@@ -125,7 +125,7 @@ function fixture() {
         protocolValues.delete(key);
       },
     },
-  } satisfies NativeConnectionRepository;
+  } satisfies Omit<NativeConnectionRepository, 'calls'>;
   const core: ReturnType<WalletConnectSdk['createCore']> = {
     storage: repository.transport,
     pairing: {
