@@ -1,4 +1,4 @@
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { getAddress, AddressZero } from '../ethersV6Compat.ts';
 
 import {

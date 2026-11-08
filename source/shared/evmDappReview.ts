@@ -18,9 +18,9 @@ import type {
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeRefreshApproved,
-  assertSynchronousEvmFeeGuard,
   captureEvmFeeApproval,
 } from './evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
 
 export type EvmDappDispatchValidation<NonceContext> = (
   nonceContext: NonceContext,

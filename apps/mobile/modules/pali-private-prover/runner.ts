@@ -3,7 +3,7 @@ import {
   readNativeProofMessage,
 } from '../../../../source/scripts/privacyProver/nativeProtocol';
 import { privacyPublicSignals } from '../../../../source/utils/privacy/proverCore';
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard';
 import {
   privacyProofAbortError,
   privacyProofGuardError,

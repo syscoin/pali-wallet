@@ -1,7 +1,7 @@
 import { Interface } from 'ethers/abi';
 import { parseEther } from 'ethers/utils';
 
-import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import { getPrivacyPool } from '../utils/privacy/registry.ts';
 
 import type {

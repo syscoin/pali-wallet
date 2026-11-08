@@ -7,9 +7,9 @@ import { Transaction } from 'ethers/transaction';
 import {
   captureEvmFeeApproval,
   assertEvmFeeApprovalCurrent,
-  assertSynchronousEvmFeeGuard,
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
+import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
 import {
   capturePrivateDepositAttempt,
   privateDepositUnsignedBytes,

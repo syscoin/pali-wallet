@@ -1,4 +1,4 @@
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { IPrivacyNoteReader } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import type { IPrivacySnapshotReader } from '../../../../source/utils/privacy/trustedSnapshot.ts';

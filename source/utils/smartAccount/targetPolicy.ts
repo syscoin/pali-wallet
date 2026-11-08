@@ -1,4 +1,4 @@
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 
 import type { IEvmCallBlacklistTarget } from '../../shared/evmCallBlacklist.ts';
 import type { IBlacklistCheckResult } from '../../types/security.ts';

@@ -10,7 +10,7 @@ import type {
   IPrivacyProofResult,
 } from '../../../source/utils/privacy/proverTypes';
 import { runNativePrivacyProof } from '../modules/pali-private-prover';
-import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeApproval';
+import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard';
 import {
   PRIVATE_PROOF_CASES,
   type PrivateProofResult,

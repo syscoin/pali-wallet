@@ -16,7 +16,7 @@ import {
   type SentryKeySummary,
 } from '../../../../source/wallet/sentryKeyVault.ts';
 import { isNativePasswordInput } from './password.ts';
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { normalizeSentryServiceSettings, readSentryServiceSettings, type SentryServiceSettings } from '../../../../source/shared/sentrySettings.ts';
 
 type Role = SentryAuthorityKey['role'];

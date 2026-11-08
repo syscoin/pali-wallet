@@ -16,7 +16,6 @@ import {
 import { evmEstimateRequest } from './evmEstimateRequest.ts';
 import {
   assertEvmFeeEstimateApproved,
-  assertSynchronousEvmFeeGuard,
   captureEvmFeeApproval,
   EvmFeeBalanceError,
   EVM_FEE_APPROVAL_LIFETIME_MS,
@@ -24,6 +23,7 @@ import {
   resolveEvmFeeFunding,
   type EvmFeeFunding,
 } from './evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
 import {
   EvmObservationError,
   readEvmRpcHash,

@@ -1,4 +1,4 @@
-import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import { readPrivateDepositAttempt } from '../utils/privacy/depositMetadata.ts';
 import { readPrivateWithdrawalAttempt } from '../utils/privacy/withdrawalMetadata.ts';
 

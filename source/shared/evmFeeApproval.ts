@@ -9,6 +9,7 @@ import {
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { getAddress } from 'ethers/address';
 
+import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
 import {
   EVM_NATIVE_INTRINSIC_GAS,
   getEvmTransferCost,
@@ -113,15 +114,6 @@ const issuedApprovals = new WeakSet<object>();
 const invalid = (message: string): never => {
   throw new Error(message);
 };
-
-export function assertSynchronousEvmFeeGuard(guard: () => void): void {
-  const result: unknown = guard();
-  if (result !== undefined) {
-    if (result && (typeof result === 'object' || typeof result === 'function'))
-      void Promise.resolve(result).catch(() => undefined);
-    invalid('EVM fee approval guard must be synchronous');
-  }
-}
 
 function quantity(value: unknown): bigint {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value))

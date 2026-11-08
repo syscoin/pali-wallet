@@ -1,7 +1,7 @@
 import { getAddress } from 'ethers/address';
 
 import { evmCallRequest } from '../../shared/evmEstimateRequest.ts';
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { observeEvmTransaction } from '../../shared/evmTransactionObservation.ts';
 import { BigNumber } from '../ethersV6Compat.ts';
 

@@ -1,6 +1,6 @@
 import { getAddress } from 'ethers/address';
 
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { GuardianRecoveryPolicyChangedError } from '../smartAccountErrors.ts';
 
 import type { PaliRecoveryTarget } from './account.ts';

@@ -24,7 +24,7 @@ import {
   readSmartAccountValidatorMetadata,
 } from '../../../../source/utils/smartAccount/executionMetadata.ts';
 import { readSmartAccountDeploymentState } from '../../../../source/utils/smartAccount/deploymentState.ts';
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import {
   prepareSmartAccountOperation,
   requireSmartAccountAuthenticator,

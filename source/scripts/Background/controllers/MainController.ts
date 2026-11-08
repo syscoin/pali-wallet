@@ -66,8 +66,8 @@ import { NATIVE_EVM_FEE_FUNDING } from '../../../shared/evmFeeApproval';
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeRefreshApproved,
-  assertSynchronousEvmFeeGuard,
 } from '../../../shared/evmFeeApproval';
+import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
 import {
   observeEvmTransaction,
   readEvmRpcHash,

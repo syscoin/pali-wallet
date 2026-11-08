@@ -3,7 +3,7 @@ import {
   type EoaCallsProgress,
   type EoaCallsStopped,
 } from '../../../../source/wallet/evmCallsSequence.ts';
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { EvmDappFeeChoiceFields } from '../../../../source/shared/evmDappFeePolicy.ts';
 import type { DappCallsRequest } from '../../../../source/shared/dappCalls.ts';
 import type { NativeConnectionHost } from './host.ts';

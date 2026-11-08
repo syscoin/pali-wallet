@@ -7,7 +7,7 @@ import {
   type Erc20Metadata,
 } from '../shared/erc20.ts';
 import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
-import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import {
   getObservedEvmTerminalPhase,
   type EvmObservationRequest,

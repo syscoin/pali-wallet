@@ -1,6 +1,6 @@
 import { getAddress } from 'ethers/address';
 
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 
 import { hashPair, TREE_DEPTH, ZERO_VALUE } from './merkle.ts';
 import { identifyClassicNote } from './note.ts';

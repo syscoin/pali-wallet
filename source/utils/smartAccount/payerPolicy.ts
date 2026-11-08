@@ -2,8 +2,8 @@ import {
   NATIVE_EVM_FEE_FUNDING,
   createOwnedEvmFeeFunding,
   type EvmFeeFunding,
-  assertSynchronousEvmFeeGuard,
 } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { BigNumber, Contract, getAddress } from '../ethersV6Compat.ts';
 
 import {

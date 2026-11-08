@@ -1,7 +1,5 @@
-import {
-  NATIVE_EVM_FEE_FUNDING,
-  assertSynchronousEvmFeeGuard,
-} from '../../shared/evmFeeApproval.ts';
+import { NATIVE_EVM_FEE_FUNDING } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import {
   BigNumber,
   Contract,

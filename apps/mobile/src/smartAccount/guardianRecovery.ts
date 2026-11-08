@@ -1,4 +1,4 @@
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import type { NativePreparedConnectionTransaction } from '../connections/transactionRuntime.ts';
 import type { NativeGuardianRecoveryIntent } from '../custody/walletCatalogue.ts';

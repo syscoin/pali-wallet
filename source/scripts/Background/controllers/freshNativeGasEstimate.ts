@@ -9,12 +9,12 @@ import { evmEstimateRequest } from '../../../shared/evmEstimateRequest';
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeEstimateApproved,
-  assertSynchronousEvmFeeGuard,
   bufferEvmFeeEstimate,
   captureEvmFeeApproval,
   captureNativeEvmFeeCoverage,
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
+import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
 import { BigNumber } from '../../../utils/ethersV6Compat';
 
 import type {

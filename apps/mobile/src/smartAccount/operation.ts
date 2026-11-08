@@ -11,7 +11,7 @@ import type { SavedCollectible } from '../portfolio/tokenRegistry.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { getPaliEntryPointAddress } from '../../../../source/utils/smartAccount/contracts.ts';
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import {
   buildGuardianPolicyExecutions,
   type GuardianPolicyCommand,

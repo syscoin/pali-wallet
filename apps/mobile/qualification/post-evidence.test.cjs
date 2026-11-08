@@ -21,6 +21,7 @@ test('required map sources exist in this checkout and retain the shared replacem
     assert(fs.lstatSync(path.join(root, source)).isFile(), source);
   }
   for (const source of ['source/shared/evmNetworks.ts', 'source/shared/networkText.ts',
+    'source/shared/evmFeeGuard.ts',
     'apps/mobile/src/custody/networkContext.ts', 'apps/mobile/src/custody/evmFeeContracts.ts',
     'source/wallet/evmSignedRecords.ts', 'source/wallet/evmSignedReplay.ts']) {
     assert(POST_REQUIRED_MAPPED_SOURCES.includes(source), source);

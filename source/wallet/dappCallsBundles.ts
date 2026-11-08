@@ -16,7 +16,7 @@ import {
   getSmartAccountCallsOutcome,
   normalizeDappCallsReceipt,
 } from '../shared/dappCallsStatus.ts';
-import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import { readEvmRpcHash } from '../shared/evmTransactionObservation.ts';
 import cleanErrorStack from '../utils/cleanErrorStack.ts';
 import {

@@ -1,4 +1,4 @@
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { defaultAbiCoder, getAddress } from '../ethersV6Compat.ts';
 
 import { signSmartAccountWithValidator } from './authenticatorDispatch.ts';

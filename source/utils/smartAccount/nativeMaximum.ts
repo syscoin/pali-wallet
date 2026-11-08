@@ -1,10 +1,11 @@
 import { getAddress } from 'ethers/address';
 import { toBeHex } from 'ethers/utils';
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 
 export type SmartAccountNativeExecution = Readonly<{
-  target: string;
   data: '0x';
+  target: string;
   value: string;
 }>;
 
@@ -22,12 +23,12 @@ const unsignedUnits = (value: string): bigint => {
 /** Read-only MAX refinement. Only the returned exact execution may be approved. */
 export async function prepareSmartAccountNativeMaximum<Quote>(
   options: Readonly<{
-    target: string;
-    readBalance(): Promise<string>;
+    assertCurrent(): void;
     quote(
       execution: SmartAccountNativeExecution
-    ): Promise<Readonly<{ quote: Quote; maximumFeeUnits: string }>>;
-    assertCurrent(): void;
+    ): Promise<Readonly<{ maximumFeeUnits: string; quote: Quote }>>;
+    readBalance(): Promise<string>;
+    target: string;
   }>
 ): Promise<Readonly<{ execution: SmartAccountNativeExecution; quote: Quote }>> {
   const target = getAddress(options.target);

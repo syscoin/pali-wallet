@@ -1,4 +1,4 @@
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 import { BigNumber, Contract, hexConcat } from '../ethersV6Compat.ts';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from '../evmTransactionContext.ts';
 

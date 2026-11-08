@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 
 import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus.ts';
-import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeApproval';
+import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeGuard';
 import {
   guardianPolicyObservationIdentity,
   inspectGuardianRemovals,

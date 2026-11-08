@@ -4,7 +4,7 @@ import {
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
 import { normalizeDappCallsRequest } from '../shared/dappCalls.ts';
-import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from '../utils/evmTransactionContext.ts';
 
 import type { DappCall } from '../shared/dappCalls.ts';

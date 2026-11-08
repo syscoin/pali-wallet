@@ -68,6 +68,7 @@ const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "source/shared/passwordPolicy.ts",
   "source/shared/networkText.ts",
   "source/shared/paliHttpIdentity.ts",
+  "source/shared/evmFeeGuard.ts",
   "source/shared/evmTransactionObservation.ts",
   "source/wallet/accountRecords.ts",
   "source/wallet/accountRecovery.ts",

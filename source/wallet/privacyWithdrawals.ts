@@ -1,6 +1,6 @@
 import { getAddress, Interface, parseEther } from 'ethers';
 
-import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import { identifyClassicNote } from '../utils/privacy/note.ts';
 import { getPrivacyPool } from '../utils/privacy/registry.ts';
 import {

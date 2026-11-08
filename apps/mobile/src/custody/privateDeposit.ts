@@ -1,5 +1,5 @@
 import { NativeOperationDrain } from './operationDrain.ts';
-import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { IPrivateNoteStatus } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import type {
   IPrivacyDepositReview,

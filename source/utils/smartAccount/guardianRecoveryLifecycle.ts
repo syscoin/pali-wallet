@@ -1,7 +1,7 @@
 import { getAddress } from 'ethers/address';
 import { recoverAddress, Transaction } from 'ethers/transaction';
 
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard.ts';
 
 import { paliGuardianRecoveryModuleInterface } from './contracts.ts';
 import type { GuardianRecoveryObservation } from './guardianStatus.ts';
