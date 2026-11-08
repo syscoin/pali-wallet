@@ -128,6 +128,55 @@ function fixture(legacy = false) {
 
 describe('shared generic per-call fee review', () => {
   test.each([false, true])(
+    'quotes and refreshes the same fee-sensitive execution, legacy=%s',
+    async (legacy) => {
+      const f = fixture(legacy);
+      const read = f.ports.read;
+      f.ports.read = async (method, params) => {
+        const result = await read(method, params);
+        if (method !== 'eth_estimateGas') return result;
+        // A real Anvil type-2 transfer estimates 21000 without its fee fields
+        // and 21001 with them. Requoting must not repeat the lower envelope.
+        return Object.hasOwn(params[0] as object, 'type') ? '0x5209' : '0x5208';
+      };
+      const fees = legacy
+        ? { type: '0x0', gasPrice: '0x2' }
+        : { type: '0x2', maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' };
+      const review = await f.review({
+        from,
+        to,
+        data: '0x1234',
+        gas: '0x5208',
+        ...fees,
+      });
+      expect(review.transaction.gasLimit).toBe('25202');
+      await expect(review.submit(f.check, jest.fn())).resolves.toBe(hash);
+      const estimates = f.requests.filter(
+        ({ method }) => method === 'eth_estimateGas'
+      );
+      expect(estimates).toHaveLength(3);
+      for (const { params } of estimates) {
+        expect(params).toEqual([
+          {
+            from,
+            to,
+            value: '0x0',
+            data: '0x1234',
+            nonce: '0x4',
+            chainId: '0x1',
+            ...fees,
+            ...(legacy ? {} : { accessList: [] }),
+          },
+          'pending',
+        ]);
+        expect(params[0]).not.toHaveProperty('gas');
+        expect(params[0]).not.toHaveProperty('gasLimit');
+      }
+      expect(f.sign).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each([false, true])(
     'quotes exact generic execution before any signing, legacy=%s',
     async (legacy) => {
       const f = fixture(legacy);
