@@ -16,12 +16,14 @@ const events: string[] = [];
 let reviews = 0;
 let releaseOpen: (() => void) | undefined;
 let releaseStatus: (() => void) | undefined;
+let releaseClose: (() => void) | undefined;
 declare global {
   interface Window {
     __privateDepositFixture: {
       events(): string[];
       releaseOpen(): void;
       releaseStatus(): void;
+      releaseClose(): void;
     };
   }
 }
@@ -29,6 +31,7 @@ window.__privateDepositFixture = {
   events: () => [...events],
   releaseOpen: () => releaseOpen?.(),
   releaseStatus: () => releaseStatus?.(),
+  releaseClose: () => releaseClose?.(),
 };
 const wait = () => new Promise<void>((resolve) => setTimeout(resolve, 30));
 
@@ -115,6 +118,11 @@ export function NativePrivateDepositFixture() {
         },
         async close() {
           events.push('close');
+          if (query.has('hold-close'))
+            await new Promise<void>((resolve) => {
+              releaseClose = resolve;
+            });
+          events.push('closed');
         },
       },
       query.has('hold-open') ? new AbortController().signal : signal
@@ -137,8 +145,14 @@ export function NativePrivateDepositFixture() {
   return (
     <NativePrivateDeposit
       open={open}
-      onBack={() => setClosed('Private notes')}
-      onBackup={() => setClosed('Encrypted note backup')}
+      onBack={() => {
+        events.push('back');
+        setClosed('Private notes');
+      }}
+      onBackup={() => {
+        events.push('backup');
+        setClosed('Encrypted note backup');
+      }}
       onActivity={(selected) => {
         events.push(`activity:${selected}`);
         setClosed('Saved Activity');

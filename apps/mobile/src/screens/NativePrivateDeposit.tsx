@@ -35,9 +35,18 @@ type Props = {
 };
 type Owner = {
   live: boolean;
+  returning?: boolean;
   abort: AbortController;
   controller?: DepositController;
+  opening?: Promise<void>;
+  disposing?: Promise<void>;
 };
+function disposeOwner(owner: Owner): Promise<void> {
+  owner.disposing ??= Promise.resolve(owner.opening).then(async () => {
+    await owner.controller?.dispose();
+  });
+  return owner.disposing;
+}
 
 export function NativePrivateDeposit({
   open,
@@ -50,23 +59,41 @@ export function NativePrivateDeposit({
     source: Props['open'];
     controller?: DepositController;
     failed?: true;
+    closing?: true;
   }>();
-  const callbacks = useRef({ onBack, onBackup });
+  const callbacks = useRef({ onBack, onBackup, onActivity });
   useLayoutEffect(() => {
-    callbacks.current = { onBack, onBackup };
-  }, [onBack, onBackup]);
-  const retire = useCallback(() => {
-    const current = owner.current;
-    if (!current) return;
-    current.live = false;
-    current.abort.abort();
-    void current.controller?.dispose().catch(() => undefined);
-  }, []);
+    callbacks.current = { onBack, onBackup, onActivity };
+  }, [onBack, onBackup, onActivity]);
+  const leave = useCallback(
+    (action: () => void) => {
+      const current = owner.current;
+      if (!current?.live) return;
+      current.live = false;
+      current.returning = true;
+      current.abort.abort();
+      setOpened({ source: open, closing: true });
+      void disposeOwner(current)
+        .catch(() => undefined)
+        .then(() => {
+          if (owner.current === current && current.returning) action();
+        });
+    },
+    [open]
+  );
   const back = useCallback(() => {
-    if (owner.current?.live === false) return;
-    retire();
-    callbacks.current.onBack();
-  }, [retire]);
+    leave(callbacks.current.onBack);
+  }, [leave]);
+  const backup = useCallback(() => {
+    leave(callbacks.current.onBackup);
+  }, [leave]);
+  const activity = useCallback(
+    (hash: string) => {
+      const action = callbacks.current.onActivity;
+      if (action) leave(() => action(hash));
+    },
+    [leave]
+  );
   useEffect(() => {
     const current: Owner = { live: true, abort: new AbortController() };
     owner.current = current;
@@ -78,11 +105,10 @@ export function NativePrivateDeposit({
       )
         throw new Error('privacy_cancelled');
     };
-    void open(current.abort.signal, check).then(
+    current.opening = open(current.abort.signal, check).then(
       (controller) => {
         current.controller = controller;
         if (current.live) setOpened({ source: open, controller });
-        else void controller.dispose().catch(() => undefined);
       },
       () => {
         if (current.live) setOpened({ source: open, failed: true });
@@ -104,8 +130,9 @@ export function NativePrivateDeposit({
     );
     return () => {
       current.live = false;
+      current.returning = false;
       current.abort.abort();
-      void current.controller?.dispose().catch(() => undefined);
+      void disposeOwner(current).catch(() => undefined);
       change.remove();
       blur?.remove();
       hardwareBack.remove();
@@ -117,19 +144,30 @@ export function NativePrivateDeposit({
       <DepositContent
         controller={current.controller}
         onBack={back}
-        onBackup={() => callbacks.current.onBackup()}
-        onActivity={onActivity}
+        onBackup={backup}
+        onActivity={onActivity ? activity : undefined}
       />
     );
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
-      <Screen footer={<Button title="Close" variant="quiet" onPress={back} />}>
+      <Screen
+        footer={
+          <Button
+            title="Close"
+            variant="quiet"
+            disabled={current?.closing}
+            onPress={back}
+          />
+        }
+      >
         <Header title="Deposit to pool" onBack={back} />
         {current?.failed ? (
           <Text accessibilityRole="alert" style={s.muted}>
             This deposit could not be opened. Return to your wallet and try
             again.
           </Text>
+        ) : current?.closing ? (
+          <Text style={s.muted}>Closing deposit…</Text>
         ) : (
           <ActivityIndicator
             accessibilityLabel="Opening deposit"
