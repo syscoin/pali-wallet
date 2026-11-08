@@ -1,7 +1,6 @@
 import safeStringify from 'fast-safe-stringify';
 
-import { Json } from './types';
-import { IEthereumRpcErrorHandlerSerialized } from './types';
+import type { IEthereumRpcErrorHandlerSerialized, Json } from './types.ts';
 
 /**
  * Error subclass implementing JSON RPC 2.0 errors and Ethereum RPC errors
