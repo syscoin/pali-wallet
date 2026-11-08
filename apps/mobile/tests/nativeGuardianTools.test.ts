@@ -28,7 +28,7 @@ function screen(name: string, props: Record<string, unknown>) {
     ) => ({ type, props: attributes ?? {}, children }),
     useState(initial: unknown) {
       const entry = cell();
-      if (!Object.hasOwn(entry, 'value')) entry.value = initial;
+      if (!Object.hasOwn(entry, 'value')) entry.value = typeof initial === 'function' ? initial() : initial;
       return [
         entry.value,
         (value: unknown) => {
@@ -82,6 +82,7 @@ function screen(name: string, props: Record<string, unknown>) {
     },
     './NativeConnections': { NativeConnections: 'NativeConnections' },
     './NativeGuardianPolicy': { NativeGuardianPolicy: 'NativeGuardianPolicy' },
+    './NativeGuardianRecovery': { NativeGuardianRecovery: 'NativeGuardianRecovery' },
   };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const source = readFileSync(

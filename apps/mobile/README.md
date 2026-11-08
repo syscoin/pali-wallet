@@ -18,7 +18,7 @@ Native custody and public watch accounts use **Wallet / Activity / Tools / Setti
 | Activity                  | Shared EVM explorer, filtering and normalization for custody and watch accounts. Seeded and watch UTXO accounts use shared indexed history and bounded transaction details. The view combines public observations with retained local submissions.                                                                                                                    |
 | Security and recovery     | Foreground idle lock, lifecycle lock, authentication throttling, seed/key reveal, matching-phrase password recovery, and authenticated removal of the wallet from this device. Recovery preserves supported account records, imported-key recovery copies, private notes and signed records.                                                                          |
 | Private notes             | List locally saved notes, inspect details, reveal an individual note after fresh authentication, adjust the shared capacity policy, and export or restore the encrypted whole-note bundle through native file adapters. Pool status and spending remain separate work.                                                                                                |
-| Tools and preferences     | Account/network management, local trusted-site lookup, read-only guardian recovery status, Display currency, Help & about, and an explicit external testnet-faucet link where available.                                                                                                                                                                              |
+| Tools and preferences     | Account/network management, local trusted-site lookup, guardian status and policy management, threshold-1 ECDSA recovery for saved Smart accounts, Display currency, Help & about, and an explicit external testnet-faucet link where available.                                                                                                                                                                              |
 
 ### Asset observations and history
 
@@ -31,6 +31,8 @@ Native funding uses shared canonical and pending balance bounds. Ordinary single
 Ordinary Activity rows use indexed facts without per-row RPC enrichment. Retained unconfirmed EVM submissions use the shared observer, and opening a detail can request additional facts. A canonical receipt supplies the confirmation or revert observation. Later observations can reflect a reorganization. EVM internal transfers, full collectible enumeration and complete historical indexing remain open scope.
 
 UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation window. EVM recent-history storage keeps up to 48 local terminal summaries, 24 indexed candidates and 20 list preferences within 60 KiB. Byte limits can reduce those counts. Older history remains available through a configured explorer.
+
+Guardian recovery uses an existing verified Smart account with local HD/imported guardian and replacement keys. The first flow supports threshold 1 and uses the guardian as fee payer. It saves public recovery intent before signing, resumes after interruption, and atomically adopts recovered metadata before releasing intent references. Pure watch accounts provide read-only status. Separate fee payers, higher thresholds, other authenticators and physical-device qualification remain open.
 
 ### Signed transaction recovery
 
@@ -50,7 +52,7 @@ Settings → Auto-lock stores a device-local preference for custody and watch se
 
 ## Remaining implementation and qualification
 
-Operational dapp sessions and approvals, native Ledger/Trezor transport, smart-account operations, privacy-pool operations and Sentry management remain outstanding. Biometric/passkey enrollment and login, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
+Remaining dapp methods, hardware transport and device qualification, additional smart-account authenticators, broader guardian recovery, privacy-pool operations and Sentry management remain outstanding. Biometric/passkey enrollment and login, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
 
 The [shared-core audit](docs/shared-core-audit.md), [security requirements](SECURITY.md) and [native qualification contract](qualification/README.md) describe the host boundaries and release gates. Track live-network, physical-device and full user-journey acceptance separately from source implementation.
 

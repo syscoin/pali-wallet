@@ -24,6 +24,8 @@ async function fixture() {
     async openSmartAccountSend() { throw new Error('not used'); },
     openSmartAccountDeployment() { throw new Error('Unused test capability'); },
     async refreshSmartAccountMetadata() { throw new Error('Metadata is outside this fixture'); },
+    getGuardianRecoveryIntent: () => null,
+    async openGuardianRecovery() { throw new Error('Recovery is outside this fixture'); },
     async openGuardianPolicy() { throw new Error('Policy is outside this fixture'); },
     canManageGuardianPolicy: () => false,
     async inspectGuardianRemoval() { throw new Error('Removal is outside this fixture'); },

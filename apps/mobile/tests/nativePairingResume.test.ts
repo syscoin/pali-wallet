@@ -37,7 +37,7 @@ const code = ts.transpileModule(
   }
 ).outputText;
 
-function harness(ready = false, smartAccount = false, withPairing = true) {
+function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
@@ -46,6 +46,7 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
   let shellTab = 'wallet';
   let guardianReads = 0;
   let guardianOpens = 0;
+  let recoveryOpens = 0;
   let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
     : {
@@ -145,11 +146,13 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
       {
         id: smartAccount ? 'smart:60:0' : 'hd:60:0',
         index: 0,
+        slip44: 60,
         type: smartAccount ? 'SmartAccount' : 'HDAccount',
-        ...(smartAccount ? { smartAccount: { isDeployed: false, localEcdsa: true } } : {}),
+        ...(smartAccount ? { smartAccount: { isDeployed: false, localEcdsa: true, chainId: 1 } } : {}),
         address: '0x' + '11'.repeat(20),
         label: 'Account 1',
       },
+      ...(handoff ? [{ id: 'hd:60:1', index: 1, slip44: 60, type: 'HDAccount', address: '0x' + '22'.repeat(20), label: 'Guardian' }] : []),
     ],
   };
   const change = (phase: string) => {
@@ -183,8 +186,14 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
       },
     },
     accounts: {
-      async execute() {
+      async execute(request: { id: string }) {
         selectionCalls++;
+        if (handoff) {
+          const selected = catalogue.accounts.find(account => account.id === request.id)!;
+          catalogue = { ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: request.id } };
+          snapshot = { ...snapshot, revision: snapshot.revision + 1, account: { address: selected.address, network: 'ethereum' } };
+          for (const listener of authorityListeners) listener(snapshot);
+        }
       },
     },
     connections: {
@@ -204,7 +213,8 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
     openSmartAccountDeployment() {
       throw new Error('Route mocked in parent navigation test');
     },
-    canManageGuardianPolicy: () => smartAccount,
+    canManageGuardianPolicy: () => smartAccount && canManage,
+    guardianRecovery: { hasIntent: () => true, async open(_draft: unknown, _signal: AbortSignal, check: () => void) { check(); recoveryOpens++; return { dispose() {} }; } },
     inspectGuardianRemoval: async (_signal: AbortSignal, check: () => void) => { check(); return { status: 'retry-ready', transactions: [], totalPending: 0 }; },
     openGuardianPolicy: async (_draft: unknown, _signal: AbortSignal, check: () => void) => { check(); guardianOpens++; return { dispose() {} }; },
     readGuardianRecovery: async (_signal: AbortSignal, check: () => void) => { check(); guardianReads++; return { status: 'no-compatible-policy' }; },
@@ -303,7 +313,8 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
         tab: shellTab,
         immersive: false,
         navigation: {},
-        restoreRoot() {},
+        restoreRoot(next: string) { shellTab = next; },
+        select(next: string) { shellTab = next; },
         goBack() {},
       }),
     },
@@ -320,6 +331,7 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
       NativeTransactionReviewScreen: 'NativeTransactionReviewScreen',
     },
     './NativeSend': { NativeSend: 'NativeSend' },
+    './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen' },
     './RealTools': { RealTools: 'RealTools' },
   });
   const module = {
@@ -363,6 +375,7 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
     showWallet() { shellTab = 'wallet'; },
     guardianReads: () => guardianReads,
     guardianOpens: () => guardianOpens,
+    recoveryOpens: () => recoveryOpens,
     hardwareBack() {
       assert(hardwareBack);
       return hardwareBack();
@@ -424,8 +437,8 @@ function find(
     : node.children.flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false, smartAccount = false, withPairing = true) {
-  const f = harness(ready, smartAccount, withPairing);
+async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false) {
+  const f = harness(ready, smartAccount, withPairing, canManage, handoff);
   f.render();
   await settle();
   f.render();
@@ -663,5 +676,44 @@ test('closing a guardian operation refreshes the visible Smart account without a
     const refreshed = find(f.render(), node => node.type === 'NativePortfolio')!;
     assert.equal(refreshed.props.smartAccount.isDeployed, true);
     assert.equal(refreshed.props.onDeploySmartAccount, undefined);
+  } finally { f.dispose(); }
+});
+
+
+test('recovery remains available for a verified Smart account without its original signing owner', async () => {
+  const f = await mounted(true, true, false, false);
+  try {
+    f.showTools();
+    const tool = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
+    assert.equal(tool.manage, undefined);
+    assert.equal(tool.recovery.hasIntent, true);
+    await tool.recovery.open({ kind: 'resume' }, new AbortController().signal, () => undefined);
+    assert.equal(f.recoveryOpens(), 1);
+    f.background();
+    await assert.rejects(tool.recovery.open({ kind: 'resume' }, new AbortController().signal, () => undefined), /CANCELLED/);
+    assert.equal(f.recoveryOpens(), 1);
+  } finally { f.dispose(); }
+});
+
+
+test('saved recovery transaction handoff selects its payer and returns to the verified Smart target', async () => {
+  const f = await mounted(true, true, false, false, true);
+  try {
+    f.showTools();
+    const initial = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
+    const hash = '0x' + 'aa'.repeat(32);
+    await initial.recovery.onActivity('hd:60:1', 1, hash);
+    const activity = find(f.render(), node => node.type === 'NativeActivityScreen');
+    assert(activity);
+    assert.equal(activity.props.initialHash, hash);
+    const back = find(f.render(), node => node.props.title === 'Return to recovery');
+    assert(back);
+    back.props.onPress(); await settle();
+    const tools = find(f.render(), node => node.type === 'RealTools');
+    assert(tools);
+    assert.equal(tools.props.guardianRecovery.address, '0x' + '11'.repeat(20));
+    assert.equal(tools.props.initialGuardianScope, tools.props.guardianRecovery.scope);
+    assert.equal(f.recoveryOpens(), 0);
+    await assert.rejects(initial.recovery.onActivity('hd:60:1', 1, hash), /CANCELLED/);
   } finally { f.dispose(); }
 });

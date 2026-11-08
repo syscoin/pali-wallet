@@ -1,4 +1,4 @@
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
+import { defaultAbiCoder } from './ethersV6Compat.ts';
 
 const GUARDIAN_RECOVERY_POLICY_CHANGED =
   'PALI_GUARDIAN_RECOVERY_POLICY_CHANGED';

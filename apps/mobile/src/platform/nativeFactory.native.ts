@@ -313,6 +313,13 @@ export function createNativeWalletControllers() {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent));
   };
+  const guardianRecovery = Object.freeze({
+    hasIntent: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getGuardianRecoveryIntent(),
+    async open(draft: Parameters<KeyringRuntime['openGuardianRecovery']>[0], signal: AbortSignal, assertOwner: () => void) {
+      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+      return observeFailure(() => selected.openGuardianRecovery(draft, signal, assertCurrent));
+    },
+  });
   const openGuardianPolicy = async (draft: Parameters<KeyringRuntime['openGuardianPolicy']>[0], signal: AbortSignal, assertOwner: () => void) => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openGuardianPolicy(draft, signal, assertCurrent));
@@ -384,6 +391,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentryKeys, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentryKeys, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

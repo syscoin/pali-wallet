@@ -7,7 +7,7 @@ jest.mock('utils/security/blacklistService', () => ({ blacklistService: {} }));
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { BigNumber } from 'utils/ethersV6Compat';
+import { BigNumber, getAddress } from 'utils/ethersV6Compat';
 import {
   ERC7579_MODE_SINGLE_DEFAULT,
   getConfiguredAuthenticatorAddress,
@@ -21,7 +21,9 @@ const TARGET = `0x${'11'.repeat(20)}`;
 const GUARDIAN = `0x${'22'.repeat(20)}`;
 const PAYER = `0x${'33'.repeat(20)}`;
 const SECOND_PAYER = `0x${'44'.repeat(20)}`;
-const MODULE = getConfiguredAuthenticatorAddress(57057, 'guardian-recovery');
+const MODULE = getAddress(
+  getConfiguredAuthenticatorAddress(57057, 'guardian-recovery')
+);
 const SIGNATURE = '0x1234';
 const intent = {
   account: TARGET,

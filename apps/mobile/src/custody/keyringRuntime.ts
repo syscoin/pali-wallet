@@ -1,3 +1,34 @@
+import { Contract } from '../../../../source/utils/ethersV6Compat.ts';
+import { hexlify } from 'ethers/utils';
+import {
+  NativeGuardianRecoveryController,
+  type NativeGuardianRecoveryDraft,
+  type NativeGuardianRecoveryAction,
+  type NativeGuardianRecoveryStatus,
+} from '../smartAccount/guardianRecovery.ts';
+import {
+  buildGuardianRecoveryStart,
+  buildGuardianRecoveryScheduleTransaction,
+  buildGuardianRecoveryFinalizeTransaction,
+  validateGuardianRecoveryOperation,
+} from '../../../../source/utils/smartAccount/guardianRecoveryCommands.ts';
+import { captureGuardianRecoveryIntent } from '../../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
+import {
+  encodeEcdsaValidatorInitData,
+  getConfiguredAuthenticatorAddress,
+  getSmartAccountAuthHash,
+} from '../../../../source/utils/smartAccount/account.ts';
+import {
+  paliSmartAccountInterface,
+  paliGuardianRecoveryModuleInterface,
+} from '../../../../source/utils/smartAccount/contracts.ts';
+import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/wallet/evmSignedRecords.ts';
+import type {
+  NativeGuardianRecoveryIntent,
+  CatalogueMutation,
+  NativeWalletCatalogueSnapshot,
+  NativeCatalogueAccount,
+} from './walletCatalogue.ts';
 import { snapshotNftTransferSelection } from './nftTransferAdmission.ts';
 import { NATIVE_EVM_FEE_FUNDING, type EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService.ts';
@@ -26,7 +57,10 @@ import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/t
 import { requireSmartAccountAddressIdentity } from '../../../../source/utils/smartAccount/addressIdentity.ts';
 import { readSmartAccountValidatorMetadata } from '../../../../source/utils/smartAccount/executionMetadata.ts';
 import { buildGuardianPolicyExecutions, projectGuardianPolicyModule } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
-import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
+import {
+  getGuardianRecoveryOperationId,
+  type GuardianRecoveryObservation,
+} from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import { createNativeSmartAccountProvider } from '../smartAccount/provider.ts';
 import type { NativeConnectionHost } from '../connections/host.ts';
 import { createDeviceUnlockEnrollment } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
@@ -69,7 +103,6 @@ import { NativeWalletCatalogue, WalletCatalogueError,
 import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from './networkContext.ts';
 import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
-import type { NativeWalletCatalogueSnapshot, NativeCatalogueAccount } from './walletCatalogue.ts';
 import { NativeTransferError, type NativeTransferDispatchValidation, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
 import { NativeTransferRpc, assertSpeedUpEnvelope } from './transferRpc.ts';
@@ -81,7 +114,7 @@ import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 import { NativeActivityHistory } from '../activity/historyStore.ts';
 import { createActivityScope, type ActivityScope, type EvmActivityReadScope } from '../activity/types.ts';
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
-import { computeAddress, Transaction } from 'ethers/transaction';
+import { computeAddress, Transaction, recoverAddress } from 'ethers/transaction';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { keyExportRegistrationHash, snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
@@ -178,6 +211,8 @@ export interface KeyringRuntime extends CustodyRuntime {
   openSmartAccountDeployment(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   openSmartAccountSend(recipient: string, amount: NativeSmartAccountAmount, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   refreshSmartAccountMetadata(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRecoveryObservation | null>;
+  getGuardianRecoveryIntent(): NativeGuardianRecoveryIntent | null;
+  openGuardianRecovery(draft: NativeGuardianRecoveryDraft, signal: AbortSignal, assertCurrent: () => void): Promise<NativeGuardianRecoveryController>;
   openGuardianPolicy(draft: NativeGuardianPolicyDraft, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   canManageGuardianPolicy(): boolean;
   inspectGuardianRemoval(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRemovalInspection>;
@@ -1907,6 +1942,571 @@ export function createKeyringRuntimeFactory(
             return true;
           } catch { return false; }
         };
+        const getGuardianRecoveryIntent = () => {
+          if (!catalogueSnapshot || !keyring.isUnlocked()) return null;
+          const selected = selectedAccount();
+          return (
+            catalogue.privateRecords.guardianRecoveryIntents?.find(
+              (entry) => entry.accountId === selected.id
+            ) ?? null
+          );
+        };
+        const openGuardianRecovery = async (
+          draft: NativeGuardianRecoveryDraft,
+          parentSignal: AbortSignal,
+          assertOwner: () => void
+        ) => {
+          const kind = Object.getOwnPropertyDescriptor(draft, 'kind')?.value;
+          const input = readOwnData(
+            draft,
+            kind === 'start' ? ['kind', 'guardianId', 'replacementId'] : ['kind']
+          );
+          if (
+            (kind !== 'start' && kind !== 'resume') ||
+            (kind === 'start' &&
+              (typeof input.guardianId !== 'string' ||
+                typeof input.replacementId !== 'string'))
+          )
+            throw new KeyringRuntimeError('INVALID_INPUT');
+          const request = Object.freeze({
+            kind,
+            guardianId: input.guardianId as string,
+            replacementId: input.replacementId as string,
+          });
+          const lifetime = new AbortController();
+          const signal = lifetime.signal;
+          const abort = () => lifetime.abort();
+          const dispose = () => {
+            parentSignal.removeEventListener('abort', abort);
+            abort();
+          };
+          parentSignal.addEventListener('abort', abort, { once: true });
+          if (parentSignal.aborted) abort();
+          let handedOff = false;
+          try {
+            const captured = generation,
+              ring = keyring;
+            const initialSnapshot = catalogueSnapshot;
+            let selected = selectedAccount();
+            const initialAccount = state.accounts.SmartAccount[selected.index];
+            if (
+              !initialSnapshot ||
+              !ring.isUnlocked() ||
+              selected.type !== 'SmartAccount' ||
+              !initialAccount?.smartAccount
+            )
+              throw new KeyringRuntimeError('NOT_READY');
+            let snapshot = initialSnapshot,
+              account = initialAccount;
+            const network = getNativeNetwork(
+              snapshot.active.networkId,
+              snapshot.networks
+            );
+            requireSmartAccountAddressIdentity(account, Number(network.chainId));
+            const check = () => {
+              checkGuard(assertOwner);
+              current(captured);
+              if (
+                signal.aborted ||
+                keyring !== ring ||
+                !ring.isUnlocked() ||
+                catalogueSnapshot !== snapshot ||
+                selectedAccount() !== selected ||
+                state.accounts.SmartAccount[selected.index] !== account
+              )
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            const rpc = new EvmTransferReadRpc(network, {
+              fetch: dependencies.connectionFetch ?? walletFetch,
+            });
+            const provider = createNativeSmartAccountProvider(
+              network,
+              rpc,
+              signal,
+              check
+            );
+            const contract = new Contract(
+              account.address,
+              paliSmartAccountInterface,
+              provider
+            );
+            const reference = (id: string) => {
+              const saved = snapshot!.accounts.find(
+                (entry) =>
+                  entry.id === id &&
+                  entry.slip44 === 60 &&
+                  (entry.type === 'HDAccount' || entry.type === 'Imported')
+              );
+              if (!saved) throw new KeyringRuntimeError('INVALID_INPUT');
+              const key = state.accounts[saved.type]?.[saved.index];
+              if (
+                !key?.xprv ||
+                key.address.toLowerCase() !== saved.address.toLowerCase()
+              )
+                throw new KeyringRuntimeError('INVALID_INPUT');
+              return {
+                saved,
+                key,
+                ref: Object.freeze({ id, address: saved.address, xpub: key.xpub }),
+              };
+            };
+            const commit = async (
+              mutation: Exclude<CatalogueMutation, { kind: 'remove' }>
+            ) => {
+              await run(async () => {
+                check();
+                const next = await catalogue.mutate(
+                  snapshot!.revision,
+                  mutation,
+                  check
+                );
+                check();
+                publishAccounts(next);
+                snapshot = next;
+                selected = selectedAccount();
+                account = state.accounts.SmartAccount[selected.index]!;
+              });
+            };
+            const readPolicy = async (operationId?: string) => {
+              check();
+              const result = operationId
+                ? await rpc.readGuardianRecoveryOperation(
+                    account.address,
+                    operationId,
+                    signal,
+                    check
+                  )
+                : await rpc.readGuardianRecoveryStatus(
+                    account.address,
+                    signal,
+                    check
+                  );
+              check();
+              if (result.status !== 'observed')
+                throw new KeyringRuntimeError('NOT_READY');
+              return result.observation;
+            };
+            const policyPorts = {
+              assertCurrent: check,
+              readModuleAddress: async () => {
+                const status = await readPolicy();
+                return status.exists ? status.moduleAddress : undefined;
+              },
+              readPolicyEpoch: async (_address: string, module: string) =>
+                new Contract(module, paliGuardianRecoveryModuleInterface, provider)
+                  .policyEpoch(account.address)
+                  .then((value: bigint) => value.toString()),
+            };
+            let intent = getGuardianRecoveryIntent();
+            check();
+            await dataBinding(captured, check);
+            check();
+            if (request.kind === 'start') {
+              if (intent)
+                throw new Error('Resume or clear the existing recovery first');
+              const guardian = reference(request.guardianId),
+                replacement = reference(request.replacementId);
+              const status = await readPolicy();
+              if (
+                !status.exists ||
+                status.threshold !== 1 ||
+                !status.guardians.some(
+                  (address) =>
+                    address.toLowerCase() === guardian.ref.address.toLowerCase()
+                ) ||
+                status.pending
+              )
+                throw new Error('The selected guardian cannot start this recovery');
+              const target = {
+                auth: {
+                  module: 'ecdsa' as const,
+                  validator: getConfiguredAuthenticatorAddress(
+                    Number(network.chainId),
+                    'ecdsa'
+                  ),
+                  data: encodeEcdsaValidatorInitData([replacement.ref.address], 1),
+                },
+              };
+              const operation = await buildGuardianRecoveryStart(
+                {
+                  account: account.address,
+                  chainId: Number(network.chainId),
+                  target,
+                  salt: hexlify(
+                    globalThis.crypto.getRandomValues(new Uint8Array(32))
+                  ),
+                },
+                {
+                  ...policyPorts,
+                  isValidatorInstalled: async (_address, validator) =>
+                    contract.isModuleInstalled(1, validator, '0x'),
+                  readCurrentValidator: async () => contract.activeValidator(),
+                }
+              );
+              check();
+              const canonical = captureGuardianRecoveryIntent({ operation, target });
+              intent = Object.freeze({
+                accountId: selected.id,
+                ...canonical,
+                guardian: guardian.ref,
+                replacement: replacement.ref,
+              });
+              await commit({
+                kind: 'store-guardian-recovery',
+                id: selected.id,
+                intent,
+                expectedOperationHash: null,
+              });
+            } else if (!intent) throw new Error('No saved recovery is available');
+            const savedIntent = intent!;
+            const operationId = getGuardianRecoveryOperationId(savedIntent.operation);
+            const guardian = reference(savedIntent.guardian.id),
+              replacement = reference(savedIntent.replacement.id);
+            for (const [actual, saved] of [
+              [guardian.ref, savedIntent.guardian],
+              [replacement.ref, savedIntent.replacement],
+            ] as const)
+              if (actual.address !== saved.address || actual.xpub !== saved.xpub)
+                throw new KeyringRuntimeError('INVALID_INPUT');
+            const validate = async () => {
+              await validateGuardianRecoveryOperation(
+                {
+                  account: account.address,
+                  chainId: Number(network.chainId),
+                  operation: savedIntent.operation,
+                },
+                {
+                  ...policyPorts,
+                  readScheduleHash: async (operation) =>
+                    new Contract(
+                      operation.recoveryModule,
+                      paliGuardianRecoveryModuleInterface,
+                      provider
+                    ).getRecoveryScheduleHash(
+                      operation.account,
+                      operation.salt,
+                      operation.mode,
+                      operation.executionCalldata
+                    ),
+                }
+              );
+              check();
+            };
+            const pendingTransaction = async (): Promise<string | null> => {
+              const session = { keyring: ring, assertCurrent: check };
+              const saved = await signedRecords.readRecent(
+                session,
+                network.chainId,
+                guardian.ref.address,
+                EVM_SIGNED_RECORD_LIMITS.transactions
+              );
+              check();
+              const matching = saved.entries.filter((entry) => {
+                const transaction = Transaction.from(entry.rawTransaction);
+                if (
+                  transaction.to?.toLowerCase() !==
+                    savedIntent.operation.recoveryModule.toLowerCase() ||
+                  transaction.value !== 0n
+                )
+                  return false;
+                try {
+                  const call = paliGuardianRecoveryModuleInterface.parseTransaction({
+                    data: transaction.data,
+                  });
+                  if (
+                    !call ||
+                    !['scheduleRecovery', 'executeRecovery'].includes(call.name) ||
+                    call.args[0].toLowerCase() !==
+                      savedIntent.operation.account.toLowerCase() ||
+                    call.args[1] !== savedIntent.operation.salt ||
+                    call.args[2] !== savedIntent.operation.mode ||
+                    call.args[3] !== savedIntent.operation.executionCalldata
+                  )
+                    return false;
+                  if (
+                    call.name === 'scheduleRecovery' &&
+                    (call.args[4].length !== 1 ||
+                      call.args[4][0].guardian.toLowerCase() !==
+                        guardian.ref.address.toLowerCase() ||
+                      recoverAddress(
+                        savedIntent.operation.hash,
+                        call.args[4][0].signature
+                      ).toLowerCase() !== guardian.ref.address.toLowerCase())
+                  )
+                    return false;
+                  return (
+                    paliGuardianRecoveryModuleInterface
+                      .encodeFunctionData(call.fragment, call.args)
+                      .toLowerCase() === transaction.data.toLowerCase()
+                  );
+                } catch {
+                  return false;
+                }
+              });
+              let consumed = 0n,
+                queries = 0;
+              for (const entry of matching.sort(
+                (left, right) => right.nonce - left.nonce
+              )) {
+                if (BigInt(entry.nonce) < consumed) continue;
+                if (++queries > 48)
+                  throw new Error('Recovery transaction observation is incomplete');
+                const observed = await observeRetainedEvmTransaction(
+                  signedRecords,
+                  session,
+                  network.chainId,
+                  guardian.ref.address,
+                  entry.hash,
+                  (request) =>
+                    rpc.observation(
+                      {
+                        hash: request.hash,
+                        from: request.from,
+                        to: request.to,
+                        nonce: request.nonce,
+                      },
+                      signal,
+                      check
+                    ),
+                  check
+                );
+                check();
+                const bound =
+                  observed.observation.status === 'mined'
+                    ? BigInt(entry.nonce) + 1n
+                    : BigInt(observed.observation.latestNonce);
+                if (bound > consumed) consumed = bound;
+                if (!observed.terminalPhase) return entry.hash;
+              }
+              const current = await signedRecords.listSender(
+                session,
+                network.chainId,
+                guardian.ref.address
+              );
+              check();
+              if (
+                current.map((entry) => entry.hash).join(',') !==
+                saved.entries.map((entry) => entry.hash).join(',')
+              )
+                throw new Error('Recovery transactions changed during observation');
+              return null;
+            };
+            const observe = async (): Promise<NativeGuardianRecoveryStatus> => {
+              const pending = await pendingTransaction();
+              const observation = await readPolicy(operationId);
+              const known = observation.knownOperation;
+              if (known?.status === 'executed')
+                return {
+                  intent: savedIntent,
+                  observation,
+                  action: null,
+                  terminal: 'executed',
+                  transactionHash: null,
+                  canAbandon: false,
+                };
+              check();
+              if (pending)
+                return {
+                  intent: savedIntent,
+                  observation,
+                  action: null,
+                  terminal: null,
+                  transactionHash: pending,
+                  canAbandon: false,
+                };
+              const obsolete =
+                !observation.exists ||
+                observation.policyEpoch !== savedIntent.operation.policyEpoch ||
+                ['expired', 'canceled', 'inactive'].includes(known?.status ?? '');
+              if (obsolete)
+                return {
+                  intent: savedIntent,
+                  observation,
+                  action: null,
+                  terminal: 'obsolete',
+                  transactionHash: null,
+                  canAbandon: true,
+                };
+              if (
+                observation.active &&
+                observation.active.operationId !== operationId &&
+                ['pending', 'ready'].includes(observation.active.status)
+              )
+                return {
+                  intent: savedIntent,
+                  observation,
+                  action: null,
+                  terminal: null,
+                  transactionHash: null,
+                  canAbandon: true,
+                };
+              if (known?.status === 'ready')
+                return {
+                  intent: savedIntent,
+                  observation,
+                  action: 'finalize',
+                  terminal: null,
+                  transactionHash: null,
+                  canAbandon: false,
+                };
+              if (known?.status === 'pending')
+                return {
+                  intent: savedIntent,
+                  observation,
+                  action: null,
+                  terminal: null,
+                  transactionHash: null,
+                  canAbandon: false,
+                };
+              return {
+                intent: savedIntent,
+                observation,
+                action: 'schedule',
+                terminal: null,
+                transactionHash: null,
+                canAbandon: true,
+              };
+            };
+            const sign = async (owner: typeof guardian) =>
+              run(async (ownerGeneration) => {
+                const guard = () => {
+                  current(ownerGeneration);
+                  check();
+                };
+                guard();
+                const signature = await ring.ethereumTransaction.ethSign(
+                  [owner.ref.address, savedIntent.operation.hash],
+                  {
+                    selectedAccount: {
+                      id: selected.index,
+                      type: selected.type,
+                      expectedAddress: selected.address,
+                    },
+                    targetAccount: {
+                      id: owner.saved.index,
+                      type: owner.saved.type,
+                      expectedAddress: owner.ref.address,
+                    },
+                    assertCurrent: guard,
+                  }
+                );
+                guard();
+                return signature;
+              });
+            handedOff = true;
+            return new NativeGuardianRecoveryController(
+              {
+                assertCurrent: check,
+                dispose,
+                observe,
+                submissionFailure: (error) => sdk.evmSubmissionFailure(error),
+                async prepare(action: NativeGuardianRecoveryAction) {
+                  const status = await observe();
+                  if (status.action !== action)
+                    throw new Error('Recovery status changed');
+                  await validate();
+                  let transaction;
+                  if (action === 'schedule') {
+                    await sign(replacement);
+                    const signature = await sign(guardian);
+                    transaction = buildGuardianRecoveryScheduleTransaction({
+                      account: account.address,
+                      guardian: guardian.ref.address,
+                      approval: { guardian: guardian.ref.address, signature },
+                      operation: savedIntent.operation,
+                    });
+                  } else
+                    transaction = buildGuardianRecoveryFinalizeTransaction({
+                      account: account.address,
+                      operation: savedIntent.operation,
+                    });
+                  check();
+                  const prepared = await prepareOwnedEvmTransaction(
+                    transaction,
+                    guardian.saved,
+                    selected,
+                    signal,
+                    check,
+                    {
+                      smartAccountGuardianRecovery: action === 'schedule',
+                      smartAccountGuardianRecoveryFinalize: action === 'finalize',
+                      smartAccountRecoveryAccount: account.address,
+                    },
+                    NATIVE_EVM_FEE_FUNDING
+                  );
+                  check();
+                  return Object.freeze({
+                    ...prepared,
+                    async submit(assertCurrent, onBroadcast) {
+                      check();
+                      checkGuard(assertCurrent);
+                      if ((await observe()).action !== action)
+                        throw new Error('Recovery status changed');
+                      await validate();
+                      check();
+                      checkGuard(assertCurrent);
+                      return prepared.submit(assertCurrent, onBroadcast);
+                    },
+                  });
+                },
+                async reconcile() {
+                  if (
+                    (await readPolicy(operationId)).knownOperation?.status !==
+                    'executed'
+                  )
+                    throw new Error('Recovery is not executed');
+                  const metadata = await readSmartAccountValidatorMetadata({
+                    account: account as IKeyringAccountState & {
+                      smartAccount: NonNullable<IKeyringAccountState['smartAccount']>;
+                    },
+                    chainId: Number(network.chainId),
+                    provider,
+                    assertCurrent: check,
+                  });
+                  check();
+                  if (
+                    !metadata.isDeployed ||
+                    metadata.auth?.module !== savedIntent.target.auth.module ||
+                    getSmartAccountAuthHash(metadata.auth) !==
+                      getSmartAccountAuthHash(savedIntent.target.auth)
+                  )
+                    throw new Error('Recovery metadata has not caught up');
+                  const policy = await readPolicy(operationId);
+                  if (policy.knownOperation?.status !== 'executed')
+                    throw new Error('Recovery status changed');
+                  if (policy.exists)
+                    metadata.installedModules = [
+                      ...(metadata.installedModules ?? []),
+                      projectGuardianPolicyModule(policy),
+                    ];
+                  await commit({
+                    kind: 'complete-guardian-recovery',
+                    id: selected.id,
+                    operationHash: savedIntent.operation.hash,
+                    metadata: {
+                      auth: metadata.auth,
+                      availableModules: metadata.availableModules,
+                      isDeployed: metadata.isDeployed === true,
+                      installedModules: metadata.installedModules,
+                    },
+                  });
+                },
+                async abandon() {
+                  if (!(await observe()).canAbandon)
+                    throw new Error('Recovery is still pending');
+                  await commit({
+                    kind: 'retire-guardian-recovery',
+                    id: selected.id,
+                    operationHash: savedIntent.operation.hash,
+                  });
+                },
+              },
+              parentSignal
+            );
+          } finally {
+            if (!handedOff) dispose();
+          }
+        };
         const openSmartAccountOperation = async (intent: NativeSmartAccountIntent, assertOwner: () => void, submitBatch?: NativeSmartOperationPorts['submitBatch'], assertGuardianPolicy?: NativeSmartOperationPorts['assertGuardianPolicy']): Promise<NativeSmartAccountOperation> => {
             if (active || reserved || !catalogueSnapshot || !keyring.isUnlocked() ||
                 !nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks)) throw new KeyringRuntimeError('NOT_READY');
@@ -2018,6 +2618,8 @@ export function createKeyringRuntimeFactory(
         };
         return {
           ledger,
+          getGuardianRecoveryIntent,
+          openGuardianRecovery,
           canManageGuardianPolicy,
           inspectGuardianRemoval,
           refreshSmartAccountMetadata,

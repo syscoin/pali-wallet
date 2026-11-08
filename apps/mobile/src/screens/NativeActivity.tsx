@@ -171,6 +171,7 @@ export function NativeActivityScreen({
   onCancelPending,
   onCancelSaved,
   onSpeedUpPending,
+  initialHash,
 }: {
   controller: NativeActivity;
   accountLabel: string;
@@ -180,6 +181,7 @@ export function NativeActivityScreen({
   onCancelPending?(hash: string): void;
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
+  initialHash?: string;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -199,6 +201,7 @@ export function NativeActivityScreen({
       onCancelPending={onCancelPending}
       onCancelSaved={onCancelSaved}
       onSpeedUpPending={onSpeedUpPending}
+      initialHash={initialHash}
     />
   );
 }
@@ -212,6 +215,7 @@ function NativeActivityContent({
   onCancelPending,
   onCancelSaved,
   onSpeedUpPending,
+  initialHash,
 }: {
   controller: NativeActivity;
   snapshot: NativeActivitySnapshot;
@@ -222,12 +226,27 @@ function NativeActivityContent({
   onCancelPending?(hash: string): void;
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
+  initialHash?: string;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const arrival = useRef<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [copying, setCopying] = useState(false);
   const lifetime = useRef({ epoch: 0 });
+  useEffect(() => {
+    if (!initialHash || snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === initialHash) return;
+    arrival.current = initialHash;
+    const epoch = lifetime.current.epoch;
+    void controller.loadSavedPending().then(() => {
+      if (lifetime.current.epoch !== epoch || arrival.current !== initialHash) return;
+      const current = controller.getSnapshot();
+      if (current.savedPending?.rows.some(row => row.hash === initialHash) || current.rows.some(row => row.hash === initialHash)) {
+        setSelected(initialHash);
+        controller.inspect(initialHash);
+      }
+    }).catch(() => undefined);
+  }, [controller, initialHash, snapshot.scopeKey, snapshot.status]);
   const list = useRef<FlatList<ActivityRow>>(null);
   const listBounds = useRef<React.ComponentRef<typeof View>>(null);
   const rowViews = useRef(new Map<string, React.ComponentRef<typeof View>>());

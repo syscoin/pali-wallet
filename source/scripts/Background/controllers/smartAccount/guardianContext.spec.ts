@@ -9,6 +9,7 @@ import {
   getConfiguredAuthenticatorAddress,
   ERC7579_MODE_SINGLE_DEFAULT,
   getPaliErc7739PersonalSignHash,
+  paliGuardianRecoveryModuleInterface,
 } from 'utils/smartAccount';
 
 import SmartAccountController from './index';
@@ -52,7 +53,13 @@ describe('guardian recovery originating wallet context', () => {
     controller.prepareSmartAccountGuardianStartRecovery({
       account: TARGET,
       guardian: GUARDIAN,
-      target: {},
+      target: {
+        auth: {
+          module: 'ecdsa',
+          validator: getConfiguredAuthenticatorAddress(57057, 'ecdsa'),
+          data: '0x',
+        },
+      },
       expectedContext,
     });
   const submit = () =>
@@ -154,6 +161,42 @@ describe('guardian recovery originating wallet context', () => {
       expect(send).not.toHaveBeenCalled();
     }
   );
+
+  it('captures the reviewed operation, signature and preferred payer before asynchronous validation', async () => {
+    const captured = { ...operation };
+    const approval = { guardian: GUARDIAN, signature: '0x1234' };
+    const payer = {
+      id: 2,
+      type: KeyringAccountType.HDAccount,
+      address: GUARDIAN,
+    };
+    const gate = deferred<void>();
+    controller.validateSmartAccountGuardianRecoveryOperation.mockReturnValue(
+      gate.promise
+    );
+    const pending = controller.submitPreparedSmartAccountGuardianStartRecovery({
+      account: TARGET,
+      guardian: GUARDIAN,
+      approval,
+      operation: captured,
+      gasPayer: payer,
+      expectedContext,
+    });
+    captured.salt = `0x${'55'.repeat(32)}`;
+    captured.executionCalldata = '0x';
+    approval.signature = '0xffff';
+    payer.id = 99;
+    gate.resolve();
+    await pending;
+    expect(controller.getWalletGasPayerAccount.mock.calls[0][1].id).toBe(2);
+    const decoded = paliGuardianRecoveryModuleInterface.decodeFunctionData(
+      'scheduleRecovery',
+      send.mock.calls[0][0].data
+    );
+    expect(decoded[1]).toBe(operation.salt);
+    expect(decoded[3]).toBe(operation.executionCalldata);
+    expect(decoded[4][0].signature).toBe('0x1234');
+  });
   it('retains a non-active local EOA guardian and the original execution payload', async () => {
     const prepared = await prepare();
     expect(prepared).toMatchObject({

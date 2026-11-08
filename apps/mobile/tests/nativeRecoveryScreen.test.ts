@@ -199,6 +199,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   let state = { phase: 'locked', revision: 1, presence: 'existing', backup: 'confirmed', account: null, error: null };
   const controllers = {
     canManageGuardianPolicy: () => false,
+    guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
@@ -269,6 +270,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const publish = (patch: Partial<typeof state>) => { state = { ...state, ...patch }; observer(state); };
   const controllers = {
     canManageGuardianPolicy: () => false,
+    guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     ...(deviceUnlock ? { authentication } : {}),
     authority: { getSnapshot: () => state, getCatalogue: () => setting && state.phase === 'ready' ? catalogue : null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
@@ -471,6 +473,7 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
       getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} };
     const bundle = {
       canManageGuardianPolicy: () => false,
+    guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
       connections,
       markPrepared() { prepared = true; },
       authority: { getSnapshot: () => state, getCatalogue: () => catalogue, supportsAccountManagement: () => false,

@@ -266,6 +266,12 @@ export class EvmTransferReadRpc {
     }, 'smart-account');
   }
   readGuardianRecoveryStatus(account: string, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
+    return this.readGuardianRecovery(account, undefined, signal, guard);
+  }
+  readGuardianRecoveryOperation(account: string, operationId: string, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
+    return this.readGuardianRecovery(account, operationId, signal, guard);
+  }
+  private readGuardianRecovery(account: string, knownOperationId: string | undefined, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
     return this.operation(signal, guard, async (read) => {
       const [{ readGuardianRecoveryObservation, GuardianRecoveryUnsupportedError, GuardianRecoveryNoAccountCodeError }, { getPaliModuleAddress }] = await Promise.all([
         import('../../../../source/utils/smartAccount/guardianStatus.ts'),
@@ -277,6 +283,7 @@ export class EvmTransferReadRpc {
           account,
           chainId,
           moduleAddress: getPaliModuleAddress(chainId, 'guardian-recovery'),
+          knownOperationId,
           provider: { send: read },
           assertCurrent: read.assertCurrent,
         });
