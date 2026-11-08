@@ -53,6 +53,12 @@ test('ordinary and testnet forms reuse the shared delay choices', async ({
   await expect(
     page.getByRole('radio', { name: '3 days', exact: true })
   ).toBeChecked();
+  await expect(
+    page.getByText(
+      'This policy uses one guardian. A recovery request becomes ready after 3 days and can be finalized for 6 days once ready.',
+      { exact: true }
+    )
+  ).toBeVisible();
   await page.getByLabel('Guardian address', { exact: true }).fill('invalid');
   await page
     .getByRole('button', { name: 'Review policy', exact: true })
@@ -135,6 +141,9 @@ test('guardian policy uses distinct authorization and payer consent with metadat
   ).toBeVisible();
   await expect(
     page.getByText('Recovery delay · 3 days', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText('Finalization window once ready · 6 days', { exact: true })
   ).toBeVisible();
   await page.screenshot({
     path: info.outputPath('guardian-authorization-top-320.png'),
