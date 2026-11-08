@@ -619,6 +619,10 @@ export class EvmSignedRecords {
   private readonly onUnavailable: () => void;
   private unavailable = false;
   private retirementCursor?: Readonly<{ profileId: string; scope: string }>;
+  private readonly retirementGroupCursors = new Map<
+    string,
+    { nonce: number; resume: boolean }
+  >();
   private readonly sessionParents = new WeakMap<
     EvmSignedRecordSession,
     EvmSignedRecordSession
@@ -1406,6 +1410,7 @@ export class EvmSignedRecords {
             resetGeneration
           )
         ) {
+          this.retirementGroupCursors.delete(`${profileId}:${chainId}:${from}`);
           for (const entry of previous.bundle?.entries ?? [])
             if (entry.chainId === chainId && entry.from === from)
               this.autoNonceAcceptance.retireNonce(profileId, entry);
@@ -1422,7 +1427,7 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     input: Readonly<{ chainId: string; from: string }>,
     read: EvmSignedRetirementRead,
-    progress: { removed: number }
+    progress: { onTimeout?: () => void; removed: number }
   ): Promise<number> {
     session = this.captureSession(session);
     const chainId = input.chainId;
@@ -1433,11 +1438,15 @@ export class EvmSignedRecords {
     )
       throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
     const id = await profile(session);
+    const scopeKey = `${id}:${chainId}:${from}`;
     const deadline = performance.now() + FINALITY_TIMEOUT_MS;
     const unavailable = new Error('EVM_SIGNED_RECORD_FINALITY_UNAVAILABLE');
     const assertFresh = () => {
       guard(session);
-      if (performance.now() >= deadline) throw unavailable;
+      if (performance.now() >= deadline) {
+        progress.onTimeout?.();
+        throw unavailable;
+      }
     };
     const call: EvmSignedRetirementRead = async (method, params) => {
       assertFresh();
@@ -1455,11 +1464,19 @@ export class EvmSignedRecords {
     };
     const candidates = await this.exclusive(async () => {
       const { bundle } = await this.load(session, id);
-      return completedNonceGroups(
+      const groups = completedNonceGroups(
         (bundle?.entries ?? []).filter(
           (entry) => entry.chainId === chainId && entry.from === from
         )
       );
+      const previous = this.retirementGroupCursors.get(scopeKey);
+      const previousIndex =
+        previous === undefined
+          ? -1
+          : groups.findIndex((group) => group[0]!.nonce === previous.nonce);
+      const start =
+        previousIndex < 0 ? 0 : previousIndex + (previous!.resume ? 0 : 1);
+      return [...groups.slice(start), ...groups.slice(0, start)];
     });
     let removed = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1469,6 +1486,23 @@ export class EvmSignedRecords {
         const winner = group.find(
           (entry) => entry.phase === 'confirmed' || entry.phase === 'reverted'
         )!;
+        // Budget interruption resumes this group, including an incomplete validation.
+        const cursor = { nonce: winner.nonce, resume: true };
+        this.retirementGroupCursors.delete(scopeKey);
+        this.retirementGroupCursors.set(scopeKey, cursor);
+        if (
+          this.retirementGroupCursors.size >
+          EVM_SIGNED_RECORD_LIMITS.transactions
+        )
+          this.retirementGroupCursors.delete(
+            this.retirementGroupCursors.keys().next().value!
+          );
+        const advanceGroup = () => {
+          if (this.retirementGroupCursors.get(scopeKey) === cursor)
+            cursor.resume = false;
+        };
+        // A timed-out group yields to its successor on the next attempt.
+        progress.onTimeout = advanceGroup;
         const tx = Transaction.from(
           (await this.materialize(session, winner)).rawTransaction
         );
@@ -1488,8 +1522,10 @@ export class EvmSignedRecords {
             observed.status !== 'mined' ||
             observed.transactionIndex === undefined ||
             observed.outcome !== winner.phase
-          )
+          ) {
+            advanceGroup();
             throw unavailable;
+          }
           const finalized = await call('eth_getBlockByNumber', [
             'finalized',
             false,
@@ -1580,6 +1616,7 @@ export class EvmSignedRecords {
               this.autoNonceAcceptance.retireNonce(id, winner);
               // Publish acknowledged progress before any next RPC can stall.
               progress.removed += group.length;
+              advanceGroup();
               return group.length;
             }
           }
@@ -1592,7 +1629,10 @@ export class EvmSignedRecords {
       return await Promise.race([
         work(),
         new Promise<number>((resolve) => {
-          timer = setTimeout(() => resolve(removed), FINALITY_TIMEOUT_MS);
+          timer = setTimeout(() => {
+            progress.onTimeout?.();
+            resolve(removed);
+          }, FINALITY_TIMEOUT_MS);
         }),
       ]);
     } catch (error) {
@@ -1651,15 +1691,20 @@ export class EvmSignedRecords {
     const controller = new AbortController();
     const deadline = performance.now() + FINALITY_TIMEOUT_MS;
     const expired = new Error('EVM_SIGNED_RETIREMENT_BUDGET_EXHAUSTED');
+    const progress: { onTimeout?: () => void; removed: number } = {
+      removed: 0,
+    };
     const assertCurrent = () => {
       guard(session);
-      if (controller.signal.aborted || performance.now() >= deadline)
+      if (controller.signal.aborted) throw expired;
+      if (performance.now() >= deadline) {
+        progress.onTimeout?.();
         throw expired;
+      }
     };
     const ownedSession = { keyring: session.keyring, assertCurrent };
     const readers = new Map<string, EvmSignedRetirementRead | null>();
     let remaining = 64;
-    const progress = { removed: 0 };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const work = async () => {
       try {
@@ -1683,7 +1728,10 @@ export class EvmSignedRecords {
             scope,
             async (method, params) => {
               assertCurrent();
-              if (!remaining) throw expired;
+              if (!remaining) {
+                controller.abort(expired);
+                throw expired;
+              }
               remaining--;
               const value = await read(method, params);
               assertCurrent();
@@ -1703,6 +1751,7 @@ export class EvmSignedRecords {
         work(),
         new Promise<number>((resolve) => {
           timer = setTimeout(() => {
+            progress.onTimeout?.();
             controller.abort(expired);
             resolve(progress.removed);
           }, FINALITY_TIMEOUT_MS);

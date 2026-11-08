@@ -938,3 +938,179 @@ test('the aggregate deadline reports groups already committed before a later rea
   }
   assert.equal(await f.records.validate(f.session()), 1);
 });
+
+test('a completed group beyond the read budget is reached on the next cleanup attempt', async () => {
+  const { f, entries, read } = await terminalFixture(17);
+  const later = entries[16]!;
+  let reads = 0;
+  const receipts: string[] = [];
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      reads++;
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] !== later.hash) return null;
+      }
+      return read(method, params);
+    };
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    0
+  );
+  assert.equal(reads, 64);
+  assert.deepEqual(
+    receipts,
+    entries.slice(0, 16).map((entry) => entry.hash)
+  );
+  assert.equal(await f.records.validate(f.session()), 17);
+
+  reads = 0;
+  receipts.length = 0;
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    1
+  );
+  assert.equal(receipts[0], later.hash);
+  assert(reads <= 64);
+  assert.equal(
+    await f.records.readExact(f.session(), chainId, signer.address, later.hash),
+    null
+  );
+  assert.equal(await f.records.validate(f.session()), 16);
+  for (const entry of entries.slice(0, 16))
+    assert.equal(
+      (
+        await f.records.readExact(
+          f.session(),
+          chainId,
+          signer.address,
+          entry.hash
+        )
+      )?.rawTransaction,
+      entry.rawTransaction
+    );
+});
+
+test('an interrupted validation resumes before trailing groups after a 63-read prefix', async () => {
+  const { f, entries, read } = await terminalFixture(18);
+  const invalid = entries[15]!,
+    later = entries[16]!;
+  let reads = 0;
+  const receipts: string[] = [];
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      reads++;
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] !== invalid.hash && params[0] !== later.hash) return null;
+        if (params[0] === invalid.hash)
+          return {
+            transactionHash: invalid.hash,
+            from: signer.address,
+            to: signer.address,
+            status: '0x1',
+            blockNumber: '0x9',
+            blockHash: '0x' + 'ef'.repeat(32),
+            transactionIndex: '0x0',
+          };
+      }
+      if (method === 'eth_getBlockByNumber' && params[0] === '0x9')
+        return {
+          number: '0x9',
+          hash: '0x' + 'ff'.repeat(32),
+          gasLimit: '0x1c9c380',
+          transactions: [invalid.hash],
+        };
+      return read(method, params);
+    };
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    0
+  );
+  assert.equal(reads, 64);
+  assert.equal(receipts.length, 16);
+  receipts.length = 0;
+  reads = 0;
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    1
+  );
+  assert.equal(receipts[0], later.hash);
+  assert(reads <= 64);
+  assert.equal(await f.records.validate(f.session()), 17);
+});
+
+test('a timed-out receipt yields to the next completed group on the next attempt', async (t) => {
+  const { f, entries, read } = await terminalFixture(2);
+  const paused = hold();
+  let clock = 0,
+    stall = true;
+  const receipts: string[] = [];
+  t.mock.method(performance, 'now', () => clock);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] === entries[0]!.hash) {
+          if (stall) await paused.wait();
+          return null;
+        }
+      }
+      return read(method, params);
+    };
+  const first = f.records.retireAvailableFinalized(
+    f.session(),
+    scope,
+    resolveRead
+  );
+  await paused.started;
+  clock = 12_000;
+  t.mock.timers.tick(12_000);
+  assert.equal(await first, 0);
+  stall = false;
+  receipts.length = 0;
+  const second = f.records.retireAvailableFinalized(
+    f.session(),
+    scope,
+    resolveRead
+  );
+  assert.equal(await second, 1);
+  assert.equal(receipts[0], entries[1]!.hash);
+  paused.release();
+  assert.equal(await f.records.validate(f.session()), 1);
+});
+
+test('an elapsed deadline yields its group even before timeout callbacks run', async (t) => {
+  const { f, entries, read } = await terminalFixture(2);
+  let clock = 0,
+    jump = true;
+  const receipts: string[] = [];
+  t.mock.method(performance, 'now', () => clock);
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const resolveRead =
+    () =>
+    async (method: Parameters<typeof read>[0], params: readonly unknown[]) => {
+      if (method === 'eth_getTransactionReceipt') {
+        receipts.push(String(params[0]));
+        if (params[0] === entries[0]!.hash && jump) {
+          jump = false;
+          clock = 12_000;
+        }
+      }
+      return read(method, params);
+    };
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    0
+  );
+  receipts.length = 0;
+  assert.equal(
+    await f.records.retireAvailableFinalized(f.session(), scope, resolveRead),
+    2
+  );
+  assert.equal(receipts[0], entries[1]!.hash);
+});
