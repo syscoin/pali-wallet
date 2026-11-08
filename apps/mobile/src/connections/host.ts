@@ -1,3 +1,5 @@
+import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
+import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
 import type { INetwork } from '../../../../source/types/network.ts';
 import type { NativeConnectionRepository } from './storage.ts';
@@ -18,10 +20,15 @@ export type NativeConnectionTransactionSigning = Readonly<{
   approval: ReturnType<typeof createDappSigningApproval>;
 }>;
 
+export type NativePreparedSmartConnectionTransaction = Readonly<{
+  operation: NativeSmartAccountOperation;
+  approval: ApprovalSummary | null;
+}>;
+
 export type NativeConnectionAccount = Readonly<{
   id: string;
   index: number;
-  type: 'HDAccount' | 'Imported';
+  type: 'HDAccount' | 'Imported' | 'SmartAccount';
   address: string;
   xpub: string;
   label: string;
@@ -35,7 +42,13 @@ export type NativeConnectionHost = Readonly<{
   assertOwner(): void;
   sessionGeneration(): number;
   signMessage(input: NativeConnectionMessageSigning): Promise<string>;
-  prepareTransaction(input: NativeConnectionTransactionSigning, assertCurrent: () => void): Promise<NativePreparedConnectionTransaction>;
+  prepareTransaction(
+    input: NativeConnectionTransactionSigning,
+    assertCurrent: () => void
+  ): Promise<
+    | NativePreparedConnectionTransaction
+    | NativePreparedSmartConnectionTransaction
+  >;
   context(): Readonly<{
     network: INetwork;
     networkId: string;

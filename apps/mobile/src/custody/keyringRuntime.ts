@@ -5,6 +5,8 @@ import type { IBlacklistCheckResult } from '../../../../source/types/security.ts
 import { parseTokenAmount } from '../../../../source/shared/erc20.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { createNativeSmartOperation } from '../smartAccount/runtime.ts';
+import { snapshotSmartAccountDappTransaction } from '../../../../source/shared/smartAccountDappTransaction.ts';
+import { summarizeApproval, decodeApprovalData } from '../../../../source/shared/approval.ts';
 import type { NativeSmartAccountAmount, NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import { loadNativeKeyringSdk, type NativeKeyringSdk } from './keyringSdk.ts';
 import { createNativeLedgerHost } from '../hardware/ledgerHost.ts';
@@ -1790,29 +1792,122 @@ export function createKeyringRuntimeFactory(
                 return generation;
               },
               async prepareTransaction(input, assertRequestCurrent) {
-                assertOwner(); checkGuard(assertRequestCurrent);
-                const snapshot = catalogueSnapshot, ring = keyring, captured = generation, approval = input.approval;
-                if (!ring.isUnlocked() || !snapshot || active || reserved) throw new KeyringRuntimeError('NOT_READY');
-                const selected = snapshot.accounts.find(account => account.id === snapshot.active.accountId);
-                if (!selected || (selected.type !== 'HDAccount' && selected.type !== 'Imported') || selected.id !== input.accountId || selected.slip44 !== 60 ||
-                    snapshot.active.networkId !== input.networkId) throw new KeyringRuntimeError('INVALID_INPUT');
+                assertOwner();
+                checkGuard(assertRequestCurrent);
+                const snapshot = catalogueSnapshot,
+                  ring = keyring,
+                  captured = generation,
+                  approval = input.approval;
+                if (!ring.isUnlocked() || !snapshot || active || reserved)
+                  throw new KeyringRuntimeError('NOT_READY');
+                const selected = snapshot.accounts.find(
+                  (account) => account.id === snapshot.active.accountId
+                );
+                if (
+                  !selected ||
+                  (selected.type !== 'HDAccount' &&
+                    selected.type !== 'Imported' &&
+                    selected.type !== 'SmartAccount') ||
+                  selected.id !== input.accountId ||
+                  selected.slip44 !== 60 ||
+                  snapshot.active.networkId !== input.networkId
+                )
+                  throw new KeyringRuntimeError('INVALID_INPUT');
                 const account = state.accounts[selected.type][selected.index];
-                const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
-                const isCurrent = () => !closed && generation === captured && keyring === ring && ring.isUnlocked() &&
-                  catalogueSnapshot === snapshot && state.activeAccount.id === selected.index &&
-                  state.activeAccount.type === selected.type && state.accounts[selected.type][selected.index] === account &&
-                  account?.address === selected.address && state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
-                  state.activeNetwork.chainId === Number(network.chainId) && state.activeNetwork.url === network.rpcUrl;
-                approval.bindSigner('native-software-transaction', isCurrent);
+                const network = getNativeNetwork(
+                  snapshot.active.networkId,
+                  snapshot.networks
+                );
+                const isCurrent = () =>
+                  !closed &&
+                  generation === captured &&
+                  keyring === ring &&
+                  ring.isUnlocked() &&
+                  catalogueSnapshot === snapshot &&
+                  state.activeAccount.id === selected.index &&
+                  state.activeAccount.type === selected.type &&
+                  state.accounts[selected.type][selected.index] === account &&
+                  account?.address === selected.address &&
+                  state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
+                  state.activeNetwork.chainId === Number(network.chainId) &&
+                  state.activeNetwork.url === network.rpcUrl;
+                approval.bindSigner('native-transaction', isCurrent);
                 const check = () => {
-                  current(captured); assertOwner(); checkGuard(approval.assertCurrent); checkGuard(assertRequestCurrent);
+                  current(captured);
+                  assertOwner();
+                  checkGuard(approval.assertCurrent);
+                  checkGuard(assertRequestCurrent);
                   if (!isCurrent()) throw new KeyringRuntimeError('CANCELLED');
                 };
                 check();
                 const normalized = normalizeDappTransaction(input.transaction);
-                if (normalized.from !== undefined && normalized.from.toLowerCase() !== selected.address.toLowerCase())
+                if (
+                  normalized.from !== undefined &&
+                  normalized.from.toLowerCase() !==
+                    selected.address.toLowerCase()
+                )
                   throw new KeyringRuntimeError('INVALID_INPUT');
-                return prepareOwnedEvmTransaction(normalized, selected, selected, approval.signal, check, undefined, NATIVE_EVM_FEE_FUNDING);
+                if (selected.type === 'SmartAccount') {
+                  const request =
+                    snapshotSmartAccountDappTransaction(normalized);
+                  const operation = await openSmartAccountOperation(
+                    {
+                      kind: 'dapp-call',
+                      recipient: request.to!,
+                      amountUnits: BigInt(request.value ?? '0x0').toString(),
+                      data: request.data ?? '0x',
+                      ...(request.maxFeePerGas === undefined
+                        ? {}
+                        : {
+                            maxFeePerGas: BigInt(
+                              request.maxFeePerGas
+                            ).toString(),
+                          }),
+                      ...(request.maxPriorityFeePerGas === undefined
+                        ? {}
+                        : {
+                            maxPriorityFeePerGas: BigInt(
+                              request.maxPriorityFeePerGas
+                            ).toString(),
+                          }),
+                    },
+                    check
+                  );
+                  try {
+                    const metadata = decodeApprovalData(request.data ?? '0x')
+                      .isApproval
+                      ? await readNativeApprovalMetadata({
+                          network,
+                          owner: selected.address,
+                          contract: request.to!,
+                          signal: approval.signal,
+                          assertCurrent: check,
+                          fetch: dependencies.connectionFetch ?? walletFetch,
+                        })
+                      : undefined;
+                    check();
+                    return Object.freeze({
+                      operation,
+                      approval: summarizeApproval(
+                        request.data ?? '0x',
+                        request.to!,
+                        metadata
+                      ),
+                    });
+                  } catch (error) {
+                    operation.dispose();
+                    throw error;
+                  }
+                }
+                return prepareOwnedEvmTransaction(
+                  normalized,
+                  selected,
+                  selected,
+                  approval.signal,
+                  check,
+                  undefined,
+                  NATIVE_EVM_FEE_FUNDING
+                );
               },
               signMessage(input) {
                 assertOwner();
@@ -1833,7 +1928,9 @@ export function createKeyringRuntimeFactory(
                   typeof approval.assertCurrent !== 'function' ||
                   typeof approval.bindSigner !== 'function'
                 )
-                  return Promise.reject(new KeyringRuntimeError('INVALID_INPUT'));
+                  return Promise.reject(
+                    new KeyringRuntimeError('INVALID_INPUT')
+                  );
                 const params =
                   input.request?.method === 'personal_sign'
                     ? [input.request.message, input.request.address]
@@ -1849,7 +1946,9 @@ export function createKeyringRuntimeFactory(
                     (input.request.method === 'personal_sign' ||
                       request.version !== input.request.version))
                 )
-                  return Promise.reject(new KeyringRuntimeError('INVALID_INPUT'));
+                  return Promise.reject(
+                    new KeyringRuntimeError('INVALID_INPUT')
+                  );
                 const ring = keyring,
                   captured = generation;
                 const account = state.accounts[selected.type][selected.index];
@@ -1876,7 +1975,8 @@ export function createKeyringRuntimeFactory(
                     current(ownerGeneration);
                     assertOwner();
                     checkGuard(approval.assertCurrent);
-                    if (!isCurrent()) throw new KeyringRuntimeError('CANCELLED');
+                    if (!isCurrent())
+                      throw new KeyringRuntimeError('CANCELLED');
                   };
                   guard();
                   const transactions = ring.ethereumTransaction;
@@ -1912,25 +2012,46 @@ export function createKeyringRuntimeFactory(
               },
               context() {
                 assertOwner();
-                if (connectionNetworkId === null || connectionNetwork === null) throw new KeyringRuntimeError('NOT_READY');
+                if (connectionNetworkId === null || connectionNetwork === null)
+                  throw new KeyringRuntimeError('NOT_READY');
                 const snapshot = catalogueSnapshot;
                 const unlocked = keyring.isUnlocked() && snapshot !== null;
-                const accounts = unlocked ? snapshot.accounts.flatMap((account) => {
-                  if (account.type === 'SmartAccount' || account.type === 'Ledger') return [];
-                  const type = account.type;
-                  const source = state.accounts[account.type][account.index];
-                  if (!source || source.address !== account.address || typeof source.xpub !== 'string' || !source.xpub)
-                    throw new KeyringRuntimeError('CANCELLED');
-                  return [Object.freeze({
-                    id: account.id, index: account.index, type,
-                    address: account.address, xpub: source.xpub, label: account.label,
-                  })];
-                }) : [];
+                const accounts = unlocked
+                  ? snapshot.accounts.flatMap((account) => {
+                      if (account.type === 'Ledger') return [];
+                      const type = account.type;
+                      const source =
+                        state.accounts[account.type][account.index];
+                      if (
+                        !source ||
+                        source.address !== account.address ||
+                        typeof source.xpub !== 'string' ||
+                        !source.xpub
+                      )
+                        throw new KeyringRuntimeError('CANCELLED');
+                      return [
+                        Object.freeze({
+                          id: account.id,
+                          index: account.index,
+                          type,
+                          address: account.address,
+                          xpub: source.xpub,
+                          label: account.label,
+                        }),
+                      ];
+                    })
+                  : [];
                 return Object.freeze({
                   network: connectionNetwork,
                   networkId: connectionNetworkId,
                   networkLabel: connectionNetwork.label,
-                  activeAccountId: unlocked && accounts.some(account => account.id === snapshot.active.accountId) ? snapshot.active.accountId : null,
+                  activeAccountId:
+                    unlocked &&
+                    accounts.some(
+                      (account) => account.id === snapshot.active.accountId
+                    )
+                      ? snapshot.active.accountId
+                      : null,
                   accounts: Object.freeze(accounts),
                   unlocked,
                 });
@@ -2327,6 +2448,7 @@ export function createKeyringRuntimeFactory(
                   recipient: transfer.recipient, amountUnits: transfer.amountUnits, maximumFeeUnits: transfer.maximumAccountCharge,
                   ...(transfer.token ? { token: transfer.token } : {}),
                   ...(transfer.collectibleTransfer ? { collectibleTransfer: transfer.collectibleTransfer } : {}),
+    ...(transfer.contractInteraction ? { contractInteraction: true as const } : {}),
                   smartAccount: { payer: normalizePublicAddress(transfer.entry.from, scope.network.id), operationHash: transfer.operationHash, operationNonce: transfer.operationNonce },
                 } : saved?.archived.find(item => item.hash === hash);
                 if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');

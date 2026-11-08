@@ -25,6 +25,14 @@ export type NativeSmartAccountResolvedIntent =
       recipient: string;
       amountUnits: string;
     }>
+  | Readonly<{
+      kind: 'dapp-call';
+      recipient: string;
+      amountUnits: string;
+      data: string;
+      maxFeePerGas?: string;
+      maxPriorityFeePerGas?: string;
+    }>
   | NftTransferIntent;
 
 export type NativeSmartAccountAmount =
@@ -229,7 +237,7 @@ export class NativeSmartAccountOperation {
             : {
                 target: intent.recipient,
                 value: intent.amountUnits,
-                data: '0x',
+                data: intent.kind === 'dapp-call' ? intent.data : '0x',
               };
         const execution = prepared.executions?.[0];
         if (
@@ -240,6 +248,12 @@ export class NativeSmartAccountOperation {
           (requested.kind !== 'native-max' &&
             (requested.kind !== intent.kind ||
               requested.amountUnits !== intent.amountUnits)) ||
+          (requested.kind === 'dapp-call' &&
+            intent.kind === 'dapp-call' &&
+            (requested.data !== intent.data ||
+              requested.maxFeePerGas !== intent.maxFeePerGas ||
+              requested.maxPriorityFeePerGas !==
+                intent.maxPriorityFeePerGas)) ||
           (requested.kind === 'erc20-transfer' &&
             intent.kind === 'erc20-transfer' &&
             requested.token !== intent.token) ||

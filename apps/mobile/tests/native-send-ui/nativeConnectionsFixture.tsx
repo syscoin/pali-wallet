@@ -27,6 +27,7 @@ const publish = (next: NativeConnectionsSnapshot) => {
   for (const listener of listeners) listener();
 };
 const controller: NativeConnectionsView = {
+    async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
   async editApprovalAmount() { throw new Error('Transaction editing is outside this fixture'); },
   getSnapshot: () => snapshot,
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

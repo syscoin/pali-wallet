@@ -1,3 +1,4 @@
+import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
@@ -229,7 +230,7 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     assert.equal(f.owner.getSnapshot().account!.address, smart.address);
     assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), { code: 'NOT_READY' });
     const connection = await f.runtime.openConnectionHost();
-    assert.equal(connection.context().accounts.some(account => account.id === smart.id), false);
+    assert.equal(connection.context().accounts.some(account => account.id === smart.id), true);
     await f.change({ kind: 'rename', id: smart.id, label: 'Renamed savings' });
     await f.reopen();
     await f.owner.unlock(PASSWORD);
@@ -774,4 +775,53 @@ test('Smart NFT requests cannot replace the owned contract, standard, fixed ID o
     await assert.rejects(f.runtime.openSmartAccountSend(to, { kind: 'nft', collectible, tokenId: '7', amountUnits: '1' }, () => undefined));
     assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
+});
+
+for (const data of ['0x', '0x12345678']) test(`real Smart dapp zero-value call ${data} preserves exact execution and Activity after restart`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Dapp account', password: PASSWORD });
+    f.fundedSmart(); f.deployed();
+    const host = await f.runtime.openConnectionHost();
+    const selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType, chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType,
+      chainId: 1, host: 'https://fixture.example', date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub },
+      grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }), subscribe: (changed) => f.owner.subscribe(() => { changed(); }) });
+    const recipient = '0x2222222222222222222222222222222222222222';
+    const request = { from: selected.address, to: recipient, value: '0x0', data, maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' };
+    const prepared = await host.prepareTransaction({ accountId: selected.id, networkId: 'ethereum', transaction: request, approval }, () => undefined);
+    assert('operation' in prepared); operation = prepared.operation;
+    await operation.prepare(); const ready = operation.getSnapshot();
+    assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+    assert.deepEqual(ready.intent, { kind: 'dapp-call', recipient, amountUnits: '0', data, maxFeePerGas: '3', maxPriorityFeePerGas: '1' });
+    assert.equal(f.submitted.length, 0);
+    const sending = operation.authorize(ready.revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    const [ops] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[0]!).data);
+    const [, execution] = paliSmartAccountInterface.decodeFunctionData('execute', ops[0].callData);
+    assert.equal('0x' + execution.slice(2, 42), recipient);
+    assert.equal(BigInt('0x' + execution.slice(42, 106)), 0n);
+    assert.equal('0x' + execution.slice(106), data);
+    operation.dispose(); approval.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(activity.locals[0]!.contractInteraction, true);
+    assert.equal(activity.locals[0]!.amountUnits, '0');
+    assert.equal(activity.locals[0]!.recipient, recipient);
+    f.showReceipts(false);
+    const observed = await f.runtime.activity!.observeLocal!(activity.locals[0]!, () => undefined, new AbortController().signal);
+    assert.equal(observed.status === 'mined' && observed.outcome, 'reverted');
+    await f.removeCompletedJournalBytes();
+    const saved = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(saved.saved.archived[0]!.contractInteraction, true);
+    assert.equal(saved.saved.archived[0]!.phase, 'reverted');
+  } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
 });

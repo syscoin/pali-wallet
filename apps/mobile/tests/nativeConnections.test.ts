@@ -1,3 +1,4 @@
+import { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
@@ -34,12 +35,13 @@ const ADDRESS = '0x' + '11'.repeat(20),
   ORIGIN = 'https://reported.example';
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(options: {
+  smart?: boolean;
   secondAccount?: boolean;
   restoring?: boolean;
   openFailures?: number;
   inventoryFailures?: number;
 } = {}) {
-  const { secondAccount = false } = options;
+  const { secondAccount = false, smart = false } = options;
   let snapshot: CustodySnapshot = {
     phase: 'ready',
     revision: 1,
@@ -54,6 +56,8 @@ function fixture(options: {
   const transactions: unknown[] = [];
   let signWait: Promise<void> = Promise.resolve();
   let preparationError: Error | undefined;
+  let beforePreparedReturn: (() => void) | undefined;
+  let smartDisposals = 0;
   let preparationWait: Promise<void> = Promise.resolve();
   let approvalMetadata: ApprovalContractMetadata | undefined;
   const preparedTransactions: Record<string, unknown>[] = [];
@@ -61,7 +65,7 @@ function fixture(options: {
   let siteBlocked = false;
   let siteWait: Promise<void> = Promise.resolve();
   let blacklistedAddress = false;
-  let selectedAccountId = 'hd:60:0';
+  let selectedAccountId = options.smart ? 'smart:60:0' : 'hd:60:0';
   const responses: unknown[] = [],
     emissions: unknown[] = [],
     emissionScopes: string[] = [],
@@ -156,6 +160,30 @@ function fixture(options: {
       assert.equal(input.accountId, selectedAccountId);
       const value = input.transaction as Record<string, unknown>;
       preparedTransactions.push(value);
+      if (options.smart) {
+        const intent = { kind: 'dapp-call' as const, recipient: String(value.to), amountUnits: BigInt(value.value as string ?? '0').toString(), data: String(value.data ?? '0x') };
+        const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
+          chainId: '1', value: '0', data: '0x1234', nonce: '0', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
+        const operation = new NativeSmartAccountOperation({
+          account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
+          assertCurrent: () => { check(); input.approval.assertCurrent(); },
+          async prepare() { return { kind: 'authorization', intent, operation: {
+            executions: [{ target: intent.recipient, data: intent.data, value: intent.amountUnits }],
+            actionHash: '0x' + '66'.repeat(32), userOperation: { nonce: '0', initCode: '0x', callData: '0x',
+              accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1',
+              gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03' },
+          } as never }; },
+          async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
+          async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
+            await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
+            guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash); return hash;
+          },
+        });
+        const dispose = operation.dispose.bind(operation);
+        operation.dispose = () => { smartDisposals++; dispose(); };
+        beforePreparedReturn?.();
+        return { operation, approval: summarizeApproval(intent.data, intent.recipient, approvalMetadata) };
+      }
       const transaction = snapshotPreparedEvmTransaction({
         from: ADDRESS, to: value.to ?? null, chainId: '1', value: BigInt(value.value as string ?? '0').toString(),
         data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? '0').toString(), gasLimit: '50000',
@@ -191,9 +219,9 @@ function fixture(options: {
         ['ready', 'authenticating'].includes(snapshot.phase)
           ? [
               {
-                id: 'hd:60:0',
+                id: options.smart ? 'smart:60:0' : 'hd:60:0',
                 index: 0,
-                type: 'HDAccount',
+                type: options.smart ? 'SmartAccount' : 'HDAccount',
                 address: ADDRESS,
                 xpub: 'private-host-public-xpub',
                 label: 'Account 1',
@@ -272,7 +300,7 @@ function fixture(options: {
           [ORIGIN]: {
             host: ORIGIN,
             accountId: 0,
-            accountType: 'HDAccount' as KeyringAccountType,
+            accountType: (options.smart ? 'SmartAccount' : 'HDAccount') as KeyringAccountType,
             chain: 'ethereum' as INetwork['kind'],
             chainId: 1,
             date: 1,
@@ -361,7 +389,7 @@ function fixture(options: {
           approved++;
           assert.equal(
             namespaces.eip155!.methods.includes('personal_sign'),
-            true
+            !smart
           );
           await approveWait;
           Object.assign(session, { namespaces });
@@ -403,6 +431,8 @@ function fixture(options: {
   });
   return {
     controller,
+    beforePreparedReturn(hook: () => void) { beforePreparedReturn = hook; },
+    smartDisposals: () => smartDisposals,
     view: controller.view,
     rows,
     responses,
@@ -1273,7 +1303,8 @@ for (const retirement of [
 
 async function connectedFixture(
   options: {
-    secondAccount?: boolean;
+    smart?: boolean;
+  secondAccount?: boolean;
     accountId?: string;
     verification?: WalletConnectVerification;
   } = {}
@@ -2187,3 +2218,94 @@ for (const method of ['personal_sign', 'eth_sendTransaction'] as const) {
     }
   });
 }
+
+async function pairedSmart() {
+  const f = fixture({ smart: true }); await settle(); await f.view.pair('wc:fixture');
+  f.event({ type: 'proposal', proposal: f.proposal });
+  await f.view.approve(3, 'smart:60:0', 'ethereum', f.view.getSnapshot().revision);
+  return f;
+}
+function requestSmart(f: Awaited<ReturnType<typeof pairedSmart>>, id = 700, transaction: object = {}) {
+  f.event({ type: 'request', request: { session: f.session, id, chainId: 'eip155:1', method: 'eth_sendTransaction',
+    params: [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x0', data: '0x1234', ...transaction }],
+    expiresAt: Date.now() + 60000, verification: UNKNOWN } });
+}
+test('Smart dapp session omits messages and requires separate UserOp and payer approval', async () => {
+  const f = await pairedSmart();
+  try {
+    assert(!f.session.namespaces.eip155!.methods.includes('personal_sign'));
+    requestSmart(f); await settle();
+    let review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction'); assert.equal(review.operation.phase, 'authorize');
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    const completing = f.view.approveRequest(review.id, review.revision, false); await settle();
+    review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction'); assert.equal(review.operation.phase, 'review-fee');
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 0);
+    await f.view.confirmSmartPayer(review.id, review.revision, review.operation.payerReview!.id);
+    await completing;
+    assert.equal(f.transactions.length, 1);
+    assert.deepEqual(f.responses.at(-1), { id: 700, result: { result: '0x' + '34'.repeat(32) } });
+  } finally { await f.controller.dispose(); }
+});
+for (const cancel of ['reject', 'lock', 'chain', 'expiry'] as const) test(`Smart payer review cancels on ${cancel}`, async () => {
+  const f = await pairedSmart();
+  try {
+    requestSmart(f); await settle();
+    let review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    const completing = f.view.approveRequest(review.id, review.revision, false).catch(() => undefined); await settle();
+    review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    const stale = review;
+    if (cancel === 'reject') await f.view.rejectRequest(review.id);
+    else if (cancel === 'lock') f.lock();
+    else if (cancel === 'chain') f.selectChain(2);
+    else f.event({ type: 'request-expired', id: 700 });
+    await assert.rejects(f.view.confirmSmartPayer(stale.id, stale.revision, stale.operation.payerReview!.id));
+    await completing; assert.equal(f.transactions.length, 0);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally { await f.controller.dispose(); }
+});
+test('Smart transaction reply loss stays consumed after broadcast', async () => {
+  const f = await pairedSmart();
+  try {
+    requestSmart(f); await settle(); let review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    f.failDispatch(); const completing = f.view.approveRequest(review.id, review.revision, false); await settle();
+    review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    await f.view.confirmSmartPayer(review.id, review.revision, review.operation.payerReview!.id);
+    await assert.rejects(completing, { code: 'DELIVERY_UNCERTAIN' });
+    review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+    assert.equal(f.transactions.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart operation returned after request retirement is immediately disposed', async () => {
+  const f = await pairedSmart();
+  try {
+    f.beforePreparedReturn(() => f.lock());
+    requestSmart(f); await settle();
+    assert.equal(f.smartDisposals(), 1);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+test('Smart allowance edit replaces the exact operation before authorization', async () => {
+  const f = await pairedSmart();
+  const token = { contractAddress: '0x' + '22'.repeat(20), decimals: 6, name: 'Token', symbol: 'TOK' };
+  const iface = new Interface(['function approve(address spender,uint256 amount)']);
+  f.setApprovalMetadata({ standard: 'ERC-20', token });
+  try {
+    requestSmart(f, 702, { data: iface.encodeFunctionData('approve', [ADDRESS, 9000000]) }); await settle();
+    let review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    const oldIntent = review.operation.intent;
+    await f.view.editApprovalAmount(review.id, review.revision, '2.5');
+    review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    assert.notEqual(review.operation.intent, oldIntent);
+    assert.equal(review.approval!.amountUnits, '2500000');
+    assert.equal(f.smartDisposals(), 1);
+    const completing = f.view.approveRequest(review.id, review.revision, false); await settle();
+    review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
+    await f.view.confirmSmartPayer(review.id, review.revision, review.operation.payerReview!.id); await completing;
+    assert.equal((f.transactions[0] as { data: string }).data, iface.encodeFunctionData('approve', [ADDRESS, 2500000]));
+  } finally { await f.controller.dispose(); }
+});

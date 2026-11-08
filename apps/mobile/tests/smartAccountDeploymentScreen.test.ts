@@ -48,6 +48,7 @@ function fixture() {
       props: Record<string, unknown> | null,
       ...children: unknown[]
     ): Element {
+      if (typeof type === 'function') return type({ ...props, children });
       return { type, props: props ?? {}, children };
     },
     useState() {
@@ -93,6 +94,7 @@ function fixture() {
         ])
       ),
     },
+    './NativeTransactionReview': { TransactionDetails: () => null },
     '../core/amounts': { formatBaseUnits },
     '../../../../source/shared/erc20': { formatTokenUnits },
     '../custody/networkContext': { getNativeSendContext },
