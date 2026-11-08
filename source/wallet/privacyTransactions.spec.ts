@@ -247,7 +247,7 @@ it('never sends after failed durable reservation or context change during reserv
     message: 'privacy_deposit_submission_blocked',
   });
   expect(f.host.sendTransaction).not.toHaveBeenCalled();
-  expect(f.host.recordNotBroadcast).not.toHaveBeenCalled();
+  expect(f.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
   const changed = setup();
   jest.mocked(changed.host.beforeSubmission).mockImplementation(async () => {
     changed.change();
@@ -372,7 +372,16 @@ it('honors the durable per-note guard across a controller restart after an unkno
     transactionNotBroadcast: true,
   });
   expect(f.host.sendTransaction).toHaveBeenCalledTimes(1);
-  expect(f.host.recordNotBroadcast).not.toHaveBeenCalled();
+  expect(f.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
+  expect(f.host.recordNotBroadcast).toHaveBeenCalledWith(
+    expect.objectContaining({ intentId: second.intentId })
+  );
+  expect(reserved.has(NOTE_ID)).toBe(true);
+  expect(
+    jest
+      .mocked(f.host.recordNotBroadcast)
+      .mock.calls.some(([attempt]) => attempt.intentId === first.intentId)
+  ).toBe(false);
 });
 
 it('honors only host-owned proven-not-broadcast errors before any acknowledgement', async () => {

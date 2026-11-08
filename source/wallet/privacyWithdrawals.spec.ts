@@ -903,7 +903,7 @@ it('no send occurs if durable reservation fails and sender failure only clears p
     run.controller.submitWithdrawal(review.intentId)
   ).rejects.toThrow('privacy_withdrawal_failed');
   expect(run.host.sendTransaction).not.toHaveBeenCalled();
-  expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
+  expect(run.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
   const second = setup();
   const next = await second.controller.prepareWithdrawal(direct());
   jest
