@@ -1,4 +1,3 @@
-import { createSentryClassicalExecutor } from '../src/crypto/sentryClassicalExecutor.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
 
 export const SENTRY_CLASSICAL_CHECK =
@@ -25,13 +24,11 @@ const vectors = [
 /** Only the isolated qualification entry loads this after native crypto setup. */
 export async function qualifyNativeSentryClassical(
   signal: AbortSignal,
-  blindingCalls: () => number
+  blindingCalls: () => number,
+  derive: DeriveSentryPublicKey
 ): Promise<DeriveSentryPublicKey> {
   if (signal.aborted) throw new Error('CANCELLED');
-  const { deriveSentryClassicalPublicKey } = await import(
-    '@sidhujag/sysweb3-sentry/classical-public-key'
-  );
-  const derive = createSentryClassicalExecutor(deriveSentryClassicalPublicKey);
+  if (typeof derive !== 'function') throw new Error('QUALIFICATION_SENTRY_DERIVER_REQUIRED');
 
   for (const { role, scheme, scalar, publicKey } of vectors) {
     const check = async () => {

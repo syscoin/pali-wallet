@@ -4,6 +4,7 @@ const { runInNewContext } = require('node:vm');
 const { Buffer } = require('node:buffer');
 const path = require('node:path');
 const test = require('node:test');
+const { expectedQuickCryptoIdentity } = require('./report-validation.cjs');
 const {
   qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget,
   REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES,
@@ -11,6 +12,7 @@ const {
 
 function refusal(stage = 'ios-policy-protection-none') {
   return {
+    quickCryptoIdentity: expectedQuickCryptoIdentity,
     version: 1, status: 'failed', phase: 'create', scenario: 'import', platform: 'ios',
     osVersion: '26.5', sessionId: '182EBF83-98D5-4A1F-8AB3-7021E67FB593',
     checks: CHECKS.map((name) => ({ name, durationMs: 1 })), networkCalls: 0,
@@ -40,8 +42,10 @@ test('limited mode is explicit and restricted to the pinned iOS Simulator target
 
 test('only complete native crypto plus a classified strict protection refusal qualifies as limited evidence', () => {
   assert.equal(TIMED_CRYPTO_CASES.length, 29);
-  for (const stage of REFUSAL_STAGES) assert.doesNotThrow(() => assertSimulatorRefusal(refusal(stage), '26.5'));
+  for (const stage of REFUSAL_STAGES) assert.doesNotThrow(() => assertSimulatorRefusal(refusal(stage), '26.5', expectedQuickCryptoIdentity));
   const changes = [
+    (r) => { delete r.quickCryptoIdentity; },
+    (r) => { r.quickCryptoIdentity = `${expectedQuickCryptoIdentity}-unreviewed`; },
     (r) => { r.status = 'passed'; },
     (r) => { r.scenario = 'generate'; },
     (r) => { r.phase = 'restart'; },
@@ -66,6 +70,7 @@ test('only complete native crypto plus a classified strict protection refusal qu
     (r) => { r.storageDiagnostic.code = 'STORAGE_KEY_MISSING'; },
     (r) => { r.storageDiagnostic.message = 'unexpected raw diagnostic'; },
     (r) => { r.checks.pop(); },
+    (r) => { r.checks.splice(-2, 1); },
     (r) => { r.checks.reverse(); },
     (r) => { r.checks[0].durationMs = -1; },
     (r) => { r.checks[0].path = 'unexpected path'; },
@@ -83,7 +88,7 @@ test('only complete native crypto plus a classified strict protection refusal qu
   ];
   for (const change of changes) {
     const report = refusal(); change(report);
-    assert.throws(() => assertSimulatorRefusal(report, '26.5'), /Unexpected iOS Simulator refusal/);
+    assert.throws(() => assertSimulatorRefusal(report, '26.5', expectedQuickCryptoIdentity), /Unexpected iOS Simulator refusal/);
   }
 });
 
@@ -240,7 +245,7 @@ test('local Simulator selection uses an available current runtime while an expli
   assert.throws(() => selectSimulatorTarget([runtime('27.2'), runtime('27.2')], types));
   assert.throws(() => selectSimulatorTarget([runtime('27.2')], types, undefined, 'unknown'));
   const current = { ...refusal(), osVersion: '27.2' };
-  assert.doesNotThrow(() => assertSimulatorRefusal(current, '27.2'));
-  assert.throws(() => assertSimulatorRefusal(current, '26.5'));
+  assert.doesNotThrow(() => assertSimulatorRefusal(current, '27.2', expectedQuickCryptoIdentity));
+  assert.throws(() => assertSimulatorRefusal(current, '26.5', expectedQuickCryptoIdentity));
   assert.throws(() => assertSimulatorRefusal(current));
 });

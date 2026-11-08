@@ -1,7 +1,9 @@
 const { readQualificationSdkPin } = require('../scripts/qualification-sdk.cjs');
-const EXPECTED_SDK_VERSION = readQualificationSdkPin(
+const EXPECTED_SDK = readQualificationSdkPin(
   require('node:path').dirname(require.resolve('../package.json'))
-).identity;
+);
+const EXPECTED_SDK_VERSION = EXPECTED_SDK.identity;
+const EXPECTED_QUICK_CRYPTO_IDENTITY = EXPECTED_SDK.quickCryptoIdentity;
 const { isImportedQualificationReport, matchesImportedRestartEvidence, IMPORTED_REPORT_FIELDS } = require('./imported-evm.ts');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { Buffer } = require('node:buffer');
@@ -27,6 +29,7 @@ const {
   assertSimulatorRefusal,
   TIMED_CRYPTO_CASES,
   CHECKS,
+  completedCryptoChecks,
 } = require('./simulator-contract.cjs');
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -46,6 +49,7 @@ const FIELDS = new Set([
   'networkCalls',
   'nativeBridgeExercised',
   'sdkVersion',
+  'quickCryptoIdentity',
   'nativeSigningVerified',
   'transferHash',
   'pendingProcessTermination',
@@ -139,7 +143,7 @@ function decodeNativeReport(
     report.version !== 1
   )
     throw Error('Unexpected qualification report schema');
-  if (simulatorContract) assertSimulatorRefusal(report, simulatorVersion);
+  if (simulatorContract) assertSimulatorRefusal(report, simulatorVersion, EXPECTED_QUICK_CRYPTO_IDENTITY);
   return report;
 }
 
@@ -152,6 +156,8 @@ function assertFullNativeReport(report) {
     !isHdKeyRevealQualificationReport(report) ||
     !isImportedQualificationReport(report) ||
     report.sdkVersion !== EXPECTED_SDK_VERSION ||
+    (EXPECTED_QUICK_CRYPTO_IDENTITY && (report.quickCryptoIdentity !== EXPECTED_QUICK_CRYPTO_IDENTITY ||
+      !completedCryptoChecks(report.checks))) ||
     !/^0x[0-9a-f]{64}$/.test(report.transferHash || '') ||
     report.mnemonicEntropyVerified !==
       (report.phase === 'create' && report.scenario === 'generate') ||
@@ -260,6 +266,7 @@ function assertPhysicalRestart(created, restored) {
 
 module.exports = {
   expectedQualificationSdkVersion: EXPECTED_SDK_VERSION,
+  expectedQuickCryptoIdentity: EXPECTED_QUICK_CRYPTO_IDENTITY,
   decodeNativeReport,
   assertFullNativeReport,
   decodePhysicalReport,

@@ -107,6 +107,7 @@ app.expo.extra = {
   ...app.expo.extra,
   paliQualificationSdkVersion: sdk.version,
   paliQualificationSdkIdentity: sdk.identity,
+  ...(sdk.quickCryptoIdentity ? { paliQuickCryptoSentryIdentity: sdk.quickCryptoIdentity } : {}),
   ...(walletConnectIdentity ? { paliWalletConnectIdentity: walletConnectIdentity } : {}),
 };
 app.expo.name = 'PaliQualification';

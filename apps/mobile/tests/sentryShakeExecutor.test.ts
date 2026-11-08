@@ -1,9 +1,43 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createSentryShakeExecutor } from '../src/crypto/sentryShakeExecutor.ts';
+import { createSentryPublicKeyDeriver } from '../src/crypto/sentryPublicKeyExecutor.ts';
+import { qualifyNativeSentryShake } from '../qualification/native-sentry-shake.ts';
 
 const scheme = 'slh-dsa-shake-128s' as const;
 const invalid = { message: 'SENTRY_SHAKE_VALIDATION_FAILED' };
+
+test('qualification exercises the production wrapper and drains its retired native vector before reuse', async () => {
+  const pending = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  const expected = '37373737373737373737373737373737df7468cb62f0ff4e6ec27cbe18019216';
+  let calls = 0, copied: Uint8Array | undefined, settled = false;
+  const executor = createSentryShakeExecutor(class {
+    validateRawPrivateKey(input: ArrayBuffer): Promise<ArrayBuffer> {
+      const owned = new Uint8Array(input).slice();
+      calls++;
+      assert(owned.subarray(0, 48).every(value => value === 0x37));
+      if (calls === 2) { owned.fill(0); return Promise.reject(new Error('corrupted root')); }
+      const finish = () => { owned.fill(0); return Uint8Array.from(Buffer.from(expected, 'hex')).buffer; };
+      if (calls === 3) { copied = owned; entered.resolve(); return pending.promise.then(finish); }
+      return Promise.resolve(finish());
+    }
+  });
+  const derive = createSentryPublicKeyDeriver(async () => executor);
+  const work = qualifyNativeSentryShake(new AbortController().signal, derive).finally(() => { settled = true; });
+  await entered.promise;
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(settled, false);
+  assert(copied?.some(value => value !== 0));
+  pending.resolve();
+  assert.equal(await work, derive);
+  assert(copied?.every(value => value === 0));
+  assert.equal(calls, 4);
+});
+
+test('qualification cannot complete when the production validator port is unavailable', async () => {
+  const derive = createSentryPublicKeyDeriver(async () => { throw new Error('SENTRY_SHAKE_UNAVAILABLE'); });
+  await assert.rejects(qualifyNativeSentryShake(new AbortController().signal, derive), { message: 'SENTRY_PUBLIC_KEY_VALIDATION_FAILED' });
+});
 
 test('only the public fixed-variant validator and a whole SHAKE key reach validation', async () => {
   assert.throws(() => createSentryShakeExecutor({} as never), {

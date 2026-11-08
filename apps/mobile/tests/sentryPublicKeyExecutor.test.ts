@@ -155,7 +155,7 @@ test('private executor errors are redacted and owned input is erased', async () 
   assert(captured?.every((value) => value === 0));
 });
 
-test('normal native factory installs the production adapter and qualification reuses its classical executor', async () => {
+test('normal native factory and qualification use the same production deriver', async () => {
   const source = async (file: string) =>
     readFile(new URL(file, import.meta.url), 'utf8');
   const factory = await source('../src/platform/nativeFactory.native.ts');
@@ -172,8 +172,16 @@ test('normal native factory installs the production adapter and qualification re
   assert.match(native, /@sidhujag\/sysweb3-sentry\/classical-public-key/);
   assert.match(native, /createSentryShakeExecutor/);
   assert.doesNotMatch(native, /qualification\//);
-  assert.match(
-    qualification,
-    /createSentryClassicalExecutor\(deriveSentryClassicalPublicKey\)/
-  );
+  assert.match(qualification, /derive: DeriveSentryPublicKey/);
+  assert.doesNotMatch(qualification, /createSentryClassicalExecutor/);
+  const entry = await source('../qualification/index.tsx');
+  assert.match(entry, /createNativeSentryPublicKeyDeriver\(\)/);
+  assert.match(entry, /qualifyNativeSentryClassical\([\s\S]*sentryDerive/);
+  assert.match(entry, /qualifyNativeSentryShake\(qualificationLifetime.signal, sentryDerive\)/);
+  const bootstrap = entry.indexOf('const provider = await ensureNativeCryptoReady();');
+  const classical = entry.indexOf('await check(SENTRY_CLASSICAL_CHECK');
+  const shake = entry.indexOf('await check(SENTRY_SHAKE_CHECK');
+  const storage = entry.indexOf("'open SQLCipher and device key'");
+  assert(bootstrap >= 0 && classical > bootstrap && shake > classical && storage > shake,
+    'both Sentry checks must complete on the ordinary crypto path before custody/storage acceptance');
 });

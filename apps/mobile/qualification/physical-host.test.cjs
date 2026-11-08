@@ -16,6 +16,7 @@ const { PHYSICAL_BUNDLES } = require('./physical-contract.ts');
 const { TIMED_CRYPTO_CASES, CHECKS } = require('./simulator-contract.cjs');
 const {
   expectedQualificationSdkVersion,
+  expectedQuickCryptoIdentity,
   decodePhysicalReport,
   assertPhysicalRestart,
 } = require('./report-validation.cjs');
@@ -59,6 +60,7 @@ function report(phase, scenario, runId) {
     networkCalls: 0,
     nativeBridgeExercised: true,
     sdkVersion: expectedQualificationSdkVersion,
+    quickCryptoIdentity: expectedQuickCryptoIdentity,
     nativeSigningVerified: true,
     ...importedEvidence(phase),
     nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true,
