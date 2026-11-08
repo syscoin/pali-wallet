@@ -188,3 +188,62 @@ test('preparation admission prevents duplicate work and ignores completion after
   assert.equal(f.counts().signed, 0);
   assert.equal(f.model.getSnapshot().phase, 'preparing');
 });
+
+for (const event of ['cancel', 'expiry'] as const)
+  test(`a late broadcast acknowledgement preserves ${event} while recording the hash`, async (context) => {
+    if (event === 'expiry')
+      context.mock.timers.enable({ apis: ['setTimeout'] });
+    let clock = 0;
+    let broadcast: ((value: string) => void) | undefined;
+    let finish: (() => void) | undefined;
+    const model = new NativeSmartAccountDeployment(
+      {
+        account: address,
+        network: getNativeNetwork('ethereum'),
+        assertCurrent() {},
+        async prepare() {
+          return prepared;
+        },
+        async sign() {
+          return '0xsignature';
+        },
+        async submit(
+          _prepared,
+          _signature,
+          _signal,
+          _guard,
+          _review,
+          onBroadcast
+        ) {
+          broadcast = onBroadcast;
+          await new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+          return hash;
+        },
+      },
+      () => clock
+    );
+    try {
+      await model.prepare();
+      const sending = model.authorize(model.getSnapshot().revision);
+      await flush();
+      assert(broadcast);
+      if (event === 'expiry') {
+        clock = 1_000_000;
+        context.mock.timers.tick(15 * 60 * 1000);
+      } else {
+        model.cancel();
+      }
+      assert.equal(model.getSnapshot().phase, 'failed');
+      broadcast(hash);
+      assert.equal(model.getSnapshot().phase, 'failed');
+      assert.equal(model.getSnapshot().transactionHash, hash);
+      finish!();
+      await sending;
+      assert.equal(model.getSnapshot().phase, 'failed');
+    } finally {
+      finish?.();
+      model.dispose();
+    }
+  });

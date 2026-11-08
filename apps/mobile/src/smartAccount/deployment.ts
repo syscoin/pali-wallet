@@ -207,11 +207,15 @@ export class NativeSmartAccountDeployment {
         this.check,
         (review, authorize) => this.reviewPayer(review, authorize),
         (hash) => {
-          this.publish({
-            transactionHash: hash,
-            phase: 'waiting',
-            payerReview: null,
-          });
+          if (this.lifetime.signal.aborted) {
+            this.publish({ transactionHash: hash });
+          } else {
+            this.publish({
+              transactionHash: hash,
+              phase: 'waiting',
+              payerReview: null,
+            });
+          }
         }
       );
       this.check();
