@@ -397,7 +397,7 @@ describe('wallet_sendCalls capability admission', () => {
 
 describe('standard wallet_revokePermissions', () => {
   const host = 'https://revoking.example';
-  const disconnect = jest.fn();
+  const revoke = jest.fn();
 
   const revokeContext = (
     permissions: Record<string, unknown> = { eth_accounts: {} }
@@ -414,9 +414,9 @@ describe('standard wallet_revokePermissions', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    disconnect.mockResolvedValue(undefined);
+    revoke.mockResolvedValue(undefined);
     getControllerMock.mockReturnValue({
-      dapp: { getAccount: jest.fn(() => null), disconnect },
+      dapp: { getAccount: jest.fn(() => null), revoke },
       wallet: {},
     });
     getStateMock.mockReturnValue({
@@ -432,15 +432,14 @@ describe('standard wallet_revokePermissions', () => {
     const context = revokeContext();
     expect(context.methodConfig.requiresConnection).toBe(false);
     await expect(new WalletMethodHandler().handle(context)).resolves.toBeNull();
-    expect(disconnect).toHaveBeenCalledWith(host, true, {
+    expect(revoke).toHaveBeenCalledWith(host, {
       allowAlreadyDisconnected: true,
-      propagateErrors: true,
     });
   });
 
-  it('does not turn a real disconnect failure into success', async () => {
+  it('does not turn a real revocation failure into success', async () => {
     const failure = new Error('Storage unavailable');
-    disconnect.mockRejectedValueOnce(failure);
+    revoke.mockRejectedValueOnce(failure);
     await expect(
       new WalletMethodHandler().handle(revokeContext())
     ).rejects.toBe(failure);
@@ -450,7 +449,7 @@ describe('standard wallet_revokePermissions', () => {
     await expect(
       new WalletMethodHandler().handle(revokeContext({}))
     ).resolves.toBeNull();
-    expect(disconnect).not.toHaveBeenCalled();
+    expect(revoke).not.toHaveBeenCalled();
   });
 });
 

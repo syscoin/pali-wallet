@@ -3,10 +3,7 @@ import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
 import { E2E_CONFIG } from '../harness/config';
-import {
-  clickClosingPopup,
-  dismissRejectedApproval,
-} from '../harness/dismissRejectedApproval';
+import { clickClosingPopup } from '../harness/dismissRejectedApproval';
 import {
   createIsolatedVaultFixture,
   installIsolatedVaultRoutes,
@@ -248,7 +245,7 @@ test('a failed type-switch permission removal cannot expose the target account a
       return route.fallback();
     });
     await wallet.step(
-      'approve the network switch but reject a new EVM account connection',
+      'stop before new EVM consent when source permission revocation fails',
       async () => {
         const id = await startRequest(dapp, 'eth_changeUTXOEVM', [
           { chainId: 5700 },
@@ -264,18 +261,17 @@ test('a failed type-switch permission removal cannot expose the target account a
           isClosed: () => switching.isClosed(),
         });
         await expect.poll(() => switching.isClosed()).toBe(true);
-        const connecting = await popupFor(wallet!.context, dapp, id);
-        const cancel = connecting
-          .getByRole('button', { name: en.buttons.cancel, exact: true })
-          .last();
-        await expect(cancel).toBeEnabled();
-        const result = await dismissRejectedApproval({
-          click: () => cancel.click(),
-          isClosed: () => connecting.isClosed(),
-          settle: () => settle(dapp, id),
-        });
-        expect(result.error?.code).toBe(4100);
+        const result = await settle(dapp, id);
+        expect(result.error?.code).toBe(-32603);
+        expect(result.error?.message).toContain(
+          'Synthetic type-switch permission storage outage'
+        );
         expect(result.result).toBeUndefined();
+        expect(
+          wallet!.context
+            .pages()
+            .some((candidate) => candidate.url().includes('/connect-wallet'))
+        ).toBe(false);
         await expect
           .poll(async () => (await outageCounts(worker!)).targetCommits)
           .toBeGreaterThan(0);
@@ -287,16 +283,20 @@ test('a failed type-switch permission removal cannot expose the target account a
         observations.beforeRefreshRelease = await outageCounts(worker!);
         releaseRefresh!();
         await expect
-          .poll(async () => (await outageCounts(worker!)).repairFailures)
-          .toBeGreaterThan(0);
+          .poll(async () => (await projection(page, origin)).postLoading)
+          .toBe(false);
         const state = await projection(page, origin);
         expect(state).toMatchObject({
-          liveGrant: null,
+          liveGrant: { chain: 'syscoin' },
           liveSlip44: 60,
           savedSlip44: 60,
           address: targetAddress,
         });
         expect(state.savedGrant?.chain).toBe('syscoin');
+        expect(await providerRequest(dapp, 'eth_accounts')).toEqual([]);
+        expect(await providerRequest(dapp, 'wallet_getPermissions')).toEqual(
+          []
+        );
         observations.failedRemoval = {
           state,
           writes: await outageCounts(worker!),
