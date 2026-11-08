@@ -1287,17 +1287,17 @@ export const SendTransaction = () => {
                     }),
               }
             : {};
+          const request = {
+            ...txForEstimation,
+            ...custom,
+            nonce,
+            from: approvedContext.account.address,
+            chainId: approvedContext.chainId,
+          };
+          if (customFee.isCustom && customFee.gasLimit > 0) delete request.gas;
           const quote = (await controllerEmitter(
             ['wallet', 'reviewDappEvmFee'],
-            [
-              {
-                ...txForEstimation,
-                ...custom,
-                nonce,
-                from: approvedContext.account.address,
-                chainId: approvedContext.chainId,
-              },
-            ]
+            [request]
           )) as GenericFeeQuote;
           const prepared = Object.freeze({
             ...quote,
