@@ -1,5 +1,10 @@
 import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import {
+  normalizeDappCapabilitiesRequest,
+  projectDappCapabilities,
+} from '../../../../source/shared/dappCapabilities.ts';
+import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
+import {
   isDappMessageMethod,
   readDappMessageRequest,
   type DappMessageRequest,
@@ -44,6 +49,7 @@ const METHODS = Object.freeze([
   'net_version',
   'eth_accounts',
   'eth_requestAccounts',
+  'wallet_getCapabilities',
   'eth_sendTransaction',
   'personal_sign',
   'eth_signTypedData',
@@ -921,7 +927,54 @@ export class NativeConnectionsController {
     let result: unknown, error: { code: number; message: string } | undefined;
     if (!connected?.engine.isConnected(request.session.binding.origin))
       error = { code: 4100, message: 'Not connected' };
-    else if (request.chainId !== `eip155:${context.network.chainId}`)
+    else if (request.method === 'wallet_getCapabilities') {
+      try {
+        const query = normalizeDappCapabilitiesRequest(request.params);
+        const account = connected.engine.getAccount(
+          request.session.binding.origin
+        );
+        const permitted =
+          account &&
+          grant?.chain === 'ethereum' &&
+          session?.binding.origin === request.session.binding.origin &&
+          request.chainId === `eip155:${grant.chainId}` &&
+          Object.values(session.namespaces).some(
+            (namespace) =>
+              namespace.methods.includes(request.method) &&
+              namespace.accounts.some(
+                (id) =>
+                  id.toLowerCase() ===
+                  `${request.chainId}:${account.address}`.toLowerCase()
+              )
+          );
+        if (
+          !context.unlocked ||
+          this.options.source.getSnapshot().phase !== 'ready' ||
+          !permitted
+        ) {
+          error = {
+            code: 4100,
+            message: 'Method or account is not authorized',
+          };
+        } else {
+          result = projectDappCapabilities(query, {
+            accountAddress: account.address,
+            chain:
+              context.network.kind === 'ethereum' &&
+              context.network.chainId === grant.chainId
+                ? {
+                    chainId: context.network.chainId,
+                    batchSupported: false,
+                    atomicSupported: false,
+                  }
+                : null,
+          });
+        }
+      } catch (cause) {
+        if (!(cause instanceof EthereumRpcErrorHandler)) throw cause;
+        error = { code: cause.code, message: cause.message };
+      }
+    } else if (request.chainId !== `eip155:${context.network.chainId}`)
       error = { code: 4901, message: 'Requested chain is not selected' };
     else if (request.method === 'eth_chainId')
       result = `0x${context.network.chainId.toString(16)}`;

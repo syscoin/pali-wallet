@@ -33,12 +33,15 @@ const UNKNOWN = Object.freeze({
 const ADDRESS = '0x' + '11'.repeat(20),
   ORIGIN = 'https://reported.example';
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
-function fixture(options: {
-  secondAccount?: boolean;
-  restoring?: boolean;
-  openFailures?: number;
-  inventoryFailures?: number;
-} = {}) {
+function fixture(
+  options: {
+    capabilities?: boolean;
+    secondAccount?: boolean;
+    restoring?: boolean;
+    openFailures?: number;
+    inventoryFailures?: number;
+  } = {}
+) {
   const { secondAccount = false } = options;
   let snapshot: CustodySnapshot = {
     phase: 'ready',
@@ -228,6 +231,7 @@ function fixture(options: {
         accounts: [`eip155:1:${ADDRESS}`],
         chains: ['eip155:1'],
         methods: [
+          ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -251,6 +255,7 @@ function fixture(options: {
       eip155: {
         chains: ['eip155:1'],
         methods: [
+          ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -1273,6 +1278,7 @@ for (const retirement of [
 
 async function connectedFixture(
   options: {
+    capabilities?: boolean;
     secondAccount?: boolean;
     accountId?: string;
     verification?: WalletConnectVerification;
@@ -1316,6 +1322,224 @@ async function messageRequest(
   await settle();
   return f.view.getSnapshot().signingReview;
 }
+
+test('capabilities are negotiated and expose no native batching or signing capability', async () => {
+  const f = await connectedFixture({ capabilities: true });
+  try {
+    assert(
+      f.session.namespaces.eip155!.methods.includes('wallet_getCapabilities')
+    );
+    const persisted = JSON.stringify([...f.rows]);
+    await messageRequest(f, 'wallet_getCapabilities', [ADDRESS]);
+    assert.deepEqual(f.responses.at(-1), {
+      id: 10,
+      result: { result: { '0x1': {} } },
+    });
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.transactions.length, 0);
+    assert.equal(JSON.stringify([...f.rows]), persisted);
+    assert.deepEqual(f.session.namespaces.eip155!.chains, ['eip155:1']);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+for (const [params, expected] of [
+  [undefined, { '0x1': {} }],
+  [[], { '0x1': {} }],
+  [[ADDRESS, ['0x01']], { '0x1': {} }],
+  [[ADDRESS, ['0x1', '0x2']], { '0x1': {} }],
+  [[ADDRESS, ['0x2']], {}],
+  [[ADDRESS, []], {}],
+] as const)
+  test(`restored capabilities respect the requested chain filter ${JSON.stringify(
+    params
+  )}`, async () => {
+    const f = fixture({ restoring: true, capabilities: true });
+    try {
+      await settle();
+      await settle();
+      if (params === undefined) {
+        f.event({
+          type: 'request',
+          request: {
+            id: 10,
+            method: 'wallet_getCapabilities',
+            params: undefined,
+            session: f.session,
+            chainId: 'eip155:1',
+            expiresAt: Date.now() + 300000,
+            verification: UNKNOWN,
+          },
+        });
+        await settle();
+      } else await messageRequest(f, 'wallet_getCapabilities', params);
+      assert.deepEqual(f.responses.at(-1), {
+        id: 10,
+        result: { result: expected },
+      });
+    } finally {
+      await f.controller.dispose();
+    }
+  });
+
+for (const params of [
+  null,
+  [null],
+  [ADDRESS, null],
+  [ADDRESS, ['bad']],
+  [ADDRESS, [], 'extra'],
+]) {
+  test(`native capabilities reject malformed parameters ${JSON.stringify(
+    params
+  )}`, async () => {
+    const f = await connectedFixture({ capabilities: true });
+    try {
+      await messageRequest(f, 'wallet_getCapabilities', params);
+      assert.deepEqual(f.responses.at(-1), {
+        id: 10,
+        result: {
+          error: { code: -32602, message: 'Invalid capability query params' },
+        },
+      });
+    } finally {
+      await f.controller.dispose();
+    }
+  });
+}
+
+test('capabilities require the granted account and negotiated method', async () => {
+  for (const capabilities of [true, false]) {
+    const f = await connectedFixture({ capabilities, secondAccount: true });
+    try {
+      const requested = capabilities ? `0x${'22'.repeat(20)}` : ADDRESS;
+      await messageRequest(f, 'wallet_getCapabilities', [requested]);
+      const response = f.responses.at(-1) as {
+        result: { error: { code: number } };
+      };
+      assert.equal(response.result.error.code, 4100);
+      assert.equal(f.view.getSnapshot().signingReview, null);
+    } finally {
+      await f.controller.dispose();
+    }
+  }
+});
+
+test('capabilities use the granted non-active account without selecting it', async () => {
+  const f = await connectedFixture({
+    capabilities: true,
+    secondAccount: true,
+    accountId: 'hd:60:1',
+  });
+  try {
+    const before = f.view.getSnapshot();
+    assert.equal(before.selectedAccountId, 'hd:60:0');
+    await messageRequest(f, 'wallet_getCapabilities', [`0x${'22'.repeat(20)}`]);
+    assert.deepEqual(f.responses.at(-1), {
+      id: 10,
+      result: { result: { '0x1': {} } },
+    });
+    assert.equal(f.view.getSnapshot().selectedAccountId, 'hd:60:0');
+    assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+for (const field of ['origin', 'peerPublicKey', 'topic'] as const) {
+  test(`capabilities cannot borrow a grant with another ${field}`, async () => {
+    const f = await connectedFixture({ capabilities: true });
+    try {
+      f.event({
+        type: 'request',
+        request: {
+          id: 10,
+          method: 'wallet_getCapabilities',
+          params: [ADDRESS],
+          session: {
+            ...f.session,
+            binding: {
+              ...f.session.binding,
+              [field]:
+                field === 'origin' ? 'https://other.example' : 'f'.repeat(64),
+            },
+          },
+          chainId: 'eip155:1',
+          expiresAt: Date.now() + 300000,
+          verification: UNKNOWN,
+        },
+      });
+      await settle();
+      const response = f.responses.at(-1) as {
+        result: { error: { code: number } };
+      };
+      assert.equal(response.result.error.code, 4100);
+    } finally {
+      await f.controller.dispose();
+    }
+  });
+}
+
+test('capabilities do not expand an approved chain after network selection changes', async () => {
+  const f = await connectedFixture({ capabilities: true });
+  try {
+    f.selectChain(10);
+    await settle();
+    const persisted = JSON.stringify([...f.rows]);
+    await messageRequest(f, 'wallet_getCapabilities', [
+      ADDRESS,
+      ['0x1', '0xa'],
+    ]);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: {} } });
+    f.event({
+      type: 'request',
+      request: {
+        id: 11,
+        method: 'wallet_getCapabilities',
+        params: [ADDRESS, ['0xa']],
+        session: f.session,
+        chainId: 'eip155:10',
+        expiresAt: Date.now() + 300000,
+        verification: UNKNOWN,
+      },
+    });
+    await settle();
+    const response = f.responses.at(-1) as {
+      result: { error: { code: number } };
+    };
+    assert.equal(response.result.error.code, 4100);
+    assert.equal(JSON.stringify([...f.rows]), persisted);
+    assert.deepEqual(f.session.namespaces.eip155!.chains, ['eip155:1']);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('locking suppresses an in-flight capability reply and hides account capabilities', async () => {
+  const f = await connectedFixture({ capabilities: true });
+  let release!: () => void;
+  try {
+    f.setResponseWait(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    await messageRequest(f, 'wallet_getCapabilities', [ADDRESS]);
+    f.lock();
+    release();
+    await settle();
+    assert.equal(f.responses.length, 0);
+    await messageRequest(f, 'wallet_getCapabilities', [ADDRESS], 11);
+    const response = f.responses.at(-1) as {
+      result: { error: { code: number } };
+    };
+    assert.equal(response.result.error.code, 4100);
+  } finally {
+    release?.();
+    await f.controller.dispose();
+  }
+});
 
 test('a dapp transaction stays unsigned until its exact review is approved', async () => {
   const f = await connectedFixture();

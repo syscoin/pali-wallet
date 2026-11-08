@@ -4,6 +4,10 @@ import {
   assertDappCallsAtomicSupport,
   normalizeDappCallsRequest,
 } from '../../../../shared/dappCalls.ts';
+import {
+  normalizeDappCapabilitiesRequest,
+  projectDappCapabilities,
+} from '../../../../shared/dappCapabilities.ts';
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
@@ -539,56 +543,20 @@ export class WalletMethodHandler implements IMethodHandler {
           );
 
         case 'getCapabilities': {
-          // Older callers omit params; an explicit address must still belong
-          // to this origin, and explicit chain filters must be respected.
-          const requestedAddress = params?.[0];
-          const requestedChains = params?.[1];
-          if (
-            (params !== undefined && !Array.isArray(params)) ||
-            (params?.length ?? 0) > 2 ||
-            (requestedAddress !== undefined &&
-              (typeof requestedAddress !== 'string' ||
-                !/^0x[\da-f]{40}$/i.test(requestedAddress))) ||
-            (requestedChains !== undefined &&
-              (!Array.isArray(requestedChains) ||
-                requestedChains.some(
-                  (id) => typeof id !== 'string' || !/^0x[\da-f]+$/i.test(id)
-                )))
-          ) {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidParams('Invalid capability query params')
-            );
-          }
-          if (
-            !account?.address ||
-            (requestedAddress !== undefined &&
-              requestedAddress.toLowerCase() !== account.address.toLowerCase())
-          ) {
-            throw cleanErrorStack(ethErrors.provider.unauthorized());
-          }
-          // Smart accounts execute wallet_sendCalls as a single ERC-7579 batch,
-          // while regular EOAs are still submitted sequentially.
-          const chainId = `0x${activeNetwork.chainId.toString(16)}`;
-          if (
-            requestedChains !== undefined &&
-            !requestedChains.some((id) => BigInt(id) === BigInt(chainId))
-          ) {
-            return {};
-          }
-          const smartAccountAtomicSupported =
-            account?.isSmartAccount &&
-            account.smartAccount?.chainId === activeNetwork.chainId;
-          const capabilities = {
-            [chainId]: {
-              atomic: {
-                status: smartAccountAtomicSupported
-                  ? 'supported'
-                  : 'unsupported',
+          return projectDappCapabilities(
+            normalizeDappCapabilitiesRequest(params),
+            {
+              accountAddress: account?.address,
+              chain: {
+                chainId: activeNetwork.chainId,
+                batchSupported: true,
+                atomicSupported: Boolean(
+                  account?.isSmartAccount &&
+                    account.smartAccount?.chainId === activeNetwork.chainId
+                ),
               },
-            },
-          };
-
-          return capabilities;
+            }
+          );
         }
 
         default:
