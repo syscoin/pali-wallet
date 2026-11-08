@@ -5435,7 +5435,7 @@ class MainController {
     const assertCurrent = () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation);
-      if (assertApprovalCurrent)
+      if (assertApprovalCurrent !== undefined)
         assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();
@@ -9107,7 +9107,7 @@ class MainController {
       this.assertCurrentWalletSession(generation);
       if (executionContextId)
         this.assertSmartAccountExecutionContext(executionContextId, params[1]);
-      if (assertApprovalCurrent)
+      if (assertApprovalCurrent !== undefined)
         assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertContext();

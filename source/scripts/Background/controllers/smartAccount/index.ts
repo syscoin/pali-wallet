@@ -1100,7 +1100,7 @@ class SmartAccountController {
     try {
       const context = this.infrastructureContext();
       const assertCurrent = () => {
-        if (assertApprovalCurrent)
+        if (assertApprovalCurrent !== undefined)
           assertSynchronousEvmFeeGuard(assertApprovalCurrent);
         try {
           this.assertInfrastructureContext(context);
@@ -1736,7 +1736,7 @@ class SmartAccountController {
     const assertCurrent = () => {
       this.assertInfrastructureContext(captured);
       this.assertSmartAccountExecutionContext(params.executionContextId);
-      if (assertApprovalCurrent)
+      if (assertApprovalCurrent !== undefined)
         assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();
@@ -2436,7 +2436,7 @@ class SmartAccountController {
     const assertCurrent = () => {
       this.assertInfrastructureContext(captured);
       this.assertSmartAccountExecutionContext(executionContextId, actionHash);
-      if (assertApprovalCurrent)
+      if (assertApprovalCurrent !== undefined)
         assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();

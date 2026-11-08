@@ -114,12 +114,12 @@ describe('smart-account execution approval context', () => {
       assertCurrent
     );
 
-  it.each([async () => undefined, () => true])(
+  it.each([async () => undefined, () => true, false])(
     'rejects non-synchronous optional guards in submission and local signing facades',
     async (guard) => {
       const prepared = await prepare();
       await expect(submit(prepared, {}, guard as never)).rejects.toThrow(
-        'guard must be synchronous'
+        /guard (must be synchronous|is not a function)/
       );
       await expect(
         controller.signActionHashWithLocalEcdsaOwners(
@@ -128,7 +128,7 @@ describe('smart-account execution approval context', () => {
           prepared.executionContextId,
           guard
         )
-      ).rejects.toThrow('guard must be synchronous');
+      ).rejects.toThrow(/guard (must be synchronous|is not a function)/);
       expect(send).not.toHaveBeenCalled();
     }
   );
