@@ -1354,27 +1354,34 @@ async function messageRequest(
   return f.view.getSnapshot().signingReview;
 }
 
-test('capabilities are negotiated and expose no native batching or signing capability', async () => {
-  const f = await connectedFixture({ capabilities: true });
-  try {
-    assert(
-      f.session.namespaces.eip155!.methods.includes('wallet_getCapabilities')
-    );
-    const persisted = JSON.stringify([...f.rows]);
-    await messageRequest(f, 'wallet_getCapabilities', [ADDRESS]);
-    assert.deepEqual(f.responses.at(-1), {
-      id: 10,
-      result: { result: { '0x1': {} } },
+for (const smart of [false, true])
+  test(`capabilities are negotiated without native batching for ${
+    smart ? 'Smart' : 'software'
+  } accounts`, async () => {
+    const f = await connectedFixture({
+      capabilities: true,
+      smart,
+      accountId: smart ? 'smart:60:0' : 'hd:60:0',
     });
-    assert.equal(f.view.getSnapshot().signingReview, null);
-    assert.equal(f.signatures.length, 0);
-    assert.equal(f.transactions.length, 0);
-    assert.equal(JSON.stringify([...f.rows]), persisted);
-    assert.deepEqual(f.session.namespaces.eip155!.chains, ['eip155:1']);
-  } finally {
-    await f.controller.dispose();
-  }
-});
+    try {
+      assert(
+        f.session.namespaces.eip155!.methods.includes('wallet_getCapabilities')
+      );
+      const persisted = JSON.stringify([...f.rows]);
+      await messageRequest(f, 'wallet_getCapabilities', [ADDRESS]);
+      assert.deepEqual(f.responses.at(-1), {
+        id: 10,
+        result: { result: { '0x1': {} } },
+      });
+      assert.equal(f.view.getSnapshot().signingReview, null);
+      assert.equal(f.signatures.length, 0);
+      assert.equal(f.transactions.length, 0);
+      assert.equal(JSON.stringify([...f.rows]), persisted);
+      assert.deepEqual(f.session.namespaces.eip155!.chains, ['eip155:1']);
+    } finally {
+      await f.controller.dispose();
+    }
+  });
 
 for (const [params, expected] of [
   [undefined, { '0x1': {} }],
