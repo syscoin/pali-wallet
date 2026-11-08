@@ -391,7 +391,8 @@ async function cancellationFixture(type: 0 | 2 = 2) {
                     {
                       address: tx.to,
                       topics: [],
-                      data: '0x' + 'ab'.repeat(10_000),
+                      // Exceed the shared reader's 1 MiB receipt budget.
+                      data: '0x' + 'ab'.repeat(1024 * 1024),
                     },
                   ],
                 }),
