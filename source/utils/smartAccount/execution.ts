@@ -369,6 +369,7 @@ export type SubmitSmartAccountExecutionsParams = {
     prepared: Readonly<{ executionContextId: string }>
   ) => Promise<void>;
   onPrepared?: () => void;
+  onSubmissionNotBroadcast?: () => Promise<void>;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
   /** Internal wallet controls share only the same exact approval context. */
@@ -1115,6 +1116,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     onAuthenticatorSigningStarted,
     onBeforeSubmit,
     onPrepared,
+    onSubmissionNotBroadcast,
     skipRapidPolling,
     trackLocalSubmission,
     smartAccount,
@@ -1251,6 +1253,9 @@ export const signAndSubmitSmartAccountExecutions = async (
         (error as any)?.transactionNotBroadcast !== false &&
         (!submissionStarted || (error as any)?.transactionNotBroadcast === true)
       ) {
+        // A host's durable begin must be settled before a refreshed operation
+        // can acquire the reservation. Unknown submissions never reach here.
+        if (submissionStarted) await onSubmissionNotBroadcast?.();
         return await prepareSignAndSubmit(false);
       }
       throw error;

@@ -192,11 +192,15 @@ const prepare = async (
       await mockRecordGate(args[2]);
       const { smartAccountExecutionContextId, ...record } = args[2];
       if (record.smartAccount && record.submissionStarted) {
-        expect(smartAccountExecutionContextId).toBe('prepared-smart-context');
+        expect(smartAccountExecutionContextId).toMatch(
+          /^prepared-smart-context(?:-retry)?$/
+        );
         record.smartAccountIdentity = captureSmartAccountCallsIdentity(
           buildSmartAccountUserOperation({
             sender: mockQuery.approvedContext.account.address,
-            nonce: '0',
+            nonce: smartAccountExecutionContextId.endsWith('-retry')
+              ? '1'
+              : '0',
             callData: '0x',
           }),
           1
@@ -589,3 +593,47 @@ it('does not invoke a sender after unmounting while the durable begin is pending
   expect(sends()).toHaveLength(0);
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  'requires an acknowledged unsent record before automatic smart retry (storage failure=%s)',
+  async (failRetirement) => {
+    await prepare(true);
+    const stages: string[] = [];
+    mockRecordGate = (record) => {
+      if (record.submissionStarted) stages.push('begin');
+      if (record.submissionNotBroadcast) {
+        stages.push('unsent');
+        if (failRetirement)
+          throw new Error('Synthetic retirement write failure');
+      }
+    };
+    mockSmartSubmit.mockImplementation(async (params) => {
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context',
+      });
+      await params.onSubmissionNotBroadcast();
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context-retry',
+      });
+      return { hash: HASH_A };
+    });
+    await approve();
+    expect(stages).toEqual(
+      failRetirement ? ['begin', 'unsent'] : ['begin', 'unsent', 'begin']
+    );
+    if (failRetirement) {
+      expect(await status()).toBe(100);
+      expect(
+        (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
+          .disabled
+      ).toBe(true);
+      await act(async () => mockApprove());
+      expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+    } else {
+      expect(mockStored[mockQuery.host][mockQuery.bundleId]).toMatchObject({
+        submissionCompleted: true,
+        txHashes: [HASH_A],
+      });
+    }
+  }
+);
