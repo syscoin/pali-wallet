@@ -218,13 +218,44 @@ export class EvmTransferReadRpc {
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
   }
+  smartAccountRead(method: 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
+    params: readonly unknown[], signal: AbortSignal, guard: () => void): Promise<unknown> {
+    const allowed = ['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber', 'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'];
+    if (!allowed.includes(method) || !Array.isArray(params) || params.length > 5)
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const result = await read(method, params);
+      await this.checkChain(read);
+      return result;
+    }, 'smart-account');
+  }
+  smartAccountFeeData(signal: AbortSignal, guard: () => void) {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const fees = await this.feeData(read, sampled, signal);
+      await this.checkChain(read);
+      return fees;
+    }, 'smart-account');
+  }
+  async assertSmartAccountSupported(signal: AbortSignal, guard: () => void): Promise<void> {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      await this.checkSmartAccountInfrastructure(read);
+    }, 'smart-account');
+  }
+  private async checkSmartAccountInfrastructure(read: Reader): Promise<void> {
+    const { assertSmartAccountInfrastructureReady, projectSmartAccountInfrastructureObservation,
+      SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
+    const codes = await Promise.all(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => read('eth_getCode', [address, 'latest'])));
+    const status = projectSmartAccountInfrastructureObservation(Number(this.network.chainId), codes);
+    if (!status) return rejectRead('INVALID_RESPONSE');
+    assertSmartAccountInfrastructureReady(status);
+  }
   prepareSmartAccount(accountIndex: number, managementAddress: string, signal: AbortSignal, guard: () => void) {
     return this.operation(signal, guard, async (read) => {
-      const [{ deriveDefaultSmartAccount }, { assertSmartAccountInfrastructureReady,
-        projectSmartAccountInfrastructureObservation, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES }] = await Promise.all([
-        import('../../../../source/utils/smartAccount/bootstrap.ts'),
-        import('../../../../source/utils/smartAccount/infrastructureObservation.ts'),
-      ]);
+      const { deriveDefaultSmartAccount } = await import('../../../../source/utils/smartAccount/bootstrap.ts');
       const chainId = Number(this.network.chainId);
       return deriveDefaultSmartAccount({
         accountIndex, chainId, managementAddress, assertCurrent: read.assertCurrent,
@@ -237,12 +268,7 @@ export class EvmTransferReadRpc {
             return result;
           },
         },
-        async assertInfrastructureSupported() {
-          const codes = await Promise.all(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => read('eth_getCode', [address, 'latest'])));
-          const status = projectSmartAccountInfrastructureObservation(chainId, codes);
-          if (!status) return rejectRead('INVALID_RESPONSE');
-          assertSmartAccountInfrastructureReady(status);
-        },
+        assertInfrastructureSupported: () => this.checkSmartAccountInfrastructure(read),
       });
     }, 'smart-account');
   }

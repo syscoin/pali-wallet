@@ -230,6 +230,10 @@ export function createNativeWalletControllers() {
       verifyExport: (...args) => observeFailure(() => notes.verifyExport(...args)),
     });
   };
+  const openSmartAccountDeployment = async (assertOwner: () => void) => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    return observeFailure(() => selected.openSmartAccountDeployment(assertCurrent));
+  };
   const openUtxoSend = async (assertOwner: () => void): Promise<NativeUtxoSend> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const open = selected.openUtxoSend;
@@ -284,6 +288,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

@@ -27,6 +27,8 @@ import type {
   KeyringAccountType,
 } from '../../types/network.ts';
 
+export const SMART_ACCOUNT_EXECUTION_LIFETIME_MS = 15 * 60 * 1000;
+
 export type SmartAccountFeeOverrides = {
   gasPrice?: string;
   maxFeePerGas?: string;

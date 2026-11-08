@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { AbiCoder, Interface } from 'ethers/abi';
+import { Transaction } from 'ethers/transaction';
+import { inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
+import type { NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import { getCreate2Address } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
 import { concat } from 'ethers/utils';
@@ -18,6 +21,7 @@ import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Public smart account fixture 1!';
@@ -34,21 +38,48 @@ async function fixture() {
   let runtime!: KeyringRuntime;
   let storage!: SqliteWalletStorage;
   const calls: string[] = [];
+  const submitted: string[] = [];
+  let deployed = false;
   const openStorage = async () => {
     storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
     initialized = true;
     return storage;
   };
-  const factory = createKeyringRuntimeFactory({
-    ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
-    prepareSmartAccount(network, index, owner, signal, guard) {
-      return new EvmTransferReadRpc(network, { fetch: async (_url, init) => {
+  const backend = async (network: NativeNetworkRegistration, init: RequestInit) => {
         const request = JSON.parse(String(init.body));
         calls.push(request.method);
         let result: unknown;
         if (request.method === 'eth_chainId') result = `0x${BigInt(network.chainId).toString(16)}`;
-        else if (request.method === 'eth_getCode') result = '0x01';
+        else if (request.method === 'eth_getCode') {
+          const target = request.params[0].toLowerCase();
+          const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
+          result = builtIn || deployed && runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target) ? '0x01' : '0x';
+        }
+        else if (request.method === 'eth_getTransactionCount') result = `0x${submitted.length.toString(16)}`;
+        else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? '0x0' : '0x1000000000000000';
+        else if (request.method === 'eth_gasPrice') result = '0x2';
+        else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
+        else if (request.method === 'eth_estimateGas') result = '0x186a0';
+        else if (request.method === 'eth_getTransactionReceipt') {
+          const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
+          const transaction = raw && Transaction.from(raw);
+          result = transaction ? { transactionHash: transaction.hash, from: transaction.from, to: transaction.to, status: '0x1',
+            blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32) } : null;
+        }
+        else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'aa'.repeat(32), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+        else if (request.method === 'eth_sendRawTransaction') {
+          const identity = (await storage.recovery.readIdentity())!.root!;
+          const saved = await storage.signedRecords.read(identity.profileId);
+          assert(saved);
+          assert.equal(inspectEvmSignedBundle(saved, identity.profileId).transactions, submitted.length + 1);
+          submitted.push(request.params[0]);
+          if (submitted.length === 2) deployed = true;
+          result = Transaction.from(request.params[0]).hash;
+        }
         else if (request.method === 'eth_call') {
+          if (request.params[0].to.toLowerCase() !== PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()) {
+            result = coder.encode(['uint256'], [0]);
+          } else {
           const parsed = paliSmartAccountFactoryInterface.parseTransaction({ data: request.params[0].data });
           assert(parsed);
           if (parsed.name === 'getInitData') {
@@ -65,9 +96,15 @@ async function fixture() {
               : getCreate2Address(PALI_CANONICAL_FACTORY_ADDRESS, parsed.args[0], keccak256(proxy));
             result = paliSmartAccountFactoryInterface.encodeFunctionResult(parsed.fragment, [address]);
           }
+          }
         } else assert.fail(`Unexpected RPC ${request.method}`);
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
-      } }).prepareSmartAccount(index, owner, signal, guard);
+  };
+  const factory = createKeyringRuntimeFactory({
+    ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
+    connectionFetch: (_url, init) => backend(getNativeNetwork('ethereum'), init),
+    prepareSmartAccount(network, index, owner, signal, guard) {
+      return new EvmTransferReadRpc(network, { fetch: (_url, init) => backend(network, init) }).prepareSmartAccount(index, owner, signal, guard);
     },
   });
   const open = async () => {
@@ -80,7 +117,7 @@ async function fixture() {
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   await owner.refreshAuthenticatedMetadata();
   return {
-    get owner() { return owner; }, get runtime() { return runtime; }, calls,
+    get owner() { return owner; }, get runtime() { return runtime; }, calls, submitted,
     substitute() { substituteAddress = true; }, hold(value: () => Promise<void>) { hold = value; },
     async change(request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) {
       await owner.manageAccounts(request, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
@@ -206,4 +243,65 @@ test('recovery lists smart accounts on every saved chain and preserves their met
     await f.change({ kind: 'select', id: 'smart:60:0' });
     assert.equal(f.owner.getSnapshot().account!.address, smart.find(account => account.id === 'smart:60:0')!.address);
   } finally { await f.close(); }
+});
+
+
+test('real smart deployment uses the owned payer, separate consent and durable SDK submission', async () => {
+  const f = await fixture();
+  let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
+  try {
+    const owner = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Deploy fixture', password: PASSWORD });
+    const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+    deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
+    await deployment.prepare();
+    assert.equal(deployment.getSnapshot().phase, 'authorize');
+    assert.equal(f.submitted.length, 0);
+    const pending = deployment.authorize(deployment.getSnapshot().revision);
+    for (let attempt = 0; attempt < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); attempt++) {
+      const state = deployment.getSnapshot();
+      if (state.payerReview) deployment.confirmPayer(state.payerReview.id);
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    await pending;
+    assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
+    assert.equal(f.submitted.length, 2);
+    const funding = Transaction.from(f.submitted[0]!);
+    const execution = Transaction.from(f.submitted[1]!);
+    assert.equal(funding.from, owner);
+    assert.equal(funding.to, smart.address);
+    assert(funding.value > 0n);
+    assert.equal(execution.from, owner);
+    assert.equal(execution.nonce, funding.nonce + 1);
+    assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === smart.id)!.smartAccount!.isDeployed, true);
+    deployment.dispose(); deployment = undefined;
+    await f.reopen();
+    await f.owner.unlock(PASSWORD);
+    const recovered = f.owner.getCatalogue()!.accounts.find(account => account.id === smart.id)!;
+    assert.equal(recovered.address, smart.address);
+    assert.equal(recovered.smartAccount!.isDeployed, true);
+    assert.equal(recovered.smartAccount!.managementAddress.toLowerCase(), owner.toLowerCase());
+  } finally { deployment?.dispose(); await f.close(); }
+});
+
+
+for (const cancel of ['owner', 'lock'] as const) test(`real deployment ${cancel} retirement rejects the held payer review`, async () => {
+  const f = await fixture();
+  let current = true;
+  let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Cancelled deployment', password: PASSWORD });
+    deployment = await f.runtime.openSmartAccountDeployment(() => { assert(current, 'owner retired'); });
+    await deployment.prepare();
+    const pending = deployment.authorize(deployment.getSnapshot().revision);
+    for (let attempt = 0; attempt < 300 && !deployment.getSnapshot().payerReview && deployment.getSnapshot().phase !== 'failed'; attempt++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const review = deployment.getSnapshot().payerReview;
+    assert(review);
+    if (cancel === 'owner') current = false; else f.owner.lock();
+    deployment.confirmPayer(review.id);
+    await pending;
+    assert.equal(deployment.getSnapshot().phase, 'failed');
+    assert.equal(f.submitted.length, 0);
+  } finally { deployment?.dispose(); await f.close(); }
 });

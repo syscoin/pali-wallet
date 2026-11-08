@@ -85,6 +85,7 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'create'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'import-ledger'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'create-smart'; account: IKeyringAccountState }>
+  | Readonly<{ kind: 'mark-smart-deployed'; id: string }>
   | Readonly<{
       kind: 'import';
       account: IKeyringAccountState;
@@ -664,6 +665,11 @@ export class NativeWalletCatalogue {
             group as { activeAccount: typeof group.activeAccount },
             { id: selected.index, type: selected.type as SharedAccountType }
           );
+        } else if (mutation.kind === 'mark-smart-deployed') {
+          if (selected.type !== 'SmartAccount' || mutation.id !== next.active.accountId ||
+              group.activeNetwork.kind !== 'ethereum' || !account.smartAccount ||
+              account.smartAccount.chainId !== Number(getNativeNetwork(next.active.networkId, catalogueEvmNetworks(next)).chainId)) return invalid();
+          group.accounts.SmartAccount[selected.index] = { ...account, smartAccount: { ...account.smartAccount, isDeployed: true } };
         } else if (mutation.kind === 'rename')
           setAccountRecordLabel(
             group.accounts,

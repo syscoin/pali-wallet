@@ -1,0 +1,190 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import {
+  NativeSmartAccountDeployment,
+  type PreparedSmartAccountDeployment,
+} from '../src/smartAccount/deployment.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import {
+  encodeSmartAccountGasLimits,
+  encodeSmartAccountGasFees,
+} from '../../../source/utils/smartAccount/account.ts';
+import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+
+const address = '0x1111111111111111111111111111111111111111';
+const hash = '0x' + 'ab'.repeat(32);
+const prepared = {
+  actionHash: hash,
+  userOperation: {
+    accountGasLimits: encodeSmartAccountGasLimits({
+      callGasLimit: 1,
+      verificationGasLimit: 1,
+    }),
+    gasFees: encodeSmartAccountGasFees({
+      maxFeePerGas: 2,
+      maxPriorityFeePerGas: 1,
+    }),
+    preVerificationGas: '1',
+    paymasterAndData: '0x',
+  },
+} as PreparedSmartAccountDeployment;
+const transaction: PreparedEvmTransaction = {
+  chainId: '1',
+  from: address,
+  to: address,
+  nonce: '0',
+  value: '0',
+  data: '0x',
+  gasLimit: '21000',
+  type: 2,
+  maxFeePerGas: '2',
+  maxPriorityFeePerGas: '1',
+  accessList: [],
+};
+const flush = async () => {
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+};
+function fixture() {
+  let current = true,
+    now = 0,
+    signed = 0,
+    submitted = 0,
+    authorizePayer = 0,
+    prepares = 0;
+  let held: Promise<void> | undefined;
+  const model = new NativeSmartAccountDeployment(
+    {
+      account: address,
+      network: getNativeNetwork('ethereum'),
+      assertCurrent() {
+        assert(current, 'owner changed');
+      },
+      async prepare() {
+        prepares++;
+        await held;
+        return prepared;
+      },
+      async sign(value) {
+        assert.equal(value, prepared);
+        signed++;
+        return '0xsignature';
+      },
+      async submit(value, signature, signal, guard, review, onBroadcast) {
+        assert.equal(value, prepared);
+        assert.equal(signature, '0xsignature');
+        guard();
+        await review(
+          {
+            purpose: 'submit-deployment',
+            transaction,
+            maximumFeeUnits: '42000',
+            maximumTotalUnits: '42000',
+          },
+          () => {
+            authorizePayer++;
+          }
+        );
+        assert.equal(signal.aborted, false);
+        guard();
+        submitted++;
+        onBroadcast(hash);
+        return hash;
+      },
+    },
+    () => now
+  );
+  return {
+    model,
+    counts: () => ({ signed, submitted, authorizePayer, prepares }),
+    revoke() {
+      current = false;
+    },
+    advance() {
+      now = 1_000_000;
+    },
+    hold(value: Promise<void>) {
+      held = value;
+    },
+  };
+}
+
+test('deployment requires separate exact UserOperation and payer approvals', async () => {
+  const f = fixture();
+  try {
+    await f.model.prepare();
+    assert.equal(f.model.getSnapshot().phase, 'authorize');
+    assert.equal(f.model.getSnapshot().maximumPrefundUnits, '6');
+    assert.deepEqual(f.counts(), {
+      signed: 0,
+      submitted: 0,
+      authorizePayer: 0,
+      prepares: 1,
+    });
+    await f.model.authorize(-1);
+    assert.equal(f.counts().signed, 0);
+    const sending = f.model.authorize(f.model.getSnapshot().revision);
+    await flush();
+    assert.equal(f.model.getSnapshot().phase, 'review-fee');
+    assert.equal(f.counts().signed, 1);
+    assert.equal(f.counts().submitted, 0);
+    f.model.confirmPayer(-1);
+    assert.equal(f.counts().authorizePayer, 0);
+    f.model.confirmPayer(f.model.getSnapshot().payerReview!.id);
+    await sending;
+    assert.equal(f.model.getSnapshot().phase, 'complete');
+    assert.equal(f.model.getSnapshot().transactionHash, hash);
+    assert.deepEqual(f.counts(), {
+      signed: 1,
+      submitted: 1,
+      authorizePayer: 1,
+      prepares: 1,
+    });
+  } finally {
+    f.model.dispose();
+  }
+});
+
+for (const event of ['lock', 'expiry', 'cancel'] as const)
+  test(`${event} retires payer review without signing a replacement`, async () => {
+    const f = fixture();
+    try {
+      await f.model.prepare();
+      const sending = f.model.authorize(f.model.getSnapshot().revision);
+      await flush();
+      const id = f.model.getSnapshot().payerReview!.id;
+      if (event === 'lock') f.revoke();
+      else if (event === 'expiry') f.advance();
+      else f.model.cancel();
+      f.model.confirmPayer(id);
+      await sending;
+      assert.equal(f.model.getSnapshot().phase, 'failed');
+      assert.match(
+        f.model.getSnapshot().error!,
+        /Check the account and Activity/
+      );
+      assert.equal(f.counts().signed, 1);
+      assert.equal(f.counts().submitted, 0);
+      await f.model.authorize(f.model.getSnapshot().revision);
+      assert.equal(f.counts().signed, 1);
+    } finally {
+      f.model.dispose();
+    }
+  });
+
+test('preparation admission prevents duplicate work and ignores completion after dispose', async () => {
+  const f = fixture();
+  let release!: () => void;
+  f.hold(
+    new Promise<void>((resolve) => {
+      release = resolve;
+    })
+  );
+  const first = f.model.prepare();
+  await f.model.prepare();
+  assert.equal(f.counts().prepares, 1);
+  f.model.dispose();
+  release();
+  await first;
+  assert.equal(f.counts().signed, 0);
+  assert.equal(f.model.getSnapshot().phase, 'preparing');
+});

@@ -109,6 +109,7 @@ import {
   getExplicitSmartAccountGasPrice,
   prepareSmartAccountOperation,
   requireSmartAccountAuthenticator,
+  SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
 } from 'utils/smartAccount/prepareOperation';
 import { signSmartAccountEcdsaOperation } from 'utils/smartAccount/signOperation';
 import {
@@ -447,7 +448,7 @@ class SmartAccountController {
     this.executionContexts.set(id, {
       accountId: snapshot.account.id,
       actionHash,
-      expiresAt: Date.now() + 15 * 60 * 1000,
+      expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       snapshot,
     });
     return id;
@@ -1667,7 +1668,7 @@ class SmartAccountController {
     this.executionContexts.set(executionContextId, {
       accountId: active.account.id,
       actionHash,
-      expiresAt: Date.now() + 15 * 60 * 1000,
+      expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       gasPrice: legacyGasPrice,
       snapshot,
       userOperation: Object.freeze({ ...userOperation }),
