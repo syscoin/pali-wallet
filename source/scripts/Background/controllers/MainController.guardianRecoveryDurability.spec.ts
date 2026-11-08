@@ -126,7 +126,9 @@ function fixture() {
   });
   const proof = jest.fn(async () => undefined),
     signature = jest.fn(async () => '0x1234'),
-    dispatch = jest.fn(async () => ({ hash: `0x${'ee'.repeat(32)}` }));
+    dispatch = jest.fn<Promise<{ hash: string }>, any[]>(async () => ({
+      hash: `0x${'ee'.repeat(32)}`,
+    }));
   const id = getGuardianRecoveryOperationId(intent.operation);
   mockState = {
     vault: {
