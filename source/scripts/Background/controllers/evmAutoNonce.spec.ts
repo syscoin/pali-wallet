@@ -27,7 +27,11 @@ function fixture(latest: string, pending: string) {
     verifyConfiguredChainId: jest.fn(async () => undefined),
     send: jest.fn(
       async (method: string, params: unknown[]): Promise<unknown> => {
-        if (method === 'eth_getBlockByNumber') return { number: params[0] === 'latest' ? '0xa' : params[0], hash: '0x' + '12'.repeat(32) };
+        if (method === 'eth_getBlockByNumber')
+          return {
+            number: params[0] === 'latest' ? '0xa' : params[0],
+            hash: '0x' + '12'.repeat(32),
+          };
         const tag = params[1] === '0xa' ? 'latest' : params[1];
         const value = replies.get(`${method}:${String(tag)}`);
         if (value === undefined) throw new Error(`Unexpected ${method}`);
@@ -44,7 +48,7 @@ function fixture(latest: string, pending: string) {
       owner: 'wallet',
       minimumNonce: 0,
       retained: [] as (typeof retained)[],
-      readMaximumCost: jest.fn(async (_hash: string) => BigInt(5)),
+      readMaximumCost: jest.fn(async () => BigInt(5)),
       readAssetDebit: jest.fn(async () => BigInt(0)),
     },
   };
@@ -62,10 +66,15 @@ it('refuses a new send when a costlier retained prefix alternative exceeds canon
   );
   f.replies.set('eth_getBalance:latest', '0xf4240');
   f.replies.set('eth_getBalance:pending', '0xd6998');
-  await expect(planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(871000) }))
-    .rejects.toMatchObject({ transactionNotBroadcast: true });
-  await expect(planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(858000) }))
-    .resolves.toMatchObject({ nonce: 1, nativeReservations: { canonical: BigInt(142000), pending: BigInt(0) } });
+  await expect(
+    planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(871000) })
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  await expect(
+    planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(858000) })
+  ).resolves.toMatchObject({
+    nonce: 1,
+    nativeReservations: { canonical: BigInt(142000), pending: BigInt(0) },
+  });
 });
 
 it('advances across an exact acknowledged predecessor only if its cost and this send fit', async () => {
@@ -95,10 +104,7 @@ it('uses the canonical state if the two fresh reads report an older pending coun
   await expect(
     planExtensionEvmNonce({ ...input, minimumBalance: BigInt(1) })
   ).resolves.toMatchObject({ nonce: 1, state: 'latest' });
-  expect(provider.send).toHaveBeenCalledWith('eth_getBalance', [
-    from,
-    '0xa',
-  ]);
+  expect(provider.send).toHaveBeenCalledWith('eth_getBalance', [from, '0xa']);
 });
 
 it('preserves an explicitly selected zero and never reuses an owned nonce', async () => {
@@ -544,7 +550,7 @@ it.each(['automatic', 'manual'] as const)(
       transactionNotBroadcast: true,
     });
     replies.set('eth_getBalance:pending', '0x8');
-  replies.set('eth_getBalance:latest', '0x8');
+    replies.set('eth_getBalance:latest', '0x8');
     await expect(planExtensionEvmNonce(request)).resolves.toMatchObject({
       nonce: 0,
       nativeReservations: { canonical: BigInt(5), pending: BigInt(5) },

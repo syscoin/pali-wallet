@@ -64,7 +64,11 @@ function fixture() {
     if (!replies.has(method)) throw new Error('Unexpected RPC call');
     const response = replies.get(method);
     return new Response(
-      JSON.stringify({ jsonrpc: '2.0', id, result: typeof response === 'function' ? response() : response })
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id,
+        result: typeof response === 'function' ? response() : response,
+      })
     );
   });
   const provider = new CustomJsonRpcProvider(
@@ -81,14 +85,24 @@ it('rechecks the canonical balance block after a gas estimate completes', async 
   const { provider, replies } = fixture();
   replies.set('eth_estimateGas', () => {
     replies.set('eth_getBlockByNumber', {
-      hash: '0x' + '34'.repeat(32), baseFeePerGas: '0x3b9aca00', gasLimit: '0x1c9c380',
+      hash: '0x' + '34'.repeat(32),
+      baseFeePerGas: '0x3b9aca00',
+      gasLimit: '0x1c9c380',
     });
     return '0x5208';
   });
   try {
-    await expect(recheckReviewedNativeEvmTransfer(capture(), provider, () => undefined, noncePlan))
-      .rejects.toThrow('Canonical balance changed');
-  } finally { provider.destroy(); }
+    await expect(
+      recheckReviewedNativeEvmTransfer(
+        capture(),
+        provider,
+        () => undefined,
+        noncePlan
+      )
+    ).rejects.toThrow('Canonical balance changed');
+  } finally {
+    provider.destroy();
+  }
 });
 
 it.each([0, 9])(

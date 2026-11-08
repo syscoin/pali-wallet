@@ -325,12 +325,13 @@ export async function qualifyNativeZksysTransfer(
         expect(
           params.length === 2 &&
             params[0] === address &&
-            ['pending', 'latest', '0x5a'].includes(params[1] as string)
+            ['pending', 'latest', '0x64', '0x5a'].includes(params[1] as string)
         );
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
         expect(phase === 'create');
-        same([address, 'pending']);
+        expect(params.length === 2 && params[0] === address &&
+          ['pending', '0x64'].includes(params[1] as string));
         result = '0xde0b6b3a7640000';
       } else if (body.method === 'eth_gasPrice') { same([]); result = '0xa';
       } else if (body.method === 'eth_feeHistory') {

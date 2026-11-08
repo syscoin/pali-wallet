@@ -172,8 +172,10 @@ function fixture() {
           : selector === '0xa9059cbb' && tokenChanged && body.params[1] === '0x21' ? 0n
           : 1n).toString(16).padStart(64, '0');
       }
-      else if (body.method === 'eth_getBalance')
-        result = body.params[1] === 'latest' ? canonicalBalance ?? availableBalance : availableBalance;
+      else if (body.method === 'eth_getBalance') {
+        assert.ok(['latest', 'pending', '0x20', '0x21'].includes(body.params[1]));
+        result = body.params[1] === 'pending' ? availableBalance : canonicalBalance ?? availableBalance;
+      }
       else if (body.method === 'eth_getTransactionCount')
         result =
           body.params[1] !== 'pending' ? (final ? '0x1' : minedNonce) : nonce;
@@ -252,6 +254,7 @@ function fixture() {
       availableBalance = '0x1';
     },
     setPendingBalance(balance: bigint) {
+      canonicalBalance ??= availableBalance;
       availableBalance = `0x${balance.toString(16)}`;
     },
     externalPendingBalance(state: 'latest' | 'pending') {

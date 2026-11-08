@@ -186,6 +186,8 @@ const gasOutcomes: {
 }[] = [];
 const confirm = () => screen.getByRole('button', { name: 'buttons.confirm' });
 const block = () => ({
+  number: '0x20',
+  hash: '0x' + 'a'.repeat(64),
   gasLimit: BigNumber.from(30000000),
   ...(modern ? { baseFeePerGas: BigNumber.from(1000000000) } : {}),
 });
@@ -269,6 +271,7 @@ beforeEach(() => {
     send: jest.fn(async (method: string) => {
       if (method === 'eth_getBlockByNumber') return block();
       if (method === 'eth_maxPriorityFeePerGas') return '0x3b9aca00';
+      if (method === 'eth_getBalance') return '0x56bc75e2d63100000';
       if (method === 'eth_getTransactionCount') return '0x2';
       throw new Error(`Unexpected RPC ${method}`);
     }),
@@ -300,6 +303,7 @@ beforeEach(() => {
       minimumNonce: 0,
       retained: [],
       readMaximumCost: jest.fn(),
+      readAssetDebit: jest.fn(),
     }),
   });
   wallet.getWalletSetupStatus = () => undefined;

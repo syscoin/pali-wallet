@@ -722,6 +722,13 @@ export class NativeTransfers {
       throw error;
     }
   }
+  private async rejectDraftNonce(error: unknown, journal: NativeTransferJournalHandle, manual: boolean): Promise<never> {
+    if (manual && error instanceof EvmAutomaticNonceUnresolved && error.reason !== 'asset-state') {
+      await this.checkDraftNonce(journal, String(error.nonce), true);
+      throw new NativeTransferRpcError('REVIEW_REQUIRED');
+    }
+    throw error;
+  }
   prepare(recipient: string, amount: string, nonce?: string): Promise<void> {
     let units: string;
     let to: string;
@@ -748,7 +755,8 @@ export class NativeTransfers {
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
       const quote = await rpc.prepare(address, to, units, signal, nonceOverride,
-        journal.planAutomaticNonce);
+        journal.planAutomaticNonce).catch((error: unknown) =>
+          this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -806,7 +814,8 @@ export class NativeTransfers {
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
       const quote = await rpc.prepareToken(address, intent, signal, undefined, nonceOverride,
-        journal.planAutomaticNonce);
+        journal.planAutomaticNonce).catch((error: unknown) =>
+          this.rejectDraftNonce(error, journal, nonceOverride !== undefined));
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -853,7 +862,10 @@ export class NativeTransfers {
       const selection = Object.freeze({ network, owner: address, saved: inventory.collectible });
       const quote = await withNftInventorySignal(signal, inventory.signal, (owned) =>
         rpc.prepareNft(selection, request, owned, guard, nonceOverride, journal.planAutomaticNonce))
-        .catch((error: unknown) => { guard(); throw error; });
+        .catch((error: unknown) => {
+          guard();
+          return this.rejectDraftNonce(error, journal, nonceOverride !== undefined);
+        });
       guard();
       await this.checkDraftNonce(journal, quote.envelope.nonce, nonceOverride !== undefined);
       guard();

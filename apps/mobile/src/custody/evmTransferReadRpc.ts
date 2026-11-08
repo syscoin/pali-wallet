@@ -445,6 +445,8 @@ export class EvmTransferReadRpc {
     }
     if (count > BigInt(Number.MAX_SAFE_INTEGER) || pending > BigInt(Number.MAX_SAFE_INTEGER))
       return rejectRead('INVALID_RESPONSE');
+    if (nonceOverride !== undefined && BigInt(nonceOverride) < count)
+      return rejectRead('NONCE_UNAVAILABLE');
     const plan = await planner({
       latest: Number(count), pending: Number(pending),
       ...(assetState ? { assetState } : {}),

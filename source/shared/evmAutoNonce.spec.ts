@@ -14,22 +14,45 @@ it('bounds a cheap pending original by the maximum retained same-nonce alternati
     hash === original.hash ? BigInt(121000) : BigInt(142000)
   );
   const plan = await fixture.select({ pending: 1 });
-  expect(plan).toEqual({ kind: 'ready', nonce: 1,
-    nativeReservations: { canonical: BigInt(142000), pending: BigInt(0) } });
+  expect(plan).toEqual({
+    kind: 'ready',
+    nonce: 1,
+    nativeReservations: { canonical: BigInt(142000), pending: BigInt(0) },
+  });
   if (plan.kind !== 'ready') throw new Error('Missing plan');
-  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(879000) },
-    plan.nativeReservations, 'pending')).toBe(BigInt(858000));
+  expect(
+    availableEvmNativeBalance(
+      { canonical: BigInt(1000000), pending: BigInt(879000) },
+      plan.nativeReservations,
+      'pending'
+    )
+  ).toBe(BigInt(858000));
   expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(2);
 });
 
 it('keeps pending external debits and canonical manual replacement funding separate', () => {
   const reservations = { canonical: BigInt(142000), pending: BigInt(0) };
-  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(858000) },
-    reservations, 'pending')).toBe(BigInt(858000));
-  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(700000) },
-    reservations, 'pending')).toBe(BigInt(700000));
-  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(1) },
-    reservations, 'latest')).toBe(BigInt(858000));
+  expect(
+    availableEvmNativeBalance(
+      { canonical: BigInt(1000000), pending: BigInt(858000) },
+      reservations,
+      'pending'
+    )
+  ).toBe(BigInt(858000));
+  expect(
+    availableEvmNativeBalance(
+      { canonical: BigInt(1000000), pending: BigInt(700000) },
+      reservations,
+      'pending'
+    )
+  ).toBe(BigInt(700000));
+  expect(
+    availableEvmNativeBalance(
+      { canonical: BigInt(1000000), pending: BigInt(1) },
+      reservations,
+      'latest'
+    )
+  ).toBe(BigInt(858000));
 });
 
 type Input = Parameters<typeof planEvmAutoNonce>[0];
@@ -701,7 +724,9 @@ it.each([false, true])(
       nativeReservations: { canonical: BigInt(7), pending: BigInt(7) },
     });
     if (result.kind === 'ready')
-      expect(BigInt(10) - result.nativeReservations.canonical < BigInt(6)).toBe(true);
+      expect(BigInt(10) - result.nativeReservations.canonical < BigInt(6)).toBe(
+        true
+      );
   }
 );
 it('retains a separate canonical bound for a native pending prefix', async () => {

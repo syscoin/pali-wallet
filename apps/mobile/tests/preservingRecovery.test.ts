@@ -11,6 +11,7 @@ import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
+import type { NativeTransferDispatchValidation } from '../src/custody/transfers.ts';
 import { readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
@@ -563,14 +564,20 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
       return hash;
     });
     const guard = () => undefined;
+    const verifyDispatch: NativeTransferDispatchValidation = async (planner, assertCurrent) => {
+      const plan = await planner({ latest: 0, pending: 0, readPending: async () => null, assertCurrent });
+      assert.equal(plan.kind, 'ready');
+      if (plan.kind === 'ready') assert.equal(plan.nonce, Number(approval.nonce));
+    };
     await assert.rejects(transfers.submit(raw, hash, guard, broadcast, undefined, undefined as never));
+    await assert.rejects(transfers.submit(raw, hash, guard, broadcast, undefined, approval));
     await assert.rejects(
-      transfers.submit(raw, hash, guard, broadcast, undefined, { ...approval, nonce: '1' }),
+      transfers.submit(raw, hash, guard, broadcast, undefined, { ...approval, nonce: '1' }, undefined, verifyDispatch),
       { transactionNotBroadcast: true }
     );
     assert.deepEqual(f.read().signedRecords, before);
     assert.equal(broadcasts, 0);
-    await transfers.submit(raw, hash, guard, broadcast, undefined, approval);
+    await transfers.submit(raw, hash, guard, broadcast, undefined, approval, undefined, verifyDispatch);
     assert.equal(broadcasts, 1);
   } finally {
     await f.close();

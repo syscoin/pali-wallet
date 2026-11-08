@@ -241,7 +241,7 @@ async function withController(
           break;
         case 'eth_getBalance':
           assert.equal(call.params[0], owner);
-          assert.ok(call.params[1] === 'pending' || call.params[1] === 'latest');
+          assert.ok(call.params[1] === 'pending' || call.params[1] === 'latest' || call.params[1] === block.number);
           result = expectedEstimateTag === 'latest' && call.params[1] === 'pending'
             ? '0x1' : '0xffffffffffff';
           break;
