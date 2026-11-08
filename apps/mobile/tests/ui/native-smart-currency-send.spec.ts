@@ -292,3 +292,57 @@ test('Smart ERC20 transfer keeps token identity and payer fee reviews separate o
     { method: 'submit' },
   ]);
 });
+
+for (const standard of ['721', '1155'])
+  test(`Smart ERC${standard} safe transfer keeps exact item and quantity in review`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto(`/?smart-currency=1&nft=${standard}`);
+    await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
+    const id = standard === '721' ? ((1n << 256n) - 1n).toString() : '7';
+    if (standard === '721')
+      await page.getByLabel('Token ID', { exact: true }).fill(id);
+    else await page.getByLabel('Quantity', { exact: true }).fill('3');
+    await page
+      .getByRole('button', { name: 'Review transfer', exact: true })
+      .click();
+    await expect(
+      page.getByText('0x6666666666666666666666666666666666666666', {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(page.getByText(id, { exact: true })).toBeVisible();
+    await contained(page);
+    await page.screenshot({
+      path: test.info().outputPath(`smart-nft-${standard}-review-320.png`),
+    });
+    const authorize = page.getByRole('button', {
+      name: 'Authorize transfer',
+      exact: true,
+    });
+    await authorize.scrollIntoViewIfNeeded();
+    await expect(authorize).toBeInViewport();
+    await authorize.click();
+    const confirm = page.getByRole('button', {
+      name: 'Confirm transfer',
+      exact: true,
+    });
+    const close = page.getByRole('button', { name: 'Close', exact: true });
+    await close.scrollIntoViewIfNeeded();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    );
+    await expect(confirm).toBeInViewport({ ratio: 0.999 });
+    await expect(close).toBeInViewport({ ratio: 0.999 });
+    await page.screenshot({
+      path: test.info().outputPath(`smart-nft-${standard}-payer-320.png`),
+    });
+    await confirm.click();
+    await expect(
+      page.getByText('Transfer submitted', { exact: true })
+    ).toBeVisible();
+  });

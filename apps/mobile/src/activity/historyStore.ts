@@ -1,3 +1,4 @@
+import { snapshotNftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import {
   validateActivityView as view,
   validateActivityCandidate as candidate,
@@ -90,6 +91,11 @@ export function validateArchivedActivity(
     Object.hasOwn(value, 'smartAccount')
       ? ['smartAccount']
       : []),
+    ...(value &&
+    typeof value === 'object' &&
+    Object.hasOwn(value, 'collectibleTransfer')
+      ? ['collectibleTransfer']
+      : []),
     ...(value && typeof value === 'object' && Object.hasOwn(value, 'token')
       ? ['token']
       : []),
@@ -146,6 +152,19 @@ export function validateArchivedActivity(
     )
       return invalid();
     data.smartAccount = Object.freeze(identity);
+  }
+  if (data.collectibleTransfer !== undefined) {
+    const intent = snapshotNftTransferIntent(data.collectibleTransfer);
+    if (
+      data.token !== undefined ||
+      !data.smartAccount ||
+      intent.from !== data.address ||
+      intent.chainId !== data.chainId ||
+      intent.recipient !== data.recipient ||
+      intent.amountUnits !== data.amountUnits
+    )
+      return invalid();
+    data.collectibleTransfer = intent;
   }
   if (data.token !== undefined) {
     try {

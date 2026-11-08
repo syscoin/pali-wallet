@@ -246,3 +246,17 @@ test('Smart token authorization shows exact 255-decimal units and the contract',
   button(tree, 'Authorize transfer')();
   assert.deepEqual(f.calls.authorize, [4]);
 });
+
+
+test('Smart NFT authorization shows contract, token ID and exact quantity', () => {
+  const f = fixture();
+  const contractAddress = '0x6666666666666666666666666666666666666666';
+  f.update({ intent: { kind: 'nft-transfer', chainId: '1', from: '0x1111111111111111111111111111111111111111', contractAddress,
+    recipient: '0x2222222222222222222222222222222222222222', tokenStandard: 'ERC-1155', tokenId: '7', amountUnits: '9007199254740993' } });
+  const tree = f.render();
+  assert(text(tree).includes(contractAddress));
+  assert(text(tree).includes('9007199254740993'));
+  assert(text(tree).includes('ERC-1155'));
+  button(tree, 'Authorize transfer')();
+  assert.deepEqual(f.calls.authorize, [4]);
+});

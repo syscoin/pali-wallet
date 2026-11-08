@@ -38,6 +38,7 @@ export type TerminalActivityRecord = Readonly<{
   amountUnits: string;
   maximumFeeUnits: string;
   smartAccount?: SmartAccountActivityIdentity;
+  collectibleTransfer?: NftTransferIntent;
   token?: Readonly<{
     contractAddress: string;
     decimals: number;
@@ -56,7 +57,6 @@ export type LocalActivityRecord = Omit<
 > &
   Readonly<{
     recipient: string | null;
-    collectibleTransfer?: NftTransferIntent;
     inspectionOnly?: true;
     speedUpEligible?: true;
     operation?: import('../../../../source/wallet/evmSignedRecords.ts').EvmSignedRecordSummary['operation'];

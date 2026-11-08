@@ -1,4 +1,8 @@
 import {
+  decodeNftSafeTransferData,
+  type NftTransferIntent,
+} from '../shared/nftTransfer.ts';
+import {
   createErc20Policy,
   decodeErc20Transfer,
   type Erc20Metadata,
@@ -47,6 +51,7 @@ export type RetainedSmartAccountTransfer = Readonly<{
   amountUnits: string;
   maximumAccountCharge: string;
   token?: Erc20Metadata;
+  collectibleTransfer?: NftTransferIntent;
   operationHash: string;
   operationNonce: string;
 }>;
@@ -130,13 +135,27 @@ export function decodeRetainedSmartAccountTransfer(
     let recipient = executionTarget,
       amountUnits = nativeValue.toString();
     let token: Erc20Metadata | undefined;
+    let collectibleTransfer: NftTransferIntent | undefined;
     if (data !== '0x') {
       if (nativeValue !== BigInt(0)) return null;
-      const transfer = decodeErc20Transfer(data);
-      token = tokenPolicy.parseMetadata(entry.metadata?.smartAccountToken);
-      if (token.contractAddress !== executionTarget) return null;
-      recipient = getAddress(transfer.recipient);
-      amountUnits = transfer.amountUnits;
+      const standard = entry.metadata?.smartAccountNftStandard;
+      if (standard === 'ERC-721' || standard === 'ERC-1155') {
+        collectibleTransfer = decodeNftSafeTransferData(data, {
+          chainId: entry.chainId,
+          from: account,
+          contractAddress: executionTarget,
+          tokenStandard: standard,
+        });
+        if (!collectibleTransfer) return null;
+        recipient = collectibleTransfer.recipient;
+        amountUnits = collectibleTransfer.amountUnits;
+      } else {
+        const transfer = decodeErc20Transfer(data);
+        token = tokenPolicy.parseMetadata(entry.metadata?.smartAccountToken);
+        if (token.contractAddress !== executionTarget) return null;
+        recipient = getAddress(transfer.recipient);
+        amountUnits = transfer.amountUnits;
+      }
     }
     if (amountUnits === '0') return null;
     const operationHash = getSmartAccountUserOpHash(operation, chainId);
@@ -153,6 +172,7 @@ export function decodeRetainedSmartAccountTransfer(
       operationHash,
       operationNonce: operation.nonce,
       ...(token ? { token } : {}),
+      ...(collectibleTransfer ? { collectibleTransfer } : {}),
       maximumAccountCharge:
         getSmartAccountUserOpRequiredPrefund(operation).toString(),
     });

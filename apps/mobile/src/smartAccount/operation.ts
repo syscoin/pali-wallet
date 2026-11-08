@@ -1,3 +1,6 @@
+import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
+import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
+import type { SavedCollectible } from '../portfolio/tokenRegistry.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { getPaliEntryPointAddress } from '../../../../source/utils/smartAccount/contracts.ts';
@@ -21,12 +24,19 @@ export type NativeSmartAccountResolvedIntent =
       token: Erc20Metadata;
       recipient: string;
       amountUnits: string;
-    }>;
+    }>
+  | NftTransferIntent;
 
 export type NativeSmartAccountAmount =
   | Readonly<{ kind: 'exact'; amount: string }>
   | Readonly<{ kind: 'maximum' }>
-  | Readonly<{ kind: 'erc20'; contractAddress: string; amount: string }>;
+  | Readonly<{ kind: 'erc20'; contractAddress: string; amount: string }>
+  | Readonly<{
+      kind: 'nft';
+      collectible: SavedCollectible;
+      tokenId: string;
+      amountUnits: string;
+    }>;
 export type NativeSmartAccountIntent =
   | NativeSmartAccountResolvedIntent
   | Readonly<{ kind: 'native-max'; recipient: string }>;
@@ -208,7 +218,9 @@ export class NativeSmartAccountOperation {
       if (intent.kind !== 'deploy') {
         const requested = this.host.intent;
         const expected =
-          intent.kind === 'erc20-transfer'
+          intent.kind === 'nft-transfer'
+            ? buildSmartAccountNftTransfer(intent)
+            : intent.kind === 'erc20-transfer'
             ? buildSmartAccountErc20Transfer(
                 intent.token.contractAddress,
                 intent.recipient,
@@ -231,6 +243,15 @@ export class NativeSmartAccountOperation {
           (requested.kind === 'erc20-transfer' &&
             intent.kind === 'erc20-transfer' &&
             requested.token !== intent.token) ||
+          (requested.kind === 'nft-transfer' &&
+            intent.kind === 'nft-transfer' &&
+            (intent.from.toLowerCase() !== this.host.account.toLowerCase() ||
+              intent.chainId !== this.host.network.chainId ||
+              requested.from !== intent.from ||
+              requested.chainId !== intent.chainId ||
+              requested.contractAddress !== intent.contractAddress ||
+              requested.tokenStandard !== intent.tokenStandard ||
+              requested.tokenId !== intent.tokenId)) ||
           prepared.executions.length !== 1 ||
           execution?.target.toLowerCase() !== expected.target.toLowerCase() ||
           execution.data !== expected.data ||

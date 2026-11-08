@@ -1,3 +1,4 @@
+import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 import { getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
@@ -710,6 +711,67 @@ test('Smart ERC20 send requires the selected account owned token catalogue', asy
     await assert.rejects(f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
       kind: 'erc20', contractAddress: '0x5555555555555555555555555555555555555555', amount: '1',
     }, () => undefined), { code: 'NOT_READY' });
+    assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+
+for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`Smart ${standard} uses the shared safe transfer and retains inner failure after restart`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Collectible sender', password: PASSWORD });
+    const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+    const contractAddress = '0x5555555555555555555555555555555555555555', tokenId = ((1n << 256n) - 1n).toString();
+    const collectible = standard === 'ERC-721' ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId };
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.addCollectible!(registry.revision, collectible, () => undefined);
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    const recipient = '0x2222222222222222222222222222222222222222';
+    const amountUnits = standard === 'ERC-721' ? '1' : '900719925474099312345';
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'nft', collectible, tokenId, amountUnits }, () => undefined);
+    await operation.prepare();
+    const ready = operation.getSnapshot();
+    assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+    assert.equal(ready.intent.kind, 'nft-transfer');
+    if (ready.intent.kind !== 'nft-transfer') assert.fail('Missing NFT intent');
+    assert.equal(ready.intent.from, smart.address);
+    assert.equal(ready.intent.tokenId, tokenId);
+    assert.equal(ready.intent.amountUnits, amountUnits);
+    const sending = operation.authorize(ready.revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const [ops] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[0]!).data);
+    const [, execution] = paliSmartAccountInterface.decodeFunctionData('execute', ops[0].callData);
+    assert.equal('0x' + execution.slice(2, 42), contractAddress);
+    assert.deepEqual(decodeNftSafeTransferData('0x' + execution.slice(106), ready.intent), ready.intent);
+    operation.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.deepEqual(activity.locals[0]!.collectibleTransfer, ready.intent);
+    f.showReceipts(false);
+    const observed = await f.runtime.activity!.observeLocal!(activity.locals[0]!, () => undefined, new AbortController().signal);
+    assert.equal(observed.status === 'mined' && observed.outcome, 'reverted');
+    await f.removeCompletedJournalBytes();
+    const history = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.deepEqual(history.saved.archived[0]!.collectibleTransfer, ready.intent);
+    assert.equal((await f.runtime.activity!.observeLocal!(history.saved.archived[0]!, () => undefined, new AbortController().signal)).status, 'mined');
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('Smart NFT requests cannot replace the owned contract, standard, fixed ID or network scope', async () => {
+  const f = await fixture();
+  try {
+    await f.change({ kind: 'create-smart', label: 'Collectible sender', password: PASSWORD });
+    const collectible = { contractAddress: '0x5555555555555555555555555555555555555555', tokenStandard: 'ERC-1155' as const, tokenId: '7' };
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.addCollectible!(registry.revision, collectible, () => undefined);
+    const to = '0x2222222222222222222222222222222222222222';
+    await assert.rejects(f.runtime.openSmartAccountSend(to, { kind: 'nft', collectible, tokenId: '8', amountUnits: '1' }, () => undefined));
+    await assert.rejects(f.runtime.openSmartAccountSend(to, { kind: 'nft', collectible: { ...collectible, contractAddress: to }, tokenId: '7', amountUnits: '1' }, () => undefined), { code: 'NOT_READY' });
+    await assert.rejects(f.runtime.openSmartAccountSend(to, { kind: 'nft', collectible: { contractAddress: collectible.contractAddress, tokenStandard: 'ERC-721' }, tokenId: '7', amountUnits: '1' }, () => undefined), { code: 'NOT_READY' });
+    await f.selectNetwork('base');
+    await assert.rejects(f.runtime.openSmartAccountSend(to, { kind: 'nft', collectible, tokenId: '7', amountUnits: '1' }, () => undefined));
     assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
 });
