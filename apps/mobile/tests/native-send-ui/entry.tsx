@@ -1,3 +1,4 @@
+import { NativeEoaBatchFixture } from './nativeEoaBatchFixture';
 import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
 import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
 import { NativeNoteImportFixture } from './nativeNoteImportFixture';
@@ -381,7 +382,9 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('smart-batch') ? (
+      {new URLSearchParams(window.location.search).has('eoa-batch') ? (
+        <NativeEoaBatchFixture />
+      ) : new URLSearchParams(window.location.search).has('smart-batch') ? (
         <NativeSmartBatchFixture />
       ) : new URLSearchParams(window.location.search).has('smart-dapp') ? (
         <NativeSmartDappFixture />
