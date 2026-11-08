@@ -3,7 +3,7 @@ import {
   DAPP_REQUEST_LIMITS,
   isTypedDataMethod,
   payloadBudgetError,
-} from './requestPayloadBudget';
+} from './requestPayloadBudget.ts';
 
 export const TYPED_DATA_WORK_LIMITS = {
   types: 64,

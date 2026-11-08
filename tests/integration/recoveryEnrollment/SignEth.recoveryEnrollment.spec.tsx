@@ -17,7 +17,7 @@ import path from 'path';
 import React from 'react';
 
 import EthSign from '../../../source/pages/Transactions/SignEth';
-import { capturePersonalSignApproval } from '../../../source/scripts/Background/handlers/personalSignApproval';
+import { captureMessageSignApproval } from '../../../source/scripts/Background/handlers/messageSignApproval';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { defaultAbiCoder, hexlify, toUtf8Bytes } from 'utils/ethersV6Compat';
 
@@ -83,7 +83,7 @@ const owner = new Wallet(TEST_KEY);
 let mockState: any;
 let mockQuery: any;
 let mockMetadata: any;
-let mockApproval: ReturnType<typeof capturePersonalSignApproval>;
+let mockApproval: ReturnType<typeof captureMessageSignApproval>;
 let backend: ChildProcess;
 let backendInfo: any;
 let requestId = 0;
@@ -116,7 +116,7 @@ const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
   if (method.at(-1) === 'hydrateSmartAccount') return mockMetadata;
   if (method.at(-1) === 'checkAddressBlacklist')
     return { isBlacklisted: false, severity: 'low' };
-  expect(method).toEqual(['wallet', 'signSmartAccountPersonalDigest']);
+  expect(method).toEqual(['wallet', 'signSmartAccountMessageDigest']);
   expect(args).toEqual([
     { address: owner.address, id: 0, type: 'HDAccount' },
     mockMetadata.auth.validator,
@@ -246,7 +246,8 @@ async function sign(
     0: hexlify(toUtf8Bytes(message)),
     1: account,
   };
-  mockApproval = capturePersonalSignApproval({
+  mockApproval = captureMessageSignApproval({
+    method: 'personal_sign',
     getWalletSessionGeneration: () => 0,
     host: mockQuery.host,
     params: mockQuery,
@@ -272,7 +273,7 @@ async function sign(
   expect(mockQuery).toEqual(original);
   expect(
     mockEmitter.mock.calls.filter(
-      ([method]) => method.at(-1) === 'signSmartAccountPersonalDigest'
+      ([method]) => method.at(-1) === 'signSmartAccountMessageDigest'
     )
   ).toHaveLength(1);
   const [event, signature] = jest.mocked(dispatchBackgroundEvent).mock.calls[0];

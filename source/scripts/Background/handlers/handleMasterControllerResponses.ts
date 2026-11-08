@@ -24,7 +24,7 @@ import {
   transactionApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
-import { requirePersonalSignApproval } from './personalSignApproval';
+import { requireMessageSignApproval } from './messageSignApproval';
 import { assertWalletControllerRoute } from './walletControllerRoutes';
 
 const AA21_PREFUND_REASON_HEX =
@@ -265,7 +265,7 @@ export const handleMasterControllerResponses = (
       };
       assertSetupAdmission();
       assertWalletControllerRoute(methods, params);
-      const personalSignApproval = requirePersonalSignApproval(
+      const messageSignApproval = requireMessageSignApproval(
         sender,
         methods,
         params
@@ -278,7 +278,7 @@ export const handleMasterControllerResponses = (
         methods[0] === 'wallet' &&
         methods[1] === 'authorizeDappManualNonce';
 
-      const signer = personalSignApproval?.signer;
+      const signer = messageSignApproval?.signer;
       const route = signer ? ['wallet', signer.method] : methods;
       if (manualNonceRoute) {
         targetMethod = async (nonce: unknown) => {
@@ -317,10 +317,9 @@ export const handleMasterControllerResponses = (
           | undefined;
         Promise.resolve()
           .then(async () => {
-            if (personalSignApproval)
-              await personalSignApproval.checkDocument();
+            if (messageSignApproval) await messageSignApproval.checkDocument();
             assertSetupAdmission();
-            personalSignApproval?.assertCurrent();
+            messageSignApproval?.assertCurrent();
             const walletMethod =
               route.length === 2 && route[0] === 'wallet'
                 ? route[1]
@@ -443,8 +442,8 @@ export const handleMasterControllerResponses = (
                 ? [
                     ...signer.args,
                     signer.method === 'signSLHDSAActionHash'
-                      ? personalSignApproval
-                      : personalSignApproval.assertCurrent,
+                      ? messageSignApproval
+                      : messageSignApproval.assertCurrent,
                   ]
                 : argumentsForCall)
             );
@@ -462,8 +461,7 @@ export const handleMasterControllerResponses = (
               )
             )
               assertSetupAdmission();
-            if (personalSignApproval)
-              await personalSignApproval.checkDocument();
+            if (messageSignApproval) await messageSignApproval.checkDocument();
             if (utxoMethod === 'signSyscoinPsbt' && utxoApproval) {
               await utxoApproval.checkDocument();
               assertUtxoSignatureCurrent = utxoApproval.authority.assertCurrent;
@@ -472,9 +470,9 @@ export const handleMasterControllerResponses = (
           })
           .then((response) => {
             assertUtxoSignatureCurrent?.();
-            if (personalSignApproval) {
+            if (messageSignApproval) {
               assertSetupAdmission();
-              personalSignApproval.assertCurrent();
+              messageSignApproval.assertCurrent();
             }
             nonceClaim?.finish();
             finishSubmission();

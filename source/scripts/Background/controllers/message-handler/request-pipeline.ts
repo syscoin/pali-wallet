@@ -1,9 +1,9 @@
 import { ethErrors } from 'helpers/errors';
 
 import {
-  getPersonalSignGrantReplacement,
-  watchConnectedPersonalSignGrant,
-} from '../../handlers/personalSignApproval';
+  getMessageSignGrantReplacement,
+  watchConnectedMessageSignGrant,
+} from '../../handlers/messageSignApproval';
 import { waitForExternalWalletClosure } from '../externalWalletCreation';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
@@ -135,7 +135,7 @@ class RequestCoordinator {
       // Different route, queue this one
       return new Promise((resolve, reject) => {
         const signal = context.originalRequest.signal;
-        const scoped = getPersonalSignGrantReplacement(signal);
+        const scoped = getMessageSignGrantReplacement(signal);
         const removeAndReject = (error: unknown) => {
           const index = this.requestQueue.indexOf(entry);
           if (index === -1) return;
@@ -256,7 +256,7 @@ class RequestCoordinator {
       setTimeout(() => {
         if (
           originalRequest.signal?.aborted &&
-          getPersonalSignGrantReplacement(originalRequest.signal)
+          getMessageSignGrantReplacement(originalRequest.signal)
         ) {
           nextRequest.reject(requestCancelledError());
           return;
@@ -356,7 +356,7 @@ export class RequestPipeline {
       method: context.originalRequest.method,
       params: context.originalRequest.params,
     });
-    const grant = watchConnectedPersonalSignGrant(context.originalRequest);
+    const grant = watchConnectedMessageSignGrant(context.originalRequest);
     if (grant) context.originalRequest.signal = grant.signal;
     this.pendingByOrigin.set(origin, originCount + 1);
     this.pendingCount += 1;
@@ -836,7 +836,7 @@ export const connectionMiddleware: Middleware = async (context, next) => {
   }
 
   // A request which began disconnected can bind its newly approved grant.
-  const grant = watchConnectedPersonalSignGrant(originalRequest);
+  const grant = watchConnectedMessageSignGrant(originalRequest);
   if (!grant) return next();
   originalRequest.signal = grant.signal;
   try {
@@ -987,7 +987,7 @@ const syncDappAccountAfterSelection = async (
     targetAccount.id,
     targetAccountType,
     expectedContext,
-    getPersonalSignGrantReplacement(signal)
+    getMessageSignGrantReplacement(signal)
   );
 };
 

@@ -1,5 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
+import { isDappMessageMethod } from '../../../../shared/dappMessageRequest';
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import {
   transactionApprovalExpired,
@@ -9,10 +10,10 @@ import {
   type TransactionApprovalDocument,
 } from '../../handlers/approvalSubmission';
 import {
-  bindPersonalSignApproval,
-  capturePersonalSignApproval,
-  personalSignApprovalExpired,
-} from '../../handlers/personalSignApproval';
+  bindMessageSignApproval,
+  captureMessageSignApproval,
+  messageSignApprovalExpired,
+} from '../../handlers/messageSignApproval';
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -108,7 +109,6 @@ const handleResponseEvent = async (
 };
 
 interface IPopupRequest {
-  connectedPersonalSign?: boolean;
   data?: object;
   eventName: string;
   host: string;
@@ -119,10 +119,12 @@ interface IPopupRequest {
 
 /** Opens an approval popup for the original request document. */
 export const popupPromise = async (request: IPopupRequest) => {
-  if (!request.connectedPersonalSign) return openApprovalPopup(request);
+  if (!isDappMessageMethod(request.eventName))
+    return openApprovalPopup(request);
   const { wallet } = getController();
-  const approval = capturePersonalSignApproval({
+  const approval = captureMessageSignApproval({
     host: request.host,
+    method: request.eventName,
     params: Array.isArray(request.data) ? request.data : undefined,
     sender: request.sender,
     signal: request.signal,
@@ -141,11 +143,11 @@ export const popupPromise = async (request: IPopupRequest) => {
 
 const openApprovalPopup = async (
   { data, eventName, host, route, signal, sender }: IPopupRequest,
-  personalSignApproval?: ReturnType<typeof capturePersonalSignApproval>
+  messageSignApproval?: ReturnType<typeof captureMessageSignApproval>
 ) => {
   assertRequestActive(signal);
   if (!(await isRequestDocumentLive(sender))) throw requestCancelledError();
-  personalSignApproval?.assertCurrent();
+  messageSignApproval?.assertCurrent();
   const { createPopup } = getController();
   const approvalId = crypto.randomUUID();
 
@@ -224,7 +226,7 @@ const openApprovalPopup = async (
   ) => {
     if (
       registrationSender.tab?.windowId !== popup?.id ||
-      ((personalSignApproval || tracksTransactionDocument) &&
+      ((messageSignApproval || tracksTransactionDocument) &&
         registrationSender.tab?.id === undefined) ||
       (approvalDocumentId &&
         registrationSender.documentId !== approvalDocumentId)
@@ -283,22 +285,22 @@ const openApprovalPopup = async (
         (!approvalClientId || approvalClientId === source.id) &&
         (!tracksTransactionDocument ||
           (!transactionDocumentRetired && !signal?.aborted)) &&
-        (!personalSignApproval || personalSignApproval.isCurrent());
+        (!messageSignApproval || messageSignApproval.isCurrent());
       if (available) {
         approvalClientId = source.id;
         const clientId = source.id;
         const approverIsLive = () =>
           isApprovalClientLive(clientId, approvalId, route);
         if (
-          (personalSignApproval || tracksTransactionDocument) &&
+          (messageSignApproval || tracksTransactionDocument) &&
           approvalDocumentId &&
           !unbindApprovalDocument
         ) {
           const unbind =
-            personalSignApproval &&
-            bindPersonalSignApproval(
+            messageSignApproval &&
+            bindMessageSignApproval(
               approvalDocumentId,
-              personalSignApproval,
+              messageSignApproval,
               approverIsLive
             );
           const retire = () => {
@@ -307,7 +309,7 @@ const openApprovalPopup = async (
               transactionDocumentLifetime.abort();
               onAbort?.();
             }
-            personalSignApproval?.retire();
+            messageSignApproval?.retire();
           };
           const checkNavigation = (complete: boolean) => {
             const check = ++documentCheck;
@@ -480,7 +482,7 @@ const openApprovalPopup = async (
     const safeResolve = (result: any) => {
       if (
         resolved ||
-        (personalSignApproval && !personalSignApproval.isCurrent())
+        (messageSignApproval && !messageSignApproval.isCurrent())
       ) {
         return;
       }
@@ -568,8 +570,8 @@ const openApprovalPopup = async (
       reject(
         submissionStarted
           ? cancellationError()
-          : personalSignApproval
-          ? personalSignApprovalExpired()
+          : messageSignApproval
+          ? messageSignApprovalExpired()
           : requestCancelledError()
       );
     };

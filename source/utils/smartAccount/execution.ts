@@ -537,10 +537,7 @@ export type SmartAccountSLHDSASigner = (params: {
 
 type SLHDSAAuthenticatorRuntimeContext = {
   signActionHash?: SmartAccountSLHDSASigner;
-  signPersonalActionHash?: (
-    keyId: string,
-    validator: string
-  ) => Promise<string>;
+  signMessageActionHash?: (keyId: string, validator: string) => Promise<string>;
 };
 
 const stringifyError = (error: unknown): string => {
@@ -625,11 +622,11 @@ export class SmartAccountExternalSignatureRequired extends Error {
 export const getSmartAccountLocalOwnerContexts = ({
   accounts,
   controllerEmitter,
-  personalSignValidator,
+  messageSignValidator,
 }: {
   accounts: Record<string, Record<string, any>>;
   controllerEmitter: ControllerEmitter;
-  personalSignValidator?: string;
+  messageSignValidator?: string;
 }): SmartAccountAuthenticatorRuntimeContexts => {
   const ownerTypes: KeyringAccountType[] = [
     'HDAccount' as KeyringAccountType,
@@ -655,14 +652,18 @@ export const getSmartAccountLocalOwnerContexts = ({
     )
   );
 
-  const signPersonalActionHash =
-    personalSignValidator === undefined
+  const signMessageActionHash =
+    messageSignValidator === undefined
       ? undefined
       : (signer: SmartAccountLocalOwner | string, validator: string) =>
           controllerEmitter(
-            ['wallet', 'signSmartAccountPersonalDigest'],
-            [signer, personalSignValidator, validator],
-            typeof signer === 'string' ? 600000 : undefined
+            ['wallet', 'signSmartAccountMessageDigest'],
+            [signer, messageSignValidator, validator],
+            typeof signer === 'string'
+              ? 600000
+              : signer.type === 'Ledger' || signer.type === 'Trezor'
+              ? 300000
+              : undefined
           );
 
   return {
@@ -674,10 +675,8 @@ export const getSmartAccountLocalOwnerContexts = ({
         owner,
         validator,
       }: Parameters<SmartAccountLocalEcdsaSigner>[0]) => {
-        const software =
-          owner.type === 'HDAccount' || owner.type === 'Imported';
-        if (software && signPersonalActionHash)
-          return signPersonalActionHash(owner, validator);
+        if (signMessageActionHash)
+          return signMessageActionHash(owner, validator);
         return controllerEmitter(
           ['wallet', 'signSmartAccountActionDigestInternal'],
           [
@@ -692,7 +691,7 @@ export const getSmartAccountLocalOwnerContexts = ({
     'slh-dsa': {
       signActionHash: (params) =>
         controllerEmitter(['wallet', 'signSLHDSAActionHash'], [params], 600000),
-      signPersonalActionHash,
+      signMessageActionHash,
     } satisfies SLHDSAAuthenticatorRuntimeContext,
   };
 };
@@ -874,8 +873,8 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
     const slhDsaContext = runtimeContext as
       | SLHDSAAuthenticatorRuntimeContext
       | undefined;
-    const signature = slhDsaContext?.signPersonalActionHash
-      ? await slhDsaContext.signPersonalActionHash(
+    const signature = slhDsaContext?.signMessageActionHash
+      ? await slhDsaContext.signMessageActionHash(
           validator.config.keyId,
           validator.address
         )

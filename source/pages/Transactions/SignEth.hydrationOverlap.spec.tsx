@@ -151,7 +151,7 @@ it('a settled metadata read takes the same request through one signing and succe
   );
   expect(mockSign).toHaveBeenCalledTimes(1);
   expect(mockLocalOwnerContexts).toHaveBeenCalledWith(
-    expect.objectContaining({ personalSignValidator: metadata.auth.validator })
+    expect.objectContaining({ messageSignValidator: metadata.auth.validator })
   );
   expect(screen.queryByRole('alert')).toBeNull();
   expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);

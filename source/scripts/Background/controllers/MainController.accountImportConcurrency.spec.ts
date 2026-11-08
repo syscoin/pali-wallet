@@ -24,7 +24,7 @@ import {
   readImportedRecoverySecret,
 } from '../../../wallet/importedAccountRecovery';
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
-import { bindPersonalSignApproval } from '../handlers/personalSignApproval';
+import { bindMessageSignApproval } from '../handlers/messageSignApproval';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, {
   persistAccountLabel,
@@ -578,23 +578,22 @@ const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
   const documentId = 'test-personal-sign-approval';
   // This fixture exercises the wallet setup gate after an admitted signature.
   // The actual dapp/popup enrollment is covered in the connection suite.
-  const unbind =
-    method === 'signPersonalMessage'
-      ? bindPersonalSignApproval(
-          documentId,
-          {
-            signal: new AbortController().signal,
-            isCurrent: () => true,
-            assertCurrent: () => undefined,
-            checkDocument: async () => undefined,
-            matches: () => true,
-            bindSmartAccountSigner: () => undefined,
-            retire: () => undefined,
-            dispose: () => undefined,
-          },
-          async () => true
-        )
-      : undefined;
+  const unbind = ['signPersonalMessage', 'signTypedData'].includes(method)
+    ? bindMessageSignApproval(
+        documentId,
+        {
+          signal: new AbortController().signal,
+          isCurrent: () => true,
+          assertCurrent: () => undefined,
+          checkDocument: async () => undefined,
+          matches: () => true,
+          bindSmartAccountSigner: () => undefined,
+          retire: () => undefined,
+          dispose: () => undefined,
+        },
+        async () => true
+      )
+    : undefined;
   expect(
     listener(
       {
