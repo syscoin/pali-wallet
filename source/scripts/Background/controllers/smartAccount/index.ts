@@ -41,7 +41,6 @@ import {
   buildHydratedP256WebAuthnAuthenticator,
   buildSLHDSAAuthenticator,
   buildSmartAccountGuardianRecoveryOperation,
-  createOwnedPaliSmartAccountFactory,
   getGuardianRecoveryDigestContext,
   getSmartAccountGuardianRecoveryHash,
   getPaliErc7739PersonalSignHash,
@@ -87,6 +86,7 @@ import {
   toPaliSmartAccount,
 } from 'utils/smartAccount';
 import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
+import { deriveDefaultSmartAccount } from 'utils/smartAccount/bootstrap';
 import {
   PALI_CREATE2_DEPLOYER_ADDRESS,
   getPaliInfrastructureContracts,
@@ -95,6 +95,7 @@ import {
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 import {
+  assertSmartAccountInfrastructureReady,
   projectSmartAccountInfrastructureObservation,
   SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
   type SmartAccountInfrastructureObservation,
@@ -454,16 +455,7 @@ class SmartAccountController {
       assertCurrent
     );
     assertCurrent();
-    if (!status.create2Deployer.deployed) {
-      throw new Error(
-        'This network does not expose the canonical CREATE2 deployer required for deterministic Pali smart account deployment.'
-      );
-    }
-    if (!status.ready) {
-      throw new Error(
-        'Pali smart account infrastructure is not deployed on this network. Deploy it first from Wallet Advanced settings, then try again.'
-      );
-    }
+    assertSmartAccountInfrastructureReady(status);
     return true;
   }
 
@@ -1224,57 +1216,15 @@ class SmartAccountController {
     managementOwner: string,
     assertCurrent: () => void
   ) {
-    const { chainId, provider } = context;
-    assertCurrent();
-    const configuredNetwork = await provider.getNetwork();
-    assertCurrent();
-    if (configuredNetwork.chainId !== BigInt(chainId))
-      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    await provider.verifyConfiguredChainId(true);
-    assertCurrent();
-    await this.assertInfrastructureSupported(context, assertCurrent);
-    assertCurrent();
-    const descriptor = this.deriveSmartAccountDescriptor(
+    return deriveDefaultSmartAccount({
       accountIndex,
-      chainId,
-      managementOwner
-    );
-    const authenticator = this.buildAuthenticatorForCreation(chainId, {
-      config: { owners: [managementOwner], threshold: 1 },
-      id: 'ecdsa',
+      chainId: context.chainId,
+      managementAddress: managementOwner,
+      provider: context.provider,
+      assertInfrastructureSupported: () =>
+        this.assertInfrastructureSupported(context, assertCurrent),
+      assertCurrent,
     });
-    const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
-    const smartAccount = await toPaliSmartAccount({
-      auth: authenticator.auth,
-      chainId,
-      deploySalt: descriptor.deploymentSalt,
-      factoryAddress,
-      factory: createOwnedPaliSmartAccountFactory(
-        chainId,
-        provider,
-        assertCurrent
-      ),
-    });
-    assertCurrent();
-    const metadata: ISmartAccountMetadata = {
-      ...authenticator.metadata,
-      auth: authenticator.auth,
-      availableModules: getAvailablePaliModules(chainId),
-      chainId,
-      contractVersion: PALI_SMART_ACCOUNT_VERSION,
-      deploymentAuth: {
-        data: authenticator.auth.data,
-        validator: authenticator.auth.validator,
-      },
-      deploymentSalt: descriptor.deploymentSalt,
-      descriptor,
-      factoryAddress,
-      isDeployed: false,
-    };
-    return {
-      address: smartAccount.address,
-      metadata: this.getDurableSmartAccountMetadata(metadata),
-    };
   }
 
   public async registerSmartAccountOnChain(
@@ -1513,18 +1463,6 @@ class SmartAccountController {
         return exhaustive;
       }
     }
-  }
-
-  private getDurableSmartAccountMetadata(
-    metadata: ISmartAccountMetadata
-  ): ISmartAccountMetadata {
-    if (!metadata.isDeployed) {
-      return metadata;
-    }
-    const durableMetadata = { ...metadata };
-    delete durableMetadata.auth;
-    delete durableMetadata.installedModules;
-    return durableMetadata;
   }
 
   private deriveSmartAccountDescriptor(

@@ -123,11 +123,12 @@ export class EvmTransferReadRpc {
     this.monotonicMilliseconds = options.monotonicMilliseconds ?? (() => Math.floor(performance.now()));
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 30000) throw new Error('Invalid read timeout');
   }
-  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>, scope?: 'endpoint' | 'nft-quote'): Promise<T> {
+  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>, scope?: 'endpoint' | 'nft-quote' | 'smart-account'): Promise<T> {
     guardedRead(guard);
     if (external.aborted) return rejectRead('CANCELLED');
     const controller = new AbortController();
     const nft = scope === 'nft-quote';
+    const boundedContractCode = nft || scope === 'smart-account';
     const expectedUrl = scope ? new URL(this.network.rpcUrl).href : undefined;
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
@@ -152,7 +153,7 @@ export class EvmTransferReadRpc {
       if (!response.ok) return rejectRead('UNAVAILABLE');
       const contentType = response.headers.get('content-type');
       if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
-      const limit = method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (nft ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
+      const limit = method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
       const text = await cancellable(boundedResponseText(response, controller.signal, limit), controller.signal);
       guardedRead(guard);
       const result = object(JSON.parse(text));
@@ -216,6 +217,34 @@ export class EvmTransferReadRpc {
   }
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
+  }
+  prepareSmartAccount(accountIndex: number, managementAddress: string, signal: AbortSignal, guard: () => void) {
+    return this.operation(signal, guard, async (read) => {
+      const [{ deriveDefaultSmartAccount }, { assertSmartAccountInfrastructureReady,
+        projectSmartAccountInfrastructureObservation, SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES }] = await Promise.all([
+        import('../../../../source/utils/smartAccount/bootstrap.ts'),
+        import('../../../../source/utils/smartAccount/infrastructureObservation.ts'),
+      ]);
+      const chainId = Number(this.network.chainId);
+      return deriveDefaultSmartAccount({
+        accountIndex, chainId, managementAddress, assertCurrent: read.assertCurrent,
+        provider: {
+          async getNetwork() { return { chainId: quantity(await read('eth_chainId', [])) }; },
+          verifyConfiguredChainId: () => this.checkChain(read),
+          async call(transaction) {
+            const result = await read('eth_call', [transaction, 'latest']);
+            if (typeof result !== 'string' || !/^0x(?:[a-f\d]{2})*$/i.test(result)) return rejectRead('INVALID_RESPONSE');
+            return result;
+          },
+        },
+        async assertInfrastructureSupported() {
+          const codes = await Promise.all(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => read('eth_getCode', [address, 'latest'])));
+          const status = projectSmartAccountInfrastructureObservation(chainId, codes);
+          if (!status) return rejectRead('INVALID_RESPONSE');
+          assertSmartAccountInfrastructureReady(status);
+        },
+      });
+    }, 'smart-account');
   }
   readGuardianRecoveryStatus(account: string, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
     return this.operation(signal, guard, async (read) => {

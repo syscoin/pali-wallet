@@ -1,6 +1,9 @@
 import { INetwork, INetworkType, KeyringAccountType } from 'types/network';
 
-import { isAccountCompatibleWithNetwork } from './accountCompatibility';
+import {
+  getFirstCompatibleAccountForNetwork,
+  isAccountCompatibleWithNetwork,
+} from './accountCompatibility';
 
 const evmNetwork = {
   chainId: 570,
@@ -133,5 +136,49 @@ describe('isAccountCompatibleWithNetwork', () => {
         bitcoinMainnet
       )
     ).toBe(false);
+  });
+});
+
+describe('getFirstCompatibleAccountForNetwork', () => {
+  it('preserves bucket and account priority while skipping incompatible records', () => {
+    const hd = {
+      id: 2,
+      address: '0x2222222222222222222222222222222222222222',
+    } as any;
+    const imported = {
+      id: 0,
+      address: '0x3333333333333333333333333333333333333333',
+    } as any;
+    const smart = {
+      id: 0,
+      address: '0x4444444444444444444444444444444444444444',
+      smartAccount: { chainId: 1 },
+    } as any;
+    const accounts = {
+      Ledger: undefined,
+      SmartAccount: { 0: smart },
+      HDAccount: { 2: hd },
+      Imported: { 0: imported },
+    };
+    expect(getFirstCompatibleAccountForNetwork(accounts, evmNetwork)).toEqual({
+      account: hd,
+      id: 2,
+      type: KeyringAccountType.HDAccount,
+    });
+    expect(
+      getFirstCompatibleAccountForNetwork(accounts, {
+        ...evmNetwork,
+        chainId: 1,
+      })
+    ).toEqual({ account: smart, id: 0, type: KeyringAccountType.SmartAccount });
+    expect(
+      getFirstCompatibleAccountForNetwork(
+        { Imported: { 0: imported } },
+        evmNetwork
+      )?.account
+    ).toBe(imported);
+    expect(
+      getFirstCompatibleAccountForNetwork(accounts, utxoNetwork)
+    ).toBeNull();
   });
 });

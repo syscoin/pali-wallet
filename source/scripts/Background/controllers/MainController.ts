@@ -207,7 +207,10 @@ import {
   RpcConnectionResult,
   UtxoRpcDraft,
 } from 'types/transactions';
-import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
+import {
+  getFirstCompatibleAccountForNetwork,
+  isAccountCompatibleWithNetwork,
+} from 'utils/accountCompatibility';
 import {
   AsyncMutex,
   fiatPriceMutex,
@@ -5727,25 +5730,7 @@ class MainController {
   private getFirstCompatibleAccountForNetwork(network: INetwork) {
     const { accounts } = store.getState().vault;
 
-    for (const [accountType, accountsOfType] of Object.entries(accounts)) {
-      for (const account of Object.values(accountsOfType || {}) as any[]) {
-        if (
-          this.isAccountCompatibleWithNetwork(
-            account,
-            accountType as KeyringAccountType,
-            network
-          )
-        ) {
-          return {
-            account,
-            id: account.id,
-            type: accountType as KeyringAccountType,
-          };
-        }
-      }
-    }
-
-    return null;
+    return getFirstCompatibleAccountForNetwork(accounts, network);
   }
 
   private async ensureActiveAccountCompatibleWithNetwork(

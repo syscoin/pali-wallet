@@ -55,3 +55,16 @@ export function projectSmartAccountInfrastructureObservation(
 export type SmartAccountInfrastructureObservation = NonNullable<
   ReturnType<typeof projectSmartAccountInfrastructureObservation>
 >;
+
+export function assertSmartAccountInfrastructureReady(
+  status: SmartAccountInfrastructureObservation
+): void {
+  if (!status.create2Deployer.deployed)
+    throw new Error(
+      'This network does not expose the canonical CREATE2 deployer required for deterministic Pali smart account deployment.'
+    );
+  if (!status.ready)
+    throw new Error(
+      'Pali smart account infrastructure is not deployed on this network. Deploy it first from Wallet Advanced settings, then try again.'
+    );
+}
