@@ -315,7 +315,7 @@ for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`wall
   f.dispose();
 });
 
-for (const exit of ['back', 'background', 'working-lock'] as const) test(`prepared removal ${exit} replaces the actual wallet parent only after connection drain`, async () => {
+for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', 'blur-after-drain'] as const) test(`prepared removal ${exit} replaces the actual wallet parent only after connection drain`, async () => {
   const root = setup();
   const events: string[] = [];
   const address = `0x${'11'.repeat(20)}`;
@@ -406,15 +406,26 @@ for (const exit of ['back', 'background', 'working-lock'] as const) test(`prepar
       assert.deepEqual(events, []);
       root.emit('change', 'active'); render();
       await (removal.props.onContinue as (outcome: string) => Promise<void>)('unchanged');
-    } else if (exit === 'back') (removal.props.onBack as () => void)();
+    } else if (exit === 'back' || exit === 'blur-before-drain' || exit === 'blur-after-drain') (removal.props.onBack as () => void)();
     else root.emit('change', 'background');
     render(); await tick();
     assert.deepEqual(events, ['connections:1']);
     assert.equal(bundles.length, 1);
+    if (exit === 'blur-before-drain' || exit === 'blur-after-drain') {
+      root.emit('blur'); render(); await tick();
+      if (exit === 'blur-before-drain') {
+        root.emit('focus'); root.emit('focus'); await tick();
+        assert.equal(bundles.length, 1);
+        assert.deepEqual(events, ['connections:1']);
+      }
+    }
     finishDrain(); await tick();
     if (exit === 'background') {
       assert.equal(bundles.length, 1);
       root.emit('change', 'active'); await tick();
+    } else if (exit === 'blur-after-drain') {
+      assert.equal(bundles.length, 1);
+      root.emit('focus'); root.emit('focus'); await tick();
     }
     assert.equal(bundles.length, 2);
     assert.deepEqual(events.slice(0, 2), ['connections:1', 'storage:1']);
