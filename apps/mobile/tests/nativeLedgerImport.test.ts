@@ -6,6 +6,22 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
+import { Transaction } from 'ethers/transaction';
+import { keccak256 } from 'ethers/crypto';
+import { NativeTransfers } from '../src/custody/transfers.ts';
+import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { metadata } from './publicWatchFixtures.ts';
+import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
+import {
+  encodeNftTransferData,
+  snapshotNftTransferIntent,
+} from '../../../source/shared/nftTransfer.ts';
+import {
+  snapshotErc20TransferIntent,
+  type NativeAssetTransferIntent,
+} from '../src/custody/transferIntent.ts';
+import { prepareLedgerPsbt } from '@sidhujag/sysweb3-keyring/cjs/ledger/prepare-psbt.js';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
 import {
@@ -22,6 +38,21 @@ const phrase =
 const password = 'Public Ledger import fixture 1!';
 const deviceWallet = new Wallet('0x' + '31'.repeat(32));
 
+function hardwareHd(slip44: number, currency: string, accountIndex: number) {
+  const config = getNetworkConfig(slip44, currency);
+  const hd = new syscoinUtils.HDSigner(
+    'test test test test test test test test test test test junk',
+    null,
+    slip44 === 1,
+    config.networks,
+    slip44,
+    config.types.zPubType,
+    84
+  );
+  hd.createAccountAtIndex(accountIndex, 84);
+  return hd;
+}
+
 async function fixture() {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-ledger-import-'));
   const file = path.join(directory, 'wallet.sqlite');
@@ -30,7 +61,14 @@ async function fixture() {
     owner!: NativeCustodyAuthority;
   let holdAddress: (() => Promise<void>) | undefined;
   let holdCreation: (() => Promise<void>) | undefined;
-  let disposedCount = 0;
+  let disposedCount = 0,
+    signedCount = 0,
+    psbtSignCount = 0;
+  let utxoFetch: typeof globalThis.fetch = async () => {
+    throw Error('Unexpected UTXO request');
+  };
+  let selectedWallet = deviceWallet;
+  let holdSignature: (() => Promise<void>) | undefined;
   const candidate = {
     id: 'private-device-id',
     transport: 'RN_BLE',
@@ -42,6 +80,7 @@ async function fixture() {
     id: 'other-private-device-id',
     name: 'Other Ledger',
   };
+  const deviceStatus: { disconnect(): void; late(): void }[] = [];
   let emitDevices: ((devices: any[]) => void) | undefined;
   const openStorage = async () => {
     const storage = await SqliteWalletStorage.open(
@@ -57,6 +96,7 @@ async function fixture() {
     ensureCryptoReady: async () => undefined,
     readEvmRetirement: null,
     openStorage,
+    utxoFetch: (...args) => utxoFetch(...args),
     async createLedgerTransport(scope) {
       let connected = false,
         disposed = false;
@@ -67,9 +107,27 @@ async function fixture() {
       const unexpected = async () => {
         throw Error('Unexpected device request');
       };
+      const statusListeners = new Set<() => void>();
+      const historicalListeners = new Set<() => void>();
+      deviceStatus.push({
+        disconnect() {
+          connected = false;
+          for (const listener of statusListeners) listener();
+        },
+        late() {
+          for (const listener of historicalListeners) listener();
+        },
+      });
       const result: NativeLedgerTransport = {
         host: {
           getStatus: () => ({ connected: connected && !disposed }),
+          subscribeStatus(listener) {
+            statusListeners.add(listener);
+            historicalListeners.add(listener);
+            return () => {
+              statusListeners.delete(listener);
+            };
+          },
           connect: async () => {
             check();
             assert(connected);
@@ -88,37 +146,96 @@ async function fixture() {
               await holdAddress?.();
               check();
               return {
-                address: deviceWallet.address,
-                publicKey: deviceWallet.signingKey.publicKey,
+                address: selectedWallet.address,
+                publicKey: selectedWallet.signingKey.publicKey,
               };
             },
-            signTransaction: unexpected,
+            async signTransaction(request, signingOwner) {
+              check();
+              signingOwner?.assertCurrent?.();
+              assert(signingOwner?.signal && !signingOwner.signal.aborted);
+              signedCount++;
+              await holdSignature?.();
+              check();
+              signingOwner.assertCurrent?.();
+              const transaction = Transaction.from(
+                '0x' + request.unsignedTxHex
+              );
+              const signed = selectedWallet.signingKey.sign(
+                transaction.unsignedHash
+              );
+              return {
+                r: signed.r.slice(2),
+                s: signed.s.slice(2),
+                v: signed.v.toString(16),
+              };
+            },
             signPersonalMessage: unexpected,
             signTypedData: unexpected,
           },
           utxo: {
             async getXpub(request) {
               check();
-              const network = getNetworkConfig(
+              const hd = hardwareHd(
                 request.slip44,
-                request.currency
+                request.currency,
+                request.accountIndex
               );
-              const hd = new syscoinUtils.HDSigner(
-                'test test test test test test test test test test test junk',
-                null,
-                request.slip44 === 1,
-                network.networks,
-                request.slip44,
-                network.types.zPubType,
-                84
-              );
-              hd.createAccountAtIndex(request.accountIndex, 84);
               return hd.getAccountXpub();
             },
             getAddress: unexpected,
             getAccount: unexpected,
             signMessage: unexpected,
-            signPsbt: unexpected,
+            async signPsbt(request, authority) {
+              check();
+              authority.assertCurrent();
+              assert(!authority.signal.aborted);
+              psbtSignCount++;
+              const hd = hardwareHd(
+                request.slip44,
+                request.currency,
+                request.accountIndex
+              );
+              const fingerprint = Buffer.from(
+                hd.getMasterFingerprint()
+              ).toString('hex');
+              const psbt = syscoinUtils.bitcoinjs.Psbt.fromBase64(
+                request.psbtBase64,
+                { network: hd.Signer.network }
+              );
+              prepareLedgerPsbt(
+                psbt,
+                request.accountXpub,
+                request.accountIndex,
+                request.currency,
+                request.slip44,
+                fingerprint
+              );
+              psbt.signAllInputsHD(hd.getRootNode());
+              authority.assertCurrent();
+              check();
+              return {
+                fingerprint,
+                signatures: psbt.data.inputs.flatMap(
+                  (
+                    input: {
+                      partialSig?: readonly {
+                        pubkey: Uint8Array;
+                        signature: Uint8Array;
+                      }[];
+                    },
+                    inputIndex: number
+                  ) =>
+                    (input.partialSig ?? []).map((signature) => ({
+                      inputIndex,
+                      pubkeyHex: Buffer.from(signature.pubkey).toString('hex'),
+                      signatureHex: Buffer.from(signature.signature).toString(
+                        'hex'
+                      ),
+                    }))
+                ),
+              };
+            },
           },
         },
         async observeDevices(onDevices) {
@@ -150,7 +267,12 @@ async function fixture() {
   await owner.importPhrase(phrase, password);
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   await owner.refreshAuthenticatedMetadata();
-  const view = new NativeLedgerAccounts(owner, () => runtime.ledger);
+  const view = new NativeLedgerAccounts(owner, () => runtime.ledger, 'import');
+  const connection = new NativeLedgerAccounts(
+    owner,
+    () => runtime.ledger,
+    'connect'
+  );
   return {
     get owner() {
       return owner;
@@ -159,7 +281,24 @@ async function fixture() {
       return runtime;
     },
     view,
+    connection,
+    deviceStatus,
     openStorage,
+    get signedCount() {
+      return signedCount;
+    },
+    get psbtSignCount() {
+      return psbtSignCount;
+    },
+    setUtxoFetch(value: typeof globalThis.fetch) {
+      utxoFetch = value;
+    },
+    useDifferentDevice() {
+      selectedWallet = new Wallet('0x' + '32'.repeat(32));
+    },
+    holdSignature(value: () => Promise<void>) {
+      holdSignature = value;
+    },
     devices(values: readonly ('first' | 'second')[]) {
       emitDevices?.(
         values.map((value) => (value === 'first' ? candidate : second))
@@ -186,6 +325,7 @@ async function fixture() {
     },
     async close() {
       await view.dispose();
+      await connection.dispose();
       await owner.dispose();
       await rm(directory, { recursive: true, force: true });
     },
@@ -347,6 +487,407 @@ test('runtime retirement joins a delayed native transport acquisition and its cl
     assert.equal(f.disposedCount, 1);
   } finally {
     release();
+    await f.close();
+  }
+});
+
+async function importAndConnect(f: Awaited<ReturnType<typeof fixture>>) {
+  await f.view.start();
+  await f.view.select(f.view.getSnapshot().devices[0]!.id);
+  await f.view.importAccount('Ledger account');
+  const revision = f.owner.getSnapshot().revision;
+  const catalogue = f.owner.getCatalogue();
+  await f.connection.start();
+  await f.connection.select(f.connection.getSnapshot().devices[0]!.id);
+  assert.equal(f.connection.isConnected(), false);
+  await f.connection.finishConnection();
+  assert.equal(f.connection.isConnected(), true);
+  assert.equal(f.owner.getSnapshot().revision, revision);
+  assert.equal(f.owner.getCatalogue(), catalogue);
+}
+
+test('Ledger connection reuses the saved public identity and shared EVM signing', async () => {
+  const f = await fixture();
+  try {
+    await importAndConnect(f);
+    for (const type of [0, 2] as const) {
+      const transaction = {
+        from: deviceWallet.address,
+        to: '0x' + '22'.repeat(20),
+        chainId: '1',
+        nonce: '7',
+        value: '123',
+        gasLimit: '25200',
+        data: '0x',
+        ...(type === 0
+          ? { type: 0 as const, gasPrice: '3' }
+          : {
+              type: 2 as const,
+              accessList: [],
+              maxFeePerGas: '3',
+              maxPriorityFeePerGas: '1',
+            }),
+      };
+      const signed = await f.runtime.transfers!.sign(transaction, {
+        assertCurrent() {},
+        signal: new AbortController().signal,
+      });
+      const actual = Transaction.from(signed.rawTransaction);
+      assert.equal(actual.from, deviceWallet.address);
+      assert.equal(actual.nonce, 7);
+      assert.equal(actual.value, 123n);
+      assert.equal(actual.type, type);
+      assert.equal(actual.hash, signed.hash);
+    }
+    assert.equal(f.signedCount, 2);
+    f.owner.lock();
+    assert.equal(f.connection.isConnected(), false);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a different Ledger cannot reconnect to the saved account', async () => {
+  const f = await fixture();
+  try {
+    await f.view.start();
+    await f.view.select(f.view.getSnapshot().devices[0]!.id);
+    await f.view.importAccount('Ledger account');
+    f.useDifferentDevice();
+    await f.connection.start();
+    await assert.rejects(
+      f.connection.select(f.connection.getSnapshot().devices[0]!.id),
+      /INVALID_INPUT/
+    );
+    assert.equal(f.connection.isConnected(), false);
+    assert.equal(f.signedCount, 0);
+  } finally {
+    await f.close();
+  }
+});
+
+for (const changedChain of [false, true])
+  test(
+    changedChain
+      ? 'Ledger final chain mismatch retains signed bytes without a broadcast'
+      : 'the normal Ledger send retains signed bytes before its broadcast',
+    async () => {
+      const f = await fixture();
+      let transfers: NativeTransfers | undefined;
+      try {
+        await importAndConnect(f);
+        let broadcasts = 0;
+        let chainId = '0x1';
+        const rpc = new NativeTransferRpc({
+          networkId: 'ethereum',
+          fetch: async (_url, init) => {
+            const request = JSON.parse(String(init.body));
+            let result: unknown;
+            switch (request.method) {
+              case 'eth_chainId':
+                result = chainId;
+                break;
+              case 'eth_getTransactionCount':
+                result = '0x0';
+                break;
+              case 'eth_getBalance':
+                result = '0x10000000000000000';
+                break;
+              case 'eth_gasPrice':
+                result = '0x2';
+                break;
+              case 'eth_feeHistory':
+                result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
+                break;
+              case 'eth_maxPriorityFeePerGas':
+                result = '0x1';
+                break;
+              case 'eth_estimateGas':
+                result = '0x5208';
+                break;
+              case 'eth_getTransactionByHash':
+              case 'eth_getTransactionReceipt':
+                result = null;
+                break;
+              case 'eth_getBlockByNumber':
+                result = {
+                  number: '0x20',
+                  hash: '0x' + 'ab'.repeat(32),
+                  baseFeePerGas: '0x1',
+                  gasLimit: '0x1c9c380',
+                };
+                break;
+              case 'eth_sendRawTransaction': {
+                broadcasts++;
+                const raw = request.params[0];
+                const stored = await (
+                  await f.runtime.transfers!.journal(() => undefined)
+                ).load(keccak256(raw));
+                assert(stored && stored.rawTransaction === raw);
+                assert.equal(Transaction.from(raw).from, deviceWallet.address);
+                result = keccak256(raw);
+                break;
+              }
+              default:
+                throw new Error('Unexpected test RPC ' + request.method);
+            }
+            return new Response(
+              JSON.stringify({ jsonrpc: '2.0', id: request.id, result }),
+              { headers: { 'content-type': 'application/json' } }
+            );
+          },
+        });
+        transfers = new NativeTransfers(f.owner, () => f.runtime.transfers, {
+          rpc,
+        });
+        await transfers.prepare('0x' + '22'.repeat(20), '0.001', '7');
+        const review = transfers.getSnapshot().review;
+        assert(review);
+        assert.equal(review.nonce, '7');
+        assert.equal(f.signedCount, 0);
+        if (changedChain)
+          f.holdSignature(async () => {
+            chainId = '0x2';
+          });
+        if (changedChain) {
+          await assert.rejects(transfers.confirm(review.id), {
+            code: 'FAILED',
+          });
+          assert.equal(transfers.getSnapshot().phase, 'unavailable');
+        } else {
+          await transfers.confirm(review.id);
+          assert.equal(transfers.getSnapshot().phase, 'pending');
+        }
+        assert.equal(f.signedCount, 1);
+        assert.equal(broadcasts, changedChain ? 0 : 1);
+        const savedHash = transfers.getSnapshot().hash!;
+        if (f.owner.getSnapshot().phase === 'locked')
+          await f.owner.unlock(password);
+        const saved = await (
+          await f.runtime.transfers!.journal(() => undefined)
+        ).load(savedHash);
+        assert(saved?.rawTransaction);
+      } finally {
+        transfers?.dispose();
+        await f.close();
+      }
+    }
+  );
+
+test('cancellation during a Ledger prompt rejects its late signature', async () => {
+  const f = await fixture();
+  const entered = Promise.withResolvers<void>(),
+    release = Promise.withResolvers<void>();
+  try {
+    await importAndConnect(f);
+    f.holdSignature(async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    const controller = new AbortController();
+    const signed = f.runtime.transfers!.sign(
+      {
+        type: 2,
+        accessList: [],
+        from: deviceWallet.address,
+        to: '0x' + '22'.repeat(20),
+        chainId: '1',
+        nonce: '7',
+        value: '123',
+        gasLimit: '25200',
+        data: '0x',
+        maxFeePerGas: '3',
+        maxPriorityFeePerGas: '1',
+      },
+      { assertCurrent() {}, signal: controller.signal }
+    );
+    void signed.catch(() => undefined);
+    await entered.promise;
+    controller.abort();
+    release.resolve();
+    await assert.rejects(signed, /CANCELLED|no longer current/);
+  } finally {
+    release.resolve();
+    await f.close();
+  }
+});
+
+test('Ledger UTXO review uses its saved xpub before connection and the shared signing path after consent', async () => {
+  const f = await fixture();
+  try {
+    const network = getUtxoNetwork('bitcoin');
+    await f.owner.selectNetwork(
+      'bitcoin',
+      f.owner.getSnapshot().revision,
+      f.owner.getCatalogue()!.revision
+    );
+    await f.view.start();
+    await f.view.select(f.view.getSnapshot().devices[0]!.id);
+    await f.view.importAccount('Bitcoin Ledger');
+    const account = f.owner
+      .getCatalogue()!
+      .accounts.find((value) => value.id === 'ledger:0:0')!;
+    const bitcoin = syscoinUtils.bitcoinjs;
+    const previous = new bitcoin.Transaction();
+    previous.addInput(Buffer.alloc(32, 7), 0);
+    previous.addOutput(
+      bitcoin.address.toOutputScript(account.address, network.addressNetwork),
+      100000n
+    );
+    const recipient = bitcoin.payments.p2wpkh({
+      hash: Buffer.alloc(20, 8),
+      network: network.addressNetwork,
+    }).address;
+    let broadcasts = 0;
+    f.setUtxoFetch(async (input, init) => {
+      const url = String(input),
+        route = url.slice(network.endpoint.length);
+      let result: unknown;
+      if (route === '/api/v2/') result = metadata(network);
+      else if (route === '/api/v2/block-index/0')
+        result = { blockHash: network.genesisHash };
+      else if (route === '/api/v2/estimatefee/1')
+        result = { result: '0.00001024' };
+      else if (route.startsWith('/api/v2/xpub/')) result = { tokens: [] };
+      else if (route.startsWith('/api/v2/utxo/'))
+        result = [
+          {
+            txid: previous.getId(),
+            vout: 0,
+            value: '100000',
+            address: account.address,
+            confirmations: 10,
+            path: "m/84'/0'/0'/0/0",
+          },
+        ];
+      else if (route === '/api/v2/tx/' + previous.getId())
+        result = { hex: previous.toHex() };
+      else if (route === '/api/v2/sendtx/' && init?.method === 'POST') {
+        const transaction = bitcoin.Transaction.fromHex(String(init.body));
+        assert.equal(transaction.outs[0].value, 50000n);
+        broadcasts++;
+        result = { result: transaction.getId() };
+      } else throw new Error('Unexpected UTXO fixture route ' + route);
+      const response = Response.json(result);
+      Object.defineProperty(response, 'url', { value: url });
+      return response;
+    });
+    assert.equal(f.connection.isConnected(), false);
+    const send = await f.runtime.openUtxoSend!(() => undefined);
+    const review = await send.prepare({ recipient, amount: '0.0005' });
+    assert.equal(f.psbtSignCount, 0);
+    await f.connection.start();
+    await f.connection.select(f.connection.getSnapshot().devices[0]!.id);
+    await f.connection.finishConnection();
+    assert.equal(f.connection.isConnected(), true);
+    assert.equal(f.psbtSignCount, 0);
+    await send.confirm(review);
+    assert.equal(f.psbtSignCount, 1);
+    assert.equal(broadcasts, 1);
+    send.cancel();
+  } finally {
+    await f.close();
+  }
+});
+
+test('Ledger signs the same reviewed ERC20 and collectible envelopes through the shared helper', async () => {
+  const f = await fixture();
+  try {
+    await importAndConnect(f);
+    const recipient = '0x' + '22'.repeat(20),
+      contract = '0x' + '33'.repeat(20);
+    const token = snapshotErc20TransferIntent({
+      kind: 'erc20-transfer',
+      chainId: '1',
+      token: {
+        contractAddress: contract,
+        decimals: 6,
+        name: 'Fixture token',
+        symbol: 'FIX',
+      },
+      recipient,
+      amountUnits: '9007199254740993',
+    });
+    const nft = (standard: 'ERC-721' | 'ERC-1155') =>
+      snapshotNftTransferIntent({
+        kind: 'nft-transfer',
+        chainId: '1',
+        from: deviceWallet.address,
+        contractAddress: contract,
+        recipient,
+        tokenStandard: standard,
+        tokenId: '9007199254740993',
+        amountUnits: standard === 'ERC-721' ? '1' : '3',
+      });
+    const intents: readonly NativeAssetTransferIntent[] = [
+      token,
+      nft('ERC-721'),
+      nft('ERC-1155'),
+    ];
+    for (const intent of intents) {
+      const data =
+        intent.kind === 'erc20-transfer'
+          ? encodeErc20Transfer(intent.recipient, intent.amountUnits)
+          : encodeNftTransferData(intent);
+      const unsigned = {
+        type: 2 as const,
+        accessList: [],
+        chainId: '1',
+        from: deviceWallet.address,
+        to: contract,
+        value: '0',
+        nonce: '8',
+        gasLimit: '150000',
+        data,
+        maxFeePerGas: '3',
+        maxPriorityFeePerGas: '1',
+      };
+      const signed = await f.runtime.transfers!.sign(
+        unsigned,
+        { assertCurrent() {}, signal: new AbortController().signal },
+        intent
+      );
+      const actual = Transaction.from(signed.rawTransaction);
+      assert.equal(actual.data, data);
+      assert.equal(actual.nonce, 8);
+      assert.equal(actual.from, deviceWallet.address);
+    }
+    assert.equal(f.signedCount, 3);
+  } finally {
+    await f.close();
+  }
+});
+
+test('real Ledger handoff forwards disconnect and ignores retired transport events after reconnect', async () => {
+  const f = await fixture();
+  try {
+    await importAndConnect(f);
+    const oldTransport = f.deviceStatus.at(-1)!;
+    let updates = 0;
+    const unsubscribe = f.connection.subscribe(() => {
+      updates++;
+    });
+    const connectedSnapshot = f.connection.getSnapshot();
+    oldTransport.disconnect();
+    assert.equal(f.connection.isConnected(), false);
+    assert.notEqual(f.connection.getSnapshot(), connectedSnapshot);
+    assert.equal(updates, 1);
+    await f.connection.start();
+    await f.connection.select(f.connection.getSnapshot().devices[0]!.id);
+    await f.connection.finishConnection();
+    assert.equal(f.connection.isConnected(), true);
+    const reconnectedSnapshot = f.connection.getSnapshot();
+    const beforeOldEvent = updates;
+    oldTransport.late();
+    assert.equal(f.connection.isConnected(), true);
+    assert.equal(f.connection.getSnapshot(), reconnectedSnapshot);
+    assert.equal(updates, beforeOldEvent);
+    f.deviceStatus.at(-1)!.disconnect();
+    assert.equal(f.connection.isConnected(), false);
+    assert.equal(updates, beforeOldEvent + 1);
+    assert.equal(f.signedCount, 0);
+    unsubscribe();
+  } finally {
     await f.close();
   }
 });

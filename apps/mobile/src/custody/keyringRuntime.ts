@@ -233,12 +233,27 @@ export function createKeyringRuntimeFactory(
         });
         type State = ReturnType<typeof initialState>;
         let ledgerTransport: NativeLedgerTransport | undefined;
+        let ledgerLifetime: AbortController | undefined;
+        let ledgerVerified: { accountId: string; generation: number; snapshot: NativeWalletCatalogueSnapshot; transport: NativeLedgerTransport } | undefined;
         let ledgerCleanup: Promise<void> | undefined;
         let ledgerOpening: { retire(): Promise<void> } | undefined;
         let ledgerScanOrdinal = 0;
+        let unsubscribeLedgerStatus: (() => void) | undefined;
+        const ledgerStatusListeners = new Set<() => void>();
+        const publishLedgerStatus = () => {
+          for (const listener of ledgerStatusListeners) {
+            try { listener(); } catch { /* Observation cannot change custody. */ }
+          }
+        };
         const retireLedger = () => {
           const previous = ledgerTransport;
           ledgerTransport = undefined;
+          ledgerVerified = undefined;
+          unsubscribeLedgerStatus?.();
+          unsubscribeLedgerStatus = undefined;
+          publishLedgerStatus();
+          ledgerLifetime?.abort();
+          ledgerLifetime = undefined;
           preparedLedger = undefined;
           const opening = ledgerOpening;
           if (previous || opening) ledgerCleanup = Promise.all([ledgerCleanup, previous?.dispose(), opening?.retire()]).then(() => undefined);
@@ -404,6 +419,8 @@ export function createKeyringRuntimeFactory(
             catch { closed = true; throw new KeyringRuntimeError('CLEANUP_FAILED'); }
             if (closed) throw new KeyringRuntimeError('CANCELLED');
             if (error instanceof KeyringRuntimeError) throw error;
+            if (error && typeof error === 'object' && 'code' in error && error.code === 'HARDWARE_REQUEST_CANCELLED')
+              throw new KeyringRuntimeError('CANCELLED');
             if (error instanceof TransferJournalError && error.code === 'PENDING_TRANSFER') throw new KeyringRuntimeError('PENDING_TRANSFER');
             if (error instanceof WalletCatalogueError && error.code === 'CATALOGUE_LIMIT') throw new KeyringRuntimeError('ACCOUNT_LIMIT');
             if (error instanceof WalletCatalogueError && error.code === 'CATALOGUE_NOT_REMOVABLE') throw new KeyringRuntimeError('ACCOUNT_NOT_REMOVABLE');
@@ -1222,7 +1239,7 @@ export function createKeyringRuntimeFactory(
             return reserveContext(request, expectedRevision, true);
           },
         };
-        const canSign = () => !!catalogueSnapshot && ['HDAccount', 'Imported'].includes(selectedAccount().type) && nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks);
+        const canSign = () => !!catalogueSnapshot && ['HDAccount', 'Imported', 'Ledger'].includes(selectedAccount().type) && nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks);
         const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number; type: NativeAccountType }> => {
           const captured = generation;
           const guard = () => { current(captured); checkGuard(assertCurrent); if (reserved) throw new KeyringRuntimeError('BUSY'); if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
@@ -1280,80 +1297,272 @@ export function createKeyringRuntimeFactory(
           return task;
         };
         const ledger: NativeLedgerRuntime = {
-          async scan(signal, assertOwner, onDevices, onError) {
-            const before = catalogueSnapshot, ring = keyring, captured = generation;
+          subscribeStatus(listener) {
+            ledgerStatusListeners.add(listener);
+            return () => { ledgerStatusListeners.delete(listener); };
+          },
+          isConnected() {
+            const verified = ledgerVerified;
+            return (
+              !!verified &&
+              !closed &&
+              !requiresReopen() &&
+              keyring.isUnlocked() &&
+              verified.generation === generation &&
+              verified.snapshot === catalogueSnapshot &&
+              verified.accountId === catalogueSnapshot?.active.accountId &&
+              verified.transport === ledgerTransport &&
+              verified.transport.host.getStatus().connected
+            );
+          },
+          async scan(request, signal, assertOwner, onDevices, onError) {
+            if (
+              !request ||
+              !['import', 'connect'].includes(request.purpose) ||
+              Object.keys(request).join() !== 'purpose'
+            )
+              throw new KeyringRuntimeError('INVALID_INPUT');
+            const before = catalogueSnapshot,
+              ring = keyring,
+              captured = generation;
+            const target =
+              request.purpose === 'connect' ? selectedAccount() : undefined;
+            if (target && target.type !== 'Ledger')
+              throw new KeyringRuntimeError('NOT_READY');
+            const saved = target && state.accounts.Ledger[target.index];
+            if (target && !saved) throw new KeyringRuntimeError('NOT_READY');
+            const assertWallet = () => {
+              current(captured);
+              if (
+                !before ||
+                catalogueSnapshot !== before ||
+                keyring !== ring ||
+                !ring.isUnlocked() ||
+                (target &&
+                  (before.active.accountId !== target.id ||
+                    state.accounts.Ledger[target.index]?.xpub !== saved!.xpub ||
+                    state.accounts.Ledger[target.index]?.address !==
+                      saved!.address))
+              )
+                throw new KeyringRuntimeError('CANCELLED');
+            };
             const check = () => {
-              current(captured); checkGuard(assertOwner);
-              if (signal.aborted || !before || catalogueSnapshot !== before || keyring !== ring || !ring.isUnlocked() || active || reserved)
+              assertWallet();
+              checkGuard(assertOwner);
+              assertWallet();
+              if (signal.aborted || active || reserved)
                 throw new KeyringRuntimeError('CANCELLED');
             };
             check();
-            if (!dependencies.createLedgerTransport) throw new KeyringRuntimeError('NOT_READY');
-            await retireLedger(); check();
+            if (!dependencies.createLedgerTransport)
+              throw new KeyringRuntimeError('NOT_READY');
+            await retireLedger();
+            check();
             let cleanupFailure: unknown;
+            let handedOff = false;
+            const lifetime = new AbortController();
+            ledgerLifetime = lifetime;
+            const assertTransport = () => {
+              assertWallet();
+              if (!handedOff) check();
+            };
             const created = Promise.resolve().then(async () => {
               check();
-              const value = await dependencies.createLedgerTransport!({ signal, assertCurrent: check });
-              try { check(); } catch (error) {
-                try { await value.dispose(); } catch (failure) { cleanupFailure = failure; throw failure; }
+              const value = await dependencies.createLedgerTransport!({
+                signal: lifetime.signal,
+                assertCurrent: assertTransport,
+              });
+              try {
+                check();
+              } catch (error) {
+                try {
+                  await value.dispose();
+                } catch (failure) {
+                  cleanupFailure = failure;
+                  throw failure;
+                }
                 throw error;
               }
               return value;
             });
-            const acquisition = { async retire() {
-              await created.then((value) => value.dispose(), () => {
-                if (cleanupFailure) throw cleanupFailure;
-              });
-            } };
-            ledgerOpening = acquisition;
-            let transport: NativeLedgerTransport;
-            try { transport = await created; check(); }
-            finally { if (ledgerOpening === acquisition) ledgerOpening = undefined; }
-            ledgerTransport = transport;
-            try {
-            const selection = transport.host.beginDeviceSelection(signal);
-            const ordinal = ++ledgerScanOrdinal;
-            const candidates = new Map<string, { device: object; name: string }>();
-            const handles = new Map<string, string>();
-            let nextHandle = 0;
-            const text = (value: unknown, fallback: string) => typeof value === 'string' && value.isWellFormed()
-              ? value.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim().slice(0, 64) || fallback : fallback;
-            const stop = await transport.observeDevices((devices) => {
-              check(); candidates.clear();
-              const seen = new Set<string>();
-              const visible = devices.slice(0, 32).flatMap((device) => {
-                const identity = JSON.stringify([device.transport, device.id]);
-                if (seen.has(identity)) return [];
-                seen.add(identity);
-                const id = handles.get(identity) ?? `${ordinal}:${nextHandle++}`;
-                handles.set(identity, id);
-                const name = text(device.name, 'Ledger');
-                candidates.set(id, { device, name });
-                return [Object.freeze({ id, name, model: text(device.deviceModel?.name, 'Ledger') })];
-              });
-              for (const identity of handles.keys()) if (!seen.has(identity)) handles.delete(identity);
-              onDevices(Object.freeze(visible));
-            }, (error) => { try { check(); onError(error); } catch { /* A retired screen receives no update. */ } });
-            let selected = false;
-            return {
-              async select(id) {
-                check();
-                const candidate = candidates.get(id);
-                if (!candidate || selected) throw new KeyringRuntimeError('INVALID_INPUT');
-                selected = true;
-                await stop(); check();
-                await selection(candidate.device); check();
-                const account = await ring.importLedgerAccount(); check();
-                if (!account.isLedgerWallet || account.isImported || account.isTrezorWallet || account.isSmartAccount || account.xprv !== '')
-                  throw new KeyringRuntimeError('OPERATION_FAILED');
-                preparedLedger = { account, generation: captured, snapshot: before! };
-                return Object.freeze({ name: candidate.name, address: account.address });
-              },
-              async close() {
-                if (ledgerTransport === transport) await retireLedger();
-                else await transport.dispose();
+            const acquisition = {
+              async retire() {
+                await created.then(
+                  (value) => value.dispose(),
+                  () => {
+                    if (cleanupFailure) throw cleanupFailure;
+                  }
+                );
               },
             };
+            ledgerOpening = acquisition;
+            let transport: NativeLedgerTransport;
+            try {
+              transport = await created;
+              check();
+            } finally {
+              if (ledgerOpening === acquisition) ledgerOpening = undefined;
+            }
+            ledgerTransport = transport;
+            try {
+              unsubscribeLedgerStatus = transport.host.subscribeStatus(() => {
+                if (ledgerTransport !== transport) return;
+                if (!transport.host.getStatus().connected) ledgerVerified = undefined;
+                publishLedgerStatus();
+              });
+              const selection = transport.host.beginDeviceSelection(signal);
+              const ordinal = ++ledgerScanOrdinal;
+              const candidates = new Map<
+                string,
+                { device: object; name: string }
+              >();
+              const handles = new Map<string, string>();
+              let nextHandle = 0;
+              const text = (value: unknown, fallback: string) =>
+                typeof value === 'string' && value.isWellFormed()
+                  ? value
+                      .replace(/[\u0000-\u001f\u007f-\u009f]/g, '')
+                      .trim()
+                      .slice(0, 64) || fallback
+                  : fallback;
+              const stop = await transport.observeDevices(
+                (devices) => {
+                  check();
+                  candidates.clear();
+                  const seen = new Set<string>();
+                  const visible = devices.slice(0, 32).flatMap((device) => {
+                    const identity = JSON.stringify([
+                      device.transport,
+                      device.id,
+                    ]);
+                    if (seen.has(identity)) return [];
+                    seen.add(identity);
+                    const id =
+                      handles.get(identity) ?? `${ordinal}:${nextHandle++}`;
+                    handles.set(identity, id);
+                    const name = text(device.name, 'Ledger');
+                    candidates.set(id, { device, name });
+                    return [
+                      Object.freeze({
+                        id,
+                        name,
+                        model: text(device.deviceModel?.name, 'Ledger'),
+                      }),
+                    ];
+                  });
+                  for (const identity of handles.keys())
+                    if (!seen.has(identity)) handles.delete(identity);
+                  onDevices(Object.freeze(visible));
+                },
+                (error) => {
+                  try {
+                    check();
+                    onError(error);
+                  } catch {
+                    /* A retired screen receives no update. */
+                  }
+                }
+              );
+              let selected = false;
+              let verified = false;
+              return {
+                async select(id) {
+                  check();
+                  const candidate = candidates.get(id);
+                  if (!candidate || selected)
+                    throw new KeyringRuntimeError('INVALID_INPUT');
+                  selected = true;
+                  await stop();
+                  check();
+                  await selection(candidate.device);
+                  check();
+                  if (request.purpose === 'import') {
+                    const account = await ring.importLedgerAccount();
+                    check();
+                    if (
+                      !account.isLedgerWallet ||
+                      account.isImported ||
+                      account.isTrezorWallet ||
+                      account.isSmartAccount ||
+                      account.xprv !== ''
+                    )
+                      throw new KeyringRuntimeError('OPERATION_FAILED');
+                    preparedLedger = {
+                      account,
+                      generation: captured,
+                      snapshot: before!,
+                    };
+                    return Object.freeze({
+                      name: candidate.name,
+                      address: account.address,
+                    });
+                  }
+                  const signer = ring.ledgerSigner!;
+                  if (target!.slip44 === 60) {
+                    const actual = await signer.evm.getEvmAddressAndPubKey({
+                      accountIndex: target!.index,
+                    });
+                    check();
+                    if (
+                      actual.address.toLowerCase() !==
+                        saved!.address.toLowerCase() ||
+                      actual.publicKey.replace(/^0x/, '').toLowerCase() !==
+                        saved!.xpub.replace(/^0x/, '').toLowerCase()
+                    )
+                      throw new KeyringRuntimeError('INVALID_INPUT');
+                  } else {
+                    const network = findUtxoNetwork(
+                      before!.active.networkId,
+                      before!.utxoNetworks
+                    );
+                    if (!network) throw new KeyringRuntimeError('NOT_READY');
+                    const actual = await signer.utxo.getXpub({
+                      index: target!.index,
+                      coin: state.activeNetwork.currency,
+                      slip44: target!.slip44,
+                    });
+                    check();
+                    if (
+                      sdk.convertExtendedKeyVersion(
+                        actual,
+                        network.publicKeyVersion
+                      ) !== saved!.xpub
+                    )
+                      throw new KeyringRuntimeError('INVALID_INPUT');
+                  }
+                  verified = true;
+                  return Object.freeze({
+                    name: candidate.name,
+                    address: target!.address,
+                  });
+                },
+                handoff() {
+                  check();
+                  if (
+                    request.purpose !== 'connect' ||
+                    !verified ||
+                    !target ||
+                    !transport.host.getStatus().connected
+                  )
+                    throw new KeyringRuntimeError('NOT_READY');
+                  handedOff = true;
+                  ledgerVerified = {
+                    accountId: target.id,
+                    generation: captured,
+                    snapshot: before!,
+                    transport,
+                  };
+                  publishLedgerStatus();
+                },
+                async close() {
+                  if (handedOff) {
+                    await stop();
+                    return;
+                  }
+                  if (ledgerTransport === transport) await retireLedger();
+                  else await transport.dispose();
+                },
+              };
             } catch (error) {
               if (ledgerTransport === transport) await retireLedger();
               else await transport.dispose();
@@ -1428,6 +1637,7 @@ export function createKeyringRuntimeFactory(
                       const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
                       guard();
                       const signed = ring.signPreparedEvmTransaction({
+                        selectedAccount: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                         account: { id: selected.index, type: signerType, expectedAddress: selected.address },
                         network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
                         transaction,
@@ -1904,7 +2114,7 @@ export function createKeyringRuntimeFactory(
             const profileId = await ring.getPrivateRecordProfileId(); guard();
             utxoSend?.cancel();
             const { createNativeUtxoSend } = await import('./utxoSend.ts'); guard();
-            if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('NOT_READY');
+            if (selected.type !== 'HDAccount' && selected.type !== 'Imported' && selected.type !== 'Ledger') throw new KeyringRuntimeError('NOT_READY');
             const opened = createNativeUtxoSend(network, {
               profileId,
               account: { address: selected.address, id: selected.index, type: selected.type, xpub },
@@ -2082,8 +2292,11 @@ export function createKeyringRuntimeFactory(
               return signedView(captured,assertCurrent,fingerprint,selected);
             },
             evmSubmissionFailure: (error) => sdk.evmSubmissionFailure(error),
-            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, replacement, verifyDispatch) => {
+            submit: (rawTransaction, hash, assertCurrent, transport, inputIntent, inputApproval, replacement, verifyDispatch) => {
               if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
+              const { broadcast, verifyChain } = transport ?? {};
+              if (typeof broadcast !== 'function' || typeof verifyChain !== 'function')
+                return Promise.reject(new KeyringRuntimeError('INVALID_INPUT'));
               const captured = generation;
               let review: {
                 context: EvmSubmissionContext;
@@ -2144,7 +2357,12 @@ export function createKeyringRuntimeFactory(
                       from: tx.from, to: tx.to, value: tx.value.toString(), data: tx.data, nonce: String(tx.nonce), type: tx.type!,
                     });
                   }
-                  await sdk.submitSignedEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned);
+                  if (context.account.type === 'Ledger') {
+                    await sdk.submitSignedHardwareEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned,
+                      async () => { check(); await verifyChain(); check(); });
+                  } else {
+                    await sdk.submitSignedEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned);
+                  }
                 } catch (error) {
                   if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED'))
                     throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
@@ -2163,35 +2381,115 @@ export function createKeyringRuntimeFactory(
               if (active || reserved) throw new KeyringRuntimeError('BUSY');
               if (!keyring.isUnlocked() || !canSign()) throw new KeyringRuntimeError('NOT_READY');
             },
-            sign: (transaction, assertCurrent, inputIntent, replacement) => {
-              if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
-              if (!canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
+            sign: (transaction, authority, inputIntent, replacement) => {
+              const assertCurrent = () => {
+                if (authority.signal.aborted)
+                  throw new KeyringRuntimeError('CANCELLED');
+                checkGuard(authority.assertCurrent);
+              };
+              if (closed || !keyring.isUnlocked())
+                return Promise.reject(new KeyringRuntimeError('CANCELLED'));
+              if (!canSign())
+                return Promise.reject(new KeyringRuntimeError('NOT_READY'));
               let intent;
               let prepared: typeof transaction;
               try {
-                intent = inputIntent === undefined ? undefined : snapshotNativeAssetTransferIntent(inputIntent);
-                prepared = snapshotReviewedTransfer(transaction, intent, replacement);
-              } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
+                intent =
+                  inputIntent === undefined
+                    ? undefined
+                    : snapshotNativeAssetTransferIntent(inputIntent);
+                prepared = snapshotReviewedTransfer(
+                  transaction,
+                  intent,
+                  replacement
+                );
+              } catch {
+                return Promise.reject(new KeyringRuntimeError('INVALID_INPUT'));
+              }
               return run(async (captured) => {
-              if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
-              checkGuard(assertCurrent);
-              current(captured); checkGuard(assertCurrent);
-              assertTransferIntentEnvelope(prepared, intent);
-              const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
-              if (!nativeSigningEnabled(network.id, catalogueSnapshot!.networks) || prepared.chainId !== network.chainId)
-                throw new KeyringRuntimeError('INVALID_INPUT');
-              snapshotReviewedTransfer(prepared, intent, replacement);
-              const selected = selectedAccount();
-              if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('NOT_READY');
-              if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('NOT_READY');
-              const signed = keyring.signPreparedEvmTransaction({
-                account: { id: selected.index, type: selected.type, expectedAddress: prepared.from },
-                network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
-                transaction: prepared,
-              }, { assertCurrent: () => { current(captured); checkGuard(assertCurrent); } });
-              current(captured); checkGuard(assertCurrent);
-              return Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash });
-            }); },
+                if (!keyring.isUnlocked())
+                  throw new KeyringRuntimeError('CANCELLED');
+                checkGuard(assertCurrent);
+                current(captured);
+                checkGuard(assertCurrent);
+                assertTransferIntentEnvelope(prepared, intent);
+                const network = getNativeNetwork(
+                  catalogueSnapshot!.active.networkId,
+                  catalogueSnapshot!.networks
+                );
+                if (
+                  !nativeSigningEnabled(
+                    network.id,
+                    catalogueSnapshot!.networks
+                  ) ||
+                  prepared.chainId !== network.chainId
+                )
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                snapshotReviewedTransfer(prepared, intent, replacement);
+                const selected = selectedAccount();
+                if (
+                  prepared.from.toLowerCase() !== selected.address.toLowerCase()
+                )
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                if (selected.type === 'Ledger') {
+                  if (!ledger.isConnected())
+                    throw new KeyringRuntimeError('NOT_READY');
+                  const signed = await sdk.signLedgerEvmTransaction(
+                    keyring.ledgerSigner!,
+                    {
+                      accountIndex: selected.index,
+                      expectedAddress: selected.address,
+                      unsignedTransaction:
+                        serializePreparedEvmTransaction(prepared),
+                    },
+                    {
+                      signal: authority.signal,
+                      assertCurrent: () => {
+                        current(captured);
+                        assertCurrent();
+                      },
+                    }
+                  );
+                  current(captured);
+                  assertCurrent();
+                  return signed;
+                }
+                if (
+                  selected.type !== 'HDAccount' &&
+                  selected.type !== 'Imported'
+                )
+                  throw new KeyringRuntimeError('NOT_READY');
+                const signed = keyring.signPreparedEvmTransaction(
+                  {
+                    selectedAccount: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                    account: {
+                      id: selected.index,
+                      type: selected.type,
+                      expectedAddress: prepared.from,
+                    },
+                    network: {
+                      kind: 'ethereum',
+                      chainId: network.chainId,
+                      slip44: 60,
+                      url: network.rpcUrl,
+                    },
+                    transaction: prepared,
+                  },
+                  {
+                    assertCurrent: () => {
+                      current(captured);
+                      checkGuard(assertCurrent);
+                    },
+                  }
+                );
+                current(captured);
+                checkGuard(assertCurrent);
+                return Object.freeze({
+                  rawTransaction: signed.rawTransaction,
+                  hash: signed.hash,
+                });
+              });
+            },
           },
           storage: {
             readState: () => storage.readState(),

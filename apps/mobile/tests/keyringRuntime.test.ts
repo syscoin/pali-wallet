@@ -405,7 +405,7 @@ test('native transfers reuse the unlocked shared SDK session without password ch
     await runtime.session.importWallet(PHRASE, PASSWORD);
     const transfers = runtime.transfers; assert.ok(transfers);
     const transaction = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
-    const signed = await transfers.sign(transaction, () => undefined);
+    const signed = await transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const { Transaction } = await import('ethers/transaction');
     const decoded = Transaction.from(signed.rawTransaction);
     assert.equal(decoded.from, ADDRESS); assert.equal(decoded.hash, signed.hash); assert.equal(decoded.value, 123n);
@@ -413,16 +413,16 @@ test('native transfers reuse the unlocked shared SDK session without password ch
     assert.equal((await journal.saveSigned(signed.rawTransaction)).hash, signed.hash);
     assert.equal((await journal.transition(signed.hash, 'attempted')).phase, 'attempted');
     const writes = { success: disk.successWrites, failure: disk.failureWrites };
-    assert.equal((await transfers.sign(transaction, () => undefined)).hash, signed.hash);
+    assert.equal((await transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal })).hash, signed.hash);
     transfers.assertUnlocked(() => undefined);
     assert.deepEqual({ success: disk.successWrites, failure: disk.failureWrites }, writes);
     await runtime.session.lock();
-    await assert.rejects(transfers.sign(transaction, () => undefined), /CANCELLED/);
+    await assert.rejects(transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal }), /CANCELLED/);
     assert.throws(() => transfers.assertUnlocked(() => undefined), /NOT_READY/);
     assert.equal((await runtime.session.unlock(PASSWORD)).authenticated, true);
     const afterUnlock = disk.successWrites;
     transfers.assertUnlocked(() => undefined);
-    await transfers.sign(transaction, () => undefined);
+    await transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(disk.successWrites, afterUnlock);
     assert.equal((await (await transfers.journal(() => undefined)).load())?.rawTransaction, signed.rawTransaction);
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
@@ -793,7 +793,7 @@ test('real SDK HD accounts reuse deleted indices and preserve full records acros
     await f.execute({ kind: 'create', label: 'Recreated savings', password: PASSWORD });
     assert.equal(f.authority.getSnapshot().account?.address, second.address);
     const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: second.address,
-      to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+      to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const { Transaction } = await import('ethers/transaction');
     assert.equal(Transaction.from(signed.rawTransaction).from, second.address);
     const persisted = JSON.stringify([...f.disk.records]);
@@ -813,7 +813,7 @@ test('sender-owned records preserve first and additional accounts across selecti
   const tx = (from: string) => ({ type: 2 as const, accessList: [], from,
     to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' });
   try {
-    const first = await f.runtime.transfers!.sign(tx(ADDRESS), () => undefined);
+    const first = await f.runtime.transfers!.sign(tx(ADDRESS), { assertCurrent: () => undefined, signal: new AbortController().signal });
     let journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(first.rawTransaction); await journal.transition(first.hash, 'attempted');
     assert.equal(JSON.parse(f.disk.signedValue()!).entries.length, 1);
@@ -821,7 +821,7 @@ test('sender-owned records preserve first and additional accounts across selecti
     const secondAddress = f.authority.getSnapshot().account!.address;
     journal = await f.runtime.transfers!.journal(() => undefined);
     assert.equal(await journal.load(), null);
-    const second = await f.runtime.transfers!.sign(tx(secondAddress), () => undefined);
+    const second = await f.runtime.transfers!.sign(tx(secondAddress), { assertCurrent: () => undefined, signal: new AbortController().signal });
     journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(second.rawTransaction); await journal.transition(second.hash, 'attempted');
     assert.equal(JSON.parse(f.disk.signedValue()!).entries.length, 2);
@@ -983,7 +983,7 @@ async function prepareAccountTransfer(transfers: NativeTransfers) {
 test('activity reset retires saved handles and clears only the selected account and chain', async () => {
   const f = await readyAccounts();
   const sign = (chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
-    chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
   try {
     const ethereum = await sign('1');
     const first = await f.runtime.transfers!.journal(() => undefined);
@@ -1010,14 +1010,14 @@ test('activity reset inside signing revokes the result without locking the curre
   try {
     sdk.onSign(() => { reset = f.runtime.resetActivity(() => undefined, () => undefined); });
     await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
-      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /CANCELLED/);
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal }), /CANCELLED/);
     assert(reset);
     await reset;
     assert.equal(await f.runtime.session.readSelectedAddress(), ADDRESS);
     assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
     sdk.onSign(() => { throw Error('current signing failed'); });
     await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
-      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /OPERATION_FAILED/);
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal }), /OPERATION_FAILED/);
     assert.equal(f.runtime.catalogue.getSnapshot(), null);
     await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { sdk.onSign(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
@@ -1028,7 +1028,7 @@ test('locking an in-flight activity reset preserves its stored records', async (
   const entered = deferredAccount(), release = deferredAccount();
   try {
     const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
-      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
     const before = f.disk.signedValue();
     f.disk.onRecord(async (kind, key) => {
@@ -1186,7 +1186,7 @@ test('async host guards never authorize account mutation, journal access or a si
     await f.runtime.session.unlock(PASSWORD);
     await assert.rejects(f.runtime.transfers!.journal(asynchronousGuard), /CANCELLED/);
     assert.throws(() => f.runtime.transfers!.assertUnlocked(asynchronousGuard), /CANCELLED/);
-    await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, asynchronousGuard), /CANCELLED/);
+    await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: asynchronousGuard, signal: new AbortController().signal }), /CANCELLED/);
     assert.equal(JSON.stringify(f.disk.records.get(WALLET_CATALOGUE_KEY)), before);
     assert.equal(f.disk.records.has('native-evm-transfer-v1'), false);
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -1257,7 +1257,7 @@ test('all EVM contexts preserve SDK HD addresses and all valid EVM registrations
       await select(network.id);
       assert.equal(f.authority.getSnapshot().account!.network, network.id);
       assert.equal(f.authority.getSnapshot().account!.address, address);
-      const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: address, to: ADDRESS, chainId: network.chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+      const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: address, to: ADDRESS, chainId: network.chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
       assert.equal(Transaction.from(signed.rawTransaction).chainId, BigInt(network.chainId));
     }
     await select('syscoin-nevm');
@@ -1288,8 +1288,8 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
       await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
       const chainId = getNativeNetwork(networkId).chainId;
       const wrongChainId = networkId === 'ethereum' ? '57057' : '1';
-      await assert.rejects(f.runtime.transfers!.sign(transaction(wrongChainId), () => undefined), /INVALID_INPUT/);
-      const signed = await f.runtime.transfers!.sign(transaction(chainId), () => undefined);
+      await assert.rejects(f.runtime.transfers!.sign(transaction(wrongChainId), { assertCurrent: () => undefined, signal: new AbortController().signal }), /INVALID_INPUT/);
+      const signed = await f.runtime.transfers!.sign(transaction(chainId), { assertCurrent: () => undefined, signal: new AbortController().signal });
       const parsed = Transaction.from(signed.rawTransaction);
       assert.equal(parsed.chainId, BigInt(chainId)); assert.equal(parsed.from, account); assert.equal(parsed.nonce, 0);
       const journal = await f.runtime.transfers!.journal(() => undefined);
@@ -1524,7 +1524,7 @@ test('account removal checks every chain and keeps all sender-owned signed bytes
   try {
     await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
     const address = f.authority.getSnapshot().account!.address;
-    const sign = async (chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: address, to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    const sign = async (chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: address, to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const first = await sign('1'); let journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(first.rawTransaction); await journal.transition(first.hash,'nonce-consumed');
     await f.authority.selectNetwork('syscoin-nevm',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision);
@@ -1598,7 +1598,7 @@ test('fresh runtime validates the complete retained container before publishing 
   const f = await readyAccounts();
   try {
     const tx = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
-    const signed = await f.runtime.transfers!.sign(tx, () => undefined);
+    const signed = await f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal });
     await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
     const row = JSON.parse(f.disk.signedValue()!);
     row.entries[0].from = '0x' + '99'.repeat(20);
@@ -1619,7 +1619,7 @@ test('journal quarantine rejects every later secret operation on the same runtim
   try {
     const exportScope = selectedKeyScope(f);
     const tx = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
-    const signed = await f.runtime.transfers!.sign(tx, () => undefined);
+    const signed = await f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(signed.rawTransaction);
     f.disk.loseCasAcknowledgement();
@@ -1633,7 +1633,7 @@ test('journal quarantine rejects every later secret operation on the same runtim
       () => f.runtime.backup.readPhrase(PASSWORD),
       () => f.runtime.backup.confirm('1'.repeat(64)),
       () => f.runtime.keyExport!.readSelected(exportScope, PASSWORD, () => undefined),
-      () => f.runtime.transfers!.sign(tx, () => undefined),
+      () => f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal }),
       () => Promise.resolve().then(() => f.runtime.transfers!.assertUnlocked(() => undefined)),
     ];
     for (const operation of operations) await assert.rejects(operation(), /CLEANUP_FAILED|CANCELLED/);
@@ -1649,7 +1649,7 @@ test('journal quarantine rejects every later secret operation on the same runtim
 test('journal ambiguity retires an already-running secret operation before it returns recovery words', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
-    const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(signed.rawTransaction);
     const hold = sdk.hold('password');
@@ -1846,7 +1846,7 @@ for (const phase of ['password', 'record-read', 'export-before', 'export-after']
       assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
       await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS,
         to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1',
-        gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /BUSY/);
+        gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal }), /BUSY/);
       await assert.rejects(f.execute({ kind: 'create', label: 'Must not start', password: PASSWORD }), /BUSY/);
       f.authority.lock(); await assert.rejects(f.authority.unlock(PASSWORD), /OPERATION_FAILED|BUSY/);
       hold.release(); await assert.rejects(pending, /CANCELLED/);
@@ -1980,7 +1980,7 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
       await f.authority.selectNetwork(network, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
       const tx = { type: 2 as const, accessList: [], from: importedAddress(), to: ADDRESS, chainId: getNativeNetwork(network).chainId,
         nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
-      const signed = await f.runtime.transfers!.sign(tx, () => undefined);
+      const signed = await f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal });
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress());
       await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
     }
@@ -2025,7 +2025,7 @@ test('SDK imported gap reuse retains the higher account through cold reopen, exp
       const flow: HdKeyExportFlow = new HdKeyExportFlow(reopened, () => runtime.keyExport);
       try { assert.equal((await flow.begin(PASSWORD)).privateKey, key); } finally { flow.dispose(); }
       const signed = await runtime.transfers!.sign({ type: 2, accessList: [], from: importedAddress(key), to: ADDRESS,
-        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress(key));
     }
     assert.deepEqual((f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups[0]!.accounts.Imported[1], retained);
@@ -2143,7 +2143,7 @@ test('imported removal checks every chain, archives terminal rows, and never con
   const f = await readyAccounts();
   try {
     const rawFor = async (address: string, chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: address,
-      to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+      to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const hd = await rawFor(ADDRESS, '1'); await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(hd.rawTransaction);
     const hdHash = hd.hash;
     await importTestKey(f);
@@ -2198,7 +2198,7 @@ test('shared SDK signing snapshots the approved envelope before queued work', as
   try {
     const transaction = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
     const before = [sdk.unlocks, sdk.hydrations, f.disk.successWrites, f.disk.failureWrites];
-    const signing = f.runtime.transfers!.sign(transaction, () => undefined);
+    const signing = f.runtime.transfers!.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     transaction.to = '0x2222222222222222222222222222222222222222';
     transaction.value = '999'; transaction.nonce = '8';
     const decoded = Transaction.from((await signing).rawTransaction);
@@ -2215,7 +2215,7 @@ for (const boundary of ['queued', 'sdk-guard'] as const) {
     try {
       const before = [sdk.unlocks, sdk.hydrations];
       sdk.onSign(() => { signatures++; if (boundary === 'sdk-guard') f.authority.lock(); });
-      const signing = f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' }, () => undefined);
+      const signing = f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
       if (boundary === 'queued') f.authority.lock();
       await assert.rejects(signing, /CANCELLED/);
       assert.equal(signatures, boundary === 'queued' ? 0 : 1);

@@ -118,8 +118,9 @@ function fixture() {
     assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
       transaction: EvmUnsignedTransfer,
-      guard: () => void
+      authority: Readonly<{ assertCurrent(): void; signal: AbortSignal }>
     ) {
+      const guard = authority.assertCurrent;
       guard();
       signatures++;
       if (signGate) await signGate;

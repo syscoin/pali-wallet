@@ -33,6 +33,7 @@ export function ownLedgerTransport(
   let disposed = false;
   let disposal: Promise<void> | undefined;
   let discovery: { stop(): Promise<void> } | undefined;
+  const statusSubscriptions = new Map<() => void, () => void>();
   let stopping: Promise<void> = Promise.resolve();
   const assertCurrent = () => {
     if (disposed || owner.signal.aborted) throw ledgerCancelledError();
@@ -61,6 +62,27 @@ export function ownLedgerTransport(
       connected:
         !disposed && !owner.signal.aborted && sharedHost.getStatus().connected,
     }),
+    subscribeStatus(listener) {
+      assertCurrent();
+      let active = true;
+      const remove = sharedHost.subscribeStatus(() => {
+        if (!active) return;
+        try {
+          assertCurrent();
+        } catch {
+          return;
+        }
+        listener();
+      });
+      const unsubscribe = () => {
+        active = false;
+        remove();
+        statusSubscriptions.delete(unsubscribe);
+      };
+      statusSubscriptions.set(unsubscribe, listener);
+      if (disposed || owner.signal.aborted) unsubscribe();
+      return unsubscribe;
+    },
     beginDeviceSelection: (signal) => {
       assertCurrent();
       return guard(sharedHost.beginDeviceSelection(signal));
@@ -85,11 +107,26 @@ export function ownLedgerTransport(
   };
   const dispose = () => {
     if (disposal) return disposal;
+    let resolveDisposal!: () => void;
+    let rejectDisposal!: (error: unknown) => void;
+    disposal = new Promise<void>((resolve, reject) => {
+      resolveDisposal = resolve;
+      rejectDisposal = reject;
+    });
     disposed = true;
+    for (const [unsubscribe, listener] of [...statusSubscriptions]) {
+      try {
+        listener();
+      } catch {
+        /* A disconnect observer cannot prevent cleanup. */
+      }
+      unsubscribe();
+    }
     owner.signal.removeEventListener('abort', onAbort);
-    // Revoke the semantic session immediately, before native teardown awaits.
-    const disconnect = sharedHost.disconnect();
-    disposal = (async () => {
+    // The wrapper is already revoked. Capture synchronous SDK failures so
+    // native cleanup still drains and the reserved disposal promise settles.
+    const disconnect = Promise.resolve().then(() => sharedHost.disconnect());
+    const cleanup = (async () => {
       const results = await Promise.allSettled([
         disconnect,
         discovery ? discovery.stop() : stopping,
@@ -102,6 +139,7 @@ export function ownLedgerTransport(
       const failure = results.find((result) => result.status === 'rejected');
       if (failure?.status === 'rejected') throw failure.reason;
     })();
+    void cleanup.then(resolveDisposal, rejectDisposal);
     return disposal;
   };
   const onAbort = () => {

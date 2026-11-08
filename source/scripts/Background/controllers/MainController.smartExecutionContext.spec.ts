@@ -93,7 +93,14 @@ describe('smart-account signing and outer broadcast context', () => {
         },
       },
     });
-    keyring = { setVaultStateGetter: jest.fn() };
+    keyring = {
+      setVaultStateGetter: jest.fn(),
+      ethereumTransaction: {
+        ethSign: sign,
+        web3Provider: {},
+        sendFormattedTransaction: send,
+      },
+    };
     wallet = Object.create(MainController.prototype);
     wallet.walletSessionGeneration = 5;
     wallet.getActiveKeyring = jest.fn(() => keyring);
@@ -116,7 +123,14 @@ describe('smart-account signing and outer broadcast context', () => {
         EXECUTION_CONTEXT_ID
       )
     ).resolves.toBe('owner-signature');
-    expect(sign).toHaveBeenCalledWith([OWNER_ADDRESS, ACTION_HASH]);
+    expect(sign).toHaveBeenCalledWith([OWNER_ADDRESS, ACTION_HASH], {
+      selectedAccount: {
+        ...smartAccount,
+        expectedAddress: SMART_ACCOUNT_ADDRESS,
+      },
+      targetAccount: { ...owner, expectedAddress: OWNER_ADDRESS },
+      assertCurrent: expect.any(Function),
+    });
     const assertContext =
       wallet.smartAccount.assertSmartAccountExecutionContext;
     expect(assertContext.mock.calls.length).toBeGreaterThanOrEqual(2);
@@ -128,9 +142,7 @@ describe('smart-account signing and outer broadcast context', () => {
       EXECUTION_CONTEXT_ID,
       ACTION_HASH,
     ]);
-    expect(keyring.setVaultStateGetter).toHaveBeenCalledTimes(2);
-    const restoredGetter = keyring.setVaultStateGetter.mock.calls[1][0];
-    expect(restoredGetter()).toBe(currentState.vault);
+    expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -165,18 +177,20 @@ describe('smart-account signing and outer broadcast context', () => {
     finishSigning('owner-signature');
     await expect(signing).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
     expect(sign).toHaveBeenCalledTimes(1);
-    expect(keyring.setVaultStateGetter).toHaveBeenCalledTimes(2);
+    expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });
 
-  it('rejects a context change while selecting the owner before invoking ethSign', async () => {
+  it('rejects a context change at the explicitly bound owner SDK boundary', async () => {
     wallet.smartAccount.assertSmartAccountExecutionContext.mockImplementation(
       () => {
         if (currentState.vault.activeNetwork.url !== 'rpc-a')
           throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       }
     );
-    keyring.setVaultStateGetter.mockImplementationOnce(() => {
+    sign.mockImplementationOnce(async (_params, options) => {
       currentState.vault.activeNetwork.url = 'rpc-b';
+      options.assertCurrent();
+      return 'unreachable';
     });
     await expect(
       wallet.signSmartAccountActionDigestInternal(
@@ -185,7 +199,7 @@ describe('smart-account signing and outer broadcast context', () => {
         EXECUTION_CONTEXT_ID
       )
     ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
-    expect(sign).not.toHaveBeenCalled();
+    expect(sign).toHaveBeenCalledTimes(1);
   });
 
   it('checks the personal-sign approval again at the actual smart owner SDK invocation', async () => {
@@ -193,8 +207,10 @@ describe('smart-account signing and outer broadcast context', () => {
     const assertApproval = () => {
       if (!approvalCurrent) throw new Error('Approval retired');
     };
-    keyring.setVaultStateGetter.mockImplementationOnce(() => {
+    sign.mockImplementationOnce(async (_params, options) => {
       approvalCurrent = false;
+      options.assertCurrent();
+      return 'unreachable';
     });
     await expect(
       wallet.signSmartAccountActionDigestInternal(
@@ -204,9 +220,29 @@ describe('smart-account signing and outer broadcast context', () => {
         assertApproval
       )
     ).rejects.toThrow('Approval retired');
-    expect(sign).not.toHaveBeenCalled();
-    expect(keyring.setVaultStateGetter).toHaveBeenCalledTimes(2);
+    expect(sign).toHaveBeenCalledTimes(1);
+    expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['resolved Promise', () => Promise.resolve()],
+    ['rejected Promise', () => Promise.reject(new Error('Retired approval'))],
+    ['nonvoid result', () => true],
+  ])(
+    'rejects a %s approval guard before invoking the SDK',
+    async (_name, guard) => {
+      await expect(
+        wallet.signSmartAccountActionDigestInternal(
+          [OWNER_ADDRESS, ACTION_HASH],
+          owner,
+          EXECUTION_CONTEXT_ID,
+          guard
+        )
+      ).rejects.toThrow('EVM fee approval guard must be synchronous');
+      expect(sign).not.toHaveBeenCalled();
+      expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
+    }
+  );
 
   it('preserves the locally derived guardian recovery signing path without an execution token', async () => {
     await expect(
@@ -261,8 +297,14 @@ describe('smart-account signing and outer broadcast context', () => {
   );
 
   it('checks the smart context again after preparing the separate outer payer', async () => {
-    keyring.setVaultStateGetter.mockImplementationOnce(() => {
+    send.mockImplementationOnce(async (_transaction, _legacy, options) => {
       currentState.vault.activeNetwork.url = 'rpc-b';
+      try {
+        options.assertCurrent();
+      } catch (error) {
+        throw Object.assign(error, { transactionNotBroadcast: true });
+      }
+      return response;
     });
     await expect(
       wallet.sendAndSaveEthTransaction(
@@ -276,7 +318,7 @@ describe('smart-account signing and outer broadcast context', () => {
       message: EVM_TRANSACTION_CONTEXT_CHANGED,
       transactionNotBroadcast: true,
     });
-    expect(send).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledTimes(1);
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   });
 

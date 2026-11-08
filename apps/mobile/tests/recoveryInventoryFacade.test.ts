@@ -85,6 +85,7 @@ async function fixture(existing = true) {
       },
     },
     '../connections/controller.ts': { NativeConnectionsController: PassiveController },
+    '../custody/ledgerAccounts.ts': { NativeLedgerAccounts: PassiveController },
     '../custody/authority.ts': { NativeCustodyAuthority, CustodyOperationError },
     '../custody/utxoActivity.ts': { createNativeUtxoActivity: () => ({}) },
     '../core/utxoActivity.ts': { createUtxoActivityReader: () => ({}) },

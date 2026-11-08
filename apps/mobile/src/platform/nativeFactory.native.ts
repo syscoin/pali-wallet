@@ -121,9 +121,10 @@ export function createNativeWalletControllers() {
     checkAddress: (address) => blacklistService.checkAddress(address),
     metadata: { name: 'Pali Wallet', description: 'Pali Wallet', url: 'https://paliwallet.com', icons: [] },
   });
-  const ledger = new NativeLedgerAccounts(authority, () => runtime?.ledger);
+  const ledger = new NativeLedgerAccounts(authority, () => runtime?.ledger, 'import');
+  const ledgerConnection = new NativeLedgerAccounts(authority, () => runtime?.ledger, 'connect');
   const disposeConnections = async () => {
-    const results = await Promise.allSettled([connections.dispose(), ledger.dispose()]);
+    const results = await Promise.allSettled([connections.dispose(), ledger.dispose(), ledgerConnection.dispose()]);
     const failure = results.find((result) => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
   };
@@ -286,6 +287,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, authentication: deviceUnlock.prompt, ledger, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

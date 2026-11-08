@@ -285,6 +285,11 @@ export class NativeTransferRpc {
       return invalid();
     return body.result;
   }
+  async verifyChain(signal: AbortSignal, assertCurrent: () => void): Promise<void> {
+    assertCurrent();
+    await this.checkChain(signal);
+    assertCurrent();
+  }
   private async checkChain(signal: AbortSignal): Promise<void> {
     if (parseRpcQuantity(await this.call('eth_chainId', [], signal)) !== BigInt(this.context.chainId))
       return invalid();

@@ -17,7 +17,7 @@ export function signedRecordTestSession(assertCurrent: () => void = () => undefi
 }
 
 export function submitFixtureEvmTransaction(records: EvmSignedRecords): NativeTransferRuntime['submit'] {
-  return async (raw, hash, guard, broadcast, intent, approved, replacement, verifyAutomaticNonce) => {
+  return async (raw, hash, guard, transport, intent, approved, replacement, verifyAutomaticNonce) => {
     const tx = Transaction.from(raw);
     if (!tx.from || tx.hash !== hash || intent?.kind === 'nft-transfer') throw Error('Invalid EVM fixture submission');
     const session = signedRecordTestSession(guard);
@@ -37,7 +37,7 @@ export function submitFixtureEvmTransaction(records: EvmSignedRecords): NativeTr
       preflight: verifyAutomaticNonce ? (_record, assertCurrent, snapshot) =>
         verifyAutomaticNonce(createNativeAutomaticNoncePlanner(records, session, chainId, from, endpoint, snapshot), assertCurrent) : undefined,
     }));
-    await submitSignedEvmTransaction(raw, broadcast, boundary, undefined, unsignedTransferBytes(approved));
+    await submitSignedEvmTransaction(raw, transport.broadcast, boundary, undefined, unsignedTransferBytes(approved));
   };
 }
 
