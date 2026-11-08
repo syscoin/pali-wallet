@@ -1915,6 +1915,10 @@ it('keeps the adjustment notice when a dapp choice is raised again by the requot
     ).toBe(false);
   });
   expect(screen.getByText('send.dappFeeRaisedDescription')).toBeDefined();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.useDappFeeRequest' })
+  );
+  expect(screen.getByText('send.dappFeeRaisedDescription')).toBeDefined();
   expect(
     mockEmitter.mock.calls.some(
       ([path]) => path[1] === 'sendAndSaveEthTransaction'
