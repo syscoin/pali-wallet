@@ -506,7 +506,10 @@ export function createKeyringRuntimeFactory(
           const target = openKeyring(next);
           try {
             guard();
-            source.transferSessionTo(target);
+            await ledgerCleanup;
+            guard();
+            const preparedTransfer = await source.prepareSessionTransfer(target, guard);
+            preparedTransfer.transfer();
             keyring = target;
             state = next;
             if (catalogueAccountGroup(records, networkId)) return;

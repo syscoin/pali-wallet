@@ -1,4 +1,5 @@
 import { getNetworkConfig } from '@sidhujag/sysweb3-network';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -54,6 +55,18 @@ function hardwareHd(slip44: number, currency: string, accountIndex: number) {
 }
 
 async function fixture() {
+  const sdk = await loadNativeKeyringSdk();
+  let sessionTransfers = 0;
+  class CountedHost extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...options);
+      const prepare = this.prepareSessionTransfer;
+      this.prepareSessionTransfer = (...args) => {
+        sessionTransfers++;
+        return prepare(...args);
+      };
+    }
+  }
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-ledger-import-'));
   const file = path.join(directory, 'wallet.sqlite');
   let initialized = false,
@@ -94,6 +107,7 @@ async function fixture() {
   };
   const factory = createKeyringRuntimeFactory({
     ensureCryptoReady: async () => undefined,
+    loadSdk: async () => ({ ...sdk, HostKeyring: CountedHost }),
     readEvmRetirement: null,
     openStorage,
     utxoFetch: (...args) => utxoFetch(...args),
@@ -132,6 +146,7 @@ async function fixture() {
             check();
             assert(connected);
           },
+          retire: async () => () => undefined,
           disconnect: async () => {
             connected = false;
           },
@@ -286,6 +301,9 @@ async function fixture() {
     openStorage,
     get signedCount() {
       return signedCount;
+    },
+    get sessionTransfers() {
+      return sessionTransfers;
     },
     get psbtSignCount() {
       return psbtSignCount;
@@ -888,6 +906,51 @@ test('real Ledger handoff forwards disconnect and ignores retired transport even
     assert.equal(f.signedCount, 0);
     unsubscribe();
   } finally {
+    await f.close();
+  }
+});
+
+test('account-group transfer waits for a retired pending native Ledger creation', async () => {
+  const f = await fixture();
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let switching: Promise<void> | undefined;
+  let scanning: Promise<void> | undefined;
+  try {
+    f.holdCreation(() => {
+      entered.resolve();
+      return release.promise;
+    });
+    scanning = f.view.start();
+    // Retirement may cancel the visible scan while the admitted factory drains.
+    void scanning.catch(() => undefined);
+    await entered.promise;
+    let published = false;
+    switching = f.owner
+      .selectNetwork(
+        'bitcoin',
+        f.owner.getSnapshot().revision,
+        f.owner.getCatalogue()!.revision
+      )
+      .then(() => {
+        published = true;
+      });
+    for (let i = 0; i < 5; i++)
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(f.sessionTransfers, 0);
+    assert.equal(published, false);
+    assert.equal(f.owner.getSnapshot().phase, 'authenticating');
+    release.resolve();
+    await switching;
+    await scanning.catch(() => undefined);
+    assert.equal(f.disposedCount, 1);
+    assert.equal(f.sessionTransfers, 1);
+    assert.equal(f.owner.getCatalogue()!.active.networkId, 'bitcoin');
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally {
+    release.resolve();
+    await switching?.catch(() => undefined);
+    await scanning?.catch(() => undefined);
     await f.close();
   }
 });

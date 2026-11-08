@@ -12,7 +12,10 @@ import {
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
-import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
+import {
+  createOfflineTrezorHost,
+  createTestKeyringManager,
+} from '../../../../../tests/fixtures/extensionKeyring';
 import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -1429,6 +1432,7 @@ describe('pinned keyring account-scoped replacement signing', () => {
     actualHardware = new HardwareWalletManager();
     const manager: any = createTestKeyringManager(undefined, {
       hardwareManager: actualHardware,
+      trezorHost: createOfflineTrezorHost(),
       captureEvmSubmission: createTestEvmSubmissionCapture(),
     });
     const vault = {

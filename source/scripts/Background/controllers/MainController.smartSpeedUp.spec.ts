@@ -9,7 +9,10 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { webcrypto } from 'node:crypto';
 
-import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
+import {
+  createOfflineTrezorHost,
+  createTestKeyringManager,
+} from '../../../../tests/fixtures/extensionKeyring';
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -263,6 +266,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     const testCapture = createTestEvmSubmissionCapture();
     keyring = createTestKeyringManager(undefined, {
       hardwareManager: hardware,
+      trezorHost: createOfflineTrezorHost(),
       captureEvmSubmission: (context) =>
         useActualLifecycle
           ? wallet.captureEvmSignedSubmission(keyring, context)

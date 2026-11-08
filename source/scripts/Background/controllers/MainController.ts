@@ -8,6 +8,7 @@ import {
   type IReviewedEvmTokenFees,
   type IReviewedEvmTokenApproval,
 } from '@sidhujag/sysweb3-keyring';
+import { createTrezorWebExtensionHost } from '@sidhujag/sysweb3-keyring/cjs/trezor/webextension-host';
 import {
   coins,
   findUtxoCoinByRegistration,
@@ -1930,8 +1931,12 @@ class MainController {
             );
           }
 
-          // Transfer session directly from source to target
-          stateTransaction.sourceKeyring.transferSessionTo(targetKeyring);
+          const preparedTransfer =
+            await stateTransaction.sourceKeyring.prepareSessionTransfer(
+              targetKeyring,
+              assertCurrentSwitch
+            );
+          preparedTransfer.transfer();
 
           // CRITICAL FIX: Only update activeSlip44 AFTER successful session transfer
           // This ensures atomic state change to prevent race conditions
@@ -2079,6 +2084,15 @@ class MainController {
     ));
     const keyring = new KeyringManager(host, {
       ledgerHost: getLedgerHost(),
+      trezorHost: createTrezorWebExtensionHost({
+        manifest: {
+          appName: 'Pali Wallet',
+          appUrl: 'https://paliwallet.com/',
+          email: 'support@syscoin.org',
+        },
+        debug: false,
+        coreMode: 'auto',
+      }),
       captureEvmSubmission: (context) =>
         this.captureEvmSignedSubmission(keyring, context),
     });

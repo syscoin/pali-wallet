@@ -21,6 +21,7 @@ import http from 'http';
 import https from 'https';
 
 import { getController } from '..';
+import { createOfflineTrezorHost } from '../../../../tests/fixtures/extensionKeyring';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { createAccount, restoreVaultSnapshot } from 'state/vault';
@@ -219,6 +220,7 @@ beforeEach(async () => {
   );
   store.dispatch(setActiveSlip44(60));
   manager = new KeyringManager(createBrowserKeyringHost(chrome.storage.local), {
+    trezorHost: createOfflineTrezorHost(),
     captureEvmSubmission: () => {
       throw new Error('EVM submission is outside this fixture');
     },

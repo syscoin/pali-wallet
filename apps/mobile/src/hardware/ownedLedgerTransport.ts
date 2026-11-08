@@ -58,6 +58,7 @@ export function ownLedgerTransport(
   const host: LedgerDmkHost = {
     connect: guard((...args) => sharedHost.connect(...args)),
     disconnect: () => sharedHost.disconnect(),
+    retire: () => sharedHost.retire(),
     getStatus: () => ({
       connected:
         !disposed && !owner.signal.aborted && sharedHost.getStatus().connected,
@@ -125,10 +126,10 @@ export function ownLedgerTransport(
     owner.signal.removeEventListener('abort', onAbort);
     // The wrapper is already revoked. Capture synchronous SDK failures so
     // native cleanup still drains and the reserved disposal promise settles.
-    const disconnect = Promise.resolve().then(() => sharedHost.disconnect());
+    const retirement = Promise.resolve().then(() => sharedHost.retire());
     const cleanup = (async () => {
       const results = await Promise.allSettled([
-        disconnect,
+        retirement,
         discovery ? discovery.stop() : stopping,
       ]);
       try {

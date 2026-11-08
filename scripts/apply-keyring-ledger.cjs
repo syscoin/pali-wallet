@@ -1,4 +1,4 @@
-// Temporary reviewed PRs #95, #96, #97 and #99 adoption. Remove this script and manifest with the SDK release.
+// Temporary reviewed PRs #95, #96, #97, #99 and #100 adoption. Remove this script and manifest with the SDK release.
 /* eslint-disable @typescript-eslint/no-var-requires -- This install script runs directly in Node CommonJS. */
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');

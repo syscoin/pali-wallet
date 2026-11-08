@@ -17,6 +17,7 @@ import {
   verifyFixtureSignature,
 } from '../../e2e/harness/utxoFixture';
 import { getSyscoinUTXOTestnetNetwork } from '../../source/utils/defaultNetworks';
+import { createOfflineTrezorHost } from '../fixtures/extensionKeyring';
 
 const mockBlockbookLookup = jest.fn((...args: unknown[]) => {
   void args;
@@ -69,6 +70,7 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
         },
       });
       manager = new KeyringManager(host, {
+        trezorHost: createOfflineTrezorHost(),
         captureEvmSubmission: () => {
           throw new Error('EVM submission is outside this fixture');
         },
