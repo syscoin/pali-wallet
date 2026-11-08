@@ -270,6 +270,10 @@ export type NativeConnectionRepository = Readonly<{
   permissions(binding: NativeConnectionBinding): DappPermissionPort;
   /** Trusted host inventory only. Includes public peer identifiers, never protocol secret values. */
   bindings(): readonly NativeConnectionBinding[];
+  reconcileSessions(
+    bindings: readonly NativeConnectionBinding[],
+    assertCurrent: () => void
+  ): Promise<void>;
   transport: NativeConnectionTransportStorage;
   retireAccount<T>(
     account: Readonly<{
@@ -383,26 +387,26 @@ export async function openNativeConnectionRepository({
     sessions: [...nextSessions.values()],
     transport: [...nextTransport].map(([key, value]) => ({ key, value })),
   });
-  const persist = async (next: ConnectionRecord) => {
+  const persist = async (next: ConnectionRecord, guard: () => void) => {
     // Bounds and JSON validation precede storage I/O, including initial creation.
     const detached = readRecord(next, walletBindingId);
-    check();
+    guard();
     try {
       const saved =
         persisted === undefined
           ? await storage.createManyIfAbsent(
               { [NATIVE_CONNECTION_STORAGE_KEY]: detached },
-              check
+              guard
             )
           : await storage.compareAndSet(
               NATIVE_CONNECTION_STORAGE_KEY,
               persisted,
               detached,
               undefined,
-              check
+              guard
             );
       if (!saved) return unavailable();
-      check();
+      guard();
       persisted = detached;
     } catch {
       poisoned = true;
@@ -456,7 +460,8 @@ export async function openNativeConnectionRepository({
           matchBinding(binding);
           if (permissionWriter !== id) return unavailable();
           await persist(
-            record(withFrame(binding, readFrame(frame, binding.origin)))
+            record(withFrame(binding, readFrame(frame, binding.origin))),
+            check
           );
         },
       });
@@ -466,6 +471,51 @@ export async function openNativeConnectionRepository({
       return Object.freeze(
         [...sessions.values()].map(({ binding }) => binding)
       );
+    },
+    reconcileSessions(bindings, assertCurrent) {
+      if (!Array.isArray(bindings) || typeof assertCurrent !== 'function')
+        return Promise.reject(
+          new NativeConnectionStorageError('INVALID_CONNECTION_STATE')
+        );
+      const identities = new Set(
+        bindings.map((binding) => {
+          const value = readBinding(binding);
+          return JSON.stringify([
+            value.peerPublicKey,
+            value.topic,
+            value.origin,
+          ]);
+        })
+      );
+      return queued(async () => {
+        const revision = permissionRevision;
+        const guard = () => {
+          check();
+          const result: unknown = assertCurrent();
+          if (result !== undefined) {
+            void Promise.resolve(result).catch(() => undefined);
+            return unavailable();
+          }
+          if (permissionRevision !== revision) return unavailable();
+        };
+        guard();
+        const retained = new Map(
+          [...sessions].filter(([, { binding }]) =>
+            identities.has(
+              JSON.stringify([
+                binding.peerPublicKey,
+                binding.topic,
+                binding.origin,
+              ])
+            )
+          )
+        );
+        if (retained.size === sessions.size) return;
+        await persist(record(retained), guard);
+        sessions.clear();
+        for (const [key, value] of retained) sessions.set(key, value);
+        permissionRevision++;
+      });
     },
     retireAccount(account, operation, assertCurrent) {
       if (
@@ -595,7 +645,7 @@ export async function openNativeConnectionRepository({
           validateStorageKey(key);
           const next = new Map(transport);
           next.set(key, normalizeTransportValue(value));
-          await persist(record(sessions, next));
+          await persist(record(sessions, next), check);
           transport = next;
         }),
       removeItem: (key: string) =>
@@ -604,7 +654,7 @@ export async function openNativeConnectionRepository({
           if (!transport.has(key)) return;
           const next = new Map(transport);
           next.delete(key);
-          await persist(record(sessions, next));
+          await persist(record(sessions, next), check);
           transport = next;
         }),
     }),
