@@ -119,15 +119,6 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     walletBindingId: 'd4'.repeat(32),
     assertOwner() {},
     sessionGeneration: () => snapshot.revision,
-    async activateRequestAccount(accountId, guard) {
-      guard();
-      await activationWait;
-      guard();
-      selectedAccountId = accountId;
-      snapshot = { ...snapshot, revision: snapshot.revision + 1 };
-      for (const listener of listeners) listener();
-      guard();
-    },
     async signMessage(input) {
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
@@ -169,10 +160,10 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
       >['network'],
       networkId: 'ethereum',
       networkLabel: 'Ethereum',
-      activeAccountId: snapshot.phase === 'ready' ? selectedAccountId : null,
-      unlocked: snapshot.phase === 'ready',
+      activeAccountId: ['ready', 'authenticating'].includes(snapshot.phase) ? selectedAccountId : null,
+      unlocked: ['ready', 'authenticating'].includes(snapshot.phase),
       accounts:
-        snapshot.phase === 'ready'
+        ['ready', 'authenticating'].includes(snapshot.phase)
           ? [
               {
                 id: 'hd:60:0',
@@ -248,6 +239,18 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     },
   };
   const controller = new NativeConnectionsController({
+    async activateAccount(accountId, expectedRevision, guard) {
+      guard();
+      assert.equal(snapshot.revision, expectedRevision);
+      snapshot = { ...snapshot, phase: 'authenticating', revision: snapshot.revision + 1 };
+      for (const listener of listeners) listener();
+      await activationWait;
+      guard();
+      selectedAccountId = accountId;
+      snapshot = { ...snapshot, phase: 'ready' };
+      for (const listener of listeners) listener();
+      guard();
+    },
     source: {
       getSnapshot: () => snapshot,
       subscribe: (listener) => {
