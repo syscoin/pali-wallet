@@ -16,6 +16,7 @@ import { createAccountRecordTestFixture } from './accountRecordTestFixture.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory, CustodyStoredState } from '../src/custody/types.ts';
 import type { KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../src/storage/types.ts';
+import type { NativeNoteInventory } from '../src/custody/noteBackupRuntime.ts';
 
 const BINDING = 'ab'.repeat(32);
 const PRIVATE_ERROR = 'fixture private storage failure that must never enter a DTO';
@@ -36,7 +37,7 @@ function savedSnapshot(record: NativeAccountRecord, root: { address: string; pub
 }
 
 /** Execute the real factory, authority and inventory parser; replace only native/SDK ports. */
-async function fixture(existing = true) {
+async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   const keys = await createAccountRecordTestFixture();
   const record = keys.record(BINDING), root = { ...keys.identity, profileId: keys.staged.profileId };
   record.groups[0]!.accounts.HDAccount[0]!.label = 'Private account label';
@@ -69,6 +70,10 @@ async function fixture(existing = true) {
       async importWallet() { assert.fail('unexpected import'); },
     },
   };
+  if (noteInventory) Object.assign(runtime, {
+    catalogue: { getSnapshot: () => ({}) },
+    async readNoteInventory(assertCurrent: () => void) { assertCurrent(); return noteInventory; },
+  });
   class PassiveController { readonly view = {}; dispose() {} }
   const dependencies: Record<string, unknown> = {
     './security': security,
@@ -143,6 +148,67 @@ async function fixture(existing = true) {
   return { factory: module.exports, counts, root, snapshot,
     setSnapshotRead(read: () => Promise<RecoveryStorageSnapshot>) { snapshotRead = read; } };
 }
+
+test('the native factory delivers guarded withdrawal and status routes to the inventory screen', async () => {
+  const note = Object.freeze({ amount: '1', createdAt: 1, reconciliation: 'withdrawal-history' as const });
+  let openings = 0, disposals = 0, screenCurrent = true;
+  let holdOpen: Promise<void> | undefined;
+  let holdDispose: Promise<void> | undefined;
+  const model = Object.freeze({ async dispose() { disposals++; await holdDispose; } }) as unknown as Awaited<ReturnType<NonNullable<NativeNoteInventory['openWithdrawal']>>>;
+  let checkModel: (() => void) | undefined;
+  const signal = new AbortController().signal;
+  const inventory: NativeNoteInventory = {
+    notes: [note],
+    async openWithdrawal(selected, ownerSignal, assertCurrent) {
+      openings++;
+      assert.equal(selected, note); assert.equal(ownerSignal, signal);
+      assertCurrent(); checkModel = assertCurrent;
+      await holdOpen;
+      return model;
+    },
+    async revealNote() { assert.fail('withdrawal route must not reveal the note'); },
+  };
+  const f = await fixture(true, inventory), controllers = f.factory.createNativeWalletControllers();
+  try {
+    await controllers.authority.initialize(); await controllers.authority.unlock('fixture password');
+    const view = await controllers.readNoteInventory(() => undefined);
+    assert.equal(typeof view.openWithdrawal, 'function');
+    assert.equal(view.notes[0], note);
+    const assertScreen = () => { if (!screenCurrent) throw new Error('screen retired'); };
+    assert.equal(await view.openWithdrawal!(view.notes[0]!, signal, assertScreen), model);
+    assert.equal(openings, 1);
+    screenCurrent = false;
+    assert.throws(() => checkModel!(), /screen retired/);
+    screenCurrent = true;
+    const opening = deferred<void>(); holdOpen = opening.promise;
+    const closing = deferred<void>(); holdDispose = closing.promise;
+    const lateView = view.openWithdrawal!(note, signal, assertScreen);
+    let lateSettled = false;
+    void lateView.catch(() => { lateSettled = true; });
+    screenCurrent = false; opening.resolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(disposals, 1);
+    assert.equal(lateSettled, false);
+    closing.resolve();
+    await assert.rejects(lateView, /screen retired/);
+    screenCurrent = true; holdOpen = undefined; holdDispose = undefined;
+    controllers.authority.lock();
+    assert.throws(() => checkModel!(), cancelled);
+    await assert.rejects(view.openWithdrawal!(note, signal, assertScreen), cancelled);
+    await controllers.authority.unlock('fixture password');
+    await assert.rejects(view.openWithdrawal!(note, signal, assertScreen), cancelled);
+    assert.equal(openings, 2);
+  } finally { await controllers.authority.dispose(); }
+});
+
+test('the native inventory facade preserves absence of an unsupported withdrawal capability', async () => {
+  const f = await fixture(true, { notes: [], async revealNote() { assert.fail('unexpected reveal'); } });
+  const controllers = f.factory.createNativeWalletControllers();
+  try {
+    await controllers.authority.initialize(); await controllers.authority.unlock('fixture password');
+    assert.equal((await controllers.readNoteInventory(() => undefined)).openWithdrawal, undefined);
+  } finally { await controllers.authority.dispose(); }
+});
 
 test('locked inventory facade reads the original handle, returns only public counts and never opens or retires another owner', async () => {
   const f = await fixture(), controllers = f.factory.createNativeWalletControllers();

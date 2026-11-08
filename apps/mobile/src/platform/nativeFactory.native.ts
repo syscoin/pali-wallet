@@ -444,6 +444,15 @@ export function createNativeWalletControllers() {
     return Object.freeze<NativeNoteInventory>({
       notes: inventory.notes,
       ...(inventory.checkNote ? { checkNote: (...args: Parameters<NonNullable<NativeNoteInventory['checkNote']>>) => observeFailure(() => inventory.checkNote!(...args)) } : {}),
+      ...(inventory.openWithdrawal ? {
+        async openWithdrawal(...[note, signal, assertViewCurrent]: Parameters<NonNullable<NativeNoteInventory['openWithdrawal']>>) {
+          const check = () => { assertCurrent(); return assertViewCurrent(); };
+          check();
+          const view = await observeFailure(() => inventory.openWithdrawal!(note, signal, check));
+          try { check(); return view; }
+          catch (error) { await view.dispose(); throw error; }
+        },
+      } : {}),
       async revealNote(...args) {
         assertCurrent();
         const secret = await observeFailure(() => inventory.revealNote(...args));
