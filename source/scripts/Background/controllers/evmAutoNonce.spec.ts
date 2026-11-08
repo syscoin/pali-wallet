@@ -48,7 +48,9 @@ function fixture(latest: string, pending: string) {
       owner: 'wallet',
       minimumNonce: 0,
       retained: [] as (typeof retained)[],
-      readMaximumCost: jest.fn<Promise<bigint>, [string]>(async () => BigInt(5)),
+      readMaximumCost: jest.fn<Promise<bigint>, [string]>(async () =>
+        BigInt(5)
+      ),
       readAssetDebit: jest.fn(async () => BigInt(0)),
     },
   };
