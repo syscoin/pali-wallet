@@ -1,3 +1,5 @@
+import { prepareSmartAccountMessage, encodeSmartAccountMessageSignature } from '../../../source/utils/smartAccount/messageSigning.ts';
+import type { DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
@@ -63,11 +65,14 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let payerBalance = '0x1000000000000000';
   let gasCredit = 0n;
   let interruptAfterReceipt = false;
-  let smartCodeRead: (() => void) | undefined;
+  let smartCodeRead: (() => void | Promise<void>) | undefined;
+  let beforeSignature: (() => void | Promise<void>) | undefined;
   let afterBroadcast: (() => void) | undefined;
   let guardian: ReturnType<typeof createGuardianRecoveryFixture> | undefined;
   let externalOwner = false;
   let recoveredOwner: string | undefined;
+  let observedOwners: string[] | undefined;
+  let observedThreshold = 1;
   const openStorage = async () => {
     storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, !initialized);
     initialized = true;
@@ -92,7 +97,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
           result = builtIn ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
           if (smartTarget) {
-            smartCodeRead?.();
+            await smartCodeRead?.();
             if (deployed && interruptAfterReceipt) {
               interruptAfterReceipt = false;
               owner.lock();
@@ -157,9 +162,9 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa')]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
             const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [[recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('threshold')!.selector)) {
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [1]);
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [observedThreshold]);
           } else if (to === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector)) {
             assert.equal(request.params[1], 'pending');
             const [sender, key] = paliEntryPointInterface.decodeFunctionData('getNonce', data);
@@ -203,6 +208,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const original = this.ethereumTransaction.ethSign.bind(this.ethereumTransaction);
           this.ethereumTransaction.ethSign = async (...input: Parameters<typeof original>) => {
             const saved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { guardianRecoveryIntents?: unknown[] };
+            await beforeSignature?.();
             const signature = await original(...input);
             signatures.push({ address: input[0][0]!, digest: input[0][1]!, signature, intentPersisted: !!saved.guardianRecoveryIntents?.length });
             return signature;
@@ -237,6 +243,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     },
     externalOwner() { externalOwner = true; },
     recoveredOwner(address: string) { recoveredOwner = address; },
+    observedEcdsaOwners(addresses: string[], threshold: number) { observedOwners = addresses; observedThreshold = threshold; },
     gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
     loseGasCredit() { gasCredit = 0n; },
     wrongChain() { wrongChain = true; },
@@ -249,7 +256,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     undeployed() { deployed = false; },
     deployed(code = '0x01') { deployed = true; deployedCode = code; guardian = undefined; },
     interruptAfterReceipt() { interruptAfterReceipt = true; },
-    onSmartCodeRead(hook: () => void) { smartCodeRead = hook; },
+    onSmartCodeRead(hook: () => void | Promise<void>) { smartCodeRead = hook; },
+    onSignature(hook: () => void | Promise<void>) { beforeSignature = hook; },
     onBroadcast(hook: () => void) { afterBroadcast = hook; },
     substitute() { substituteAddress = true; }, hold(value: () => Promise<void>) { hold = value; },
     async change(request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) {
@@ -1642,4 +1650,160 @@ test('a different active recovery prevents signing the saved intent until status
     assert.equal(controller.getSnapshot().action, null);
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
   } finally { controller.dispose(); await f.close(); }
+});
+
+
+async function smartMessageApproval(f: Awaited<ReturnType<typeof fixture>>) {
+  const host = await f.runtime.openConnectionHost();
+  const selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
+  let grant: import('../../../source/shared/dappTypes.ts').DappGrant | undefined = {
+    accountId: selected.index,
+    accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType,
+    chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType,
+    chainId: 1, host: 'https://fixture.example', date: 1,
+  };
+  const approval = createDappSigningApproval({
+    readScope: () => ({
+      account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub },
+      grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
+    }),
+    subscribe: changed => f.owner.subscribe(() => changed()),
+  });
+  return { host, selected, approval, revoke() { grant = undefined; } };
+}
+
+for (const deployed of [false, true]) test(`real SDK Smart personal and V4 messages share exact ERC-7739 envelopes (deployed ${deployed})`, async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Message signer', password: PASSWORD });
+    if (deployed) f.deployed();
+    connection = await smartMessageApproval(f);
+    const { host, selected, approval } = connection;
+    const owner = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!.address;
+    assert.equal(host.supportsSmartAccountMessages(selected.id), true);
+    const requests: DappMessageRequest[] = [
+      { method: 'personal_sign', address: selected.address, message: 'Hello Pali' },
+      { method: 'personal_sign', address: selected.address, message: '0x48656c6c6f' },
+      { method: 'eth_signTypedData_v4', address: selected.address, version: 'V4', typedData: {
+        domain: { name: 'Dapp', version: '1', chainId: 10, verifyingContract: '0x' + '22'.repeat(20) },
+        types: { EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'version', type: 'string' }, { name: 'chainId', type: 'uint256' }, { name: 'verifyingContract', type: 'address' }],
+          Mail: [{ name: 'contents', type: 'string' }] },
+        primaryType: 'Mail', message: { contents: 'Bound to the Smart account' },
+      } },
+    ];
+    for (const request of requests) {
+      const prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
+      const result = await host.signMessage({ accountId: selected.id, networkId: 'ethereum', request, approval });
+      const signed = f.signatures.at(-1)!;
+      assert.equal(signed.address.toLowerCase(), owner.toLowerCase());
+      assert.equal(signed.digest, prepared.actionHash);
+      assert.equal(recoverAddress(prepared.actionHash, signed.signature).toLowerCase(), owner.toLowerCase());
+      assert.equal(result, encodeSmartAccountMessageSignature(prepared, {
+        validator: getConfiguredAuthenticatorAddress(1, 'ecdsa'), signature: signed.signature,
+      }));
+      assert.equal(result.slice(2, 42).toLowerCase(), getConfiguredAuthenticatorAddress(1, 'ecdsa').slice(2).toLowerCase());
+      if (prepared.method === 'eth_signTypedData_v4') assert.equal(prepared.proof.appDomainSeparator.length, 66);
+    }
+    assert.equal(f.signatures.length, 3);
+    assert.equal(f.submitted.length, 0);
+    assert(!f.calls.includes('eth_estimateGas'));
+  } finally { connection?.approval.dispose(); await f.close(); }
+});
+
+test('Smart message signing refuses a freshly observed external validator owner', async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Changed owner', password: PASSWORD });
+    f.deployed(); f.externalOwner();
+    connection = await smartMessageApproval(f);
+    const { host, selected, approval } = connection;
+    assert.equal(host.supportsSmartAccountMessages(selected.id), true, 'local capability is revalidated from the chain during signing');
+    await assert.rejects(host.signMessage({ accountId: selected.id, networkId: 'ethereum', approval,
+      request: { method: 'personal_sign', address: selected.address, message: 'Stale owner' } }));
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+  } finally { connection?.approval.dispose(); await f.close(); }
+});
+
+for (const phase of ['metadata', 'signing'] as const) test(`Smart message signing discards approval revoked during ${phase}`, async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let entered = false;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Revoked approval', password: PASSWORD });
+    f.deployed(); connection = await smartMessageApproval(f);
+    const { host, selected, approval } = connection;
+    const stop = async () => { entered = true; await held; };
+    if (phase === 'metadata') f.onSmartCodeRead(stop); else f.onSignature(stop);
+    const signing = host.signMessage({ accountId: selected.id, networkId: 'ethereum', approval,
+      request: { method: 'personal_sign', address: selected.address, message: 'Requires live approval' } });
+    const rejected = assert.rejects(signing);
+    for (let i = 0; !entered && i < 300; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(entered);
+    connection.revoke(); release(); await rejected;
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+  } finally { release(); connection?.approval.dispose(); await f.close(); }
+});
+
+for (const method of ['eth_signTypedData', 'eth_signTypedData_v3'] as const) test(`Smart message signing rejects ${method} before SDK signing`, async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'V4 only', password: PASSWORD });
+    connection = await smartMessageApproval(f);
+    const { host, selected, approval } = connection;
+    const request: DappMessageRequest = method === 'eth_signTypedData'
+      ? { method, address: selected.address, version: 'V1', typedData: [{ name: 'message', type: 'string', value: 'hello' }] }
+      : { method, address: selected.address, version: 'V3', typedData: {
+        domain: { name: 'Dapp' }, types: { EIP712Domain: [{ name: 'name', type: 'string' }], Mail: [{ name: 'contents', type: 'string' }] },
+        primaryType: 'Mail', message: { contents: 'hello' },
+      } };
+    await assert.rejects(host.signMessage({ accountId: selected.id, networkId: 'ethereum', approval, request }));
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+  } finally { connection?.approval.dispose(); await f.close(); }
+});
+
+
+test('Smart message signing assembles the configured local ECDSA threshold using the existing SDK', async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    await f.change({ kind: 'create', label: 'Second owner', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Two owners', password: PASSWORD });
+    const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
+    assert.equal(owners.length, 2);
+    f.deployed(); f.observedEcdsaOwners(owners.map(owner => owner.address), 2);
+    connection = await smartMessageApproval(f);
+    const { host, selected, approval } = connection;
+    const request: DappMessageRequest = { method: 'personal_sign', address: selected.address, message: 'Both local owners approve' };
+    const prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
+    const result = await host.signMessage({ accountId: selected.id, networkId: 'ethereum', request, approval });
+    assert.equal(f.signatures.length, 2);
+    const [signatures] = coder.decode(['bytes[]'], '0x' + result.slice(42));
+    assert.equal(signatures.length, 2);
+    signatures.forEach((signature: string, index: number) => {
+      assert.equal(recoverAddress(prepared.actionHash, signature).toLowerCase(), owners[index]!.address.toLowerCase());
+    });
+    assert.equal(f.submitted.length, 0);
+  } finally { connection?.approval.dispose(); await f.close(); }
+});
+
+test('Smart message signing refuses an RPC chain change before signing', async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Chain-bound signer', password: PASSWORD });
+    connection = await smartMessageApproval(f);
+    f.wrongChain();
+    const { host, selected, approval } = connection;
+    await assert.rejects(host.signMessage({ accountId: selected.id, networkId: 'ethereum', approval,
+      request: { method: 'personal_sign', address: selected.address, message: 'Original chain' } }));
+    assert.equal(f.signatures.length, 0);
+  } finally { connection?.approval.dispose(); await f.close(); }
 });

@@ -61,6 +61,7 @@ export function NativeMessageReviewScreen({ review, controller }: {
       <Text style={s.account}>{review.accountLabel}</Text>
       <Text selectable style={s.address}>{review.address}</Text>
       <Text style={s.network}>{review.networkLabel} · Chain ID {review.chainId}</Text>
+      {review.smartAccount && <Text style={s.body}>Smart account signature · Your smart account will authorize this request with its configured signing method.</Text>}
     </Card>
     {review.order && <Card style={s.card}>
       <Text accessibilityRole="header" style={s.sectionTitle}>{review.order.protocol} order</Text>

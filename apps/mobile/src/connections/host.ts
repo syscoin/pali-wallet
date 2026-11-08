@@ -46,6 +46,7 @@ export type NativeConnectionHost = Readonly<{
   assertOwner(): void;
   sessionGeneration(): number;
   supportsAtomicCalls(accountId: string): boolean;
+  supportsSmartAccountMessages(accountId: string): boolean;
   readCallsStatus(
     origin: string,
     id: string,
