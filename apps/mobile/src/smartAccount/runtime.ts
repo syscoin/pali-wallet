@@ -1,3 +1,4 @@
+import { readSmartAccountDeploymentState } from '../../../../source/utils/smartAccount/deploymentState.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
 import {
   prepareSmartAccountOperation,
@@ -94,6 +95,17 @@ export function createNativeSmartDeployment(
         assertCurrent
       );
       await ports.rpc.assertSmartAccountSupported(signal, assertCurrent);
+      const state = await readSmartAccountDeploymentState({
+        account,
+        chainId,
+        provider,
+        assertCurrent,
+      });
+      if (state === 'deployed') {
+        await ports.markDeployed(assertCurrent);
+        assertCurrent();
+        return { kind: 'already-deployed' };
+      }
       issued = await prepareSmartAccountOperation({
         account,
         chainId,
@@ -131,7 +143,7 @@ export function createNativeSmartDeployment(
         },
       });
       assertCurrent();
-      return issued;
+      return { kind: 'authorization', operation: issued };
     },
     async sign(prepared, assertCurrent) {
       if (prepared !== issued) throw new Error('DEPLOYMENT_EXPIRED');

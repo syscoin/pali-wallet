@@ -40,6 +40,9 @@ async function fixture() {
   const calls: string[] = [];
   const submitted: string[] = [];
   let deployed = false;
+  let deployedCode = '0x01';
+  let interruptAfterReceipt = false;
+  let smartCodeRead: (() => void) | undefined;
   const openStorage = async () => {
     storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
     initialized = true;
@@ -53,7 +56,15 @@ async function fixture() {
         else if (request.method === 'eth_getCode') {
           const target = request.params[0].toLowerCase();
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
-          result = builtIn || deployed && runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target) ? '0x01' : '0x';
+          const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
+          result = builtIn ? '0x01' : deployed && smartTarget ? deployedCode : '0x';
+          if (smartTarget) {
+            smartCodeRead?.();
+            if (deployed && interruptAfterReceipt) {
+              interruptAfterReceipt = false;
+              owner.lock();
+            }
+          }
         }
         else if (request.method === 'eth_getTransactionCount') result = `0x${submitted.length.toString(16)}`;
         else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? '0x0' : '0x1000000000000000';
@@ -118,6 +129,9 @@ async function fixture() {
   await owner.refreshAuthenticatedMetadata();
   return {
     get owner() { return owner; }, get runtime() { return runtime; }, calls, submitted,
+    deployed(code = '0x01') { deployed = true; deployedCode = code; },
+    interruptAfterReceipt() { interruptAfterReceipt = true; },
+    onSmartCodeRead(hook: () => void) { smartCodeRead = hook; },
     substitute() { substituteAddress = true; }, hold(value: () => Promise<void>) { hold = value; },
     async change(request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) {
       await owner.manageAccounts(request, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
@@ -303,5 +317,63 @@ for (const cancel of ['owner', 'lock'] as const) test(`real deployment ${cancel}
     await pending;
     assert.equal(deployment.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 0);
+  } finally { deployment?.dispose(); await f.close(); }
+});
+
+for (const failure of [null, 'invalid-code', 'owner-loss'] as const)
+  test(`existing smart deployment refreshes without signing (${failure ?? 'healthy'})`, async () => {
+    const f = await fixture();
+    let current = true;
+    let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
+    try {
+      await f.change({ kind: 'create-smart', label: 'Existing deployment', password: PASSWORD });
+      const before = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+      f.deployed(failure === 'invalid-code' ? '0x0' : '0x6000');
+      if (failure === 'owner-loss') f.onSmartCodeRead(() => { current = false; });
+      const reads = f.calls.length;
+      deployment = await f.runtime.openSmartAccountDeployment(() => { assert(current, 'Owner ended'); });
+      await deployment.prepare();
+      assert.equal(deployment.getSnapshot().phase, failure ? 'failed' : 'complete');
+      assert.equal(deployment.getSnapshot().transactionHash, null);
+      assert.equal(deployment.getSnapshot().maximumPrefundUnits, null);
+      assert.equal(f.submitted.length, 0);
+      assert.equal(f.calls.slice(reads).some(method => ['eth_estimateGas', 'eth_gasPrice', 'eth_getTransactionCount', 'eth_sendRawTransaction'].includes(method)), false);
+      const after = f.owner.getCatalogue()!.accounts.find(account => account.id === before.id)!;
+      assert.deepEqual(after.smartAccount, { ...before.smartAccount, isDeployed: !failure });
+      if (!failure) {
+        deployment.dispose(); deployment = undefined;
+        await f.reopen(); await f.owner.unlock(PASSWORD);
+        assert.deepEqual(f.owner.getCatalogue()!.accounts.find(account => account.id === before.id)!.smartAccount, after.smartAccount);
+      }
+    } finally { deployment?.dispose(); await f.close(); }
+  });
+
+test('restart after the deployment receipt refreshes metadata without another transaction', async () => {
+  const f = await fixture();
+  let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Interrupted deployment', password: PASSWORD });
+    const smartId = f.owner.getCatalogue()!.active.accountId;
+    deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
+    await deployment.prepare();
+    f.interruptAfterReceipt();
+    const pending = deployment.authorize(deployment.getSnapshot().revision);
+    for (let attempt = 0; attempt < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); attempt++) {
+      const review = deployment.getSnapshot().payerReview;
+      if (review) deployment.confirmPayer(review.id);
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    await pending;
+    assert.equal(deployment.getSnapshot().phase, 'failed');
+    assert.equal(f.submitted.length, 2);
+    deployment.dispose();
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === smartId)!.smartAccount!.isDeployed, false);
+    deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
+    await deployment.prepare();
+    assert.equal(deployment.getSnapshot().phase, 'complete');
+    assert.equal(deployment.getSnapshot().transactionHash, null);
+    assert.equal(f.submitted.length, 2);
+    assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === smartId)!.smartAccount!.isDeployed, true);
   } finally { deployment?.dispose(); await f.close(); }
 });

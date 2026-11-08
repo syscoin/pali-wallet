@@ -10,6 +10,13 @@ import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/s
 export type PreparedSmartAccountDeployment = Awaited<
   ReturnType<typeof prepareSmartAccountOperation>
 >;
+export type SmartAccountDeploymentPreparation =
+  | Readonly<{ kind: 'already-deployed' }>
+  | Readonly<{
+      kind: 'authorization';
+      operation: PreparedSmartAccountDeployment;
+    }>;
+
 export type SmartAccountPayerReview = Readonly<{
   id: number;
   transaction: PreparedEvmTransaction;
@@ -48,7 +55,7 @@ export type NativeSmartAccountDeploymentHost = Readonly<{
   prepare(
     signal: AbortSignal,
     assertCurrent: () => void
-  ): Promise<PreparedSmartAccountDeployment>;
+  ): Promise<SmartAccountDeploymentPreparation>;
   sign(
     prepared: PreparedSmartAccountDeployment,
     assertCurrent: () => void
@@ -158,11 +165,14 @@ export class NativeSmartAccountDeployment {
     this.preparing = true;
     try {
       this.check();
-      const prepared = await this.host.prepare(
-        this.lifetime.signal,
-        this.check
-      );
+      const result = await this.host.prepare(this.lifetime.signal, this.check);
       this.check();
+      if (result.kind === 'already-deployed') {
+        clearTimeout(this.expiry);
+        this.publish({ phase: 'complete' });
+        return;
+      }
+      const prepared = result.operation;
       this.prepared = prepared;
       this.publish({
         phase: 'authorize',
@@ -280,7 +290,7 @@ export class NativeSmartAccountDeployment {
       payerReview: null,
       error: this.signingStarted
         ? 'Deployment authorization ended. Check the account and Activity before starting again.'
-        : 'Deployment could not be prepared. Your account has not changed.',
+        : 'Deployment could not be prepared. Return to your account and try again.',
     });
   }
   cancel(): void {

@@ -505,6 +505,27 @@ describe('smart-account execution approval context', () => {
       }
     );
 
+    it('refreshes an already deployed canonical account without preparing or signing another operation', async () => {
+      registration();
+      provider.getCode.mockResolvedValue('0x6000');
+      await expect(
+        controller.registerSmartAccountOnChain({
+          accountId: 7,
+          expectedContext,
+        })
+      ).resolves.toMatchObject({ address: ADDRESS, transaction: null });
+      expect(controller.prepareSmartAccountExecutions).not.toHaveBeenCalled();
+      expect(
+        controller.signActionHashWithLocalEcdsaOwners
+      ).not.toHaveBeenCalled();
+      expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+      expect(controller.deps.saveWalletState).toHaveBeenCalledWith(
+        'refresh-already-registered-smart-account',
+        true,
+        true
+      );
+    });
+
     it.each(['hydration', 'persistence'])(
       'classifies an already-deployed %s failure as unsent when no submit was entered',
       async (stage) => {
