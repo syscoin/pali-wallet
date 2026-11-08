@@ -3,7 +3,18 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import {
+  ApprovalType,
+  canEditApprovalAmount,
+  formatApprovalNftTokenId,
+  formatApprovalTokenAmount,
+  getApprovalAmountDisplay,
+  getErc20ApprovalHeadingKey,
+  getApprovalAddressValues,
+  getEffectiveApprovalData,
+} from '../../shared/approval';
 import { assertSupportedEvmFees } from '../../shared/dappTransaction.ts';
+import { parseErc20Decimals } from '../../shared/erc20';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -47,16 +58,6 @@ import {
 import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
-import {
-  ApprovalType,
-  canEditApprovalAmount,
-  formatApprovalNftTokenId,
-  formatApprovalTokenAmount,
-  getApprovalAmountDisplay,
-  getErc20ApprovalHeadingKey,
-  getApprovalAddressValues,
-  getEffectiveApprovalData,
-} from './approval';
 import {
   ApprovalDetails,
   TransactionDetailsComponent,
@@ -165,6 +166,10 @@ export const SendTransaction = () => {
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType as ApprovalType | undefined;
   const tokenStandard = txMetadata.tokenStandard;
+  const standardVerified = txMetadata.standardVerified === true;
+  const verifiedTokenStandard = standardVerified ? tokenStandard : undefined;
+  const verifiedErc20Approval =
+    verifiedTokenStandard === 'ERC-20' && approvalType === 'erc20-amount';
   const approvedWalletContextKey = useMemo(
     () =>
       JSON.stringify([
@@ -191,6 +196,7 @@ export const SendTransaction = () => {
       eventName,
       host,
       isApproval,
+      standardVerified,
       isApprovedContext:
         currentApprovalWalletContextKey === approvedWalletContextKey,
       transactionData: dataTx?.data,
@@ -206,6 +212,7 @@ export const SendTransaction = () => {
       eventName,
       host,
       isApproval,
+      standardVerified,
       currentApprovalWalletContextKey,
       approvedWalletContextKey,
     ]
@@ -522,6 +529,7 @@ export const SendTransaction = () => {
         decimals: approvedTokenInfos?.tokenDecimals,
         decodedTx: decodedTxData,
         isCustom: isApproval && customApprovedAllowanceAmount.isCustom,
+        tokenStandard: verifiedTokenStandard,
       }),
     [
       approvalType,
@@ -531,6 +539,7 @@ export const SendTransaction = () => {
       approvedTokenInfos?.tokenDecimals,
       decodedTxData,
       isApproval,
+      verifiedTokenStandard,
     ]
   );
   const hasInvalidCustomAllowance = !effectiveApprovalData;
@@ -665,7 +674,8 @@ export const SendTransaction = () => {
   const hasInvalidApprovalDetails = isApproval && !approvalDetails.isValid;
   const canEditCurrentApproval = canEditApprovalAmount(
     approvalType,
-    decodedTxData?.method
+    decodedTxData?.method,
+    verifiedTokenStandard
   );
   const rawApprovalAmount =
     approvalType === 'erc20-amount'
@@ -676,7 +686,10 @@ export const SendTransaction = () => {
       return undefined;
     }
 
-    if (approvedTokenInfos?.tokenDecimals === undefined) {
+    if (
+      !verifiedErc20Approval ||
+      approvedTokenInfos?.tokenDecimals === undefined
+    ) {
       return rawApprovalAmount;
     }
 
@@ -690,6 +703,7 @@ export const SendTransaction = () => {
     }
   }, [
     approvalType,
+    verifiedErc20Approval,
     rawApprovalAmount,
     approvedTokenInfos?.tokenDecimals,
     decodedTxData?.inputs,
@@ -701,7 +715,7 @@ export const SendTransaction = () => {
       formattedAmount: formattedApprovalAmount,
       isCustom: customApprovedAllowanceAmount.isCustom,
       isEffectiveUnlimited:
-        approvalType === 'erc20-amount' &&
+        verifiedErc20Approval &&
         effectiveApprovalData?.decodedTx?.method === 'approve' &&
         isMaxUint256(
           convertBigNumberToString(effectiveApprovalData.decodedTx.inputs?.[1])
@@ -1555,7 +1569,12 @@ export const SendTransaction = () => {
   // Fetch token info for approval transactions
   useEffect(() => {
     const scope = approvalMetadataScope;
-    if (!scope.isApproval || !scope.contractAddress || !scope.isApprovedContext)
+    if (
+      !scope.isApproval ||
+      !scope.standardVerified ||
+      !scope.contractAddress ||
+      !scope.isApprovedContext
+    )
       return;
     let cancelled = false;
     const canApplyMetadata = () =>
@@ -1577,10 +1596,7 @@ export const SendTransaction = () => {
             symbol: string;
           };
 
-          // Preserve zero-decimal tokens; fallback to 18 only if missing/invalid
-          const parsed = Number(tokenInfo.decimals);
-          const safeDecimals =
-            Number.isFinite(parsed) && parsed >= 0 ? parsed : 18;
+          const safeDecimals = parseErc20Decimals(tokenInfo.decimals);
           if (!canApplyMetadata()) return;
           setApprovalMetadata({
             scope,
@@ -1750,7 +1766,17 @@ export const SendTransaction = () => {
                       </span>
                     </div>
 
-                    {approvalType === 'erc20-amount' && (
+                    {!standardVerified && (
+                      <span className="text-brand-white text-lg">
+                        {t('send.unverifiedApprovalRequest')}
+                      </span>
+                    )}
+                    {!standardVerified && (
+                      <span className="text-brand-graylight text-sm">
+                        {t('send.approvalStandardUnverified')}
+                      </span>
+                    )}
+                    {verifiedErc20Approval && (
                       <>
                         <span className="text-brand-white text-lg">
                           {t(
@@ -1815,7 +1841,7 @@ export const SendTransaction = () => {
                       </>
                     )}
 
-                    {approvalType === 'nft-all' && (
+                    {standardVerified && approvalType === 'nft-all' && (
                       <>
                         <span className="text-brand-white text-lg">
                           {decodedTxData?.inputs?.[1]
@@ -1851,7 +1877,13 @@ export const SendTransaction = () => {
                   <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
                     <ApprovalDetails
                       {...approvalDetails}
+                      approved={
+                        typeof decodedTxData?.inputs?.[1] === 'boolean'
+                          ? decodedTxData.inputs[1]
+                          : undefined
+                      }
                       formattedAmount={displayedApprovalAmount}
+                      standardVerified={standardVerified}
                       isUnlimited={isUnlimitedApproval}
                       tokenSymbol={approvedTokenInfos?.tokenSymbol}
                     />

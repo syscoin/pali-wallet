@@ -2,8 +2,20 @@ import React, { useLayoutEffect, useState } from 'react';
 import type { NativeConnectionsView, NativeTransactionReview } from '../../src/connections/types';
 import { NativeTransactionReviewScreen } from '../../src/screens/NativeTransactionReview';
 import { Text } from '../../src/ui';
+import { Interface } from 'ethers/abi';
+import { getEffectiveApprovalData, summarizeApproval, type ApprovalContractMetadata } from '../../../../source/shared/approval';
 
 const query = new URLSearchParams(window.location.search);
+const approvalKind = query.get('approval');
+const tokenContract = '0x3333333333333333333333333333333333333333';
+const spender = '0x4444444444444444444444444444444444444444';
+const approvalAbi = new Interface(['function approve(address spender,uint256 amount)', 'function setApprovalForAll(address operator,bool approved)']);
+const approvalData = approvalKind === 'operator' ? approvalAbi.encodeFunctionData('setApprovalForAll', [spender, false])
+  : approvalAbi.encodeFunctionData('approve', [spender, (1n << 256n) - 1n]);
+const metadata: ApprovalContractMetadata | undefined = approvalKind === 'erc20'
+  ? { standard: 'ERC-20', token: { contractAddress: tokenContract, name: 'Example token', symbol: 'TOK', decimals: 6 } }
+  : approvalKind === 'nft' ? { standard: 'ERC-721' }
+  : approvalKind === 'operator' ? { standard: 'ERC-1155' } : undefined;
 const initialReview: NativeTransactionReview = {
   kind: 'transaction', method: 'eth_sendTransaction', id: 'transaction-1', revision: 7,
   appName: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings',
@@ -14,7 +26,7 @@ const initialReview: NativeTransactionReview = {
     to: query.has('deployment') ? null : '0x3333333333333333333333333333333333333333',
     chainId: '743211', value: '1234567890123456789012345', gasLimit: '25200',
     maxFeePerGas: '10', maxPriorityFeePerGas: '1', nonce: '3',
-    data: query.has('large-data') ? '0x' + 'ab'.repeat(8192) + 'cd' : '0xabcdef',
+    data: approvalKind ? approvalData : query.has('large-data') ? '0x' + 'ab'.repeat(8192) + 'cd' : '0xabcdef',
     accessList: [{ address: '0x4444444444444444444444444444444444444444', storageKeys: ['0x' + '5'.repeat(64)] }],
   },
   maximumFeeUnits: query.has('preparing') ? null : '252000',
@@ -26,6 +38,7 @@ const initialReview: NativeTransactionReview = {
   broadcastHash: query.has('uncertain') || query.has('broadcasting') ? '0x' + '6'.repeat(64) : null,
   advisories: query.has('warning') ? [{ address: '0x3333333333333333333333333333333333333333', field: 'spender', severity: 'high', reason: 'Known unsafe recipient' }] : [],
   requiresWarningAcknowledgement: query.has('warning'),
+  approval: approvalKind ? summarizeApproval(approvalData, tokenContract, metadata) : null,
 };
 const calls: { method: string; args: unknown[] }[] = [];
 
@@ -45,7 +58,20 @@ export function NativeTransactionReviewFixture() {
   }, []);
   const unavailable = () => { throw new Error('Outside transaction review fixture'); };
   const controller: NativeConnectionsView = {
-    getSnapshot: unavailable, subscribe: unavailable, pair: unavailable, approve: unavailable,
+    async editApprovalAmount(...args) {
+      calls.push({ method: 'editApprovalAmount', args });
+      const current = review, summary = current?.approval;
+      if (!current?.transaction || !summary?.token) throw new Error('Missing approval');
+      const edited = getEffectiveApprovalData({ tokenStandard: summary.tokenStandard, approvalType: summary.approvalType, customAmount: args[2],
+        data: current.transaction.data, decimals: summary.token.decimals, isCustom: true,
+        decodedTx: { method: summary.method, inputs: [summary.authority, summary.amountUnits], names: ['spender', 'amount'], types: ['address', 'uint256'] } });
+      if (!edited) throw new Error('Invalid allowance');
+      setReview({ ...current, revision: current.revision + 1, transaction: { ...current.transaction, data: edited.data },
+        approval: summarizeApproval(edited.data, tokenContract, metadata) });
+    },
+    getSnapshot: () => ({ revision: review?.revision ?? 0, status: 'ready', accounts: [], selectedAccountId: null,
+      network: null, proposals: [], sessions: [], signingReview: review, error: null }),
+    subscribe: unavailable, pair: unavailable, approve: unavailable,
     reject: unavailable, disconnect: unavailable, cancel: unavailable,
     async activateRequestAccount(...args) {
       calls.push({ method: 'activateRequestAccount', args });

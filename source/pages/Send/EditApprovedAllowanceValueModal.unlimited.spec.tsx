@@ -4,16 +4,16 @@ import userEvent from '@testing-library/user-event';
 import React, { useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 
-import type { ICustomApprovedAllowanceAmount } from 'types/transactions';
-import { convertBigNumberToString, isMaxUint256 } from 'utils/bigNumberUtils';
-import { Interface } from 'utils/ethersV6Compat';
-
 import {
   formatApprovalTokenAmount,
   getApprovalAddressValues,
   getApprovalAmountDisplay,
   getEffectiveApprovalData,
-} from './approval';
+} from '../../shared/approval';
+import type { ICustomApprovedAllowanceAmount } from 'types/transactions';
+import { convertBigNumberToString, isMaxUint256 } from 'utils/bigNumberUtils';
+import { Interface } from 'utils/ethersV6Compat';
+
 import { ApprovalDetails } from './components/ApprovalDetails';
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 
@@ -88,6 +88,7 @@ function Harness({
     types: ['address', 'uint256'],
   };
   const effective = getEffectiveApprovalData({
+    tokenStandard: 'ERC-20',
     approvalType: 'erc20-amount',
     customAmount: saved.customAllowanceValue,
     data: ABI.encodeFunctionData('approve', decoded.inputs),
@@ -108,6 +109,7 @@ function Harness({
     <MemoryRouter>
       <button onClick={() => setShow(true)}>Edit allowance</button>
       <ApprovalDetails
+        standardVerified={true}
         {...getApprovalAddressValues(decoded, TOKEN, 'erc20-amount')}
         formattedAmount={display.amount}
         isUnlimited={display.isUnlimited}
@@ -194,13 +196,13 @@ it.each([0, 6, 18])(
   async (decimals) => {
     render(<Harness decimals={decimals} />);
     const before = savedAllowance();
+    const overflow = (BigInt(MAXIMUM) + BigInt(1)).toString();
     openCustom();
     fireEvent.change(input(), {
       target: {
-        value: formatApprovalTokenAmount(
-          (BigInt(MAXIMUM) + BigInt(1)).toString(),
-          decimals
-        ),
+        value: decimals
+          ? `${overflow.slice(0, -decimals)}.${overflow.slice(-decimals)}`
+          : overflow,
       },
     });
     fireEvent.click(screen.getByRole('button', { name: 'buttons.save' }));

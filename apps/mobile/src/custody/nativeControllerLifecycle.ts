@@ -5,6 +5,7 @@ export interface RecoveryOwner {
   dispose(): Promise<void>;
 }
 export interface ManagedNativeControllers {
+  authentication?: { cancel(): void };
   authority: { getSnapshot(): CustodySnapshot; initialize(): Promise<void>; lock(): void; dispose(): Promise<void> };
   keyExport: { dispose(): void };
   backup: { dispose(): void };
@@ -52,6 +53,7 @@ export class NativeControllerLifecycle<T extends ManagedNativeControllers, R ext
       }
     };
     // Reserve retirement before any injected callback can reenter this gate.
+    invoke(() => entry.value.authentication?.cancel());
     invoke(() => entry.recovery?.cancel());
     invoke(() => entry.value.removal?.cancel());
     invoke(() => entry.value.disposeTokens()); invoke(() => entry.value.disposeTransfers());

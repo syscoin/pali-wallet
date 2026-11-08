@@ -27,6 +27,7 @@ const publish = (next: NativeConnectionsSnapshot) => {
   for (const listener of listeners) listener();
 };
 const controller: NativeConnectionsView = {
+  async editApprovalAmount() { throw new Error('Transaction editing is outside this fixture'); },
   getSnapshot: () => snapshot,
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   async pair(uri) { calls.push({ method: 'pair', args: [uri] }); publish({ ...snapshot, status: 'pairing' }); },

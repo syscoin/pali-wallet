@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, StyleSheet, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeConnectionsView, NativeTransactionReview } from '../connections/types';
 import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 import { IdlePressable } from './IdleActivityBoundary';
+import { ApprovalReview } from './ApprovalReview';
 
 const reviewErrors = {
   INVALID_MESSAGE: 'The app sent an invalid request.',
@@ -46,6 +47,18 @@ export function NativeTransactionReviewScreen({ review, controller }: {
 }) {
   const [acceptedRevision, setAcceptedRevision] = useState<number | null>(null);
   const [detailsRevision, setDetailsRevision] = useState<number | null>(null);
+  const [approvalDraft, setApprovalDraft] = useState<{ id: string; transaction: NativeTransactionReview['transaction'] } | null>(null);
+  const approvalDraftRef = useRef(approvalDraft);
+  const editingApproval = approvalDraft?.id === review.id && approvalDraft.transaction === review.transaction;
+  const setApprovalEditing = (editing: boolean) => {
+    const current = controller.getSnapshot().signingReview;
+    if (current?.kind !== 'transaction' || current.id !== review.id || current.transaction !== review.transaction) return;
+    const previous = approvalDraftRef.current;
+    if (!editing && (previous?.id !== review.id || previous.transaction !== review.transaction)) return;
+    const next = editing ? { id: review.id, transaction: review.transaction } : null;
+    approvalDraftRef.current = next;
+    setApprovalDraft(next);
+  };
   const acknowledged = acceptedRevision === review.revision;
   const detailsVisible = detailsRevision === review.revision;
   const submitted = review.broadcastHash !== null || review.dispatched;
@@ -61,6 +74,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
   const transaction = review.transaction;
   const prepared = transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
   const approve = () => {
+    if (approvalDraftRef.current?.id === review.id && approvalDraftRef.current.transaction === review.transaction) return;
     const action = review.needsAccountSwitch
       ? controller.activateRequestAccount(review.id, review.revision)
       : controller.approveRequest(review.id, review.revision, acknowledged);
@@ -70,7 +84,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
   const amount = (units: string) => `${formatBaseUnits(units, review.decimals)} ${review.symbol}`;
 
-  return <SafeAreaView edges={['top']} style={s.container}><Screen>
+  return <SafeAreaView edges={['top']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
     <Header title="Review transaction" onBack={close} />
     <Card style={s.card}>
       <Text style={s.appName}>{review.appName}</Text>
@@ -81,6 +95,10 @@ export function NativeTransactionReviewScreen({ review, controller }: {
       <Text selectable style={s.address}>{review.address}</Text>
       <Text style={s.muted}>{review.networkLabel} · Chain ID {review.chainId}</Text>
     </Card>
+    {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
+      onEditingChange={setApprovalEditing}
+      disabled={review.busy || submitted || review.needsAccountSwitch || review.error !== null}
+      edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
     {transaction && <Card style={s.card}>
       <Text style={s.label}>{transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? 'Send' : 'Contract interaction'}</Text>
       <Text selectable style={s.amount}>{amount(transaction.value)}</Text>
@@ -120,10 +138,10 @@ export function NativeTransactionReviewScreen({ review, controller }: {
     {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
       <Text>{submitted ? 'Sending transaction…' : transaction ? 'Please wait…' : 'Preparing transaction…'}</Text></View>}
     {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : 'Confirm transaction'}
-      disabled={review.error !== null || review.busy || !review.needsAccountSwitch &&
+      disabled={editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
         (!prepared || review.requiresWarningAcknowledgement && !acknowledged)} onPress={approve} />}
     <Button title={submitted ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
-  </Screen></SafeAreaView>;
+  </Screen></KeyboardAvoidingView></SafeAreaView>;
 }
 
 const s = StyleSheet.create({

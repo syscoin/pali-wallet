@@ -12,6 +12,7 @@ import {
   paliSmartAccountFactoryInterface,
   paliSmartAccountInterface,
 } from './smartAccount/contracts';
+import * as validations from './validations';
 
 const ZERO_BYTES32 =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
@@ -140,4 +141,34 @@ describe('smart account transaction decoding', () => {
       '0x5678',
     ]);
   });
+});
+
+describe('shared approval classification', () => {
+  it.each([undefined, { type: 'ERC-20' }])(
+    'retains contract verification status through transaction decoding: %j',
+    async (contractType) => {
+      const lookup = jest
+        .spyOn(validations, 'getContractType')
+        .mockResolvedValue(contractType as any);
+      try {
+        const data =
+          '0x095ea7b3' +
+          defaultAbiCoder
+            .encode(['address', 'uint256'], [TARGET, '7'])
+            .slice(2);
+        const decoded = await decodeTransactionData(
+          { from: SMART_ACCOUNT, to: TARGET, data },
+          {}
+        );
+        expect(decoded).toMatchObject({
+          method: 'approve',
+          approvalType: 'erc20-amount',
+          tokenStandard: contractType?.type ?? 'Unknown',
+          standardVerified: contractType !== undefined,
+        });
+      } finally {
+        lookup.mockRestore();
+      }
+    }
+  );
 });

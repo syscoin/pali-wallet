@@ -85,7 +85,11 @@ export const DecodedTransactionParams: React.FC<
     if (approvalData.approvalType === 'erc20-amount') {
       const amount = approvalData.inputs[1];
       const amountStr = convertBigNumberToString(amount);
-      const isUnlimited = isMaxUint256(amountStr);
+      const isUnlimited =
+        approvalData.standardVerified === true &&
+        approvalData.tokenStandard === 'ERC-20' &&
+        approvalData.method === 'approve' &&
+        isMaxUint256(amountStr);
 
       return (
         <div className="space-y-2">

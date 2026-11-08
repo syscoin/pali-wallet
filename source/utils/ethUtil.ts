@@ -1,3 +1,4 @@
+import { decodeApprovalData } from '../shared/approval';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { defaultAbiCoder, Interface } from 'utils/ethersV6Compat';
 import { retryableFetch } from 'utils/retryableFetch';
@@ -16,14 +17,6 @@ import { getMethodName } from './commonMethodSignatures';
 import { pegasysABI } from './pegasys';
 import { validateTransactionDataValue } from './validateTransactionDataValue';
 import { wrapABI } from './wrapABI';
-
-// Shared approval method signatures for consistent detection across the app
-export const APPROVAL_METHOD_SIGNATURES = {
-  approve: '0x095ea7b3', // approve(address,uint256)
-  increaseAllowance: '0x39509351', // increaseAllowance(address,uint256)
-  decreaseAllowance: '0xa457c2d7', // decreaseAllowance(address,uint256)
-  setApprovalForAll: '0xa22cb465', // setApprovalForAll(address,bool)
-} as const;
 
 type DataDecoder = {
   decodeData: (data: string) => IDecodedTx;
@@ -70,99 +63,21 @@ const knownTransactionDataDecoder = createDataDecoder([
   'function mintBatch(address to,uint256[] ids,uint256[] amounts,bytes data)',
 ]);
 
-// Export approval detection for use in blacklist middleware and UI components
+/** Contract probing stays with the host; calldata decoding is shared with native. */
 export const detectApprovalType = async (
   data: string,
   contractAddress: string,
   web3Provider: any,
   controller?: any
-): Promise<{
-  approvalType?: 'erc20-amount' | 'erc721-single' | 'nft-all';
-  decodedData?: any;
-  isApproval: boolean;
-  method?: string;
-  tokenStandard?: string;
-}> => {
-  try {
-    const normalizedData = data.toLowerCase();
-    // Contract-type lookup enriches the approval classification, but a
-    // transient lookup failure must not discard otherwise valid approval
-    // metadata and fall through to the generic ABI decoder.
-    const contractType = await getContractType(
-      contractAddress,
-      web3Provider,
-      controller
-    ).catch(() => undefined);
-
-    if (
-      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.approve) ||
-      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance) ||
-      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
-    ) {
-      // Determine method name
-      let methodName = 'approve';
-      if (
-        normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.increaseAllowance)
-      ) {
-        methodName = 'increaseAllowance';
-      } else if (
-        normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.decreaseAllowance)
-      ) {
-        methodName = 'decreaseAllowance';
-      }
-
-      // If we have approve/increaseAllowance/decreaseAllowance(address, uint256), it's obviously a token contract
-      // Default to ERC-20 if contract type detection fails or returns unknown
-      if (contractType?.type === 'ERC-721' && methodName === 'approve') {
-        // Only special case: if we positively detect ERC-721 AND it's the basic approve method, treat as NFT approval
-        // Note: increaseAllowance/decreaseAllowance don't exist for ERC-721, so they're always ERC-20
-        const [to, tokenId] = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          '0x' + data.slice(10)
-        );
-        return {
-          isApproval: true,
-          approvalType: 'erc721-single',
-          tokenStandard: 'ERC-721',
-          decodedData: { to, tokenId },
-          method: methodName,
-        };
-      } else {
-        // Default to ERC-20 for approve/increaseAllowance/decreaseAllowance(address, uint256) - most common case
-        // This includes: ERC-20, ERC-777, unknown tokens, failed detection, etc.
-        const [spender, amount] = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          '0x' + data.slice(10)
-        );
-        return {
-          isApproval: true,
-          approvalType: 'erc20-amount',
-          tokenStandard: contractType?.type || 'ERC-20', // Default to ERC-20 if unknown
-          decodedData: { spender, amount },
-          method: methodName,
-        };
-      }
-    } else if (
-      normalizedData.startsWith(APPROVAL_METHOD_SIGNATURES.setApprovalForAll)
-    ) {
-      // Works for both ERC-721 and ERC-1155
-      const [operator, approved] = defaultAbiCoder.decode(
-        ['address', 'bool'],
-        '0x' + data.slice(10)
-      );
-      return {
-        isApproval: true,
-        approvalType: 'nft-all',
-        tokenStandard: contractType?.type || 'Unknown',
-        decodedData: { operator, approved },
-        method: 'setApprovalForAll',
-      };
-    }
-  } catch (error) {
-    console.error('Error detecting approval type:', error);
-  }
-
-  return { isApproval: false };
+) => {
+  const decoded = decodeApprovalData(data);
+  if (!decoded.isApproval) return decoded;
+  const contractType = await getContractType(
+    contractAddress,
+    web3Provider,
+    controller
+  ).catch(() => undefined);
+  return decodeApprovalData(data, contractType?.type);
 };
 
 // Fetch function signature from 4byte.directory
@@ -406,6 +321,7 @@ export const decodeTransactionData = async (
               : ['operator', 'approved'],
           approvalType: approvalInfo.approvalType,
           tokenStandard: approvalInfo.tokenStandard,
+          standardVerified: approvalInfo.standardVerified,
         };
       }
 

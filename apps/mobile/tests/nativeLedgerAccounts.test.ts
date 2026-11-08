@@ -57,7 +57,14 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
       publish('ready');
     },
   } as unknown as NativeCustodyAuthority;
+  const statusListeners = new Set<() => void>();
   const runtime: NativeLedgerRuntime = {
+    subscribeStatus(listener) {
+      statusListeners.add(listener);
+      return () => {
+        statusListeners.delete(listener);
+      };
+    },
     isConnected: () => connected,
     async scan(request, ownerSignal, check, onDevices, onError) {
       assert.equal(request.purpose, purpose);
@@ -94,6 +101,11 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
   return {
     view,
     publish,
+    disconnect() {
+      connected = false;
+      for (const listener of statusListeners) listener();
+    },
+    statusListeners: () => statusListeners.size,
     get signal() {
       return signal;
     },
@@ -354,4 +366,27 @@ test('a scope change invalidates a selected connection before finish', async () 
   await assert.rejects(f.view.finishConnection(), /NOT_READY/);
   assert.equal(f.view.isConnected(), false);
   await f.view.dispose();
+});
+
+test('a handed-off connection notifies subscribers immediately on disconnect', async () => {
+  const f = fixture('connect');
+  try {
+    await f.view.start();
+    await f.view.select('1:0');
+    await f.view.finishConnection();
+    assert.equal(f.view.isConnected(), true);
+    const before = f.view.getSnapshot();
+    let updates = 0;
+    const unsubscribe = f.view.subscribe(() => {
+      updates++;
+    });
+    f.disconnect();
+    assert.equal(f.view.isConnected(), false);
+    assert.notEqual(f.view.getSnapshot(), before);
+    assert.equal(updates, 1);
+    unsubscribe();
+  } finally {
+    await f.view.dispose();
+    assert.equal(f.statusListeners(), 0);
+  }
 });

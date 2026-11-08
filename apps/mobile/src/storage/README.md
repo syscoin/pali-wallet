@@ -155,7 +155,7 @@ Only the enrollment parser decodes canonical printable ASCII. Confirmed removal
 and phrase recovery retire the reference in their existing transactions. Rollback
 retains the original bytes.
 
-A future biometric host must stage credentials in protected storage before
+The biometric host must stage credentials in protected storage before
 activating a reference. After verified revocation, replacement, recovery or
 removal, it must retire the superseded credential alias separately. An
 uncertain SQLite result or an owner retired after COMMIT requires reopening

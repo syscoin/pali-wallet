@@ -205,3 +205,33 @@ test('saved UTXO signed bytes replay without connecting Ledger', async ({
     await page.evaluate(() => window.__nativeLedgerSigningFixture.calls())
   ).toEqual([]);
 });
+
+test('physical disconnect restores Connect Ledger without losing the approved EVM review', async ({
+  page,
+}) => {
+  await page.goto('/?ledger-send=1');
+  await prepareEvm(page);
+  const review = await page.evaluate(() =>
+    window.__nativeSendFixture.reviewId()
+  );
+  await chooseLedger(page);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
+  await page.evaluate(() => window.__nativeLedgerSigningFixture.disconnect());
+  await expect(page.getByTestId('native-send-confirm')).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Connect Ledger', exact: true })
+  ).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeSendFixture.reviewId())).toBe(
+    review
+  );
+  await chooseLedger(page);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
+  expect(await page.evaluate(() => window.__nativeSendFixture.reviewId())).toBe(
+    review
+  );
+  expect(
+    await page.evaluate(() => window.__nativeSendFixture.confirmations())
+  ).toEqual([]);
+});

@@ -55,6 +55,7 @@ export function NativeMessageReviewFixture() {
     async reject() { throw new Error('Pairing is outside this fixture'); },
     async disconnect() { throw new Error('Connections are outside this fixture'); },
     cancel() { throw new Error('Connections are outside this fixture'); },
+    async editApprovalAmount() { throw new Error('Transaction editing is outside this fixture'); },
     async activateRequestAccount(...args) {
       calls.push({ method: 'activateRequestAccount', args });
       setReview((current) => current && { ...current, revision: current.revision + 1, needsAccountSwitch: false });

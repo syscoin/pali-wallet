@@ -80,6 +80,7 @@ async function fixture() {
     id: 'other-private-device-id',
     name: 'Other Ledger',
   };
+  const deviceStatus: { disconnect(): void; late(): void }[] = [];
   let emitDevices: ((devices: any[]) => void) | undefined;
   const openStorage = async () => {
     const storage = await SqliteWalletStorage.open(
@@ -106,9 +107,27 @@ async function fixture() {
       const unexpected = async () => {
         throw Error('Unexpected device request');
       };
+      const statusListeners = new Set<() => void>();
+      const historicalListeners = new Set<() => void>();
+      deviceStatus.push({
+        disconnect() {
+          connected = false;
+          for (const listener of statusListeners) listener();
+        },
+        late() {
+          for (const listener of historicalListeners) listener();
+        },
+      });
       const result: NativeLedgerTransport = {
         host: {
           getStatus: () => ({ connected: connected && !disposed }),
+          subscribeStatus(listener) {
+            statusListeners.add(listener);
+            historicalListeners.add(listener);
+            return () => {
+              statusListeners.delete(listener);
+            };
+          },
           connect: async () => {
             check();
             assert(connected);
@@ -263,6 +282,7 @@ async function fixture() {
     },
     view,
     connection,
+    deviceStatus,
     openStorage,
     get signedCount() {
       return signedCount;
@@ -833,6 +853,40 @@ test('Ledger signs the same reviewed ERC20 and collectible envelopes through the
       assert.equal(actual.from, deviceWallet.address);
     }
     assert.equal(f.signedCount, 3);
+  } finally {
+    await f.close();
+  }
+});
+
+test('real Ledger handoff forwards disconnect and ignores retired transport events after reconnect', async () => {
+  const f = await fixture();
+  try {
+    await importAndConnect(f);
+    const oldTransport = f.deviceStatus.at(-1)!;
+    let updates = 0;
+    const unsubscribe = f.connection.subscribe(() => {
+      updates++;
+    });
+    const connectedSnapshot = f.connection.getSnapshot();
+    oldTransport.disconnect();
+    assert.equal(f.connection.isConnected(), false);
+    assert.notEqual(f.connection.getSnapshot(), connectedSnapshot);
+    assert.equal(updates, 1);
+    await f.connection.start();
+    await f.connection.select(f.connection.getSnapshot().devices[0]!.id);
+    await f.connection.finishConnection();
+    assert.equal(f.connection.isConnected(), true);
+    const reconnectedSnapshot = f.connection.getSnapshot();
+    const beforeOldEvent = updates;
+    oldTransport.late();
+    assert.equal(f.connection.isConnected(), true);
+    assert.equal(f.connection.getSnapshot(), reconnectedSnapshot);
+    assert.equal(updates, beforeOldEvent);
+    f.deviceStatus.at(-1)!.disconnect();
+    assert.equal(f.connection.isConnected(), false);
+    assert.equal(updates, beforeOldEvent + 1);
+    assert.equal(f.signedCount, 0);
+    unsubscribe();
   } finally {
     await f.close();
   }

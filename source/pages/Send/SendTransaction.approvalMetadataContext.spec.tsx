@@ -333,7 +333,12 @@ const prepareApproval = async (
     names: ['spender', 'amount'],
     types: ['address', 'uint256'],
   };
-  mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+  mockQuery.txMetadata = {
+    isApproval: true,
+    approvalType: 'erc20-amount',
+    tokenStandard: 'ERC-20',
+    standardVerified: true,
+  };
   const pending: MetadataRequest[] = [];
   const invoke = mockEmitter.getMockImplementation()!;
   mockEmitter.mockImplementation(async (path, args) => {
@@ -626,6 +631,7 @@ it('does not treat a missing NFT token ID as zero or enable confirmation', async
     isApproval: true,
     approvalType: 'erc721-single',
     tokenStandard: 'ERC-721',
+    standardVerified: true,
   };
   const invoke = mockEmitter.getMockImplementation()!;
   mockEmitter.mockImplementation(async (path, args) => {
@@ -702,7 +708,12 @@ it.each(['erc721-single', 'nft-all'])(
       names: ['operator', 'value'],
       types: ['address', isSingle ? 'uint256' : 'bool'],
     };
-    mockQuery.txMetadata = { isApproval: true, approvalType };
+    mockQuery.txMetadata = {
+      isApproval: true,
+      approvalType,
+      tokenStandard: isSingle ? 'ERC-721' : 'ERC-1155',
+      standardVerified: true,
+    };
     const invoke = mockEmitter.getMockImplementation()!;
     mockEmitter.mockImplementation(async (path, args) => {
       if (path[1] === 'getTokenDetails') {
@@ -760,6 +771,7 @@ it.each([
       isApproval: true,
       approvalType: 'erc721-single',
       tokenStandard: 'ERC-721',
+      standardVerified: true,
     };
     const invoke = mockEmitter.getMockImplementation()!;
     mockEmitter.mockImplementation(async (path, args) => {
@@ -799,6 +811,81 @@ it.each([
       ([path]) => path[1] === 'sendAndSaveEthTransaction'
     );
     expect(sent?.[1][0].data).toBe(calldata);
+    view.unmount();
+  }
+);
+
+it('keeps unverified approval values raw and refuses allowance editing', async () => {
+  const abi = new Interface(['function approve(address,uint256)']);
+  const raw = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+  mockQuery.tx.data = abi.encodeFunctionData('approve', [SPENDER, raw]);
+  mockQuery.decodedTx = {
+    method: 'approve',
+    inputs: [SPENDER, raw],
+    names: ['spender', 'amount'],
+    types: ['address', 'uint256'],
+  };
+  mockQuery.txMetadata = {
+    isApproval: true,
+    approvalType: 'erc20-amount',
+    tokenStandard: 'Unknown',
+    standardVerified: false,
+  };
+  const view = await prepare();
+  expect(screen.getByText('send.unverifiedApprovalRequest')).toBeDefined();
+  expect(screen.getByText('send.approvalStandardUnverified')).toBeDefined();
+  const details = JSON.parse(
+    screen.getByTestId('reviewed-approval').textContent!
+  );
+  expect(details.formattedAmount).toBe(raw);
+  expect(details.isUnlimited).toBe(false);
+  expect(details.standardVerified).toBe(false);
+  expect(
+    screen.queryByRole('button', { name: 'send.editPermission' })
+  ).toBeNull();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([request]) => request[1] === 'getERC20TokenInfo'
+    )
+  ).toBe(false);
+  expect(screen.getByTestId('transaction-hex').textContent).toBe(
+    mockQuery.tx.data
+  );
+  view.unmount();
+});
+
+it.each([true, false])(
+  'preserves the unverified operator flag %s in primary approval details',
+  async (approved) => {
+    const abi = new Interface(['function setApprovalForAll(address,bool)']);
+    mockQuery.tx.data = abi.encodeFunctionData('setApprovalForAll', [
+      SPENDER,
+      approved,
+    ]);
+    mockQuery.decodedTx = {
+      method: 'setApprovalForAll',
+      inputs: [SPENDER, approved],
+      names: ['operator', 'approved'],
+      types: ['address', 'bool'],
+    };
+    mockQuery.txMetadata = {
+      isApproval: true,
+      approvalType: 'nft-all',
+      tokenStandard: 'Unknown',
+      standardVerified: false,
+    };
+    const view = await prepare();
+    const details = JSON.parse(
+      screen.getByTestId('reviewed-approval').textContent!
+    );
+    expect(details.approved).toBe(approved);
+    expect(details.standardVerified).toBe(false);
+    expect(screen.getByText('send.approvalStandardUnverified')).toBeDefined();
+    expect(screen.queryByText('send.grantCollectionAccess')).toBeNull();
+    expect(screen.queryByText('send.revokeCollectionAccess')).toBeNull();
+    expect(screen.getByTestId('transaction-hex').textContent).toBe(
+      mockQuery.tx.data
+    );
     view.unmount();
   }
 );

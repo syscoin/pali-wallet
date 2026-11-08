@@ -14,13 +14,15 @@ type Props = {
   address: string;
   onViewRecovery(): void;
   onRemoveWallet?(): void;
+  onDeviceUnlock?(): void;
+  deviceUnlockEnabled?: boolean;
   onLock(): void;
   onBack(): void;
   captureFailureHandler(): (error: unknown) => void;
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, deviceUnlockEnabled, onLock, onBack, captureFailureHandler }: Props) {
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
@@ -102,6 +104,7 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
           <Notice title={backupTitle} body={backupBody} />
           <Card><Row title={accountType === 'Ledger' ? 'View Pali wallet recovery phrase' : 'View recovery phrase'} subtitle="Confirm your password to view your words" icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
+            {onDeviceUnlock && <Row title="Biometric unlock" subtitle={deviceUnlockEnabled ? 'On' : 'Off'} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
             <Row title="Recovery guide" subtitle="Understand what your backups restore" icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
           <Button title="Lock wallet" variant="secondary" icon="lock" onPress={() => { hide(); onLock(); }} />
           {onRemoveWallet && <Button title="Remove wallet from this device" variant="danger" onPress={() => { hide(); onRemoveWallet(); }} />}

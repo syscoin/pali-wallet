@@ -14,6 +14,8 @@ import { openNativeConnectionRepository } from '../src/connections/storage.ts';
 import { captureEvmFeeApproval } from '../../../source/shared/evmFeeApproval.ts';
 import type { NativeSigningReview } from '../src/connections/types.ts';
 import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+import { Interface } from 'ethers/abi';
+import { summarizeApproval, type ApprovalContractMetadata } from '../../../source/shared/approval.ts';
 
 const messageText = (review: NativeSigningReview | null) => {
   assert.ok(review?.kind === 'message');
@@ -45,6 +47,9 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
   const transactions: unknown[] = [];
   let signWait: Promise<void> = Promise.resolve();
   let preparationError: Error | undefined;
+  let preparationWait: Promise<void> = Promise.resolve();
+  let approvalMetadata: ApprovalContractMetadata | undefined;
+  const preparedTransactions: Record<string, unknown>[] = [];
   let activationWait: Promise<void> = Promise.resolve();
   let siteBlocked = false;
   let siteWait: Promise<void> = Promise.resolve();
@@ -138,10 +143,13 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     },
     async prepareTransaction(input, check) {
       check();
+      await preparationWait;
+      check();
       if (preparationError) throw preparationError;
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
       const value = input.transaction as Record<string, unknown>;
+      preparedTransactions.push(value);
       const transaction = snapshotPreparedEvmTransaction({
         from: ADDRESS, to: value.to ?? null, chainId: '1', value: BigInt(value.value as string ?? '0').toString(),
         data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? '0').toString(), gasLimit: '50000',
@@ -153,6 +161,7 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
         maximumFeeUnits: fee.maximumFeeUnits,
         maximumTotalUnits: fee.maximumTotalUnits,
         expiresAtMonotonicMilliseconds: fee.expiresAtMonotonicMilliseconds,
+        approval: transaction.to ? summarizeApproval(transaction.data, transaction.to, approvalMetadata) : null,
         async submit(guard, onBroadcast) {
           guard();
           input.approval.assertCurrent();
@@ -353,6 +362,9 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     },
     signatures,
     transactions,
+    preparedTransactions,
+    setApprovalMetadata(value: ApprovalContractMetadata) { approvalMetadata = value; },
+    setPreparationWait(value: Promise<void>) { preparationWait = value; },
     failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
     blockSite() {
       siteBlocked = true;
@@ -878,6 +890,89 @@ test('a dapp transaction cannot choose a different signer or chain', async () =>
       assert.equal(review, null);
       assert.deepEqual(f.responses.at(-1), { id: 10, result: { error: { code: -32602, message: 'Invalid signing request' } } });
     }
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('editing an ERC20 allowance creates a new exact review before signing', async () => {
+  const f = await connectedFixture();
+  const contract = '0x' + '22'.repeat(20), spender = '0x' + '33'.repeat(20);
+  const abi = new Interface(['function approve(address,uint256)']);
+  const original = { to: contract, data: abi.encodeFunctionData('approve', [spender, (1n << 256n) - 1n]) };
+  f.setApprovalMetadata({ standard: 'ERC-20', token: { contractAddress: contract, name: 'Example', symbol: 'TOK', decimals: 6 } });
+  try {
+    const first = await messageRequest(f, 'eth_sendTransaction', [original]);
+    assert.ok(first?.kind === 'transaction');
+    assert.equal(first.approval?.isUnlimited, true);
+    await f.view.editApprovalAmount(first.id, first.revision, '1.5');
+    const next = f.view.getSnapshot().signingReview;
+    assert.ok(next?.kind === 'transaction');
+    assert.notEqual(next.revision, first.revision);
+    assert.equal(next.approval?.amountUnits, '1500000');
+    assert.equal(next.transaction?.data, abi.encodeFunctionData('approve', [spender, 1500000]));
+    assert.equal(original.data, abi.encodeFunctionData('approve', [spender, (1n << 256n) - 1n]));
+    assert.equal(f.preparedTransactions.length, 2);
+    assert.equal(f.transactions.length, 0);
+    await assert.rejects(f.view.approveRequest(first.id, first.revision, false));
+    const current = f.view.getSnapshot().signingReview!;
+    await f.view.approveRequest(current.id, current.revision, false);
+    assert.equal(f.transactions.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('queued requests retain the foreground prepared identity until an allowance edit replaces it', async () => {
+  const f = await connectedFixture();
+  const contract = '0x' + '22'.repeat(20), abi = new Interface(['function approve(address,uint256)']);
+  f.setApprovalMetadata({ standard: 'ERC-20', token: { contractAddress: contract, name: 'Example', symbol: 'TOK', decimals: 6 } });
+  try {
+    const first = await messageRequest(f, 'eth_sendTransaction', [{ to: contract, data: abi.encodeFunctionData('approve', [ADDRESS, 7]) }]);
+    assert.ok(first?.kind === 'transaction');
+    const queued = await messageRequest(f, 'personal_sign', ['Queued request', ADDRESS], 11);
+    assert.ok(queued?.kind === 'transaction');
+    assert.equal(queued.id, first.id);
+    assert.notEqual(queued.revision, first.revision);
+    assert.strictEqual(queued.transaction, first.transaction);
+    assert.strictEqual(queued.approval, first.approval);
+    await f.view.editApprovalAmount(queued.id, queued.revision, '1.5');
+    const updated = f.view.getSnapshot().signingReview;
+    assert.ok(updated?.kind === 'transaction');
+    assert.equal(updated.id, first.id);
+    assert.notStrictEqual(updated.transaction, first.transaction);
+    assert.notStrictEqual(updated.approval, first.approval);
+    assert.equal(updated.approval?.amountUnits, '1500000');
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('unverified token approvals cannot be edited', async () => {
+  const f = await connectedFixture();
+  const abi = new Interface(['function approve(address,uint256)']);
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ to: '0x' + '22'.repeat(20), data: abi.encodeFunctionData('approve', [ADDRESS, 7]) }]);
+    assert.ok(review?.kind === 'transaction');
+    assert.equal(review.approval?.standardVerified, false);
+    await assert.rejects(f.view.editApprovalAmount(review.id, review.revision, '1'));
+    assert.equal(f.preparedTransactions.length, 1);
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const transition of ['lock', 'expiry'] as const) test(`${transition} during allowance re-preparation discards the new approval`, async () => {
+  const f = await connectedFixture();
+  const contract = '0x' + '22'.repeat(20), abi = new Interface(['function approve(address,uint256)']);
+  f.setApprovalMetadata({ standard: 'ERC-20', token: { contractAddress: contract, name: 'Example', symbol: 'TOK', decimals: 6 } });
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ to: contract, data: abi.encodeFunctionData('approve', [ADDRESS, 7]) }]);
+    assert.ok(review?.kind === 'transaction');
+    let finish!: () => void;
+    f.setPreparationWait(new Promise<void>((resolve) => { finish = resolve; }));
+    const editing = f.view.editApprovalAmount(review.id, review.revision, '0');
+    const rejected = assert.rejects(editing);
+    if (transition === 'lock') f.lock();
+    else { f.event({ type: 'request-expired', id: 10 }); await settle(); }
+    finish();
+    await rejected;
+    assert.equal(f.view.getSnapshot().signingReview, null);
     assert.equal(f.transactions.length, 0);
   } finally { await f.controller.dispose(); }
 });

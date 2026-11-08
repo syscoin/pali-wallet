@@ -5,12 +5,15 @@ import { createNativeLedgerHost } from '../hardware/ledgerHost.ts';
 import type { NativeLedgerTransport, NativeLedgerOwner } from '../hardware/ownedLedgerTransport.ts';
 import type { NativeLedgerRuntime } from './ledgerAccounts.ts';
 import { prepareNativeConnectionTransaction } from '../connections/transactionRuntime.ts';
+import { readNativeApprovalMetadata } from '../connections/approvalMetadata.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { walletFetch } from '../platform/http.ts';
 import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
 import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { requireSmartAccountAddressIdentity } from '../../../../source/utils/smartAccount/addressIdentity.ts';
 import type { NativeConnectionHost } from '../connections/host.ts';
+import { createDeviceUnlockEnrollment } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
+import type { DeviceUnlockControls } from '@sidhujag/sysweb3-keyring/cjs/keyring-core.js';
 import { matchesDappMessageRequest, readDappMessageRequest } from '../../../../source/shared/dappMessageRequest.ts';
 import { openNativeConnectionRepository, type NativeConnectionRepository } from '../connections/storage.ts';
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
@@ -89,6 +92,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   loadSdk?: () => Promise<SoftwareSdk>;
   createLedgerTransport?: (owner: NativeLedgerOwner) => Promise<NativeLedgerTransport>;
   assertActive?: () => void;
+  deviceUnlock?: Pick<Parameters<typeof createDeviceUnlockEnrollment>[0], 'credentials' | 'randomId'>;
   readEvmRetirement: ((network: NativeNetworkRegistration, method: EvmSignedRetirementReadMethod,
     params: readonly unknown[], signal: AbortSignal, guard: () => void) => Promise<unknown>) | null;
   readUtxoBalance?: (network: UtxoNetwork, address: string, signal: AbortSignal, guard: () => void) => Promise<UtxoBalance>;
@@ -213,7 +217,10 @@ export function createKeyringRuntimeFactory(
       try {
         const sdk = await (dependencies.loadSdk?.() ?? loadNativeKeyringSdk());
         if (typeof sdk.captureEvmSubmission !== 'function' || typeof sdk.submitSignedEvmTransaction !== 'function') throw new Error('Shared EVM submission SDK is required');
-        const host = sdk.createKeyringHost(storage.keyringStorage);
+        const deviceUnlock = dependencies.deviceUnlock && storage.deviceUnlockEnrollment
+          ? createDeviceUnlockEnrollment({ ...dependencies.deviceUnlock, enrollment: storage.deviceUnlockEnrollment }) : undefined;
+        const host = sdk.createKeyringHost(storage.keyringStorage, deviceUnlock ? { deviceUnlock: deviceUnlock.sdkPort } : undefined);
+        const deviceControls = new WeakMap<IndexedKeyring, DeviceUnlockControls>();
         const initialEvmNetwork = getNativeNetwork('ethereum');
         const sdkEvmNetwork = (network: NativeNetworkRegistration): SdkNetwork => ({
           kind: sdk.INetworkType.Ethereum, chainId: Number(network.chainId), slip44: network.slip44,
@@ -234,10 +241,20 @@ export function createKeyringRuntimeFactory(
         let ledgerCleanup: Promise<void> | undefined;
         let ledgerOpening: { retire(): Promise<void> } | undefined;
         let ledgerScanOrdinal = 0;
+        let unsubscribeLedgerStatus: (() => void) | undefined;
+        const ledgerStatusListeners = new Set<() => void>();
+        const publishLedgerStatus = () => {
+          for (const listener of ledgerStatusListeners) {
+            try { listener(); } catch { /* Observation cannot change custody. */ }
+          }
+        };
         const retireLedger = () => {
           const previous = ledgerTransport;
           ledgerTransport = undefined;
           ledgerVerified = undefined;
+          unsubscribeLedgerStatus?.();
+          unsubscribeLedgerStatus = undefined;
+          publishLedgerStatus();
           ledgerLifetime?.abort();
           ledgerLifetime = undefined;
           preparedLedger = undefined;
@@ -248,7 +265,11 @@ export function createKeyringRuntimeFactory(
         let preparedLedger: { account: IKeyringAccountState; generation: number; snapshot: NativeWalletCatalogueSnapshot } | undefined;
         const ledgerHost = createNativeLedgerHost(() => ledgerTransport);
         const openKeyring = (scope: State) => {
-          const instance = new sdk.HostKeyring(host, { captureEvmSubmission: null }, () => sdk.createLedgerHardware(ledgerHost)) as IndexedKeyring;
+          let controls: DeviceUnlockControls | undefined;
+          const instance = new sdk.HostKeyring(host, { captureEvmSubmission: null,
+            ...(deviceUnlock ? { receiveDeviceUnlock: (value: DeviceUnlockControls) => { controls = value; } } : {}),
+          }, () => sdk.createLedgerHardware(ledgerHost)) as IndexedKeyring;
+          if (controls) deviceControls.set(instance, controls);
           instance.setVaultStateGetter(() => scope);
           return instance;
         };
@@ -559,6 +580,9 @@ export function createKeyringRuntimeFactory(
             network.chainId, selected.address, network.rpcUrl);
           return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
             network, rpc, signal, planner, assertCurrent: check,
+            readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
+              network, owner: selected.address, contract, signal, assertCurrent, fetch,
+            }),
             sign(transaction, assertSigningCurrent) {
               return run(async (ownerGeneration) => {
                 const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
@@ -731,7 +755,7 @@ export function createKeyringRuntimeFactory(
         };
         const authenticate = async (password: string, captured: number, live?: {
           identity: WalletIdentityRead; assertCurrent(): void;
-        }) => {
+        }, prove = () => keyring.unlock(password)) => {
           const check = () => {
             current(captured);
             if (live) { checkGuard(live.assertCurrent); current(captured); }
@@ -752,7 +776,7 @@ export function createKeyringRuntimeFactory(
             check();
             Object.assign(state, stateFor(records));
           }
-          const result = await keyring.unlock(password);
+          const result = await prove();
           if (!result || typeof result.canLogin !== 'boolean') throw new Error('UNAVAILABLE');
           if (!result.canLogin) {
             // A definitive rejected credential still counts when lock/background
@@ -1341,6 +1365,10 @@ export function createKeyringRuntimeFactory(
           return task;
         };
         const ledger: NativeLedgerRuntime = {
+          subscribeStatus(listener) {
+            ledgerStatusListeners.add(listener);
+            return () => { ledgerStatusListeners.delete(listener); };
+          },
           isConnected() {
             const verified = ledgerVerified;
             return (
@@ -1445,6 +1473,11 @@ export function createKeyringRuntimeFactory(
             }
             ledgerTransport = transport;
             try {
+              unsubscribeLedgerStatus = transport.host.subscribeStatus(() => {
+                if (ledgerTransport !== transport) return;
+                if (!transport.host.getStatus().connected) ledgerVerified = undefined;
+                publishLedgerStatus();
+              });
               const selection = transport.host.beginDeviceSelection(signal);
               const ordinal = ++ledgerScanOrdinal;
               const candidates = new Map<
@@ -1587,6 +1620,7 @@ export function createKeyringRuntimeFactory(
                     snapshot: before!,
                     transport,
                   };
+                  publishLedgerStatus();
                 },
                 async close() {
                   if (handedOff) {
@@ -1912,6 +1946,56 @@ export function createKeyringRuntimeFactory(
               await hydrate(captured); current(captured); checkGuard(assertCurrent);
             }),
           },
+          ...(deviceUnlock && dependencies.deviceUnlock ? { deviceUnlock: {
+            async status() {
+              const captured = generation;
+              current(captured);
+              const available = await dependencies.deviceUnlock!.credentials.available();
+              current(captured);
+              const reference = await storage.deviceUnlockEnrollment!.read();
+              current(captured);
+              return Object.freeze({ available, enabled: !!reference?.enrollmentId });
+            },
+            enroll: (password: string, assertCurrent: () => void) => run(async (captured) => {
+              const ring = keyring, controls = deviceControls.get(ring), identity = verifiedIdentity;
+              const check = () => { current(captured); checkGuard(assertCurrent); if (keyring !== ring) throw new KeyringRuntimeError('CANCELLED'); };
+              check();
+              if (!controls || !identity || !ring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+              const authenticated = await deviceUnlock.issue((guard) => authenticate(password, captured,
+                { identity, assertCurrent: check }, async () => ({ canLogin: await controls.issue(password, guard) })), check);
+              check();
+              return { authenticated };
+            }),
+            disable: (password: string, assertCurrent: () => void) => run(async (captured) => {
+              const identity = verifiedIdentity;
+              const check = () => { current(captured); checkGuard(assertCurrent); };
+              check();
+              if (!identity || !keyring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+              const authenticated = await authenticate(password, captured, { identity, assertCurrent: check });
+              check();
+              if (authenticated) { await deviceUnlock.disable(check); check(); }
+              return { authenticated };
+            }),
+            unlock: (assertCurrent: () => void) => run(async (captured) => {
+              const ring = keyring, controls = deviceControls.get(ring);
+              const check = () => { current(captured); checkGuard(assertCurrent); if (keyring !== ring) throw new KeyringRuntimeError('CANCELLED'); };
+              check();
+              if (!controls || ring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+              await storage.authGuard.checkAllowed(); check();
+              const identity = await readIdentity(); check();
+              const records = recoveryVerificationRecords(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), identity.walletBindingId);
+              check(); Object.assign(state, stateFor(records));
+              const authenticated = await deviceUnlock.resume(controls.resume, check, () => ring.lockWallet());
+              check();
+              if (authenticated) {
+                if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
+                check(); await storage.authGuard.recordSuccess(); check();
+                authenticatedPair = identity.pairFingerprint; verifiedIdentity = null;
+                await hydrate(captured); check();
+              }
+              return { authenticated };
+            }),
+          } } : {}),
           imports,
           networks,
           tokens: {

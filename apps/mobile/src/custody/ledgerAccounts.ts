@@ -45,6 +45,7 @@ export type NativeLedgerView =
 
 /** Private picker capability. Raw device handles remain with the runtime. */
 export interface NativeLedgerRuntime {
+  subscribeStatus(listener: () => void): () => void;
   isConnected(): boolean;
   scan(
     request: Readonly<{ purpose: 'import' | 'connect' }>,
@@ -94,6 +95,8 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
   private closing: Promise<void> = Promise.resolve();
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribe: () => void;
+  private observedRuntime: NativeLedgerRuntime | undefined;
+  private unsubscribeStatus: (() => void) | undefined;
 
   private readonly authority: LedgerAuthority;
   private readonly runtime: () => NativeLedgerRuntime | undefined;
@@ -107,6 +110,7 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
     this.authority = authority;
     this.runtime = runtime;
     this.unsubscribe = authority.subscribe((value) => {
+      this.bindRuntime();
       const session = this.session;
       if (!session) return;
       const importing = this.snapshot.phase === 'importing';
@@ -117,6 +121,19 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
       )
         void this.close().catch(() => undefined);
     });
+    this.bindRuntime();
+  }
+
+  private bindRuntime() {
+    const runtime = this.runtime();
+    if (runtime === this.observedRuntime) return;
+    this.unsubscribeStatus?.();
+    this.observedRuntime = runtime;
+    this.unsubscribeStatus = runtime?.subscribeStatus(() => {
+      if (!this.disposed && this.observedRuntime === runtime) this.publish({});
+    });
+    // Read again after subscribing so a transition during binding is visible.
+    this.publish({});
   }
 
   getSnapshot = () => this.snapshot;
@@ -316,6 +333,9 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
   async dispose() {
     this.disposed = true;
     this.unsubscribe();
+    this.unsubscribeStatus?.();
+    this.unsubscribeStatus = undefined;
+    this.observedRuntime = undefined;
     await this.close();
     this.listeners.clear();
   }
