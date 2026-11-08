@@ -76,13 +76,13 @@ import {
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
-import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
 import { deriveDefaultSmartAccount } from 'utils/smartAccount/bootstrap';
 import {
   PALI_CREATE2_DEPLOYER_ADDRESS,
   getPaliInfrastructureContracts,
   type PaliInfrastructureContractId,
 } from 'utils/smartAccount/deployment';
+import { readSmartAccountDeploymentState } from 'utils/smartAccount/deploymentState';
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 import {
@@ -109,6 +109,7 @@ import {
   getExplicitSmartAccountGasPrice,
   prepareSmartAccountOperation,
   requireSmartAccountAuthenticator,
+  SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
 } from 'utils/smartAccount/prepareOperation';
 import { signSmartAccountEcdsaOperation } from 'utils/smartAccount/signOperation';
 import {
@@ -447,7 +448,7 @@ class SmartAccountController {
     this.executionContexts.set(id, {
       accountId: snapshot.account.id,
       actionHash,
-      expiresAt: Date.now() + 15 * 60 * 1000,
+      expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       snapshot,
     });
     return id;
@@ -1129,15 +1130,18 @@ class SmartAccountController {
           'Smart account descriptor is required for deterministic deployment'
         );
       }
-      requireSmartAccountAddressIdentity(active.account, context.chainId);
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
-      const code = await provider.getCode(accountAddress);
-      assertCurrent();
-      if (code === '0x') {
+      const deploymentState = await readSmartAccountDeploymentState({
+        account: active.account,
+        chainId: context.chainId,
+        provider,
+        assertCurrent,
+      });
+      if (deploymentState === 'undeployed') {
         if (!metadata.auth) {
           throw new Error(
             'Smart account initial authenticator metadata is required for deployment'
@@ -1667,7 +1671,7 @@ class SmartAccountController {
     this.executionContexts.set(executionContextId, {
       accountId: active.account.id,
       actionHash,
-      expiresAt: Date.now() + 15 * 60 * 1000,
+      expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       gasPrice: legacyGasPrice,
       snapshot,
       userOperation: Object.freeze({ ...userOperation }),

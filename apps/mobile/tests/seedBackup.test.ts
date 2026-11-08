@@ -21,6 +21,7 @@ async function fixture() {
   const runtime: KeyringRuntime = {
     ledger: { subscribeStatus: () => () => {}, isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
     catalogue: { getSnapshot: () => null },
+    async openSmartAccountDeployment() { throw new Error('Unused test capability'); },
     async openConnectionHost() { throw new Error('Connections are outside this fixture'); },
     async resetActivity() { throw new Error('Activity is outside this fixture'); },
     async withUtxoActivityRead() { throw new Error('Activity is outside this fixture'); },
