@@ -22,6 +22,7 @@ import {
   PALI_ENTRYPOINT_V09_ABI,
 } from './contracts.ts';
 import { getZkSysGasTankAddress } from './deploymentMetadata.ts';
+import { assertSmartAccountNativeSpendability } from './nativeSpendability.ts';
 import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
@@ -259,6 +260,15 @@ async function submitOwnedSmartAccountOperation<
       ...params.userOperation,
       signature: params.signature,
     };
+    const assertSpendable = () =>
+      assertSmartAccountNativeSpendability({
+        provider: host.provider,
+        chainId: active.metadata.chainId,
+        userOperation: signedUserOperation,
+        assertCurrent,
+      });
+    await assertSpendable();
+    assertCurrent();
     const callData = entryPoint.interface.encodeFunctionData('handleOps', [
       [signedUserOperation],
       gasPayer.address,
@@ -395,8 +405,11 @@ async function submitOwnedSmartAccountOperation<
           : NATIVE_EVM_FEE_FUNDING,
         assertBeforeSign: assertCurrent,
         assertCurrentContext: assertContext,
-        assertPendingState: () =>
-          host.pending.assertNonce(params.userOperation),
+        async assertPendingState() {
+          await host.pending.assertNonce(params.userOperation);
+          await assertSpendable();
+          assertCurrent();
+        },
         clearNavigation: true,
         async onBroadcast(broadcast: { hash: string }) {
           acknowledgedHandleOpsHash = broadcast.hash;

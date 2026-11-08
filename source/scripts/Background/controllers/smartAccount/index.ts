@@ -99,6 +99,7 @@ import {
   SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
   type SmartAccountInfrastructureObservation,
 } from 'utils/smartAccount/infrastructureObservation';
+import { assertSmartAccountNativeSpendability } from 'utils/smartAccount/nativeSpendability';
 import {
   hasGuardianRecoveryNotReadyRevert,
   hasGuardianRecoveryAlreadyScheduledRevert,
@@ -447,6 +448,13 @@ class SmartAccountController {
     if (context.userOperation) {
       if (!context.pending) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       await context.pending.assertNonce(context.userOperation);
+      await assertSmartAccountNativeSpendability({
+        provider: context.pending.provider,
+        chainId: context.snapshot.chainId,
+        userOperation: context.userOperation,
+        assertCurrent: () =>
+          this.assertSmartAccountExecutionContext(executionContextId),
+      });
       this.assertSmartAccountExecutionContext(executionContextId);
     }
   }
