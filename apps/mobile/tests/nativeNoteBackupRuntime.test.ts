@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
-const sdk = await loadNativeKeyringSdk();
 import { createNoteBackupCodec, type INoteBackupEntry } from '../../../source/wallet/noteBackup.ts';
 import { NOTE_BACKUP_PREVIEW_TTL_MS } from '../../../source/wallet/noteBackupService.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
+const sdk = await loadNativeKeyringSdk();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'PUBLIC fixture wallet password 1!';

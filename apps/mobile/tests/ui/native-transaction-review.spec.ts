@@ -142,11 +142,37 @@ test('unapplied or invalid allowance edits block confirmation until discarded', 
   await page.getByRole('button', { name: 'Apply limit', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Enter an exact amount');
   await expect(confirm).toBeDisabled();
+  await page.evaluate(() => window.__nativeTransactionReviewFixture.revise());
+  await expect(page.getByRole('textbox', { name: 'New spending limit', exact: true })).toHaveValue('invalid');
+  await expect(page.getByRole('alert')).toContainText('Enter an exact amount');
+  await expect(confirm).toBeDisabled();
   await page.getByRole('button', { name: 'Keep current limit', exact: true }).click();
   await expect(confirm).toBeEnabled();
   await expect(page.getByText('Unlimited', { exact: true })).toBeVisible();
   await confirm.click();
   expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())).toEqual([
-    { method: 'approveRequest', args: ['transaction-1', 7, false] },
+    { method: 'approveRequest', args: ['transaction-1', 8, false] },
+  ]);
+});
+
+
+test('unrelated controller revisions preserve an allowance draft and its confirmation block', async ({ page }) => {
+  await page.goto(`${fixture}&approval=erc20`);
+  const confirm = page.getByRole('button', { name: 'Confirm transaction', exact: true });
+  await page.getByRole('button', { name: 'Edit spending limit', exact: true }).click();
+  const input = page.getByRole('textbox', { name: 'New spending limit', exact: true });
+  await input.fill('1.5');
+  await page.evaluate(() => window.__nativeTransactionReviewFixture.revise());
+  await expect(input).toHaveValue('1.5');
+  await expect(confirm).toBeDisabled();
+  expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())).toEqual([]);
+  await page.getByRole('button', { name: 'Apply limit', exact: true }).click();
+  await expect(input).toHaveCount(0);
+  await expect(page.getByText('1.5 TOK', { exact: true })).toBeVisible();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())).toEqual([
+    { method: 'editApprovalAmount', args: ['transaction-1', 8, '1.5'] },
+    { method: 'approveRequest', args: ['transaction-1', 9, false] },
   ]);
 });

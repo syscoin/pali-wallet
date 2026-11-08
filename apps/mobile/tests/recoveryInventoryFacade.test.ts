@@ -70,6 +70,11 @@ async function fixture(existing = true) {
   class PassiveController { readonly view = {}; dispose() {} }
   const dependencies: Record<string, unknown> = {
     './security': security,
+    './deviceUnlockCredential.native': {
+      createNativeDeviceUnlockCapability() {
+        return { credentials: {}, prompt: { cancel() {} } };
+      },
+    },
     './walletConnectRuntime': {
       prepareWalletConnectRuntime() { assert.fail('inventory must not prepare WalletConnect'); },
     },
