@@ -608,8 +608,8 @@ export function createDappSessions<Account extends DappPublicAccount>(
   ) => {
     const generation = host.wallet().generation;
     let retired = false;
-    const grants = Object.values(getAll()).filter(
-      (grant) => matchesDappAccountIdentity(grant, accountId, accountType)
+    const grants = Object.values(getAll()).filter((grant) =>
+      matchesDappAccountIdentity(grant, accountId, accountType)
     );
     return {
       grants,
