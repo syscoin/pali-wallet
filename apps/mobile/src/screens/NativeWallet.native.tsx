@@ -281,7 +281,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   useLayoutEffect(() => {
     latestBack.current = () => {
       // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if ((stage === 'private-notes' || stage === 'connections') && snapshot.phase === 'ready') {
+      if ((stage === 'private-notes' || stage === 'connections' || stage === 'smart-deploy') && snapshot.phase === 'ready') {
         if (stage === 'connections') {
           scanFinished();
           if (incomingPairing) onPairingHandled?.(incomingPairing.id);
@@ -313,7 +313,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }
     setCanRemoveWallet(false);
     setPublicSource(null); setBalanceReader(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
-    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
+    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
   const attach = useCallback((local: Controllers) => {

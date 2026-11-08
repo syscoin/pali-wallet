@@ -37,15 +37,19 @@ const code = ts.transpileModule(
   }
 ).outputText;
 
-function harness(ready = false) {
+function harness(ready = false, smartAccount = false) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
-  let incoming: NativePairingEntry | null = {
-    id: 'pairing-1',
-    uri: URI,
-    expiresAt: now + 300000,
-  };
+  let hardwareBack: (() => boolean) | undefined;
+  let exits = 0;
+  let incoming: NativePairingEntry | null = smartAccount
+    ? null
+    : {
+        id: 'pairing-1',
+        uri: URI,
+        expiresAt: now + 300000,
+      };
   let snapshot: any = {
     phase: ready ? 'ready' : 'locked',
     revision: 1,
@@ -128,14 +132,18 @@ function harness(ready = false) {
   };
   const catalogue = {
     revision: 1,
-    active: { accountId: 'hd:60:0', networkId: 'ethereum' },
+    active: {
+      accountId: smartAccount ? 'smart:60:0' : 'hd:60:0',
+      networkId: 'ethereum',
+    },
     networks: [],
     utxoNetworks: [],
     accounts: [
       {
-        id: 'hd:60:0',
+        id: smartAccount ? 'smart:60:0' : 'hd:60:0',
         index: 0,
-        type: 'HDAccount',
+        type: smartAccount ? 'SmartAccount' : 'HDAccount',
+        ...(smartAccount ? { smartAccount: { isDeployed: false } } : {}),
         address: '0x' + '11'.repeat(20),
         label: 'Account 1',
       },
@@ -189,6 +197,9 @@ function harness(ready = false) {
     keyExport: { cancel() {} },
     backup: { cancel() {}, onClear: () => () => {} },
     removal: { requiresControllerReopen: () => false },
+    openSmartAccountDeployment() {
+      throw new Error('Route mocked in parent navigation test');
+    },
     balanceReader: {},
     transfers: {},
     tokens: {},
@@ -211,7 +222,16 @@ function harness(ready = false) {
         };
       },
     },
-    BackHandler: { addEventListener: () => ({ remove() {} }) },
+    BackHandler: {
+      addEventListener(_name: string, listener: () => boolean) {
+        hardwareBack = listener;
+        return {
+          remove() {
+            if (hardwareBack === listener) hardwareBack = undefined;
+          },
+        };
+      },
+    },
   };
   const lifecycle = class {
     async acquire() {
@@ -279,6 +299,9 @@ function harness(ready = false) {
       }),
     },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
+    './NativeSmartAccountDeployment': {
+      NativeSmartAccountDeploymentRoute: 'NativeSmartAccountDeploymentRoute',
+    },
     './NativeConnections': { NativeConnections: 'NativeConnections' },
     './NativeMessageReview': {
       NativeMessageReviewScreen: 'NativeMessageReviewScreen',
@@ -311,7 +334,9 @@ function harness(ready = false) {
   const render = () => {
     cursor = 0;
     const tree = module.exports.NativeWalletScreen({
-      onExit() {},
+      onExit() {
+        exits++;
+      },
       initialAccountId: 'hd:60:9',
       incomingPairing: incoming,
       onPairingHandled(id: string) {
@@ -323,6 +348,11 @@ function harness(ready = false) {
   };
   return {
     render,
+    hardwareBack() {
+      assert(hardwareBack);
+      return hardwareBack();
+    },
+    exits: () => exits,
     ready: () => change('ready'),
     selectionCalls: () => selectionCalls,
     consume() {
@@ -365,8 +395,8 @@ function find(
     : node.children.flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false) {
-  const f = harness(ready);
+async function mounted(ready = false, smartAccount = false) {
+  const f = harness(ready, smartAccount);
   f.render();
   await settle();
   f.render();
@@ -449,17 +479,39 @@ for (const expired of [false, true])
     });
   }
 
-for (const [kind, screen] of [['message', 'NativeMessageReviewScreen'], ['transaction', 'NativeTransactionReviewScreen']] as const) test(`an incoming pairing never replaces an already active ${kind} approval`, async () => {
-  const f = await mounted();
+for (const [kind, screen] of [
+  ['message', 'NativeMessageReviewScreen'],
+  ['transaction', 'NativeTransactionReviewScreen'],
+] as const)
+  test(`an incoming pairing never replaces an already active ${kind} approval`, async () => {
+    const f = await mounted();
+    try {
+      f.connections({ signingReview: { kind, id: `${kind}-1` } });
+      f.ready();
+      f.render();
+      assert.equal(f.render().type, screen);
+      f.connections({ signingReview: null });
+      f.render();
+      await settle();
+      assert.equal(f.render().type, 'NativeConnections');
+    } finally {
+      f.dispose();
+    }
+  });
+
+test('Android Back closes smart deployment into the wallet without exiting or locking', async () => {
+  const f = await mounted(true, true);
   try {
-    f.connections({ signingReview: { kind, id: `${kind}-1` } });
-    f.ready();
-    f.render();
-    assert.equal(f.render().type, screen);
-    f.connections({ signingReview: null });
-    f.render();
-    await settle();
-    assert.equal(f.render().type, 'NativeConnections');
+    const portfolio = find(
+      f.render(),
+      (node) => node.type === 'NativePortfolio'
+    );
+    assert(portfolio);
+    portfolio.props.onDeploySmartAccount();
+    assert.equal(f.render().type, 'NativeSmartAccountDeploymentRoute');
+    assert.equal(f.hardwareBack(), true);
+    assert(find(f.render(), (node) => node.type === 'NativePortfolio'));
+    assert.equal(f.exits(), 0);
   } finally {
     f.dispose();
   }
