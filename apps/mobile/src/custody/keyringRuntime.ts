@@ -1603,6 +1603,7 @@ export function createKeyringRuntimeFactory(
                       const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
                       guard();
                       const signed = ring.signPreparedEvmTransaction({
+                        selectedAccount: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                         account: { id: selected.index, type: signerType, expectedAddress: selected.address },
                         network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
                         transaction,
@@ -2376,6 +2377,7 @@ export function createKeyringRuntimeFactory(
                   throw new KeyringRuntimeError('NOT_READY');
                 const signed = keyring.signPreparedEvmTransaction(
                   {
+                    selectedAccount: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                     account: {
                       id: selected.index,
                       type: selected.type,

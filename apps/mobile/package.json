@@ -110,7 +110,7 @@
     }
   },
   "paliKeyringPatch": {
-    "sourceCommit": "c68e7f7ca8dd13789a7428a8ec35d3b84a46f2f8",
-    "manifestSha256": "28153063e5d18b4348191b7f2293cd58d9e6bdc585a7e2481975ad6e9d13d2ac"
+    "sourceCommit": "0a8f46868850055e333f42b27fb886426bf800f4",
+    "manifestSha256": "254ae749927beacdecb051b2f2941f742619d1f8b548f1d13884679e53c4113f"
   }
 }

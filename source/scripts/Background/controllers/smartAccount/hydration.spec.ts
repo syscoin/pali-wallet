@@ -732,6 +732,16 @@ describe('SmartAccountController smart account execution fees', () => {
                 options.assertBeforeSign?.();
               },
               mode: 'specialized',
+              selectedAccount: {
+                id: 0,
+                type: 'HDAccount',
+                expectedAddress: owner.address,
+              },
+              targetAccount: {
+                id: 0,
+                type: 'HDAccount',
+                expectedAddress: owner.address,
+              },
             }
           );
           await options.onBroadcast?.(response);
@@ -851,6 +861,16 @@ describe('SmartAccountController smart account execution fees', () => {
           sdk.sendFormattedTransaction(transaction, legacy, {
             assertCurrent: approval.assertCurrentContext,
             mode: 'specialized',
+            selectedAccount: {
+              id: 0,
+              type: 'HDAccount',
+              expectedAddress: owner.address,
+            },
+            targetAccount: {
+              id: 0,
+              type: 'HDAccount',
+              expectedAddress: owner.address,
+            },
           })
       );
       await controller.submitSmartAccountExecution({
