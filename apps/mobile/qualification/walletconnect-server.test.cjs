@@ -249,7 +249,7 @@ function failingQualification(stage, targetError = Object.assign(Error('PRIVATE_
   let statusReads = 0;
   const load = (name) => {
     if (name === '@walletconnect/core') return { Core: class {
-      constructor(options) { this.options = options; this.signal = { aborted: false }; this.heartbeat = this.relayer = { events: { eventNames: () => [] } }; }
+      constructor(options) { this.options = options; this.signal = { aborted: false }; this.heartbeat = this.relayer = { events: { eventNames: () => failures.has('disposal-listeners') ? ['retained'] : [] } }; }
     } };
     if (name === '@walletconnect/sign-client') return { SESSION_REQUEST_EXPIRY_BOUNDARIES: { min: 1, max: 2 }, SignClient: { init: async ({ core }) => ({ core, signal: { aborted: false } }) } };
     if (name === '@walletconnect/utils') return { parseUri() {} };
@@ -266,11 +266,12 @@ function failingQualification(stage, targetError = Object.assign(Error('PRIVATE_
           if (failures.has('pair')) return Promise.reject(targetError);
           if (!pending) { counts.opened++; counts.frames++; return Promise.resolve({}); }
           counts.pending++;
-          return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(targetError), { once: true }));
+          return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => failures.has('abort-accepted') ? resolve({}) : reject(targetError), { once: true }));
         },
         async close() {
           if (failures.has('close')) throw targetError;
-          core.signal.aborted = client.signal.aborted = true;
+          core.signal.aborted = true;
+          client.signal.aborted = !failures.has('disposal-signal');
           if (!closed) { closed = true; if (pending) counts.pendingClosed++; else counts.closed++; }
         },
       };
@@ -282,9 +283,26 @@ function failingQualification(stage, targetError = Object.assign(Error('PRIVATE_
     launch: { port: 12345, token: 'ab'.repeat(16) }, build: {}, candidateIdentity: 'candidate', platform: 'android', phase: 'create', scenario: 'import', sessionId: 'session',
     async walletFetch() {
       if (failures.has('request') && ++statusReads === 2) throw targetError;
-      return { ok: true, json: async () => ({ ...counts }) };
+      return { ok: !failures.has('status-http'), json: async () => ({ ...counts }) };
     },
   }), counts, statusReads: () => statusReads };
+}
+
+for (const [failure, stage, code] of [
+  ['status-http', 'request', 'WALLETCONNECT_NATIVE_STATUS_HTTP'],
+  ['disposal-signal', 'close', 'WALLETCONNECT_NATIVE_DISPOSAL_SIGNAL'],
+  ['disposal-listeners', 'close', 'WALLETCONNECT_NATIVE_DISPOSAL_LISTENERS'],
+  ['abort-accepted', 'pair', 'WALLETCONNECT_NATIVE_ABORT_ACCEPTED'],
+]) {
+  test(`qualification assertion ${failure} retains its fixed diagnostic code`, async () => {
+    const fixture = failingQualification(failure);
+    await assert.rejects(fixture.run(), (error) => {
+      assert.equal(error.diagnostic.substage, stage);
+      assert.equal(error.diagnostic.errorCode, code);
+      assert(!JSON.stringify(error.diagnostic).includes('PRIVATE'));
+      return true;
+    });
+  });
 }
 
 test('pair failure remains primary when final transport cleanup also fails', async () => {

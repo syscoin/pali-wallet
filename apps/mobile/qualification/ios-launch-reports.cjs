@@ -7,7 +7,7 @@ const INPUT_LIMIT = 100000;
 const OUTPUT_LIMIT = 8192;
 const STAGES = new Set(['parameters', 'Hermes text and string capabilities', 'native crypto bridge and full vectors',
   'native factory handles reject direct construction', 'native public Merkle and HMAC vectors', 'native SLH leaf setup vector',
-  'native HTTP transport', 'native POST transport', 'open SQLCipher and device key', 'load software SDK',
+  'native HTTP transport', 'native WalletConnect lifecycle', 'native POST transport', 'open SQLCipher and device key', 'load software SDK',
   'initialize native custody', 'create or import real SDK wallet', 'fresh password-backed seed confirmation',
   'unlock wallet after process restart', 'synchronous lock and wrong password refusal',
   'seed reauthentication after cold restart', 'lock and drain native database close']);
@@ -24,6 +24,7 @@ function summarizeReport(text, filePhase, scenario) {
     reportedPhase: report.phase, reportedScenario: report.scenario, completedCheckCount: report.checks.length,
     ...(report.status === 'failed' ? { failedStage: STAGES.has(report.failedStage) ? report.failedStage : 'unrecognized' } : {}),
     ...(report.cryptoDiagnostic ? { cryptoDiagnostic: report.cryptoDiagnostic } : {}),
+    ...(report.walletConnectDiagnostic ? { walletConnectDiagnostic: report.walletConnectDiagnostic } : {}),
     storageDiagnostic: report.storageDiagnostic };
 }
 

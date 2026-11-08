@@ -26,6 +26,14 @@ const ERROR_CODES = [
   'WALLETCONNECT_NATIVE_TIMEOUT',
   'WALLETCONNECT_NATIVE_QUALIFICATION_FAILED',
   'WALLETCONNECT_NATIVE_AUDIT_FAILED',
+  'WALLETCONNECT_NATIVE_STATUS_HTTP',
+  'WALLETCONNECT_NATIVE_OWNER_REVOKED',
+  'WALLETCONNECT_NATIVE_PENDING_OPEN',
+  'WALLETCONNECT_NATIVE_ABORT_ACCEPTED',
+  'WALLETCONNECT_NATIVE_PAIR_REJECTED',
+  'WALLETCONNECT_NATIVE_DISPOSAL_SIGNAL',
+  'WALLETCONNECT_NATIVE_DISPOSAL_LISTENERS',
+  'WALLETCONNECT_NATIVE_AUDIT_CHANGED',
   'QUALIFICATION_NETWORK_FORBIDDEN',
   'NATIVE_CONNECTION_UNAVAILABLE',
   'UNCLASSIFIED',
@@ -139,8 +147,11 @@ export class WalletConnectQualificationError extends Error {
 
 const pause = (milliseconds: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
-const assert = (condition: unknown) => {
-  if (!condition) throw Error('WALLETCONNECT_NATIVE_QUALIFICATION_FAILED');
+const assert = (
+  condition: unknown,
+  code: WalletConnectQualificationDiagnostic['errorCode']
+) => {
+  if (!condition) throw Error(code);
 };
 async function bounded<T>(operation: Promise<T>): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -206,7 +217,7 @@ export async function qualifyNativeWalletConnect(options: {
           { credentials: 'omit', redirect: 'error' }
         )
       );
-      assert(response.ok);
+      assert(response.ok, 'WALLETCONNECT_NATIVE_STATUS_HTTP');
       const counts: unknown = await response.json();
       if (validCounts(counts)) lastCounts = Object.freeze({ ...counts });
       return counts as {
@@ -284,7 +295,7 @@ export async function qualifyNativeWalletConnect(options: {
           supportedMethods: ['personal_sign'],
           supportedEvents: ['accountsChanged'],
           assertOwner() {
-            assert(!owner.signal.aborted);
+            assert(!owner.signal.aborted, 'WALLETCONNECT_NATIVE_OWNER_REVOKED');
           },
           async preparePlatform() {},
           onEvent() {},
@@ -298,7 +309,8 @@ export async function qualifyNativeWalletConnect(options: {
           `wc:${'a1'.repeat(32)}@2?relay-protocol=irn&symKey=${'b2'.repeat(
             32
           )}`,
-          () => assert(!owner.signal.aborted),
+          () =>
+            assert(!owner.signal.aborted, 'WALLETCONNECT_NATIVE_OWNER_REVOKED'),
           () => undefined
         );
         const outcome = pairing.then(
@@ -312,17 +324,28 @@ export async function qualifyNativeWalletConnect(options: {
           const started = Date.now();
           while ((await status()).pending !== 1 && Date.now() - started < 6000)
             await pause(50);
-          assert((await status()).pending === 1);
+          assert(
+            (await status()).pending === 1,
+            'WALLETCONNECT_NATIVE_PENDING_OPEN'
+          );
           owner.abort();
-          assert((await bounded(outcome)) === false);
-        } else assert(await bounded(outcome));
+          assert(
+            (await bounded(outcome)) === false,
+            'WALLETCONNECT_NATIVE_ABORT_ACCEPTED'
+          );
+        } else
+          assert(await bounded(outcome), 'WALLETCONNECT_NATIVE_PAIR_REJECTED');
       });
       await run('close', async () => {
         await bounded(transport.close());
-        assert(core?.signal.aborted && client?.signal.aborted);
+        assert(
+          core?.signal.aborted && client?.signal.aborted,
+          'WALLETCONNECT_NATIVE_DISPOSAL_SIGNAL'
+        );
         assert(
           core!.heartbeat.events.eventNames().length === 0 &&
-            core!.relayer.events.eventNames().length === 0
+            core!.relayer.events.eventNames().length === 0,
+          'WALLETCONNECT_NATIVE_DISPOSAL_LISTENERS'
         );
       });
     } finally {
@@ -343,7 +366,10 @@ export async function qualifyNativeWalletConnect(options: {
   await pause(6000);
   const later = await status();
   await run('request', async () =>
-    assert(JSON.stringify(later) === JSON.stringify(audit))
+    assert(
+      JSON.stringify(later) === JSON.stringify(audit),
+      'WALLETCONNECT_NATIVE_AUDIT_CHANGED'
+    )
   );
   return Object.freeze({
     ...options.build,

@@ -110,6 +110,27 @@ test('missing, nonregular, malformed, mismatched and oversized reports remain di
   assert.equal(directory.evidence.reports[1].availability, 'unavailable'); assert.equal(directory.reads.length, 0);
 });
 
+test('failed WalletConnect stage and bounded assertion survive iOS diagnostic projection', () => {
+  const diagnostic = { substage: 'close', errorName: 'Error', errorCode: 'WALLETCONNECT_NATIVE_DISPOSAL_SIGNAL' };
+  const created = report({ failedStage: 'native WalletConnect lifecycle', walletConnectDiagnostic: diagnostic });
+  const result = collect({ [filename('create')]: JSON.stringify(created) });
+  assert.deepEqual(result.evidence.reports[1], {
+    filePhase: 'create', availability: 'available', reportedStatus: 'failed',
+    reportedPhase: 'create', reportedScenario: 'import', completedCheckCount: 0,
+    failedStage: 'native WalletConnect lifecycle', walletConnectDiagnostic: diagnostic,
+    cryptoDiagnostic: { bootstrap: 'unchecked' }, storageDiagnostic: {},
+  });
+  for (const invalid of [
+    { ...diagnostic, errorCode: SECRET },
+    { ...diagnostic, message: SECRET },
+    { ...diagnostic, topic: SECRET },
+  ]) {
+    const rejected = collect({ [filename('create')]: JSON.stringify({ ...created, walletConnectDiagnostic: invalid }) });
+    assert.equal(rejected.evidence.reports[1].availability, 'invalid');
+    assert(!rejected.text.includes(SECRET));
+  }
+});
+
 test('exact input byte limit is accepted but UTF-8 bytes over it are refused before reading', () => {
   const json = JSON.stringify(report());
   const exact = collect({ [filename('create')]: json + ' '.repeat(100000 - Buffer.byteLength(json)) });
@@ -278,6 +299,19 @@ test('actual runner keeps a rejected HTTP-stage report diagnostic-only after a s
     assert(!JSON.stringify(result.writes).includes(SECRET));
     assert(!result.writes.some(({ file }) => /ios-(?:qualification|simulator-limited|import-create)\.json$/.test(file)));
   }
+});
+
+test('actual runner preserves WalletConnect diagnostics without accepting them as simulator refusal', async () => {
+  const diagnostic = { substage: 'pair', errorName: 'Error', errorCode: 'WALLETCONNECT_NATIVE_ABORT_ACCEPTED' };
+  const created = report({ failedStage: 'native WalletConnect lifecycle', walletConnectDiagnostic: diagnostic });
+  const result = await actualRunner({ created, reportFailure: true });
+  assert.equal(result.process.exitCode, 1);
+  assert.equal(result.reportedError, result.validationError);
+  const evidence = JSON.parse(result.writes.find(({ file }) => file.endsWith('-create-failure-reports.json')).data);
+  assert.equal(evidence.diagnosticOnly, true);
+  assert.equal(evidence.reports[1].failedStage, 'native WalletConnect lifecycle');
+  assert.deepEqual(evidence.reports[1].walletConnectDiagnostic, diagnostic);
+  assert(result.events.some((args) => args[1] === 'delete' && args[2] === DEVICE));
 });
 
 test('actual HTTP runner awaits its public launch token and captures bounded reports before failed-launch cleanup', async () => {
