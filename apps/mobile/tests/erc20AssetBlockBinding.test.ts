@@ -1,3 +1,4 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
@@ -205,11 +206,11 @@ test('dispatch requires matching immutable asset intent', async () => {
   await assert.rejects(f.rpc.verifyForDispatch({ ...quote.transaction, value: '1' }, new AbortController().signal, () => {}, f.automatic, undefined, quote.intent));
 });
 
-test('native-currency quote does not add asset-block nonce reads', async () => {
+test('native-currency quote binds its nonce to the canonical balance block', async () => {
   const f = fixture();
   const quote = await f.rpc.prepare(sender, intent.recipient, '1000', new AbortController().signal, undefined, f.automatic);
   assert.equal(quote.transaction.nonce, '0');
-  assert.equal(f.requests.filter((request) => request.method === 'eth_getTransactionCount' && request.params[1] === '0x123').length, 0);
+  assert.equal(f.requests.filter((request) => request.method === 'eth_getTransactionCount' && request.params[1] === '0x123').length, 1);
 });
 
 for (const phase of ['quote', 'dispatch'] as const) {
@@ -237,7 +238,7 @@ test('simulation at dispatch includes the exact approved gas and nonce', async (
 for (const manual of [false, true]) {
   test(`token ${manual ? 'manual' : 'non-automatic'} quote uses one coherent asset snapshot`, async () => {
     const f = fixture();
-    await f.rpc.prepareToken(sender, intent, new AbortController().signal, undefined, manual ? 0 : undefined);
+    await f.rpc.prepareToken(sender, intent, new AbortController().signal, undefined, manual ? 0 : undefined, emptyNoncePlanner);
     assert.equal(f.requests.filter((request) => request.method === 'eth_chainId').length, 2);
     assert.equal(f.requests.filter((request) => request.method === 'eth_getTransactionCount' && request.params[1] === '0x123').length, 1);
   });

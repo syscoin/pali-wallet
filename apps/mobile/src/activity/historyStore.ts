@@ -323,11 +323,13 @@ export class NativeActivityHistory {
             raw === undefined
               ? await this.storage.createManyIfAbsent({
                   [ACTIVITY_STORAGE_KEY]: stored,
-                })
+                }, guard)
               : await this.storage.compareAndSet(
                   ACTIVITY_STORAGE_KEY,
                   raw,
-                  stored
+                  stored,
+                  undefined,
+                  guard
                 );
         } catch {
           this.requiresReopen = true;
@@ -396,6 +398,17 @@ export class NativeActivityHistory {
       },
       id
     );
+  }
+  clearScope(scope: ActivityScope, guard: () => void): Promise<void> {
+    return this.mutate(scope.walletFingerprint, guard, (data) => ({
+      ...data,
+      archived: data.archived.filter((record) =>
+        record.chainId !== scope.network.chainId || record.address !== scope.address
+      ),
+      // These disposable indexes also cover aliases removed from the catalogue.
+      cached: [],
+      views: [],
+    }));
   }
   async load(
     scope: ActivityScope,

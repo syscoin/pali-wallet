@@ -133,6 +133,7 @@ import {
   persistAccountCreation,
   persistAccountRemoval,
   persistAssetMutation,
+  persistEvmActivityClear,
   persistAdvancedSetting,
   persistCommittedWalletState,
   persistFiatCurrency,
@@ -1095,6 +1096,7 @@ class MainController {
 
   // Initialize a keyring for a specific slip44
   private retainedEvmRecords?: EvmSignedRecords;
+  private clearingEvmActivity = false;
   private retainedEvmReplay?: EvmSignedReplay;
 
   private getRetainedEvmRecords(): EvmSignedRecords {
@@ -1308,6 +1310,78 @@ class MainController {
     );
     return this.retainedEvmReplay;
   }
+  public async clearEvmActivityAndNonce(
+    expectedScope: IWalletNavigationScope,
+    confirmation: 'clear-activity-and-nonce-data'
+  ): Promise<number> {
+    this.assertWalletReadyForSigning();
+    this.assertAssetMutationContext(expectedScope);
+    const { vault } = store.getState();
+    const reference = vault.activeAccount;
+    const account = vault.accounts[reference.type]?.[reference.id];
+    if (
+      confirmation !== 'clear-activity-and-nonce-data' ||
+      vault.isBitcoinBased ||
+      !isAddress(account?.address) ||
+      !Number.isSafeInteger(vault.activeNetwork.chainId) ||
+      vault.activeNetwork.chainId <= 0
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+
+    const from = account.address;
+    const chainId = vault.activeNetwork.chainId;
+    const keyring = this.getActiveKeyring();
+    const records = this.getRetainedEvmRecords();
+    const generation = this.walletSessionGeneration + 1;
+    const isSameWallet = () =>
+      generation === this.walletSessionGeneration &&
+      keyring === this.getActiveKeyring();
+    const assertCurrent = () => {
+      this.assertCurrentWalletSession(generation, keyring);
+      this.assertAssetMutationContext(expectedScope);
+      const current = store.getState().vault;
+      if (
+        current.isBitcoinBased ||
+        current.activeNetwork.chainId !== chainId ||
+        current.accounts[reference.type]?.[reference.id]?.address !== from
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    this.clearingEvmActivity = true;
+    try {
+      // Revoke signing, replay and read owners before yielding to storage.
+      this.advanceWalletSession();
+      this.retainedEvmRecords = records;
+      this.networkRequestGeneration += 1;
+      this.transactionUpdateRequestId += 1;
+      this.cancellablePromises.transactionPromise?.cancel();
+      this.clearWalletSaveTimeout();
+      this.stopAllRapidPolling();
+      this.pendingEvmReceiptChecks.clear();
+      this.transactionsManager.utils.clearCache();
+      clearRpcCaches();
+      const session = records.captureSession({ keyring, assertCurrent });
+      const profileId = await keyring.getPrivateRecordProfileId();
+      assertCurrent();
+      const removed = await records.clearScope(session, {
+        profileId,
+        chainId: String(chainId),
+        from,
+      });
+      assertCurrent();
+      await persistEvmActivityClear(from, chainId, assertCurrent, isSameWallet);
+      assertCurrent();
+      store.dispatch(setTransactionHistoryStatus(undefined));
+      return removed;
+    } catch (error) {
+      // A failed second store write must not leave an unlocked host using a
+      // mixture of cleared private records and its previous public nonce cache.
+      if (isSameWallet()) this.lock();
+      throw error;
+    } finally {
+      this.clearingEvmActivity = false;
+    }
+  }
   public prepareEvmSignedReplay(hash: string) {
     return this.getRetainedEvmReplay().prepare(hash);
   }
@@ -1443,7 +1517,7 @@ class MainController {
     };
     assertCurrent();
     const records = this.getRetainedEvmRecords();
-    const session = { keyring, assertCurrent };
+    const session = records.captureSession({ keyring, assertCurrent });
     const retirementReadForChain: EvmSignedRetirementReadForChain = (
       chainId,
       signal,
@@ -3993,7 +4067,7 @@ class MainController {
   }
 
   private assertWalletReadyForSigning(): void {
-    if (this.getWalletSetupStatus())
+    if (this.clearingEvmActivity || this.getWalletSetupStatus())
       throw new Error(
         'Wallet setup is in progress. Try again after it completes.'
       );
@@ -7901,6 +7975,7 @@ class MainController {
     isPolling?: boolean;
     isRapidPolling?: boolean;
   }) {
+    if (this.clearingEvmActivity) return;
     // For polling, we don't need keyring access - we're just fetching public transaction data
     // Only check if unlocked for non-polling operations
     if (!isPolling) {
@@ -7933,6 +8008,7 @@ class MainController {
       const account = latest.accounts[activeAccount.type]?.[activeAccount.id];
       return (
         !cancelled &&
+        !this.clearingEvmActivity &&
         Boolean(accountIdentity) &&
         accountIdentity === identityOf(account) &&
         session === this.walletSessionGeneration &&
@@ -10614,6 +10690,7 @@ class MainController {
     targetAccount?: { id: number; type: KeyringAccountType },
     contextIsCurrent?: () => boolean
   ) {
+    const generation = this.walletSessionGeneration;
     const pollKey = `${txHash}_${chainId}`;
     const maxPolls = 4;
     const pollInterval = 4000; // 4 seconds
@@ -10642,6 +10719,8 @@ class MainController {
         if (
           !activeAccount ||
           activeNetwork.chainId !== chainId ||
+          generation !== this.walletSessionGeneration ||
+          this.clearingEvmActivity ||
           contextIsCurrent?.() === false
         ) {
           console.log(
@@ -10659,6 +10738,8 @@ class MainController {
           } = store.getState().vault;
 
           if (
+            generation !== this.walletSessionGeneration ||
+            this.clearingEvmActivity ||
             contextIsCurrent?.() === false ||
             postLookupActiveNetwork.chainId !== chainId ||
             (!targetAccount &&
@@ -10698,6 +10779,8 @@ class MainController {
         } = store.getState().vault;
 
         if (
+          generation !== this.walletSessionGeneration ||
+          this.clearingEvmActivity ||
           contextIsCurrent?.() === false ||
           latestActiveNetwork.chainId !== chainId ||
           (!targetAccount &&
@@ -11126,6 +11209,7 @@ class MainController {
     accountInfo: { id: number; type: KeyringAccountType },
     chainId: number
   ) {
+    const generation = this.walletSessionGeneration;
     const chainTxs =
       store.getState().vault.accountTransactions[accountInfo.type]?.[
         accountInfo.id
@@ -11152,6 +11236,11 @@ class MainController {
       this.pendingEvmReceiptChecks.set(checkKey, now);
 
       const directTx = await this.getEvmTransactionFromProvider(tx.hash);
+      if (
+        generation !== this.walletSessionGeneration ||
+        this.clearingEvmActivity
+      )
+        return;
       if (directTx && isTransactionInBlock(directTx)) {
         this.updateTrackedEvmTransactionCopies(tx.hash, chainId, directTx);
       }

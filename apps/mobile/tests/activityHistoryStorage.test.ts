@@ -44,6 +44,58 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     async cleanup() { await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
 }
+test('activity reset removes every selected-address alias while preserving other archived scopes', async () => {
+  const f = await fixture();
+  try {
+    const history = f.history();
+    const network = getNativeNetwork('base');
+    const selected = f.record(1);
+    const alias = f.record(2, { accountId: 'imported:60:0' });
+    const otherAddress = f.record(3, { address: RECIPIENT });
+    const otherNetwork = f.record(4, { networkId: network.id, chainId: network.chainId, registrationHash: network.registrationHash });
+    for (const record of [selected, alias, otherAddress, otherNetwork]) await history.archiveTerminal(record, guard);
+    await history.saveCache(f.scope(), [{ hash: selected.hash, blockNumber: '1', timestamp: null, tokenHint: false }], guard);
+    await history.saveView(f.scope(1), { filter: 'sent', showZero: false, anchor: selected.hash, offset: 20 }, guard);
+    await history.clearScope(f.scope(), guard);
+    await f.reopen();
+    const document = await f.port.get(ACTIVITY_STORAGE_KEY) as { archived: TerminalActivityRecord[]; cached: unknown[]; views: unknown[] };
+    assert.deepEqual(document.archived.map((record) => record.hash), [otherAddress.hash, otherNetwork.hash]);
+    assert.deepEqual(document.cached, []);
+    assert.deepEqual(document.views, []);
+    assert.deepEqual((await f.history().load(f.scope(), guard)).archived, []);
+  } finally { await f.cleanup(); }
+});
+
+for (const kind of ['create', 'clear'] as const) test(`activity ${kind} rolls back when its owner expires before SQL commit`, async () => {
+  let held = false, entered!: () => void, release!: () => void;
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const waiting = new Promise<void>((resolve) => { release = resolve; });
+  const f = await fixture({ after: async (operation, sql) => {
+    if (held && operation === 'run' && sql.startsWith(kind === 'create' ? 'INSERT INTO keyring_records' : 'UPDATE keyring_records')) {
+      entered(); await waiting;
+    }
+  } });
+  let current = true;
+  const check = () => { if (!current) throw Error('CANCELLED'); };
+  try {
+    const history = f.history();
+    if (kind === 'clear') await history.archiveTerminal(f.record(1), guard);
+    const before = await f.port.get(ACTIVITY_STORAGE_KEY);
+    held = true;
+    const operation = kind === 'create'
+      ? history.archiveTerminal(f.record(1), check)
+      : history.clearScope(f.scope(), check);
+    const rejected = assert.rejects(operation, /CANCELLED/);
+    await started;
+    current = false;
+    release();
+    await rejected;
+    assert.equal(history.requiresReopen, false);
+    await f.reopen();
+    assert.deepEqual(await f.port.get(ACTIVITY_STORAGE_KEY), before);
+  } finally { release(); await f.cleanup(); }
+});
+
 test('identical archive retries do not rewrite the document and conflicting duplicates are refused', async () => {
   const f = await fixture();
   try {

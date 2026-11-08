@@ -1,3 +1,4 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
@@ -43,7 +44,7 @@ const custom = (id: string, chainId: string) => createNativeNetwork({ id, name: 
 for (const network of [...NATIVE_NETWORKS, custom('custom-one', '43210'), custom('custom-two', '98765')]) {
   test(`${network.id}: one generic fee path, zero priority and first receipt confirms`, async () => {
     const f = fixture(network), signal = new AbortController().signal;
-    const quote = await f.rpc.prepare(from, to, '100', signal);
+    const quote = await f.rpc.prepare(from, to, '100', signal, undefined, emptyNoncePlanner);
     assert.equal(quote.transaction.chainId, network.chainId);
     assert.equal(quote.transaction.type, 2);
     if (quote.transaction.type !== 2) throw new Error('Expected dynamic fee');
@@ -51,7 +52,7 @@ for (const network of [...NATIVE_NETWORKS, custom('custom-one', '43210'), custom
     const estimate = f.calls.find((call) => call.method === 'eth_estimateGas')!.params[0] as Record<string, unknown>;
     assert.equal(estimate.type, '0x2'); assert.equal(estimate.nonce, '0x1');
     assert.equal(estimate.maxFeePerGas, `0x${BigInt(quote.transaction.maxFeePerGas).toString(16)}`);
-    const refreshed = await f.rpc.requote(quote.transaction, signal);
+    const refreshed = await f.rpc.requote(quote.transaction, signal, undefined, undefined, emptyNoncePlanner);
     assert.deepEqual(refreshed.transaction, quote.transaction);
     assert.deepEqual(await f.rpc.receipt({ hash, from, to, nonce: '1' }, signal), { status: 'confirmed', blockHash, blockNumber: '16' });
     assert.equal(f.calls.some((call) => call.params.includes('finalized') || call.params.includes('safe')), false);
@@ -60,23 +61,23 @@ for (const network of [...NATIVE_NETWORKS, custom('custom-one', '43210'), custom
 }
 test('unlisted legacy EVM gets a type0 exact-envelope recheck', async () => {
   const f = fixture(custom('legacy-chain', '102030'), true), signal = new AbortController().signal;
-  const quote = await f.rpc.prepare(from, to, '100', signal);
+  const quote = await f.rpc.prepare(from, to, '100', signal, undefined, emptyNoncePlanner);
   assert.equal(quote.transaction.type, 0);
-  assert.deepEqual((await f.rpc.requote(quote.transaction, signal)).transaction, quote.transaction);
+  assert.deepEqual((await f.rpc.requote(quote.transaction, signal, undefined, undefined, emptyNoncePlanner)).transaction, quote.transaction);
   assert.equal(f.calls.some((call) => call.method === 'eth_maxPriorityFeePerGas'), false);
 });
 test('unsupported priority method uses shared SDK history fallback', async () => {
   const f = fixture(custom('history-chain', '65432')); f.unsupportedTip();
-  const quote = await f.rpc.prepare(from, to, '100', new AbortController().signal);
+  const quote = await f.rpc.prepare(from, to, '100', new AbortController().signal, undefined, emptyNoncePlanner);
   assert.equal(quote.transaction.type, 2);
   assert.equal(f.calls.filter((call) => call.method === 'eth_feeHistory').length, 1);
 });
 test('tokens bind to any selected chain instead of literal Ethereum1', async () => {
   const network = custom('token-chain', '44444'), f = fixture(network), signal = new AbortController().signal;
   const quote = await f.rpc.prepareToken(from, { kind: 'erc20-transfer', chainId: network.chainId,
-    token: { contractAddress: to, name: 'Test', symbol: 'T', decimals: 6 }, recipient: from, amountUnits: '10' }, signal);
+    token: { contractAddress: to, name: 'Test', symbol: 'T', decimals: 6 }, recipient: from, amountUnits: '10' }, signal, undefined, undefined, emptyNoncePlanner);
   assert.equal(quote.transaction.chainId, '44444'); assert.equal(quote.transaction.value, '0');
-  await assert.rejects(f.rpc.prepareToken(from, { ...quote.intent!, chainId: '1' }, signal), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(f.rpc.prepareToken(from, { ...quote.intent!, chainId: '1' }, signal, undefined, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
 });
 test('reorg re-reads can become missing, reverted or nonce-used without claiming another hash won', async () => {
   const f = fixture(custom('receipt-chain', '87654')), signal = new AbortController().signal;
@@ -88,14 +89,14 @@ test('reorg re-reads can become missing, reverted or nonce-used without claiming
 });
 test('wrong chain is rejected before disclosing an account address', async () => {
   const f = fixture(custom('wrong-chain', '12121')); f.wrongChain();
-  await assert.rejects(f.rpc.prepare(from, to, '100', new AbortController().signal), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(f.rpc.prepare(from, to, '100', new AbortController().signal, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
   assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId']);
 });
 test('gas/nonce/affordability changes invalidate exact reviewed envelope', async () => {
   const f = fixture(custom('changed-chain', '12222')), signal = new AbortController().signal;
-  const quote = await f.rpc.prepare(from, to, '100', signal);
+  const quote = await f.rpc.prepare(from, to, '100', signal, undefined, emptyNoncePlanner);
   f.setGas(`0x${(BigInt(quote.transaction.gasLimit) + 1n).toString(16)}`);
-  await assert.rejects(f.rpc.requote(quote.transaction, signal), { code: 'REVIEW_REQUIRED' });
-  f.setGas('0x5208'); f.setNonce('0x2'); await assert.rejects(f.rpc.requote(quote.transaction, signal), { code: 'REVIEW_REQUIRED' });
-  f.setNonce('0x1'); f.setBalance('0x1'); await assert.rejects(f.rpc.requote(quote.transaction, signal), { code: 'INSUFFICIENT_BALANCE' });
+  await assert.rejects(f.rpc.requote(quote.transaction, signal, undefined, undefined, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
+  f.setGas('0x5208'); f.setNonce('0x2'); await assert.rejects(f.rpc.requote(quote.transaction, signal, undefined, undefined, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
+  f.setNonce('0x1'); f.setBalance('0x1'); await assert.rejects(f.rpc.requote(quote.transaction, signal, undefined, undefined, emptyNoncePlanner), { code: 'INSUFFICIENT_BALANCE' });
 });

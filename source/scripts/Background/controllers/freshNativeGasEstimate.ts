@@ -1,5 +1,9 @@
 import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 
+import {
+  availableEvmNativeBalance,
+  type EvmNativeReservations,
+} from '../../../shared/evmAutoNonce';
 import { evmEstimateRequest } from '../../../shared/evmEstimateRequest';
 import {
   assertEvmFeeApprovalCurrent,
@@ -8,7 +12,6 @@ import {
   bufferEvmFeeEstimate,
   captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS,
-  EvmFeeBalanceError,
 } from '../../../shared/evmFeeApproval';
 import { BigNumber } from '../../../utils/ethersV6Compat';
 
@@ -155,7 +158,8 @@ export async function recheckReviewedNativeEvmTransfer(
   provider: CustomJsonRpcProvider,
   assertCurrent: () => void,
   noncePlan: Readonly<{
-    additionalNativeCost: bigint;
+    canonicalBlock: Readonly<{ hash: string; number: string }>;
+    nativeReservations: EvmNativeReservations;
     state: 'latest' | 'pending';
   }>
 ) {
@@ -175,14 +179,20 @@ export async function recheckReviewedNativeEvmTransfer(
   if (nonce === undefined) throw new Error('Missing reviewed native nonce');
   await provider.verifyConfiguredChainId();
   const tx = review.transaction;
-  const { state, additionalNativeCost } = noncePlan;
-  const [header, rawBalance] = await Promise.all([
+  const { state, nativeReservations, canonicalBlock } = noncePlan;
+  const [header, rawCanonical, rawPending] = await Promise.all([
     read('eth_getBlockByNumber', ['latest', false]),
-    read('eth_getBalance', [tx.from, state]),
+    read('eth_getBalance', [tx.from, canonicalBlock.number]),
+    read('eth_getBalance', [tx.from, 'pending']),
   ]);
-  const balance =
-    parseEvmFeeQuantity(rawBalance, 'native balance') - additionalNativeCost;
-  if (balance < BigInt(0)) throw new EvmFeeBalanceError();
+  const balance = availableEvmNativeBalance(
+    {
+      canonical: parseEvmFeeQuantity(rawCanonical, 'canonical balance'),
+      pending: parseEvmFeeQuantity(rawPending, 'pending balance'),
+    },
+    nativeReservations,
+    state
+  );
   const observation = {
     balance,
     sampledBlockGasLimit: parseEvmFeeQuantity(
@@ -210,6 +220,12 @@ export async function recheckReviewedNativeEvmTransfer(
     { ...observation, estimatedGas: estimate },
     Math.floor(performance.now())
   );
+  const canonical = await read('eth_getBlockByNumber', [
+    canonicalBlock.number,
+    false,
+  ]);
+  if (canonical?.hash?.toLowerCase() !== canonicalBlock.hash)
+    throw new Error('Canonical balance changed');
   check();
   return Object.freeze(request);
 }

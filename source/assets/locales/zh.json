@@ -599,6 +599,11 @@
     "receipts": "收据"
   },
   "settings": {
+    "clearActivityAndNonce": "清除活动和 nonce 数据",
+    "clearActivityAndNonceWarning": "清除 {{account}} 在 {{network}} 上保存的活动和 nonce 数据？待处理的交易仍可能执行。已保存的交易将无法重试。",
+    "clearActivityAndNonceConfirm": "清除数据",
+    "clearActivityAndNonceSuccess": "已清除活动和 nonce 数据。",
+    "clearActivityAndNonceFailed": "无法完成重置。请解锁钱包后重试。",
     "legacyAddressType": "传统 (P2PKH)",
     "connectedSiteCount": "{{count}} 个网站已连接到 Pali Wallet。",
     "accountNumber": "账户 {{number}}",

@@ -23,8 +23,9 @@ const approved = {
   nonce: 9,
 };
 const noncePlan = {
+  canonicalBlock: { number: '0x64', hash: '0x' + '12'.repeat(32) },
   state: 'pending' as const,
-  additionalNativeCost: BigInt(0),
+  nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
 };
 const maximum = (
   BigInt(approved.maxFeePerGas) * BigInt(approved.gasLimit)
@@ -50,6 +51,7 @@ function fixture() {
     [
       'eth_getBlockByNumber',
       {
+        hash: noncePlan.canonicalBlock.hash,
         baseFeePerGas: '0x3b9aca00',
         gasLimit: '0x1c9c380',
       },
@@ -60,8 +62,9 @@ function fixture() {
     const { id, method, params } = JSON.parse(String(init?.body));
     calls.push({ method, params });
     if (!replies.has(method)) throw new Error('Unexpected RPC call');
+    const response = replies.get(method);
     return new Response(
-      JSON.stringify({ jsonrpc: '2.0', id, result: replies.get(method) })
+      JSON.stringify({ jsonrpc: '2.0', id, result: typeof response === 'function' ? response() : response })
     );
   });
   const provider = new CustomJsonRpcProvider(
@@ -73,6 +76,20 @@ function fixture() {
 }
 
 afterEach(() => jest.restoreAllMocks());
+
+it('rechecks the canonical balance block after a gas estimate completes', async () => {
+  const { provider, replies } = fixture();
+  replies.set('eth_estimateGas', () => {
+    replies.set('eth_getBlockByNumber', {
+      hash: '0x' + '34'.repeat(32), baseFeePerGas: '0x3b9aca00', gasLimit: '0x1c9c380',
+    });
+    return '0x5208';
+  });
+  try {
+    await expect(recheckReviewedNativeEvmTransfer(capture(), provider, () => undefined, noncePlan))
+      .rejects.toThrow('Canonical balance changed');
+  } finally { provider.destroy(); }
+});
 
 it.each([0, 9])(
   'uses the installed provider and preserves the nonce override %s',
@@ -98,9 +115,11 @@ it.each([0, 9])(
         'eth_chainId',
         'eth_getBlockByNumber',
         'eth_getBalance',
+        'eth_getBalance',
         'eth_estimateGas',
+        'eth_getBlockByNumber',
       ]);
-      expect(calls.at(-1)?.params).toEqual([
+      expect(calls.at(-2)?.params).toEqual([
         {
           from: getAddress(sender),
           to: getAddress(recipient),
@@ -193,6 +212,7 @@ it.each([false, true])(
         'fixture'
       );
       replies.set('eth_getBlockByNumber', {
+        hash: noncePlan.canonicalBlock.hash,
         baseFeePerGas: '0x1',
         gasLimit: hex(25200),
       });

@@ -599,6 +599,11 @@
     "receipts": "Belege"
   },
   "settings": {
+    "clearActivityAndNonce": "Aktivitäts- und Nonce-Daten löschen",
+    "clearActivityAndNonceWarning": "Gespeicherte Aktivitäten und Nonce-Daten für {{account}} auf {{network}} löschen? Ausstehende Transaktionen können weiterhin ausgeführt werden. Gespeicherte Transaktionen können danach nicht erneut gesendet werden.",
+    "clearActivityAndNonceConfirm": "Daten löschen",
+    "clearActivityAndNonceSuccess": "Aktivitäts- und Nonce-Daten gelöscht.",
+    "clearActivityAndNonceFailed": "Zurücksetzen fehlgeschlagen. Entsperre das Wallet und versuche es erneut.",
     "legacyAddressType": "Klassisch (P2PKH)",
     "connectedSiteCount": "{{count}} Websites sind mit Pali Wallet verbunden.",
     "accountNumber": "Konto {{number}}",

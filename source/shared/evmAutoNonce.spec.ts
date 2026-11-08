@@ -2,8 +2,35 @@ import type { EvmAssetState } from './evmAssetState';
 import {
   assertEvmAssetReservations,
   EvmAutoNonceAcceptance,
+  availableEvmNativeBalance,
   planEvmAutoNonce,
 } from './evmAutoNonce';
+
+it('bounds a cheap pending original by the maximum retained same-nonce alternative', async () => {
+  const original = record(0, 'submitted');
+  const replacement = { ...record(1), nonce: 0 };
+  const fixture = acceptanceFixture([original, replacement]);
+  fixture.snapshot.readMaximumCost.mockImplementation(async (hash: string) =>
+    hash === original.hash ? BigInt(121000) : BigInt(142000)
+  );
+  const plan = await fixture.select({ pending: 1 });
+  expect(plan).toEqual({ kind: 'ready', nonce: 1,
+    nativeReservations: { canonical: BigInt(142000), pending: BigInt(0) } });
+  if (plan.kind !== 'ready') throw new Error('Missing plan');
+  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(879000) },
+    plan.nativeReservations, 'pending')).toBe(BigInt(858000));
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(2);
+});
+
+it('keeps pending external debits and canonical manual replacement funding separate', () => {
+  const reservations = { canonical: BigInt(142000), pending: BigInt(0) };
+  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(858000) },
+    reservations, 'pending')).toBe(BigInt(858000));
+  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(700000) },
+    reservations, 'pending')).toBe(BigInt(700000));
+  expect(availableEvmNativeBalance({ canonical: BigInt(1000000), pending: BigInt(1) },
+    reservations, 'latest')).toBe(BigInt(858000));
+});
 
 type Input = Parameters<typeof planEvmAutoNonce>[0];
 type Retained = Input['retained'][number];
@@ -220,16 +247,16 @@ it('uses a fulfilled exact ACK with stale RPC counts and reserves the maximum au
   expect(await fixture.select()).toEqual({
     kind: 'ready',
     nonce: 1,
-    additionalNativeCost: BigInt(30),
+    nativeReservations: { canonical: BigInt(30), pending: BigInt(30) },
   });
   expect(fixture.readPending).not.toHaveBeenCalled();
   fixture.snapshot.readMaximumCost.mockClear();
   expect(await fixture.select({ pending: 1 })).toEqual({
     kind: 'ready',
     nonce: 1,
-    additionalNativeCost: BigInt(0),
+    nativeReservations: { canonical: BigInt(10), pending: BigInt(0) },
   });
-  expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalled();
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(2);
 });
 
 it('requires exact pending observation after acknowledgement expiry or owner/route change', async () => {
@@ -269,7 +296,7 @@ it('requires exact pending observation after acknowledgement expiry or owner/rou
   expect(await fixture.select()).toEqual({
     kind: 'ready',
     nonce: 1,
-    additionalNativeCost: BigInt(10),
+    nativeReservations: { canonical: BigInt(10), pending: BigInt(10) },
   });
 });
 
@@ -302,7 +329,7 @@ it('bounds missing-ACK queries and never jumps over a gap', async () => {
   expect(await gap.select()).toEqual({
     kind: 'ready',
     nonce: 0,
-    additionalNativeCost: BigInt(10),
+    nativeReservations: { canonical: BigInt(10), pending: BigInt(10) },
   });
   expect(gap.readPending).not.toHaveBeenCalled();
 });
@@ -344,7 +371,7 @@ it('allows an asset send behind external pending transactions', async () => {
   ).toEqual({
     kind: 'ready',
     nonce: 1,
-    additionalNativeCost: BigInt(0),
+    nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
   });
 });
 it.each(['acknowledged', 'observed-pending'] as const)(
@@ -363,7 +390,7 @@ it.each(['acknowledged', 'observed-pending'] as const)(
     expect(await fixture.select({ assetState: assetState() })).toEqual({
       kind: 'ready',
       nonce: 1,
-      additionalNativeCost: BigInt(10),
+      nativeReservations: { canonical: BigInt(10), pending: BigInt(10) },
     });
     await expect(
       fixture.select({ assetState: assetState('80') })
@@ -671,13 +698,13 @@ it.each([false, true])(
     expect(result).toMatchObject({
       kind: 'ready',
       nonce: 0,
-      additionalNativeCost: BigInt(7),
+      nativeReservations: { canonical: BigInt(7), pending: BigInt(7) },
     });
     if (result.kind === 'ready')
-      expect(BigInt(10) - result.additionalNativeCost < BigInt(6)).toBe(true);
+      expect(BigInt(10) - result.nativeReservations.canonical < BigInt(6)).toBe(true);
   }
 );
-it('does not subtract a native pending prefix already represented by the RPC balance', async () => {
+it('retains a separate canonical bound for a native pending prefix', async () => {
   const first = record(0, 'submitted'),
     future = record(3);
   const fixture = acceptanceFixture([first, future]);
@@ -687,9 +714,10 @@ it('does not subtract a native pending prefix already represented by the RPC bal
   expect(await fixture.select({ pending: 1 })).toMatchObject({
     kind: 'ready',
     nonce: 1,
-    additionalNativeCost: BigInt(2),
+    nativeReservations: { canonical: BigInt(9), pending: BigInt(2) },
   });
-  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(1);
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(2);
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledWith(first.hash);
   expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledWith(future.hash);
 });
 it('manual replacement below RPC pending reserves native costs from the latest balance basis', async () => {
@@ -702,7 +730,7 @@ it('manual replacement below RPC pending reserves native costs from the latest b
   expect(await fixture.select({ pending: 2, nonceOverride: 1 })).toMatchObject({
     kind: 'ready',
     nonce: 1,
-    additionalNativeCost: BigInt(9),
+    nativeReservations: { canonical: BigInt(9), pending: BigInt(2) },
   });
 });
 it('native replacement alternatives reserve the maximum cost once', async () => {
@@ -719,7 +747,7 @@ it('native replacement alternatives reserve the maximum cost once', async () => 
   expect(await fixture.select()).toMatchObject({
     kind: 'ready',
     nonce: 0,
-    additionalNativeCost: BigInt(9),
+    nativeReservations: { canonical: BigInt(9), pending: BigInt(9) },
   });
 });
 it('native reservation rejects invalid costs and retains cancellation after a future read', async () => {
@@ -747,7 +775,7 @@ it('native reserve work remains local and includes more than sixteen queued futu
   expect(await fixture.select()).toMatchObject({
     kind: 'ready',
     nonce: 0,
-    additionalNativeCost: BigInt(20),
+    nativeReservations: { canonical: BigInt(20), pending: BigInt(20) },
   });
   expect(fixture.readPending).not.toHaveBeenCalled();
   expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(20);

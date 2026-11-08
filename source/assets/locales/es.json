@@ -599,6 +599,11 @@
     "receipts": "Recibos"
   },
   "settings": {
+    "clearActivityAndNonce": "Borrar actividad y datos de nonce",
+    "clearActivityAndNonceWarning": "¿Borrar la actividad y los datos de nonce de {{account}} en {{network}}? Las transacciones pendientes aún pueden ejecutarse. Las transacciones guardadas ya no estarán disponibles para reintentar.",
+    "clearActivityAndNonceConfirm": "Borrar datos",
+    "clearActivityAndNonceSuccess": "Actividad y datos de nonce borrados.",
+    "clearActivityAndNonceFailed": "No se pudo completar el restablecimiento. Desbloquea la billetera e inténtalo de nuevo.",
     "legacyAddressType": "Clásica (P2PKH)",
     "connectedSiteCount": "{{count}} sitios están conectados a Pali Wallet.",
     "accountNumber": "Cuenta {{number}}",

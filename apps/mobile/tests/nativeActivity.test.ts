@@ -92,6 +92,22 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
   return { controller, source: state, runtime, explorer, receipts, cacheWrites, viewWrites, localReads, local };
 }
 
+test('activity invalidation retires delayed observers before clearing the visible rows', async () => {
+  const held = deferred<EvmTransactionObservation>();
+  const seed = fixture();
+  const f = fixture({ local: seed.local(1, 'submitted'), observeLocal: () => held.promise });
+  const disconnect = f.controller.connect();
+  try {
+    await until(() => f.localReads.length === 1);
+    f.controller.invalidate();
+    const cleared = f.controller.getSnapshot();
+    held.resolve({ status: 'missing', latestNonce: '0' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(f.controller.getSnapshot(), cleared);
+    assert.equal(f.controller.getSnapshot().rows.length, 0);
+  } finally { disconnect(); }
+});
+
 test('saved pending pages reach older hashes without polling them, and Back retires an in-flight page', async () => {
   const base = fixture();
   const recent = base.local(3, 'submitted'), older = base.local(1, 'attempted');

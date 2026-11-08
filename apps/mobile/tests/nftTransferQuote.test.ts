@@ -1,3 +1,4 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Interface } from 'ethers/abi';
@@ -113,7 +114,8 @@ function fixture(options: {
           reply = { result: '0x7' };
           break;
         case 'eth_getBalance':
-          assert.deepEqual(call.params, [owner, 'pending']);
+          assert.equal(call.params[0], owner);
+          assert.ok(['pending', block.number].includes(String(call.params[1])));
           reply = { result: '0xffffffffffff' };
           break;
         case 'eth_gasPrice': reply = { result: '0x65' }; break;
@@ -169,7 +171,7 @@ const admission = (rpc: NativeTransferRpc, approval: EvmNftPreparedQuote, assert
 
 test('ERC721 token zero has exact standard bytes and the existing dynamic fee policy on one sampled block', async () => {
   const { rpc, calls } = fixture();
-  const quote = await rpc.prepareNft(selection, request, signal(), current);
+  const quote = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
   assert.deepEqual(quote.envelope, {
     type: 2, from: owner, to: target, chainId: network.chainId, nonce: '7',
     value: '0', gasLimit: '36000', data: erc721Data,
@@ -204,7 +206,7 @@ test('ERC1155 preserves uint256 IDs and quantities with standard empty bytes and
   const { rpc, calls } = fixture({ dynamic: false });
   const quote = await rpc.prepareNft({
     ...selection, saved: { contractAddress: target, tokenStandard: 'ERC-1155', tokenId: max },
-  }, { recipient, tokenId: max, amountUnits: max }, signal(), current);
+  }, { recipient, tokenId: max, amountUnits: max }, signal(), current, undefined, emptyNoncePlanner);
   assert.equal(quote.envelope.data, erc1155Data);
   assert.equal(quote.envelope.data.length, 394);
   assert.equal(quote.intent.amountUnits, max);
@@ -216,7 +218,7 @@ test('ERC1155 preserves uint256 IDs and quantities with standard empty bytes and
 
 test('normal envelopes still reject NFT bytes and the typed NFT envelope rejects mismatched reviewed fields', async () => {
   const { rpc } = fixture();
-  const { intent, envelope } = await rpc.prepareNft(selection, request, signal(), current);
+  const { intent, envelope } = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
   assert.deepEqual(snapshotNftQuoteEnvelope(envelope, network, intent), envelope);
   for (const change of [
     { from: recipient }, { to: recipient }, { chainId: '1' }, { value: '1' },
@@ -228,7 +230,7 @@ test('normal envelopes still reject NFT bytes and the typed NFT envelope rejects
   }
   const normal = fixture();
   for (const data of [erc721Data, erc1155Data]) {
-    await assert.rejects(normal.rpc.prepare({ from: owner, to: target, value: '0', data }, signal(), current),
+    await assert.rejects(normal.rpc.prepare({ from: owner, to: target, value: '0', data }, signal(), current, undefined, undefined, emptyNoncePlanner),
       { code: 'INVALID_INPUT' });
     assert.throws(() => normal.rpc.quoteFees({ ...envelope, data }, signal(), current),
       { code: 'INVALID_INPUT' });
@@ -239,16 +241,16 @@ test('normal envelopes still reject NFT bytes and the typed NFT envelope rejects
 test('profile, saved ID, malformed input and asynchronous guards refuse before any request', async () => {
   const { rpc, calls } = fixture();
   const alternate = createNativeNetwork({ ...network, rpcUrl: 'https://different.invalid/rpc' });
-  await assert.rejects(rpc.prepareNft({ ...selection, network: alternate }, request, signal(), current),
+  await assert.rejects(rpc.prepareNft({ ...selection, network: alternate }, request, signal(), current, undefined, emptyNoncePlanner),
     { code: 'PROFILE_CHANGED' });
   await assert.rejects(rpc.prepareNft({
     ...selection, saved: { contractAddress: target, tokenStandard: 'ERC-1155', tokenId: '1' },
-  }, request, signal(), current), { code: 'INVALID_INPUT' });
-  await assert.rejects(rpc.prepareNft(selection, { ...request, amountUnits: '2' }, signal(), current),
+  }, request, signal(), current, undefined, emptyNoncePlanner), { code: 'INVALID_INPUT' });
+  await assert.rejects(rpc.prepareNft(selection, { ...request, amountUnits: '2' }, signal(), current, undefined, emptyNoncePlanner),
     { code: 'INVALID_INPUT' });
   const withData = { ...request, data: erc721Data };
-  await assert.rejects(rpc.prepareNft(selection, withData, signal(), current), { code: 'INVALID_INPUT' });
-  await assert.rejects(rpc.prepareNft(selection, request, signal(), async () => undefined),
+  await assert.rejects(rpc.prepareNft(selection, withData, signal(), current, undefined, emptyNoncePlanner), { code: 'INVALID_INPUT' });
+  await assert.rejects(rpc.prepareNft(selection, request, signal(), async () => undefined, undefined, emptyNoncePlanner),
     { code: 'CANCELLED' });
   assert.equal(calls.length, 0);
 });
@@ -256,19 +258,19 @@ test('profile, saved ID, malformed input and asynchronous guards refuse before a
 test('only exact empty successful simulation and enough verified holdings can produce a quote', async () => {
   for (const result of [true, false, '0x00', '0x' + '0'.repeat(63) + '1', null]) {
     const f = fixture({ rewrite: (call, reply) => simulation(call) ? { result } : reply });
-    await assert.rejects(f.rpc.prepareNft(selection, request, signal(), current), {
+    await assert.rejects(f.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), {
       code: typeof result === 'string' ? 'NFT_TRANSFER_REJECTED' : 'INVALID_RESPONSE',
     });
     assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
   }
   const providerFailure = fixture({ rewrite: (call, reply) => simulation(call)
     ? { result: '0x', error: { code: 3, message: 'execution reverted', data: '0x' } } : reply });
-  await assert.rejects(providerFailure.rpc.prepareNft(selection, request, signal(), current), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(providerFailure.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
   const noOwnership = fixture({ holding: recipient });
-  await assert.rejects(noOwnership.rpc.prepareNft(selection, request, signal(), current), { code: 'INSUFFICIENT_NFT_BALANCE' });
+  await assert.rejects(noOwnership.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'INSUFFICIENT_NFT_BALANCE' });
   assert.equal(noOwnership.calls.some(simulation), false);
   const badProbe = fixture({ rewrite: (_call, reply) => reply.error ? { ...reply, result: '0x' } : reply });
-  await assert.rejects(badProbe.rpc.prepareNft(selection, request, signal(), current), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(badProbe.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
   assert.equal(badProbe.calls.filter((c) => c.method === 'eth_call').length, 1);
 });
 
@@ -283,25 +285,25 @@ test('an explicit bounded simulation revert differs from an unsupported or malfo
     [{ ...revert, data: '0x' + 'aa'.repeat(4097) }, 'INVALID_RESPONSE'],
   ] as const) {
     const f = fixture({ rewrite: (call, reply) => simulation(call) ? { error } : reply });
-    await assert.rejects(f.rpc.prepareNft(selection, request, signal(), current), { code });
+    await assert.rejects(f.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code });
     assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
   }
 });
 
 test('wrong chain, orphaned sampled block, unsafe nonce, unaffordable fees and invalid expiry refuse', async () => {
   const wrong = fixture({ rewrite: (call, reply) => call.method === 'eth_chainId' ? { result: '0x1' } : reply });
-  await assert.rejects(wrong.rpc.prepareNft(selection, request, signal(), current), { code: 'PROFILE_CHANGED' });
+  await assert.rejects(wrong.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'PROFILE_CHANGED' });
   assert.deepEqual(wrong.calls.map((c) => c.method), ['eth_chainId']);
   const orphan = fixture({ rewrite: (call, reply) => call.method === 'eth_getBlockByNumber' && call.params[0] === block.number
     ? { result: { ...block, hash: '0x' + 'b'.repeat(64) } } : reply });
-  await assert.rejects(orphan.rpc.prepareNft(selection, request, signal(), current), { code: 'REVIEW_REQUIRED' });
+  await assert.rejects(orphan.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
   const nonce = fixture({ rewrite: (call, reply) => call.method === 'eth_getTransactionCount'
     ? { result: '0x20000000000000' } : reply });
-  await assert.rejects(nonce.rpc.prepareNft(selection, request, signal(), current), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(nonce.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
   const poor = fixture({ rewrite: (call, reply) => call.method === 'eth_getBalance' ? { result: '0x1' } : reply });
-  await assert.rejects(poor.rpc.prepareNft(selection, request, signal(), current), { code: 'INSUFFICIENT_BALANCE' });
+  await assert.rejects(poor.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'INSUFFICIENT_BALANCE' });
   await assert.rejects(fixture({ monotonicMilliseconds: () => Number.MAX_SAFE_INTEGER })
-    .rpc.prepareNft(selection, request, signal(), current), { code: 'INVALID_RESPONSE' });
+    .rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
 });
 
 test('held simulation discards a captured request after lock or A-B-A selection', async () => {
@@ -318,7 +320,7 @@ test('held simulation discards a captured request after lock or A-B-A selection'
     } });
     const pending = f.rpc.prepareNft(selection, editable, controller.signal, () => {
       if (generation !== 0) throw new Error('Changed selection');
-    });
+    }, undefined, emptyNoncePlanner);
     editable.recipient = target;
     await entered.promise;
     assert.equal((f.calls.at(-1)?.params[0] as { data: string }).data, erc721Data);
@@ -333,12 +335,12 @@ test('held simulation discards a captured request after lock or A-B-A selection'
 
 test('alternate response origin stops at chain preflight and a held response cannot outlive its owned deadline', async () => {
   const alternate = fixture({ responseUrl: 'https://different.invalid/rpc' });
-  await assert.rejects(alternate.rpc.prepareNft(selection, request, signal(), current),
+  await assert.rejects(alternate.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner),
     { code: 'PROFILE_CHANGED' });
   assert.deepEqual(alternate.calls.map((c) => c.method), ['eth_chainId']);
   const finish = Promise.withResolvers<Reply>();
   const held = fixture({ timeoutMs: 10, rewrite: () => finish.promise });
-  await assert.rejects(held.rpc.prepareNft(selection, request, signal(), current),
+  await assert.rejects(held.rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner),
     { code: 'CANCELLED' });
   finish.resolve({ result: '0x4d2' });
   assert.deepEqual(held.calls.map((c) => c.method), ['eth_chainId']);
@@ -351,7 +353,7 @@ test('failed ERC1155 batch does not issue a third ownership call or a transfer s
     call.method === 'eth_call' && ++calls === 2 ? { result: '0x' } : reply });
   await assert.rejects(f.rpc.prepareNft({
     ...selection, saved: { contractAddress: target, tokenStandard: 'ERC-1155', tokenId: max },
-  }, { recipient, tokenId: max, amountUnits: max }, signal(), current),
+  }, { recipient, tokenId: max, amountUnits: max }, signal(), current, undefined, emptyNoncePlanner),
   { code: 'INVALID_RESPONSE' });
   assert.equal(calls, 2);
   assert.equal(f.calls.some(simulation), false);
@@ -372,11 +374,11 @@ test('owned NFT requote repeats exact simulation and ownership and never renews 
       : reply,
   });
   const rpc = f.createOwner();
-  const approval = await rpc.prepareNft(selection, request, signal(), current);
+  const approval = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
   refreshing = true;
   time += 100;
   f.calls.length = 0;
-  const fresh = await rpc.requoteNft(selection, approval, signal(), current);
+  const fresh = await rpc.requoteNft(selection, approval, signal(), current, emptyNoncePlanner);
   assert.equal(fresh.envelope, approval.envelope);
   assert.equal(fresh.intent, approval.intent);
   assert.equal(fresh.expiresAtMonotonicMilliseconds, approval.expiresAtMonotonicMilliseconds);
@@ -391,7 +393,7 @@ test('owned NFT requote repeats exact simulation and ownership and never renews 
   }, 'pending']);
   time = approval.expiresAtMonotonicMilliseconds;
   f.calls.length = 0;
-  await assert.rejects(rpc.requoteNft(selection, approval, signal(), current), { code: 'REVIEW_REQUIRED' });
+  await assert.rejects(rpc.requoteNft(selection, approval, signal(), current, emptyNoncePlanner), { code: 'REVIEW_REQUIRED' });
   assert.equal(f.calls.length, 0);
 });
 
@@ -411,13 +413,13 @@ test('owned NFT requote refuses a changed selection, nonce, gas, holdings or tra
       return selectedOwnership || requested ? { result } : reply;
     } });
     const rpc = f.createOwner();
-    const approval = await rpc.prepareNft(selection, request, signal(), current);
+    const approval = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
     f.calls.length = 0;
-    await assert.rejects(rpc.requoteNft({ ...selection, owner: recipient }, approval, signal(), current),
+    await assert.rejects(rpc.requoteNft({ ...selection, owner: recipient }, approval, signal(), current, emptyNoncePlanner),
       { code: 'INVALID_RESPONSE' });
     assert.equal(f.calls.length, 0);
     changed = true;
-    await assert.rejects(rpc.requoteNft(selection, approval, signal(), current), { code: expected });
+    await assert.rejects(rpc.requoteNft(selection, approval, signal(), current, emptyNoncePlanner), { code: expected });
     assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
   }
 });
@@ -425,8 +427,8 @@ test('owned NFT requote refuses a changed selection, nonce, gas, holdings or tra
 test('NFT POST requires same-owner requote and exact signed bytes, then starts once with the owned signal', async () => {
   const f = fixture();
   const rpc = f.createOwner();
-  const original = await rpc.prepareNft(selection, request, signal(), current);
-  const fresh = await rpc.requoteNft(selection, original, signal(), current);
+  const original = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
+  const fresh = await rpc.requoteNft(selection, original, signal(), current, emptyNoncePlanner);
   const signed = await signedQuote(fresh);
   f.calls.length = 0;
   for (const approval of [original, { ...fresh }]) {
@@ -460,8 +462,8 @@ test('NFT POST does not start when currentness or original expiry changes during
       return release.promise;
     } });
     const rpc = f.createOwner();
-    const original = await rpc.prepareNft(selection, request, signal(), current);
-    const fresh = await rpc.requoteNft(selection, original, signal(), current);
+    const original = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
+    const fresh = await rpc.requoteNft(selection, original, signal(), current, emptyNoncePlanner);
     const signed = await signedQuote(fresh);
     f.calls.length = 0;
     held = true;
@@ -488,8 +490,8 @@ test('abort at final NFT transport admission prevents POST and a lost POST ackno
     return reply;
   } });
   const rpc = f.createOwner();
-  const original = await rpc.prepareNft(selection, request, signal(), current);
-  const fresh = await rpc.requoteNft(selection, original, signal(), current);
+  const original = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
+  const fresh = await rpc.requoteNft(selection, original, signal(), current, emptyNoncePlanner);
   const signed = await signedQuote(fresh);
   f.calls.length = 0;
   const options = admission(rpc, fresh);

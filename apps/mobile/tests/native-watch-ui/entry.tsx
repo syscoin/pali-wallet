@@ -11,7 +11,7 @@ import { WatchOnlyAuthority } from '../../src/core/watchOnlyAuthority';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture, recreateRemovalWallet } from './nativeFactory';
-import { ADDRESS, audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
+import { ADDRESS, audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayActivityReset, failActivityReset, finishActivityReset, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 import { removalFixtureEnabled, walletRemovalFixture } from './walletRemovalFixture';
 
@@ -91,6 +91,9 @@ declare global {
       releaseUnlock(): void;
       delaySign(value: boolean): void;
       releaseSign(): void;
+      delayActivityReset(value: boolean): void;
+      failActivityReset(): void;
+      finishActivityReset(): void;
       lifecycle(state: 'active' | 'inactive' | 'background'): void;
       blur(): void;
       back(): boolean;
@@ -126,6 +129,7 @@ window.__watchFixture = {
   removal: { ...walletRemovalFixture, recreate: recreateRemovalWallet },
   quotes: () => [...quoteRequests], releaseQuote: () => quoteGate?.resolve(), audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
+  delayActivityReset: setDelayActivityReset, failActivityReset, finishActivityReset,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
   blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },
   back() {

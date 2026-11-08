@@ -1,6 +1,7 @@
 import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 
 import { EvmAssetStateError } from '../../../shared/evmAssetState';
+import { availableEvmNativeBalance } from '../../../shared/evmAutoNonce';
 import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
 import {
   EVM_ASSET_REVIEW_MESSAGE,
@@ -15,6 +16,7 @@ import {
   type WorkerAssetBasis,
 } from './evmAssetState';
 import type {
+  EvmNativeReservations,
   EvmAutoNonceAcceptance,
   EvmAutoNonceSnapshot,
 } from '../../../shared/evmAutoNonce';
@@ -222,8 +224,27 @@ export async function planExtensionEvmNonce({
     if (beforeAssetFinal) throw unavailable();
     await verifyChain();
   }
+  const block = (assetState ??
+    (await read('eth_getBlockByNumber', ['latest', false]))) as {
+    hash: unknown;
+    number: unknown;
+  } | null;
+  if (
+    !block ||
+    typeof block !== 'object' ||
+    typeof block.hash !== 'string' ||
+    !/^0x[0-9a-fA-F]{64}$/.test(block.hash)
+  )
+    throw unavailable();
+  const canonicalBlock = Object.freeze({
+    number: `0x${parseEvmFeeQuantity(
+      block.number,
+      'canonical block number'
+    ).toString(16)}`,
+    hash: block.hash.toLowerCase(),
+  });
   const [rawLatest, rawPending] = await Promise.all([
-    read('eth_getTransactionCount', [scope.from, 'latest']),
+    read('eth_getTransactionCount', [scope.from, canonicalBlock.number]),
     read('eth_getTransactionCount', [scope.from, 'pending']),
   ]);
   const latest = reviewedExtensionNonce(rawLatest, 'automatic').nonce;
@@ -231,22 +252,25 @@ export async function planExtensionEvmNonce({
   const finish = async (
     nonce: number,
     state: 'latest' | 'pending',
-    additionalNativeCost: bigint
+    nativeReservations: EvmNativeReservations
   ) => {
-    if (
-      minimumBalance !== undefined &&
-      (additionalNativeCost > BigInt(0) || state === 'latest')
-    ) {
-      const balance = parseEvmFeeQuantity(
-        await read('eth_getBalance', [scope.from, state]),
-        'available balance'
+    if (minimumBalance !== undefined) {
+      const [canonical, pendingBalance] = await Promise.all([
+        read('eth_getBalance', [scope.from, canonicalBlock.number]),
+        read('eth_getBalance', [scope.from, 'pending']),
+      ]);
+      const available = availableEvmNativeBalance(
+        {
+          canonical: parseEvmFeeQuantity(canonical, 'canonical balance'),
+          pending: parseEvmFeeQuantity(pendingBalance, 'pending balance'),
+        },
+        nativeReservations,
+        state
       );
-      if (balance < minimumBalance + additionalNativeCost)
+      if (available < minimumBalance)
         throw Object.assign(
           new Error('Insufficient balance for pending transfers.'),
-          {
-            transactionNotBroadcast: true,
-          }
+          { transactionNotBroadcast: true }
         );
     }
     if (assetBasis) {
@@ -266,7 +290,13 @@ export async function planExtensionEvmNonce({
     } else {
       await verifyChain();
     }
-    return Object.freeze({ nonce, state, additionalNativeCost });
+    const currentBlock = (await read('eth_getBlockByNumber', [
+      canonicalBlock.number,
+      false,
+    ])) as { hash?: string } | null;
+    if (currentBlock?.hash?.toLowerCase() !== canonicalBlock.hash)
+      throw unavailable();
+    return Object.freeze({ nonce, state, nativeReservations, canonicalBlock });
   };
 
   const plan = await acceptance
@@ -290,6 +320,6 @@ export async function planExtensionEvmNonce({
   return finish(
     plan.nonce,
     pending < latest || plan.nonce < pending ? 'latest' : 'pending',
-    plan.additionalNativeCost
+    plan.nativeReservations
   );
 }

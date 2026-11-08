@@ -26,7 +26,9 @@ function fixture(latest: string, pending: string) {
     signal: abort.signal,
     verifyConfiguredChainId: jest.fn(async () => undefined),
     send: jest.fn(
-      async (method: string, [, tag]: unknown[]): Promise<unknown> => {
+      async (method: string, params: unknown[]): Promise<unknown> => {
+        if (method === 'eth_getBlockByNumber') return { number: params[0] === 'latest' ? '0xa' : params[0], hash: '0x' + '12'.repeat(32) };
+        const tag = params[1] === '0xa' ? 'latest' : params[1];
         const value = replies.get(`${method}:${String(tag)}`);
         if (value === undefined) throw new Error(`Unexpected ${method}`);
         return value;
@@ -42,12 +44,29 @@ function fixture(latest: string, pending: string) {
       owner: 'wallet',
       minimumNonce: 0,
       retained: [] as (typeof retained)[],
-      readMaximumCost: jest.fn(async () => BigInt(5)),
+      readMaximumCost: jest.fn(async (_hash: string) => BigInt(5)),
       readAssetDebit: jest.fn(async () => BigInt(0)),
     },
   };
   return { abort, input, provider, replies };
 }
+
+it('refuses a new send when a costlier retained prefix alternative exceeds canonical funds', async () => {
+  const f = fixture('0x0', '0x1');
+  f.input.snapshot.retained.push(
+    { ...retained, phase: 'submitted' as typeof retained.phase },
+    { ...retained, hash: '0x' + 'cd'.repeat(32) }
+  );
+  f.input.snapshot.readMaximumCost.mockImplementation(async (value: string) =>
+    BigInt(value === hash ? 121000 : 142000)
+  );
+  f.replies.set('eth_getBalance:latest', '0xf4240');
+  f.replies.set('eth_getBalance:pending', '0xd6998');
+  await expect(planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(871000) }))
+    .rejects.toMatchObject({ transactionNotBroadcast: true });
+  await expect(planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(858000) }))
+    .resolves.toMatchObject({ nonce: 1, nativeReservations: { canonical: BigInt(142000), pending: BigInt(0) } });
+});
 
 it('advances across an exact acknowledged predecessor only if its cost and this send fit', async () => {
   const { input, replies } = fixture('0x0', '0x0');
@@ -63,10 +82,11 @@ it('advances across an exact acknowledged predecessor only if its cost and this 
     transactionNotBroadcast: true,
   });
   replies.set('eth_getBalance:pending', '0x8');
+  replies.set('eth_getBalance:latest', '0x8');
   await expect(planExtensionEvmNonce(approved)).resolves.toMatchObject({
     nonce: 1,
     state: 'pending',
-    additionalNativeCost: BigInt(5),
+    nativeReservations: { canonical: BigInt(5), pending: BigInt(5) },
   });
 });
 
@@ -77,7 +97,7 @@ it('uses the canonical state if the two fresh reads report an older pending coun
   ).resolves.toMatchObject({ nonce: 1, state: 'latest' });
   expect(provider.send).toHaveBeenCalledWith('eth_getBalance', [
     from,
-    'latest',
+    '0xa',
   ]);
 });
 
@@ -524,9 +544,10 @@ it.each(['automatic', 'manual'] as const)(
       transactionNotBroadcast: true,
     });
     replies.set('eth_getBalance:pending', '0x8');
+  replies.set('eth_getBalance:latest', '0x8');
     await expect(planExtensionEvmNonce(request)).resolves.toMatchObject({
       nonce: 0,
-      additionalNativeCost: BigInt(5),
+      nativeReservations: { canonical: BigInt(5), pending: BigInt(5) },
     });
   }
 );

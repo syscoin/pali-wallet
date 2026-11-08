@@ -1,3 +1,4 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
@@ -31,7 +32,7 @@ function fixture(options:{legacy?:boolean;update?:(call:Call,result:unknown)=>un
 }
 
 for(const legacy of [false,true])test(`${legacy?'legacy':'EIP1559'} preparation binds the exact selected fee fields before gas estimation`,async()=>{
- const f=fixture({legacy}),quote=await f.rpc.prepare(from,to,'7',signal());const estimate=f.calls.findIndex(c=>c.method==='eth_estimateGas');
+ const f=fixture({legacy}),quote=await f.rpc.prepare(from,to,'7',signal(), undefined, emptyNoncePlanner);const estimate=f.calls.findIndex(c=>c.method==='eth_estimateGas');
  for(const method of ['eth_getTransactionCount','eth_getBalance','eth_gasPrice'])assert(f.calls.findIndex(c=>c.method===method)<estimate);
  assert.deepEqual(f.calls[estimate]!.params,[{type:legacy?'0x0':'0x2',chainId:'0x'+BigInt(network.chainId).toString(16),from,to,nonce:'0x0',value:'0x7',data:'0x',...(legacy?{gasPrice:'0x65'}:{maxFeePerGas:'0xfa',maxPriorityFeePerGas:'0x0'})},'pending']);
  assert.equal(quote.transaction.gasLimit,'72000');assert.equal(quote.maximumFeeUnits,legacy?'7272000':'18000000');assert.equal(quote.totalUnits,legacy?'7272007':'18000007');
@@ -40,35 +41,35 @@ for(const legacy of [false,true])test(`${legacy?'legacy':'EIP1559'} preparation 
 });
 
 test('requote preserves approved cap and zero tip rather than silently adopting suggestions',async()=>{
- const approved=(await fixture().rpc.prepare(from,to,'7',signal())).transaction;
+ const approved=(await fixture().rpc.prepare(from,to,'7',signal(), undefined, emptyNoncePlanner)).transaction;
  const next=fixture({update:(c,r)=>c.method==='eth_maxPriorityFeePerGas'?'0x32':c.method==='eth_getBlockByNumber'?{...(r as object),baseFeePerGas:'0x6e'}:r});
- const quote=await next.rpc.requote(approved,signal());assert.deepEqual(quote.transaction,approved);
+ const quote=await next.rpc.requote(approved,signal(), undefined, undefined, emptyNoncePlanner);assert.deepEqual(quote.transaction,approved);
  const estimate=next.calls.find(c=>c.method==='eth_estimateGas')!;assert.equal(estimate.params[0].maxFeePerGas,'0xfa');assert.equal(estimate.params[0].maxPriorityFeePerGas,'0x0');
  const estimateAtLimit=`0x${BigInt(approved.gasLimit).toString(16)}`;
  const atLimit=fixture({update:(c,r)=>c.method==='eth_estimateGas'?estimateAtLimit:r});
- assert.deepEqual((await atLimit.rpc.requote(approved,signal())).transaction,approved);
+ assert.deepEqual((await atLimit.rpc.requote(approved,signal(), undefined, undefined, emptyNoncePlanner)).transaction,approved);
  const estimateAboveLimit=`0x${(BigInt(approved.gasLimit)+1n).toString(16)}`;
  const aboveLimit=fixture({update:(c,r)=>c.method==='eth_estimateGas'?estimateAboveLimit:r});
- await assert.rejects(aboveLimit.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});
+ await assert.rejects(aboveLimit.rpc.requote(approved,signal(), undefined, undefined, emptyNoncePlanner),{code:'REVIEW_REQUIRED'});
  const baseExceedsCap=fixture({update:(c,r)=>c.method==='eth_getBlockByNumber'?{...(r as object),baseFeePerGas:'0x100'}:r});
- await assert.rejects(baseExceedsCap.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});assert.equal(baseExceedsCap.calls.some(c=>c.method==='eth_estimateGas'),false);
+ await assert.rejects(baseExceedsCap.rpc.requote(approved,signal(), undefined, undefined, emptyNoncePlanner),{code:'REVIEW_REQUIRED'});assert.equal(baseExceedsCap.calls.some(c=>c.method==='eth_estimateGas'),false);
 });
 
 test('live block gas limits, exact total, collateral and nonce remain enforced',async()=>{
- for(const gas of ['0x1c9c381','0x17d7841'])await assert.rejects(fixture({update:(c,r)=>c.method==='eth_estimateGas'?gas:r}).rpc.prepare(from,to,'1',signal()),{code:'INVALID_RESPONSE'});
- const below=await fixture({update:(c,r)=>c.method==='eth_estimateGas'?'0x17d7840':r}).rpc.prepare(from,to,'1',signal());assert.equal(below.transaction.gasLimit,'30000000');
- await assert.rejects(fixture({update:(c,r)=>c.method==='eth_getBalance'?'0x100':r}).rpc.prepare(from,to,'1',signal()),{code:'INSUFFICIENT_BALANCE'});
- const original=await fixture().rpc.prepare(from,to,'1',signal());
- await assert.rejects(fixture({update:(c,r)=>c.method==='eth_getTransactionCount'?'0x1':r}).rpc.requote(original.transaction,signal()),{code:'REVIEW_REQUIRED'});
+ for(const gas of ['0x1c9c381','0x17d7841'])await assert.rejects(fixture({update:(c,r)=>c.method==='eth_estimateGas'?gas:r}).rpc.prepare(from,to,'1',signal(), undefined, emptyNoncePlanner),{code:'INVALID_RESPONSE'});
+ const below=await fixture({update:(c,r)=>c.method==='eth_estimateGas'?'0x17d7840':r}).rpc.prepare(from,to,'1',signal(), undefined, emptyNoncePlanner);assert.equal(below.transaction.gasLimit,'30000000');
+ await assert.rejects(fixture({update:(c,r)=>c.method==='eth_getBalance'?'0x100':r}).rpc.prepare(from,to,'1',signal(), undefined, emptyNoncePlanner),{code:'INSUFFICIENT_BALANCE'});
+ const original=await fixture().rpc.prepare(from,to,'1',signal(), undefined, emptyNoncePlanner);
+ await assert.rejects(fixture({update:(c,r)=>c.method==='eth_getTransactionCount'?'0x1':r}).rpc.requote(original.transaction,signal(), undefined, undefined, emptyNoncePlanner),{code:'REVIEW_REQUIRED'});
  assert.throws(()=>snapshotUnsignedTransfer({...original.transaction,gasLimit:'9007199254740992'},network));
  const huge=fixture({update:(c,r)=>c.method==='eth_getBlockByNumber'?{...(r as object),baseFeePerGas:'0x'+'f'.repeat(64)}:r});
- await assert.rejects(huge.rpc.prepare(from,to,'1',signal()));
+ await assert.rejects(huge.rpc.prepare(from,to,'1',signal(), undefined, emptyNoncePlanner));
 });
 
 test('fee and estimation calls respect owner revocation without emitting a quote',async()=>{
  for(const method of ['eth_gasPrice','eth_maxPriorityFeePerGas','eth_estimateGas']){
   let current=true;const f=fixture({onCall:c=>{if(c.method===method)current=false;}});
-  await assert.rejects(f.reader.prepare({from,to,value:'1',data:'0x'},signal(),()=>{if(!current)throw Error('revoked');}),{code:'CANCELLED'});
+  await assert.rejects(f.reader.prepare({from,to,value:'1',data:'0x'},signal(),()=>{if(!current)throw Error('revoked');}, undefined, undefined, emptyNoncePlanner),{code:'CANCELLED'});
   assert.equal(f.calls.some(c=>c.method==='eth_sendRawTransaction'),false);
  }
 });
@@ -76,7 +77,7 @@ test('fee and estimation calls respect owner revocation without emitting a quote
 for(const legacy of [false,true])test(`${legacy?'legacy':'type2'} broadcast preserves signed bytes and rejects another chain or unsafe gas`,async()=>{
  const signer=Wallet.fromPhrase('test test test test test test test test test test test junk'),f=fixture({legacy});
  const tx={type:legacy?0:2,chainId:BigInt(network.chainId),to,nonce:0,value:1,gasLimit:72000,...(legacy?{gasPrice:101}:{maxFeePerGas:250,maxPriorityFeePerGas:0})};
- const raw=await signer.signTransaction(tx),signed=Transaction.from(raw);assert.equal(await f.rpc.broadcast(raw,signed.hash!,signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }),signed.hash);
+ const raw=await signer.signTransaction(tx),signed=Transaction.from(raw);assert.equal(await f.rpc.broadcast(raw,signed.hash!,signal(), { assertDispatchAdmission: () => undefined,  mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }),signed.hash);
  assert.deepEqual(f.calls.find(c=>c.method==='eth_sendRawTransaction')?.params,[raw]);
- for(const change of [{chainId:1n},{gasLimit:9007199254740992n}]){const bad=await signer.signTransaction({...tx,...change});const before=f.calls.length;await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,before);}
+ for(const change of [{chainId:1n},{gasLimit:9007199254740992n}]){const bad=await signer.signTransaction({...tx,...change});const before=f.calls.length;await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal(), { assertDispatchAdmission: () => undefined,  mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,before);}
 });

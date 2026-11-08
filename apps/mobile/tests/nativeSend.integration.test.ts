@@ -320,6 +320,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
   let authority = createAuthority();
   const broadcasts: string[] = [];
   let loseResponse = false;
+  let nativeBalance = '0x10000000000000000';
   const replacement = { pending: false, delegated: false, baseFee: '0x1', substituteHash: undefined as string | undefined };
   const largeReceipt = {
     oversized: false,
@@ -362,7 +363,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
             : '0x0'
           : recovery?.nonce ?? '0x0';
       } else if (request.method === 'eth_getBalance')
-        result = '0x10000000000000000';
+        result = nativeBalance;
       else if (request.method === 'eth_gasPrice') result = '0x2';
       else if (request.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
@@ -459,6 +460,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       return runtime;
     },
     broadcasts,
+    setBalance(value: bigint) { nativeBalance = `0x${value.toString(16)}`; },
     recovery: largeReceipt,
     requests,
     replacement,
@@ -1615,5 +1617,30 @@ test('lost retained-observation phase acknowledgement locks the actual SDK and p
     const retained = await f.readJournal();
     assert.equal(retained?.rawTransaction, tx.serialized);
     assert.equal(retained?.phase, 'confirmed');
+  } finally { await f.close(); }
+});
+
+
+test('manual native gap filling obeys the same retained spend budget as automatic sends', async () => {
+  const f = await cancellationFixture();
+  try {
+    f.setBalance(1000000n);
+    await f.transfers.prepare(RECIPIENT, '0.0000000000007', '1');
+    const first = f.transfers.getSnapshot().review!;
+    assert.equal(first.nonce, '1');
+    await f.transfers.confirm(first.id);
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+    for (const nonce of [undefined, '0']) {
+      await assert.rejects(f.transfers.prepare(RECIPIENT, '0.0000000000006', nonce), { code: 'INSUFFICIENT_BALANCE' });
+      assert.equal(f.signatures, 1);
+      assert.equal(f.broadcasts.length, 1);
+    }
+    await f.transfers.prepare(RECIPIENT, '0.0000000000001', '0');
+    const next = f.transfers.getSnapshot().review!;
+    assert.equal(next.nonce, '0');
+    await f.transfers.confirm(next.id);
+    assert.equal(f.signatures, 2);
+    assert.deepEqual(f.broadcasts.map(raw => Transaction.from(raw).nonce), [1, 0]);
   } finally { await f.close(); }
 });

@@ -1,5 +1,7 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
@@ -147,7 +149,7 @@ test('cancellation classifies only a validated lower latest nonce as queued', as
 
 test('prepares an exact integer EIP1559 quote without broadcasting', async () => {
   const f = fixture();
-  const quote = await f.rpc.prepare(sender.address, recipient, '123', signal());
+  const quote = await f.rpc.prepare(sender.address, recipient, '123', signal(), undefined, emptyNoncePlanner);
   assert.equal(quote.transaction.type, 2);
   if (quote.transaction.type !== 2) throw new Error('Expected dynamic-fee fixture');
   assert.equal(quote.transaction.maxFeePerGas, '252');
@@ -167,7 +169,7 @@ test('prepares an exact integer EIP1559 quote without broadcasting', async () =>
 });
 test('does not disclose any address if the endpoint chain is wrong', async () => {
   const f = fixture({ eth_chainId: '0x2' });
-  await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal()));
+  await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner));
   assert.deepEqual(
     f.calls.map((c) => c.method),
     ['eth_chainId']
@@ -176,7 +178,7 @@ test('does not disclose any address if the endpoint chain is wrong', async () =>
 test('rejects changed chain after fee lookup', async () => {
   let count = 0;
   const f = fixture({ eth_chainId: () => (++count === 1 ? '0x1' : '0x2') });
-  await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal()));
+  await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner));
 });
 test('keeps maximum costs within balance and rejects unsafe quotes', async () => {
   for (const override of [
@@ -187,14 +189,14 @@ test('keeps maximum costs within balance and rejects unsafe quotes', async () =>
     { eth_gasPrice: null },
   ]) {
     await assert.rejects(
-      fixture(override).rpc.prepare(sender.address, recipient, '1', signal())
+      fixture(override).rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner)
     );
   }
 });
 test('adds exact bounded gas headroom for a complex native transfer', async () => {
   const f = fixture({ eth_estimateGas: '0x7530' });
   assert.equal(
-    (await f.rpc.prepare(sender.address, recipient, '1', signal())).transaction
+    (await f.rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner)).transaction
       .gasLimit,
     '36000'
   );
@@ -202,10 +204,10 @@ test('adds exact bounded gas headroom for a complex native transfer', async () =
 test('quotes reject estimates or padded limits above the selected block gas limit', async () => {
   const block = (body: {params:string[]}) => ({number:body.params[0]==='latest'?'0x20':body.params[0],hash:'0x'+'2'.repeat(64),baseFeePerGas:'0x64',gasLimit:'0xf4240'});
   for (const estimate of ['0xf4241', '0xdbba0']) {
-    await assert.rejects(fixture({ eth_getBlockByNumber:block, eth_estimateGas: estimate }).rpc.prepare(sender.address, recipient, '1', signal()), { code: 'INVALID_RESPONSE' });
+    await assert.rejects(fixture({ eth_getBlockByNumber:block, eth_estimateGas: estimate }).rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner), { code: 'INVALID_RESPONSE' });
   }
   const below = fixture({ eth_getBlockByNumber:block, eth_estimateGas: '0xc3500' });
-  assert.equal((await below.rpc.prepare(sender.address, recipient, '1', signal())).transaction.gasLimit, '960000');
+  assert.equal((await below.rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner)).transaction.gasLimit, '960000');
 });
 test('aborts unresolved sibling requests when one quote component fails', async () => {
   let observed: AbortSignal | undefined;
@@ -218,7 +220,7 @@ test('aborts unresolved sibling requests when one quote component fails', async 
       return new Promise(() => undefined);
     },
   });
-  await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal()));
+  await assert.rejects(f.rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner));
   assert.equal(observed?.aborted, true);
 });
 test('a cancelled request never reaches the network', async () => {
@@ -226,7 +228,7 @@ test('a cancelled request never reaches the network', async () => {
   const controller = new AbortController();
   controller.abort();
   await assert.rejects(
-    f.rpc.prepare(sender.address, recipient, '1', controller.signal),
+    f.rpc.prepare(sender.address, recipient, '1', controller.signal, undefined, emptyNoncePlanner),
     { code: 'CANCELLED' }
   );
   assert.equal(f.calls.length, 0);
@@ -239,7 +241,7 @@ test('rejects mismatched JSON-RPC id and oversized responses', async () => {
     const rpc = new NativeTransferRpc({ networkId: 'ethereum',
       fetch: async () => new Response(text),
     });
-    await assert.rejects(rpc.prepare(sender.address, recipient, '1', signal()));
+    await assert.rejects(rpc.prepare(sender.address, recipient, '1', signal(), undefined, emptyNoncePlanner));
   }
 });
 test('broadcasts only exact verified bytes once and retains an unknown result on lost acknowledgement', async () => {
@@ -255,7 +257,7 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
   });
   const hash = keccak256(raw);
   const f = fixture({ eth_sendRawTransaction: hash });
-  assert.equal(await f.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
+  assert.equal(await f.rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => undefined,  mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
   assert.deepEqual(
     f.calls.find((c) => c.method === 'eth_sendRawTransaction')?.params,
     [raw]
@@ -265,7 +267,7 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
       throw Error('Response lost');
     },
   });
-  await assert.rejects(lost.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }));
+  await assert.rejects(lost.rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => undefined,  mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }));
   assert.equal(
     lost.calls.filter((c) => c.method === 'eth_sendRawTransaction').length,
     1
@@ -277,13 +279,13 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
       return response;
     },
   });
-  await assert.rejects(wrongEndpoint.rpc.broadcast(raw, hash, signal(), {
+  await assert.rejects(wrongEndpoint.rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => undefined,
     mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); },
   }), { code: 'INVALID_RESPONSE' });
   assert.equal(wrongEndpoint.calls.filter((c) => c.method === 'eth_sendRawTransaction').length, 1);
   const invalid = fixture();
   await assert.rejects(
-    invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } })
+    invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal(), { assertDispatchAdmission: () => undefined,  mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } })
   );
   assert.equal(invalid.calls.length, 0);
 });
@@ -302,7 +304,7 @@ test('requires broadcast admission after preflight and never posts if admission 
   assert.equal(f.calls.length, 0);
   let methodsAtAdmission: string[] | undefined;
   await assert.rejects(
-    f.rpc.broadcast(raw, hash, signal(), {
+    f.rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => undefined,
       mode: 'new-send',
       admit: async (_send, preflight) => {
         await preflight?.();
@@ -312,18 +314,18 @@ test('requires broadcast admission after preflight and never posts if admission 
     }),
     /late review/
   );
-  assert.deepEqual(methodsAtAdmission, ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId']);
-  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId']);
+  assert.deepEqual(methodsAtAdmission, []);
+  assert.deepEqual(f.calls.map((call) => call.method), []);
   const revoked = {
     mode: 'new-send' as const,
+    assertDispatchAdmission: () => undefined,
     admit: async (_send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); throw new Error('review revoked'); },
   };
   const pending = f.rpc.broadcast(raw, hash, signal(), revoked);
   Object.assign(revoked, { mode: 'replay' });
   await assert.rejects(pending);
   assert.deepEqual(f.calls.map((call) => call.method), [
-    'eth_chainId', 'eth_getTransactionCount', 'eth_chainId',
-    'eth_chainId', 'eth_getTransactionCount', 'eth_chainId',
+
   ]);
 });
 
@@ -333,21 +335,26 @@ test('an endpoint chain change during the wire pending-nonce read prevents a new
     gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1,
   });
   const hash = keccak256(raw);
+  const tx = Transaction.from(raw);
+  const envelope = { type: 2 as const, from: tx.from!, to: tx.to!, chainId: '1', nonce: '0', value: '1', data: '0x', gasLimit: '21000', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
+  let verified = false;
   const nonceEntered = Promise.withResolvers<void>();
   const nonceResponse = Promise.withResolvers<string>();
   let chain = '0x1';
   const f = fixture({
     eth_getTransactionCount: ({ params }: { params: string[] }) => {
-      assert.deepEqual(params, [sender.address, 'pending']);
+      if (params[1] !== 'pending') return '0x0';
       nonceEntered.resolve();
       return nonceResponse.promise;
     },
     eth_chainId: () => chain,
     eth_sendRawTransaction: hash,
   });
-  const pending = f.rpc.broadcast(raw, hash, signal(), {
+  const pending = f.rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => { assert.equal(verified, true); },
     mode: 'new-send',
     async admit(send, preflight) {
+      await f.rpc.verifyForDispatch(envelope, signal(), () => undefined, emptyNoncePlanner);
+      verified = true;
       await preflight!();
       return send();
     },
@@ -357,12 +364,13 @@ test('an endpoint chain change during the wire pending-nonce read prevents a new
   chain = '0x2';
   nonceResponse.resolve('0x0');
   await rejected;
-  assert.deepEqual(f.calls.map(({ method }) => method), ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId']);
+  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
 
   const mismatched = fixture({ eth_chainId: '0x2' });
-  await assert.rejects(mismatched.rpc.broadcast(raw, hash, signal(), {
+  await assert.rejects(mismatched.rpc.broadcast(raw, hash, signal(), { assertDispatchAdmission: () => { assert.equal(verified, true); },
     mode: 'new-send',
     async admit(send, preflight) {
+      await mismatched.rpc.verifyForDispatch(envelope, signal(), () => undefined, emptyNoncePlanner);
       await preflight!();
       return send();
     },

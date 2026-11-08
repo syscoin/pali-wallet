@@ -8,6 +8,7 @@ import { decodeErc20Transfer } from '../shared/erc20.ts';
 import { snapshotEvmTransferAsset } from '../shared/evmAssetState.ts';
 import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
+import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 
@@ -141,6 +142,7 @@ export type EvmVerifiedReplacementBinding = VerifiedPendingOriginal &
   Readonly<{
     expectedTipHash: string | null;
     profileId: string;
+    resetGeneration: number;
   }>;
 const verifiedReplacementBindings =
   new WeakSet<EvmVerifiedReplacementBinding>();
@@ -152,9 +154,15 @@ export type EvmReplacementRates = Readonly<
 function bindVerifiedReplacement(
   original: VerifiedPendingOriginal,
   profileId: string,
-  expectedTipHash: string | null
+  expectedTipHash: string | null,
+  resetGeneration: number
 ): EvmVerifiedReplacementBinding {
-  const binding = Object.freeze({ ...original, profileId, expectedTipHash });
+  const binding = Object.freeze({
+    ...original,
+    profileId,
+    expectedTipHash,
+    resetGeneration,
+  });
   verifiedReplacementBindings.add(binding);
   return binding;
 }
@@ -212,6 +220,7 @@ function retainedReplacementLineage(
 }
 
 export type EvmSignedRetirementReadMethod =
+  | 'eth_getTransactionReceipt'
   | 'eth_chainId'
   | 'eth_getBlockByNumber'
   | 'eth_getTransactionCount';
@@ -278,8 +287,15 @@ type ParsedBundle = Readonly<{
   root: IEncryptedPrivateRecord;
   version: 1;
 }>;
-type Bundle = ParsedBundle & Readonly<{ nonceFloors: readonly NonceFloor[] }>;
+type Bundle = ParsedBundle &
+  Readonly<{
+    nonceFloors: readonly NonceFloor[];
+    resetGeneration: number;
+  }>;
 const queues = new WeakMap<EvmSignedRecordStorage, Promise<unknown>>();
+// Reset invalidates work immediately, including work waiting on the storage queue.
+const resetSerials = new WeakMap<EvmSignedRecordStorage, number>();
+type SessionGeneration = { persisted?: number; serial: number };
 const invalid = (): never => {
   throw new Error('EVM_SIGNED_RECORD_CORRUPT');
 };
@@ -322,10 +338,8 @@ export function consumeSignedEvmCapacityRefusal(
   if (matches) signedCapacityRefusals.delete(error);
   return matches;
 }
-const capacityLimits = new WeakSet<object>();
 const limit = (): never => {
   const error = new Error('EVM_SIGNED_RECORD_CAPACITY');
-  capacityLimits.add(error);
   throw error;
 };
 const appendLimit = (): never => {
@@ -587,8 +601,15 @@ export class EvmSignedRecords {
   private readonly now: () => number;
   private readonly onUnavailable: () => void;
   private unavailable = false;
-  // Scheduling hint only. Every later pass authenticates its candidate scopes.
   private retirementCursor?: Readonly<{ profileId: string; scope: string }>;
+  private readonly sessionParents = new WeakMap<
+    EvmSignedRecordSession,
+    EvmSignedRecordSession
+  >();
+  private readonly sessionGenerations = new WeakMap<
+    EvmSignedRecordSession,
+    SessionGeneration
+  >();
   get requiresReopen(): boolean {
     return this.unavailable;
   }
@@ -601,6 +622,38 @@ export class EvmSignedRecords {
     this.now = now;
     this.onUnavailable = onUnavailable;
   }
+  /** Capture before signing or starting asynchronous reads. A reset revokes the
+   * captured authority even if an old callback obtains the storage queue later. */
+  captureSession(session: EvmSignedRecordSession): EvmSignedRecordSession {
+    const generation = this.sessionGenerations.get(session) ?? {
+      serial: resetSerials.get(this.storage) ?? 0,
+    };
+    this.sessionGenerations.set(session, generation);
+    const captured = {
+      keyring: session.keyring,
+      assertCurrent: () => {
+        guard(session);
+        if (generation.serial !== (resetSerials.get(this.storage) ?? 0))
+          throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+      },
+    };
+    this.sessionGenerations.set(captured, generation);
+    this.sessionParents.set(captured, session);
+    guard(captured);
+    return captured;
+  }
+
+  private bindGeneration(session: EvmSignedRecordSession, persisted: number) {
+    const generation = this.sessionGenerations.get(session);
+    if (!generation) throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+    if (
+      generation.persisted !== undefined &&
+      generation.persisted !== persisted
+    )
+      throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+    generation.persisted = persisted;
+  }
+
   private exclusive<T>(operation: () => Promise<T>): Promise<T> {
     const previous = queues.get(this.storage) ?? Promise.resolve();
     const pending = previous
@@ -638,7 +691,10 @@ export class EvmSignedRecords {
     guard(session);
     const raw = await this.storage.read(id);
     guard(session);
-    if (raw === undefined) return { raw, bundle: null };
+    if (raw === undefined) {
+      this.bindGeneration(session, 0);
+      return { raw, bundle: null };
+    }
     const parsed = parse(raw, id);
     const plaintext = await session.keyring.decryptPrivateRecord({
       domain: ROOT_DOMAIN,
@@ -646,6 +702,7 @@ export class EvmSignedRecords {
       envelope: parsed.root,
     });
     let floors: readonly NonceFloor[];
+    let resetGeneration: number;
     try {
       guard(session);
       if (plaintext.length > ROOT_PLAINTEXT_LIMIT) return invalid();
@@ -656,12 +713,17 @@ export class EvmSignedRecords {
         !!value &&
         typeof value === 'object' &&
         Object.hasOwn(value, 'nonceFloors');
+      const hasResetGeneration =
+        !!value &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'resetGeneration');
       const root = exact(value, [
         'version',
         'revision',
         'transactions',
         'entriesHash',
         ...(hasFloors ? ['nonceFloors'] : []),
+        ...(hasResetGeneration ? ['resetGeneration'] : []),
       ]);
       if (
         root.version !== 1 ||
@@ -671,10 +733,18 @@ export class EvmSignedRecords {
       )
         return invalid();
       floors = nonceFloors(hasFloors ? root.nonceFloors : []);
+      resetGeneration = hasResetGeneration ? root.resetGeneration : 0;
+      if (!Number.isSafeInteger(resetGeneration) || resetGeneration < 0)
+        return invalid();
+      this.bindGeneration(session, resetGeneration);
     } finally {
       plaintext.fill(0);
     }
-    const bundle: Bundle = Object.freeze({ ...parsed, nonceFloors: floors });
+    const bundle: Bundle = Object.freeze({
+      ...parsed,
+      nonceFloors: floors,
+      resetGeneration,
+    });
     const byScope = new Map(
       floors.map((floor) => [floorKey(floor), floor.nonce])
     );
@@ -691,6 +761,7 @@ export class EvmSignedRecords {
     entries: readonly Entry[],
     floors: readonly NonceFloor[],
     reserveStatusGrowth: boolean,
+    resetGeneration: number,
     verifyBeforeCommit?: () => Promise<() => void>
   ): Promise<boolean> {
     if (!Number.isSafeInteger(revision)) return limit();
@@ -705,6 +776,7 @@ export class EvmSignedRecords {
         transactions: entries.length,
         entriesHash: digest,
         nonceFloors: nonceFloors(floors),
+        ...(resetGeneration ? { resetGeneration } : {}),
       })
     );
     let root: IEncryptedPrivateRecord;
@@ -867,6 +939,7 @@ export class EvmSignedRecords {
       ...input,
       from: getAddress(input.from).toLowerCase(),
     });
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -910,6 +983,7 @@ export class EvmSignedRecords {
     if (!Number.isSafeInteger(nonce) || nonce < 0)
       return Promise.reject(new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED'));
     const scope = { chainId, from: getAddress(address).toLowerCase(), nonce };
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -939,6 +1013,7 @@ export class EvmSignedRecords {
       original.nonce < 0
     )
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -950,7 +1025,8 @@ export class EvmSignedRecords {
           session,
           bundle?.entries ?? [],
           original
-        )
+        ),
+        bundle?.resetGeneration ?? 0
       );
     });
   }
@@ -1051,6 +1127,7 @@ export class EvmSignedRecords {
     };
     const metadataSnapshot =
       metadata === undefined ? undefined : snapshotMetadata(metadata);
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -1059,6 +1136,8 @@ export class EvmSignedRecords {
         if (replacement) {
           if (
             id !== replacement.profileId ||
+            (previous.bundle?.resetGeneration ?? 0) !==
+              replacement.resetGeneration ||
             replacement.operation !== context.operation ||
             !matchesNonce(signedNonce, replacement) ||
             (await this.verifiedReplacementTip(
@@ -1156,7 +1235,8 @@ export class EvmSignedRecords {
             (previous.bundle?.revision ?? -1) + 1,
             entries,
             previous.bundle?.nonceFloors ?? [],
-            true
+            true,
+            previous.bundle?.resetGeneration ?? 0
           )
         )
           return Object.freeze({ ...summary(entry), rawTransaction: raw });
@@ -1176,6 +1256,7 @@ export class EvmSignedRecords {
     rates: EvmReplacementRates;
   }> | null> {
     const from = getAddress(address).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1244,27 +1325,89 @@ export class EvmSignedRecords {
                 operation,
               },
               id,
-              tip.hash
+              tip.hash,
+              bundle?.resetGeneration ?? 0
             )
           : null,
       });
     });
   }
   validate(session: EvmSignedRecordSession): Promise<number> {
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
       return bundle?.entries.length ?? 0;
     });
   }
-  /** Retire only nonces consumed in the endpoint's finalized canonical state.
-   * The encrypted floor survives record removal, so stale RPC views cannot
-   * reopen a previously consumed nonce after a restart. */
+  /** Explicitly forget local tracking for one account and chain. Network-held
+   * transactions can still execute. The host must revoke its signing/review and
+   * history-publication authorities before calling this method. */
+  clearScope(
+    session: EvmSignedRecordSession,
+    input: Readonly<{ chainId: string; from: string; profileId: string }>
+  ): Promise<number> {
+    guard(session);
+    const from = getAddress(input.from).toLowerCase();
+    const { chainId, profileId } = input;
+    if (
+      !PROFILE.test(profileId) ||
+      !/^[1-9][0-9]{0,77}$/.test(chainId) ||
+      BigInt(chainId) >= BigInt(1) << BigInt(256)
+    )
+      throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+    while (this.sessionParents.has(session))
+      session = this.sessionParents.get(session)!;
+    resetSerials.set(this.storage, (resetSerials.get(this.storage) ?? 0) + 1);
+    // Do not reuse a previously captured session after revocation.
+    const resetSession = this.captureSession({
+      keyring: session.keyring,
+      assertCurrent: () => guard(session),
+    });
+    return this.exclusive(async () => {
+      if ((await profile(resetSession)) !== profileId)
+        throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const previous = await this.load(resetSession, profileId);
+        const entries = (previous.bundle?.entries ?? []).filter(
+          (entry) => entry.chainId !== chainId || entry.from !== from
+        );
+        const floors = (previous.bundle?.nonceFloors ?? []).filter(
+          (entry) => entry.chainId !== chainId || entry.from !== from
+        );
+        const resetGeneration = (previous.bundle?.resetGeneration ?? 0) + 1;
+        if (!Number.isSafeInteger(resetGeneration)) return limit();
+        if (
+          await this.write(
+            resetSession,
+            profileId,
+            previous.raw,
+            (previous.bundle?.revision ?? -1) + 1,
+            entries,
+            floors,
+            false,
+            resetGeneration
+          )
+        ) {
+          for (const entry of previous.bundle?.entries ?? [])
+            if (entry.chainId === chainId && entry.from === from)
+              this.autoNonceAcceptance.retireNonce(profileId, entry);
+          return (previous.bundle?.entries.length ?? 0) - entries.length;
+        }
+      }
+      throw new Error('EVM_SIGNED_RECORD_CONFLICT');
+    });
+  }
+
+  /** Reclaim only terminal nonce groups after a fresh, hash-specific inclusion
+   * observation. RPC observations never create a permanent nonce floor. */
   async retireFinalized(
     session: EvmSignedRecordSession,
     input: Readonly<{ chainId: string; from: string }>,
-    read: EvmSignedRetirementRead
+    read: EvmSignedRetirementRead,
+    progress: { removed: number }
   ): Promise<number> {
+    session = this.captureSession(session);
     const chainId = input.chainId;
     const from = getAddress(input.from).toLowerCase();
     if (
@@ -1279,14 +1422,11 @@ export class EvmSignedRecords {
       guard(session);
       if (performance.now() >= deadline) throw unavailable;
     };
-    const readCurrent = async (
-      method: EvmSignedRetirementReadMethod,
-      params: readonly unknown[]
-    ) => {
+    const call: EvmSignedRetirementRead = async (method, params) => {
       assertFresh();
-      const response = await read(method, params);
+      const value = await read(method, params);
       assertFresh();
-      return response;
+      return value;
     };
     const quantity = (value: unknown): bigint => {
       if (
@@ -1296,119 +1436,163 @@ export class EvmSignedRecords {
         throw unavailable;
       return BigInt(value);
     };
-    let nonce: number;
+    const candidates = await this.exclusive(async () => {
+      const { bundle } = await this.load(session, id);
+      const groups = new Map<number, Entry[]>();
+      for (const entry of bundle?.entries ?? []) {
+        if (entry.chainId !== chainId || entry.from !== from) continue;
+        const group = groups.get(entry.nonce) ?? [];
+        group.push(entry);
+        groups.set(entry.nonce, group);
+      }
+      return [...groups.values()].filter(
+        (group) =>
+          group.every((entry) => !isPendingPhase(entry.phase)) &&
+          group.some(
+            (entry) => entry.phase === 'confirmed' || entry.phase === 'reverted'
+          )
+      );
+    });
+    let removed = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      nonce = await Promise.race([
-        (async () => {
+    const work = async () => {
+      for (const group of candidates) {
+        assertFresh();
+        const winner = group.find(
+          (entry) => entry.phase === 'confirmed' || entry.phase === 'reverted'
+        )!;
+        const tx = Transaction.from(
+          (await this.materialize(session, winner)).rawTransaction
+        );
+        const observe = async () => {
+          const observed = await observeEvmTransaction(
+            {
+              chainId,
+              from,
+              hash: winner.hash,
+              nonce: String(winner.nonce),
+              to: tx.to,
+            },
+            call,
+            assertFresh
+          );
           if (
-            quantity(await readCurrent('eth_chainId', [])) !== BigInt(chainId)
+            observed.status !== 'mined' ||
+            observed.transactionIndex === undefined ||
+            observed.outcome !== winner.phase
           )
             throw unavailable;
-          const block = await readCurrent('eth_getBlockByNumber', [
+          const finalized = await call('eth_getBlockByNumber', [
             'finalized',
             false,
           ]);
-          if (!block || typeof block !== 'object' || Array.isArray(block))
-            throw unavailable;
-          const { number, hash } = block as Record<string, unknown>;
-          quantity(number);
-          if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(hash))
-            throw unavailable;
-          // EIP-1898 binds the account state to the exact finalized block and
-          // refuses a hash which the endpoint no longer considers canonical.
-          const count = quantity(
-            await readCurrent('eth_getTransactionCount', [
-              from,
-              { blockHash: hash, requireCanonical: true },
-            ])
-          );
-          if (count > BigInt(Number.MAX_SAFE_INTEGER)) throw unavailable;
           if (
-            quantity(await readCurrent('eth_chainId', [])) !== BigInt(chainId)
+            !finalized ||
+            typeof finalized !== 'object' ||
+            Array.isArray(finalized)
           )
             throw unavailable;
-          return Number(count);
-        })(),
-        new Promise<never>((_, reject) => {
-          timer = setTimeout(() => reject(unavailable), FINALITY_TIMEOUT_MS);
+          const block = finalized as Record<string, unknown>;
+          const height = quantity(block.number);
+          if (
+            height < BigInt(observed.block.number) ||
+            typeof block.hash !== 'string' ||
+            !HASH.test(block.hash.toLowerCase())
+          )
+            throw unavailable;
+          const canonical = await call('eth_getBlockByNumber', [
+            `0x${height.toString(16)}`,
+            false,
+          ]);
+          if (
+            !canonical ||
+            typeof canonical !== 'object' ||
+            Array.isArray(canonical) ||
+            quantity((canonical as Record<string, unknown>).number) !==
+              height ||
+            (canonical as Record<string, unknown>).hash !== block.hash
+          )
+            throw unavailable;
+          const count = quantity(
+            await call('eth_getTransactionCount', [
+              from,
+              { blockHash: block.hash, requireCanonical: true },
+            ])
+          );
+          if (count <= BigInt(winner.nonce)) throw unavailable;
+          return observed;
+        };
+        let observed: Awaited<ReturnType<typeof observe>>;
+        try {
+          observed = await observe();
+        } catch {
+          guard(session);
+          continue;
+        }
+        removed += await this.exclusive(async () => {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            const previous = await this.load(session, id);
+            const current = (previous.bundle?.entries ?? []).filter((entry) =>
+              matchesNonce(entry, winner)
+            );
+            if (
+              current.length !== group.length ||
+              current.some(
+                (entry, index) =>
+                  entry.hash !== group[index]!.hash ||
+                  entry.phase !== group[index]!.phase
+              )
+            )
+              return 0;
+            const entries = previous.bundle!.entries.filter(
+              (entry) => !matchesNonce(entry, winner)
+            );
+            if (
+              await this.write(
+                session,
+                id,
+                previous.raw,
+                previous.bundle!.revision + 1,
+                entries,
+                previous.bundle!.nonceFloors,
+                false,
+                previous.bundle!.resetGeneration,
+                async () => {
+                  const fresh = await observe();
+                  if (
+                    fresh.block.hash !== observed.block.hash ||
+                    fresh.block.number !== observed.block.number ||
+                    fresh.transactionIndex !== observed.transactionIndex
+                  )
+                    throw unavailable;
+                  return assertFresh;
+                }
+              )
+            ) {
+              this.autoNonceAcceptance.retireNonce(id, winner);
+              // Publish acknowledged progress before any next RPC can stall.
+              progress.removed += group.length;
+              return group.length;
+            }
+          }
+          throw new Error('EVM_SIGNED_RECORD_CONFLICT');
+        });
+      }
+      return removed;
+    };
+    try {
+      return await Promise.race([
+        work(),
+        new Promise<number>((resolve) => {
+          timer = setTimeout(() => resolve(removed), FINALITY_TIMEOUT_MS);
         }),
       ]);
-    } catch {
-      guard(session);
-      return 0;
-    } finally {
-      if (timer !== undefined) clearTimeout(timer);
-    }
-    try {
-      return await this.exclusive(async () => {
-        assertFresh();
-        if ((await profile(session)) !== id)
-          throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
-        for (let attempt = 0; attempt < 3; attempt++) {
-          assertFresh();
-          const previous = await this.load(session, id);
-          const floor = Math.max(
-            nonce,
-            minimumNonce(previous.bundle, { chainId, from })
-          );
-          const oldEntries = previous.bundle?.entries ?? [];
-          const entries = oldEntries.filter(
-            (entry) =>
-              entry.chainId !== chainId ||
-              entry.from !== from ||
-              entry.nonce >= floor
-          );
-          const removed = oldEntries.length - entries.length;
-          if (!removed) return 0;
-          const floors = [
-            ...(previous.bundle?.nonceFloors ?? []).filter(
-              (entry) => floorKey(entry) !== floorKey({ chainId, from })
-            ),
-            { chainId, from, nonce: floor },
-          ].sort((a, b) =>
-            floorKey(a) < floorKey(b) ? -1 : floorKey(a) > floorKey(b) ? 1 : 0
-          );
-          let committed: boolean;
-          try {
-            committed = await this.write(
-              session,
-              id,
-              previous.raw,
-              (previous.bundle?.revision ?? -1) + 1,
-              entries,
-              floors,
-              false,
-              async () => {
-                assertFresh();
-                return assertFresh;
-              }
-            );
-          } catch (error) {
-            // A new floor must fit the SDK's authenticated root limit. Keep
-            // every existing record if its replacement manifest cannot fit.
-            if (error && typeof error === 'object' && capacityLimits.has(error))
-              return 0;
-            throw error;
-          }
-          if (committed) {
-            for (const entry of oldEntries) {
-              if (
-                entry.chainId === chainId &&
-                entry.from === from &&
-                entry.nonce < floor
-              )
-                this.autoNonceAcceptance.retireNonce(id, entry);
-            }
-            return removed;
-          }
-        }
-        throw new Error('EVM_SIGNED_RECORD_CONFLICT');
-      });
     } catch (error) {
       guard(session);
-      if (error === unavailable) return 0;
+      if (error === unavailable) return removed;
       throw error;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
     }
   }
   /** Capacity belongs to the whole profile, so any configured chain can
@@ -1418,6 +1602,7 @@ export class EvmSignedRecords {
     preferred: Readonly<{ chainId: string; from: string }>,
     resolveRead: EvmSignedRetirementReadForChain
   ): Promise<number> {
+    session = this.captureSession(session);
     const preferredKey = floorKey({
       ...preferred,
       from: getAddress(preferred.from).toLowerCase(),
@@ -1465,7 +1650,7 @@ export class EvmSignedRecords {
     const ownedSession = { keyring: session.keyring, assertCurrent };
     const readers = new Map<string, EvmSignedRetirementRead | null>();
     let remaining = 64;
-    let removed = 0;
+    const progress = { removed: 0 };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const work = async () => {
       try {
@@ -1484,7 +1669,7 @@ export class EvmSignedRecords {
           assertCurrent();
           const read = readers.get(scope.chainId);
           if (!read) continue;
-          removed += await this.retireFinalized(
+          await this.retireFinalized(
             ownedSession,
             scope,
             async (method, params) => {
@@ -1494,14 +1679,15 @@ export class EvmSignedRecords {
               const value = await read(method, params);
               assertCurrent();
               return value;
-            }
+            },
+            progress
           );
         }
       } catch (error) {
         guard(session);
         if (error !== expired) throw error;
       }
-      return removed;
+      return progress.removed;
     };
     try {
       const result = await Promise.race([
@@ -1509,7 +1695,7 @@ export class EvmSignedRecords {
         new Promise<number>((resolve) => {
           timer = setTimeout(() => {
             controller.abort(expired);
-            resolve(removed);
+            resolve(progress.removed);
           }, FINALITY_TIMEOUT_MS);
         }),
       ]);
@@ -1609,6 +1795,7 @@ export class EvmSignedRecords {
     address: string
   ): Promise<EvmAutoNonceSnapshot> {
     const from = getAddress(address).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1630,6 +1817,7 @@ export class EvmSignedRecords {
     address: string
   ): Promise<readonly EvmSignedRecordSummary[]> {
     const from = getAddress(address).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1646,6 +1834,7 @@ export class EvmSignedRecords {
     address: string
   ): Promise<readonly EvmSignedRecordSummary[]> {
     const from = getAddress(address).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1667,6 +1856,7 @@ export class EvmSignedRecords {
     address: string
   ): Promise<EvmRetainedSignedRecord | null> {
     const from = getAddress(address).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1697,6 +1887,7 @@ export class EvmSignedRecords {
       maximum > EVM_SIGNED_RECORD_LIMITS.transactions
     )
       throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1744,6 +1935,7 @@ export class EvmSignedRecords {
       (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
     )
       throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1807,6 +1999,7 @@ export class EvmSignedRecords {
     }>
   ): Promise<Readonly<{ result: T }> | null> {
     const address = getAddress(from).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       // A queued replay may have expired before reaching storage.
       preflight?.assertCurrent();
@@ -1873,6 +2066,7 @@ export class EvmSignedRecords {
     revision: number;
   }> | null> {
     const from = getAddress(address).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
@@ -1987,6 +2181,7 @@ export class EvmSignedRecords {
     }>
   ): Promise<EvmSignedRecordSummary> {
     const from = getAddress(address).toLowerCase();
+    session = this.captureSession(session);
     return this.exclusive(async () => {
       const id = await profile(session);
       for (let attempt = 0; attempt < 3; attempt++) {
@@ -2048,6 +2243,7 @@ export class EvmSignedRecords {
             entries,
             previous.bundle.nonceFloors,
             false,
+            previous.bundle.resetGeneration,
             reconcile?.verify
           )
         )
@@ -2078,7 +2274,7 @@ export function createEvmSignedRecordLifecycle(
     retirementReadForChain: EvmSignedRetirementReadForChain | null;
   }>
 ) {
-  guard(session);
+  session = records.captureSession(session);
   if (
     !options ||
     (options.retirementReadForChain !== null &&
@@ -2095,7 +2291,7 @@ export function createEvmSignedRecordLifecycle(
       const token = {};
       currentPersistToken = token;
       // Capture the SDK's exact signed envelope before any asynchronous work.
-      // Capacity recovery retries these bytes once and never requests a signature.
+      // Persistence must complete before these exact bytes may be dispatched.
       const signed = Object.freeze({
         ...record,
         context: Object.freeze({
@@ -2132,6 +2328,7 @@ export function createEvmSignedRecordLifecycle(
         ) {
           try {
             await records.append(session, signed, metadata, replacement);
+            return;
           } catch (retryError) {
             guard(session);
             if (
@@ -2145,10 +2342,9 @@ export function createEvmSignedRecordLifecycle(
               });
             throw retryError;
           }
-        } else {
-          signedCapacityRefusals.set(error, { hash: signed.hash, token });
-          throw error;
         }
+        signedCapacityRefusals.set(error, { hash: signed.hash, token });
+        throw error;
       }
       guard(session);
     },

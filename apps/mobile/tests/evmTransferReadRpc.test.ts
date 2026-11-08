@@ -1,3 +1,5 @@
+import { emptyNoncePlanner } from './noncePlannerFixture.ts';
+import type { NativeAutomaticNoncePlanner } from '../src/custody/evmTransferReadRpc.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Transaction } from 'ethers/transaction';
@@ -113,17 +115,17 @@ for (const legacy of [false, true]) test(`approved native requote uses raw gas w
   return undefined;
  });
  const input = { from, to, value: '100', data: '0x' };
- const quote = await f.rpc.prepare(input, signal(), () => undefined);
+ const quote = await f.rpc.prepare(input, signal(), () => undefined, undefined, undefined, emptyNoncePlanner);
  assert.equal(quote.transaction.gasLimit, '25200');
  assert.equal(quote.transaction.type, legacy ? 0 : 2);
  for (estimate of [21000, 22000, 25200]) {
-  const refreshed = await f.rpc.prepare(input, signal(), () => undefined, quote.transaction);
+  const refreshed = await f.rpc.prepare(input, signal(), () => undefined, quote.transaction, undefined, emptyNoncePlanner);
   assert.deepEqual(refreshed.transaction, quote.transaction);
   assert.equal(refreshed.maximumFeeUnits, quote.maximumFeeUnits);
  }
  blockGasLimit = 30000;
  estimate = 25201;
- await assert.rejects(f.rpc.prepare(input, signal(), () => undefined, quote.transaction), {
+ await assert.rejects(f.rpc.prepare(input, signal(), () => undefined, quote.transaction, undefined, emptyNoncePlanner), {
   code: 'REVIEW_REQUIRED',
  });
 });
@@ -154,6 +156,32 @@ for (const mode of ['automatic', 'manual'] as const) test(`${mode} native gap fi
  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
 });
 
+for (const manual of [false, true]) test(`native dispatch budgets the costliest retained prefix alternative (manual=${manual})`, async () => {
+ const originalHash = '0x' + '3'.repeat(64), replacementHash = '0x' + '4'.repeat(64);
+ const acceptance = new EvmAutoNonceAcceptance();
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getTransactionCount') return call.params[1] === 'pending' ? '0x1' : '0x0';
+  if (call.method === 'eth_getBalance') return call.params[1] === 'pending' ? '0xd6998' : '0xf4240';
+  return undefined;
+ });
+ const planner: NativeAutomaticNoncePlanner = input => acceptance.plan({ ...input,
+  chainId: custom.chainId, endpoint: custom.rpcUrl, from,
+  snapshot: { owner: 'prefix', minimumNonce: 0, retained: [
+   { chainId: custom.chainId, from, hash: originalHash, nonce: 0, phase: 'submitted' },
+   { chainId: custom.chainId, from, hash: replacementHash, nonce: 0, phase: 'signed' },
+  ], readMaximumCost: async hash => hash === originalHash ? 121000n : 142000n,
+  readAssetDebit: async () => 0n },
+ });
+ const transfer = { ...transaction(custom), nonce: '1', value: '661000' };
+ await assert.rejects(f.rpc.verifyForDispatch(transfer, signal(), () => undefined, planner,
+  undefined, manual ? 1 : undefined), { code: 'INSUFFICIENT_BALANCE' });
+ await f.rpc.verifyForDispatch({ ...transfer, value: '648000' }, signal(), () => undefined, planner,
+  undefined, manual ? 1 : undefined);
+ assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+});
+
+
+
 
 test('signed-record retirement exposes only bounded endpoint reads', async () => {
  const f = fixture(custom);
@@ -168,6 +196,7 @@ test('signed-record retirement exposes only bounded endpoint reads', async () =>
  await assert.rejects(oversized.rpc.retirementRead('eth_getBlockByNumber', ['finalized', false], signal(), () => undefined), { code: 'UNAVAILABLE' });
 });
 
+
 test('signed-record retirement refuses revoked authority before publishing a response', async () => {
  let current = true;
  const f = fixture(custom, () => { current = false; });
@@ -179,6 +208,7 @@ test('signed-record retirement refuses revoked authority before publishing a res
  await assert.rejects(f.rpc.retirementRead('eth_chainId', [], cancelled.signal, () => undefined), { code: 'CANCELLED' });
  assert.equal(f.calls.length, 1);
 });
+
 
 test('signed-record retirement rejects a response from a changed endpoint', async () => {
  const rpc = new EvmTransferReadRpc(custom, { fetch: async (_url, init) => {

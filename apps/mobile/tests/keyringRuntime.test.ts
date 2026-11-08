@@ -664,6 +664,90 @@ async function prepareAccountTransfer(transfers: NativeTransfers) {
   return transfers.getSnapshot().review!.id;
 }
 
+test('activity reset retires saved handles and clears only the selected account and chain', async () => {
+  const f = await readyAccounts();
+  const sign = (chainId: string) => f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
+    chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+  try {
+    const ethereum = await sign('1');
+    const first = await f.runtime.transfers!.journal(() => undefined);
+    await first.saveSigned(ethereum.rawTransaction);
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    const base = await sign('8453');
+    await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(base.rawTransaction);
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    const stale = await f.runtime.transfers!.journal(() => undefined);
+    let invalidations = 0;
+    await f.runtime.resetActivity(() => undefined, () => { invalidations++; });
+    assert.equal(invalidations, 1);
+    await assert.rejects(stale.load(), /CANCELLED|CONTEXT_CHANGED/);
+    assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
+    assert.equal(await f.runtime.session.readSelectedAddress(), ADDRESS);
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.hash, base.hash);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('activity reset inside signing revokes the result without locking the current owner', async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+  let reset: Promise<void> | undefined;
+  try {
+    sdk.onSign(() => { reset = f.runtime.resetActivity(() => undefined, () => undefined); });
+    await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /CANCELLED/);
+    assert(reset);
+    await reset;
+    assert.equal(await f.runtime.session.readSelectedAddress(), ADDRESS);
+    assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
+    sdk.onSign(() => { throw Error('current signing failed'); });
+    await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /OPERATION_FAILED/);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
+  } finally { sdk.onSign(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('locking an in-flight activity reset preserves its stored records', async () => {
+  const f = await readyAccounts();
+  const entered = deferredAccount(), release = deferredAccount();
+  try {
+    const signed = await f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
+    const before = f.disk.signedValue();
+    f.disk.onRecord(async (kind, key) => {
+      if (kind === 'get' && key.startsWith('pali-evm-signed-v1:')) { entered.resolve(); await release.promise; }
+    });
+    const reset = f.runtime.resetActivity(() => undefined, () => undefined);
+    const rejected = assert.rejects(reset, /CANCELLED|CONTEXT_CHANGED/);
+    await entered.promise;
+    f.authority.lock();
+    release.resolve();
+    await rejected;
+    assert.equal(f.disk.signedValue(), before);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+  } finally { release.resolve(); f.disk.onRecord(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('activity reset drains an interrupted broadcast before clearing local tracking', async () => {
+  const f = await readyAccounts(), network = localTransferRpc();
+  const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
+  const held = network.holdBroadcast();
+  try {
+    const confirm = transfers.confirm(await prepareAccountTransfer(transfers));
+    const cancelled = assert.rejects(confirm, /CANCELLED/);
+    await held.entered;
+    const reset = f.runtime.resetActivity(() => undefined, () => transfers.cancelForActivityReset());
+    assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
+    held.release();
+    await Promise.all([cancelled, reset]);
+    assert.equal(await f.runtime.session.readSelectedAddress(), ADDRESS);
+    assert.equal(transfers.getSnapshot().review, null);
+    assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
+    assert.equal(network.broadcasts.length, 1);
+  } finally { held.release(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
 for (const networkId of ['ethereum', 'zksys-testnet'] as const) {
 test(`${networkId} normal confirmation and exact-byte retry perform no extra authentication or hydration`, async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);

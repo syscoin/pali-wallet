@@ -599,6 +599,11 @@
     "receipts": "영수증"
   },
   "settings": {
+    "clearActivityAndNonce": "활동 및 nonce 데이터 지우기",
+    "clearActivityAndNonceWarning": "{{network}}의 {{account}}에 저장된 활동 및 nonce 데이터를 지우시겠습니까? 대기 중인 거래는 계속 실행될 수 있습니다. 저장된 거래는 다시 전송할 수 없게 됩니다.",
+    "clearActivityAndNonceConfirm": "데이터 지우기",
+    "clearActivityAndNonceSuccess": "활동 및 nonce 데이터를 지웠습니다.",
+    "clearActivityAndNonceFailed": "초기화를 완료하지 못했습니다. 지갑 잠금을 해제하고 다시 시도하세요.",
     "legacyAddressType": "기존 형식 (P2PKH)",
     "connectedSiteCount": "사이트 {{count}}개가 Pali Wallet에 연결되어 있습니다.",
     "accountNumber": "계정 {{number}}",

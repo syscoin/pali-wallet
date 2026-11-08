@@ -34,7 +34,7 @@ UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation w
 
 The extension and mobile use the same retained signed-record policy. Exact signed bytes and reviewed intent are saved before broadcast. Replay, replacement and ordinary new sends have distinct admission checks, with ownership scoped to the wallet profile, chain and sender across account aliases.
 
-The EVM journal has limits of 4,096 records and 16 MiB. At a genuine capacity refusal, bounded maintenance checks available configured routes and retires eligible finalized nonce groups atomically with an encrypted nonce floor. It then retries saving the same signed bytes once. Records not proven consumed by finalized state remain retained, and insufficient reclaimable space refuses the new submission. Account removal and public-history pruning preserve recovery records.
+The EVM journal has limits of 4,096 records and 16 MiB. At a genuine capacity refusal, bounded maintenance checks available configured routes and retires completed nonce groups after fresh hash-specific receipt and finalized-block observations, then retries saving the same signed bytes once. These observations rely on the configured RPC. Maintenance keeps every group with an unresolved signed, attempted or submitted record, and never installs a permanent nonce floor. Insufficient reclaimable space refuses the new submission. The explicit Clear activity and nonce data action discards selected-account/network local tracking and refreshes through the same RPC. It does not cancel transactions the network may still hold. Account removal and public-history pruning preserve recovery records.
 
 ### Recovery and device storage
 

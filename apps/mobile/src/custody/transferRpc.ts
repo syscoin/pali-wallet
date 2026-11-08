@@ -69,7 +69,7 @@ type NativeBroadcastAdmission = Readonly<
       mode: 'new-send';
       nonceOverride?: number;
       intent?: Erc20TransferIntent;
-      assertDispatchAdmission?: () => void;
+      assertDispatchAdmission: () => void;
       admit: AdmitEvmSignedDispatch<string>;
     }
   | {
@@ -369,8 +369,8 @@ export class NativeTransferRpc {
     if (error instanceof NativeTransferRpcError) throw error;
     throw new NativeTransferRpcError('UNAVAILABLE');
   }
-  prepare(from: string, to: string, valueUnits: string, signal: AbortSignal, nonceOverride?: number,
-    automaticNonce?: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
+  prepare(from: string, to: string, valueUnits: string, signal: AbortSignal, nonceOverride: number | undefined,
+    automaticNonce: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
     const sender = normalizePublicAddress(from, this.context.networkId);
     const recipient = normalizePublicAddress(to, this.context.networkId);
     const value = assertBaseUnits(valueUnits);
@@ -379,15 +379,15 @@ export class NativeTransferRpc {
       .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
   /** Every EVM rechecks the exact reviewed type, fees, nonce and calldata before signing. */
-  requote(transaction: NativeTransferQuote['transaction'], signal: AbortSignal, intent?: Erc20TransferIntent,
-    nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
+  requote(transaction: NativeTransferQuote['transaction'], signal: AbortSignal, intent: Erc20TransferIntent | undefined,
+    nonceOverride: number | undefined, automaticNonce: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
     if (intent) return this.prepareToken(transaction.from, intent, signal, transaction, nonceOverride, automaticNonce);
     try { assertTransferIntentEnvelope(transaction); } catch { return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE')); }
     return this.receiptRpc.prepare({ from: transaction.from, to: transaction.to, value: transaction.value, data: transaction.data }, signal, () => undefined, transaction, nonceOverride, automaticNonce)
       .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
   prepareToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
-    approved?: NativeTransferQuote['transaction'], nonceOverride?: number, planner?: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
+    approved: NativeTransferQuote['transaction'] | undefined, nonceOverride: number | undefined, planner: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
     const intent = snapshotErc20TransferIntent(input);
     const sender = normalizePublicAddress(from, this.context.networkId);
     if (intent.chainId !== this.context.chainId) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
@@ -398,11 +398,11 @@ export class NativeTransferRpc {
       .catch((error) => this.mapReadError(error));
   }
   prepareNft(selection: NftTransferSelection, request: NftTransferRequest, signal: AbortSignal,
-    assertCurrent: () => void, nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner): Promise<EvmNftPreparedQuote> {
+    assertCurrent: () => void, nonceOverride: number | undefined, automaticNonce: NativeAutomaticNoncePlanner): Promise<EvmNftPreparedQuote> {
     return this.receiptRpc.prepareNft(selection, request, signal, assertCurrent, nonceOverride, automaticNonce).catch((error) => this.mapReadError(error, 'nft'));
   }
   requoteNft(selection: NftTransferSelection, approval: EvmNftPreparedQuote, signal: AbortSignal,
-    assertCurrent: () => void, automaticNonce?: NativeAutomaticNoncePlanner): Promise<EvmNftPreparedQuote> {
+    assertCurrent: () => void, automaticNonce: NativeAutomaticNoncePlanner): Promise<EvmNftPreparedQuote> {
     return this.receiptRpc.requoteNft(selection, approval, signal, assertCurrent, automaticNonce).catch((error) => this.mapReadError(error, 'nft'));
   }
   async verifyForDispatch(envelope: EvmUnsignedTransfer, signal: AbortSignal, assertCurrent: () => void,
@@ -560,6 +560,7 @@ export class NativeTransferRpc {
         speedUp = { transaction: tx, from: tx.from };
       }
       if (mode === 'new-send') {
+        if (typeof assertDispatchAdmission !== 'function') return invalid();
         if (tx.data !== '0x' && (!intent || !assertDispatchAdmission)) return invalid();
         if (!tx.from || isEvmEmptySelfCall(tx) || (nonceOverride !== undefined && tx.nonce !== nonceOverride)) return invalid();
         newSend = { from: tx.from, nonce: tx.nonce };

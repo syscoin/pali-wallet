@@ -321,6 +321,11 @@ export class NativeTransfers {
     this.expiry = null;
     this.publish(initial());
   }
+  /** The reset owner must revoke the runtime generation before cancelling UI work. */
+  cancelForActivityReset(): void {
+    this.secretOperation = null;
+    this.cancel();
+  }
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -743,7 +748,7 @@ export class NativeTransfers {
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
       const quote = await rpc.prepare(address, to, units, signal, nonceOverride,
-        nonceOverride === undefined ? journal.planAutomaticNonce : undefined);
+        journal.planAutomaticNonce);
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -907,9 +912,9 @@ export class NativeTransfers {
       };
       const journal = await runtime.journal(guard);
       guard();
-      const automatic = !approved.replacement && approved.public.nonceOverride === undefined;
-      const validatesAsset = !approved.replacement && (!!approved.public.intent || !!collectible);
-      const planner = automatic || validatesAsset ? journal.planAutomaticNonce : undefined;
+      const ordinary = !approved.replacement;
+      const validatesAsset = ordinary && (!!approved.public.intent || !!collectible);
+      const planner = journal.planAutomaticNonce;
       this.publish({
         phase: 'signing',
         review: approved.public,
@@ -988,7 +993,7 @@ export class NativeTransfers {
         message: null,
       });
       let dispatchVerified = false;
-      const validateDispatch = automatic || validatesAsset;
+      const validateDispatch = ordinary;
       const assertDispatchAdmission = validateDispatch ? () => {
         guard();
         if (!dispatchVerified) throw new NativeTransferRpcError('REVIEW_REQUIRED');
@@ -1038,7 +1043,7 @@ export class NativeTransfers {
               mode: 'new-send',
               nonceOverride: approved.public.nonceOverride,
               intent: approved.public.intent,
-              assertDispatchAdmission,
+              assertDispatchAdmission: assertDispatchAdmission!,
               admit: atDispatch,
             });
           },

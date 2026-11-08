@@ -599,6 +599,11 @@
     "receipts": "Квитанции"
   },
   "settings": {
+    "clearActivityAndNonce": "Очистить историю и данные nonce",
+    "clearActivityAndNonceWarning": "Очистить сохранённую историю и данные nonce для {{account}} в сети {{network}}? Ожидающие транзакции всё ещё могут выполниться. Сохранённые транзакции больше нельзя будет отправить повторно.",
+    "clearActivityAndNonceConfirm": "Очистить данные",
+    "clearActivityAndNonceSuccess": "История и данные nonce очищены.",
+    "clearActivityAndNonceFailed": "Не удалось завершить сброс. Разблокируйте кошелёк и повторите попытку.",
     "legacyAddressType": "Старый формат (P2PKH)",
     "connectedSiteCount": "К Pali Wallet подключено {{count}} сайтов.",
     "accountNumber": "Аккаунт {{number}}",
