@@ -58,6 +58,21 @@ class SocketRegistryTest {
     assertFalse(registry.readable(connection, socket))
   }
 
+  @Test fun closeAfterOpenBeforeAttachKeepsTheGracefulClose() {
+    val registry = SocketRegistry()
+    val connection = registry.create("one")
+    val socket = Socket()
+    assertTrue(registry.opened(connection, socket))
+    registry.close("one", 1000, "done")
+    assertEquals(1, socket.closes)
+    registry.attach(connection, socket)
+    assertEquals(0, socket.cancellations)
+    assertEquals(1, socket.closes)
+    assertNull(registry.openSocket("one"))
+    assertTrue(registry.finish(connection, socket))
+    assertFalse(registry.finish(connection, socket))
+  }
+
   @Test fun failureBeforeHandleReturnCannotReinsertOldConnection() {
     val registry = SocketRegistry()
     val old = registry.create("one")
