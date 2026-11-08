@@ -810,6 +810,24 @@ async function messageRequest(
   return f.view.getSnapshot().messageReview;
 }
 
+test('leaving the connection screen preserves its incoming message review', async () => {
+  const f = await connectedFixture();
+  try {
+    const review = await messageRequest(f);
+    assert.ok(review);
+    // NativeConnections unmounts when NativeWallet presents this review.
+    f.view.cancel();
+    const current = f.view.getSnapshot().messageReview;
+    assert.equal(current?.id, review.id);
+    assert.equal(f.responses.length, 0);
+    await f.view.approveMessage(current!.id, current!.revision, false);
+    assert.equal((f.responses.at(-1) as any).id, 10);
+    assert.equal((f.responses.at(-1) as any).result.result, '0x' + '12'.repeat(65));
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
 const typedMessage = {
   types: {
     EIP712Domain: [

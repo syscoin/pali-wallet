@@ -1257,8 +1257,8 @@ export class NativeConnectionsController {
     }
   }
   private cancel() {
-    for (const message of [...this.messages.values()])
-      this.retireMessage(message);
+    // Leaving the connection screen may reveal an incoming message review.
+    // Its cleanup owns pairing, while message rejection owns that request.
     this.error = null;
     this.actionEpoch++;
     this.action?.abort();
