@@ -28,6 +28,7 @@ import {
   validateGuardianRecoveryOperation,
 } from '../../../../source/utils/smartAccount/guardianRecoveryCommands.ts';
 import { captureGuardianRecoveryIntent } from '../../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
+import { guardianRecoveryIntentResolved, pendingGuardianRecoveryTransaction } from '../../../../source/utils/smartAccount/guardianRecoveryLifecycle.ts';
 import {
   encodeEcdsaValidatorInitData,
   getConfiguredAuthenticatorAddress,
@@ -141,7 +142,7 @@ import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 import { NativeActivityHistory } from '../activity/historyStore.ts';
 import { createActivityScope, type ActivityScope, type EvmActivityReadScope } from '../activity/types.ts';
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
-import { computeAddress, Transaction, recoverAddress } from 'ethers/transaction';
+import { computeAddress, Transaction } from 'ethers/transaction';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { keyExportRegistrationHash, snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
@@ -2999,105 +3000,34 @@ export function createKeyringRuntimeFactory(
               );
               check();
             };
-            const pendingTransaction = async (): Promise<string | null> => {
-              const session = { keyring: ring, assertCurrent: check };
-              const saved = await signedRecords.readRecent(
-                session,
-                network.chainId,
-                guardian.ref.address,
-                EVM_SIGNED_RECORD_LIMITS.transactions
-              );
-              check();
-              const matching = saved.entries.filter((entry) => {
-                const transaction = Transaction.from(entry.rawTransaction);
-                if (
-                  transaction.to?.toLowerCase() !==
-                    savedIntent.operation.recoveryModule.toLowerCase() ||
-                  transaction.value !== 0n
-                )
-                  return false;
-                try {
-                  const call = paliGuardianRecoveryModuleInterface.parseTransaction({
-                    data: transaction.data,
-                  });
-                  if (
-                    !call ||
-                    !['scheduleRecovery', 'executeRecovery'].includes(call.name) ||
-                    call.args[0].toLowerCase() !==
-                      savedIntent.operation.account.toLowerCase() ||
-                    call.args[1] !== savedIntent.operation.salt ||
-                    call.args[2] !== savedIntent.operation.mode ||
-                    call.args[3] !== savedIntent.operation.executionCalldata
-                  )
-                    return false;
-                  if (
-                    call.name === 'scheduleRecovery' &&
-                    (call.args[4].length !== 1 ||
-                      call.args[4][0].guardian.toLowerCase() !==
-                        guardian.ref.address.toLowerCase() ||
-                      recoverAddress(
-                        savedIntent.operation.hash,
-                        call.args[4][0].signature
-                      ).toLowerCase() !== guardian.ref.address.toLowerCase())
-                  )
-                    return false;
-                  return (
-                    paliGuardianRecoveryModuleInterface
-                      .encodeFunctionData(call.fragment, call.args)
-                      .toLowerCase() === transaction.data.toLowerCase()
+            const pendingTransaction = () => pendingGuardianRecoveryTransaction(
+              savedIntent.operation,
+              { kind: 'ecdsa', guardian: guardian.ref.address },
+              {
+                read: async () => {
+                  const saved = await signedRecords.readRecent(
+                    { keyring: ring, assertCurrent: check },
+                    network.chainId,
+                    guardian.ref.address,
+                    EVM_SIGNED_RECORD_LIMITS.transactions
                   );
-                } catch {
-                  return false;
-                }
-              });
-              let consumed = 0n,
-                queries = 0;
-              for (const entry of matching.sort(
-                (left, right) => right.nonce - left.nonce
-              )) {
-                if (BigInt(entry.nonce) < consumed) continue;
-                if (++queries > 48)
-                  throw new Error('Recovery transaction observation is incomplete');
-                const observed = await observeRetainedEvmTransaction(
+                  check();
+                  if (saved.total !== saved.entries.length)
+                    throw new Error('Recovery transaction observation is incomplete');
+                  return saved.entries;
+                },
+                observe: entry => observeRetainedEvmTransaction(
                   signedRecords,
-                  session,
+                  { keyring: ring, assertCurrent: check },
                   network.chainId,
                   guardian.ref.address,
                   entry.hash,
-                  (request) =>
-                    rpc.observation(
-                      {
-                        hash: request.hash,
-                        from: request.from,
-                        to: request.to,
-                        nonce: request.nonce,
-                      },
-                      signal,
-                      check
-                    ),
+                  request => rpc.observation({ hash: request.hash, from: request.from, to: request.to, nonce: request.nonce }, signal, check),
                   check
-                );
-                check();
-                const bound =
-                  observed.observation.status === 'mined'
-                    ? BigInt(entry.nonce) + 1n
-                    : BigInt(observed.observation.latestNonce);
-                if (bound > consumed) consumed = bound;
-                if (!observed.terminalPhase) return entry.hash;
-              }
-              const current = await signedRecords.listSender(
-                session,
-                network.chainId,
-                guardian.ref.address
-              );
-              check();
-              if (
-                current.map((entry) => entry.hash).join(',') !==
-                saved.entries.map((entry) => entry.hash).join(',')
-              )
-                throw new Error('Recovery transactions changed during observation');
-              return null;
-            };
+                ),
+              },
+              check
+            );
             const observe = async (): Promise<NativeGuardianRecoveryStatus> => {
               const pending = await pendingTransaction();
               const observation = await readPolicy(operationId);
@@ -3121,10 +3051,7 @@ export function createKeyringRuntimeFactory(
                   transactionHash: pending,
                   canAbandon: false,
                 };
-              const obsolete =
-                !observation.exists ||
-                observation.policyEpoch !== savedIntent.operation.policyEpoch ||
-                ['expired', 'canceled', 'inactive'].includes(known?.status ?? '');
+              const obsolete = guardianRecoveryIntentResolved(savedIntent.operation, observation, pending);
               if (obsolete)
                 return {
                   intent: savedIntent,

@@ -5,15 +5,12 @@ jest.mock('state/store', () => ({
 jest.mock('state/vault', () => ({ setAccountPropertyByIdAndType: jest.fn() }));
 jest.mock('utils/security/blacklistService', () => ({ blacklistService: {} }));
 
+import { guardianRecoveryFixture } from 'tests/fixtures/guardianRecoveryClaim';
+
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
-import { BigNumber, getAddress } from 'utils/ethersV6Compat';
-import {
-  ERC7579_MODE_SINGLE_DEFAULT,
-  getConfiguredAuthenticatorAddress,
-  getSmartAccountGuardianRecoveryHash,
-  paliGuardianRecoveryModuleInterface,
-} from 'utils/smartAccount';
+import { BigNumber } from 'utils/ethersV6Compat';
+import { paliGuardianRecoveryModuleInterface } from 'utils/smartAccount';
 
 import SmartAccountController from './index';
 
@@ -21,23 +18,10 @@ const TARGET = `0x${'11'.repeat(20)}`;
 const GUARDIAN = `0x${'22'.repeat(20)}`;
 const PAYER = `0x${'33'.repeat(20)}`;
 const SECOND_PAYER = `0x${'44'.repeat(20)}`;
-const MODULE = getAddress(
-  getConfiguredAuthenticatorAddress(57057, 'guardian-recovery')
-);
+
 const SIGNATURE = '0x1234';
-const intent = {
-  account: TARGET,
-  chainId: 57057,
-  executionCalldata: '0x1234',
-  mode: ERC7579_MODE_SINGLE_DEFAULT,
-  policyEpoch: '7',
-  recoveryModule: MODULE,
-  salt: `0x${'00'.repeat(32)}`,
-};
-const operation = {
-  ...intent,
-  hash: getSmartAccountGuardianRecoveryHash(intent),
-};
+const recoveryFixture = guardianRecoveryFixture(TARGET, GUARDIAN);
+const operation = recoveryFixture.operation;
 
 describe('guardian recovery provider numeric boundaries', () => {
   let controller: SmartAccountController;
@@ -48,6 +32,7 @@ describe('guardian recovery provider numeric boundaries', () => {
   const submit = () =>
     controller.submitPreparedSmartAccountGuardianStartRecovery({
       account: TARGET,
+      claimHash: operation.hash,
       approval: { guardian: GUARDIAN, signature: SIGNATURE },
       guardian: GUARDIAN,
       operation,
@@ -66,7 +51,15 @@ describe('guardian recovery provider numeric boundaries', () => {
         isBitcoinBased: false,
         accounts: {
           [KeyringAccountType.SmartAccount]: {
-            3: { address: TARGET, id: 3, isSmartAccount: true },
+            3: {
+              address: TARGET,
+              id: 3,
+              isSmartAccount: true,
+              smartAccount: {
+                chainId: 57057,
+                guardianRecoveryClaim: recoveryFixture.claim,
+              },
+            },
           },
           [KeyringAccountType.HDAccount]: { 0: { address: PAYER, id: 0 } },
           [KeyringAccountType.Imported]: {},
@@ -93,6 +86,9 @@ describe('guardian recovery provider numeric boundaries', () => {
       getWalletSessionGeneration: () => 9,
       sendAndSaveEthTransaction: send,
     } as any);
+    jest
+      .spyOn(controller, 'getSmartAccountGuardianRecoveryStatus')
+      .mockResolvedValue({ recoveryTransactionHash: null } as any);
     jest
       .spyOn(controller, 'validateSmartAccountGuardianRecoveryOperation')
       .mockResolvedValue();

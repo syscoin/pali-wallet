@@ -10,10 +10,17 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 import { HashRouter, useLocation, useNavigate } from 'react-router-dom';
+import {
+  acknowledgedGuardianRecoveryClaim,
+  guardianRecoveryFixture,
+} from 'tests/fixtures/guardianRecoveryClaim';
 
 import { KeyringAccountType } from 'types/network';
+import { getAddress } from 'utils/ethersV6Compat';
+import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
+import { buildSmartAccountGuardianRecoveryOperation } from 'utils/smartAccount/recovery';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -23,6 +30,20 @@ const GUARDIAN = '0x2222222222222222222222222222222222222222';
 const OWNER = '0x3333333333333333333333333333333333333333';
 const VALIDATOR = '0x4444444444444444444444444444444444444444';
 const mockEmitter = jest.fn();
+const mockControllerEmitter = async (
+  path: string[],
+  payload: any[] = [],
+  ...rest: any[]
+) => {
+  const response = await mockEmitter(path, payload, ...rest);
+  if (path[1] !== 'prepareSmartAccountGuardianStartRecovery') return response;
+  const claim = acknowledgedGuardianRecoveryClaim(payload[0], response);
+  mockVault.accounts.SmartAccount[1].smartAccount = {
+    ...mockVault.accounts.SmartAccount[1].smartAccount,
+    guardianRecoveryClaim: claim,
+  };
+  return { ...response, claim };
+};
 const mockNavigate = jest.fn();
 const mockLockedError = jest.fn();
 const mockAlert = { error: jest.fn(), success: jest.fn() };
@@ -46,16 +67,20 @@ const METADATA = {
   ],
   isDeployed: true,
 };
-const OPERATION = {
+const OPERATION = buildSmartAccountGuardianRecoveryOperation({
   account: ACCOUNT,
   chainId: 57057,
-  executionCalldata: '0x1234',
-  hash: `0x${'55'.repeat(32)}`,
-  mode: `0x${'00'.repeat(32)}`,
   policyEpoch: '7',
-  recoveryModule: getPaliModuleAddress(57057, 'guardian-recovery'),
+  recoveryModule: getAddress(getPaliModuleAddress(57057, 'guardian-recovery')),
   salt: `0x${'66'.repeat(32)}`,
-};
+  target: {
+    auth: {
+      module: 'ecdsa',
+      validator: getPaliModuleAddress(57057, 'ecdsa'),
+      data: encodeEcdsaValidatorInitData([OWNER], 1),
+    },
+  },
+});
 
 jest.mock('antd', () => ({
   Form: { Item: ({ children }: any) => <div>{children}</div> },
@@ -84,7 +109,7 @@ jest.mock('components/Loading', () => ({
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
-    controllerEmitter: mockEmitter,
+    controllerEmitter: mockControllerEmitter,
     handleWalletLockedError: mockLockedError,
   }),
 }));
@@ -173,11 +198,9 @@ beforeEach(() => {
     if (method === 'hydrateSmartAccount') return METADATA;
     if (method === 'getWalletSessionGeneration') return 7;
     if (method === 'getSmartAccountGuardianRecoveryStatus') {
-      const operation = JSON.parse(
-        localStorage.getItem(
-          `pali-smart-account-recovery-replacement:57057:${ACCOUNT}`
-        ) || 'null'
-      )?.recoveryOperation;
+      const operation =
+        mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+          ?.intent.operation;
       const pending = operation
         ? {
             operationId: getGuardianRecoveryOperationId(operation),
@@ -269,7 +292,7 @@ it.each([
         expect(screen.getByTestId('pane').textContent).toBe('policy')
       );
       const options = await screen.findByRole('button', {
-        name: 'settings.smartAccountGuardianRecoveryShowOptions',
+        name: 'settings.smartAccountGuardianRecoveryContinue',
       });
       expect(options.hasAttribute('disabled')).toBe(true);
       fireEvent.click(options);
@@ -298,10 +321,7 @@ it.each([
       expect(
         screen
           .getByRole('button', {
-            name:
-              outcome === 'success'
-                ? 'settings.smartAccountGuardianRecoveryContinue'
-                : 'settings.smartAccountGuardianRecoveryShowOptions',
+            name: 'settings.smartAccountGuardianRecoveryContinue',
           })
           .hasAttribute('disabled')
       ).toBe(false)
@@ -401,20 +421,14 @@ it('syncs authoritative recovered owner after the fresh same-route entry read wi
       },
     ],
   };
-  localStorage.setItem(
-    `pali-smart-account-recovery-replacement:57057:${ACCOUNT}`,
-    JSON.stringify({
-      authenticator: {
-        config: { owners: [recoveredOwner], threshold: 1 },
-        id: 'ecdsa',
-      },
-      kind: 'ecdsa',
-      recoveryOperation: {
-        ...OPERATION,
-        readyAt: Math.floor(Date.now() / 1000) - 60,
-      },
-    })
-  );
+  const recovered = guardianRecoveryFixture(ACCOUNT, recoveredOwner);
+  mockVault.accounts.SmartAccount[1].smartAccount = {
+    ...METADATA,
+    guardianRecoveryClaim: {
+      ...recovered.claim,
+      guardian: { kind: 'ecdsa', guardian: GUARDIAN },
+    },
+  };
   let settle!: () => void;
   const pending = new Promise<void>((resolve) => {
     settle = resolve;

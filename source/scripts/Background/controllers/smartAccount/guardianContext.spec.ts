@@ -1,13 +1,20 @@
 jest.mock('state/store', () => ({
+  persistSmartAccountMetadata: jest.fn(async (id, prepare, check) => {
+    check();
+    const next = prepare();
+    check();
+    mockState.vault.accounts.SmartAccount[id].smartAccount = next;
+  }),
   __esModule: true,
   default: { getState: () => mockState, dispatch: jest.fn() },
 }));
 jest.mock('utils/security/blacklistService', () => ({ blacklistService: {} }));
 
+import { guardianRecoveryFixture } from 'tests/fixtures/guardianRecoveryClaim';
+
 import { INetworkType, KeyringAccountType } from 'types/network';
 import {
   getConfiguredAuthenticatorAddress,
-  ERC7579_MODE_SINGLE_DEFAULT,
   getPaliErc7739PersonalSignHash,
   paliGuardianRecoveryModuleInterface,
 } from 'utils/smartAccount';
@@ -19,16 +26,8 @@ const TARGET = `0x${'11'.repeat(20)}`;
 const ACTIVE = `0x${'22'.repeat(20)}`;
 const GUARDIAN = `0x${'33'.repeat(20)}`;
 const HASH = `0x${'44'.repeat(32)}`;
-const operation = {
-  account: TARGET,
-  chainId: 57057,
-  executionCalldata: '0x1234',
-  mode: ERC7579_MODE_SINGLE_DEFAULT,
-  policyEpoch: '1',
-  recoveryModule: getConfiguredAuthenticatorAddress(57057, 'guardian-recovery'),
-  salt: `0x${'00'.repeat(32)}`,
-  hash: HASH,
-};
+const recoveryFixture = guardianRecoveryFixture(TARGET, GUARDIAN);
+const operation = recoveryFixture.operation;
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -49,21 +48,29 @@ describe('guardian recovery originating wallet context', () => {
     slip44: 60,
     sessionGeneration: 9,
   };
-  const prepare = () =>
-    controller.prepareSmartAccountGuardianStartRecovery({
+  const prepare = () => {
+    mockState.vault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim =
+      undefined;
+    return controller.prepareSmartAccountGuardianStartRecovery({
+      expectedClaimHash: null,
+      readyAt: 1,
+      replacement: recoveryFixture.replacement,
+      operation: null,
       account: TARGET,
       guardian: GUARDIAN,
       target: {
         auth: {
           module: 'ecdsa',
           validator: getConfiguredAuthenticatorAddress(57057, 'ecdsa'),
-          data: '0x',
+          data: recoveryFixture.target.auth.data,
         },
       },
       expectedContext,
     });
+  };
   const submit = () =>
     controller.submitPreparedSmartAccountGuardianStartRecovery({
+      claimHash: operation.hash,
       account: TARGET,
       guardian: GUARDIAN,
       approval: { guardian: GUARDIAN, signature: '0x1234' },
@@ -72,7 +79,10 @@ describe('guardian recovery originating wallet context', () => {
     });
   const finalize = () =>
     controller.finalizeSmartAccountGuardianRecovery({
-      ...operation,
+      claim:
+        mockState.vault.accounts.SmartAccount[1].smartAccount
+          .guardianRecoveryClaim,
+      expectedClaimHash: operation.hash,
       expectedContext,
     });
   beforeEach(() => {
@@ -86,6 +96,17 @@ describe('guardian recovery originating wallet context', () => {
           url: 'https://fixture.invalid',
         },
         accounts: {
+          SmartAccount: {
+            1: {
+              id: 1,
+              address: TARGET,
+              isSmartAccount: true,
+              smartAccount: {
+                chainId: 57057,
+                guardianRecoveryClaim: recoveryFixture.claim,
+              },
+            },
+          },
           HDAccount: { 0: { address: ACTIVE }, 2: { address: GUARDIAN } },
         },
         isBitcoinBased: false,
@@ -105,6 +126,7 @@ describe('guardian recovery originating wallet context', () => {
       }),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => generation,
+      getWalletStateGeneration: () => generation,
       signSmartAccountActionDigestInternal: sign,
       sendAndSaveEthTransaction: send,
     } as any);
@@ -118,6 +140,9 @@ describe('guardian recovery originating wallet context', () => {
     controller.findLocalSigningAccount = jest.fn(() => ({
       id: 2,
       type: KeyringAccountType.HDAccount,
+    }));
+    controller.getSmartAccountGuardianRecoveryStatus = jest.fn(async () => ({
+      recoveryTransactionHash: null,
     }));
     controller.getWalletGasPayerAccount = jest.fn(async () => ({
       id: 2,
@@ -175,6 +200,7 @@ describe('guardian recovery originating wallet context', () => {
       gate.promise
     );
     const pending = controller.submitPreparedSmartAccountGuardianStartRecovery({
+      claimHash: operation.hash,
       account: TARGET,
       guardian: GUARDIAN,
       approval,
@@ -210,7 +236,7 @@ describe('guardian recovery originating wallet context', () => {
     expect(() =>
       controller.assertSmartAccountExecutionContext(
         prepared.executionContextId,
-        HASH
+        operation.hash
       )
     ).not.toThrow();
     await expect(submit()).resolves.toMatchObject({
@@ -228,7 +254,7 @@ describe('guardian recovery originating wallet context', () => {
     const wrapped = getPaliErc7739PersonalSignHash({
       accountAddress: GUARDIAN,
       chainId: 57057,
-      hash: HASH,
+      hash: operation.hash,
     });
     expect(() =>
       controller.assertSmartAccountExecutionContext(
@@ -239,7 +265,7 @@ describe('guardian recovery originating wallet context', () => {
     expect(() =>
       controller.assertSmartAccountExecutionContext(
         prepared.executionContextId,
-        HASH
+        operation.hash
       )
     ).toThrow();
     mutate('session');
@@ -271,6 +297,7 @@ describe('guardian recovery originating wallet context', () => {
       mutate(axis);
       await expect(
         controller.submitPreparedSmartAccountGuardianStartRecovery({
+          claimHash: operation.hash,
           ...prepared,
           expectedContext,
         })

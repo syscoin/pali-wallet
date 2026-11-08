@@ -1,23 +1,14 @@
 jest.mock('state/store', () => ({
+  persistSmartAccountMetadata: jest.fn(async (id, prepare, check) => {
+    check();
+    const next = prepare();
+    check();
+    mockState.vault.accounts.SmartAccount[id].smartAccount = next;
+  }),
   __esModule: true,
   default: {
     dispatch: jest.fn(),
-    getState: () => ({
-      vault: {
-        activeNetwork: {
-          chainId: 57057,
-          kind: 'ethereum',
-          url: 'https://fixture.invalid',
-        },
-        activeAccount: { id: 1, type: 'HDAccount' },
-        accounts: {
-          HDAccount: {
-            1: { address: '0x4444444444444444444444444444444444444444' },
-          },
-        },
-      },
-      vaultGlobal: { activeSlip44: 60 },
-    }),
+    getState: () => mockState,
   },
 }));
 jest.mock('state/vault', () => ({ setAccountPropertyByIdAndType: jest.fn() }));
@@ -31,12 +22,13 @@ jest.mock('utils/smartAccount', () => ({
   aggregateContractCalls: jest.fn(),
 }));
 
+import { guardianRecoveryFixture } from 'tests/fixtures/guardianRecoveryClaim';
+
 import { Contract, getAddress } from 'utils/ethersV6Compat';
 import {
   aggregateContractCalls,
   buildSmartAccountGuardianRecoveryOperation,
   encodeEcdsaValidatorInitData,
-  ERC7579_MODE_SINGLE_DEFAULT,
   getConfiguredAuthenticatorAddress,
   getSmartAccountGuardianRecoveryHash,
   SmartAccountGuardianRecoveryOperation,
@@ -45,23 +37,15 @@ import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import SmartAccountController from './index';
 
+let mockState: any;
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const GUARDIAN = '0x4444444444444444444444444444444444444444';
 const MODULE = getAddress(
   getConfiguredAuthenticatorAddress(57057, 'guardian-recovery')
 );
-const makeOperation = (): SmartAccountGuardianRecoveryOperation => {
-  const intent = {
-    account: ACCOUNT,
-    chainId: 57057,
-    executionCalldata: '0x1234',
-    mode: ERC7579_MODE_SINGLE_DEFAULT,
-    policyEpoch: '7',
-    recoveryModule: MODULE,
-    salt: `0x${'00'.repeat(32)}`,
-  };
-  return { ...intent, hash: getSmartAccountGuardianRecoveryHash(intent) };
-};
+const claimFixture = () => guardianRecoveryFixture(ACCOUNT, GUARDIAN);
+const makeOperation = (): SmartAccountGuardianRecoveryOperation =>
+  claimFixture().operation;
 
 describe('guardian recovery policy freshness', () => {
   let controller: any;
@@ -72,6 +56,31 @@ describe('guardian recovery policy freshness', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockState = {
+      vault: {
+        activeNetwork: {
+          chainId: 57057,
+          kind: 'ethereum',
+          url: 'https://fixture.invalid',
+        },
+        activeAccount: { id: 1, type: 'HDAccount' },
+        accounts: {
+          HDAccount: { 1: { address: GUARDIAN } },
+          SmartAccount: {
+            0: {
+              id: 0,
+              address: ACCOUNT,
+              isSmartAccount: true,
+              smartAccount: {
+                chainId: 57057,
+                guardianRecoveryClaim: claimFixture().claim,
+              },
+            },
+          },
+        },
+      },
+      vaultGlobal: { activeSlip44: 60 },
+    };
     policyEpoch = jest.fn().mockResolvedValue('7');
     getRecoveryScheduleHash = jest.fn().mockResolvedValue(makeOperation().hash);
     (Contract as unknown as jest.Mock).mockImplementation(() => ({
@@ -87,12 +96,16 @@ describe('guardian recovery policy freshness', () => {
         read: async () => [],
       }),
       getEthereumTransaction: () => transaction,
+      getWalletStateGeneration: () => 1,
       sendAndSaveEthTransaction: send,
       signSmartAccountActionDigestInternal: sign,
     } as any);
     controller.getGuardianRecoveryStatusForAccount = jest
       .fn()
       .mockResolvedValue({ moduleAddress: MODULE });
+    controller.getSmartAccountGuardianRecoveryStatus = jest.fn(async () => ({
+      recoveryTransactionHash: null,
+    }));
     controller.getWalletGasPayerAccount = jest
       .fn()
       .mockResolvedValue({ id: 1, type: 'HDAccount', address: GUARDIAN });
@@ -165,6 +178,7 @@ describe('guardian recovery policy freshness', () => {
   ])('rejects invalid imported %s before submitting', async (_, change) => {
     await expect(
       controller.submitPreparedSmartAccountGuardianStartRecovery({
+        claimHash: makeOperation().hash,
         account: ACCOUNT,
         guardian: GUARDIAN,
         approval: { guardian: GUARDIAN, signature: '0x1234' },
@@ -210,6 +224,8 @@ describe('guardian recovery policy freshness', () => {
   });
 
   it('rechecks policy after target ownership proof and before guardian signing', async () => {
+    mockState.vault.accounts.SmartAccount[0].smartAccount.guardianRecoveryClaim =
+      undefined;
     controller.buildGuardianStartRecoveryOperation = jest
       .fn()
       .mockResolvedValue(makeOperation());
@@ -223,13 +239,17 @@ describe('guardian recovery policy freshness', () => {
       .mockReturnValue({ id: 1, type: 'HDAccount' });
     await expect(
       controller.prepareSmartAccountGuardianStartRecovery({
+        expectedClaimHash: null,
+        readyAt: 1,
+        replacement: claimFixture().replacement,
+        operation: null,
         account: ACCOUNT,
         guardian: GUARDIAN,
         target: {
           auth: {
             module: 'ecdsa',
             validator: getConfiguredAuthenticatorAddress(57057, 'ecdsa'),
-            data: '0x',
+            data: claimFixture().target.auth.data,
           },
         },
       })
@@ -237,16 +257,108 @@ describe('guardian recovery policy freshness', () => {
     expect(sign).not.toHaveBeenCalled();
   });
 
+  it('resumes only the supplied canonical operation without allocating another salt', async () => {
+    const target = {
+      auth: {
+        module: 'ecdsa' as const,
+        validator: getConfiguredAuthenticatorAddress(57057, 'ecdsa'),
+        data: encodeEcdsaValidatorInitData([GUARDIAN], 1),
+      },
+    };
+    const operation = buildSmartAccountGuardianRecoveryOperation({
+      account: ACCOUNT,
+      chainId: 57057,
+      policyEpoch: '7',
+      recoveryModule: MODULE,
+      salt: `0x${'77'.repeat(32)}`,
+      target,
+    });
+    getRecoveryScheduleHash.mockResolvedValue(operation.hash);
+    controller.proveRecoveryTargetOwnership = jest.fn(async () => undefined);
+    controller.findLocalSigningAccount = jest.fn(() => ({
+      id: 1,
+      type: 'HDAccount',
+    }));
+    controller.buildGuardianStartRecoveryOperation = jest.fn();
+    mockState.vault.accounts.SmartAccount[0].smartAccount.guardianRecoveryClaim =
+      undefined;
+    const prepared = await controller.prepareSmartAccountGuardianStartRecovery({
+      expectedClaimHash: null,
+      readyAt: 1,
+      replacement: claimFixture().replacement,
+      account: ACCOUNT,
+      guardian: GUARDIAN,
+      operation,
+      target,
+    });
+    expect(prepared.operation).toEqual(operation);
+    expect(
+      controller.buildGuardianStartRecoveryOperation
+    ).not.toHaveBeenCalled();
+    expect(sign).toHaveBeenCalledWith(
+      [GUARDIAN, operation.hash],
+      { id: 1, type: 'HDAccount' },
+      expect.any(String)
+    );
+  });
+
+  it.each(['account', 'chain', 'replacement', 'missing operation'])(
+    'rejects a resumed %s mismatch before ownership or guardian signing',
+    async (axis) => {
+      const target = {
+        auth: {
+          module: 'ecdsa' as const,
+          validator: getConfiguredAuthenticatorAddress(57057, 'ecdsa'),
+          data: encodeEcdsaValidatorInitData([GUARDIAN], 1),
+        },
+      };
+      const operation = buildSmartAccountGuardianRecoveryOperation({
+        account: axis === 'account' ? GUARDIAN : ACCOUNT,
+        chainId: axis === 'chain' ? 1 : 57057,
+        policyEpoch: '7',
+        recoveryModule: MODULE,
+        salt: `0x${'77'.repeat(32)}`,
+        target,
+      });
+      controller.proveRecoveryTargetOwnership = jest.fn();
+      await expect(
+        controller.prepareSmartAccountGuardianStartRecovery({
+          expectedClaimHash: null,
+          readyAt: 1,
+          replacement: claimFixture().replacement,
+          account: ACCOUNT,
+          guardian: GUARDIAN,
+          operation: axis === 'missing operation' ? undefined : operation,
+          target:
+            axis === 'replacement'
+              ? {
+                  auth: {
+                    ...target.auth,
+                    data: encodeEcdsaValidatorInitData([ACCOUNT], 1),
+                  },
+                }
+              : target,
+        })
+      ).rejects.toThrow();
+      expect(controller.proveRecoveryTargetOwnership).not.toHaveBeenCalled();
+      expect(sign).not.toHaveBeenCalled();
+    }
+  );
+
   it('rejects a stale persisted epoch before finalizing', async () => {
     policyEpoch.mockResolvedValue('8');
     await expect(
-      controller.finalizeSmartAccountGuardianRecovery(makeOperation())
+      controller.finalizeSmartAccountGuardianRecovery({
+        claim: claimFixture().claim,
+        expectedClaimHash: null,
+      })
     ).rejects.toThrow(GuardianRecoveryPolicyChangedError);
     expect(send).not.toHaveBeenCalled();
   });
 
   it('submits the unchanged schedule ABI after current policy validation', async () => {
     await controller.submitPreparedSmartAccountGuardianStartRecovery({
+      claimHash: makeOperation().hash,
       account: ACCOUNT,
       guardian: GUARDIAN,
       approval: { guardian: GUARDIAN, signature: '0x1234' },

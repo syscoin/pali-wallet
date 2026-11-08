@@ -69,6 +69,7 @@ import {
   assertSynchronousEvmFeeGuard,
 } from '../../../shared/evmFeeApproval';
 import {
+  observeEvmTransaction,
   readEvmRpcHash,
   readEvmRpcQuantity,
 } from '../../../shared/evmTransactionObservation';
@@ -100,6 +101,7 @@ import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
 import { readRetainedEoaCall } from '../../../wallet/dappCallsBundles.ts';
 import {
   createEvmSignedRecordLifecycle,
+  EVM_SIGNED_RECORD_LIMITS,
   EVM_SIGNED_RECORD_PREFIX,
 } from '../../../wallet/evmSignedRecords';
 import {
@@ -107,6 +109,7 @@ import {
   type EvmSignedRecords,
   type EvmSignedRetirementReadForChain,
 } from '../../../wallet/evmSignedRecords';
+import { observeRetainedEvmTransaction } from '../../../wallet/evmSignedReplay';
 import {
   assertImportedRecoveryAccount,
   importAccountWithRecovery,
@@ -340,7 +343,6 @@ import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
   SmartAccountPackedUserOperation,
-  SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
 import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
@@ -477,6 +479,12 @@ import {
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
+import type {
+  GuardianRecoveryClaim,
+  GuardianRecoveryReplacement,
+} from '../../../utils/smartAccount/guardianRecoveryClaim';
+import type { GuardianRecoveryIntent } from '../../../utils/smartAccount/guardianRecoveryIntent';
+import type { GuardianRecoveryTransactionRecords } from '../../../utils/smartAccount/guardianRecoveryLifecycle';
 import type { EoaCallsStopped } from '../../../wallet/evmCallsSequence.ts';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
 import type {
@@ -1085,6 +1093,8 @@ class MainController {
     this.cancellablePromises = new CancellablePromises();
     this.smartAccount = new SmartAccountController({
       getEthereumTransaction: () => this.ethereumTransaction,
+      captureGuardianRecoveryTransactions: (chainId, assertCurrent) =>
+        this.captureGuardianRecoveryTransactions(chainId, assertCurrent),
       captureSmartAccountPendingRecords: async (
         chainId,
         address,
@@ -1180,6 +1190,74 @@ class MainController {
   private retainedEvmRecords?: EvmSignedRecords;
   private clearingEvmActivity = false;
   private retainedEvmReplay?: EvmSignedReplay;
+
+  private async captureGuardianRecoveryTransactions(
+    chainId: number,
+    assertCurrent: () => void
+  ): Promise<GuardianRecoveryTransactionRecords> {
+    assertCurrent();
+    const keyring = this.getActiveKeyring();
+    const generation = this.walletSessionGeneration;
+    const revision = this.walletStateGeneration;
+    const provider = this.ethereumTransaction.web3Provider;
+    const records = this.getRetainedEvmRecords();
+    const guard = () => {
+      this.assertCurrentWalletSession(generation, keyring);
+      assertCurrent();
+      if (revision !== this.walletStateGeneration)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    const session = { keyring, assertCurrent: guard };
+    // Include former selections as well as today's default payer. No RPC
+    // is made while selecting retained bytes from the bounded local store.
+    const addresses = [
+      ...new Set(
+        Object.entries(store.getState().vault.accounts)
+          .filter(([type]) => type !== KeyringAccountType.SmartAccount)
+          .flatMap(([, accounts]) =>
+            Object.values(accounts).flatMap((account) => {
+              try {
+                return [getAddress(account.address) as string];
+              } catch {
+                return [];
+              }
+            })
+          )
+      ),
+    ];
+    return {
+      read: async () => {
+        const entries = [];
+        for (const address of addresses) {
+          guard();
+          const saved = await records.readRecent(
+            session,
+            String(chainId),
+            address,
+            EVM_SIGNED_RECORD_LIMITS.transactions
+          );
+          entries.push(...saved.entries);
+        }
+        guard();
+        return entries;
+      },
+      observe: (entry) =>
+        observeRetainedEvmTransaction(
+          records,
+          session,
+          String(chainId),
+          entry.from,
+          entry.hash,
+          (request) =>
+            observeEvmTransaction(
+              request,
+              (method, params) => provider.send(method, [...params]),
+              guard
+            ),
+          guard
+        ),
+    };
+  }
 
   private getRetainedEvmRecords(): EvmSignedRecords {
     this.retainedEvmRecords ??= createChromeEvmSignedRecords();
@@ -5618,6 +5696,9 @@ class MainController {
 
   public async getSmartAccountGuardianRecoveryStatus(params: {
     account: string;
+    guardian?: string;
+    guardianApproval?: 'ecdsa' | 'contract';
+    intent?: GuardianRecoveryIntent;
     knownOperationId?: string;
   }) {
     return this.smartAccount.getSmartAccountGuardianRecoveryStatus(params);
@@ -5667,8 +5748,11 @@ class MainController {
 
   public async submitSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedClaimHash: string | null;
     expectedContext?: IEvmTransactionContext;
     guardian: string;
+    readyAt: number;
+    replacement: GuardianRecoveryReplacement;
     target: PaliRecoveryTarget;
   }) {
     this.assertWalletReadyForSigning();
@@ -5677,8 +5761,12 @@ class MainController {
 
   public async prepareSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedClaimHash: string | null;
     expectedContext?: IEvmTransactionContext;
     guardian: string;
+    operation: SmartAccountGuardianRecoveryOperation | null;
+    readyAt: number;
+    replacement: GuardianRecoveryReplacement;
     target: PaliRecoveryTarget;
   }) {
     this.assertWalletReadyForSigning();
@@ -5688,6 +5776,7 @@ class MainController {
   public async submitPreparedSmartAccountGuardianStartRecovery(params: {
     account: string;
     approval: { guardian: string; signature: string };
+    claimHash: string;
     executionContextId?: string;
     expectedContext?: IEvmTransactionContext;
     gasPayer?: { address: string; id: number; type: KeyringAccountType };
@@ -5711,19 +5800,31 @@ class MainController {
     );
   }
 
-  public async finalizeSmartAccountGuardianRecovery(
-    params: SmartAccountGuardianRecoveryDigestContext & {
-      account: string;
-      chainId: number;
-      executionCalldata: string;
-      expectedContext?: IEvmTransactionContext;
-      mode: string;
-      recoveryModule?: string;
-      salt: string;
-    }
-  ) {
+  public async finalizeSmartAccountGuardianRecovery(params: {
+    claim: GuardianRecoveryClaim;
+    expectedClaimHash: string | null;
+    expectedContext?: IEvmTransactionContext;
+  }) {
     this.assertWalletReadyForSigning();
     return this.smartAccount.finalizeSmartAccountGuardianRecovery(params);
+  }
+
+  public async reconcileSmartAccountGuardianRecovery(params: {
+    account: string;
+    expectedClaimHash: string;
+    expectedContext: IEvmTransactionContext;
+  }) {
+    this.assertWalletReadyForSigning();
+    return this.smartAccount.reconcileSmartAccountGuardianRecovery(params);
+  }
+
+  public async retireSmartAccountGuardianRecovery(params: {
+    account: string;
+    expectedClaimHash: string;
+    expectedContext: IEvmTransactionContext;
+  }) {
+    this.assertWalletReadyForSigning();
+    return this.smartAccount.retireSmartAccountGuardianRecovery(params);
   }
 
   public async setAccount(
