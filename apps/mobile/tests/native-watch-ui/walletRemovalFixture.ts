@@ -48,7 +48,7 @@ const unavailable = async (): Promise<never> => { throw Error('Unplanned wallet-
 
 function storagePort(read: () => RecoveryStorageSnapshot, removal?: OpenWalletStorage['removal']): OpenWalletStorage {
   return {
-    keyringStorage: { get: unavailable, set: unavailable, deleteItem: unavailable, createManyIfAbsent: unavailable, compareAndSet: unavailable },
+    keyringStorage: { get: unavailable, set: unavailable, deleteItem: unavailable, createManyIfAbsent: unavailable, compareAndSet: unavailable, compareAndSetMany: unavailable },
     signedRecords: { read: unavailable, compareAndSet: unavailable },
     authGuard: { checkAllowed: unavailable, recordFailure: unavailable, recordSuccess: unavailable },
     recovery: { async readSnapshot() { return read(); }, async readIdentity() { return read().identity; }, bindIdentity: unavailable },
@@ -82,15 +82,19 @@ export function createWalletRemovalFixture(
   });
   const runtime: Pick<KeyringRuntime, 'authorizeWalletRemoval' | 'catalogue'> = {
     catalogue,
-    async authorizeWalletRemoval(password, guard) {
+    async authorizeWalletRemoval(password, guard, beforeSnapshot) {
       guard();
       audit.authorizations++;
       await gate('authorize');
       if (!passwordMatches(password)) throw new WalletRemovalError('INVALID_CREDENTIAL');
+      guard();
+      await beforeSnapshot(guard);
+      guard();
       return { snapshot: before, assertCurrent: guard };
     },
   };
   const flow = new NativeWalletRemoval({
+    beforeSnapshot: async () => undefined,
     owner,
     source: () => ({ runtime, storage }),
     async reopen(expected) {
@@ -107,5 +111,6 @@ export function createWalletRemovalFixture(
     cancel: flow.cancel.bind(flow),
     dispose: flow.dispose.bind(flow),
     hasVerifiedRemoval: flow.hasVerifiedRemoval.bind(flow),
+    requiresControllerReopen: flow.requiresControllerReopen.bind(flow),
   };
 }

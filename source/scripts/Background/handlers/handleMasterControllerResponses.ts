@@ -5,7 +5,10 @@ import {
   EVM_SIGNED_RECORD_NONCE_CONFLICT,
   consumeSignedEvmCapacityRefusal,
 } from '../../../wallet/evmSignedRecords';
-import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
+import {
+  captureStartedEoaSendCallsAttempt,
+  getStoredSendCallsBundle,
+} from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
 import {
   EVM_ASSET_REVIEW_REQUIRED,
@@ -26,6 +29,7 @@ import {
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requireMessageSignApproval } from './messageSignApproval';
 import { assertWalletControllerRoute } from './walletControllerRoutes';
+import type { EvmDappSubmission } from '../../../shared/evmDappReview';
 
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
@@ -325,6 +329,8 @@ export const handleMasterControllerResponses = (
                 ? route[1]
                 : undefined;
             const sendsEvm = walletMethod === 'sendAndSaveEthTransaction';
+            const stopsEoaCalls = walletMethod === 'recordStoppedEoaCalls';
+            const reviewsEvm = walletMethod === 'reviewDappEvmFee';
             const recommendsNonce =
               walletMethod === 'getRecommendedEvmNonce' ||
               walletMethod === 'getRecommendedNonceForBatch';
@@ -335,10 +341,12 @@ export const handleMasterControllerResponses = (
             const recordNonce = quoteApproval?.beginNonceRecommendation(
               params?.[0]
             );
-            const dappApproval = sendsEvm
-              ? captureDappEvmSubmission(sender)
-              : undefined;
-            if (dappApproval?.batch) {
+            const dappApproval =
+              sendsEvm || reviewsEvm || stopsEoaCalls
+                ? captureDappEvmSubmission(sender)
+                : undefined;
+            let submission: EvmDappSubmission = { kind: 'transaction' };
+            if (sendsEvm && dappApproval?.batch) {
               batchAttempt = true;
               const release = await captureStartedEoaSendCallsAttempt(
                 dappApproval.batch,
@@ -346,6 +354,23 @@ export const handleMasterControllerResponses = (
                 params?.[4]?.sendCallsSubmissionId
               );
               if (!release) throw transactionApprovalExpired();
+              const batch = dappApproval.batch;
+              const descriptor = await getStoredSendCallsBundle(
+                batch.host,
+                batch.id
+              );
+              if (!descriptor || descriptor.txHashes.length >= batch.callCount)
+                throw transactionApprovalExpired();
+              submission = {
+                kind: 'eoa-calls',
+                attempt: {
+                  origin: batch.host,
+                  bundleId: batch.id,
+                  reservationId: batch.reservationId,
+                  submissionId: params[4].sendCallsSubmissionId,
+                  failed: descriptor.txHashes.length + 1 < batch.callCount,
+                },
+              };
               retiredBatch = {
                 isSoleRetiredAttempt: dappApproval.isSoleRetiredAttempt,
                 release,
@@ -353,8 +378,22 @@ export const handleMasterControllerResponses = (
             }
             if (dappApproval) {
               await dappApproval.checkDocument();
-              nonceClaim = dappApproval.claimNonce(params?.[0]?.nonce);
-            } else if (sendsEvm && isExternalWalletUrl(sender.url))
+              if (sendsEvm) {
+                if (
+                  typeof params?.[4]?.genericReviewId !== 'string' ||
+                  !/^[A-Za-z0-9_-]{1,128}$/.test(params[4].genericReviewId)
+                )
+                  throw Object.assign(
+                    new Error('Reviewed transaction fees are required'),
+                    { transactionNotBroadcast: true }
+                  );
+                nonceClaim = dappApproval.claimNonce(params?.[0]?.nonce);
+              }
+            } else if (
+              reviewsEvm ||
+              stopsEoaCalls ||
+              (sendsEvm && isExternalWalletUrl(sender.url))
+            )
               throw transactionApprovalExpired();
             const smartMethod =
               walletMethod === 'submitSmartAccountExecution' ||
@@ -385,7 +424,30 @@ export const handleMasterControllerResponses = (
               throw transactionApprovalExpired();
 
             let argumentsForCall = params;
-            if (sendsEvm) {
+            if (stopsEoaCalls) {
+              const batch = dappApproval?.batch;
+              if (
+                !batch ||
+                params?.[0] !== batch.host ||
+                params?.[1] !== batch.id ||
+                params?.[2] !== batch.reservationId
+              )
+                throw transactionApprovalExpired();
+              await dappApproval.checkDocument();
+              argumentsForCall = [
+                ...params.slice(0, 5),
+                dappApproval.assertCurrent,
+              ];
+            } else if (reviewsEvm) {
+              if (!dappApproval) throw transactionApprovalExpired();
+              argumentsForCall = [
+                params?.[0],
+                dappApproval.context,
+                dappApproval.reviewNonce(params?.[0]?.nonce),
+                dappApproval.assertCurrent,
+                dappApproval.owner,
+              ];
+            } else if (sendsEvm) {
               argumentsForCall = [
                 params?.[0],
                 params?.[1],
@@ -396,7 +458,10 @@ export const handleMasterControllerResponses = (
                   // Background-only capabilities do not cross the UI boundary.
                   assertCurrentContext: undefined,
                   assertBeforeSign: undefined,
+                  genericDispatchId: undefined,
+                  submission,
                   authorizeDapp: dappApproval?.assertCurrent,
+                  dappApprovalOwner: dappApproval?.owner,
                   dappNonceApproval: nonceClaim?.approval,
                   // This callback is injected by the worker, never the renderer.
                   // It sees only the SDK's acknowledged transaction response.

@@ -1,3 +1,5 @@
+import type { GuardianRecoveryClaim } from '../utils/smartAccount/guardianRecoveryClaim';
+
 // Shared network types - mirror sysweb3 types without importing the package
 // This prevents frontend bundles from pulling in sysweb3 dependencies
 
@@ -87,6 +89,8 @@ export interface ISmartAccountMetadata {
     factoryAddress: string;
   };
   factoryAddress?: string;
+  guardianRecoveryClaim?: GuardianRecoveryClaim;
+  guardianRecoveryReplacement?: GuardianRecoveryClaim['replacement'];
   installedModules?: SmartAccountInstalledModule[];
   isDeployed: boolean;
 }

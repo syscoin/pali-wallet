@@ -6,6 +6,7 @@ import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import { custodyIdle, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
+import { NativeConnectionsController } from '../../src/connections/controller';
 import { SeedBackupFlow } from '../../src/custody/seedBackup';
 import { HdKeyExportFlow } from '../../src/custody/hdKeyExport';
 import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyringRuntime';
@@ -273,6 +274,19 @@ export function createNativeWalletControllers() {
     },
   };
   const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, assertActive: custodyIdle.captureGuard() });
+  const unavailableConnection = async (): Promise<never> => {
+    throw Error('Synthetic watch fixture has no WalletConnect transport');
+  };
+  const connections = new NativeConnectionsController({
+    source: authority,
+    activateAccount: (id, revision, guard) => authority.selectConnectionAccount(id, revision, guard),
+    preparePlatform: unavailableConnection,
+    openHost: unavailableConnection,
+    checkSite: unavailableConnection,
+    checkAddress: unavailableConnection,
+    projectId: '0'.repeat(32),
+    metadata: { name: 'Watch UI fixture', description: '', url: 'https://fixture.invalid', icons: [] },
+  });
   latestAuthority = authority;
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {
@@ -284,7 +298,7 @@ export function createNativeWalletControllers() {
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
       async transition() { throw Error('Fixture does not submit signatures'); } }; },
     assertUnlocked(guard) { guard(); },
-    async sign(_transaction, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
+    async sign(_transaction, authority) { audit.signs++; events.push('sign:start'); await signGate(); authority.assertCurrent(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
   const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fixtureFetch }) });
   latestTransfers = transfers;
@@ -350,7 +364,9 @@ export function createNativeWalletControllers() {
   const keyExport = new HdKeyExportFlow(authority, () => keyRuntime);
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
-  return { authority, keyExport, imports,
+  return { authority, connections: connections.view, keyExport, imports,
+    canManageGuardianPolicy: () => false,
+    canUseWalletAuthenticator: () => false,
     async resetActivity(check: () => void) {
       check();
       events.push('activity:reset:start');
@@ -386,7 +402,8 @@ export function createNativeWalletControllers() {
       const unused = async () => { throw Error('Synthetic route fixture does not sign'); };
       return { cancel() {}, async list() { return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
     } } : {}),
-    disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
+    disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose(),
+    async disposeConnections() { await connections.dispose(); events.push('connections:dispose'); } };
 }
 /** This adapter tests real UI ownership, not the already tested storage protocol. */
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {

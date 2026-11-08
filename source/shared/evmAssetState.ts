@@ -255,6 +255,7 @@ export async function simulateEvmAssetTransfer(
     envelope = snapshotEvmFeeEnvelope(input) as EvmAssetEnvelope;
     if (
       envelope.nonce === undefined ||
+      (envelope.type === 2 && envelope.accessList.length !== 0) ||
       !['automatic', 'manual'].includes(mode) ||
       envelope.from !== state.from ||
       envelope.to !== state.asset.contractAddress ||

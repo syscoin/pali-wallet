@@ -70,6 +70,7 @@ const updatedListeners = new Set<(...args: any[]) => void>();
 let persisted: Record<string, any>;
 let provider: InstanceType<typeof CustomJsonRpcProvider>;
 let receipt: any;
+let block: any;
 let requests: Array<{ method: string; params: unknown[] }>;
 const query = (host = HOST, method = 'wallet_getCallsStatus') =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [ID] } }, {
@@ -171,6 +172,20 @@ beforeEach(async () => {
     effectiveGasPrice: '0x1',
     type: '0x2',
   };
+  block = {
+    hash: BLOCK,
+    parentHash: `0x${'11'.repeat(32)}`,
+    number: '0x5',
+    timestamp: '0x1',
+    nonce: '0x0000000000000000',
+    difficulty: '0x0',
+    gasLimit: '0x1c9c380',
+    gasUsed: '0x5208',
+    miner: ADDRESS,
+    extraData: '0x',
+    baseFeePerGas: '0x1',
+    transactions: [HASH],
+  };
   // Only external HTTP is simulated. The installed provider performs actual
   // wire-ID validation and ethers v6 receipt conversion before public output.
   global.fetch = jest.fn(async (url, options) => {
@@ -183,6 +198,9 @@ beforeEach(async () => {
       else if (request.method === 'eth_getTransactionReceipt') {
         expect(request.params).toEqual([HASH]);
         result = receipt;
+      } else if (request.method === 'eth_getBlockByNumber') {
+        expect(request.params).toEqual(['0x5', false]);
+        result = block;
       } else throw new Error(`Unexpected external read ${request.method}`);
       return { jsonrpc: '2.0', id: request.id, result };
     };
@@ -201,6 +219,7 @@ beforeEach(async () => {
   mockController = {
     wallet: {
       isUnlocked: () => true,
+      recoverStoppedEoaCalls: jest.fn(async (_host, _id, guard) => guard()),
       getEvmProviderForChain: (chain: number) => {
         expect(chain).toBe(1);
         return provider;
@@ -215,7 +234,8 @@ beforeEach(async () => {
     HOST,
     ID,
     { chainId: 1, atomic: false, smartAccount: false },
-    'reservation'
+    'reservation',
+    ADDRESS
   );
   await recordSendCallsBundle(HOST, ID, {
     chainId: 1,
@@ -270,6 +290,9 @@ it('returns the recorded hash after the installed provider receipt conversion on
       },
     ],
   });
+  expect(
+    requests.filter((request) => request.method === 'eth_getBlockByNumber')
+  ).toHaveLength(1);
   expect(popupPromise).not.toHaveBeenCalled();
 });
 
@@ -278,7 +301,23 @@ it('preserves pending receipt status', async () => {
   const response = await query();
   expect(response.status).toBe(100);
   expect(response.receipts).toBeUndefined();
+  expect(
+    requests.some((request) => request.method === 'eth_getBlockByNumber')
+  ).toBe(false);
 });
+
+it.each([null, { hash: `0x${'9a'.repeat(32)}` }])(
+  'keeps unavailable or orphaned canonical headers unresolved through the installed provider',
+  async (header) => {
+    block = header ? { ...block, ...header } : null;
+    const response = await query();
+    expect(response.status).toBe(100);
+    expect(response.receipts).toBeUndefined();
+    expect(
+      requests.filter((request) => request.method === 'eth_getBlockByNumber')
+    ).toHaveLength(1);
+  }
+);
 
 it('preserves reverted receipt status and hash', async () => {
   receipt.status = '0x0';

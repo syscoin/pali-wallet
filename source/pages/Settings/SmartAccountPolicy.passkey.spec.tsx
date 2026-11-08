@@ -228,11 +228,16 @@ describe('SmartAccountPolicy passkey preservation', () => {
     });
     emitter = jest.fn(async ([, method]: string[], params: any[]) => {
       if (method === 'getWalletSessionGeneration') return 7;
-      if (method === 'assertSmartAccountExecutionContext') return;
+      if (
+        method === 'assertSmartAccountExecutionContext' ||
+        method === 'assertSmartAccountPreparedNonce'
+      )
+        return;
       if (method === 'getSmartAccountNativeGasStatus')
         return { hasNativeGas: true };
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: 1,
           actionHash: `0x${'77'.repeat(32)}`,
           executionContextId: 'policy-operation',
           smartAccount: metadata,

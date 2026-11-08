@@ -32,7 +32,9 @@ const simulatorContract = mode === 'ios-simulator-contract';
 let simulatorVersion;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
 const poolCi = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1' ? require('./public-pool-ci.cjs') : null;
+const proofCi = process.env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION === '1' ? require('./private-proof-ci.cjs') : null;
 if (poolCi && platform === 'ios' && !simulatorContract) throw Error('Public pool qualification requires an owned simulator');
+if (proofCi && platform === 'ios' && !simulatorContract) throw Error('Private proof qualification requires an owned simulator');
 const publicPoolBuild = poolCi?.readPublicPoolCiBuild(process.env, path.join(__dirname, '../.native-qualification.json'));
 if (httpEnabled && !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || ''))
   throw Error('Native HTTP qualification requires an immutable source revision');
@@ -60,6 +62,7 @@ const redact = (value) =>
     .split(PUBLIC_PASSWORD)
     .join('[public password redacted]');
 const run = createCommandRunner(spawnSync, redact);
+const privateProofBuild = proofCi?.readPrivateProofCiBuild(process.env, path.join(__dirname, '..'), run);
 const androidProcessRunning = () =>
   Boolean(
     run('adb', [
@@ -192,7 +195,7 @@ async function ios() {
   const reports = [];
   if (httpEnabled) {
     const { startHttpCompanion } = require('./http-companion.cjs');
-    httpCompanion = await startHttpCompanion({ platform, sourceRevision: process.env.GITHUB_SHA, run });
+    httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
   for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
@@ -245,6 +248,18 @@ async function ios() {
       };
       await stage('readiness-create', () => prepareIosSimulator(run, device, runtime.identifier,
         (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-readiness.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      if (privateProofBuild) {
+        const documents = path.join(container, 'Documents');
+        const privateProof = await stage('report-create', () => proofCi.runPrivateProofQualification({
+          platform, config: privateProofBuild, output,
+          launch: (uri) => launchIos(run, device, uri, (evidence) => fs.writeFileSync(
+            path.join(output, 'ios-private-proof-launch.json'), `${JSON.stringify(evidence, null, 2)}\n`)),
+          list: () => fs.existsSync(documents) ? fs.readdirSync(documents) : [],
+          read: (name) => readHttpSidecar(documents, name),
+        }));
+        return { platform, runtime: runtime.identifier, privateProof,
+          appExecutableSha256: hash(fs.readFileSync(path.join(artifact, executable))) };
+      }
       if (publicPoolBuild) {
         const publicPool = await stage('report-create', () => poolCi.runHostedPublicPool({
           platform, config: publicPoolBuild, output,
@@ -449,12 +464,33 @@ async function android() {
         throw Error('Required JNI library missing from qualification APK');
     }
   }
-  const publicPoolSerial = publicPoolBuild ? poolCi.androidPublicPoolSerial(run) : undefined;
+  const publicPoolSerial = publicPoolBuild || privateProofBuild
+    ? (poolCi || require('./public-pool-ci.cjs')).androidPublicPoolSerial(run) : undefined;
   const deviceRun = publicPoolSerial
     ? (command, args, ...options) => run(command, ['-s', publicPoolSerial, ...args], ...options)
     : run;
   prepareAndroidRoot(deviceRun, (evidence) => fs.writeFileSync(
     path.join(output, 'android-root-readiness.json'), `${JSON.stringify(evidence, null, 2)}\n`), publicPoolSerial);
+  if (privateProofBuild) {
+    deviceRun('adb', ['uninstall', PACKAGE], true);
+    try {
+      deviceRun('adb', ['install', artifact]);
+      const privateProof = await proofCi.runPrivateProofQualification({
+        platform, config: privateProofBuild, output,
+        launch: (uri) => deviceRun('adb', ['shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${uri}'`,
+          '-n', `${PACKAGE}/.MainActivity`]),
+        list: () => deviceRun('adb', ['shell',
+          `if [ ! -e '/data/user/0/${PACKAGE}/files' ]; then exit 0; fi; [ -d '/data/user/0/${PACKAGE}/files' ] && [ ! -L '/data/user/0/${PACKAGE}/files' ] && ls -1 '/data/user/0/${PACKAGE}/files'`,
+        ]).split(/\r?\n/).filter(Boolean),
+        read: (name) => readAndroidHttpSidecar(deviceRun, name),
+      });
+      return { platform, apkSha256: hash(fs.readFileSync(artifact)), nativeLibraries, privateProof,
+        osVersion: deviceRun('adb', ['shell', 'getprop', 'ro.build.version.release']) };
+    } finally {
+      deviceRun('adb', ['shell', 'am', 'force-stop', PACKAGE], true);
+      deviceRun('adb', ['uninstall', PACKAGE], true);
+    }
+  }
   if (publicPoolSerial) {
     const exists = (name) => deviceRun('adb', ['shell', 'test', '-f', `/data/user/0/${PACKAGE}/files/${name}`], true, 5000) !== null;
     deviceRun('adb', ['uninstall', PACKAGE], true);
@@ -479,7 +515,7 @@ async function android() {
   }
   if (httpEnabled) {
     const { startHttpCompanion } = require('./http-companion.cjs');
-    httpCompanion = await startHttpCompanion({ platform, sourceRevision: process.env.GITHUB_SHA, run });
+    httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
   const reports = [];
   for (const scenario of ['import', 'generate']) {
@@ -798,6 +834,14 @@ async function android() {
       await httpCompanion?.close().catch(() => undefined);
     }
     else await httpCompanion?.close();
+  }
+  if (privateProofBuild) {
+    fs.writeFileSync(path.join(output, `${platform}-private-proof.json`), `${JSON.stringify({
+      version: 1, status: 'passed', mode: 'private-proof', qualification: 'limited', custodyQualified: false,
+      sourceRevision: process.env.GITHUB_SHA, runnerImage: process.env.ImageVersion || null, ...report,
+    }, null, 2)}\n`, { flag: 'wx' });
+    console.log(`${platform}: Native fixed-vector proof and cancellation scenario passed`);
+    return;
   }
   if (publicPoolBuild) {
     fs.writeFileSync(path.join(output, `${platform}-public-pool.json`), `${JSON.stringify({

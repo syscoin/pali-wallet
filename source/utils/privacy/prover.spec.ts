@@ -138,6 +138,17 @@ it('rejects a delayed reply after wallet-session ownership changes', async () =>
   answer();
   await rejected;
 });
+it('preserves a scheduled-refresh reason supplied by the host AbortSignal', async () => {
+  const abort = new AbortController();
+  const job = runPrivacyProof(fixture.input, {
+    assertCurrent: () => undefined,
+    signal: abort.signal,
+  });
+  const rejected = expect(job).rejects.toThrow('privacy_verification_pending');
+  await flush();
+  abort.abort(new Error('privacy_verification_pending'));
+  await rejected;
+});
 it.each(['handshake', 'active'])(
   'preserves local scheduled-refresh pending while %s is in progress',
   async (phase) => {

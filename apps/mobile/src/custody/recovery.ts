@@ -3,11 +3,15 @@ import { isNativeNewPassword } from './password.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type RecoveryWritePlan } from '../storage/types.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
+import { readSentrySlot, sentrySlotNetwork } from '../storage/sentryKeyDomain.ts';
 import { inspectRecoveryInventory } from './recoveryInventory.ts';
 import { recoveryVerificationRecords,
   replaceRecoveredAccountRecords,
-  WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
+  sentryRootPublicIdentity,
+  WALLET_CATALOGUE_KEY,
+  type NativeAccountRecord } from './walletCatalogue.ts';
 import { stageAccountRecovery } from '../../../../source/wallet/accountRecovery.ts';
+import { createSentryKeyVault, sentryKeyVaultStorageKey } from '../../../../source/wallet/sentryKeyVault.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 
 type Sdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
@@ -21,7 +25,7 @@ export type RecoveryProof = Readonly<{ [proofBrand]: true }>;
 type Ready = { proof: RecoveryProof; storage: OpenWalletStorage; plan: RecoveryWritePlan; before: RecoveryStorageSnapshot; after: RecoveryStorageSnapshot; generation: number; deadline: number; guard: () => void };
 type Dependencies = Readonly<{
   owner: Pick<NativeCustodyAuthority, 'getSnapshot' | 'retireForRecovery'>;
-  retireControllers(): void;
+  retireControllers(): Promise<void>;
   ensureCryptoReady(): Promise<void>;
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<Sdk>;
@@ -43,6 +47,39 @@ const translated = (error: unknown): RecoveryError => error instanceof RecoveryE
             ].includes(error.message)
           ? 'INVALID_SAVED_DATA'
           : 'UNAVAILABLE');
+
+// Prove that the phrase decrypts each envelope and matches its authenticated
+// summary. Public-key derivation remains the import executor's responsibility.
+async function authenticateSentryBuckets(
+  records: RecoveryStorageSnapshot['records'],
+  catalogue: NativeAccountRecord,
+  phrase: string,
+  check: () => void
+): Promise<void> {
+  for (const { key, value } of records) {
+    const network = sentrySlotNetwork(key);
+    if (!network) continue;
+    check();
+    const bucket = readSentrySlot(value, network);
+    const storageKey = sentryKeyVaultStorageKey(bucket.vaultId, network);
+    const vault = createSentryKeyVault({
+      crypto: () => globalThis.crypto,
+      async read(requested) {
+        check();
+        if (requested !== storageKey) return fail('INVALID_SAVED_DATA');
+        return bucket;
+      },
+      async write() { return fail('INVALID_SAVED_DATA'); },
+    });
+    const vaultId = await vault.getSentryVaultId(sentryRootPublicIdentity(catalogue, network));
+    check();
+    if (vaultId !== bucket.vaultId) return fail('INVALID_SAVED_DATA');
+    for (const { summary } of bucket.keys) {
+      await vault.loadSentryKey({ vaultId, network, id: summary.id, seed: phrase, assertCurrent: check });
+      check();
+    }
+  }
+}
 
 /** Backend only. A proof contains no data and is accepted only by its creating instance. */
 export class NativeRecoveryCoordinator {
@@ -115,7 +152,7 @@ export class NativeRecoveryCoordinator {
         if (!this.retired) {
           const owner = this.dependencies.owner.getSnapshot();
           if (owner.phase !== 'locked' || owner.revision !== ownerRevision) return fail('CANCELLED');
-          this.dependencies.retireControllers();
+          await this.dependencies.retireControllers();
           const fingerprint = await this.dependencies.owner.retireForRecovery();
           this.retired = true;
           if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) return fail('UNAVAILABLE');
@@ -161,6 +198,8 @@ export class NativeRecoveryCoordinator {
               if (before.identity!.root && JSON.stringify(before.identity!.root) !== JSON.stringify(actual)) return fail('INVALID_SAVED_DATA');
           },
             validateRetained: async ({ keyring, profileId }) => {
+              try { await authenticateSentryBuckets(before.records, records, normalized, check); }
+              catch { check(); return fail('INVALID_SAVED_DATA'); }
               const utxo = before.records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY);
               if (utxo) {
                 const captured = utxo.value;

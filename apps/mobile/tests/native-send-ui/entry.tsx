@@ -1,3 +1,13 @@
+import { NativeGuardianRecoveryFixture } from './nativeGuardianRecoveryFixture';
+import { NativeGuardianPolicyFixture } from './nativeGuardianPolicyFixture';
+import { NativeEoaBatchFixture } from './nativeEoaBatchFixture';
+import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
+import { NativeSentryFixture } from './nativeSentryFixture';
+import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
+import { NativeNoteImportFixture } from './nativeNoteImportFixture';
+import { NativePrivateDepositFixture, NativeNoteStatusFixture } from './nativePrivateDepositFixture';
+import { NativePrivateWithdrawalFixture } from './nativePrivateWithdrawalFixture';
+import { NativeSmartDappFixture } from './nativeSmartDappFixture';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
@@ -8,8 +18,14 @@ import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
 import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
+import { NativeConnectionsFixture } from './nativeConnectionsFixture';
+import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
+import { NativeLedgerFixture } from './nativeLedgerFixture';
+import { NativeTrezorFixture } from './nativeTrezorFixture';
+import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
+import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
+import { NativeSmartAccountOperationFixture } from './nativeSmartAccountDeploymentFixture';
 import { registerRootComponent } from 'expo';
-import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   getNativeSendContext,
@@ -34,9 +50,7 @@ import type {
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
-// RN Web sets fontScale to 1 and rejects Dimensions.set in a browser. This
-// fixture-only hook sets the dimensions before the actual component mounts.
-if (route.get('font-scale') === '1.6') Dimensions.get('window').fontScale = 1.6;
+const ledgerConnection = route.has('ledger-send') && !route.has('utxo-send') ? createLedgerConnectionFixture(sender) : undefined;
 const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
 const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
 const collectibleStandard = route.get('collectible');
@@ -80,7 +94,12 @@ const controller: NativeTransferView = {
     clearTimeout(expiry);
     publish(idle());
   },
-  async recover() {},
+  async recover() {
+    if (route.has('ledger-replay')) {
+      publishReview(recipient, '1000000000000000');
+      publish({ ...snapshot, review: { ...snapshot.review!, retry: true } });
+    }
+  },
   async loadMorePredecessors() {},
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
@@ -212,6 +231,7 @@ declare global {
   interface Window {
     __nativeSendFixture: {
       replaceReview(): Promise<void>;
+      expireReview(): void;
       refreshReview(): void;
       reviewId(): string | null;
       confirmations(): readonly { id: string }[];
@@ -223,6 +243,7 @@ declare global {
   }
 }
 window.__nativeSendFixture = {
+  expireReview: () => { clearTimeout(expiry); publish(idle()); },
   replaceReview: () => controller.prepare(recipient, '0.002'),
   refreshReview: () =>
     publish({
@@ -367,7 +388,41 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('faucet') ? (
+      {new URLSearchParams(window.location.search).has('guardian-recovery') ? (
+        <NativeGuardianRecoveryFixture />
+      ) : new URLSearchParams(window.location.search).has('guardian-policy') ? (
+        <NativeGuardianPolicyFixture />
+      ) : new URLSearchParams(window.location.search).has('eoa-batch') ? (
+        <NativeEoaBatchFixture />
+      ) : new URLSearchParams(window.location.search).has('smart-batch') ? (
+        <NativeSmartBatchFixture />
+      ) : new URLSearchParams(window.location.search).has('sentry') ? (
+        <NativeSentryFixture />
+      ) : new URLSearchParams(window.location.search).has('smart-dapp') ? (
+        <NativeSmartDappFixture />
+      ) : new URLSearchParams(window.location.search).has('note-import') ? (
+        <NativeNoteImportFixture />
+      ) : new URLSearchParams(window.location.search).has('private-withdrawal') ? (
+        <NativePrivateWithdrawalFixture />
+      ) : new URLSearchParams(window.location.search).has('private-deposit') ? (
+        <NativePrivateDepositFixture />
+      ) : new URLSearchParams(window.location.search).has('note-status') ? (
+        <NativeNoteStatusFixture />
+      ) : new URLSearchParams(window.location.search).has('smart-currency') ? (
+        <NativeSmartCurrencyFixture />
+      ) : new URLSearchParams(window.location.search).has('smart-deployment') ? (
+        <NativeSmartAccountOperationFixture />
+      ) : new URLSearchParams(window.location.search).has('trezor') ? (
+        <NativeTrezorFixture />
+      ) : new URLSearchParams(window.location.search).has('ledger') ? (
+        <NativeLedgerFixture />
+      ) : new URLSearchParams(window.location.search).has('transaction-review') ? (
+        <NativeTransactionReviewFixture />
+      ) : new URLSearchParams(window.location.search).has('message-review') ? (
+        <NativeMessageReviewFixture />
+      ) : new URLSearchParams(window.location.search).has('connections') ? (
+        <NativeConnectionsFixture />
+      ) : new URLSearchParams(window.location.search).has('faucet') ? (
         <NativeFaucetFixture />
       ) : new URLSearchParams(window.location.search).has('utxo-send') ? (
         <NativeUtxoSendFixture />
@@ -395,7 +450,10 @@ function Fixture() {
         )
       ) : (
         <NativeSend
+          account={{ address: sender, network: sendContext.networkId, revision: 1 }}
+          savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
+          ledgerConnection={ledgerConnection}
           context={sendContext}
           replacement={replacement}
           recipientPicker={recipientPicker}

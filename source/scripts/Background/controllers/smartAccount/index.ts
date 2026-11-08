@@ -1,5 +1,12 @@
 import { v4 as uuidv4 } from 'uuid';
 
+import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeGuard';
+import {
+  guardianPolicyObservationIdentity,
+  inspectGuardianRemovals,
+  type GuardianRemovalInspection,
+} from '../../../../wallet/guardianRemoval';
 import {
   IEvmTransactionResponse,
   ISysTransaction,
@@ -14,12 +21,12 @@ import {
   KeyringAccountType as PaliKeyringAccountType,
   SmartAccountCustomModuleRecord,
 } from 'types/network';
+import { AsyncMutex } from 'utils/asyncMutex';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
-import { hexConcat } from 'utils/ethersV6Compat';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -33,51 +40,30 @@ import {
 } from 'utils/slhDsa';
 import {
   aggregateContractCalls,
-  AggregateCallRequest,
   AggregateCallResult,
   clearMulticall3AddressCache,
-  buildHydratedSLHDSAAuthenticator,
   buildP256WebAuthnAuthenticator,
-  buildHydratedP256WebAuthnAuthenticator,
   buildSLHDSAAuthenticator,
-  buildSmartAccountGuardianRecoveryOperation,
-  createOwnedPaliSmartAccountFactory,
   getGuardianRecoveryDigestContext,
-  getSmartAccountGuardianRecoveryHash,
   getPaliErc7739PersonalSignHash,
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
-  buildSmartAccountUserOperation,
-  encodeCompositeValidatorInitData,
   encodeEcdsaValidatorInitData,
-  encodeGuardianRecoveryInitData,
-  encodeSmartAccountGasLimits,
   CustomValidatorPreflightResult,
-  estimateSmartAccountUserOpGas,
   getConfiguredAuthenticatorAddress,
   preflightCustomValidatorInstall,
   getPaliSmartAccountFactoryAddress,
   getPaliSmartAccountDescriptor,
   getSmartAccountGasUnitsReserve,
-  getSmartAccountUserOpGasFees,
-  getSmartAccountUserOpHash,
-  getSmartAccountUserOpRequiredPrefund,
-  getSmartAccountValidatorProfile,
-  getZkSysGasTankAddress,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
   PaliSmartAccountAuthenticatorSetup,
-  SMART_ACCOUNT_ZERO_GAS_FEES,
   ERC7579_MODULE_TYPE_VALIDATOR,
   ERC7579_MODULE_TYPE_EXECUTOR,
   PALI_ENTRYPOINT_V09_ABI,
   getPaliEntryPointAddress,
-  paliCompositeValidatorInterface,
-  paliEcdsaValidatorInterface,
   paliGuardianRecoveryModuleInterface,
-  paliP256WebAuthnValidatorInterface,
-  paliSlhDsaValidatorInterface,
   paliSmartAccountInterface,
   SmartAccountExecution,
   SmartAccountPackedUserOperation,
@@ -86,20 +72,85 @@ import {
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
-import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
+import { deriveDefaultSmartAccount } from 'utils/smartAccount/bootstrap';
 import {
   PALI_CREATE2_DEPLOYER_ADDRESS,
   getPaliInfrastructureContracts,
   type PaliInfrastructureContractId,
 } from 'utils/smartAccount/deployment';
-import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
+import { readSmartAccountDeploymentState } from 'utils/smartAccount/deploymentState';
+import {
+  hasUsableSmartAccountAuthMetadata,
+  readSmartAccountValidatorMetadata,
+} from 'utils/smartAccount/executionMetadata';
+import { projectGuardianPolicyModule } from 'utils/smartAccount/guardianPolicy';
+import {
+  captureGuardianRecoveryClaim,
+  guardianRecoveryReplacementApplied,
+  sameGuardianRecoveryClaim,
+  type GuardianRecoveryClaim,
+  type GuardianRecoveryReplacement,
+} from 'utils/smartAccount/guardianRecoveryClaim';
+import {
+  buildGuardianRecoveryStart,
+  buildGuardianRecoveryScheduleTransaction,
+  buildGuardianRecoveryFinalizeTransaction,
+  captureGuardianRecoveryTarget,
+  captureGuardianRecoveryOperation,
+  validateGuardianRecoveryOperation,
+} from 'utils/smartAccount/guardianRecoveryCommands';
+import {
+  captureGuardianRecoveryIntent,
+  type GuardianRecoveryIntent,
+} from 'utils/smartAccount/guardianRecoveryIntent';
+import {
+  guardianRecoveryIntentResolved,
+  pendingGuardianRecoveryTransaction,
+  type GuardianRecoveryTransactionRecords,
+} from 'utils/smartAccount/guardianRecoveryLifecycle';
+import {
+  getGuardianRecoveryOperationId,
+  readGuardianRecoveryObservation,
+  type GuardianRecoveryObservation,
+} from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 import {
+  assertSmartAccountInfrastructureReady,
   projectSmartAccountInfrastructureObservation,
   SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
   type SmartAccountInfrastructureObservation,
 } from 'utils/smartAccount/infrastructureObservation';
-import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
+import { assertSmartAccountNativeSpendability } from 'utils/smartAccount/nativeSpendability';
+import {
+  hasGuardianRecoveryNotReadyRevert,
+  hasGuardianRecoveryAlreadyScheduledRevert,
+  hasGuardianRecoveryExpiredRevert,
+  hasNativeGasFailure,
+} from 'utils/smartAccount/operationErrors';
+import {
+  getSmartAccountGasPayerCandidates,
+  selectSmartAccountGasPayer,
+  readSmartAccountNativeBalances,
+  canUseSmartAccountGasTank,
+  assertSmartAccountGasTankCredit,
+  ensureSmartAccountDeploymentPrefund,
+} from 'utils/smartAccount/payerPolicy';
+import {
+  createSmartAccountPendingState,
+  type SmartAccountPendingState,
+} from 'utils/smartAccount/pendingState';
+import {
+  getExplicitSmartAccountGasPrice,
+  prepareSmartAccountOperation,
+  requireSmartAccountAuthenticator,
+  SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
+} from 'utils/smartAccount/prepareOperation';
+import { signSmartAccountEcdsaOperation } from 'utils/smartAccount/signOperation';
+import {
+  submitSmartAccountOperation,
+  type SmartAccountSubmitParams,
+} from 'utils/smartAccount/submitOperation';
+import { assertSmartAccountTargetsAllowed } from 'utils/smartAccount/targetPolicy';
 
 import {
   infrastructurePendingIdentity,
@@ -108,9 +159,19 @@ import {
   writeInfrastructureJournal,
   clearInfrastructureJournal,
 } from './infrastructureJournal';
+import type { SmartAccountPendingRecords } from '../../../../wallet/evmSignedRecords';
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
 export interface ISmartAccountControllerDependencies {
+  captureGuardianRecoveryTransactions(
+    chainId: number,
+    assertCurrent: () => void
+  ): Promise<GuardianRecoveryTransactionRecords>;
+  captureSmartAccountPendingRecords(
+    chainId: number,
+    address: string,
+    assertCurrent: () => void
+  ): Promise<SmartAccountPendingRecords>;
   getEthereumTransaction: () => any;
   getLatestUpdateForCurrentAccount: (
     isPolling?: boolean,
@@ -131,8 +192,9 @@ export interface ISmartAccountControllerDependencies {
     targetAccount?: { id: number; type: PaliKeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
-      assertBeforeSign?: () => void;
+      assertBeforeSign: () => void;
       assertCurrentContext?: () => void;
+      assertPendingState?: () => Promise<void>;
       clearNavigation?: boolean;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
@@ -191,23 +253,17 @@ type SmartAccountInfrastructureStatus =
   };
 
 const GUARDIAN_RECOVERY_NOT_READY_ERROR = 'PALI_GUARDIAN_RECOVERY_NOT_READY';
-const GUARDIAN_RECOVERY_NOT_READY_SELECTOR = '0x201b632a';
+
 // RecoveryAlreadyScheduled(bytes32) on the guardian recovery module.
 const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR =
   'PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED';
-const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR = '0x684d1639';
+
 // RecoveryExpired(bytes32) on the guardian recovery module.
 const GUARDIAN_RECOVERY_EXPIRED_ERROR = 'PALI_GUARDIAN_RECOVERY_EXPIRED';
-const GUARDIAN_RECOVERY_EXPIRED_SELECTOR = '0x80ba2533';
+
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
-const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
-const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
-const AA21_PREFUND_REASON_HEX =
-  '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
 const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
-const INVALID_LEGACY_GAS_PRICE_ERROR = 'Invalid smart-account legacy gas price';
-const ZKSYS_GAS_TANK_REQUIRED_ERROR = 'PALI_ZKSYS_GAS_TANK_REQUIRED';
 const INFRASTRUCTURE_TIMEOUT_ERROR =
   'Infrastructure RPC timed out. Refresh status before retrying.';
 const INFRASTRUCTURE_CODE_ERROR =
@@ -219,14 +275,8 @@ const RECOVERY_MANAGEMENT_ADDRESS_ERROR =
 const DEPLOYMENT_NONCE_ERROR = 'Invalid deployment nonce response';
 const GUARDIAN_POLICY_ERROR =
   'Guardian policy editing is handled by module templates';
-const GUARDIAN_MODULE_ERROR = 'Guardian recovery module is not configured';
-const ZKSYS_GAS_TANK_ABI = [
-  'function creditOf(address account) view returns (uint256)',
-] as const;
+
 const toCompatBigNumber = (value: any): BigNumber => BigNumber.from(value);
-// Conservative cover for outer transaction overhead not represented by the
-// inner UserOp gas limits.
-const SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER = 50_000;
 
 const randomBytes32Hex = () => {
   const bytes = new Uint8Array(32);
@@ -236,149 +286,8 @@ const randomBytes32Hex = () => {
   ).join('')}`;
 };
 
-const stringifyError = (error: unknown): string => {
-  if (!error || typeof error !== 'object') {
-    return '';
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return '';
-  }
-};
-
-const getErrorText = (error: unknown, depth = 0): string => {
-  if (!error || depth > 4) {
-    return '';
-  }
-  if (typeof error === 'string') {
-    try {
-      return [error, getErrorText(JSON.parse(error), depth + 1)]
-        .filter(Boolean)
-        .join(' ');
-    } catch {
-      return error;
-    }
-  }
-  if (typeof error !== 'object') {
-    return String(error);
-  }
-
-  const errorRecord = error as Record<string, unknown>;
-  const directParts = [
-    errorRecord.message,
-    errorRecord.reason,
-    errorRecord.code,
-    errorRecord.data,
-    errorRecord.error,
-    errorRecord.body,
-    errorRecord.response,
-    errorRecord.info,
-    errorRecord.transaction,
-    errorRecord.tx,
-  ];
-  const ownPropertyParts = Object.getOwnPropertyNames(error)
-    .filter((key) => key !== 'stack')
-    .map((key) => errorRecord[key]);
-  const parts = [
-    ...directParts,
-    ...ownPropertyParts,
-    stringifyError(error),
-  ].flatMap((value) => (value ? [getErrorText(value, depth + 1)] : []));
-
-  return parts.filter(Boolean).join(' ');
-};
-
-const hasGuardianRecoveryNotReadyRevert = (error: unknown): boolean =>
-  getErrorText(error).includes(GUARDIAN_RECOVERY_NOT_READY_SELECTOR);
-
-const hasGuardianRecoveryAlreadyScheduledRevert = (error: unknown): boolean =>
-  getErrorText(error).includes(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR);
-
-const hasGuardianRecoveryExpiredRevert = (error: unknown): boolean =>
-  getErrorText(error).includes(GUARDIAN_RECOVERY_EXPIRED_SELECTOR);
-
-const getEntryPointFailedOpReason = (error: unknown): string => {
-  const message = getErrorText(error);
-  const match = message.match(
-    new RegExp(`${ENTRYPOINT_FAILED_OP_SELECTOR}[0-9a-fA-F]*`)
-  );
-  if (!match) {
-    return '';
-  }
-
-  try {
-    const [, reason] = defaultAbiCoder.decode(
-      ['uint256', 'string'],
-      `0x${match[0].slice(10)}`
-    );
-    return String(reason);
-  } catch {
-    return '';
-  }
-};
-
-const hasNativeGasFailure = (error: unknown): boolean => {
-  const message = getErrorText(error);
-  const failedOpReason = getEntryPointFailedOpReason(error);
-  const normalized = message.toLowerCase();
-  const normalizedFailedOpReason = failedOpReason.toLowerCase();
-
-  return (
-    message.includes('OutOfNativeResourcesDuringValidation') ||
-    normalized.includes(AA21_PREFUND_REASON_HEX) ||
-    normalizedFailedOpReason.includes('aa21') ||
-    normalizedFailedOpReason.includes("didn't pay prefund") ||
-    normalizedFailedOpReason.includes('did not pay prefund') ||
-    normalizedFailedOpReason.includes('prefund') ||
-    normalized.includes('lackoffund') ||
-    normalized.includes('lack of fund') ||
-    normalized.includes('insufficient funds') ||
-    normalized.includes('insufficient balance') ||
-    (normalized.includes('maxfee') && normalized.includes('fund')) ||
-    normalized.includes('not enough native') ||
-    normalized.includes('gas required exceeds allowance')
-  );
-};
-
-const hasSmartAccountSignatureFailure = (error: unknown): boolean => {
-  const message = getErrorText(error);
-  const failedOpReason = getEntryPointFailedOpReason(error);
-
-  return failedOpReason.includes('AA24') || message.includes('AA24');
-};
-
-const getExplicitSmartAccountGasPrice = (fees?: {
-  gasPrice?: string;
-  maxFeePerGas?: string;
-  maxPriorityFeePerGas?: string;
-}): string | undefined => {
-  if (fees?.gasPrice === null || fees?.gasPrice === undefined) return undefined;
-  try {
-    if (
-      (fees.maxFeePerGas !== null && fees.maxFeePerGas !== undefined) ||
-      (fees.maxPriorityFeePerGas !== null &&
-        fees.maxPriorityFeePerGas !== undefined)
-    )
-      throw new Error('Legacy gasPrice cannot be combined with EIP-1559 fees');
-    const price = BigNumber.from(fees.gasPrice);
-    if (price.lt(0) || price.gte(BigNumber.from(2).pow(128)))
-      throw new Error(INVALID_LEGACY_GAS_PRICE_ERROR);
-    return price.toString();
-  } catch (error) {
-    throw Object.assign(
-      error instanceof Error
-        ? error
-        : new Error(INVALID_LEGACY_GAS_PRICE_ERROR),
-      {
-        transactionNotBroadcast: true,
-      }
-    );
-  }
-};
-
 class SmartAccountController {
+  private readonly guardianRecoverySubmissions = new Map<string, AsyncMutex>();
   private readonly executionContexts = new Map<
     string,
     {
@@ -386,6 +295,7 @@ class SmartAccountController {
       actionHash: string;
       expiresAt: number;
       gasPrice?: string;
+      pending?: SmartAccountPendingState;
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
       userOperation?: SmartAccountPackedUserOperation;
     }
@@ -454,16 +364,7 @@ class SmartAccountController {
       assertCurrent
     );
     assertCurrent();
-    if (!status.create2Deployer.deployed) {
-      throw new Error(
-        'This network does not expose the canonical CREATE2 deployer required for deterministic Pali smart account deployment.'
-      );
-    }
-    if (!status.ready) {
-      throw new Error(
-        'Pali smart account infrastructure is not deployed on this network. Deploy it first from Wallet Advanced settings, then try again.'
-      );
-    }
+    assertSmartAccountInfrastructureReady(status);
     return true;
   }
 
@@ -565,6 +466,36 @@ class SmartAccountController {
     }
   }
 
+  public async assertSmartAccountPreparedNonce(
+    executionContextId: string
+  ): Promise<void> {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    if (context.userOperation) {
+      if (!context.pending) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      await context.pending.assertNonce(context.userOperation);
+      await assertSmartAccountNativeSpendability({
+        provider: context.pending.provider,
+        chainId: context.snapshot.chainId,
+        userOperation: context.userOperation,
+        assertCurrent: () =>
+          this.assertSmartAccountExecutionContext(executionContextId),
+      });
+      this.assertSmartAccountExecutionContext(executionContextId);
+    }
+  }
+
+  public getPreparedCallsIdentity(executionContextId: string) {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    if (!context.userOperation)
+      throw new Error('Prepared smart account operation is required');
+    return captureSmartAccountCallsIdentity(
+      context.userOperation,
+      context.snapshot.chainId
+    );
+  }
+
   private recoveryApprovalContext(expected?: IEvmTransactionContext) {
     const snapshot = this.infrastructureContext();
     const assertCurrent = () => {
@@ -594,7 +525,7 @@ class SmartAccountController {
     this.executionContexts.set(id, {
       accountId: snapshot.account.id,
       actionHash,
-      expiresAt: Date.now() + 15 * 60 * 1000,
+      expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       snapshot,
     });
     return id;
@@ -987,6 +918,7 @@ class SmartAccountController {
             {
               clearNavigation: false,
               persist: true,
+              assertBeforeSign: () => this.assertInfrastructureContext(context),
               assertCurrentContext: () =>
                 this.assertInfrastructureContext(context),
               onBroadcast: async (broadcast) => {
@@ -1224,57 +1156,15 @@ class SmartAccountController {
     managementOwner: string,
     assertCurrent: () => void
   ) {
-    const { chainId, provider } = context;
-    assertCurrent();
-    const configuredNetwork = await provider.getNetwork();
-    assertCurrent();
-    if (configuredNetwork.chainId !== BigInt(chainId))
-      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    await provider.verifyConfiguredChainId(true);
-    assertCurrent();
-    await this.assertInfrastructureSupported(context, assertCurrent);
-    assertCurrent();
-    const descriptor = this.deriveSmartAccountDescriptor(
+    return deriveDefaultSmartAccount({
       accountIndex,
-      chainId,
-      managementOwner
-    );
-    const authenticator = this.buildAuthenticatorForCreation(chainId, {
-      config: { owners: [managementOwner], threshold: 1 },
-      id: 'ecdsa',
+      chainId: context.chainId,
+      managementAddress: managementOwner,
+      provider: context.provider,
+      assertInfrastructureSupported: () =>
+        this.assertInfrastructureSupported(context, assertCurrent),
+      assertCurrent,
     });
-    const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
-    const smartAccount = await toPaliSmartAccount({
-      auth: authenticator.auth,
-      chainId,
-      deploySalt: descriptor.deploymentSalt,
-      factoryAddress,
-      factory: createOwnedPaliSmartAccountFactory(
-        chainId,
-        provider,
-        assertCurrent
-      ),
-    });
-    assertCurrent();
-    const metadata: ISmartAccountMetadata = {
-      ...authenticator.metadata,
-      auth: authenticator.auth,
-      availableModules: getAvailablePaliModules(chainId),
-      chainId,
-      contractVersion: PALI_SMART_ACCOUNT_VERSION,
-      deploymentAuth: {
-        data: authenticator.auth.data,
-        validator: authenticator.auth.validator,
-      },
-      deploymentSalt: descriptor.deploymentSalt,
-      descriptor,
-      factoryAddress,
-      isDeployed: false,
-    };
-    return {
-      address: smartAccount.address,
-      metadata: this.getDurableSmartAccountMetadata(metadata),
-    };
   }
 
   public async registerSmartAccountOnChain(
@@ -1288,7 +1178,8 @@ class SmartAccountController {
     try {
       const context = this.infrastructureContext();
       const assertCurrent = () => {
-        assertApprovalCurrent?.();
+        if (assertApprovalCurrent !== undefined)
+          assertSynchronousEvmFeeGuard(assertApprovalCurrent);
         try {
           this.assertInfrastructureContext(context);
           if (params.expectedContext) {
@@ -1316,15 +1207,18 @@ class SmartAccountController {
           'Smart account descriptor is required for deterministic deployment'
         );
       }
-      requireSmartAccountAddressIdentity(active.account, context.chainId);
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
-      const code = await provider.getCode(accountAddress);
-      assertCurrent();
-      if (code === '0x') {
+      const deploymentState = await readSmartAccountDeploymentState({
+        account: active.account,
+        chainId: context.chainId,
+        provider,
+        assertCurrent,
+      });
+      if (deploymentState === 'undeployed') {
         if (!metadata.auth) {
           throw new Error(
             'Smart account initial authenticator metadata is required for deployment'
@@ -1513,18 +1407,6 @@ class SmartAccountController {
         return exhaustive;
       }
     }
-  }
-
-  private getDurableSmartAccountMetadata(
-    metadata: ISmartAccountMetadata
-  ): ISmartAccountMetadata {
-    if (!metadata.isDeployed) {
-      return metadata;
-    }
-    const durableMetadata = { ...metadata };
-    delete durableMetadata.auth;
-    delete durableMetadata.installedModules;
-    return durableMetadata;
   }
 
   private deriveSmartAccountDescriptor(
@@ -1727,7 +1609,7 @@ class SmartAccountController {
       verificationGasLimit: 0,
     };
     const hasZkSysGasTankGas = primaryGasPayer
-      ? await this.canUseZkSysGasTankForSmartAccountTx({
+      ? await this.canUseZkSysGasTankForSmartAccountTx(provider, {
           chainId: active.metadata.chainId,
           gasEstimate: statusGasEstimate,
           gasPayerAddress: primaryGasPayer.address,
@@ -1784,7 +1666,7 @@ class SmartAccountController {
       if (options.expectedContext)
         this.assertExpectedExecutionContext(options.expectedContext, accountId);
     };
-    await this.assertSmartAccountExecutionTargetsAllowed(params);
+    await this.assertSmartAccountExecutionTargetsAllowed(params, assertContext);
     assertContext();
 
     const useCachedMetadata = options.useCachedMetadata !== false;
@@ -1799,7 +1681,7 @@ class SmartAccountController {
     if (
       useCachedMetadata &&
       active.metadata.isDeployed &&
-      !this.hasUsableSmartAccountAuthMetadata(active.metadata)
+      !hasUsableSmartAccountAuthMetadata(active.metadata)
     ) {
       active = Number.isInteger(accountId)
         ? await this.getHydratedSmartAccountById(accountId as number)
@@ -1810,174 +1692,68 @@ class SmartAccountController {
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
       });
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
+    const rawProvider = this.ethereumTransaction?.web3Provider;
+    if (!rawProvider) {
       throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
+    const pendingRecords = await this.deps.captureSmartAccountPendingRecords(
+      snapshot.chainId,
+      active.account.address,
+      assertContext
+    );
+    const pending = createSmartAccountPendingState(
+      rawProvider,
+      pendingRecords,
+      snapshot.chainId,
+      active.account.address,
+      assertContext
+    );
+    const provider = pending.provider;
     const useDeployedCachedMetadata =
       useCachedMetadata &&
       active.metadata.isDeployed &&
-      this.hasUsableSmartAccountAuthMetadata(active.metadata);
+      hasUsableSmartAccountAuthMetadata(active.metadata);
     if (!useDeployedCachedMetadata) {
       await this.assertInfrastructureSupported(snapshot, assertContext);
       assertContext();
     }
-    const accountContract = new Contract(
-      active.account.address,
-      paliSmartAccountInterface,
-      provider
-    );
-    const auth = this.requireAuthenticator(active.metadata);
-    const deploySalt =
-      active.metadata.descriptor?.deploymentSalt ||
-      active.metadata.deploymentSalt;
-    if (!deploySalt) {
-      throw new Error('Smart account deployment salt is required');
-    }
-    const smartAccount = await toPaliSmartAccount({
-      address: active.account.address,
-      auth,
-      chainId: active.metadata.chainId,
-      deploySalt,
-      factoryAddress:
-        active.metadata.factoryAddress ||
-        getPaliSmartAccountFactoryAddress(active.metadata.chainId),
+    const prepared = await prepareSmartAccountOperation({
+      account: { ...active.account, smartAccount: active.metadata },
+      chainId: snapshot.chainId,
+      executions: params,
+      feeOverrides,
+      knownDeployed: useDeployedCachedMetadata,
       provider,
+      pending,
+      assertCurrent: assertContext,
+      selectGasPayer: async (gasEstimate, maxFeePerGas) => {
+        const primaryGasPayer = this.getWalletGasPayerCandidates(
+          active.metadata.deploymentGasPayer
+        )[0];
+        const useGasTank = primaryGasPayer
+          ? await this.canUseZkSysGasTankForSmartAccountTx(provider, {
+              chainId: active.metadata.chainId,
+              gasEstimate,
+              gasPayerAddress: primaryGasPayer.address,
+              maxFeePerGas,
+            })
+          : false;
+        assertContext();
+        const gasPayer = useGasTank
+          ? {
+              address: primaryGasPayer.address,
+              id: primaryGasPayer.id,
+              type: primaryGasPayer.type,
+            }
+          : await this.getWalletGasPayerAccount(
+              provider,
+              active.metadata.deploymentGasPayer
+            );
+        assertContext();
+        return { gasPayer, useGasTank };
+      },
     });
-    assertContext();
-    const prepared = smartAccount.encodeExecutions(params);
-    const validator = auth.validator;
-    const nonceKey = smartAccount.getNonceKey();
-    const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
-    const entryPoint = new Contract(
-      entryPointAddress,
-      PALI_ENTRYPOINT_V09_ABI,
-      provider
-    );
-    const code = useDeployedCachedMetadata
-      ? 'cached-deployed'
-      : await provider.getCode(active.account.address);
-    assertContext();
-    const deployment =
-      code === '0x'
-        ? requireSmartAccountAddressIdentity(active.account, snapshot.chainId)
-        : null;
-    if (code !== '0x' && !useDeployedCachedMetadata) {
-      await this.assertSmartAccountExecutionModeSupported(
-        accountContract,
-        prepared.mode
-      );
-      assertContext();
-    }
-    const nonce = (
-      await entryPoint.getNonce(active.account.address, nonceKey)
-    ).toString();
-    assertContext();
-    const callData = smartAccount.encodeCalls(params);
-    const feeData = await provider.getFeeData();
-    assertContext();
-    // A recommendation is not a minimum. Only a known protocol base fee can
-    // reject the selected legacy price here; the outer preflight remains authoritative.
-    if (
-      legacyGasPrice !== undefined &&
-      feeData.lastBaseFeePerGas !== null &&
-      feeData.lastBaseFeePerGas !== undefined &&
-      BigNumber.from(legacyGasPrice).lt(feeData.lastBaseFeePerGas)
-    ) {
-      throw Object.assign(
-        new Error(
-          'Legacy gas price is below the current base fee. Refresh the app quote.'
-        ),
-        {
-          transactionNotBroadcast: true,
-        }
-      );
-    }
-    // Estimate tight limits: callGasLimit via eth_estimateGas with a margin
-    // under the v0.9 unused-gas penalty threshold; verificationGasLimit from
-    // the per-validator table (limits are inside the signed hash).
-    const validatorProfile = getSmartAccountValidatorProfile(active.metadata);
-    const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
-      callData,
-      childValidatorCount: validatorProfile.childValidatorCount,
-      entryPointAddress,
-      isDeployed: code !== '0x',
-      sender: active.account.address,
-      slhDsaChildCount: validatorProfile.slhDsaChildCount,
-      validatorKind: validatorProfile.validatorKind,
-    });
-    assertContext();
-    const hasOuterEip1559FeeParams =
-      legacyGasPrice === undefined &&
-      ((feeOverrides.maxFeePerGas !== null &&
-        feeOverrides.maxFeePerGas !== undefined &&
-        feeOverrides.maxPriorityFeePerGas !== null &&
-        feeOverrides.maxPriorityFeePerGas !== undefined) ||
-        (feeData.maxFeePerGas !== null &&
-          feeData.maxFeePerGas !== undefined &&
-          feeData.maxPriorityFeePerGas !== null &&
-          feeData.maxPriorityFeePerGas !== undefined));
-    const maxFeePerGas = BigNumber.from(
-      legacyGasPrice ??
-        feeOverrides.maxFeePerGas ??
-        feeData.maxFeePerGas ??
-        feeData.gasPrice ??
-        0
-    );
-    const maxPriorityFeePerGas = BigNumber.from(
-      legacyGasPrice ??
-        feeOverrides.maxPriorityFeePerGas ??
-        feeData.maxPriorityFeePerGas ??
-        0
-    );
-    const primaryGasPayer = this.getWalletGasPayerCandidates(
-      active.metadata.deploymentGasPayer
-    )[0];
-    const primaryGasPayerUsesTank = primaryGasPayer
-      ? await this.canUseZkSysGasTankForSmartAccountTx({
-          chainId: active.metadata.chainId,
-          gasEstimate,
-          gasPayerAddress: primaryGasPayer.address,
-          maxFeePerGas,
-        })
-      : false;
-    assertContext();
-    const gasPayer = primaryGasPayerUsesTank
-      ? {
-          address: primaryGasPayer.address,
-          id: primaryGasPayer.id,
-          type: primaryGasPayer.type,
-        }
-      : await this.getWalletGasPayerAccount(active.metadata.deploymentGasPayer);
-    assertContext();
-    const useZkSysGasTank = primaryGasPayerUsesTank;
-    const gasFees = getSmartAccountUserOpGasFees({
-      maxFeePerGas: maxFeePerGas.toString(),
-      maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
-      useZkSysGasTank,
-    });
-    const unsignedUserOperation = buildSmartAccountUserOperation({
-      accountGasLimits: encodeSmartAccountGasLimits({
-        callGasLimit: gasEstimate.callGasLimit,
-        verificationGasLimit: gasEstimate.verificationGasLimit,
-      }),
-      callData,
-      gasFees,
-      initCode: deployment
-        ? hexConcat([deployment.factory, deployment.factoryData])
-        : '0x',
-      nonce,
-      preVerificationGas: String(gasEstimate.preVerificationGas),
-      sender: active.account.address,
-    });
-    // In verified tank mode, the outer transaction pays at the bootloader
-    // layer, so the inner UserOp must not reimburse the submitter in SYS.
-    const userOperation = unsignedUserOperation;
-    const actionHash = getSmartAccountUserOpHash(
-      userOperation,
-      active.metadata.chainId
-    );
-
+    const { actionHash, userOperation } = prepared;
     assertContext();
     for (const [id, context] of this.executionContexts)
       if (context.expiresAt <= Date.now()) this.executionContexts.delete(id);
@@ -1987,38 +1763,18 @@ class SmartAccountController {
     this.executionContexts.set(executionContextId, {
       accountId: active.account.id,
       actionHash,
-      expiresAt: Date.now() + 15 * 60 * 1000,
+      expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       gasPrice: legacyGasPrice,
       snapshot,
-      userOperation: { ...userOperation },
+      userOperation: Object.freeze({ ...userOperation }),
+      pending,
     });
-    const executions = prepared.executions.map((execution) => ({
-      ...execution,
-      nonce,
-    }));
-
-    return {
-      actionHash,
-      executionContextId,
-      execution: executions[0],
-      executionCalldata: prepared.executionCalldata,
-      executions,
-      gasPayer,
-      gasPrice: legacyGasPrice,
-      maxFeePerGas:
-        legacyGasPrice === undefined ? maxFeePerGas.toString() : undefined,
-      maxPriorityFeePerGas: hasOuterEip1559FeeParams
-        ? maxPriorityFeePerGas.toString()
-        : undefined,
-      mode: prepared.mode,
-      smartAccount: active.metadata,
-      userOperation,
-      validator,
-    };
+    return { ...prepared, accountId: active.account.id, executionContextId };
   }
 
   private async assertSmartAccountExecutionTargetsAllowed(
-    executions: Array<{ data?: string; target: string }>
+    executions: Array<{ data?: string; target: string }>,
+    assertCurrent: () => void
   ): Promise<void> {
     const provider = this.ethereumTransaction?.web3Provider;
     for (const execution of executions) {
@@ -2028,471 +1784,95 @@ class SmartAccountController {
         web3Provider: provider,
       });
 
-      for (const target of targets) {
-        const blacklistResult = await blacklistService.checkAddress(
-          target.address
-        );
-        if (
-          blacklistResult.isBlacklisted &&
-          (blacklistResult.severity === 'critical' ||
-            blacklistResult.severity === 'high')
-        ) {
-          const fallbackReason =
-            target.type === 'approval'
-              ? 'Spender address is blacklisted'
-              : target.type === 'token-recipient'
-              ? 'Recipient address is blacklisted'
-              : 'Target address is blacklisted';
-          throw new Error(
-            `Smart account execution blocked: ${
-              blacklistResult.reason || fallbackReason
-            }. Severity: ${blacklistResult.severity}`
-          );
-        }
-      }
-    }
-  }
-
-  private hasUsableSmartAccountAuthMetadata(
-    metadata: ISmartAccountMetadata
-  ): boolean {
-    const auth = metadata.auth;
-    if (!auth?.validator) {
-      return false;
-    }
-
-    return Boolean(
-      metadata.installedModules?.some(
-        (module) =>
-          module.type === 'validator' &&
-          module.address.toLowerCase() === auth.validator.toLowerCase()
-      )
-    );
-  }
-
-  private async assertSmartAccountExecutionModeSupported(
-    accountContract: Contract,
-    mode: string
-  ): Promise<void> {
-    const supported = await accountContract.supportsExecutionMode(mode);
-    if (!supported) {
-      throw new Error(
-        'This smart account does not support the requested execution mode'
+      await assertSmartAccountTargetsAllowed(
+        targets,
+        (address) => blacklistService.checkAddress(address),
+        assertCurrent
       );
     }
   }
 
   public async submitSmartAccountExecution(
-    params: {
-      accountId?: number;
-      executionCalldata?: string;
-      executionContextId?: string;
-      executions?: SmartAccountExecution[];
-      expectedContext?: IEvmTransactionContext;
-      gasPayer?: {
-        address: string;
-        id: number;
-        type: PaliKeyringAccountType;
-      };
-      gasPrice?: string;
-      maxFeePerGas?: string;
-      maxPriorityFeePerGas?: string;
-      mode?: string;
-      signature: string;
-      skipRapidPolling?: boolean;
-      userOperation?: SmartAccountPackedUserOperation;
-      validator?: string;
-      waitForConfirmation?: boolean;
-    },
+    params: SmartAccountSubmitParams,
     assertApprovalCurrent?: () => void
   ) {
-    // The call may first fund a counterfactual account, then submit handleOps.
-    // Only failures before either sender is entered are definitely read-only.
-    let financialSubmissionAttempted = false;
-    let prefundAcknowledged = false;
-    let handleOpsStarted = false;
-    let acknowledgedHandleOpsHash: string | undefined;
-    try {
-      const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
-      const assertContext = () => {
-        if (params.expectedContext) {
-          this.assertExpectedExecutionContext(
-            params.expectedContext,
-            params.accountId
-          );
-          if (!params.executionContextId)
-            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-              transactionNotBroadcast: true,
-            });
-        }
-        if (params.executionContextId) {
-          this.assertSmartAccountExecutionContext(params.executionContextId);
-          const context = this.executionContexts.get(
-            params.executionContextId
-          )!;
-          if (
-            (params.accountId !== undefined &&
-              params.accountId !== context.accountId) ||
-            !params.userOperation ||
-            !context.userOperation ||
-            params.gasPrice !== context.gasPrice ||
-            Object.entries(context.userOperation).some(
-              ([key, value]) => params.userOperation[key] !== value
-            )
-          )
-            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-              transactionNotBroadcast: true,
-            });
-        }
-      };
-      const assertCurrent = () => {
-        assertApprovalCurrent?.();
-        assertContext();
-      };
-      assertCurrent();
-      const active = Number.isInteger(params.accountId)
-        ? this.getSmartAccountById(params.accountId as number)
-        : this.getActiveSmartAccount();
-      if (!params.userOperation) {
-        throw new Error(
-          'Signed ERC-4337 UserOperation is required for smart account execution'
-        );
-      }
-      if (
-        getAddress(params.userOperation.sender) !==
-        getAddress(active.account.address)
-      ) {
-        throw new Error(
-          'Signed UserOperation does not match the active smart account'
-        );
-      }
-      const initCode = params.userOperation.initCode;
-      if (initCode && initCode !== '0x') {
-        if (!params.executionContextId)
-          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-        const deployment = requireSmartAccountAddressIdentity(
-          active.account,
-          store.getState().vault.activeNetwork.chainId
-        );
-        if (
-          initCode.toLowerCase() !==
-          hexConcat([deployment.factory, deployment.factoryData]).toLowerCase()
-        )
-          throw new Error(
-            'Signed UserOperation deployment does not match the smart account'
-          );
-      }
-      const gasPayer = await this.getWalletGasPayerAccount(
-        params.gasPayer || active.metadata.deploymentGasPayer,
-        undefined,
-        { requirePreferred: Boolean(params.gasPayer) }
-      );
-      assertCurrent();
-      const entryPointAddress = getPaliEntryPointAddress(
-        active.metadata.chainId
-      );
-      const entryPoint = new Contract(
-        entryPointAddress,
-        PALI_ENTRYPOINT_V09_ABI
-      );
-      const signedUserOperation: SmartAccountPackedUserOperation = {
-        ...params.userOperation,
-        signature: params.signature,
-      };
-      const callData = entryPoint.interface.encodeFunctionData('handleOps', [
-        [signedUserOperation],
-        gasPayer.address,
-      ]);
-      const recipientAccounts = this.getLocalNativeExecutionRecipients(
-        params.executions || []
-      );
-
-      const requiredPrefund =
-        getSmartAccountUserOpRequiredPrefund(signedUserOperation);
-      const usesZkSysGasTank =
-        Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
-        signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
-      let outerGasLimit: BigNumber | undefined;
-      if (usesZkSysGasTank) {
-        outerGasLimit = await this.assertZkSysGasTankCoversTransaction({
-          chainId: active.metadata.chainId,
-          gasPayerAddress: gasPayer.address,
-          gasPrice: legacyGasPrice,
-          maxFeePerGas: legacyGasPrice ?? params.maxFeePerGas,
-          transaction: {
-            data: callData,
-            to: entryPointAddress,
-            value: '0x0',
-          },
-        });
-        assertCurrent();
-      }
-      // Self-funded first-UserOp deployment: an op carrying initCode validates
-      // before anything executes, so the counterfactual account must already
-      // cover the EntryPoint prefund.
-      if (
-        signedUserOperation.initCode &&
-        signedUserOperation.initCode !== '0x' &&
-        !requiredPrefund.isZero()
-      ) {
-        await this.ensureSmartAccountDeploymentPrefund(
-          active.account.address,
-          signedUserOperation,
-          entryPointAddress,
-          gasPayer,
-          active.metadata.chainId,
-          {
-            assertBeforeSign: assertApprovalCurrent,
-            assertCurrentContext: assertContext,
-            onSubmissionAttempt() {
-              financialSubmissionAttempted = true;
-            },
-            onAcknowledged() {
-              prefundAcknowledged = true;
-            },
-          }
-        );
-        assertCurrent();
-      }
-      // A supplied legacy price must reach the actual handleOps preflight;
-      // estimation must not validate a different fee model from publication.
-      // Existing EIP-1559 estimation stays fee-less. Tank mode reuses its exact
-      // preflight, and the resolved gas limit avoids a second signer estimate.
-      if (!outerGasLimit) {
-        const provider = this.ethereumTransaction?.web3Provider;
-        if (!provider) {
-          throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-        }
-        outerGasLimit = toCompatBigNumber(
-          await provider.estimateGas({
-            data: callData,
-            from: gasPayer.address,
-            ...(legacyGasPrice !== undefined
-              ? { gasPrice: legacyGasPrice }
-              : {}),
-            to: entryPointAddress,
-            value: '0x0',
-          })
-        );
-        assertCurrent();
-      }
-      assertCurrent();
-      financialSubmissionAttempted = true;
-      handleOpsStarted = true;
-      const response = await this.deps.sendAndSaveEthTransaction(
-        {
-          chainId: active.metadata.chainId,
-          data: callData,
-          from: gasPayer.address,
-          gasLimit: outerGasLimit.toString(),
-          ...(legacyGasPrice !== undefined
-            ? { gasPrice: legacyGasPrice }
-            : params.maxFeePerGas && params.maxPriorityFeePerGas
-            ? {
-                maxFeePerGas: params.maxFeePerGas,
-                maxPriorityFeePerGas: params.maxPriorityFeePerGas,
-              }
-            : {}),
-          to: entryPointAddress,
-          value: '0x0',
+    const captured = this.infrastructureContext();
+    const assertCurrent = () => {
+      this.assertInfrastructureContext(captured);
+      this.assertSmartAccountExecutionContext(params.executionContextId);
+      if (assertApprovalCurrent !== undefined)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    };
+    assertCurrent();
+    const pending = this.executionContexts.get(
+      params.executionContextId
+    )?.pending;
+    if (!pending)
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
+    return submitSmartAccountOperation(
+      params,
+      {
+        chainId: store.getState().vault.activeNetwork.chainId,
+        provider: pending.provider,
+        pending,
+        assertExpectedExecutionContext: (context, id) =>
+          this.assertExpectedExecutionContext(context, id),
+        assertSmartAccountExecutionContext: (id) =>
+          this.assertSmartAccountExecutionContext(id),
+        getExecutionContext: (id) => {
+          const context = this.executionContexts.get(id);
+          return context?.userOperation
+            ? { ...context, userOperation: context.userOperation }
+            : undefined;
         },
-        legacyGasPrice !== undefined,
-        { id: gasPayer.id, type: gasPayer.type },
-        {
-          smartAccountExecution: true,
-          smartAccountExecutionFrom: active.account.address,
-          // SYSCOIN: The outer handleOps recipient is not the affected token.
-          balanceRefreshTokenAddresses: (params.executions || []).map(
-            (execution) => execution.target
+        getSmartAccountById: (id) => this.getSmartAccountById(id),
+        getWalletGasPayerAccount: (preferred, transaction, options) =>
+          this.getWalletGasPayerAccount(
+            pending.provider,
+            preferred,
+            transaction,
+            options
           ),
-          balanceRefreshNativeAddresses: [
-            gasPayer.address,
-            ...(!requiredPrefund.isZero() ||
-            (params.executions || []).some(
-              (execution) => !BigNumber.from(execution.value || '0').isZero()
-            )
-              ? [active.account.address]
-              : []),
-            ...(params.executions || [])
-              .filter(
-                (execution) => !BigNumber.from(execution.value || '0').isZero()
-              )
-              .map((execution) => execution.target),
-          ],
-        },
-        {
-          assertBeforeSign: assertApprovalCurrent,
-          assertCurrentContext: assertContext,
-          clearNavigation: true,
-          async onBroadcast(broadcast) {
-            acknowledgedHandleOpsHash = broadcast.hash;
-          },
-          persist: true,
-          skipRapidPolling: params.skipRapidPolling,
-          transactionAccounts: [
-            {
-              id: active.account.id,
-              type: PaliKeyringAccountType.SmartAccount,
-            },
-            ...recipientAccounts,
-          ],
-        }
-      );
-      acknowledgedHandleOpsHash = response.hash;
-      // Executions may install/uninstall modules or rotate the active
-      // validator; drop the cached hydrated metadata for this account.
-      this.invalidateHydratedMetadata(active.account.address);
-      if (params.waitForConfirmation) {
-        await response.wait();
-      }
-      return response;
-    } catch (error) {
-      const normalizedMessage = hasNativeGasFailure(error)
-        ? NATIVE_GAS_REQUIRED_ERROR
-        : hasSmartAccountSignatureFailure(error)
-        ? SMART_ACCOUNT_SIGNATURE_ERROR
-        : undefined;
-      const acknowledged =
-        typeof acknowledgedHandleOpsHash === 'string' &&
-        /^0x[0-9a-fA-F]{64}$/.test(acknowledgedHandleOpsHash);
-      const reportedHash = handleOpsStarted
-        ? error?.transactionHash
-        : undefined;
-      const transactionHash = acknowledged
-        ? acknowledgedHandleOpsHash
-        : typeof reportedHash === 'string' &&
-          /^0x[0-9a-fA-F]{64}$/.test(reportedHash)
-        ? reportedHash
-        : undefined;
-      const transactionNotBroadcast =
-        acknowledged || prefundAcknowledged
-          ? false
-          : financialSubmissionAttempted
-          ? error?.transactionNotBroadcast
-          : true;
-      if (normalizedMessage) {
-        const normalizedError = new Error(normalizedMessage);
-        // Keep trusted submission facts when replacing provider text with a
-        // UI sentinel. Losing false could permit an unsafe retry; losing true
-        // would strand a definite rejection as an unknown submission.
-        if (typeof transactionNotBroadcast === 'boolean')
-          Object.assign(normalizedError, {
-            transactionNotBroadcast,
-          });
-        if (transactionHash)
-          Object.assign(normalizedError, { transactionHash });
-        throw normalizedError;
-      }
-      if (!financialSubmissionAttempted) {
-        // Do not mutate a frozen provider error or forward arbitrary fields.
-        // After a prefund/send attempt, retain its existing outcome instead.
-        const preflightError = new Error(
-          typeof error?.message === 'string'
-            ? error.message
-            : 'Smart account preflight failed'
-        );
-        if (typeof error?.code === 'number')
-          Object.assign(preflightError, { code: error.code });
-        throw Object.assign(preflightError, { transactionNotBroadcast: true });
-      }
-      if (
-        (acknowledged && transactionHash !== error?.transactionHash) ||
-        ((acknowledged || prefundAcknowledged) &&
-          error?.transactionNotBroadcast !== false) ||
-        (!handleOpsStarted && error?.transactionHash !== undefined)
-      ) {
-        // A wait failure does not undo an acknowledged POST. The funding hash
-        // can never stand in for the separate handleOps transaction.
-        const failure = new Error(
-          error?.message || 'Smart account execution did not complete',
-          { cause: error }
-        );
-        if (typeof transactionNotBroadcast === 'boolean')
-          Object.assign(failure, { transactionNotBroadcast });
-        if (transactionHash) Object.assign(failure, { transactionHash });
-        throw failure;
-      }
-      throw error;
-    }
-  }
-
-  private async canUseZkSysGasTankForSmartAccountTx({
-    chainId,
-    gasEstimate,
-    gasPayerAddress,
-    maxFeePerGas,
-  }: {
-    chainId: number;
-    gasEstimate: SmartAccountUserOpGasEstimate;
-    gasPayerAddress: string;
-    maxFeePerGas: BigNumber;
-  }): Promise<boolean> {
-    if (maxFeePerGas.isZero()) {
-      return false;
-    }
-    const tankAddress = getZkSysGasTankAddress(chainId);
-    if (!tankAddress) {
-      return false;
-    }
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      return false;
-    }
-    try {
-      const tank = new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider);
-      const credit = toCompatBigNumber(await tank.creditOf(gasPayerAddress));
-      const requiredCredit = BigNumber.from(
-        gasEstimate.totalGasUnits + SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER
-      ).mul(maxFeePerGas);
-      return credit.gte(requiredCredit);
-    } catch {
-      return false;
-    }
-  }
-
-  private async assertZkSysGasTankCoversTransaction({
-    chainId,
-    gasPrice,
-    gasPayerAddress,
-    maxFeePerGas,
-    transaction,
-  }: {
-    chainId: number;
-    gasPayerAddress: string;
-    gasPrice?: string;
-    maxFeePerGas?: string;
-    transaction: { data?: string; to: string; value?: string };
-  }): Promise<BigNumber> {
-    const provider = this.ethereumTransaction?.web3Provider;
-    const tankAddress = getZkSysGasTankAddress(chainId);
-    if (!provider || !tankAddress) {
-      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
-    }
-    const [gasLimit, rawCredit, feeData] = await Promise.all([
-      provider.estimateGas({
-        data: transaction.data || '0x',
-        from: gasPayerAddress,
-        ...(gasPrice !== undefined ? { gasPrice } : {}),
-        to: transaction.to,
-        value: transaction.value || '0x0',
-      }),
-      new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider).creditOf(
-        gasPayerAddress
-      ),
-      maxFeePerGas ? Promise.resolve(null) : provider.getFeeData(),
-    ]);
-    const credit = toCompatBigNumber(rawCredit);
-    const estimatedGasLimit = toCompatBigNumber(gasLimit);
-    const resolvedMaxFeePerGas = BigNumber.from(
-      maxFeePerGas || feeData?.maxFeePerGas || feeData?.gasPrice || 0
+        getLocalNativeExecutionRecipients: (executions) =>
+          this.getLocalNativeExecutionRecipients(executions),
+        assertGasTankCoversTransaction: (request) =>
+          this.assertZkSysGasTankCoversTransaction(request, pending.provider),
+        ensureDeploymentPrefund: (...args) =>
+          this.ensureSmartAccountDeploymentPrefund(...args, pending.provider),
+        sendTransaction: (...args) =>
+          this.deps.sendAndSaveEthTransaction(...args),
+        invalidateMetadata: (address) =>
+          this.invalidateHydratedMetadata(address),
+      },
+      assertCurrent
     );
-    const requiredCredit = estimatedGasLimit
-      .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
-      .mul(resolvedMaxFeePerGas);
-    if (credit.lt(requiredCredit)) {
-      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
+  }
+
+  private async canUseZkSysGasTankForSmartAccountTx(
+    provider: any,
+    params: {
+      chainId: number;
+      gasEstimate: SmartAccountUserOpGasEstimate;
+      gasPayerAddress: string;
+      maxFeePerGas: BigNumber;
     }
-    return estimatedGasLimit;
+  ) {
+    return canUseSmartAccountGasTank(provider, params);
+  }
+
+  private async assertZkSysGasTankCoversTransaction(
+    params: {
+      chainId: number;
+      gasPayerAddress: string;
+      gasPrice?: string;
+      maxFeePerGas?: string;
+      transaction: { data?: string; to: string; value?: string };
+    },
+    provider: any
+  ) {
+    return assertSmartAccountGasTankCredit(provider, params);
   }
 
   /**
@@ -2509,62 +1889,23 @@ class SmartAccountController {
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
     options: {
-      assertBeforeSign?: () => void;
+      assertBeforeSign: () => void;
       assertCurrentContext: () => void;
       onAcknowledged: () => void;
       onSubmissionAttempt: () => void;
-    }
+    },
+    provider: any
   ): Promise<void> {
-    const assertCurrent = () => {
-      options.assertBeforeSign?.();
-      options.assertCurrentContext();
-    };
-    assertCurrent();
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-    }
-    const entryPoint = new Contract(
+    return ensureSmartAccountDeploymentPrefund(
+      provider,
+      (...args) => this.deps.sendAndSaveEthTransaction(...args),
+      accountAddress,
+      userOperation,
       entryPointAddress,
-      PALI_ENTRYPOINT_V09_ABI,
-      provider
+      gasPayer,
+      chainId,
+      options
     );
-    const [balance, rawDeposit] = await Promise.all([
-      provider.getBalance(accountAddress),
-      entryPoint.balanceOf(accountAddress),
-    ]);
-    assertCurrent();
-    const deposit = toCompatBigNumber(rawDeposit);
-    const required = getSmartAccountUserOpRequiredPrefund(userOperation);
-    const shortfall = required.sub(balance).sub(deposit);
-    if (shortfall.lte(0)) {
-      return;
-    }
-    options.onSubmissionAttempt();
-    const response = await this.deps.sendAndSaveEthTransaction(
-      {
-        chainId,
-        from: gasPayer.address,
-        to: getAddress(accountAddress),
-        value: shortfall.toHexString(),
-      },
-      false,
-      { id: gasPayer.id, type: gasPayer.type },
-      {
-        smartAccountAddress: getAddress(accountAddress),
-        smartAccountDeploymentPrefund: true,
-      },
-      {
-        assertBeforeSign: options.assertBeforeSign,
-        assertCurrentContext: options.assertCurrentContext,
-        clearNavigation: false,
-        onBroadcast: async () => options.onAcknowledged(),
-        persist: true,
-        skipRapidPolling: true,
-      }
-    );
-    await response.wait();
-    assertCurrent();
   }
 
   private getLocalNativeExecutionRecipients(
@@ -2614,10 +1955,53 @@ class SmartAccountController {
 
   public async getSmartAccountGuardianRecoveryStatus(params: {
     account: string;
+    guardian?: string;
+    guardianApproval?: 'ecdsa' | 'contract';
+    intent?: GuardianRecoveryIntent;
     knownOperationId?: string;
-  }) {
+  }): Promise<
+    GuardianRecoveryObservation & { recoveryTransactionHash?: string | null }
+  > {
     const context = this.infrastructureContext();
     const account = getAddress(params.account);
+    const intent = params.intent
+      ? captureGuardianRecoveryIntent(params.intent)
+      : undefined;
+    if (intent) {
+      const check = () => this.assertInfrastructureContext(context);
+      if (
+        intent.operation.account !== account ||
+        intent.operation.chainId !== context.chainId ||
+        !params.guardian ||
+        !['ecdsa', 'contract'].includes(params.guardianApproval)
+      )
+        throw new Error(
+          'Recovery intent belongs to a different account or network'
+        );
+      const verification = Object.freeze({
+        kind: params.guardianApproval,
+        guardian: getAddress(params.guardian),
+      });
+      const records = await this.deps.captureGuardianRecoveryTransactions(
+        context.chainId,
+        check
+      );
+      check();
+      const recoveryTransactionHash = await pendingGuardianRecoveryTransaction(
+        intent.operation,
+        verification,
+        records,
+        check
+      );
+      const observation = await this.readFreshGuardianRecoveryStatus(
+        context,
+        account,
+        getGuardianRecoveryOperationId(intent.operation),
+        check
+      );
+      check();
+      return { ...observation, recoveryTransactionHash };
+    }
     const knownOperationId = params.knownOperationId?.toLowerCase();
     if (knownOperationId && !/^0x[0-9a-f]{64}$/.test(knownOperationId))
       throw new Error('Invalid guardian recovery operation ID');
@@ -2628,27 +2012,100 @@ class SmartAccountController {
     }
     const current = this.guardianObservations.get(key);
     if (current) return current.promise;
-    const moduleAddress = getConfiguredAuthenticatorAddress(
-      context.chainId,
-      'guardian-recovery'
-    );
     const entry = {
       context,
       promise: null as ReturnType<typeof readGuardianRecoveryObservation>,
     };
-    entry.promise = readGuardianRecoveryObservation({
+    entry.promise = this.readFreshGuardianRecoveryStatus(
+      context,
       account,
-      chainId: context.chainId,
-      moduleAddress,
       knownOperationId,
-      provider: guardianStatusProvider(context.provider),
-      assertCurrent: () => this.assertInfrastructureContext(context),
-    }).finally(() => {
+      () => this.assertInfrastructureContext(context)
+    ).finally(() => {
       if (this.guardianObservations.get(key) === entry)
         this.guardianObservations.delete(key);
     });
     this.guardianObservations.set(key, entry);
     return entry.promise;
+  }
+
+  private readFreshGuardianRecoveryStatus(
+    context: ReturnType<SmartAccountController['infrastructureContext']>,
+    account: string,
+    knownOperationId: string | undefined,
+    assertCurrent: () => void
+  ) {
+    return readGuardianRecoveryObservation({
+      account,
+      chainId: context.chainId,
+      moduleAddress: getConfiguredAuthenticatorAddress(
+        context.chainId,
+        'guardian-recovery'
+      ),
+      knownOperationId,
+      provider: guardianStatusProvider(context.provider),
+      assertCurrent,
+    });
+  }
+
+  public async getSmartAccountGuardianRemovalStatus(
+    accountId: number
+  ): Promise<GuardianRemovalInspection> {
+    const context = this.infrastructureContext();
+    const target = this.getSmartAccountById(accountId);
+    if (
+      target.account.id !== accountId ||
+      target.metadata.chainId !== context.chainId
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const generation = this.deps.getWalletStateGeneration();
+    const check = () => {
+      this.assertInfrastructureContext(context);
+      if (
+        generation !== this.deps.getWalletStateGeneration() ||
+        !this.sameSmartAccountTarget(
+          this.getSmartAccountById(accountId),
+          target
+        )
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    const observation = await this.getSmartAccountGuardianRecoveryStatus({
+      account: target.account.address,
+    });
+    check();
+    if (!observation.exists)
+      return { status: 'removed', transactions: [], totalPending: 0 };
+    const records = await this.deps.captureSmartAccountPendingRecords(
+      context.chainId,
+      target.account.address,
+      check
+    );
+    check();
+    const inspected = await inspectGuardianRemovals({
+      account: target.account.address,
+      chainId: context.chainId,
+      moduleAddress: observation.moduleAddress,
+      records,
+      read: (method, params) => context.provider.send(method, [...params]),
+      assertCurrent: check,
+    });
+    if (inspected.status === 'retry-ready') {
+      const latest = await this.readFreshGuardianRecoveryStatus(
+        context,
+        target.account.address,
+        undefined,
+        check
+      );
+      check();
+      if (
+        guardianPolicyObservationIdentity(latest) !==
+        guardianPolicyObservationIdentity(observation)
+      )
+        throw new Error('GUARDIAN_POLICY_CHANGED');
+    }
+    return inspected;
   }
 
   public async prepareSmartAccountGuardianPolicyUpdate(params: unknown) {
@@ -2661,22 +2118,24 @@ class SmartAccountController {
     throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
-  public async submitSmartAccountGuardianPolicyTransaction(params: {
-    execution: SmartAccountExecution;
-    signature: string;
-  }) {
-    return this.submitSmartAccountExecution(params);
+  public async submitSmartAccountGuardianPolicyTransaction(params: unknown) {
+    void params;
+    throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
   public async submitSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedClaimHash: string | null;
     expectedContext?: IEvmTransactionContext;
     guardian: string;
+    readyAt: number;
+    replacement: GuardianRecoveryReplacement;
     target: PaliRecoveryTarget;
   }) {
-    const prepared = await this.prepareSmartAccountGuardianStartRecovery(
-      params
-    );
+    const prepared = await this.prepareSmartAccountGuardianStartRecovery({
+      ...params,
+      operation: null,
+    });
     if (!prepared.approval) {
       throw new Error(
         'Smart-account guardian approval must be collected from the wallet UI before submitting recovery.'
@@ -2685,6 +2144,7 @@ class SmartAccountController {
 
     return this.submitPreparedSmartAccountGuardianStartRecovery({
       account: prepared.account,
+      claimHash: prepared.claim.intent.operation.hash,
       approval: prepared.approval,
       executionContextId: prepared.executionContextId,
       expectedContext: params.expectedContext,
@@ -2694,39 +2154,356 @@ class SmartAccountController {
     });
   }
 
+  private async persistGuardianRecoveryMetadata(
+    account: string,
+    update: (current: ISmartAccountMetadata) => ISmartAccountMetadata,
+    assertOwner: () => void
+  ) {
+    const origin = this.recoveryApprovalContext(),
+      target = this.getActiveSmartAccount(account);
+    const generation = this.deps.getWalletStateGeneration();
+    const sameWallet = () =>
+      generation === this.deps.getWalletStateGeneration();
+    const check = () => {
+      assertOwner();
+      origin.assertCurrent();
+      const current = this.getActiveSmartAccount(account);
+      if (
+        !sameWallet() ||
+        !this.sameSmartAccountTarget(current, target) ||
+        current.metadata.chainId !== origin.snapshot.chainId
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    await persistMetadata(
+      target.account.id,
+      () => {
+        check();
+        return update(this.getActiveSmartAccount(account).metadata);
+      },
+      check,
+      sameWallet
+    );
+    check();
+    this.invalidateHydratedMetadata(account);
+  }
+
+  private async assertNoPendingGuardianRecovery(
+    claim: GuardianRecoveryClaim,
+    assertCurrent: () => void,
+    action: 'schedule' | 'finalize'
+  ) {
+    assertCurrent();
+    const status = await this.getSmartAccountGuardianRecoveryStatus({
+      account: claim.intent.operation.account,
+      intent: claim.intent,
+      guardian: claim.guardian.guardian,
+      guardianApproval: claim.guardian.kind,
+    });
+    assertCurrent();
+    if (status.recoveryTransactionHash !== null)
+      throw new Error('A guardian recovery transaction is unresolved');
+    if (
+      action === 'schedule' &&
+      (status.pending ||
+        ['pending', 'ready', 'executed'].includes(
+          status.knownOperation?.status ?? ''
+        ))
+    )
+      throw new Error(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR);
+  }
+
+  private withGuardianRecoverySubmission<T>(
+    claim: GuardianRecoveryClaim,
+    assertCurrent: () => void,
+    send: () => Promise<T>,
+    action: 'schedule' | 'finalize'
+  ): Promise<T> {
+    const key = `${
+      claim.intent.operation.chainId
+    }:${claim.intent.operation.account.toLowerCase()}`;
+    let mutex = this.guardianRecoverySubmissions.get(key);
+    if (!mutex) {
+      mutex = new AsyncMutex();
+      this.guardianRecoverySubmissions.set(key, mutex);
+    }
+    return mutex.runExclusive(async () => {
+      assertCurrent();
+      await this.assertNoPendingGuardianRecovery(claim, assertCurrent, action);
+      return send();
+    });
+  }
+
+  private assertGuardianRecoveryClaim(
+    account: string,
+    expected: GuardianRecoveryClaim
+  ) {
+    const current =
+      this.getActiveSmartAccount(account).metadata.guardianRecoveryClaim;
+    if (!current || !sameGuardianRecoveryClaim(current, expected))
+      throw new Error('Guardian recovery claim changed');
+  }
+
+  private async claimGuardianRecovery(
+    account: string,
+    input: GuardianRecoveryClaim,
+    expectedClaimHash: string | null
+  ) {
+    const claim = captureGuardianRecoveryClaim(input);
+    const origin = this.recoveryApprovalContext();
+    const target = this.getActiveSmartAccount(account);
+    if (
+      claim.intent.operation.account !== getAddress(account) ||
+      claim.intent.operation.chainId !== origin.snapshot.chainId ||
+      (expectedClaimHash !== null &&
+        !/^0x[0-9a-f]{64}$/i.test(expectedClaimHash))
+    )
+      throw new Error('Invalid guardian recovery claim owner');
+    const existing = target.metadata.guardianRecoveryClaim;
+    if ((existing?.intent.operation.hash ?? null) !== expectedClaimHash)
+      throw new Error('Guardian recovery claim changed');
+    let resolved = false;
+    if (
+      existing &&
+      existing.intent.operation.hash !== claim.intent.operation.hash
+    ) {
+      const status = await this.getSmartAccountGuardianRecoveryStatus({
+        account,
+        intent: existing.intent,
+        guardian: existing.guardian.guardian,
+        guardianApproval: existing.guardian.kind,
+      });
+      origin.assertCurrent();
+      resolved = guardianRecoveryIntentResolved(
+        existing.intent.operation,
+        status,
+        status.recoveryTransactionHash
+      );
+    }
+    await this.persistGuardianRecoveryMetadata(
+      account,
+      (current) => {
+        const saved = current.guardianRecoveryClaim;
+        if (
+          (saved?.intent.operation.hash ?? null) !== expectedClaimHash ||
+          (saved &&
+            saved.intent.operation.hash === claim.intent.operation.hash &&
+            !sameGuardianRecoveryClaim(saved, claim)) ||
+          (saved &&
+            saved.intent.operation.hash !== claim.intent.operation.hash &&
+            !resolved)
+        )
+          throw new Error('Guardian recovery claim changed');
+        return { ...current, guardianRecoveryClaim: claim };
+      },
+      origin.assertCurrent
+    );
+    origin.assertCurrent();
+    this.assertGuardianRecoveryClaim(account, claim);
+    return claim;
+  }
+
+  public async reconcileSmartAccountGuardianRecovery(params: {
+    account: string;
+    expectedClaimHash: string;
+    expectedContext: IEvmTransactionContext;
+  }) {
+    const account = getAddress(params.account),
+      expectedClaimHash = params.expectedClaimHash;
+    if (!params.expectedContext)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const expectedContext = Object.freeze({
+      ...params.expectedContext,
+      account: Object.freeze({ ...params.expectedContext.account }),
+    });
+    const origin = this.recoveryApprovalContext(expectedContext);
+    const target = this.getActiveSmartAccount(account),
+      source = target.metadata.guardianRecoveryClaim;
+    if (!source || source.intent.operation.hash !== expectedClaimHash)
+      throw new Error('Guardian recovery claim changed');
+    const claim = captureGuardianRecoveryClaim(source);
+    const check = () => {
+      origin.assertCurrent();
+      this.assertGuardianRecoveryClaim(account, claim);
+    };
+    const status = await this.getSmartAccountGuardianRecoveryStatus({
+      account,
+      intent: claim.intent,
+      guardian: claim.guardian.guardian,
+      guardianApproval: claim.guardian.kind,
+    });
+    check();
+    if (
+      status.knownOperation?.operationId !==
+        getGuardianRecoveryOperationId(claim.intent.operation) ||
+      status.knownOperation.status !== 'executed' ||
+      !guardianRecoveryIntentResolved(
+        claim.intent.operation,
+        status,
+        status.recoveryTransactionHash
+      )
+    )
+      throw new Error('Guardian recovery has not executed');
+    const metadata = await this.hydrateSmartAccount(
+      target.account.id,
+      expectedContext
+    );
+    check();
+    if (!guardianRecoveryReplacementApplied(claim, metadata))
+      throw new Error('Guardian recovery replacement is not active');
+    return metadata;
+  }
+
+  public async retireSmartAccountGuardianRecovery(params: {
+    account: string;
+    expectedClaimHash: string;
+    expectedContext: IEvmTransactionContext;
+  }) {
+    if (!params.expectedContext)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const expectedContext = Object.freeze({
+      ...params.expectedContext,
+      account: Object.freeze({ ...params.expectedContext.account }),
+    });
+    const expectedClaimHash = params.expectedClaimHash;
+    const account = getAddress(params.account),
+      origin = this.recoveryApprovalContext(expectedContext);
+    const target = this.getActiveSmartAccount(account),
+      claim = target.metadata.guardianRecoveryClaim
+        ? captureGuardianRecoveryClaim(target.metadata.guardianRecoveryClaim)
+        : undefined;
+    if (!claim || claim.intent.operation.hash !== expectedClaimHash)
+      throw new Error('Guardian recovery claim changed');
+    const status = await this.getSmartAccountGuardianRecoveryStatus({
+      account,
+      intent: claim.intent,
+      guardian: claim.guardian.guardian,
+      guardianApproval: claim.guardian.kind,
+    });
+    origin.assertCurrent();
+    if (
+      !guardianRecoveryIntentResolved(
+        claim.intent.operation,
+        status,
+        status.recoveryTransactionHash
+      )
+    )
+      throw new Error('Guardian recovery is unresolved');
+    await this.persistGuardianRecoveryMetadata(
+      account,
+      (current) => {
+        if (
+          current.guardianRecoveryClaim?.intent.operation.hash !==
+          expectedClaimHash
+        )
+          throw new Error('Guardian recovery claim changed');
+        return {
+          ...current,
+          guardianRecoveryClaim: undefined,
+          guardianRecoveryReplacement: claim.replacement,
+        };
+      },
+      origin.assertCurrent
+    );
+  }
+
   public async prepareSmartAccountGuardianStartRecovery(params: {
     account: string;
+    expectedClaimHash: string | null;
     expectedContext?: IEvmTransactionContext;
     guardian: string;
+    operation: SmartAccountGuardianRecoveryOperation | null;
+    readyAt: number;
+    replacement: GuardianRecoveryReplacement;
     target: PaliRecoveryTarget;
   }) {
-    const { snapshot, assertCurrent } = this.recoveryApprovalContext(
-      params.expectedContext
-    );
-    const account = getAddress(params.account);
-    const guardian = getAddress(params.guardian);
-    const operation = await this.buildGuardianStartRecoveryOperation(
+    const origin = this.recoveryApprovalContext(params.expectedContext);
+    const account = getAddress(params.account),
+      guardian = getAddress(params.guardian);
+    const target = captureGuardianRecoveryTarget(params.target),
+      requestedOperation = params.operation;
+    const replacement = JSON.parse(
+      JSON.stringify(params.replacement)
+    ) as GuardianRecoveryReplacement;
+    const expectedClaimHash = params.expectedClaimHash,
+      readyAt = params.readyAt;
+    const operation =
+      requestedOperation === null
+        ? await this.buildGuardianStartRecoveryOperation(account, target)
+        : captureGuardianRecoveryIntent({
+            operation: requestedOperation,
+            target,
+          }).operation;
+    origin.assertCurrent();
+    await this.validateSmartAccountGuardianRecoveryOperation({
       account,
-      params.target
+      operation,
+    });
+    origin.assertCurrent();
+    const localEoaGuardian = this.findLocalSigningAccount(guardian);
+    let smartGuardian: Awaited<
+      ReturnType<SmartAccountController['getHydratedActiveSmartAccount']>
+    >;
+    if (!localEoaGuardian) {
+      smartGuardian = await this.getHydratedActiveSmartAccount(guardian);
+      origin.assertCurrent();
+      if (!smartGuardian.metadata.isDeployed)
+        throw new Error(
+          'Smart-account guardians must be deployed before they can approve recovery.'
+        );
+    }
+    const existingClaim =
+      this.getActiveSmartAccount(account).metadata.guardianRecoveryClaim;
+    if (existingClaim?.intent.operation.hash === operation.hash)
+      await this.assertNoPendingGuardianRecovery(
+        captureGuardianRecoveryClaim(existingClaim),
+        origin.assertCurrent,
+        'schedule'
+      );
+    const proofContextId = this.rememberRecoverySigningContext(
+      origin.snapshot,
+      operation.hash
     );
+    await this.proveRecoveryTargetOwnership(
+      target,
+      operation.hash,
+      proofContextId
+    );
+    origin.assertCurrent();
+    await this.validateSmartAccountGuardianRecoveryOperation({
+      account,
+      operation,
+    });
+    origin.assertCurrent();
+    const claim = await this.claimGuardianRecovery(
+      account,
+      {
+        intent: { operation, target },
+        replacement,
+        readyAt,
+        guardian: { kind: localEoaGuardian ? 'ecdsa' : 'contract', guardian },
+      },
+      expectedClaimHash
+    );
+    origin.assertCurrent();
+    const captured = this.recoveryApprovalContext(params.expectedContext);
+    const snapshot = captured.snapshot;
+    const assertCurrent = () => {
+      captured.assertCurrent();
+      this.assertGuardianRecoveryClaim(account, claim);
+    };
     assertCurrent();
     const targetContextId = this.rememberRecoverySigningContext(
       snapshot,
       operation.hash
     );
-    await this.proveRecoveryTargetOwnership(
-      params.target,
-      operation.hash,
-      targetContextId
-    );
-    assertCurrent();
     await this.validateSmartAccountGuardianRecoveryOperation({
       account,
       operation,
     });
     assertCurrent();
 
-    const localEoaGuardian = this.findLocalSigningAccount(guardian);
     if (localEoaGuardian) {
       const signature = await this.deps.signSmartAccountActionDigestInternal(
         [guardian, operation.hash],
@@ -2744,30 +2521,15 @@ class SmartAccountController {
         gasPayer: { ...localEoaGuardian, address: guardian },
         guardian,
         operation,
+        claim,
       };
-    }
-
-    let smartGuardian: Awaited<
-      ReturnType<SmartAccountController['getHydratedActiveSmartAccount']>
-    >;
-    try {
-      smartGuardian = await this.getHydratedActiveSmartAccount(guardian);
-    } catch {
-      throw new Error(
-        'This guardian is not available as a local Pali wallet account. Use a local EOA guardian, a local smart-account guardian, or an external recovery flow that can provide the guardian approval signature.'
-      );
-    }
-    assertCurrent();
-    if (!smartGuardian.metadata.isDeployed) {
-      throw new Error(
-        'Smart-account guardians must be deployed before they can approve recovery.'
-      );
     }
 
     return {
       account,
       guardian,
       operation,
+      claim,
       executionContextId: this.rememberRecoverySigningContext(
         snapshot,
         getPaliErc7739PersonalSignHash({
@@ -2783,153 +2545,170 @@ class SmartAccountController {
   public async submitPreparedSmartAccountGuardianStartRecovery(params: {
     account: string;
     approval: { guardian: string; signature: string };
+    claimHash: string;
     executionContextId?: string;
     expectedContext?: IEvmTransactionContext;
     gasPayer?: { address: string; id: number; type: PaliKeyringAccountType };
     guardian: string;
     operation: SmartAccountGuardianRecoveryOperation;
   }) {
+    const owner = this.getActiveSmartAccount(getAddress(params.account))
+      .metadata.guardianRecoveryClaim;
+    if (!owner || owner.intent.operation.hash !== params.claimHash)
+      throw new Error('Guardian recovery claim changed');
+    const claim = captureGuardianRecoveryClaim(owner);
     const origin = this.recoveryApprovalContext(params.expectedContext);
+    const executionContextId = params.executionContextId;
+    const preferredGasPayer = params.gasPayer
+      ? { ...params.gasPayer }
+      : undefined;
     const assertCurrent = () => {
       origin.assertCurrent();
-      if (params.executionContextId)
-        this.assertSmartAccountExecutionContext(params.executionContextId);
+      this.assertGuardianRecoveryClaim(claim.intent.operation.account, claim);
+      if (executionContextId)
+        this.assertSmartAccountExecutionContext(executionContextId);
     };
     assertCurrent();
     const account = getAddress(params.account);
-    const recoveryModule = getAddress(params.operation.recoveryModule);
+    const operation = captureGuardianRecoveryOperation(params.operation);
+    const approval = Object.freeze({ ...params.approval });
     const guardian = getAddress(params.guardian);
-    const approvalGuardian = getAddress(params.approval.guardian);
-    if (approvalGuardian !== guardian) {
+    if (
+      operation.hash !== claim.intent.operation.hash ||
+      operation.account !== claim.intent.operation.account ||
+      guardian !== claim.guardian.guardian
+    )
+      throw new Error('Guardian recovery claim changed');
+    if (getAddress(approval.guardian) !== guardian)
       throw new Error('Guardian approval does not match recovery guardian');
-    }
-    await this.validateSmartAccountGuardianRecoveryOperation({
-      account,
-      operation: params.operation,
-    });
-    assertCurrent();
-    const approvals = [
-      {
-        guardian,
-        signature: params.approval.signature,
-      },
-    ];
-    const recoveryCallData =
-      paliGuardianRecoveryModuleInterface.encodeFunctionData(
-        'scheduleRecovery',
-        [
+    return this.withGuardianRecoverySubmission(
+      claim,
+      assertCurrent,
+      async () => {
+        await this.validateSmartAccountGuardianRecoveryOperation({
           account,
-          params.operation.salt,
-          params.operation.mode,
-          params.operation.executionCalldata,
-          approvals,
-        ]
-      );
-    try {
-      const gasPayer = await this.getWalletGasPayerAccount(params.gasPayer, {
-        data: recoveryCallData,
-        to: recoveryModule,
-        value: '0x0',
-      });
-      assertCurrent();
-      const response = await this.deps.sendAndSaveEthTransaction(
-        { data: recoveryCallData, to: recoveryModule, value: '0x0' },
-        false,
-        gasPayer,
-        {
-          smartAccountGuardianRecovery: true,
-          smartAccountRecoveryAccount: account,
-        },
-        {
-          clearNavigation: false,
-          persist: true,
-          assertCurrentContext: assertCurrent,
-        }
-      );
+          operation,
+        });
+        assertCurrent();
+        const transaction = buildGuardianRecoveryScheduleTransaction({
+          account,
+          guardian,
+          approval,
+          operation,
+        });
+        try {
+          const gasPayer = await this.getWalletGasPayerAccount(
+            this.ethereumTransaction?.web3Provider,
+            preferredGasPayer,
+            transaction
+          );
+          assertCurrent();
+          const response = await this.deps.sendAndSaveEthTransaction(
+            transaction,
+            false,
+            gasPayer,
+            {
+              smartAccountGuardianRecovery: true,
+              smartAccountRecoveryAccount: account,
+            },
+            {
+              clearNavigation: false,
+              persist: true,
+              assertBeforeSign: assertCurrent,
+              assertCurrentContext: assertCurrent,
+            }
+          );
 
-      return {
-        operation: params.operation,
-        transaction: response,
-      };
-    } catch (error) {
-      // Revert data does not survive the popup<->background message
-      // boundary (errors are flattened to their message), so map the
-      // module's custom error to a sentinel the UI can recognize.
-      if (hasGuardianRecoveryAlreadyScheduledRevert(error)) {
-        throw new Error(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR);
-      }
-      throw error;
-    }
+          return {
+            operation,
+            transaction: response,
+          };
+        } catch (error) {
+          // Revert data does not survive the popup<->background message
+          // boundary (errors are flattened to their message), so map the
+          // module's custom error to a sentinel the UI can recognize.
+          if (hasGuardianRecoveryAlreadyScheduledRevert(error)) {
+            throw new Error(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR);
+          }
+          throw error;
+        }
+      },
+      'schedule'
+    );
   }
 
-  public async finalizeSmartAccountGuardianRecovery(
-    params: SmartAccountGuardianRecoveryDigestContext & {
-      account: string;
-      chainId: number;
-      executionCalldata: string;
-      expectedContext?: IEvmTransactionContext;
-      mode: string;
-      recoveryModule?: string;
-      salt: string;
-    }
-  ) {
-    const { assertCurrent } = this.recoveryApprovalContext(
-      params.expectedContext
-    );
-    const account = getAddress(params.account);
-    const status = params.recoveryModule
-      ? null
-      : await this.getGuardianRecoveryStatusForAccount(account);
-    const recoveryModule = params.recoveryModule || status?.moduleAddress;
-    assertCurrent();
-    if (!recoveryModule) {
-      throw new Error(GUARDIAN_MODULE_ERROR);
-    }
+  public async finalizeSmartAccountGuardianRecovery(params: {
+    claim: GuardianRecoveryClaim;
+    expectedClaimHash: string | null;
+    expectedContext?: IEvmTransactionContext;
+  }) {
+    const origin = this.recoveryApprovalContext(params.expectedContext);
+    const input = captureGuardianRecoveryClaim(params.claim),
+      account = input.intent.operation.account;
     await this.validateSmartAccountGuardianRecoveryOperation({
       account,
-      operation: { ...params, recoveryModule },
+      operation: input.intent.operation,
     });
-    assertCurrent();
-    const callData = paliGuardianRecoveryModuleInterface.encodeFunctionData(
-      'executeRecovery',
-      [account, params.salt, params.mode, params.executionCalldata]
+    origin.assertCurrent();
+    const claim = await this.claimGuardianRecovery(
+      account,
+      input,
+      params.expectedClaimHash
     );
-    const gasPayer = await this.getWalletGasPayerAccount(undefined, {
-      data: callData,
-      to: recoveryModule,
-      value: '0x0',
-    });
+    origin.assertCurrent();
+    const capturedOrigin = this.recoveryApprovalContext(params.expectedContext);
+    const assertCurrent = () => {
+      capturedOrigin.assertCurrent();
+      this.assertGuardianRecoveryClaim(account, claim);
+    };
+    const captured = claim.intent.operation,
+      recoveryModule = captured.recoveryModule;
     assertCurrent();
-
     try {
-      const response = await this.deps.sendAndSaveEthTransaction(
-        { data: callData, to: recoveryModule, value: '0x0' },
-        false,
-        { id: gasPayer.id, type: gasPayer.type },
-        {
-          smartAccountGuardianRecoveryFinalize: true,
-          smartAccountRecoveryAccount: account,
+      const response = await this.withGuardianRecoverySubmission(
+        claim,
+        assertCurrent,
+        async () => {
+          const transaction = buildGuardianRecoveryFinalizeTransaction({
+            account,
+            operation: { ...captured, recoveryModule },
+          });
+          const gasPayer = await this.getWalletGasPayerAccount(
+            this.ethereumTransaction?.web3Provider,
+            undefined,
+            transaction
+          );
+          assertCurrent();
+          return this.deps.sendAndSaveEthTransaction(
+            transaction,
+            false,
+            { id: gasPayer.id, type: gasPayer.type },
+            {
+              smartAccountGuardianRecoveryFinalize: true,
+              smartAccountRecoveryAccount: account,
+            },
+            {
+              clearNavigation: false,
+              persist: true,
+              assertBeforeSign: assertCurrent,
+              assertCurrentContext: assertCurrent,
+            }
+          );
         },
-        {
-          clearNavigation: false,
-          persist: true,
-          assertCurrentContext: assertCurrent,
-        }
+        'finalize'
       );
+      // Admission is released after the transport settles. The existing signed
+      // record retains exclusion while canonical receipt observation continues.
       await response.wait();
-      // Recovery rotates validators on the target account.
       this.invalidateHydratedMetadata(account);
       return response;
     } catch (error) {
-      if (hasGuardianRecoveryNotReadyRevert(error)) {
+      if (hasGuardianRecoveryNotReadyRevert(error))
         throw new Error(GUARDIAN_RECOVERY_NOT_READY_ERROR);
-      }
-      if (hasGuardianRecoveryExpiredRevert(error)) {
+      if (hasGuardianRecoveryExpiredRevert(error))
         throw new Error(GUARDIAN_RECOVERY_EXPIRED_ERROR);
-      }
-      if (hasNativeGasFailure(error)) {
+      if (hasNativeGasFailure(error))
         throw new Error(NATIVE_GAS_REQUIRED_ERROR);
-      }
       throw error;
     }
   }
@@ -2937,55 +2716,43 @@ class SmartAccountController {
   private async buildGuardianStartRecoveryOperation(
     account: string,
     target: PaliRecoveryTarget
-  ): Promise<ReturnType<typeof buildSmartAccountGuardianRecoveryOperation>> {
-    const { activeNetwork } = store.getState().vault;
-    const status = await this.getGuardianRecoveryStatusForAccount(account);
-    const recoveryModule = status?.moduleAddress;
-    if (!recoveryModule) {
-      throw new Error(GUARDIAN_MODULE_ERROR);
-    }
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-    }
-    const accountContract = new Contract(
-      account,
-      paliSmartAccountInterface,
-      provider
+  ): Promise<SmartAccountGuardianRecoveryOperation> {
+    const origin = this.recoveryApprovalContext();
+    const { snapshot } = origin;
+    const targetAccount = this.getActiveSmartAccount(account);
+    if (targetAccount.metadata.chainId !== snapshot.chainId)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const assertCurrent = () => {
+      origin.assertCurrent();
+      if (
+        !this.sameSmartAccountTarget(
+          this.getActiveSmartAccount(account),
+          targetAccount
+        )
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    const provider = snapshot.provider;
+    const contract = new Contract(account, paliSmartAccountInterface, provider);
+    return buildGuardianRecoveryStart(
+      { account, chainId: snapshot.chainId, salt: randomBytes32Hex(), target },
+      {
+        assertCurrent,
+        readModuleAddress: async (address) =>
+          (await this.getGuardianRecoveryStatusForAccount(address))
+            ?.moduleAddress,
+        readPolicyEpoch: async (address, module) =>
+          (await this.readGuardianRecoveryDigestContext(address, module))
+            .policyEpoch,
+        isValidatorInstalled: (_address, validator) =>
+          contract.isModuleInstalled(
+            ERC7579_MODULE_TYPE_VALIDATOR,
+            validator,
+            '0x'
+          ),
+        readCurrentValidator: async () => contract.activeValidator(),
+      }
     );
-    const targetValidator = getAddress(target.auth.validator);
-    const replaceExistingValidator = await accountContract.isModuleInstalled(
-      ERC7579_MODULE_TYPE_VALIDATOR,
-      targetValidator,
-      '0x'
-    );
-    const currentSmartAccount = this.getActiveSmartAccount(account);
-    const currentValidator = currentSmartAccount.metadata.auth?.validator
-      ? getAddress(currentSmartAccount.metadata.auth.validator)
-      : undefined;
-    const revokeValidator =
-      currentValidator &&
-      (await accountContract.isModuleInstalled(
-        ERC7579_MODULE_TYPE_VALIDATOR,
-        currentValidator,
-        '0x'
-      ))
-        ? currentValidator
-        : undefined;
-
-    return buildSmartAccountGuardianRecoveryOperation({
-      account,
-      chainId: activeNetwork.chainId,
-      ...(await this.readGuardianRecoveryDigestContext(
-        account,
-        recoveryModule
-      )),
-      replaceExistingValidator,
-      recoveryModule,
-      revokeValidator,
-      salt: randomBytes32Hex(),
-      target,
-    });
   }
 
   private async readGuardianRecoveryDigestContext(
@@ -3013,67 +2780,30 @@ class SmartAccountController {
       hash?: string;
     };
   }): Promise<void> {
-    const account = getAddress(params.account);
-    const operation = params.operation;
-    const recoveryModule = getAddress(operation.recoveryModule);
-    const { activeNetwork } = store.getState().vault;
-    const context = getGuardianRecoveryDigestContext(operation);
-    if (
-      !operation.account ||
-      getAddress(operation.account) !== account ||
-      operation.chainId !== activeNetwork.chainId
-    ) {
-      throw new Error(
-        'Guardian recovery intent does not match the account or network'
-      );
-    }
-    const status = await this.getGuardianRecoveryStatusForAccount(account);
-    if (!status || getAddress(status.moduleAddress) !== recoveryModule) {
-      throw new Error(
-        'Guardian recovery module is not installed for this account'
-      );
-    }
-    const current = await this.readGuardianRecoveryDigestContext(
-      account,
-      recoveryModule
+    const { snapshot, assertCurrent } = this.recoveryApprovalContext();
+    return validateGuardianRecoveryOperation(
+      { ...params, chainId: snapshot.chainId },
+      {
+        assertCurrent,
+        readModuleAddress: async (account) =>
+          (await this.getGuardianRecoveryStatusForAccount(account))
+            ?.moduleAddress,
+        readPolicyEpoch: async (account, module) =>
+          (await this.readGuardianRecoveryDigestContext(account, module))
+            .policyEpoch,
+        readScheduleHash: (operation) =>
+          new Contract(
+            operation.recoveryModule,
+            paliGuardianRecoveryModuleInterface,
+            snapshot.provider
+          ).getRecoveryScheduleHash(
+            operation.account,
+            operation.salt,
+            operation.mode,
+            operation.executionCalldata
+          ),
+      }
     );
-    if (current.policyEpoch !== context.policyEpoch) {
-      throw new GuardianRecoveryPolicyChangedError();
-    }
-    const hash = getSmartAccountGuardianRecoveryHash({
-      ...operation,
-      ...context,
-      account,
-      chainId: activeNetwork.chainId,
-    });
-    if (
-      operation.hash !== undefined &&
-      operation.hash.toLowerCase() !== hash.toLowerCase()
-    ) {
-      throw new Error(
-        'Guardian recovery approval hash does not match its intent'
-      );
-    }
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-    }
-    const module = new Contract(
-      recoveryModule,
-      paliGuardianRecoveryModuleInterface,
-      provider
-    );
-    const onChainHash = await module.getRecoveryScheduleHash(
-      account,
-      operation.salt,
-      operation.mode,
-      operation.executionCalldata
-    );
-    if (onChainHash.toLowerCase() !== hash.toLowerCase()) {
-      throw new Error(
-        'Guardian recovery digest does not match the installed policy'
-      );
-    }
   }
 
   private async proveRecoveryTargetOwnership(
@@ -3166,45 +2896,32 @@ class SmartAccountController {
   private async signActionHashWithLocalEcdsaOwners(
     metadata: ISmartAccountMetadata,
     actionHash: string,
-    executionContextId?: string,
+    executionContextId: string,
     assertApprovalCurrent?: () => void
   ): Promise<string> {
-    assertApprovalCurrent?.();
-    const moduleId = metadata.auth?.module || metadata.auth?.scheme;
-    if (moduleId !== 'ecdsa' || !metadata.auth?.data) {
-      throw new Error(
-        'Smart account registration requires an interactive signature for this validator. Submit any transaction from the account to deploy it.'
-      );
-    }
-    const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
-      ['address[]', 'uint64'],
-      metadata.auth.data
-    ) as [string[], { toString: () => string }];
-    const owners = decodedOwners.map((owner) => getAddress(owner));
-    const threshold = Math.max(1, Number(decodedThreshold.toString()) || 1);
-    const localOwners = owners.filter((owner) =>
-      this.findLocalSigningAccount(owner)
-    );
-    if (localOwners.length < threshold) {
-      throw new Error(
-        'Smart account registration requires the configured ECDSA owner keys in this wallet.'
-      );
-    }
-    const signatures = await Promise.all(
-      localOwners
-        .slice(0, threshold)
-        .map((owner) =>
-          this.deps.signSmartAccountActionDigestInternal(
-            [owner, actionHash],
-            this.getLocalSigningAccount(owner),
-            executionContextId,
-            assertApprovalCurrent
-          )
-        )
-    );
-    return threshold === 1
-      ? signatures[0]
-      : defaultAbiCoder.encode(['bytes[]'], [signatures]);
+    const captured = this.infrastructureContext();
+    const assertCurrent = () => {
+      this.assertInfrastructureContext(captured);
+      this.assertSmartAccountExecutionContext(executionContextId, actionHash);
+      if (assertApprovalCurrent !== undefined)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    };
+    assertCurrent();
+    await this.assertSmartAccountPreparedNonce(executionContextId);
+    assertCurrent();
+    return signSmartAccountEcdsaOperation({
+      metadata,
+      actionHash,
+      assertCurrent,
+      findOwner: (address) => this.findLocalSigningAccount(address),
+      signOwner: (address, hash, owner) =>
+        this.deps.signSmartAccountActionDigestInternal(
+          [address, hash],
+          owner,
+          executionContextId,
+          assertCurrent
+        ),
+    });
   }
 
   private findLocalSigningAccount(address: string): {
@@ -3306,7 +3023,13 @@ class SmartAccountController {
       accountId,
       () => {
         const current = this.getSmartAccountById(accountId).metadata;
-        metadata = customEdit ? update(current) : update;
+        metadata = customEdit
+          ? update(current)
+          : {
+              ...update,
+              guardianRecoveryClaim: current.guardianRecoveryClaim,
+              guardianRecoveryReplacement: current.guardianRecoveryReplacement,
+            };
         return metadata;
       },
       assertCurrent,
@@ -3418,289 +3141,32 @@ class SmartAccountController {
   private async fetchSmartAccountMetadata(
     account: any
   ): Promise<ISmartAccountMetadata> {
-    const metadata = account.smartAccount as ISmartAccountMetadata;
     const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-    }
-    const chainId = metadata.chainId;
-
-    const p256Address = getConfiguredAuthenticatorAddress(
-      chainId,
-      'p256-webauthn'
-    );
-    const ecdsaAddress = getConfiguredAuthenticatorAddress(chainId, 'ecdsa');
-    const compositeAddress = getConfiguredAuthenticatorAddress(
-      chainId,
-      'composite'
-    );
-    const slhDsaAddress = getConfiguredAuthenticatorAddress(chainId, 'slh-dsa');
-    const includeSlhDsa = Boolean(slhDsaAddress);
-    const isModuleInstalledCall = (
-      moduleAddress: string,
-      moduleType: number = ERC7579_MODULE_TYPE_VALIDATOR
-    ): AggregateCallRequest => ({
-      args: [moduleType, moduleAddress, '0x'],
-      fn: 'isModuleInstalled',
-      iface: paliSmartAccountInterface,
-      target: account.address,
+    if (!provider) throw new Error(PROVIDER_UNAVAILABLE_ERROR);
+    const context = this.infrastructureContext();
+    const assertCurrent = () => this.assertInfrastructureContext(context);
+    const metadata = await readSmartAccountValidatorMetadata({
+      account,
+      chainId: context.chainId,
+      provider,
+      assertCurrent,
     });
-
-    // Bring-your-own modules: hydration only knows builtin addresses, so the
-    // durable custom records tell us which extra addresses to probe.
-    // v1 scope is custom validators only (moduleType 1).
-    const customRecords = (metadata.customModules || []).filter(
-      (record) => record.moduleType === ERC7579_MODULE_TYPE_VALIDATOR
-    );
-
-    const calls: AggregateCallRequest[] = [
-      isModuleInstalledCall(p256Address),
-      {
-        args: [account.address],
-        fn: 'authData',
-        iface: paliP256WebAuthnValidatorInterface,
-        target: p256Address,
-      },
-      isModuleInstalledCall(ecdsaAddress),
-      {
-        args: [account.address],
-        fn: 'owners',
-        iface: paliEcdsaValidatorInterface,
-        target: ecdsaAddress,
-      },
-      {
-        args: [account.address],
-        fn: 'threshold',
-        iface: paliEcdsaValidatorInterface,
-        target: ecdsaAddress,
-      },
-      isModuleInstalledCall(compositeAddress),
-      {
-        args: [account.address],
-        fn: 'childValidators',
-        iface: paliCompositeValidatorInterface,
-        target: compositeAddress,
-      },
-      {
-        args: [account.address],
-        fn: 'threshold',
-        iface: paliCompositeValidatorInterface,
-        target: compositeAddress,
-      },
-      ...(includeSlhDsa
-        ? ([
-            isModuleInstalledCall(slhDsaAddress),
-            {
-              args: [account.address],
-              fn: 'authData',
-              iface: paliSlhDsaValidatorInterface,
-              target: slhDsaAddress,
-            },
-          ] as AggregateCallRequest[])
-        : []),
-      {
-        args: [],
-        fn: 'activeValidator',
-        iface: paliSmartAccountInterface,
-        target: account.address,
-      },
-      ...customRecords.map((record) =>
-        isModuleInstalledCall(record.address, record.moduleType)
-      ),
-    ];
-
-    const [code, results] = await Promise.all([
-      provider.getCode(account.address),
-      aggregateContractCalls(provider, chainId, calls),
-    ]);
-    if (code === '0x') {
-      return {
-        ...metadata,
-        availableModules: getAvailablePaliModules(metadata.chainId),
-        isDeployed: false,
-        installedModules: metadata.installedModules || [],
-      };
-    }
-
+    assertCurrent();
+    if (!metadata.isDeployed) return metadata;
     const installedModules: NonNullable<
       ISmartAccountMetadata['installedModules']
-    > = [];
-
-    const [p256Installed] = this.requireAggregateResult(
-      results[0],
-      'p256 isModuleInstalled'
-    );
-    if (p256Installed) {
-      const [authData] = this.requireAggregateResult(
-        results[1],
-        'p256 authData'
-      ) as unknown as [any];
-      const publicKey = {
-        originHash: authData.originHash || authData[3],
-        originLength: Number(authData.originLength || authData[4] || 0),
-        rpIdHash: authData.rpIdHash || authData[2],
-        x: authData.publicKeyX || authData[0],
-        y: authData.publicKeyY || authData[1],
-      };
-      const built = buildHydratedP256WebAuthnAuthenticator({
-        chainId,
-        publicKey,
-      });
-      installedModules.push(...(built.metadata.installedModules || []));
-    }
-
-    const [ecdsaInstalled] = this.requireAggregateResult(
-      results[2],
-      'ecdsa isModuleInstalled'
-    );
-    if (ecdsaInstalled) {
-      const [rawOwners] = this.requireAggregateResult(
-        results[3],
-        'ecdsa owners'
-      ) as unknown as [string[]];
-      const owners = rawOwners.map((owner: string) => getAddress(owner));
-      const threshold = Number(
-        this.requireAggregateResult(results[4], 'ecdsa threshold')[0]
-      );
-      installedModules.push({
-        address: getAddress(ecdsaAddress),
-        config: { owners, threshold },
-        data: encodeEcdsaValidatorInitData(owners, threshold),
-        id: 'ecdsa',
-        type: 'validator',
-      });
-    }
-
-    const [compositeInstalled] = this.requireAggregateResult(
-      results[5],
-      'composite isModuleInstalled'
-    );
-    if (compositeInstalled) {
-      const [rawChildren] = this.requireAggregateResult(
-        results[6],
-        'composite childValidators'
-      ) as unknown as [string[]];
-      const childValidators = rawChildren.map((child: string) =>
-        getAddress(child)
-      );
-      const threshold = Number(
-        this.requireAggregateResult(results[7], 'composite threshold')[0]
-      );
-      installedModules.push({
-        address: getAddress(compositeAddress),
-        config: { childValidators, threshold },
-        data: encodeCompositeValidatorInitData(childValidators, threshold),
-        id: 'composite',
-        type: 'validator',
-      });
-    }
-
-    const activeValidatorResultIndex = 8 + (includeSlhDsa ? 2 : 0);
-
-    if (includeSlhDsa) {
-      const slhDsaInstalled =
-        results[8]?.success && Boolean(results[8].result[0]);
-      if (slhDsaInstalled) {
-        const [authData] = this.requireAggregateResult(
-          results[9],
-          'slh-dsa authData'
-        ) as unknown as [any];
-        const pkSeed = authData.pkSeed || authData[0];
-        const pkRoot = authData.pkRoot || authData[1];
-        const built = buildHydratedSLHDSAAuthenticator({
-          chainId,
-          pkRoot,
-          pkSeed,
-        });
-        installedModules.push(...(built.metadata.installedModules || []));
-      }
-    }
-
-    // Custom (bring-your-own) modules still installed on-chain. Failed
-    // probes (e.g. module self-destructed) simply drop the module from the
-    // installed list; the durable record remains for later re-probing.
-    const customBaseIndex = activeValidatorResultIndex + 1;
-    const installedValidatorAddresses = new Set(
-      installedModules.map((module) => module.address.toLowerCase())
-    );
-    customRecords.forEach((record, index) => {
-      const probe = results[customBaseIndex + index];
-      const installed = probe?.success && Boolean(probe.result[0]);
-      if (installed) {
-        const address = getAddress(record.address);
-        if (installedValidatorAddresses.has(address.toLowerCase())) return;
-        // A builtin already read from its canonical contract is authoritative;
-        // a durable custom-install record must not shadow or duplicate it.
-        installedValidatorAddresses.add(address.toLowerCase());
-        installedModules.push({
-          address,
-          config: {
-            compositeCompatible: record.compositeCompatible,
-            initData: record.initData,
-            moduleType: record.moduleType,
-            name: record.name,
-          },
-          data: record.initData,
-          id: 'custom',
-          type: 'validator',
-        });
-      }
-    });
-
+    > = [...(metadata.installedModules || [])];
+    const chainId = metadata.chainId;
     const guardianStatus = await this.getGuardianRecoveryStatusForAccount(
       account.address,
       chainId
     );
     if (guardianStatus) {
-      installedModules.push({
-        address: getAddress(guardianStatus.moduleAddress),
-        config: {
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        },
-        data: encodeGuardianRecoveryInitData({
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        }),
-        id: 'guardian-recovery',
-        type: 'executor',
-      });
+      installedModules.push(projectGuardianPolicyModule(guardianStatus));
     }
 
-    const activeValidatorAddress = getAddress(
-      this.requireAggregateResult(
-        results[activeValidatorResultIndex],
-        'activeValidator'
-      )[0] as string
-    );
-    const activeValidator =
-      activeValidatorAddress !== AddressZero
-        ? installedModules.find(
-            (module) =>
-              module.type === 'validator' &&
-              module.address.toLowerCase() ===
-                activeValidatorAddress.toLowerCase()
-          )
-        : null;
-    const hydrated: ISmartAccountMetadata = {
-      ...metadata,
-      auth:
-        activeValidator?.type === 'validator'
-          ? {
-              data: activeValidator.data || '0x',
-              module: activeValidator.id,
-              validator: activeValidator.address,
-            }
-          : undefined,
-      availableModules: getAvailablePaliModules(chainId),
-      isDeployed: true,
-      installedModules,
-    };
-    return hydrated;
+    assertCurrent();
+    return { ...metadata, installedModules };
   }
 
   private decodeGuardianRecoveryStatus(
@@ -3828,32 +3294,7 @@ class SmartAccountController {
   private requireAuthenticator(
     metadata: ISmartAccountMetadata
   ): PaliAuthConfig {
-    const auth = metadata.auth;
-    if (!auth) {
-      throw new Error(
-        'This smart account was recovered by address only. Configure or recover an authenticator before signing.'
-      );
-    }
-    const module = auth.module || auth.scheme;
-    if (!module) {
-      throw new Error(
-        'Smart account authenticator module metadata is required'
-      );
-    }
-    // Custom (bring-your-own) validators have no Pali-native signer; those
-    // flows must go through the external-signature drivers instead. The
-    // lockout guard prevents activating a custom validator, so reaching this
-    // implies out-of-band state (e.g. external rotation).
-    if (module === 'custom') {
-      throw new Error(
-        'The active validator is a custom module Pali cannot sign with. Switch to a Pali-signable validator first.'
-      );
-    }
-    return {
-      data: auth.data,
-      module,
-      validator: auth.validator,
-    };
+    return requireSmartAccountAuthenticator(metadata);
   }
 
   private getNextRecoverableAccountIndex(chainId: number): number {
@@ -3894,6 +3335,7 @@ class SmartAccountController {
   }
 
   private async getWalletGasPayerAccount(
+    provider: any,
     preferred?: {
       address: string;
       id: number;
@@ -3910,105 +3352,12 @@ class SmartAccountController {
     id: number;
     type: PaliKeyringAccountType;
   }> {
-    const provider = this.ethereumTransaction?.web3Provider;
-    const gasPayers = this.getWalletGasPayerCandidates(preferred);
-
-    const toGasPayer = ({
-      address,
-      id,
-      type,
-    }: {
-      address: string;
-      id: number;
-      type: PaliKeyringAccountType;
-    }) => ({ address, id, type });
-
-    if (options.requirePreferred) {
-      const selected = gasPayers[0];
-      if (
-        !preferred ||
-        !selected ||
-        selected.id !== preferred.id ||
-        selected.type !== preferred.type ||
-        getAddress(selected.address) !== getAddress(preferred.address)
-      ) {
-        throw new Error(
-          'The selected gas payer is no longer available for this smart-account transaction'
-        );
-      }
-      return toGasPayer(selected);
-    }
-
-    if (provider) {
-      if (transaction) {
-        // Shared lookups hoisted out of the candidate loop: one fee-data call
-        // and one batched balance fetch instead of repeating both per
-        // candidate. Gas estimation stays per candidate because it depends on
-        // the `from` address.
-        const [feeData, balances] = await Promise.all([
-          provider.getFeeData(),
-          this.getNativeBalances(
-            provider,
-            gasPayers.map((candidate) => candidate.address)
-          ),
-        ]);
-        const maxFeePerGas = BigNumber.from(
-          feeData.maxFeePerGas || feeData.gasPrice || 0
-        );
-        for (let index = 0; index < gasPayers.length; index += 1) {
-          const gasPayer = toGasPayer(gasPayers[index]);
-          const balance = balances[index];
-          try {
-            const gasLimit = toCompatBigNumber(
-              await provider.estimateGas({
-                data: transaction.data || '0x',
-                from: gasPayer.address,
-                to: transaction.to,
-                value: transaction.value || '0x0',
-              })
-            );
-            const requiredBalance = gasLimit
-              .mul(maxFeePerGas)
-              .add(BigNumber.from(transaction.value || '0x0'));
-            if (balance.gte(requiredBalance)) {
-              return gasPayer;
-            }
-          } catch (error) {
-            if (hasGuardianRecoveryNotReadyRevert(error)) {
-              throw error;
-            }
-            if (!hasNativeGasFailure(error)) {
-              throw error;
-            }
-          }
-        }
-        throw new Error(NATIVE_GAS_REQUIRED_ERROR);
-      }
-
-      const cachedFundedGasPayer = gasPayers.find(({ account }) =>
-        this.hasCachedNativeBalance(account)
-      );
-      if (cachedFundedGasPayer) {
-        return toGasPayer(cachedFundedGasPayer);
-      }
-
-      const balances = await this.getNativeBalances(
-        provider,
-        gasPayers.map((candidate) => candidate.address)
-      );
-      for (let index = 0; index < gasPayers.length; index += 1) {
-        if (!balances[index].isZero()) {
-          return toGasPayer(gasPayers[index]);
-        }
-      }
-    }
-
-    if (gasPayers[0]) {
-      return toGasPayer(gasPayers[0]);
-    }
-
-    throw new Error(
-      'A local EVM account is required to submit ERC-4337 operations'
+    return selectSmartAccountGasPayer(
+      store.getState().vault,
+      provider,
+      preferred,
+      transaction,
+      options
     );
   }
 
@@ -4022,95 +3371,14 @@ class SmartAccountController {
     id: number;
     type: PaliKeyringAccountType;
   }> {
-    const { accounts, activeAccount } = store.getState().vault;
-    const candidates: Array<{ id: number; type: PaliKeyringAccountType }> = [];
-    if (
-      preferred?.type &&
-      preferred.type !== PaliKeyringAccountType.SmartAccount
-    ) {
-      candidates.push({ id: preferred.id, type: preferred.type });
-    }
-    if (activeAccount.type !== PaliKeyringAccountType.SmartAccount) {
-      candidates.push({ id: activeAccount.id, type: activeAccount.type });
-    }
-    candidates.push({ id: 0, type: PaliKeyringAccountType.HDAccount });
-    candidates.push(
-      ...Object.keys(accounts[PaliKeyringAccountType.Imported] || {}).map(
-        (id) => ({
-          id: Number(id),
-          type: PaliKeyringAccountType.Imported,
-        })
-      )
-    );
-
-    const seen = new Set<string>();
-    const gasPayers: Array<{
-      account: any;
-      address: string;
-      id: number;
-      type: PaliKeyringAccountType;
-    }> = [];
-
-    for (const candidate of candidates) {
-      const candidateKey = `${candidate.type}:${candidate.id}`;
-      if (seen.has(candidateKey)) {
-        continue;
-      }
-      seen.add(candidateKey);
-      const account = accounts[candidate.type]?.[candidate.id];
-      if (account?.address) {
-        if (
-          preferred &&
-          candidate.id === preferred.id &&
-          candidate.type === preferred.type &&
-          getAddress(account.address) !== getAddress(preferred.address)
-        ) {
-          continue;
-        }
-        gasPayers.push({
-          account,
-          address: getAddress(account.address),
-          id: candidate.id,
-          type: candidate.type,
-        });
-      }
-    }
-    return gasPayers;
+    return getSmartAccountGasPayerCandidates(store.getState().vault, preferred);
   }
 
   private async getNativeBalances(
     provider: any,
     addresses: string[]
   ): Promise<BigNumber[]> {
-    if (addresses.length === 0) {
-      return [];
-    }
-    if (addresses.length > 1 && typeof provider.sendBatch === 'function') {
-      try {
-        const results = await provider.sendBatch(
-          'eth_getBalance',
-          addresses.map((address) => [address, 'latest'])
-        );
-        return results.map((result: string) => BigNumber.from(result || 0));
-      } catch {
-        // Fall back to individual calls below.
-      }
-    }
-    // Individual ethers-v6 reads return bigint, unlike the batch hex path.
-    // Keep this helper's numeric type stable for all gas-payer checks.
-    return Promise.all(
-      addresses.map(async (address) =>
-        toCompatBigNumber(await provider.getBalance(address))
-      )
-    );
-  }
-
-  private hasCachedNativeBalance(account: any): boolean {
-    const balance = account?.balances?.[INetworkType.Ethereum];
-    if (balance === undefined || balance === null) {
-      return false;
-    }
-    return Number(balance) > 0;
+    return readSmartAccountNativeBalances(provider, addresses);
   }
 }
 

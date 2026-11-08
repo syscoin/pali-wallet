@@ -2,6 +2,7 @@ import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
 import { Interface, keccak256, parseEther, toUtf8Bytes } from 'ethers';
 
+import { createPrivacyTransactionsController } from '../../../wallet/privacyTransactions';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { identifyClassicNote } from 'utils/privacy/note';
@@ -14,7 +15,6 @@ import type {
   IPrivacyWithdrawalJournal,
 } from 'utils/privacy/withdrawalTransactionTypes';
 
-import { createPrivacyTransactionsController } from './privacyTransactions';
 import {
   createPrivateVaultController,
   IPrivateVaultSession,
@@ -856,6 +856,7 @@ it('reuses the durable note after failed fee preparation and controller restart'
   const send = jest.fn();
   const transactions = () =>
     createPrivacyTransactionsController({
+      classifySubmissionFailure: () => ({ transactionNotBroadcast: false }),
       captureContext: () => ({
         context: depositAttempt(UUID).context,
         assertCurrent: session.assertCurrent,
@@ -2073,7 +2074,7 @@ it.each([
   'healthy pre-sign cancellation',
 ] as const)('reservation review: %s', async (scenario) => {
   const { createPrivacyWithdrawalsController } = await import(
-    './privacyWithdrawals'
+    '../../../wallet/privacyWithdrawals'
   );
   const f = fixture();
   const saved = await f.controller.importNote(NOTE);
@@ -2086,12 +2087,14 @@ it.each([
   const root = '0x' + '01'.repeat(32);
   const proof = '0x' + 'ab'.repeat(256);
   let forceCancel = false;
+  let reservedAttempt: IPrivacyWithdrawalAttempt | undefined;
   const send = jest.fn();
   const clear = jest.fn(async (attempt) =>
     f.controller.clearUnbroadcastWithdrawalAttempt(attempt, originalSession)
   );
   const snapshot: any = { root };
   const host: any = {
+    classifySubmissionFailure: () => ({ transactionNotBroadcast: false }),
     captureSession: () => captured,
     withNote: (id, _session, use) =>
       f.controller.withWithdrawalNote(id, originalSession, use),
@@ -2120,6 +2123,7 @@ it.each([
       ].map((x) => BigInt(x).toString()),
     }),
     beforeSubmission: async (attempt) => {
+      reservedAttempt = attempt;
       captured.assertCurrent();
       await f.controller.reserveWithdrawalAttempt(attempt, originalSession);
       captured.assertCurrent();
@@ -2164,7 +2168,8 @@ it.each([
   const newSession = f.captureSession();
   const persisted = await f.create().getWithdrawalAttempt(saved.id, newSession);
   if (scenario === 'switch during committed write') {
-    expect(clear).not.toHaveBeenCalled();
+    expect(clear).toHaveBeenCalledTimes(1);
+    expect(clear).toHaveBeenCalledWith(reservedAttempt);
     expect(persisted).toMatchObject({ phase: 'unknown' });
     expect((await f.create().getNotes()).notes[0].phase).toBe('waiting');
     await expect(

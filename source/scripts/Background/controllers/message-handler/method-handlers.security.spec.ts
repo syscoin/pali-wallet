@@ -32,7 +32,6 @@ jest.mock('./request-pipeline', () => ({
 
 jest.mock('./sendCallsBundles', () => ({
   generateWalletBundleId: jest.fn(),
-  isValidAppProvidedBundleId: jest.fn(),
   releaseSendCallsBundleReservation: jest.fn(),
   reserveSendCallsBundle: jest.fn(),
   resolveCallsStatus: jest.fn(),
@@ -327,6 +326,61 @@ describe('wallet_sendCalls capability admission', () => {
   });
 
   it.each([
+    [undefined, false, false],
+    [1, false, true],
+    [1, true, true],
+  ])(
+    'preserves selected-chain batch mode for smart chain %p and required atomicity %p',
+    async (smartChainId, atomicRequired, atomic) => {
+      getControllerMock.mockReturnValue({
+        dapp: {
+          getAccount: () => ({
+            ...connectedAccount,
+            isSmartAccount: smartChainId !== undefined,
+            smartAccount: { chainId: smartChainId },
+          }),
+          get: () => ({ accountId: 1, accountType: 'HDAccount' }),
+        },
+        wallet: { getWalletSessionGeneration: () => 1 },
+      });
+      await new WalletMethodHandler().handle(
+        makeSendCallsContext({ atomicRequired })
+      );
+      expect(reserveSendCallsBundle).toHaveBeenCalledWith(
+        'https://batch.example',
+        '0x1234',
+        { atomic, chainId: 1, smartAccount: smartChainId === 1 },
+        '0x1234',
+        CONNECTED_ADDRESS
+      );
+    }
+  );
+
+  it.each([undefined, 2])(
+    'rejects atomic execution for unavailable smart chain %p before reserving an ID',
+    async (smartChainId) => {
+      getControllerMock.mockReturnValue({
+        dapp: {
+          getAccount: () => ({
+            ...connectedAccount,
+            isSmartAccount: smartChainId !== undefined,
+            smartAccount: { chainId: smartChainId },
+          }),
+          get: () => ({ accountId: 1, accountType: 'HDAccount' }),
+        },
+        wallet: { getWalletSessionGeneration: () => 1 },
+      });
+      await expect(
+        new WalletMethodHandler().handle(
+          makeSendCallsContext({ atomicRequired: true })
+        )
+      ).rejects.toMatchObject({ code: 5760 });
+      expect(reserveSendCallsBundle).not.toHaveBeenCalled();
+      expect(popupPromise).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
     { capabilities: { paymasterService: { url: 'https://example.test' } } },
     { capabilities: { unknown: { optional: false } } },
     { calls: [{ to: ACTIVE_ADDRESS, capabilities: { unknown: {} } }] },
@@ -388,7 +442,16 @@ describe('wallet_sendCalls capability admission', () => {
       expect(popupPromise).toHaveBeenCalledTimes(1);
       expect(popupPromise).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining(changes),
+          data: expect.objectContaining({
+            ...changes,
+            ...(Array.isArray(changes.calls) && {
+              calls: changes.calls.map((call: Record<string, unknown>) => ({
+                ...call,
+                data: call.data ?? '0x',
+                value: call.value ?? '0x0',
+              })),
+            }),
+          }),
         })
       );
     }

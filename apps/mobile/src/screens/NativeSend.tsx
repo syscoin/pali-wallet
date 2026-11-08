@@ -1,3 +1,8 @@
+import type { NativePortfolioAccount } from '../portfolio/nativePortfolio';
+import { NativeTokenMaximum } from './NativeTokenMaximum';
+import type { NativeTokenView } from '../portfolio/nativeTokens';
+import { NativeLedgerConnectionModal } from './NativeLedger';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import React, {
   useCallback,
@@ -49,7 +54,7 @@ import {
   Text,
 } from '../ui';
 
-const failure = (
+export const nativeTransferFailure = (
   error: unknown,
   context: NativeSendContext,
   asset: 'coin' | 'token' | 'collectible',
@@ -116,7 +121,7 @@ type RecipientPickerSession = Readonly<{
   accounts: readonly EvmRecipientChoice[];
 }>;
 
-function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder }: {
+export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder }: {
   label: string;
   value: string;
   onChange(value: string): void;
@@ -154,21 +159,41 @@ function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'defau
   );
 }
 
+const emptyTokenSubscribe = () => () => undefined;
+const emptyTokenSnapshot = () => null;
+
+export type NativeSendInitialDraft = Readonly<{
+  recipient: string;
+  amount: string;
+  tokenId?: string;
+  nonce: string;
+}>;
+
 export function NativeSend({
   controller,
   onBack,
   accountLabel = 'Account 1',
+  account,
   token,
+  tokenView,
   collectible,
   context,
   savedHash,
   replacement,
   recipientPicker,
+  ledgerConnection,
+  initialDraft,
+  beforeClose,
 }: {
   controller: NativeTransferView;
+  ledgerConnection?: NativeLedgerConnectionView;
+  initialDraft?: NativeSendInitialDraft;
+  beforeClose?(): Promise<void>;
   onBack(): void;
   accountLabel?: string;
+  account: NativePortfolioAccount;
   token?: Erc20Metadata;
+  tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
   collectible?: SavedCollectible;
   context: NativeSendContext;
   savedHash?: string;
@@ -180,12 +205,28 @@ export function NativeSend({
     () => controller.getSnapshot(),
     () => controller.getSnapshot()
   );
+  const tokenSnapshot = useSyncExternalStore(
+    tokenView?.subscribe ?? emptyTokenSubscribe,
+    tokenView?.getSnapshot ?? emptyTokenSnapshot,
+    tokenView?.getSnapshot ?? emptyTokenSnapshot
+  );
+  useLayoutEffect(
+    () => token ? tokenView?.connect() : undefined,
+    [token, tokenView]
+  );
+  const [maximum, setMaximum] = useState(false);
+  const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
+  const ledgerReady = useSyncExternalStore(
+    (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
+    () => ledgerConnection?.isConnected() ?? true,
+    () => false,
+  );
   const draftCollectible = savedHash || token ? undefined : collectible;
   const initialAmount = draftCollectible?.tokenStandard === 'ERC-1155' ? '1' : '';
   const [recipientDraft, setRecipientDraft] = useState<{
     value: string;
     owner?: NativeRecipientPicker;
-  }>({ value: '' });
+  }>({ value: initialDraft?.recipient ?? '' });
   const recipient = recipientDraft.owner && recipientDraft.owner !== recipientPicker
     ? '' : recipientDraft.value;
   const setRecipient = (value: string) => setRecipientDraft({ value });
@@ -202,10 +243,10 @@ export function NativeSend({
     activePicker.current = null;
     setOpenPicker(null);
   }, []);
-  const [amount, setAmount] = useState(initialAmount);
-  const [tokenId, setTokenId] = useState('');
-  const [advanced, setAdvanced] = useState(false);
-  const [nonce, setNonce] = useState('');
+  const [amount, setAmount] = useState(initialDraft?.amount ?? initialAmount);
+  const [tokenId, setTokenId] = useState(initialDraft?.tokenId ?? '');
+  const [advanced, setAdvanced] = useState(!!initialDraft);
+  const [nonce, setNonce] = useState(initialDraft?.nonce ?? '');
   const [error, setError] = useState('');
   const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
   const leaving = useRef(false);
@@ -216,7 +257,8 @@ export function NativeSend({
   useLayoutEffect(() => {
     latestBack.current = onBack;
   }, [onBack]);
-  const busy = ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
+  const [closingHardware, setClosingHardware] = useState(false);
+  const busy = closingHardware || ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
   const promptMatches = (current: typeof snapshot) => !!leavePrompt &&
     current.phase === 'submitting' && current.review === leavePrompt.review &&
     (leavePrompt.review !== null || current === leavePrompt.fallback);
@@ -295,10 +337,21 @@ export function NativeSend({
     leaving.current = true;
     retirePicker();
     lifetime.current.epoch++;
+    const closingEpoch = lifetime.current.epoch;
     controller.cancel();
     Keyboard.dismiss();
-    latestBack.current();
-  }, [controller, retirePicker]);
+    if (!beforeClose) { latestBack.current(); return; }
+    setClosingHardware(true);
+    void Promise.resolve().then(beforeClose).then(() => {
+      if (lifetime.current.alive && lifetime.current.epoch === closingEpoch) latestBack.current();
+    }, () => {
+      if (lifetime.current.alive && lifetime.current.epoch === closingEpoch) {
+        leaving.current = false;
+        setClosingHardware(false);
+        setError('The hardware request is still closing. Try again.');
+      }
+    });
+  }, [beforeClose, controller, retirePicker]);
   const close = useCallback(() => {
     if (!lifetime.current.alive || leaving.current) return;
     const current = controller.getSnapshot();
@@ -348,7 +401,7 @@ export function NativeSend({
         const asset = reviewedCollectible || (draftCollectible && !current.hash)
           ? 'collectible'
           : token || current.intent ? 'token' : 'coin';
-        setError(failure(cause, capturedContext, asset, !!current.hash, cancellation));
+        setError(nativeTransferFailure(cause, capturedContext, asset, !!current.hash, cancellation));
       }
     }
   };
@@ -370,7 +423,7 @@ export function NativeSend({
     if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
   }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
   const submit = () => {
-    if (!review || busy) return;
+    if (!review || busy || !review.retry && ledgerConnection && !ledgerConnection.isConnected()) return;
     Keyboard.dismiss();
     void run(() => controller.confirm(review.id));
   };
@@ -568,9 +621,13 @@ export function NativeSend({
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
               </Text>}
+              {ledgerConnection && !review.retry && !ledgerReady && <Button
+                title="Connect Ledger" disabled={busy}
+                onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
+              />}
               <Button
                 title={reviewCancellation ? 'Submit cancellation' : review.replacement ? 'Submit Speed Up' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
-                disabled={busy}
+                disabled={busy || !review.retry && !ledgerReady}
                 onPress={submit}
                 testID="native-send-confirm"
               />
@@ -679,7 +736,7 @@ export function NativeSend({
             !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
-              <SendInput
+              <NativeSendInput
                 label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}
                 value={recipient}
                 onChange={setRecipient}
@@ -707,7 +764,7 @@ export function NativeSend({
                   />
                   {picker && (
                     <Card style={s.summary}>
-                      <SendInput
+                      <NativeSendInput
                         label="Find account"
                         value={picker.query}
                         onChange={(query) => {
@@ -745,16 +802,30 @@ export function NativeSend({
                 <>
                   {collectibleIdentity(draftCollectible)}
                   {draftCollectible.tokenStandard === 'ERC-721'
-                    ? <SendInput label="Token ID" value={tokenId} onChange={setTokenId}
+                    ? <NativeSendInput label="Token ID" value={tokenId} onChange={setTokenId}
                         onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={257} />
-                    : <SendInput label="Quantity" value={amount} onChange={setAmount}
+                    : <NativeSendInput label="Quantity" value={amount} onChange={setAmount}
                         onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={79} />}
                 </>
               ) : (
                 <>
                   {token && tokenIdentity(token)}
-                  <SendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
-                    onChange={setAmount} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
+                  <NativeSendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
+                    onChange={(value) => { setMaximum(false); setAmount(value); }} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
+                  {token && (
+                    <NativeTokenMaximum
+                      owner={account}
+                      token={token}
+                      snapshot={tokenSnapshot}
+                      view={tokenView}
+                      selected={maximum}
+                      disabled={busy}
+                      onSelect={(value) => {
+                        setMaximum(true);
+                        setAmount(value);
+                      }}
+                    />
+                  )}
                 </>
               )}
               <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
@@ -766,7 +837,7 @@ export function NativeSend({
                   setAdvanced(!advanced);
                 }} />
               {advanced && <>
-                <SendInput label="Transaction nonce" value={nonce} onChange={setNonce}
+                <NativeSendInput label="Transaction nonce" value={nonce} onChange={setNonce}
                   busy={busy} keyboardType="number-pad" max={64} placeholder="Automatic"
                   onEdit={() => { if (error) setError(''); }} />
                 <Text style={s.hint}>Leave blank for automatic selection. A higher nonce can wait for earlier transactions.</Text>
@@ -804,6 +875,11 @@ export function NativeSend({
           </Text>
         </Screen>
       </KeyboardAvoidingView>
+      {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
+        controller={ledgerPicker}
+        onClose={() => setLedgerPicker(null)}
+        onFinished={() => setLedgerPicker(null)}
+      />}
       <Modal
         visible={promptMatches(snapshot)}
         transparent

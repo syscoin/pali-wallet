@@ -1,5 +1,6 @@
 import { webcrypto } from 'crypto';
 
+import { createNativeSentryKeyManagement } from '../../../../apps/mobile/src/custody/sentryKeyManagement';
 import {
   captureSentryCollateralAdmission,
   reserveSentryCollateral,
@@ -78,7 +79,7 @@ jest.mock('syscoinjs-lib', () => ({
   },
 }));
 jest.mock('utils/sentry/keyStore', () => ({
-  getSentryVaultId: async () => 'vault-id',
+  getSentryVaultId: async () => 'aa'.repeat(32),
   listSentryKeys: jest.fn(),
   loadSentryKey: jest.fn(),
   saveSentryKey: jest.fn(),
@@ -109,7 +110,11 @@ jest.mock('utils/sentry/collateral', () => ({
   releaseSentryCollateral: jest.fn(),
 }));
 jest.mock('utils/storageAPI', () => ({
-  chromeStorage: { getItem: jest.fn(), setItem: jest.fn() },
+  chromeStorage: {
+    getItem: jest.fn(),
+    getItems: jest.fn(),
+    setItem: jest.fn(),
+  },
 }));
 
 const publicKey = 'bb'.repeat(48);
@@ -128,6 +133,83 @@ const request = {
   chain: { genesisHash: SENTRY_NETWORKS.mainnet.genesisHash, era: 'legacy-v3' },
   transactionHex: '0100',
 };
+
+it.each(['mainnet', 'testnet'] as const)(
+  'shares exact public settings across extension and native on %s',
+  async (network) => {
+    scope.network.chainId = network === 'mainnet' ? 57 : 5700;
+    const key = `sentry-settings-v1:${'aa'.repeat(32)}:${network}`;
+    let extensionRecord: unknown;
+    let nativeRecord: unknown;
+    (chromeStorage.getItems as jest.Mock).mockImplementation(async () =>
+      extensionRecord === undefined ? {} : { [key]: extensionRecord }
+    );
+    (chromeStorage.setItem as jest.Mock).mockImplementation(
+      async (name, value) => {
+        expect(name).toBe(key);
+        extensionRecord = value;
+      }
+    );
+    const authenticate = jest.fn(async (password) => {
+      expect(password).toBe('test');
+    });
+    const manager = createNativeSentryKeyManagement({
+      assertCurrent() {
+        // The public fixture keeps one active wallet scope.
+      },
+      authenticate,
+      network,
+      vaultId: 'aa'.repeat(32),
+      lifetime: new AbortController().signal,
+      run: async (operation) => operation(),
+      derivePublicKey: async () => {
+        throw Error('Unexpected key derivation');
+      },
+      readSeed: async () => {
+        throw Error('Unexpected seed read');
+      },
+      vaultHost: {
+        crypto: () => webcrypto as unknown as Crypto,
+        read: async () => undefined,
+        write: async () => {
+          throw Error('Unexpected key write');
+        },
+      },
+      readSettings: async () => nativeRecord,
+      writeSettings: async (value, guard) => {
+        guard();
+        nativeRecord = value;
+      },
+    });
+    const initial = await controller.getSettings();
+    expect(await manager.getSettings(() => undefined)).toEqual({
+      serviceUrl: initial.serviceUrl,
+      maxFeeSatoshis: initial.maxFeeSatoshis,
+    });
+    const next = {
+      serviceUrl: 'https://sentry.example/',
+      maxFeeSatoshis: '10000000',
+    };
+    expect(await manager.saveSettings(next, 'test', () => undefined)).toEqual(
+      await controller.saveSettings({ ...next, password: 'test' })
+    );
+    expect(nativeRecord).toEqual(extensionRecord);
+    expect(getSeed).toHaveBeenCalledWith('test');
+    expect(authenticate).toHaveBeenCalledTimes(1);
+    for (const malformed of [
+      null,
+      false,
+      {},
+      { serviceUrl: 'https://sentry.example' },
+    ]) {
+      extensionRecord = malformed;
+      nativeRecord = malformed;
+      await expect(controller.getSettings()).rejects.toThrow();
+      await expect(manager.getSettings(() => undefined)).rejects.toThrow();
+    }
+    manager.dispose();
+  }
+);
 let scope: SentryWalletScope;
 let observation: any;
 let controller: SentryController;
@@ -163,6 +245,8 @@ beforeEach(() => {
   getSeed = jest.fn().mockResolvedValue('private-seed');
   controller = new SentryController({ captureScope: () => scope, getSeed });
   (chromeStorage.getItem as jest.Mock).mockResolvedValue(null);
+  (chromeStorage.getItems as jest.Mock).mockResolvedValue({});
+  (chromeStorage.setItem as jest.Mock).mockReset().mockResolvedValue(undefined);
   (listSentryKeys as jest.Mock).mockResolvedValue([summary]);
   (loadSentryKey as jest.Mock).mockResolvedValue(imported);
   (saveSentryKey as jest.Mock).mockResolvedValue(summary);
@@ -248,17 +332,15 @@ it.each(['serviceUrl', 'maxFeeSatoshis'])(
       'signed-public-bytes',
       'https://dapp.test'
     );
-    (chromeStorage.getItem as jest.Mock).mockImplementation(async (key) =>
-      key.startsWith('sentry-settings')
-        ? {
-            serviceUrl:
-              field === 'serviceUrl'
-                ? 'https://changed.test'
-                : 'https://sysnode.info',
-            maxFeeSatoshis: field === 'maxFeeSatoshis' ? '1' : '1000000',
-          }
-        : null
-    );
+    (chromeStorage.getItems as jest.Mock).mockImplementation(async ([key]) => ({
+      [key]: {
+        serviceUrl:
+          field === 'serviceUrl'
+            ? 'https://changed.test'
+            : 'https://sysnode.info',
+        maxFeeSatoshis: field === 'maxFeeSatoshis' ? '1' : '1000000',
+      },
+    }));
     await expect(
       controller.reviewFeePsbt(token, 'signed-public-bytes')
     ).rejects.toThrow(/state changed/);
@@ -431,10 +513,13 @@ it.each(['network', 'fee policy', 'operator key'])(
     else if (change === 'operator key')
       observation.node.operatorPublicKey = 'cc'.repeat(48);
     else
-      (chromeStorage.getItem as jest.Mock).mockImplementation(async (name) =>
-        name.startsWith('sentry-settings-v1:')
-          ? { maxFeeSatoshis: '100001' }
-          : null
+      (chromeStorage.getItems as jest.Mock).mockImplementation(
+        async ([name]) => ({
+          [name]: {
+            serviceUrl: 'https://sysnode.info',
+            maxFeeSatoshis: '100001',
+          },
+        })
       );
     await expect(
       controller.sign({ id, keyId: summary.id, password: 'pw' })
@@ -577,7 +662,7 @@ it('links verified public node identity without signing or importing collateral'
     genesisHash: request.chain.genesisHash,
   });
   expect(chromeStorage.setItem).toHaveBeenCalledWith(
-    'sentry-linked-v1:vault-id:mainnet',
+    `sentry-linked-v1:${'aa'.repeat(32)}:mainnet`,
     [expect.objectContaining({ proTxHash: observation.node.proTxHash })]
   );
   expect(runSentryCrypto).not.toHaveBeenCalled();

@@ -62,6 +62,10 @@ describe('SLH setup approval admission', () => {
     });
     wallet.deriveSLHDSASetupSecretForAccount = derive;
     wallet.smartAccount = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getWalletSessionGeneration: () => wallet.walletSessionGeneration,
     } as any);
     jest

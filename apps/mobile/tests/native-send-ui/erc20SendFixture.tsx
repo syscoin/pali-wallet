@@ -1,3 +1,4 @@
+import { authorizePrivateNoteReplay } from '../../../../source/wallet/privateNoteReplay.ts';
 import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networkContext';
 // Synthetic public wallet only. Production never imports this fixture.
 import React, { useState, useSyncExternalStore } from 'react';
@@ -5,7 +6,7 @@ import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
-import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import type { EvmUnsignedTransfer } from '../../src/custody/evmFeeContracts';
 import type { CustodySnapshot } from '../../src/custody/types';
 import {
   NativeTransfers,
@@ -28,8 +29,9 @@ const token = Object.freeze({
   contractAddress: '0x3333333333333333333333333333333333333333',
   name: 'Public fixture token',
   symbol: 'FIX',
-  decimals: 6,
+  decimals: new URLSearchParams(window.location.search).has('max-token-dust') ? 255 : 6,
 });
+const tokenUnits = new URLSearchParams(window.location.search).has('max-token-dust') ? '1' : (10n ** 40n).toString();
 let runtimeToken: Erc20Metadata = token;
 let state: CustodySnapshot = Object.freeze<CustodySnapshot>({
   phase: 'ready',
@@ -116,7 +118,7 @@ const rpc = new NativeTransferRpc({
         data === '0x313ce567'
           ? word(runtimeToken.decimals)
           : data.startsWith('0x70a08231')
-          ? word(10n ** 40n)
+          ? word(BigInt(tokenUnits))
           : word(1);
     } else if (request.method === 'eth_getBlockByNumber')
       result = block(
@@ -161,7 +163,7 @@ const rpc = new NativeTransferRpc({
 });
 const runtime: NativeTransferRuntime = {
   replay(guard, transport, options) {
-    return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
+    return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
   },
   submit: submitFixtureEvmTransaction(signedRecords),
@@ -179,7 +181,8 @@ const runtime: NativeTransferRuntime = {
     guard();
     unlockChecks++;
   },
-  async sign(transaction: PreparedEvmTransaction, guard, intent) {
+  async sign(transaction: EvmUnsignedTransfer, authority, intent) {
+    const guard = authority.assertCurrent;
     guard();
     assertTransferIntentEnvelope(transaction, intent);
     const rawTransaction = await wallet.signTransaction({
@@ -194,6 +197,7 @@ const runtime: NativeTransferRuntime = {
         ? {
             maxFeePerGas: BigInt(transaction.maxFeePerGas),
             maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas),
+            accessList: transaction.accessList.map(entry => ({ address: entry.address, storageKeys: [...entry.storageKeys] })),
           }
         : { gasPrice: BigInt(transaction.gasPrice) }),
     });
@@ -321,6 +325,13 @@ window.__erc20SendFixture = {
     publish();
   },
 };
+const tokenSnapshot = Object.freeze({
+  account: { address: wallet.address, network: 'ethereum', revision: 1 },
+  status: 'ready' as const, items: [{ metadata: token, status: 'available' as const, units: tokenUnits, updatedAt: 1 }],
+  preview: null, previewStatus: 'idle' as const, discovery: null, busy: false, error: null,
+});
+const tokenView = { getSnapshot: () => tokenSnapshot, subscribe: () => () => {}, connect: () => () => {} };
+
 export function Erc20SendFixture() {
   const snapshot = useSyncExternalStore(
     source.subscribe,
@@ -344,10 +355,12 @@ export function Erc20SendFixture() {
     }} />
   </> : <Text>Wallet closed</Text>;
   return <NativeSend
+    account={{ address: wallet.address, network: 'ethereum', revision: state.revision }}
     key={snapshot.revision}
     controller={controller.view}
     context={getNativeSendContext('ethereum')}
     token={token}
+    tokenView={tokenView}
     savedHash={route.hash}
     onBack={() => setRoute({ revision: snapshot.revision, open: false })}
   />;

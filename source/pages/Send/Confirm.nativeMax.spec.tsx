@@ -13,6 +13,8 @@ import React from 'react';
 
 import { SendConfirm } from 'pages/Send/Confirm';
 
+import { reviewedDappFeeFixture } from './fixtures/reviewedDappFee';
+
 let mockEIP1559 = true;
 let mockRefreshedBalance = '100';
 let mockRefreshFails = false;
@@ -71,6 +73,14 @@ const mockState = {
           balances: { ethereum: '100' },
         },
       },
+      Trezor: {
+        0: {
+          id: 0,
+          address: '0x1111111111111111111111111111111111111111',
+          isTrezorWallet: true,
+          balances: { ethereum: '100' },
+        },
+      },
     },
     accountTransactions: {},
   },
@@ -112,8 +122,8 @@ jest.mock('components/index', () => ({
   Button: jest.requireActual('components/Button/Button').Button,
   Icon: ({ name }: any) => <span>{name}</span>,
   Tooltip: ({ children }: any) => <>{children}</>,
-  IconButton: ({ children, onClick }: any) => (
-    <button type="button" onClick={onClick}>
+  IconButton: ({ children, ...props }: any) => (
+    <button type="button" {...props}>
       {children}
     </button>
   ),
@@ -206,6 +216,7 @@ afterEach(() => {
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getFreshNativeEvmGasLimit',
         'reviewNativeEvmFee',
+        'reviewWalletEvmFee',
         'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
         'sendAndSaveEthTransaction',
@@ -235,6 +246,8 @@ function prepare(quoteCount = 1) {
       expect(args[1]).toEqual(mockScope);
       return Promise.resolve(21000);
     }
+    if (method === 'reviewWalletEvmFee')
+      return Promise.resolve(reviewedDappFeeFixture(args[0]));
     if (method === 'reviewNativeEvmFee')
       return Promise.resolve({
         id: 'fixture-review',
@@ -279,14 +292,20 @@ const submissionCalls = () =>
   );
 const ready = async (
   max: boolean,
-  { balance = '100', legacy = false, confirmable = true, hardware = false } = {}
+  {
+    balance = '100',
+    legacy = false,
+    confirmable = true,
+    hardware = false,
+    hardwareType = 'Ledger' as 'Ledger' | 'Trezor',
+  } = {}
 ) => {
   mockEIP1559 = !legacy;
   mockRefreshedBalance = balance;
   mockState.vault.accounts.HDAccount[0].balances.ethereum = balance;
   if (hardware) {
-    mockState.vault.activeAccount.type = 'Ledger';
-    mockState.vault.accounts.Ledger[0].balances.ethereum = balance;
+    mockState.vault.activeAccount.type = hardwareType;
+    mockState.vault.accounts[hardwareType][0].balances.ethereum = balance;
   }
   mockLocation.state.tx.amount = max ? balance : '1';
   mockLocation.state.tx.isMax = max;
@@ -565,3 +584,157 @@ it.each([false, true])(
     expect(submissionCalls()).toHaveLength(0);
   }
 );
+
+it.each([false, true])(
+  'hardware confirmation uses the exact issued generic fee review (legacy=%s)',
+  async (legacy) => {
+    await ready(true, { legacy, hardware: true });
+    const reviewCall = mockEmitter.mock.calls.find(
+      ([path]) => path.at(-1) === 'reviewWalletEvmFee'
+    );
+    expect(reviewCall).toBeDefined();
+    const tx = await captureRefusedSubmission();
+    const sendCall = submissionCalls()[0];
+    expect(sendCall[1][4]).toEqual({
+      hardwareScope: mockScope,
+      genericReviewId: 'rendered-fee-review',
+      submission: { kind: 'transaction' },
+    });
+    expect(tx).toEqual(reviewedDappFeeFixture(reviewCall![1][0]).transaction);
+  }
+);
+
+it.each(
+  (['Ledger', 'Trezor'] as const).flatMap((hardwareType) =>
+    [false, true].map((custom) => ({ hardwareType, custom }))
+  )
+)(
+  '$hardwareType refusal before broadcast requires a fresh fee quote and a new confirmation (custom=$custom)',
+  async ({ hardwareType, custom }) => {
+    await ready(false, { hardware: true, hardwareType });
+    if (custom) await changeFee(true);
+    const initialQuoteCount = mockEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'reviewWalletEvmFee'
+    ).length;
+    const previous = mockEmitter.getMockImplementation()!;
+    const freshQuote = deferred();
+    let attempts = 0;
+    mockEmitter.mockImplementation((path: string[], args: any[] = []) => {
+      if (path.at(-1) === 'reviewWalletEvmFee') return freshQuote.promise;
+      if (path.at(-1) === 'sendAndSaveEthTransaction') {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.reject(
+              Object.assign(new Error('Device refused signing'), {
+                transactionNotBroadcast: true,
+              })
+            )
+          : Promise.resolve({ hash: `0x${'ab'.repeat(32)}` });
+      }
+      return previous(path, args);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    const retry = await screen.findByRole('button', { name: 'receive.retry' });
+    expect(submissionCalls()).toHaveLength(1);
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeDisabled();
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'reviewWalletEvmFee'
+        )
+      ).toHaveLength(initialQuoteCount + 1)
+    );
+    expect(submissionCalls()).toHaveLength(1);
+    const quoteRequest = mockEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'reviewWalletEvmFee'
+    )[initialQuoteCount][1][0];
+    if (custom) {
+      expect(quoteRequest.gasLimit).toBe('30000');
+      expect(quoteRequest.maxFeePerGas).toBe('4000000000');
+    }
+    const replacement = {
+      ...reviewedDappFeeFixture({ ...quoteRequest, nonce: 9 }),
+      id: 'fresh-device-review',
+    };
+    await act(async () => freshQuote.resolve(replacement));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'buttons.confirm' })
+      ).toBeEnabled()
+    );
+    expect(submissionCalls()).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(submissionCalls()).toHaveLength(2));
+    expect(submissionCalls()[1][1][0]).toEqual(replacement.transaction);
+    expect(submissionCalls()[1][1][4]).toEqual({
+      hardwareScope: mockScope,
+      genericReviewId: replacement.id,
+      submission: { kind: 'transaction' },
+    });
+  }
+);
+
+it.each(['Ledger', 'Trezor'] as const)(
+  '%s unknown broadcast outcome cannot expose fee retry',
+  async (hardwareType) => {
+    await ready(false, { hardware: true, hardwareType });
+    const previous = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path: string[], args: any[] = []) =>
+      path.at(-1) === 'sendAndSaveEthTransaction'
+        ? Promise.reject(
+            Object.assign(new Error('Response timed out'), {
+              transactionNotBroadcast: false,
+            })
+          )
+        : previous(path, args)
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(submissionCalls()).toHaveLength(1));
+    await screen.findByText('send.submissionStatusUnknown');
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'buttons.confirm' })
+      ).toBeDisabled()
+    );
+    expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.at(-1) === 'reviewWalletEvmFee'
+      )
+    ).toHaveLength(1);
+  }
+);
+
+it('a late hardware refusal cannot reopen a retired account/network review', async () => {
+  await ready(false, { hardware: true });
+  const previous = mockEmitter.getMockImplementation()!;
+  const signing = deferred();
+  mockEmitter.mockImplementation((path: string[], args: any[] = []) =>
+    path.at(-1) === 'sendAndSaveEthTransaction'
+      ? signing.promise
+      : previous(path, args)
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  await waitFor(() => expect(submissionCalls()).toHaveLength(1));
+  mockScope.network = 'changed-network';
+  await act(async () => mockRerender!());
+  await act(async () =>
+    signing.reject(
+      Object.assign(new Error('Device refused signing'), {
+        transactionNotBroadcast: true,
+      })
+    )
+  );
+  mockScope.network = 'synthetic-network';
+  await act(async () => mockRerender!());
+  expect(screen.queryByRole('button', { name: 'receive.retry' })).toBeNull();
+  const confirm = screen.queryByRole('button', { name: 'buttons.confirm' });
+  if (confirm) {
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+  }
+  expect(submissionCalls()).toHaveLength(1);
+});

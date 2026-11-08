@@ -1,6 +1,8 @@
 import type { DeviceUnlockEnrollmentPort } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { UtxoRecordStorage } from '../../../../source/wallet/utxoSignedRecords.ts';
+import type { ISentryKeyVaultHost } from '../../../../source/wallet/sentryKeyVault.ts';
+import type { SentryNetwork } from '../../../../source/shared/sentryNetworks.ts';
 
 /** Internal storage ports. Never expose these handles or stored values to UI. */
 export type StorageErrorCode =
@@ -58,6 +60,12 @@ export interface KeyringStoragePort {
    * A supplied synchronous owner guard must still pass immediately before COMMIT. */
   compareAndSet(key: string, expected: unknown, value: unknown,
     removeIfEqual?: Readonly<Record<string, unknown>>, assertCurrent?: () => void): Promise<boolean>;
+  /** Compare every captured row and commit all replacements in one guarded transaction.
+   * Undefined expected/value represents an absent/deleted row. */
+  compareAndSetMany(
+    changes: readonly Readonly<{ key: string; expected: unknown; value: unknown }>[],
+    assertCurrent: () => void
+  ): Promise<boolean>;
 }
 
 export type WalletStoredState = Readonly<
@@ -95,10 +103,25 @@ export type WalletRemovalResult = Readonly<{
   status: 'wallet-records-removed' | 'reopen-required';
 }>;
 
+/** Construct only from the authenticated profile and selected Syscoin owner. */
+export type SentryStorageScope = Readonly<{
+  network: SentryNetwork;
+  pairFingerprint: string;
+  profileId: string;
+  vaultId: string;
+  walletBindingId: string;
+}>;
+
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
   readonly utxoSignedRecords?: UtxoRecordStorage;
+  readonly sentryKeys?: Readonly<{
+    bind(
+      scope: SentryStorageScope,
+      assertCurrent: () => void
+    ): Pick<ISentryKeyVaultHost, 'read' | 'write'>;
+  }>;
   readonly deviceUnlockEnrollment?: DeviceUnlockEnrollmentPort;
   /** Private note domain, sharing this owner’s SQL queue and lease. */
   readonly notes?: Readonly<{

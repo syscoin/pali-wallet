@@ -6,15 +6,26 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import React from 'react';
+import { acknowledgedGuardianRecoveryClaim } from 'tests/fixtures/guardianRecoveryClaim';
 
 import {
   createPasskeyCredential,
   signP256WebAuthnActionHash,
+  setActivePasskeyRecord,
+  toP256WebAuthnRecoveryTarget,
 } from 'utils/passkey';
+import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
+import {
+  captureGuardianRecoveryClaim,
+  guardianRecoveryReplacementApplied,
+} from 'utils/smartAccount/guardianRecoveryClaim';
+import { captureGuardianRecoveryIntent } from 'utils/smartAccount/guardianRecoveryIntent';
 import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
+import { buildSmartAccountGuardianRecoveryOperation } from 'utils/smartAccount/recovery';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -24,7 +35,42 @@ let mockScope: any;
 let mockResponse: any;
 let mockRead: () => Promise<any>;
 let mockConnected = true;
+let mockSessionGeneration = 7;
 const mockEmitter = jest.fn();
+const mockControllerEmitter = async (
+  path: string[],
+  payload: any[] = [],
+  ...rest: any[]
+) => {
+  const response = await mockEmitter(path, payload, ...rest);
+  if (path[1] === 'prepareSmartAccountGuardianStartRecovery') {
+    const claim = acknowledgedGuardianRecoveryClaim(payload[0], response);
+    const metadata = mockVault.accounts.SmartAccount[1].smartAccount;
+    if (
+      (metadata.guardianRecoveryClaim?.intent.operation.hash ?? null) !==
+      payload[0].expectedClaimHash
+    )
+      throw new Error('Guardian recovery claim changed');
+    mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata = {
+      ...metadata,
+      guardianRecoveryClaim: claim,
+    };
+    return { ...response, claim };
+  }
+  if (path[1] === 'retireSmartAccountGuardianRecovery') {
+    const metadata = mockVault.accounts.SmartAccount[1].smartAccount;
+    if (
+      metadata.guardianRecoveryClaim?.intent.operation.hash ===
+      payload[0].expectedClaimHash
+    )
+      mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata = {
+        ...metadata,
+        guardianRecoveryClaim: undefined,
+        guardianRecoveryReplacement: metadata.guardianRecoveryClaim.replacement,
+      };
+  }
+  return response;
+};
 const mockAlert = { error: jest.fn(), info: jest.fn(), success: jest.fn() };
 jest.mock('antd', () => ({
   Form: { Item: ({ children }: any) => <div>{children}</div> },
@@ -44,7 +90,7 @@ jest.mock('components/Loading', () => ({
 }));
 jest.mock('hooks/useController', () => ({
   useController: () => ({
-    controllerEmitter: mockEmitter,
+    controllerEmitter: mockControllerEmitter,
     handleWalletLockedError: () => false,
   }),
 }));
@@ -89,6 +135,7 @@ jest.mock('utils/passkey', () => ({
   ...jest.requireActual('utils/passkey'),
   createPasskeyCredential: jest.fn(),
   signP256WebAuthnActionHash: jest.fn(),
+  setActivePasskeyRecord: jest.fn(() => true),
 }));
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
@@ -98,6 +145,7 @@ const OP = `0x${'33'.repeat(32)}`;
 const TIME = Math.floor(Date.now() / 1000);
 const STORAGE = `pali-smart-account-recovery-replacement:57057:${ACCOUNT}`;
 const FINALIZE = 'settings.smartAccountGuardianRecoveryFinalize';
+const CLEAR_TRACKING = 'settings.smartAccountGuardianRecoveryClearTracking';
 const connected = 'settings.smartAccountGuardianRecoveryConnectedStatus';
 const external = 'settings.smartAccountGuardianExternalPending';
 const unavailable = 'settings.smartAccountGuardianStatusUnavailable';
@@ -146,6 +194,7 @@ const local = () => ({
 
 beforeEach(() => {
   mockConnected = true;
+  mockSessionGeneration = 7;
   jest.clearAllMocks();
   localStorage.clear();
   mockScope = { account: 'account:1', network: 'network:57057' };
@@ -195,9 +244,10 @@ beforeEach(() => {
   mockRead = async () => mockResponse;
   mockEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'hydrateSmartAccount') return mockMetadata;
-    if (method === 'getWalletSessionGeneration') return 7;
+    if (method === 'getWalletSessionGeneration') return mockSessionGeneration;
     if (method === 'getSLHDSASmartAccountSetupStatus') return null;
     if (method === 'getSmartAccountGuardianRecoveryStatus') return mockRead();
+    if (method === 'retireSmartAccountGuardianRecovery') return {};
     if (method === 'getSmartAccountNativeGasStatus')
       return { hasNativeGas: true };
     throw new Error(`Unexpected mutation or method ${method}`);
@@ -507,7 +557,20 @@ test('Start uses the freshly read guardian and delay instead of the displayed po
     delaySeconds: 7200,
   });
   const original = mockEmitter.getMockImplementation()!;
-  const operation = local().recoveryOperation;
+  const operation = buildSmartAccountGuardianRecoveryOperation({
+    account: ACCOUNT,
+    chainId: 57057,
+    policyEpoch: '7',
+    recoveryModule: MODULE,
+    salt: OP,
+    target: {
+      auth: {
+        module: 'ecdsa',
+        validator: getPaliModuleAddress(57057, 'ecdsa'),
+        data: encodeEcdsaValidatorInitData([OWNER], 1),
+      },
+    },
+  });
   mockEmitter.mockImplementation(async (path: string[], ...args: any[]) => {
     if (path[1] === 'prepareSmartAccountGuardianStartRecovery')
       return {
@@ -542,9 +605,10 @@ test('Start uses the freshly read guardian and delay instead of the displayed po
         .guardian
     ).toBe(freshGuardian);
   }
-  const saved = JSON.parse(localStorage.getItem(STORAGE)!);
-  expect(saved.recoveryOperation.readyAt).toBeGreaterThanOrEqual(before + 7200);
-  expect(saved.recoveryOperation.readyAt).toBeLessThanOrEqual(
+  const saved =
+    mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim;
+  expect(saved.readyAt).toBeGreaterThanOrEqual(before + 7200);
+  expect(saved.readyAt).toBeLessThanOrEqual(
     Math.floor(Date.now() / 1000) + 7200
   );
   expect(createPasskeyCredential).not.toHaveBeenCalled();
@@ -586,7 +650,7 @@ test('owner disable remains available while the status read is unresolved', asyn
   mockRead = () => new Promise(() => undefined);
   render(<SmartAccountPolicy />);
   await waitFor(() => expect(statusCalls()).toHaveLength(1));
-  const disable = screen.getByRole('button', {
+  const disable = await screen.findByRole('button', {
     name: 'settings.smartAccountGuardianRecoveryDisable',
   });
   expect(disable.hasAttribute('disabled')).toBe(false);
@@ -669,5 +733,890 @@ test.each(['RPC', 'session'])(
     await waitFor(() => expect(statusCalls().length).toBeGreaterThan(1));
     await act(async () => release(observation()));
     expect(screen.queryByText(external)).toBeNull();
+  }
+);
+
+const canonicalLocal = () => {
+  const recoveryTarget = {
+    auth: {
+      module: 'ecdsa' as const,
+      validator: getPaliModuleAddress(57057, 'ecdsa'),
+      data: encodeEcdsaValidatorInitData([OWNER], 1),
+    },
+  };
+  const intent = captureGuardianRecoveryIntent({
+    operation: buildSmartAccountGuardianRecoveryOperation({
+      account: ACCOUNT,
+      chainId: 57057,
+      policyEpoch: '7',
+      recoveryModule: MODULE,
+      salt: OP,
+      target: recoveryTarget,
+    }),
+    target: recoveryTarget,
+  });
+  return {
+    ...local(),
+    guardian: OWNER,
+    guardianApproval: 'ecdsa',
+    recoveryTarget: intent.target,
+    recoveryOperation: {
+      ...intent.operation,
+      readyAt: TIME + 600,
+    },
+  };
+};
+const showStart = async () => {
+  await screen.findByText(connected);
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryShowOptions',
+    })
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: /settings.ecdsaAuthenticator/ })
+  );
+  fireEvent.change(
+    screen.getByPlaceholderText('settings.recoveryAuthenticatorEcdsaOwner'),
+    { target: { value: OWNER } }
+  );
+};
+const showSaved = async () => {
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryContinue',
+    })
+  );
+};
+const installRecoveryTransport = (submit: (payload: any) => Promise<any>) => {
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(
+    async (path: string[], payload: any[] = []) => {
+      if (path[1] === 'prepareSmartAccountGuardianStartRecovery')
+        return {
+          approval: { guardian: OWNER, signature: '0x1234' },
+          operation:
+            payload[0].operation ??
+            buildSmartAccountGuardianRecoveryOperation({
+              account: ACCOUNT,
+              chainId: 57057,
+              policyEpoch: '7',
+              recoveryModule: MODULE,
+              salt: OP,
+              target: payload[0].target,
+            }),
+        };
+      if (path[1] === 'submitPreparedSmartAccountGuardianStartRecovery')
+        return submit(payload[0]);
+      if (path[1] === 'finalizeSmartAccountGuardianRecovery') return {};
+      return original(path, payload);
+    }
+  );
+};
+
+test.each(['lost reply', 'popup closes'])(
+  'persists before transport and resumes normal finalize after %s',
+  async (failure) => {
+    let entered = false;
+    installRecoveryTransport(async ({ operation }) => {
+      const saved =
+        mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim;
+      expect(saved.intent.operation).toMatchObject(operation);
+      expect(saved.intent.target.auth.data).toBe(
+        encodeEcdsaValidatorInitData([OWNER], 1)
+      );
+      expect(saved.replacement.authenticator.config.owners).toEqual([OWNER]);
+      entered = true;
+      if (failure === 'popup closes') return new Promise(() => undefined);
+      throw new Error('Scheduling reply lost after acceptance');
+    });
+    const view = render(<SmartAccountPolicy />);
+    await showStart();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryStart',
+      })
+    );
+    await waitFor(() => expect(entered).toBe(true));
+    const saved =
+      mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim;
+    view.unmount();
+    const id = getGuardianRecoveryOperationId(saved.intent.operation);
+    mockResponse = {
+      ...observation(),
+      active: pending(id, 'ready'),
+      pending: pending(id, 'ready'),
+      knownOperation: pending(id, 'ready'),
+      recoveryTransactionHash: null,
+    };
+    render(<SmartAccountPolicy />);
+    await showSaved();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: FINALIZE }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false)
+    );
+    fireEvent.click(screen.getByRole('button', { name: FINALIZE }));
+    await waitFor(() =>
+      expect(mockAlert.success).toHaveBeenCalledWith(
+        'settings.smartAccountGuardianRecoveryFinalized'
+      )
+    );
+    expect(
+      mockEmitter.mock.calls.find(
+        (call) => call[0][1] === 'finalizeSmartAccountGuardianRecovery'
+      )![1][0]
+    ).toMatchObject({ claim: saved });
+    expect(
+      mockEmitter.mock.calls.filter(
+        (call) =>
+          call[0][1] === 'submitPreparedSmartAccountGuardianStartRecovery'
+      )
+    ).toHaveLength(1);
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE)).toBeNull();
+  }
+);
+
+test('safe unsent retry reuses the exact canonical intent and ignores operation fields in the reply', async () => {
+  const saved = canonicalLocal();
+  localStorage.setItem(STORAGE, JSON.stringify(saved));
+  const id = getGuardianRecoveryOperationId(saved.recoveryOperation);
+  mockResponse = {
+    ...observation(),
+    knownOperation: { ...pending(id), status: 'unknown' },
+    recoveryTransactionHash: null,
+  };
+  installRecoveryTransport(async () => ({
+    operation: {
+      ...saved.recoveryOperation,
+      account: OWNER,
+      salt: `0x${'99'.repeat(32)}`,
+    },
+  }));
+  render(<SmartAccountPolicy />);
+  await showSaved();
+  const start = screen.getByRole('button', {
+    name: 'settings.smartAccountGuardianRecoveryStart',
+  });
+  await waitFor(() =>
+    expect((start as HTMLButtonElement).disabled).toBe(false)
+  );
+  fireEvent.click(start);
+  await waitFor(() =>
+    expect(mockAlert.success).toHaveBeenCalledWith(
+      'settings.smartAccountGuardianRecoveryStarted'
+    )
+  );
+  const prepared = mockEmitter.mock.calls.find(
+    (call) => call[0][1] === 'prepareSmartAccountGuardianStartRecovery'
+  )![1][0];
+  expect(prepared.operation).toEqual(
+    captureGuardianRecoveryIntent({
+      operation: saved.recoveryOperation,
+      target: saved.recoveryTarget,
+    }).operation
+  );
+  expect(prepared.target).toEqual(
+    expect.objectContaining({
+      auth: expect.objectContaining({ data: saved.recoveryTarget.auth.data }),
+    })
+  );
+  expect(JSON.parse(localStorage.getItem(STORAGE)!)).toMatchObject(saved);
+  expect(createPasskeyCredential).not.toHaveBeenCalled();
+});
+
+test('a retained unknown scheduling attempt cannot authorize a second send or finalize', async () => {
+  const saved = canonicalLocal();
+  localStorage.setItem(STORAGE, JSON.stringify(saved));
+  const id = getGuardianRecoveryOperationId(saved.recoveryOperation);
+  mockResponse = {
+    ...observation(),
+    active: pending(id, 'ready'),
+    pending: pending(id, 'ready'),
+    knownOperation: pending(id, 'ready'),
+    recoveryTransactionHash: `0x${'88'.repeat(32)}`,
+  };
+  render(<SmartAccountPolicy />);
+  await showSaved();
+  await waitFor(() => expect(statusCalls().length).toBeGreaterThan(0));
+  expect(
+    (screen.getByRole('button', { name: FINALIZE }) as HTMLButtonElement)
+      .disabled
+  ).toBe(true);
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryStart',
+      }) as HTMLButtonElement
+    ).disabled
+  ).toBe(true);
+  expect(localStorage.getItem(STORAGE)).toBe(JSON.stringify(saved));
+  expect(
+    mockEmitter.mock.calls.some((call) =>
+      /^(prepare|submit|sign|finalize)/.test(call[0][1])
+    )
+  ).toBe(false);
+});
+
+test.each(['account', 'chain'])(
+  'a restart in another %s cannot load or submit the saved intent',
+  async (axis) => {
+    const saved = JSON.stringify(canonicalLocal());
+    localStorage.setItem(STORAGE, saved);
+    if (axis === 'account') mockVault.accounts.SmartAccount[1].address = OWNER;
+    else mockVault.activeNetwork.chainId = mockMetadata.chainId = 1;
+    mockScope = {
+      account: axis === 'account' ? 'account:2' : 'account:1',
+      network: axis === 'chain' ? 'network:1' : 'network:57057',
+    };
+    mockResponse = {
+      ...observation(),
+      account: axis === 'account' ? OWNER : ACCOUNT,
+      chainId: axis === 'chain' ? 1 : 57057,
+    };
+    render(<SmartAccountPolicy />);
+    await waitFor(() => expect(statusCalls().length).toBeGreaterThan(0));
+    expect(statusCalls().every((call) => call[1][0].intent === undefined)).toBe(
+      true
+    );
+    expect(
+      mockEmitter.mock.calls.some((call) =>
+        /^(prepare|submit|sign|finalize)/.test(call[0][1])
+      )
+    ).toBe(false);
+    expect(localStorage.getItem(STORAGE)).toBe(saved);
+  }
+);
+
+test('failed intent persistence prevents scheduling transport', async () => {
+  installRecoveryTransport(async () => {
+    throw new Error('Must never dispatch');
+  });
+  render(<SmartAccountPolicy />);
+  await showStart();
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+    path[1] === 'prepareSmartAccountGuardianStartRecovery'
+      ? Promise.reject(new Error('Claim persistence refused'))
+      : original(path, ...args)
+  );
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryStart',
+    })
+  );
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  expect(
+    mockEmitter.mock.calls.some(
+      (call) => call[0][1] === 'submitPreparedSmartAccountGuardianStartRecovery'
+    )
+  ).toBe(false);
+});
+
+test('retrying the saved passkey requires possession and retains the intent when that proof fails', async () => {
+  const publicKey = {
+    originHash: OP,
+    originLength: 16,
+    rpIdHash: OP,
+    x: `0x${'55'.repeat(32)}`,
+    y: `0x${'66'.repeat(32)}`,
+  };
+  const target = toP256WebAuthnRecoveryTarget({
+    validator: getPaliModuleAddress(57057, 'p256-webauthn'),
+    ...publicKey,
+  });
+  const intent = captureGuardianRecoveryIntent({
+    operation: buildSmartAccountGuardianRecoveryOperation({
+      account: ACCOUNT,
+      chainId: 57057,
+      policyEpoch: '7',
+      recoveryModule: MODULE,
+      salt: OP,
+      target,
+    }),
+    target,
+  });
+  const saved = {
+    kind: 'p256-webauthn',
+    guardian: OWNER,
+    guardianApproval: 'ecdsa',
+    authenticator: {
+      id: 'p256-webauthn',
+      config: {
+        publicKey,
+        credentialId: 'stored-passkey',
+        credentialIdHash: OP,
+      },
+    },
+    credentialId: 'stored-passkey',
+    credentialIdHash: OP,
+    recoveryTarget: intent.target,
+    recoveryOperation: { ...intent.operation, readyAt: TIME + 600 },
+  };
+  localStorage.setItem(STORAGE, JSON.stringify(saved));
+  mockResponse = {
+    ...observation(),
+    knownOperation: {
+      ...pending(getGuardianRecoveryOperationId(intent.operation)),
+      status: 'unknown',
+    },
+    recoveryTransactionHash: null,
+  };
+  (signP256WebAuthnActionHash as jest.Mock).mockRejectedValueOnce(
+    new Error('Credential unavailable')
+  );
+  render(<SmartAccountPolicy />);
+  await showSaved();
+  const start = screen.getByRole('button', {
+    name: 'settings.smartAccountGuardianRecoveryStart',
+  });
+  await waitFor(() =>
+    expect((start as HTMLButtonElement).disabled).toBe(false)
+  );
+  fireEvent.click(start);
+  await waitFor(() => expect(signP256WebAuthnActionHash).toHaveBeenCalled());
+  expect(signP256WebAuthnActionHash).toHaveBeenCalledWith(
+    expect.objectContaining({
+      actionHash: intent.operation.hash,
+      credentialId: 'stored-passkey',
+      expectedPublicKey: publicKey,
+    })
+  );
+  expect(createPasskeyCredential).not.toHaveBeenCalled();
+  expect(
+    mockEmitter.mock.calls.some((call) => /^(prepare|submit)/.test(call[0][1]))
+  ).toBe(false);
+  expect(localStorage.getItem(STORAGE)).toBe(JSON.stringify(saved));
+});
+
+test('an unsent claim from an older policy epoch can be retired on reopen without losing its replacement', async () => {
+  installRecoveryTransport(async () => {
+    mockResponse = {
+      ...observation(),
+      policyEpoch: '8',
+      recoveryTransactionHash: null,
+      knownOperation: {
+        ...pending(
+          getGuardianRecoveryOperationId(
+            mockVault.accounts.SmartAccount[1].smartAccount
+              .guardianRecoveryClaim.intent.operation
+          )
+        ),
+        status: 'unknown',
+      },
+    };
+    throw new Error('PALI_GUARDIAN_RECOVERY_POLICY_CHANGED');
+  });
+  const view = render(<SmartAccountPolicy />);
+  await showStart();
+  fireEvent.click(
+    screen.getByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryStart',
+    })
+  );
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  const claim =
+    mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim;
+  expect(claim.intent.operation.policyEpoch).toBe('7');
+  view.unmount();
+  render(<SmartAccountPolicy />);
+  fireEvent.click(
+    await screen.findByRole('button', {
+      name: 'settings.smartAccountGuardianRecoveryShowOptions',
+    })
+  );
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'settings.smartAccountGuardianRecoveryStart',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  expect(
+    mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+      .replacement
+  ).toEqual(claim.replacement);
+});
+
+test('two Settings views cannot replace the intent whose scheduling transaction was accepted', async () => {
+  const original = mockEmitter.getMockImplementation()!;
+  let releaseSecond!: (value: any) => void;
+  let prepared = 0,
+    accepted: any;
+  mockEmitter.mockImplementation(
+    async (path: string[], payload: any[] = []) => {
+      if (path[1] === 'prepareSmartAccountGuardianStartRecovery') {
+        const operation = buildSmartAccountGuardianRecoveryOperation({
+          account: ACCOUNT,
+          chainId: 57057,
+          policyEpoch: '7',
+          recoveryModule: MODULE,
+          salt: `0x${(++prepared === 1 ? '71' : '72').repeat(32)}`,
+          target: payload[0].target,
+        });
+        const response = {
+          approval: { guardian: OWNER, signature: '0x1234' },
+          operation,
+        };
+        if (prepared === 2)
+          return new Promise((resolve) => {
+            releaseSecond = resolve;
+          }).then(() => response);
+        return response;
+      }
+      if (path[1] === 'submitPreparedSmartAccountGuardianStartRecovery') {
+        if (accepted)
+          throw new Error('PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED');
+        accepted = payload[0].operation;
+        return { operation: accepted };
+      }
+      return original(path, payload);
+    }
+  );
+  const first = render(<SmartAccountPolicy />),
+    second = render(<SmartAccountPolicy />);
+  const open = async (view: typeof first) => {
+    const q = within(view.container);
+    await waitFor(() =>
+      expect(q.queryAllByText(connected).length).toBeGreaterThan(0)
+    );
+    fireEvent.click(
+      q.getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryShowOptions',
+      })
+    );
+    fireEvent.click(
+      q.getByRole('button', { name: /settings.ecdsaAuthenticator/ })
+    );
+    fireEvent.change(
+      q.getByPlaceholderText('settings.recoveryAuthenticatorEcdsaOwner'),
+      { target: { value: OWNER } }
+    );
+  };
+  await open(first);
+  await open(second);
+  act(() => {
+    fireEvent.click(
+      within(first.container).getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryStart',
+      })
+    );
+    fireEvent.click(
+      within(second.container).getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryStart',
+      })
+    );
+  });
+  await waitFor(() => expect(accepted).toBeDefined());
+  await act(async () => releaseSecond(undefined));
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+  expect(
+    mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim.intent
+      .operation.hash
+  ).toBe(accepted.hash);
+  expect(localStorage.getItem(STORAGE)).toBeNull();
+});
+
+const executedPasskeyClaim = () => {
+  const publicKey = {
+    originHash: OP,
+    originLength: 16,
+    rpIdHash: OP,
+    x: `0x${'55'.repeat(32)}`,
+    y: `0x${'66'.repeat(32)}`,
+  };
+  const target = toP256WebAuthnRecoveryTarget({
+    validator: getPaliModuleAddress(57057, 'p256-webauthn'),
+    ...publicKey,
+  });
+  const replacement = {
+    kind: 'p256-webauthn' as const,
+    credentialId: 'saved-recovery-passkey',
+    credentialIdHash: OP,
+    authenticator: {
+      id: 'p256-webauthn' as const,
+      config: {
+        credentialId: 'saved-recovery-passkey',
+        credentialIdHash: OP,
+        passkeyName: 'Replacement',
+        publicKey,
+      },
+    },
+  };
+  return captureGuardianRecoveryClaim({
+    intent: {
+      operation: buildSmartAccountGuardianRecoveryOperation({
+        account: ACCOUNT,
+        chainId: 57057,
+        policyEpoch: '7',
+        recoveryModule: MODULE,
+        salt: OP,
+        target,
+      }),
+      target,
+    },
+    guardian: { kind: 'ecdsa', guardian: OWNER },
+    replacement,
+    readyAt: TIME + 600,
+  });
+};
+
+test.each(['replacement active', 'owner changed after execution'])(
+  'lost finalize reply reopens an explicit local Finish action with %s',
+  async (mode) => {
+    const claim = executedPasskeyClaim(),
+      id = getGuardianRecoveryOperationId(claim.intent.operation);
+    mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata = {
+      ...mockMetadata,
+      guardianRecoveryClaim: claim,
+    };
+    mockResponse = {
+      ...observation(),
+      pending: pending(id, 'ready'),
+      active: pending(id, 'ready'),
+      knownOperation: pending(id, 'ready'),
+      recoveryTransactionHash: null,
+    };
+    const original = mockEmitter.getMockImplementation()!;
+    let finalizeCalls = 0;
+    mockEmitter.mockImplementation(
+      async (path: string[], payload: any[] = []) => {
+        if (path[1] === 'finalizeSmartAccountGuardianRecovery') {
+          finalizeCalls++;
+          mockResponse = {
+            ...observation(),
+            pending: null,
+            active: null,
+            knownOperation: { ...pending(id), status: 'executed' },
+            recoveryTransactionHash: null,
+          };
+          throw new Error('Finalize reply lost after execution');
+        }
+        if (path[1] === 'reconcileSmartAccountGuardianRecovery') {
+          expect(payload[0].expectedClaimHash).toBe(
+            claim.intent.operation.hash
+          );
+          if (!guardianRecoveryReplacementApplied(claim, mockMetadata))
+            throw new Error('Guardian recovery replacement is not active');
+          return mockMetadata;
+        }
+        return original(path, payload);
+      }
+    );
+    const view = render(<SmartAccountPolicy />);
+    await showSaved();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: FINALIZE }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false)
+    );
+    fireEvent.click(screen.getByRole('button', { name: FINALIZE }));
+    await waitFor(() => expect(finalizeCalls).toBe(1));
+    view.unmount();
+    if (mode === 'replacement active') {
+      mockMetadata = {
+        ...mockMetadata,
+        auth: claim.intent.target.auth,
+        installedModules: [
+          ...mockMetadata.installedModules,
+          {
+            id: 'p256-webauthn',
+            type: 'validator',
+            address: claim.intent.target.auth.validator,
+          },
+        ],
+      };
+      mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata;
+    }
+    mockAlert.error.mockClear();
+    render(<SmartAccountPolicy />);
+    await showSaved();
+    await waitFor(() =>
+      expect(
+        (screen.getByRole('button', { name: FINALIZE }) as HTMLButtonElement)
+          .disabled
+      ).toBe(false)
+    );
+    fireEvent.click(screen.getByRole('button', { name: FINALIZE }));
+    if (mode === 'replacement active') {
+      await waitFor(() =>
+        expect(mockAlert.success).toHaveBeenCalledWith(
+          'settings.smartAccountGuardianRecoveryFinalized'
+        )
+      );
+      const retire = mockEmitter.mock.calls.find(
+        (call) => call[0][1] === 'retireSmartAccountGuardianRecovery'
+      )![1][0];
+      const reconcile = mockEmitter.mock.calls.find(
+        (call) => call[0][1] === 'reconcileSmartAccountGuardianRecovery'
+      )![1][0];
+      expect(retire.expectedContext).toEqual(reconcile.expectedContext);
+      expect(retire.expectedContext.sessionGeneration).toBe(7);
+      expect(setActivePasskeyRecord).toHaveBeenCalledWith(
+        ACCOUNT,
+        expect.objectContaining({
+          credentialId: claim.replacement.credentialId,
+          credentialIdHash: claim.replacement.credentialIdHash,
+        })
+      );
+      expect(
+        mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+      ).toBeUndefined();
+      expect(
+        mockVault.accounts.SmartAccount[1].smartAccount
+          .guardianRecoveryReplacement
+      ).toEqual(claim.replacement);
+    } else {
+      await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+      expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+      expect(
+        mockEmitter.mock.calls.some(
+          (call) => call[0][1] === 'retireSmartAccountGuardianRecovery'
+        )
+      ).toBe(false);
+      expect(
+        mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+      ).toEqual(claim);
+      const currentIdentity = JSON.parse(JSON.stringify(mockMetadata.auth));
+      fireEvent.click(
+        await screen.findByRole('button', { name: CLEAR_TRACKING })
+      );
+      await waitFor(() =>
+        expect(mockMetadata.guardianRecoveryClaim).toBeUndefined()
+      );
+      expect(mockMetadata.guardianRecoveryReplacement).toEqual(
+        claim.replacement
+      );
+      expect(mockMetadata.auth).toEqual(currentIdentity);
+      expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+      const clear = mockEmitter.mock.calls.find(
+        (call) => call[0][1] === 'retireSmartAccountGuardianRecovery'
+      )![1][0];
+      expect(clear.expectedClaimHash).toBe(claim.intent.operation.hash);
+      expect(clear.expectedContext.sessionGeneration).toBe(7);
+      expect(clear.expectedContext.chainId).toBe(57057);
+      cleanup();
+      mockResponse = observation();
+      let restarted = false;
+      installRecoveryTransport(async () => {
+        restarted = true;
+        return {};
+      });
+      render(<SmartAccountPolicy />);
+      await showStart();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'settings.smartAccountGuardianRecoveryStart',
+        })
+      );
+      await waitFor(() => expect(restarted).toBe(true));
+    }
+    expect(finalizeCalls).toBe(1);
+    expect(
+      mockEmitter.mock.calls.filter(
+        (call) => call[0][1] === 'reconcileSmartAccountGuardianRecovery'
+      )
+    ).toHaveLength(1);
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+  }
+);
+
+const showCompletedTracking = async (retainedHash: string | null = null) => {
+  const claim = executedPasskeyClaim();
+  mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata = {
+    ...mockMetadata,
+    guardianRecoveryClaim: claim,
+  };
+  mockResponse = {
+    ...observation(),
+    knownOperation: {
+      ...pending(getGuardianRecoveryOperationId(claim.intent.operation)),
+      status: 'executed',
+    },
+    recoveryTransactionHash: retainedHash,
+  };
+  const view = render(<SmartAccountPolicy />);
+  await showSaved();
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: CLEAR_TRACKING,
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  return { view, claim };
+};
+
+test.each([
+  'pending',
+  'unknown',
+  'wrong account',
+  'wrong chain',
+  'wrong module',
+  'wrong operation',
+  'unavailable observation',
+])(
+  'completed tracking cannot retire from a fresh %s observation',
+  async (axis) => {
+    const { view, claim } = await showCompletedTracking();
+    const response = {
+      ...mockResponse,
+      knownOperation: { ...mockResponse.knownOperation },
+    };
+    if (axis === 'pending' || axis === 'unknown')
+      response.knownOperation.status = axis;
+    if (axis === 'wrong account') response.account = OWNER;
+    if (axis === 'wrong chain') response.chainId = 1;
+    if (axis === 'wrong module') response.moduleAddress = OWNER;
+    if (axis === 'wrong operation') response.knownOperation.operationId = OP;
+    mockRead = async () => {
+      if (axis === 'unavailable observation')
+        throw new Error('Retained observation incomplete');
+      return response;
+    };
+    fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+    await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+      )
+    ).toBe(false);
+    expect(mockMetadata.guardianRecoveryClaim).toEqual(claim);
+    expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+    view.unmount();
+  }
+);
+
+test('verified execution can clear tracking while duplicate signed bytes remain retained', async () => {
+  const { view, claim } = await showCompletedTracking(OP);
+  const before = JSON.stringify(claim.replacement);
+  fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+  await waitFor(() =>
+    expect(mockMetadata.guardianRecoveryClaim).toBeUndefined()
+  );
+  expect(JSON.stringify(mockMetadata.guardianRecoveryReplacement)).toBe(before);
+  expect(mockResponse.recoveryTransactionHash).toBe(OP);
+  expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+  expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+  view.unmount();
+});
+
+test.each(['session', 'account', 'network'])(
+  'a %s change during the held completed-status read cannot retire the originating claim',
+  async (axis) => {
+    const { view, claim } = await showCompletedTracking();
+    const snapshot = mockResponse;
+    let release!: (status: any) => void;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    mockRead = () => held as Promise<any>;
+    const reads = statusCalls().length;
+    fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+    await waitFor(() => expect(statusCalls().length).toBeGreaterThan(reads));
+    mockRead = async () => mockResponse;
+    if (axis === 'session') mockSessionGeneration++;
+    if (axis === 'account') {
+      mockScope = { ...mockScope, account: 'account:other' };
+      mockVault.activeAccount = { id: 0, type: 'HDAccount' };
+    }
+    if (axis === 'network') {
+      mockScope = { ...mockScope, network: 'network:1' };
+      mockVault.activeNetwork = { ...mockVault.activeNetwork, chainId: 1 };
+    }
+    view.rerender(<SmartAccountPolicy />);
+    await act(async () => release(snapshot));
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+      )
+    ).toBe(false);
+    expect(
+      mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+    ).toEqual(claim);
+    expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+    view.unmount();
+  }
+);
+
+test.each(['acknowledged', 'rejected', 'session changed'])(
+  'clear keeps the exact claim until the captured-context retirement is %s',
+  async (outcome) => {
+    const { view, claim } = await showCompletedTracking();
+    const currentIdentity = JSON.parse(JSON.stringify(mockMetadata.auth));
+    let resolve!: (status: any) => void, reject!: (error: Error) => void;
+    const held = new Promise((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    const original = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+      path[1] === 'retireSmartAccountGuardianRecovery'
+        ? held
+        : original(path, ...args)
+    );
+    fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+        )
+      ).toBe(true)
+    );
+    const request = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+    )![1][0];
+    expect(request.expectedContext.sessionGeneration).toBe(7);
+    expect(request.expectedClaimHash).toBe(claim.intent.operation.hash);
+    expect(mockMetadata.guardianRecoveryClaim).toEqual(claim);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: CLEAR_TRACKING,
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    if (outcome === 'acknowledged') {
+      await act(async () => resolve({}));
+      await waitFor(() =>
+        expect(mockMetadata.guardianRecoveryClaim).toBeUndefined()
+      );
+      expect(mockMetadata.guardianRecoveryReplacement).toEqual(
+        claim.replacement
+      );
+    } else {
+      if (outcome === 'session changed') mockSessionGeneration++;
+      await act(async () =>
+        reject(
+          new Error(
+            outcome === 'session changed'
+              ? 'PALI_TRANSACTION_CONTEXT_CHANGED'
+              : 'Retirement not persisted'
+          )
+        )
+      );
+      expect(mockMetadata.guardianRecoveryClaim).toEqual(claim);
+      expect(mockAlert.success).not.toHaveBeenCalled();
+    }
+    expect(mockMetadata.auth).toEqual(currentIdentity);
+    expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+    expect(
+      mockEmitter.mock.calls.some(([path]) =>
+        /^(submit|finalize)/.test(path[1])
+      )
+    ).toBe(false);
+    view.unmount();
   }
 );

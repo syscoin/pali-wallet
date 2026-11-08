@@ -85,7 +85,7 @@ describe('non-destructive account recovery boundaries', () => {
     keyring = {
       isUnlocked: jest.fn().mockReturnValue(true),
       lockWallet: jest.fn().mockResolvedValue(undefined),
-      transferSessionTo: jest.fn(),
+      prepareSessionTransfer: jest.fn(async () => ({ transfer: jest.fn() })),
       createFirstAccount: jest.fn(),
       addNewAccount: jest.fn(),
     };
@@ -359,7 +359,7 @@ describe('non-destructive account recovery boundaries', () => {
       await expect(
         wallet.switchActiveKeyring(SYSCOIN_MAINNET_NETWORK)
       ).rejects.toThrow('Account data is incomplete');
-      expect(keyring.transferSessionTo).not.toHaveBeenCalled();
+      expect(keyring.prepareSessionTransfer).not.toHaveBeenCalled();
       expect(targetKeyring.setSignerNetwork).not.toHaveBeenCalled();
       expect(keyring.lockWallet).not.toHaveBeenCalled();
       expect(rollback).toHaveBeenCalledWith(57, sourceVault);
@@ -376,7 +376,7 @@ describe('non-destructive account recovery boundaries', () => {
       wallet.switchActiveKeyring(SYSCOIN_UTXO_MAINNET_NETWORK)
     ).rejects.toThrow('Account data is incomplete');
     expect(JSON.stringify(currentState.vault)).toBe(snapshot);
-    expect(keyring.transferSessionTo).not.toHaveBeenCalled();
+    expect(keyring.prepareSessionTransfer).not.toHaveBeenCalled();
     expect(keyring.setSignerNetwork).not.toHaveBeenCalled();
   });
 
@@ -450,10 +450,12 @@ describe('non-destructive account recovery boundaries', () => {
         .mockResolvedValue(firstAccount),
     };
     wallet.createKeyringOnDemand = jest.fn(() => targetKeyring);
-    keyring.transferSessionTo.mockImplementation(() => {
-      keyring.isUnlocked.mockReturnValue(false);
-      targetKeyring.isUnlocked.mockReturnValue(true);
-    });
+    keyring.prepareSessionTransfer.mockImplementation(async () => ({
+      transfer() {
+        keyring.isUnlocked.mockReturnValue(false);
+        targetKeyring.isUnlocked.mockReturnValue(true);
+      },
+    }));
     const loadTarget = jest
       .spyOn(storeModule, 'loadAndActivateSlip44Vault')
       .mockImplementation(async () => {
@@ -614,10 +616,12 @@ describe('non-destructive account recovery boundaries', () => {
         }),
       };
       wallet.createKeyringOnDemand = jest.fn(() => targetKeyring);
-      keyring.transferSessionTo.mockImplementation(() => {
-        keyring.isUnlocked.mockReturnValue(false);
-        targetKeyring.isUnlocked.mockReturnValue(true);
-      });
+      keyring.prepareSessionTransfer.mockImplementation(async () => ({
+        transfer() {
+          keyring.isUnlocked.mockReturnValue(false);
+          targetKeyring.isUnlocked.mockReturnValue(true);
+        },
+      }));
       jest
         .spyOn(storeModule, 'loadAndActivateSlip44Vault')
         .mockImplementation(async () => {
@@ -687,10 +691,12 @@ describe('non-destructive account recovery boundaries', () => {
     wallet.getActiveKeyring.mockImplementation(() =>
       wallet.keyrings.get(currentState.vaultGlobal.activeSlip44)
     );
-    keyring.transferSessionTo.mockImplementation(() => {
-      keyring.isUnlocked.mockReturnValue(false);
-      targetKeyring.isUnlocked.mockReturnValue(true);
-    });
+    keyring.prepareSessionTransfer.mockImplementation(async () => ({
+      transfer() {
+        keyring.isUnlocked.mockReturnValue(false);
+        targetKeyring.isUnlocked.mockReturnValue(true);
+      },
+    }));
     (store.dispatch as jest.Mock).mockImplementation((action: any) => {
       if (action.type === 'vaultGlobal/setActiveSlip44')
         currentState.vaultGlobal.activeSlip44 = action.payload;
@@ -777,7 +783,7 @@ describe('non-destructive account recovery boundaries', () => {
     ).rejects.toThrow('Wallet session changed');
     expect(rollback).toHaveBeenCalledWith(57, source);
     expect(currentState.vault).toEqual(source);
-    expect(keyring.transferSessionTo).not.toHaveBeenCalled();
+    expect(keyring.prepareSessionTransfer).not.toHaveBeenCalled();
   });
 
   it('rejects the keyring provider failure verdict instead of reporting a successful network switch', async () => {

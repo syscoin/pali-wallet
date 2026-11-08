@@ -57,7 +57,7 @@ test('recovery rejects a weak new password before retiring the wallet or opening
       getSnapshot: () => ({ phase: 'locked', revision: 1 } as never),
       retireForRecovery: async () => { externalCalls++; throw new Error('Must not retire'); },
     },
-    retireControllers: () => { externalCalls++; },
+    retireControllers: async () => { externalCalls++; },
     ensureCryptoReady: async () => { externalCalls++; },
     openStorage: async () => { externalCalls++; throw new Error('Must not open'); },
   });

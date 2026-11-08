@@ -1,9 +1,30 @@
+import {
+  snapshotPreparedEvmTransaction,
+  type PreparedEvmTransaction,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { assertSupportedEvmFees } from '../../shared/dappTransaction.ts';
+import {
+  ApprovalType,
+  canEditApprovalAmount,
+  formatApprovalNftTokenId,
+  formatApprovalTokenAmount,
+  getApprovalAmountDisplay,
+  getErc20ApprovalHeadingKey,
+  getApprovalAddressValues,
+  getEffectiveApprovalData,
+} from '../../shared/approval';
+import { parseErc20Decimals } from '../../shared/erc20';
+import {
+  evmDappFeeChoiceMatches,
+  selectEvmDappFeeChoice,
+  type EvmDappFeeChoice,
+  type EvmDappFeeChoiceFields,
+  type EvmDappFeeComparison,
+} from '../../shared/evmDappFeePolicy';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -48,16 +69,6 @@ import { omitTransactionObjectData } from 'utils/transactions';
 import { validateTransactionDataValue } from 'utils/validateTransactionDataValue';
 
 import {
-  ApprovalType,
-  canEditApprovalAmount,
-  formatApprovalNftTokenId,
-  formatApprovalTokenAmount,
-  getApprovalAmountDisplay,
-  getErc20ApprovalHeadingKey,
-  getApprovalAddressValues,
-  getEffectiveApprovalData,
-} from './approval';
-import {
   ApprovalDetails,
   TransactionDetailsComponent,
   TransactionDataComponent,
@@ -66,6 +77,15 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
+
+type GenericFeeQuote = Readonly<{
+  feeComparison: EvmDappFeeComparison;
+  id: string;
+  maximumFeeUnits: string;
+  maximumTotalUnits: string;
+  transaction: PreparedEvmTransaction;
+  validForMs: number;
+}>;
 
 type FeeSafetyAdjustment = {
   gasLimit?: {
@@ -155,9 +175,16 @@ export const SendTransaction = () => {
   const txMetadata = isExternal
     ? externalTx.txMetadata
     : state?.txMetadata || {};
+  const [genericFeeView, setGenericFeeView] = useState<{
+    key: string;
+    quote: GenericFeeQuote;
+  }>();
+  const genericFeeRef = React.useRef(genericFeeView);
+  genericFeeRef.current = genericFeeView;
   // Determine legacy transaction explicitly: honor metadata or explicit type 0x0
   const explicitType = (dataTx as any)?.type;
   const isLegacyTransaction =
+    genericFeeView?.quote.transaction.type === 0 ||
     Boolean(txMetadata.isLegacyTx) ||
     explicitType === 0 ||
     explicitType === '0x0' ||
@@ -165,6 +192,10 @@ export const SendTransaction = () => {
   const isApproval = txMetadata.isApproval || false;
   const approvalType = txMetadata.approvalType as ApprovalType | undefined;
   const tokenStandard = txMetadata.tokenStandard;
+  const standardVerified = txMetadata.standardVerified === true;
+  const verifiedTokenStandard = standardVerified ? tokenStandard : undefined;
+  const verifiedErc20Approval =
+    verifiedTokenStandard === 'ERC-20' && approvalType === 'erc20-amount';
   const approvedWalletContextKey = useMemo(
     () =>
       JSON.stringify([
@@ -191,6 +222,7 @@ export const SendTransaction = () => {
       eventName,
       host,
       isApproval,
+      standardVerified,
       isApprovedContext:
         currentApprovalWalletContextKey === approvedWalletContextKey,
       transactionData: dataTx?.data,
@@ -206,6 +238,7 @@ export const SendTransaction = () => {
       eventName,
       host,
       isApproval,
+      standardVerified,
       currentApprovalWalletContextKey,
       approvedWalletContextKey,
     ]
@@ -294,6 +327,10 @@ export const SendTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
+  const [genericFeeChoice, setGenericFeeChoice] = useState<{
+    fields: EvmDappFeeChoiceFields;
+    requestKey: string;
+  }>();
   const [feeSafetyAdjustment, setFeeSafetyAdjustment] =
     useState<FeeSafetyAdjustment>({});
   const [acceptedDappFeeRequest, setAcceptedDappFeeRequest] =
@@ -347,7 +384,10 @@ export const SendTransaction = () => {
     approvalActionRef.current === 'ready' &&
     !editingDisabledRef.current;
   const updateCustomFee: typeof setCustomFee = (value) => {
-    if (canEditTransaction()) setCustomFee(value);
+    if (canEditTransaction()) {
+      setGenericFeeChoice(undefined);
+      setCustomFee(value);
+    }
   };
   const updateCustomNonce: typeof setCustomNonce = (value) => {
     if (canEditTransaction()) setCustomNonce(value);
@@ -420,8 +460,31 @@ export const SendTransaction = () => {
     );
   }, [customFee, fee, isLegacyTransaction]);
 
+  const applyGenericFeeChoice = (choice: EvmDappFeeChoice) => {
+    const current = genericFeeView;
+    if (
+      !canEditTransaction() ||
+      !current ||
+      current !== genericFeeRef.current ||
+      current.key !== genericFeeKeyRef.current
+    )
+      return;
+    setGenericFeeChoice({
+      requestKey: genericFeeRequestKey,
+      fields: selectEvmDappFeeChoice(
+        current.quote.transaction,
+        current.quote.feeComparison,
+        choice
+      ),
+    });
+  };
+
   const handleUseDappFeeRequest = () => {
     if (!canEditTransaction() || !fee) return;
+    if (!activeAccount.isSmartAccount) {
+      applyGenericFeeChoice('dapp');
+      return;
+    }
 
     if (isLegacyTransaction) {
       setCustomFee({
@@ -455,6 +518,10 @@ export const SendTransaction = () => {
 
   const handleUseNetworkFeeSuggestion = () => {
     if (!canEditTransaction() || !fee) return;
+    if (!activeAccount.isSmartAccount) {
+      applyGenericFeeChoice('network');
+      return;
+    }
     setCustomFee({
       isCustom: true,
       gasLimit: feeSafetyAdjustment.gasLimit?.recommended ?? fee.gasLimit,
@@ -522,6 +589,7 @@ export const SendTransaction = () => {
         decimals: approvedTokenInfos?.tokenDecimals,
         decodedTx: decodedTxData,
         isCustom: isApproval && customApprovedAllowanceAmount.isCustom,
+        tokenStandard: verifiedTokenStandard,
       }),
     [
       approvalType,
@@ -531,6 +599,7 @@ export const SendTransaction = () => {
       approvedTokenInfos?.tokenDecimals,
       decodedTxData,
       isApproval,
+      verifiedTokenStandard,
     ]
   );
   const hasInvalidCustomAllowance = !effectiveApprovalData;
@@ -550,6 +619,30 @@ export const SendTransaction = () => {
     [validatedDataTxWithoutType, toAddressForProvider, effectiveApprovalData]
   );
   const isSmartAccountApproval = Boolean(activeAccount.isSmartAccount);
+  const genericFeeRequestKey = JSON.stringify([
+    approvedContext,
+    currentApprovalWalletContextKey,
+    txForEstimation,
+    customFee,
+    customNonce,
+  ]);
+  useEffect(() => {
+    setGenericFeeChoice(undefined);
+  }, [genericFeeRequestKey]);
+  const currentGenericFeeChoice =
+    genericFeeChoice?.requestKey === genericFeeRequestKey
+      ? genericFeeChoice.fields
+      : undefined;
+  const genericFeeKey = JSON.stringify([
+    genericFeeRequestKey,
+    currentGenericFeeChoice,
+  ]);
+  const genericFeeKeyRef = React.useRef(genericFeeKey);
+  genericFeeKeyRef.current = genericFeeKey;
+  const hasCurrentGenericFee =
+    isSmartAccountApproval ||
+    Boolean(genericFeeView && genericFeeView.key === genericFeeKey);
+
   const smartAccountFeeOverrides = useMemo<
     SmartAccountFeeOverrides | undefined
   >(() => {
@@ -665,7 +758,8 @@ export const SendTransaction = () => {
   const hasInvalidApprovalDetails = isApproval && !approvalDetails.isValid;
   const canEditCurrentApproval = canEditApprovalAmount(
     approvalType,
-    decodedTxData?.method
+    decodedTxData?.method,
+    verifiedTokenStandard
   );
   const rawApprovalAmount =
     approvalType === 'erc20-amount'
@@ -676,7 +770,10 @@ export const SendTransaction = () => {
       return undefined;
     }
 
-    if (approvedTokenInfos?.tokenDecimals === undefined) {
+    if (
+      !verifiedErc20Approval ||
+      approvedTokenInfos?.tokenDecimals === undefined
+    ) {
       return rawApprovalAmount;
     }
 
@@ -690,6 +787,7 @@ export const SendTransaction = () => {
     }
   }, [
     approvalType,
+    verifiedErc20Approval,
     rawApprovalAmount,
     approvedTokenInfos?.tokenDecimals,
     decodedTxData?.inputs,
@@ -701,7 +799,7 @@ export const SendTransaction = () => {
       formattedAmount: formattedApprovalAmount,
       isCustom: customApprovedAllowanceAmount.isCustom,
       isEffectiveUnlimited:
-        approvalType === 'erc20-amount' &&
+        verifiedErc20Approval &&
         effectiveApprovalData?.decodedTx?.method === 'approve' &&
         isMaxUint256(
           convertBigNumberToString(effectiveApprovalData.decodedTx.inputs?.[1])
@@ -760,31 +858,12 @@ export const SendTransaction = () => {
     };
   }, []);
 
-  const refreshAutomaticNonce = async (generation: number) => {
+  const refreshAutomaticNonce = (generation: number) => {
+    if (!mountedRef.current || generation !== closeGenerationRef.current)
+      return;
     setNonceRefreshRequired(true);
     setNonceRefreshing(true);
-    try {
-      const value = await controllerEmitter(
-        ['wallet', 'getRecommendedEvmNonce'],
-        [approvedContext.account.address]
-      );
-      if (!Number.isSafeInteger(value) || Number(value) < 0)
-        throw new Error('Invalid recommended nonce');
-      if (!mountedRef.current || generation !== closeGenerationRef.current)
-        return;
-      setTx((current) => current && { ...current, nonce: Number(value) });
-      setNonceRefreshRequired(false);
-    } catch (error) {
-      if (!mountedRef.current || generation !== closeGenerationRef.current)
-        return;
-      if (
-        !handleTransactionError(error, alert, t, activeAccount, activeNetwork)
-      )
-        alert.error(t('send.cantCompleteTxs'));
-    } finally {
-      if (mountedRef.current && generation === closeGenerationRef.current)
-        setNonceRefreshing(false);
-    }
+    setFeeQuoteRevision((revision) => revision + 1);
   };
 
   const submitTransaction = async (generation: number) => {
@@ -858,7 +937,10 @@ export const SendTransaction = () => {
     const canUsePasskeyGasPayer =
       activeAccount?.isSmartAccount && requestedValue.isZero();
 
-    if (activeAccount && (balance > 0 || canUsePasskeyGasPayer)) {
+    if (
+      activeAccount &&
+      (genericFeeView || balance > 0 || canUsePasskeyGasPayer)
+    ) {
       // Use the same bytes already shown in Data/Hex and used for the fee
       // quote. NFT approvals and unedited transactions retain their input.
       const txToSend =
@@ -997,156 +1079,30 @@ export const SendTransaction = () => {
             },
             smartAccount: activeAccount.smartAccount,
           });
-        } else if (isLegacyTransaction) {
-          if (
-            isExternal &&
-            (customNonce !== undefined || dataTx.nonce !== undefined)
-          )
-            await controllerEmitter(
-              ['wallet', 'authorizeDappManualNonce'],
-              [customNonce ?? dataTx.nonce]
-            );
-          // Legacy transaction handling - MUST remove all EIP-1559 fields
-          const txWithoutType = omitTransactionObjectData(txToSend, [
-            'type',
-            'maxFeePerGas',
-            'maxPriorityFeePerGas',
-          ]) as ITxState;
-
-          const getLegacyGasFee = Boolean(
-            customFee.isCustom && customFee.gasPrice >= 0
-          )
-            ? parseUnits(safeToFixed(customFee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
-            : txToSend.gasPrice !== undefined
-            ? BigNumber.from(txToSend.gasPrice)
-            : fee.gasPrice && fee.gasPrice > 0
-            ? parseUnits(safeToFixed(fee.gasPrice), 9) // Convert Gwei to Wei using parseUnits with proper decimal handling
-            : await controllerEmitter([
-                'wallet',
-                'ethereumTransaction',
-                'getRecommendedGasPrice',
-              ]).then((gas) => BigNumber.from(gas)); // This returns wei already, so BigNumber.from is fine
-
-          // Determine if we have a valid destination address. For contract deployments, omit 'to'
-          const candidateTo =
-            resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
-          const toField: string | undefined = candidateTo;
-
-          const baseLegacyTx: any = {
-            ...txWithoutType,
-            value: txWithoutType.value
-              ? safeBigNumber(
-                  txWithoutType.value,
-                  '0x0',
-                  'transaction value'
-                ).toHexString()
-              : '0x0', // Convert value to hex string using safe conversion
-            nonce: customNonce ?? tx.nonce,
-            gasPrice: getLegacyGasFee.toHexString(), // Use BigNumber.toHexString() for precision
-            gasLimit: BigNumber.from(
-              Boolean(
-                customFee.isCustom &&
-                  customFee.gasLimit &&
-                  customFee.gasLimit > 0
-              )
-                ? customFee.gasLimit
-                : tx.gasLimit && BigNumber.isBigNumber(tx.gasLimit)
-                ? tx.gasLimit // Keep as BigNumber
-                : fee.gasLimit || 42000 // Fallback to fee or default
-            ).toHexString(), // Convert to hex string for ethers
-            ...(toField ? { to: toField } : {}),
-          };
-
-          submissionRequested = true;
-          response = await controllerEmitter(
-            ['wallet', 'sendAndSaveEthTransaction'],
-            [
-              baseLegacyTx,
-              isLegacyTransaction,
-              undefined,
-              undefined,
-              { expectedContext: approvedContext },
-            ],
-            activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-              ? 300000 // 5 minutes timeout for hardware wallet operations
-              : 10000 // Default 10 seconds for regular wallets
-          );
         } else {
+          const prepared = genericFeeView;
           if (
-            isExternal &&
-            (customNonce !== undefined || dataTx.nonce !== undefined)
+            !prepared ||
+            prepared !== genericFeeRef.current ||
+            prepared.key !== genericFeeKeyRef.current
           )
-            await controllerEmitter(
-              ['wallet', 'authorizeDappManualNonce'],
-              [customNonce ?? dataTx.nonce]
-            );
-          // EIP-1559 transaction handling
-          // Determine if we have a valid destination address. For contract deployments, omit 'to'
-          const candidateTo =
-            resolvedTo || (toRaw.startsWith('0x') ? toRaw : undefined);
-          const toField: string | undefined = candidateTo;
-
-          const base1559Tx: any = {
-            ...txToSend,
-            value: txToSend.value
-              ? safeBigNumber(
-                  txToSend.value,
-                  '0x0',
-                  'transaction value'
-                ).toHexString()
-              : '0x0', // Convert value to hex string using safe conversion
-            nonce: customNonce ?? tx.nonce,
-            maxPriorityFeePerGas: Boolean(
-              customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
-            )
-              ? parseUnits(safeToFixed(customFee.maxPriorityFeePerGas), 9)
-              : tx.maxPriorityFeePerGas !== null &&
-                tx.maxPriorityFeePerGas !== undefined
-              ? safeBigNumber(
-                  tx.maxPriorityFeePerGas,
-                  parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9),
-                  'transaction maxPriorityFeePerGas'
-                )
-              : parseUnits(safeToFixed(fee.maxPriorityFeePerGas), 9), // Fallback to fee
-            maxFeePerGas: Boolean(
-              customFee.isCustom && customFee.maxFeePerGas >= 0
-            )
-              ? parseUnits(safeToFixed(customFee.maxFeePerGas), 9)
-              : tx.maxFeePerGas !== null && tx.maxFeePerGas !== undefined
-              ? safeBigNumber(
-                  tx.maxFeePerGas,
-                  parseUnits(safeToFixed(fee.maxFeePerGas), 9),
-                  'transaction maxFeePerGas'
-                )
-              : parseUnits(safeToFixed(fee.maxFeePerGas), 9), // Fallback to fee
-            gasLimit: Boolean(
-              customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
-            )
-              ? BigNumber.from(customFee.gasLimit)
-              : tx.gasLimit !== null && tx.gasLimit !== undefined
-              ? safeBigNumber(
-                  tx.gasLimit,
-                  BigNumber.from(fee.gasLimit || 42000),
-                  'transaction gasLimit'
-                )
-              : BigNumber.from(fee.gasLimit || 42000), // Fallback to fee
-            ...(toField ? { to: toField } : {}),
-          };
-
-          assertSupportedEvmFees(base1559Tx);
+            throw new Error('REVIEW_REQUIRED');
           submissionRequested = true;
           response = await controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
-              base1559Tx,
-              false, // isLegacy = false for EIP-1559
+              prepared.quote.transaction,
+              prepared.quote.transaction.type === 0,
               undefined,
               undefined,
-              { expectedContext: approvedContext },
+              {
+                expectedContext: approvedContext,
+                genericReviewId: prepared.quote.id,
+              },
             ],
             activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-              ? 300000 // 5 minutes timeout for hardware wallet operations
-              : 10000 // Default 10 seconds for regular wallets
+              ? 300000
+              : 10000
           );
         }
 
@@ -1163,6 +1119,25 @@ export const SendTransaction = () => {
         // Don't set loading to false here - let the navigation effect handle it
         return response.hash;
       } catch (error: any) {
+        if (
+          !activeAccount.isSmartAccount &&
+          error?.transactionNotBroadcast === true
+        ) {
+          if (!mountedRef.current || generation !== closeGenerationRef.current)
+            return error;
+          setGenericFeeView(undefined);
+          setFeeQuoteNeedsRefresh(true);
+          setLoading(false);
+          alert.error(t('send.unableToCalculateFees'));
+          if (
+            isExternal &&
+            dataTx.nonce === undefined &&
+            customNonce === undefined
+          )
+            refreshAutomaticNonce(generation);
+          else setFeeQuoteRevision((revision) => revision + 1);
+          return error;
+        }
         if (
           error?.message === SMART_ACCOUNT_FEE_QUOTE_CHANGED &&
           submissionRequested
@@ -1193,22 +1168,6 @@ export const SendTransaction = () => {
           activeAccount,
           activeNetwork
         );
-
-        // A definitely unbroadcast automatic dapp attempt retires its nonce
-        // authority. Refresh the review before allowing another confirmation.
-        if (
-          submissionRequested &&
-          error?.transactionNotBroadcast === true &&
-          isExternal &&
-          !activeAccount.isSmartAccount &&
-          dataTx.nonce === undefined &&
-          customNonce === undefined
-        ) {
-          setLoading(false);
-          if (!wasHandledSpecifically) alert.error(t('send.cantCompleteTxs'));
-          void refreshAutomaticNonce(generation);
-          return;
-        }
 
         // For errors that were handled specifically, just stop loading
         if (wasHandledSpecifically) {
@@ -1342,6 +1301,180 @@ export const SendTransaction = () => {
           !smartAccountFeeOverrides
         )
           throw new Error('Invalid smart account fee override');
+        if (!isSmartAccountApproval) {
+          setGenericFeeView(undefined);
+          const nonce =
+            customNonce ??
+            dataTx.nonce ??
+            (await controllerEmitter(
+              ['wallet', 'getRecommendedEvmNonce'],
+              [approvedContext.account.address]
+            ));
+          if (customNonce !== undefined || dataTx.nonce !== undefined)
+            await controllerEmitter(
+              ['wallet', 'authorizeDappManualNonce'],
+              [nonce]
+            );
+          const custom = customFee.isCustom
+            ? {
+                gasLimit:
+                  customFee.gasLimit > 0
+                    ? `0x${BigInt(customFee.gasLimit).toString(16)}`
+                    : undefined,
+                ...(isLegacyTransaction
+                  ? {
+                      gasPrice: parseUnits(
+                        safeToFixed(customFee.gasPrice),
+                        9
+                      ).toHexString(),
+                    }
+                  : {
+                      maxFeePerGas: parseUnits(
+                        safeToFixed(customFee.maxFeePerGas),
+                        9
+                      ).toHexString(),
+                      maxPriorityFeePerGas: parseUnits(
+                        safeToFixed(customFee.maxPriorityFeePerGas),
+                        9
+                      ).toHexString(),
+                    }),
+              }
+            : {};
+          const request = {
+            ...txForEstimation,
+            ...custom,
+            ...currentGenericFeeChoice,
+            nonce,
+            from: approvedContext.account.address,
+            chainId: approvedContext.chainId,
+          };
+          if (
+            (customFee.isCustom && customFee.gasLimit > 0) ||
+            currentGenericFeeChoice
+          )
+            delete request.gas;
+          const quote = (await controllerEmitter(
+            ['wallet', 'reviewDappEvmFee'],
+            [request]
+          )) as GenericFeeQuote;
+          const prepared = Object.freeze({
+            ...quote,
+            transaction: snapshotPreparedEvmTransaction(quote.transaction),
+          });
+          if (!isMounted || genericFeeKeyRef.current !== genericFeeKey) {
+            void controllerEmitter(
+              ['wallet', 'discardNativeEvmFeeReview'],
+              [prepared.id]
+            ).catch(() => undefined);
+            return;
+          }
+          if (
+            !Number.isSafeInteger(prepared.validForMs) ||
+            prepared.validForMs <= 0 ||
+            prepared.validForMs > 90_000
+          )
+            throw new Error('Invalid fee review lifetime');
+          const transaction = prepared.transaction;
+          const legacy = transaction.type === 0;
+          const gasPrice = legacy
+            ? Number(
+                formatEther(
+                  BigNumber.from(transaction.gasPrice).mul(1_000_000_000)
+                )
+              )
+            : 0;
+          setGenericFeeView({ key: genericFeeKey, quote: prepared });
+          setTx({
+            ...transaction,
+            chainId: Number(transaction.chainId),
+            nonce: Number(transaction.nonce),
+            to: transaction.to ?? undefined,
+            gasLimit: BigNumber.from(transaction.gasLimit),
+            value: BigNumber.from(transaction.value),
+            ...(legacy
+              ? {
+                  gasPrice: BigNumber.from(transaction.gasPrice),
+                  maxFeePerGas: undefined,
+                  maxPriorityFeePerGas: undefined,
+                }
+              : {
+                  maxFeePerGas: BigNumber.from(transaction.maxFeePerGas),
+                  maxPriorityFeePerGas: BigNumber.from(
+                    transaction.maxPriorityFeePerGas
+                  ),
+                }),
+          });
+          setFee({
+            baseFee: 0,
+            gasLimit: Number(transaction.gasLimit),
+            ...(legacy ? { gasPrice } : {}),
+            maxFeePerGas: legacy
+              ? 0
+              : Number(
+                  formatEther(
+                    BigNumber.from(transaction.maxFeePerGas).mul(1_000_000_000)
+                  )
+                ),
+            maxPriorityFeePerGas: legacy
+              ? 0
+              : Number(
+                  formatEther(
+                    BigNumber.from(transaction.maxPriorityFeePerGas).mul(
+                      1_000_000_000
+                    )
+                  )
+                ),
+          });
+          const comparison = prepared.feeComparison;
+          const display = (
+            value: { recommended: string; requested: string } | undefined,
+            divisor: number
+          ) =>
+            value && {
+              requested: Number(value.requested) / divisor,
+              recommended: Number(value.recommended) / divisor,
+            };
+          // Display numbers never become fee-choice inputs; those retain exact base units.
+          setFeeSafetyAdjustment({
+            gasLimit: display(comparison.gasLimit, 1),
+            gasPrice: display(comparison.gasPrice, 1e9),
+            maxFeePerGas: display(comparison.maxFeePerGas, 1e9),
+            maxPriorityFeePerGas: display(comparison.maxPriorityFeePerGas, 1e9),
+          });
+          setAcceptedDappFeeRequest(
+            Boolean(
+              currentGenericFeeChoice &&
+                evmDappFeeChoiceMatches(transaction, currentGenericFeeChoice)
+            )
+          );
+          setFeeRecommendationOnly(comparison.recommendationOnly);
+          quotedApprovalDataRef.current = txForEstimation.data;
+          setHasGasError(false);
+          setHasTxDataError(false);
+          setFeeQuoteNeedsRefresh(false);
+          setInitialNonceReviewError(undefined);
+          setInitialLoading(false);
+          setNonceRefreshRequired(false);
+          setNonceRefreshing(false);
+          const expire = setTimeout(() => {
+            if (!isMounted || genericFeeRef.current?.quote.id !== prepared.id)
+              return;
+            setGenericFeeView(undefined);
+            setFeeQuoteNeedsRefresh(true);
+          }, prepared.validForMs);
+          abortController.signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(expire);
+              void controllerEmitter(
+                ['wallet', 'discardNativeEvmFeeReview'],
+                [prepared.id]
+              ).catch(() => undefined);
+            },
+            { once: true }
+          );
+          return;
+        }
         const {
           feeDetails,
           feeSafety,
@@ -1383,10 +1516,19 @@ export const SendTransaction = () => {
           generation === closeGenerationRef.current
         ) {
           setInitialLoading(false);
+          if (nonceRefreshRequired) {
+            setNonceRefreshing(false);
+            alert.error(t(legacyEvmNonceErrorKey(e) || 'send.cantCompleteTxs'));
+            return;
+          }
           const legacyKey = legacyEvmNonceErrorKey(e);
           if (legacyKey) {
             setInitialNonceReviewError(legacyKey);
             alert.error(t(legacyKey));
+            return;
+          }
+          if (!isSmartAccountApproval) {
+            setInitialNonceReviewError('send.unableToCalculateFees');
             return;
           }
           logError('error getting fees', 'Transaction', e);
@@ -1432,6 +1574,7 @@ export const SendTransaction = () => {
     smartAccountFeeOverrides,
     smartAccountQuoteKey,
     feeQuoteRevision,
+    genericFeeKey,
   ]); // ensure we wait for resolved address
 
   // Check for contract interaction with non-contract address
@@ -1555,7 +1698,12 @@ export const SendTransaction = () => {
   // Fetch token info for approval transactions
   useEffect(() => {
     const scope = approvalMetadataScope;
-    if (!scope.isApproval || !scope.contractAddress || !scope.isApprovedContext)
+    if (
+      !scope.isApproval ||
+      !scope.standardVerified ||
+      !scope.contractAddress ||
+      !scope.isApprovedContext
+    )
       return;
     let cancelled = false;
     const canApplyMetadata = () =>
@@ -1577,10 +1725,7 @@ export const SendTransaction = () => {
             symbol: string;
           };
 
-          // Preserve zero-decimal tokens; fallback to 18 only if missing/invalid
-          const parsed = Number(tokenInfo.decimals);
-          const safeDecimals =
-            Number.isFinite(parsed) && parsed >= 0 ? parsed : 18;
+          const safeDecimals = parseErc20Decimals(tokenInfo.decimals);
           if (!canApplyMetadata()) return;
           setApprovalMetadata({
             scope,
@@ -1735,7 +1880,13 @@ export const SendTransaction = () => {
         </div>
       ) : tx?.from ? (
         <div className="flex flex-col w-full h-screen">
-          <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
+          <div
+            className="flex-1 overflow-y-auto pb-20 remove-scrollbar"
+            style={{
+              paddingBottom:
+                'max(5rem, calc(var(--pali-toast-footer-clearance, 0px) + 1rem))',
+            }}
+          >
             {isApproval ? (
               // Approval-specific UI
               <div className="flex flex-col items-center justify-center w-full divide-bkg-3 divide-dashed divide-y">
@@ -1750,7 +1901,17 @@ export const SendTransaction = () => {
                       </span>
                     </div>
 
-                    {approvalType === 'erc20-amount' && (
+                    {!standardVerified && (
+                      <span className="text-brand-white text-lg">
+                        {t('send.unverifiedApprovalRequest')}
+                      </span>
+                    )}
+                    {!standardVerified && (
+                      <span className="text-brand-graylight text-sm">
+                        {t('send.approvalStandardUnverified')}
+                      </span>
+                    )}
+                    {verifiedErc20Approval && (
                       <>
                         <span className="text-brand-white text-lg">
                           {t(
@@ -1815,7 +1976,7 @@ export const SendTransaction = () => {
                       </>
                     )}
 
-                    {approvalType === 'nft-all' && (
+                    {standardVerified && approvalType === 'nft-all' && (
                       <>
                         <span className="text-brand-white text-lg">
                           {decodedTxData?.inputs?.[1]
@@ -1851,7 +2012,13 @@ export const SendTransaction = () => {
                   <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
                     <ApprovalDetails
                       {...approvalDetails}
+                      approved={
+                        typeof decodedTxData?.inputs?.[1] === 'boolean'
+                          ? decodedTxData.inputs[1]
+                          : undefined
+                      }
                       formattedAmount={displayedApprovalAmount}
+                      standardVerified={standardVerified}
                       isUnlimited={isUnlimitedApproval}
                       tokenSymbol={approvedTokenInfos?.tokenSymbol}
                     />
@@ -2082,9 +2249,28 @@ export const SendTransaction = () => {
                 {t('send.calculating')}
               </p>
             )}
+            {!isSmartAccountApproval &&
+              hasCurrentGenericFee &&
+              genericFeeView && (
+                <div className="mb-3 text-center">
+                  <p className="text-xs text-brand-gray200">
+                    {t('transactions.replay.maximumFee')}
+                  </p>
+                  <p className="break-all text-sm">
+                    {formatEther(genericFeeView.quote.maximumFeeUnits)}{' '}
+                    {activeNetwork.currency}
+                  </p>
+                </div>
+              )}
             {feeQuoteNeedsRefresh && (
               <div className="text-center text-warning-info text-xs mb-2">
-                <p>{t('send.smartAccountFeeQuoteChanged')}</p>
+                <p>
+                  {t(
+                    isSmartAccountApproval
+                      ? 'send.smartAccountFeeQuoteChanged'
+                      : 'privacy.deposit.expired'
+                  )}
+                </p>
                 <Button
                   type="button"
                   onClick={() =>
@@ -2130,6 +2316,7 @@ export const SendTransaction = () => {
                   submissionUnknown ||
                   nonceRefreshRequired ||
                   !hasCurrentSmartAccountFeeQuote ||
+                  !hasCurrentGenericFee ||
                   !hasCurrentApprovalDataQuote ||
                   hasTxDataError ||
                   hasInvalidApprovalDetails ||

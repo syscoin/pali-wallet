@@ -3,14 +3,19 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import * as sdk from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import { ACCOUNT_SELECTION_KEY, createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeWalletRemoval } from '../src/custody/walletRemoval.ts';
+import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
+import { NativeConnectionsController } from '../src/connections/controller.ts';
+import type { WalletConnectTransport } from '../src/connections/walletConnect.ts';
+import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { openWalletStorage, type NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
+const sdk = await loadNativeKeyringSdk();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Public fixture wallet removal password 1!';
@@ -35,11 +40,12 @@ async function fixture() {
   let opens = 0, unlocks = 0, now = 0, active = true, removalCommits = 0;
   let droppingRemovalAck: 'before' | 'after' | undefined, loseHintAck = false;
   let pauseUnlock: ReturnType<typeof pause> | undefined, afterRemovalCommit: SqlHook | undefined;
+  let beforeSnapshot: (check: () => void) => Promise<void> = async () => undefined;
   let reopenedIdentity: string | undefined;
-  const rings: sdk.SoftwareKeyring[] = [];
+  const rings: InstanceType<typeof sdk.HostKeyring>[] = [];
   const statements: string[] = [];
-  class ObservedRing extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) { super(...options); rings.push(this); }
+  class ObservedRing extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) { super(...options); rings.push(this); }
     override async unlock(password: string) {
       unlocks++;
       const gate = pauseUnlock; pauseUnlock = undefined;
@@ -84,7 +90,7 @@ async function fixture() {
   const storage = await openWalletStorage(ports);
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ObservedRing }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: ObservedRing }),
     openStorage: async () => storage,
   });
   const runtime = await factory.open() as KeyringRuntime;
@@ -109,6 +115,7 @@ async function fixture() {
     assertActive() { if (!active) throw new Error('CANCELLED'); },
     monotonicMilliseconds: () => now,
     clearNativeSelection: selections.clearNativeSelection,
+    beforeSnapshot: (check) => beforeSnapshot(check),
   });
   return {
     owner, runtime, storage, removal, values, statements, ports,
@@ -117,6 +124,7 @@ async function fixture() {
     get held() { return held; }, get reopenedIdentity() { return reopenedIdentity; },
     get unlocked() { return rings.some((ring) => ring.isUnlocked()); },
     advance(value: number) { now = value; }, hide() { active = false; },
+    beforeSnapshot(callback: (check: () => void) => Promise<void>) { beforeSnapshot = callback; },
     holdUnlock() { return pauseUnlock = pause(); },
     holdCommit() { const gate = pause(); afterRemovalCommit = () => gate.hold(); return gate; },
     loseRemovalAck(when: 'before' | 'after') { droppingRemovalAck = when; },
@@ -182,6 +190,162 @@ test('wrong credentials use the existing durable throttle and never clear select
     assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
     assert.equal(f.removalCommits, 0);
   } finally { await f.close(); }
+});
+
+for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expiry'] as const) {
+  test(`${interruption} after removal preparation reopens the retained wallet with usable connections`, async () => {
+    const f = await fixture(), held = pause();
+    await f.runtime.backup.confirm(await f.runtime.backup.fingerprint());
+    await f.owner.refreshAuthenticatedMetadata();
+    let created = 0, pairs = 0;
+    let nextRuntime: KeyringRuntime | undefined, nextStorage: OpenWalletStorage | undefined;
+    const connect = (owner: NativeCustodyAuthority, runtime: () => KeyringRuntime) => new NativeConnectionsController({
+      source: owner, activateAccount: (id, revision, guard) => owner.selectConnectionAccount(id, revision, guard), openHost: () => runtime().openConnectionHost(), preparePlatform: async () => undefined,
+      checkSite: async () => ({ isBlacklisted: false }),
+      checkAddress: async () => ({ isBlacklisted: false, severity: 'low' }),
+      projectId: 'public-removal-fixture',
+      metadata: { name: 'Pali', description: '', url: 'https://paliwallet.com', icons: [] },
+      openTransport: async () => {
+        const transport: WalletConnectTransport = {
+          async pair(_uri, guard, onPairing) {
+            guard(); pairs++;
+            const pairing = { topic: 'ab'.repeat(32), expiresAt: Date.now() + 60000, async cancel() {} };
+            onPairing(pairing); return pairing;
+          },
+          async sessions() { return []; }, async close() {},
+          async approve() { throw new Error('Unexpected approval'); },
+          async reject() { throw new Error('Unexpected rejection'); },
+          async respond() { throw new Error('Unexpected response'); },
+          async disconnect() { throw new Error('Unexpected disconnect'); },
+          async emit() { throw new Error('Unexpected event'); },
+        };
+        return transport;
+      },
+    });
+    const firstConnections = connect(f.owner, () => f.runtime);
+    f.beforeSnapshot(async (guard) => {
+      guard(); await firstConnections.dispose();
+      if (interruption === 'cancel-during-retirement') await held.hold();
+      guard();
+    });
+    const firstBundle = { authority: f.owner, removal: f.removal, connections: firstConnections,
+      keyExport: { dispose() {} }, backup: { dispose() {} }, disposeTokens() {}, disposeTransfers() {},
+      disposeConnections: () => firstConnections.dispose() };
+    const gate = new NativeControllerLifecycle({
+      protect: async () => undefined,
+      recovery() { throw new Error('Unexpected recovery'); },
+      create() {
+        if (++created === 1) return firstBundle;
+        assert.equal(created, 2);
+        const authority = new NativeCustodyAuthority({ async open() {
+          nextStorage = await openWalletStorage(f.ports);
+          nextRuntime = await createKeyringRuntimeFactory({ readEvmRetirement: null,
+            ensureCryptoReady: async () => undefined, openStorage: async () => nextStorage!,
+          }).open() as KeyringRuntime;
+          return nextRuntime;
+        } });
+        const connections = connect(authority, () => nextRuntime!);
+        const removal = new NativeWalletRemoval({ owner: authority,
+          source: () => nextRuntime && nextStorage ? { runtime: nextRuntime, storage: nextStorage } : undefined,
+          reopen: async (installation) => openWalletStorage(f.ports, installation),
+          async clearNativeSelection() { throw new Error('Unexpected wallet deletion'); },
+          beforeSnapshot: async (guard) => { guard(); await connections.dispose(); guard(); }, assertActive: current,
+        });
+        return { authority, removal, connections, keyExport: { dispose() {} }, backup: { dispose() {} },
+          disposeTokens() {}, disposeTransfers() {}, disposeConnections: () => connections.dispose() };
+      },
+    });
+    const token = {};
+    try {
+      await gate.acquire(token, () => true);
+      await firstConnections.view.pair('wc:fixture');
+      assert.equal(pairs, 1);
+      assert.equal(f.removal.requiresControllerReopen(), false);
+      await assert.rejects(f.removal.authorize(WRONG, current), { code: 'INVALID_CREDENTIAL' });
+      assert.equal(f.removal.requiresControllerReopen(), false);
+      const authorizing = f.removal.authorize(PASSWORD, current);
+      let ticket;
+      if (interruption === 'cancel-during-retirement') await held.reached;
+      else ticket = await authorizing;
+      assert.equal(f.removal.requiresControllerReopen(), true);
+      const retained = await f.storage.recovery!.readSnapshot();
+      if (interruption === 'lock') f.owner.lock();
+      else if (interruption === 'expiry') {
+        f.advance(30000);
+        await assert.rejects(f.removal.confirm(ticket!, current), { code: 'CANCELLED' });
+      } else f.removal.cancel();
+      const draining = gate.release(token), opening = gate.acquire(token, () => true);
+      if (interruption === 'cancel-during-retirement') {
+        const rejected = assert.rejects(authorizing, { code: 'CANCELLED' });
+        await new Promise((resolve) => setImmediate(resolve));
+        assert.equal(created, 1);
+        held.release(); await rejected;
+      }
+      await draining;
+      const next = await opening;
+      assert.ok(next);
+      assert.equal(next.authority.getSnapshot().phase, 'locked');
+      assert.equal(next.removal.requiresControllerReopen(), false);
+      assert.deepEqual(await nextStorage!.recovery!.readSnapshot(), retained);
+      assert.equal(f.removalCommits, 0);
+      assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
+      await next.authority.unlock(PASSWORD);
+      await next.connections.view.pair('wc:fixture');
+      assert.equal(pairs, 2);
+      assert.equal(next.authority.getCatalogue()!.active.accountId, 'hd:60:0');
+      assert.equal(next.connections.view.getSnapshot().error, null);
+      assert.equal(firstConnections.view.getSnapshot().status, 'locked');
+    } finally {
+      held.release(); await gate.release(token).catch(() => undefined); await f.close();
+    }
+  });
+}
+
+test('authenticated producer cleanup finishes before the exact removal snapshot is sealed', async () => {
+  const f = await fixture();
+  try {
+    const unlocks = f.unlocks;
+    let cleanupCalls = 0;
+    f.beforeSnapshot(async (check) => {
+      check();
+      assert.equal(f.unlocks, unlocks + 1);
+      assert.equal(f.unlocked, true);
+      cleanupCalls++;
+      await f.storage.keyringStorage.set('utf8Error', { hasUtf8Error: false });
+      check();
+    });
+    const ticket = await f.removal.authorize(PASSWORD, current);
+    assert.equal(cleanupCalls, 1);
+    const snapshot = await f.storage.recovery!.readSnapshot();
+    assert.equal(snapshot.records.some(({ key }) => key === 'utf8Error'), true);
+    assert.equal(await f.removal.confirm(ticket, current), 'wallet-records-removed');
+    assert.equal(f.removalCommits, 1);
+  } finally { await f.close(); }
+});
+
+test('cleanup is not invoked for a wrong password and cancellation during cleanup prevents a ticket', async () => {
+  const f = await fixture();
+  const gate = pause();
+  try {
+    let cleanupCalls = 0;
+    f.beforeSnapshot(async (check) => {
+      cleanupCalls++;
+      await gate.hold();
+      check();
+    });
+    await assert.rejects(f.removal.authorize(WRONG, current), { code: 'INVALID_CREDENTIAL' });
+    assert.equal(cleanupCalls, 0);
+    f.owner.lock();
+    await f.owner.unlock(PASSWORD);
+    const pending = assert.rejects(f.removal.authorize(PASSWORD, current), { code: 'CANCELLED' });
+    await gate.reached;
+    f.owner.lock();
+    gate.release();
+    await pending;
+    assert.equal(cleanupCalls, 1);
+    assert.equal(f.removalCommits, 0);
+    assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
+  } finally { gate.release(); await f.close(); }
 });
 
 test('ticket expiry, wallet A-B-A and asynchronous confirmation guards cannot admit deletion', async () => {

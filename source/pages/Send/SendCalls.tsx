@@ -1,8 +1,14 @@
+import {
+  snapshotPreparedEvmTransaction,
+  type PreparedEvmTransaction,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { v4 as uuidv4 } from 'uuid';
 
+import { createSmartAccountCallsExecutions } from '../../shared/dappCalls';
+import { createEoaCallsSequence } from '../../wallet/evmCallsSequence';
 import { Button, Icon, Tooltip } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -54,6 +60,14 @@ interface ISendCallsData {
   reservationId: string;
   version: string;
 }
+
+type EoaFeeReview = Readonly<{
+  id: string;
+  maximumFeeUnits: string;
+  maximumTotalUnits: string;
+  transaction: PreparedEvmTransaction;
+  validForMs: number;
+}>;
 
 const formatDecodedCallValue = (value: any): string => {
   if (BigNumber.isBigNumber(value)) {
@@ -184,6 +198,26 @@ export const SendCalls = () => {
   const closeTimerRef = React.useRef<ReturnType<typeof setTimeout>>();
   const unknownSubmissionRef = React.useRef(false);
   const acknowledgedCallsRef = React.useRef(new Set<number>());
+  const eoaSequenceRef =
+    React.useRef<ReturnType<typeof createEoaCallsSequence>>();
+  const [eoaFeeReview, setEoaFeeReview] = useState<{
+    index: number;
+    quote: EoaFeeReview;
+  }>();
+  const [reviewedDestinations, setReviewedDestinations] = useState<
+    Readonly<Record<number, string>>
+  >({});
+  const eoaDecisionRef = React.useRef<{
+    expires: number;
+    index: number;
+    quote: EoaFeeReview;
+    reject(reason: Error): void;
+    resolve(value: EoaFeeReview): void;
+    timer: ReturnType<typeof setTimeout>;
+  }>();
+  const eoaRunRef = React.useRef<Promise<void>>();
+  const eoaLifetimeRef = React.useRef(0);
+  const eoaStartedRef = React.useRef(false);
   const durableHashesRef = React.useRef(new Set<string>());
   const terminalSubmissionRef = React.useRef<{ submissionId?: string }>();
   const pendingCompletionRef = React.useRef<{
@@ -260,15 +294,19 @@ export const SendCalls = () => {
   const [feeQuoteError, setFeeQuoteError] = useState<string>();
   const [feeQuote, setFeeQuote] = useState<
     SmartAccountFeeQuote & {
+      destinations: Readonly<Record<number, string>>;
       executions: SmartAccountExecutionIntent[];
       key: string;
     }
   >();
-  const quoteCalls = (callsData.calls || []).filter(
-    (_, index) =>
-      effectiveSelectedCalls[index] &&
-      transactionStatuses?.[index]?.status !== 'success'
-  );
+  const quoteCallIndices = (callsData.calls || [])
+    .map((_, index) => index)
+    .filter(
+      (index) =>
+        effectiveSelectedCalls[index] &&
+        transactionStatuses?.[index]?.status !== 'success'
+    );
+  const quoteCalls = quoteCallIndices.map((index) => callsData.calls[index]);
   const feeQuoteKey = requestSmartAccount.supportsAtomicBatch
     ? JSON.stringify([
         approvedContext,
@@ -301,7 +339,7 @@ export const SendCalls = () => {
         activeNetwork.url !== approvedContext.rpcUrl
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      const executions: SmartAccountExecutionIntent[] = [];
+      const resolvedCalls: { data: string; to: string; value: string }[] = [];
       for (const call of quoteCalls) {
         const raw = String(call.to || '');
         let target = raw;
@@ -315,12 +353,13 @@ export const SendCalls = () => {
         }
         if (!/^0x[\da-f]{40}$/i.test(target))
           throw new Error(t('send.smartAccountContractDeploymentUnsupported'));
-        executions.push({
-          target,
+        resolvedCalls.push({
+          to: target,
           data: call.data || '0x',
           value: call.value || '0x0',
         });
       }
+      const executions = [...createSmartAccountCallsExecutions(resolvedCalls)];
       if (cancelled) return;
       const preparedQuote = await prepareSmartAccountFeeQuote({
         accountAddress: approvedContext.account.address,
@@ -330,7 +369,20 @@ export const SendCalls = () => {
         expectedContext: approvedContext,
       });
       if (!cancelled) {
-        setFeeQuote({ ...preparedQuote, executions, key: feeQuoteKey });
+        const destinations = Object.freeze(
+          Object.fromEntries(
+            quoteCallIndices.map((index, position) => [
+              index,
+              executions[position].target,
+            ])
+          )
+        );
+        setFeeQuote({
+          ...preparedQuote,
+          destinations,
+          executions,
+          key: feeQuoteKey,
+        });
         setFeeQuoteNeedsRefresh(false);
       }
     };
@@ -347,6 +399,21 @@ export const SendCalls = () => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      eoaLifetimeRef.current++;
+      const decision = eoaDecisionRef.current;
+      eoaDecisionRef.current = undefined;
+      if (decision) {
+        clearTimeout(decision.timer);
+        decision.reject(
+          Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+            transactionNotBroadcast: true,
+          })
+        );
+        void controllerEmitter(
+          ['wallet', 'discardNativeEvmFeeReview'],
+          [decision.quote.id]
+        ).catch(() => undefined);
+      }
       clearTimeout(closeTimerRef.current);
     };
   }, []);
@@ -396,7 +463,9 @@ export const SendCalls = () => {
   // popup is closed mid-flight. The registry record is an idempotent
   // overwrite; the final all-success pass rewrites it with failed: false.
   const lastRecordedBundleRef = React.useRef<string>('');
-  const markSubmissionStarted = async () => {
+  const markSubmissionStarted = async (
+    smartAccountExecutionContextId?: string
+  ) => {
     try {
       const submissionId = uuidv4();
       await controllerEmitter(
@@ -414,6 +483,7 @@ export const SendCalls = () => {
             previousSubmissionId: lastStartedSubmissionRef.current,
             submissionId,
             submissionStarted: true,
+            smartAccountExecutionContextId,
             txHashes: [],
           },
         ]
@@ -422,6 +492,7 @@ export const SendCalls = () => {
       terminalSubmissionRef.current = undefined;
       pendingCompletionRef.current = undefined;
       setProgressSubmissionId(submissionId);
+      return submissionId;
     } catch (error) {
       console.error('Failed to persist sendCalls submission boundary', error);
       throw new Error(t('send.sendError'));
@@ -447,8 +518,10 @@ export const SendCalls = () => {
           },
         ]
       );
+      return true;
     } catch (error) {
       console.error('Failed to record definite sendCalls rejection', error);
+      return false;
     }
   };
   const recordCompletedSubmission = async (
@@ -616,6 +689,7 @@ export const SendCalls = () => {
     )
       return;
     submissionInFlightRef.current = true;
+    const generation = eoaLifetimeRef.current;
     try {
       setIsPqSigning(false);
       setLoading(true);
@@ -648,8 +722,27 @@ export const SendCalls = () => {
         .map((_, index) => index)
         .filter((index) => shouldSubmitCall(callsData.calls[index], index));
 
-      const receipts: any[] = [];
       const from = callsData.from || approvedContext.account.address;
+
+      let sequence = eoaSequenceRef.current;
+      if (!requestSmartAccount.supportsAtomicBatch && !sequence) {
+        try {
+          sequence = createEoaCallsSequence({
+            version: callsData.version,
+            atomicRequired: callsData.atomicRequired,
+            calls: callsData.calls,
+            ...(callsData.capabilities === undefined
+              ? {}
+              : { capabilities: callsData.capabilities }),
+            from,
+            chainId: approvedContext.chainId,
+          });
+          eoaSequenceRef.current = sequence;
+        } catch (error) {
+          await recordCompletedSubmission(true, []);
+          throw error;
+        }
+      }
 
       // Pre-resolve ENS names in batch when multiple ENS destinations are present
       let batchEnsMap: Record<string, string | null> = {};
@@ -676,17 +769,6 @@ export const SendCalls = () => {
         batchEnsMap = {};
       }
 
-      // Get the starting nonce once via MainController (avoids web3Provider issues)
-      const startingNonce = requestSmartAccount.supportsAtomicBatch
-        ? 0
-        : ((await controllerEmitter(
-            ['wallet', 'getRecommendedNonceForBatch'],
-            [from]
-          )) as number);
-      if (!mountedRef.current || settlementStartedRef.current) return;
-      // Track the nonce we actually use to avoid gaps when skipping transactions
-      let currentNonce = startingNonce;
-
       // Reset status only for selected transactions (for retry functionality)
       setTransactionStatuses((prev) => {
         const newStatuses = prev
@@ -709,6 +791,9 @@ export const SendCalls = () => {
             throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
               transactionNotBroadcast: true,
             });
+          setReviewedDestinations((previous) =>
+            Object.freeze({ ...previous, ...approvedQuote.destinations })
+          );
           for (const originalIndex of selectedIndices) {
             setProcessingIndex(originalIndex);
             setTransactionStatuses((prev) => {
@@ -761,7 +846,12 @@ export const SendCalls = () => {
                 setIsPqSigning(true);
               }
             },
-            onBeforeSubmit: async () => {
+            onSubmissionNotBroadcast: async () => {
+              if (!(await markSubmissionNotBroadcast()))
+                throw new Error(t('send.sendError'));
+              smartSubmissionInvoked = false;
+            },
+            onBeforeSubmit: async ({ executionContextId }) => {
               if (
                 !mountedRef.current ||
                 settlementStartedRef.current ||
@@ -773,7 +863,7 @@ export const SendCalls = () => {
                     transactionNotBroadcast: true,
                   }
                 );
-              await markSubmissionStarted();
+              await markSubmissionStarted(executionContextId);
               if (!mountedRef.current)
                 throw Object.assign(
                   new Error(EVM_TRANSACTION_CONTEXT_CHANGED),
@@ -885,302 +975,191 @@ export const SendCalls = () => {
         }
       }
 
-      // Sign and send each transaction with incremented nonces
-      for (let i = 0; i < selectedCallsData.length; i++) {
-        if (!mountedRef.current || settlementStartedRef.current) return;
-        let submissionInvoked = false;
-        const call = selectedCallsData[i];
-        const originalIndex = selectedIndices[i];
-        setProcessingIndex(originalIndex);
-
-        // Update status to signing
-        setTransactionStatuses((prev) => {
-          const newStatuses = [...prev];
-          newStatuses[originalIndex] = { status: 'signing' };
-          return newStatuses;
-        });
-
-        try {
-          // Resolve ENS names in 'to' if needed and ensure we only send hex addresses
-          let toResolved: string | undefined = call.to;
-          const toRaw = String(call.to || '');
-          if (toRaw) {
-            const lower = toRaw.toLowerCase();
-            const isHex = lower.startsWith('0x');
-            const isEns = lower.endsWith('.eth');
-            if (!isHex) {
-              if (isEns) {
-                const cached = ensNameToAddress[lower];
-                // Prefer batch result (if available), then cache
-                let resolved: string | null =
-                  (batchEnsMap && lower in batchEnsMap
-                    ? batchEnsMap[lower]
-                    : undefined) ??
-                  cached ??
-                  null;
-                if (!resolved) {
-                  try {
-                    resolved = (await controllerEmitter(
-                      ['wallet', 'resolveEns'],
-                      [toRaw]
-                    )) as string | null;
-                  } catch (_) {
-                    resolved = null;
-                  }
-                }
-                if (!resolved) {
-                  // If atomic batch required, abort entire process
-                  if (callsData.atomicRequired) {
-                    setTransactionStatuses((prev) => {
-                      const newStatuses = prev
-                        ? [...prev]
-                        : new Array(callsData.calls.length).fill({
-                            status: 'pending',
-                          });
-                      newStatuses[originalIndex] = {
-                        status: 'error',
-                        error: t('send.unableToResolveEns'),
-                      } as any;
-                      return newStatuses;
-                    });
-                    setLoading(false);
-                    setProcessingIndex(-1);
-                    alert.error(t('send.unableToResolveEns'));
-                    return;
-                  }
-                  // Stop at the unsent call so retries preserve request order.
-                  setTransactionStatuses((prev) => {
-                    const newStatuses = prev
-                      ? [...prev]
-                      : new Array(callsData.calls.length).fill({
-                          status: 'pending',
-                        });
-                    newStatuses[originalIndex] = {
-                      status: 'error',
-                      error: t('send.unableToResolveEns'),
-                    } as any;
-                    return newStatuses;
-                  });
-                  receipts.push({ status: '0x0' });
-                  break;
-                }
-                toResolved = resolved;
-              } else {
-                // Not a hex address or recognized ENS name; treat as invalid
-                if (callsData.atomicRequired) {
-                  setTransactionStatuses((prev) => {
-                    const newStatuses = prev
-                      ? [...prev]
-                      : new Array(callsData.calls.length).fill({
-                          status: 'pending',
-                        });
-                    newStatuses[originalIndex] = {
-                      status: 'error',
-                      error: t('send.invalidDestination'),
-                    } as any;
-                    return newStatuses;
-                  });
-                  setLoading(false);
-                  setProcessingIndex(-1);
-                  alert.error(t('send.invalidDestination'));
-                  return;
-                }
-                setTransactionStatuses((prev) => {
-                  const newStatuses = prev
-                    ? [...prev]
-                    : new Array(callsData.calls.length).fill({
-                        status: 'pending',
-                      });
-                  newStatuses[originalIndex] = {
-                    status: 'error',
-                    error: t('send.invalidDestination'),
-                  } as any;
-                  return newStatuses;
-                });
-                receipts.push({ status: '0x0' });
-                break;
-              }
+      if (!sequence) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      const outcome = await sequence.run({
+        assertCurrent() {
+          if (
+            !mountedRef.current ||
+            generation !== eoaLifetimeRef.current ||
+            settlementStartedRef.current ||
+            rejectionStartedRef.current
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        },
+        nonce: async () =>
+          (await controllerEmitter(
+            ['wallet', 'getRecommendedNonceForBatch'],
+            [from]
+          )) as number,
+        async resolveAddress(call) {
+          const raw = String(call.to || '');
+          const lower = raw.toLowerCase();
+          if (!raw) return undefined;
+          if (lower.startsWith('0x')) return raw;
+          if (!lower.endsWith('.eth'))
+            throw new Error(t('send.invalidDestination'));
+          let resolved =
+            (lower in batchEnsMap ? batchEnsMap[lower] : undefined) ??
+            ensNameToAddress[lower] ??
+            null;
+          if (!resolved) {
+            try {
+              const address = await controllerEmitter(
+                ['wallet', 'resolveEns'],
+                [raw]
+              );
+              resolved = typeof address === 'string' ? address : null;
+            } catch {
+              resolved = null;
             }
           }
-
-          // Prepare transaction
-          // Include 'to' whenever a hex address is provided (including zero address)
-          const candidateTo =
-            toResolved && toResolved.startsWith('0x') ? toResolved : undefined;
-          const toField = candidateTo;
-
-          const tx: any = {
-            from,
-            chainId: approvedContext.chainId,
-            value: call.value || '0x0',
-            data: call.data || '0x',
-            nonce: currentNonce, // Increment only when a tx is actually sent to avoid gaps
-            ...(toField ? { to: toField } : {}),
-          };
-
-          // Update status to sending
-          setTransactionStatuses((prev) => {
-            const newStatuses = [...prev];
-            newStatuses[originalIndex] = { status: 'sending' };
-            return newStatuses;
+          if (!resolved) throw new Error(t('send.unableToResolveEns'));
+          return resolved;
+        },
+        begin: () => markSubmissionStarted(),
+        async prepare(transaction, index): Promise<EoaFeeReview> {
+          const value = (await controllerEmitter(
+            ['wallet', 'reviewDappEvmFee'],
+            [transaction]
+          )) as EoaFeeReview;
+          const quote = Object.freeze({
+            ...value,
+            transaction: snapshotPreparedEvmTransaction(value.transaction),
           });
-
-          // Use the same method as SendTransaction
-          await markSubmissionStarted();
-          if (!mountedRef.current || settlementStartedRef.current) return;
-          submissionInvoked = true;
-          const response = (await controllerEmitter(
+          if (
+            !mountedRef.current ||
+            generation !== eoaLifetimeRef.current ||
+            settlementStartedRef.current ||
+            !Number.isSafeInteger(quote.validForMs) ||
+            quote.validForMs <= 0 ||
+            quote.validForMs > 90_000 ||
+            typeof quote.id !== 'string'
+          ) {
+            void controllerEmitter(
+              ['wallet', 'discardNativeEvmFeeReview'],
+              [quote.id]
+            ).catch(() => undefined);
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+          }
+          return new Promise<EoaFeeReview>((resolve, reject) => {
+            const timer = setTimeout(() => {
+              if (eoaDecisionRef.current?.quote !== quote) return;
+              eoaDecisionRef.current = undefined;
+              if (mountedRef.current) setEoaFeeReview(undefined);
+              void controllerEmitter(
+                ['wallet', 'discardNativeEvmFeeReview'],
+                [quote.id]
+              ).catch(() => undefined);
+              reject(
+                Object.assign(new Error(t('privacy.deposit.expired')), {
+                  transactionNotBroadcast: true,
+                })
+              );
+            }, quote.validForMs);
+            eoaDecisionRef.current = {
+              index,
+              quote,
+              timer,
+              expires: Date.now() + quote.validForMs,
+              resolve,
+              reject,
+            };
+            setReviewedDestinations((previous) =>
+              Object.freeze({
+                ...previous,
+                [index]: quote.transaction.to || '',
+              })
+            );
+            setEoaFeeReview({ index, quote });
+            setLoading(false);
+          });
+        },
+        send: (review, submissionId) =>
+          controllerEmitter(
             ['wallet', 'sendAndSaveEthTransaction'],
             [
-              tx,
-              false,
+              review.transaction,
+              review.transaction.type === 0,
               undefined,
               undefined,
               {
                 expectedContext: approvedContext,
-                sendCallsSubmissionId: lastStartedSubmissionRef.current,
+                genericReviewId: review.id,
+                sendCallsSubmissionId: submissionId,
               },
             ],
             approvedAccount.isTrezorWallet || approvedAccount.isLedgerWallet
               ? 300000
               : 10000,
             false
-          )) as any;
-
-          const txHash = response.hash || response;
-          acknowledgedCallsRef.current.add(originalIndex);
-
-          try {
-            // Persist each acknowledged hash before the next sender can start.
-            await recordBroadcastHash(txHash);
-          } catch (error) {
-            console.error('Failed to persist acknowledged call', error);
-            stopUnknownSubmission([originalIndex], txHash);
+          ),
+        persistHash: recordBroadcastHash,
+        persistStopped: async (attempt) => {
+          await controllerEmitter(
+            ['wallet', 'recordStoppedEoaCalls'],
+            [
+              host,
+              callsData.bundleId,
+              callsData.reservationId,
+              lastStartedSubmissionRef.current,
+              attempt,
+            ]
+          );
+        },
+        recordNotBroadcast: markSubmissionNotBroadcast,
+        persistCompletion: (value) =>
+          recordCompletedSubmission(value.failed, [...value.hashes]),
+        update(progress) {
+          if (progress.hash) acknowledgedCallsRef.current.add(progress.index);
+          if (progress.status === 'unknown') {
+            stopUnknownSubmission([progress.index], progress.hash);
             return;
           }
-          receipts.push({
-            transactionHash: txHash,
-            status: '0x1',
-          });
-
-          // Update status to success
-          setTransactionStatuses((prev) => {
-            const newStatuses = [...prev];
-            newStatuses[originalIndex] = { status: 'success', txHash };
-            return newStatuses;
-          });
-
-          // Only advance nonce when a transaction was successfully broadcast
-          currentNonce += 1;
-
-          // No delay needed - using incremented nonces prevents conflicts
-        } catch (error) {
-          console.error(`Failed to process call ${i}:`, error);
-          const txHash = /^0x[0-9a-fA-F]{64}$/.test(
-            error?.transactionHash || ''
-          )
-            ? error.transactionHash
-            : undefined;
-          if (txHash) {
-            acknowledgedCallsRef.current.add(originalIndex);
-            try {
-              await recordBroadcastHash(txHash);
-            } catch (persistenceError) {
-              console.error(
-                'Failed to persist acknowledged call error',
-                persistenceError
-              );
-              stopUnknownSubmission([originalIndex], txHash);
-              return;
-            }
-            receipts.push({ transactionHash: txHash, status: '0x1' });
-            setTransactionStatuses((prev) => {
-              const newStatuses = [...prev];
-              newStatuses[originalIndex] = { status: 'success', txHash };
-              return newStatuses;
-            });
-            currentNonce += 1;
-            if (error?.message === EVM_TRANSACTION_CONTEXT_CHANGED) {
-              if (i + 1 < selectedCallsData.length)
-                receipts.push({
-                  status: '0x0',
-                  error: EVM_TRANSACTION_CONTEXT_CHANGED,
-                });
-              break;
-            }
-            continue;
-          }
-          const unknown =
-            submissionInvoked && error?.transactionNotBroadcast !== true;
-          if (unknown) unknownSubmissionRef.current = true;
-          if (error?.transactionNotBroadcast === true)
-            await markSubmissionNotBroadcast();
+          if (!mountedRef.current || settlementStartedRef.current) return;
+          if (progress.status === 'signing' || progress.status === 'sending')
+            setProcessingIndex(progress.index);
+          const error = progress.failure?.cause;
           const legacyKey = legacyEvmNonceErrorKey(error);
-          const errorMessage = unknown
-            ? t('send.submissionStatusUnknown')
-            : legacyKey
-            ? t(legacyKey)
-            : getSafeSmartAccountCallErrorMessage(
-                error,
-                t('send.sendError'),
-                t('transactions.psbtSigningContextChanged')
-              );
-          receipts.push({
-            status: '0x0',
-            error: errorMessage,
-          });
-
-          // Update status to error
-          setTransactionStatuses((prev) => {
-            const newStatuses = [...prev];
-            newStatuses[originalIndex] = {
-              status: unknown ? 'unknown' : 'error',
-              error: errorMessage,
+          const errorMessage = progress.failure
+            ? legacyKey
+              ? t(legacyKey)
+              : getSafeSmartAccountCallErrorMessage(
+                  error,
+                  t('send.sendError'),
+                  t('transactions.psbtSigningContextChanged')
+                )
+            : undefined;
+          setTransactionStatuses((previous) => {
+            const statuses = previous
+              ? [...previous]
+              : new Array(callsData.calls.length).fill({ status: 'pending' });
+            statuses[progress.index] = {
+              status: progress.status,
+              ...(progress.hash ? { txHash: progress.hash } : {}),
+              ...(errorMessage ? { error: errorMessage } : {}),
             };
-            return newStatuses;
+            return statuses;
           });
-          if (unknown) {
-            setLoading(false);
-            setProcessingIndex(-1);
-            alert.error(errorMessage);
-            return;
-          }
-          // A retry must remain an ordered suffix of the original request.
-          // Do not submit later calls past one that never reached broadcast.
-          break;
-        }
-      }
-
+        },
+      });
+      if (
+        outcome.status !== 'finished' ||
+        !mountedRef.current ||
+        settlementStartedRef.current
+      )
+        return;
       setProcessingIndex(-1);
       setLoading(false);
-
-      // Check if any transactions succeeded
-      const successCount = receipts.filter((r) => r.status === '0x1').length;
-      const hasErrors = receipts.some((r) => r.status === '0x0');
-      await recordCompletedSubmission(
-        hasErrors,
-        receipts
-          .map((receipt) => receipt.transactionHash)
-          .filter((txHash): txHash is string => Boolean(txHash))
-      );
-
-      if (successCount > 0) {
-        if (hasErrors) {
-          alert.success(
-            t('send.partialSuccess', {
-              count: successCount,
-              total: selectedCallsData.length,
-            })
-          );
-        } else {
-          alert.success(t('send.txSuccessfull'));
-        }
-
-        // Completion will be handled by useEffect when all transactions are successful
-      } else {
-        // All transactions failed
-        alert.error(t('send.allTransactionsFailed'));
-      }
+      if (outcome.hashes.length) {
+        alert.success(
+          outcome.failed
+            ? t('send.partialSuccess', {
+                count: outcome.hashes.length,
+                total: selectedCallsData.length,
+              })
+            : t('send.txSuccessfull')
+        );
+      } else alert.error(t('send.allTransactionsFailed'));
     } catch (error) {
       console.error('Failed to process batch calls', error);
       setIsPqSigning(false);
@@ -1200,7 +1179,73 @@ export const SendCalls = () => {
     }
   };
 
+  const startEoaBatch = () => {
+    const run = handleApprove();
+    eoaRunRef.current = run;
+    void run.finally(() => {
+      if (eoaRunRef.current === run) eoaRunRef.current = undefined;
+    });
+  };
+  const startEoaRef = React.useRef(startEoaBatch);
+  startEoaRef.current = startEoaBatch;
+  useEffect(() => {
+    if (
+      initialLoading ||
+      requestSmartAccount.supportsAtomicBatch ||
+      eoaStartedRef.current
+    )
+      return;
+    let cancelled = false;
+    void Promise.resolve().then(() => {
+      if (cancelled || eoaStartedRef.current || !mountedRef.current) return;
+      eoaStartedRef.current = true;
+      startEoaRef.current();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialLoading, requestSmartAccount.supportsAtomicBatch]);
+
+  const confirmEoaCall = (id: string) => {
+    const pending = eoaDecisionRef.current;
+    if (!pending || pending.quote.id !== id || !mountedRef.current || rejecting)
+      return;
+    eoaDecisionRef.current = undefined;
+    clearTimeout(pending.timer);
+    setEoaFeeReview(undefined);
+    if (Date.now() >= pending.expires) {
+      pending.reject(
+        Object.assign(new Error(t('privacy.deposit.expired')), {
+          transactionNotBroadcast: true,
+        })
+      );
+      return;
+    }
+    setLoading(true);
+    pending.resolve(pending.quote);
+  };
+
   const handleReject = async () => {
+    const decision = eoaDecisionRef.current;
+    if (decision && mountedRef.current && !settlementStartedRef.current) {
+      eoaDecisionRef.current = undefined;
+      clearTimeout(decision.timer);
+      setEoaFeeReview(undefined);
+      setRejecting(true);
+      decision.reject(
+        Object.assign(new Error('User rejected request'), {
+          code: 4001,
+          transactionNotBroadcast: true,
+        })
+      );
+      void controllerEmitter(
+        ['wallet', 'discardNativeEvmFeeReview'],
+        [decision.quote.id]
+      ).catch(() => undefined);
+      await eoaRunRef.current;
+      await finishPopup(canReturnBundleId());
+      return;
+    }
     if (
       !mountedRef.current ||
       settlementStartedRef.current ||
@@ -1218,7 +1263,9 @@ export const SendCalls = () => {
       submissionInFlightRef.current = true;
       setRejecting(true);
       try {
-        await recordCompletedSubmission(pending.failed, pending.txHashes);
+        if (eoaSequenceRef.current)
+          await eoaSequenceRef.current.retryCompletion();
+        else await recordCompletedSubmission(pending.failed, pending.txHashes);
       } catch (error) {
         console.error(
           'Failed to persist calls completion before closing',
@@ -1407,10 +1454,21 @@ export const SendCalls = () => {
                             );
                           }
 
-                          // If the dapp passed an ENS name, prefer ENS as text; tooltip should be resolved address if available
+                          // The displayed target belongs to the exact review used
+                          // for signing, independently of later ENS cache updates.
                           if (toRaw.toLowerCase().endsWith('.eth')) {
+                            const status = transactionStatuses?.[index]?.status;
                             const resolved =
-                              ensNameToAddress[toRaw.toLowerCase()];
+                              requestSmartAccount.supportsAtomicBatch
+                                ? status === 'signing' ||
+                                  status === 'sending' ||
+                                  status === 'success' ||
+                                  status === 'unknown'
+                                  ? reviewedDestinations[index]
+                                  : hasCurrentFeeQuote
+                                  ? feeQuote?.destinations[index]
+                                  : undefined
+                                : reviewedDestinations[index];
                             return (
                               <Tooltip content={resolved || toRaw}>
                                 <span>{toRaw}</span>
@@ -1515,6 +1573,25 @@ export const SendCalls = () => {
         </div>
 
         {/* Total value */}
+        {eoaFeeReview && (
+          <section
+            className="m-4 rounded-lg bg-bkg-2 p-4"
+            aria-label={t('send.networkFee')}
+          >
+            <p className="text-sm text-brand-gray200">
+              {t('transactions.replay.maximumFee')}
+            </p>
+            <p className="break-all text-lg font-bold text-brand-white">
+              {formatEther(eoaFeeReview.quote.maximumFeeUnits)}{' '}
+              {activeNetwork.currency}
+            </p>
+            <p className="mt-2 text-sm text-brand-gray200">{t('send.total')}</p>
+            <p className="break-all text-brand-white">
+              {formatEther(eoaFeeReview.quote.maximumTotalUnits)}{' '}
+              {activeNetwork.currency}
+            </p>
+          </section>
+        )}
         {requestSmartAccount.supportsAtomicBatch && (
           <div className="mt-4 p-4 bg-bkg-2 rounded-lg">
             <p className="text-sm text-brand-gray200">
@@ -1608,7 +1685,7 @@ export const SendCalls = () => {
             variant="secondary"
             type="button"
             onClick={handleReject}
-            disabled={loading || rejecting}
+            disabled={(loading && !eoaFeeReview) || rejecting}
           >
             {confirmed || canReturnBundleId() || pendingCompletionRef.current
               ? t('buttons.close')
@@ -1617,9 +1694,15 @@ export const SendCalls = () => {
           <Button
             variant="primary"
             type="button"
-            onClick={handleApprove}
+            onClick={() =>
+              requestSmartAccount.supportsAtomicBatch
+                ? void handleApprove()
+                : eoaFeeReview
+                ? confirmEoaCall(eoaFeeReview.quote.id)
+                : startEoaBatch()
+            }
             disabled={
-              loading ||
+              (loading && !eoaFeeReview) ||
               rejecting ||
               confirmed ||
               Boolean(pendingCompletionRef.current) ||
@@ -1627,9 +1710,13 @@ export const SendCalls = () => {
               !hasCurrentFeeQuote ||
               Boolean(feeQuoteError)
             }
-            loading={loading}
+            loading={loading && !eoaFeeReview}
           >
-            {loading
+            {eoaFeeReview
+              ? `${t('buttons.confirm')} ${eoaFeeReview.index + 1}/${
+                  callsData.calls.length
+                }`
+              : loading
               ? confirmed
                 ? t('send.sending')
                 : t('send.signing')

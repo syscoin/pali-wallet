@@ -1,16 +1,19 @@
-import { KeyringAccountType, type IKeyringAccountState } from 'types/network';
-import { getAddress } from 'utils/ethersV6Compat';
+import { getAddress } from '../ethersV6Compat.ts';
 
 import {
   encodeEcdsaValidatorInitData,
   getConfiguredAuthenticatorAddress,
   getPaliSmartAccountDescriptor,
-} from './account';
+} from './account.ts';
 import {
   getPaliSmartAccountFactoryAddress,
   PALI_SMART_ACCOUNT_VERSION,
-} from './contracts';
-import { derivePaliSmartAccountDeployment } from './counterfactual';
+} from './contracts.ts';
+import { derivePaliSmartAccountDeployment } from './counterfactual.ts';
+import type {
+  KeyringAccountType,
+  IKeyringAccountState,
+} from '../../types/network.ts';
 
 type SmartAccountAddressRecord = Pick<
   IKeyringAccountState,
@@ -67,7 +70,7 @@ export function requireSmartAccountAddressIdentity(
   // anchor and the canonical threshold-one ECDSA validator. Active auth can
   // be overwritten by hydration or rotated on-chain and never proves origin.
   const auth = metadata.deploymentAuth ?? {
-    data: encodeEcdsaValidatorInitData([anchor[2]], 1),
+    data: encodeEcdsaValidatorInitData([anchor[2]!], 1),
     validator: getConfiguredAuthenticatorAddress(chainId, 'ecdsa'),
   };
   const deployment = derivePaliSmartAccountDeployment({
@@ -102,7 +105,6 @@ export function canPublishAccountAddress(
   chainId: number
 ): boolean {
   return (
-    type !== KeyringAccountType.SmartAccount ||
-    hasVerifiedSmartAccountAddress(account, chainId)
+    type !== 'SmartAccount' || hasVerifiedSmartAccountAddress(account, chainId)
   );
 }

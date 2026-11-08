@@ -1,6 +1,7 @@
 import { BigNumber } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 import { sendLocalEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
+import { submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission';
 import { Transaction } from 'ethers/transaction';
 import { realpathSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -182,9 +183,28 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       configurable: true,
       get: () => provider,
     });
-    jest.mocked(sendLocalEvmTransaction).mockImplementation(() => {
-      throw new Error('UNSIGNED_BOUNDARY_HARD_STOP');
-    });
+    jest
+      .mocked(sendLocalEvmTransaction)
+      .mockImplementation(
+        (
+          _provider,
+          _key,
+          _transaction,
+          _beforeBroadcast,
+          _beforeSign,
+          _validate,
+          submission
+        ) =>
+          // The real SDK rejects these unsigned bytes before persistence or wire
+          // entry and supplies its trusted unsent classification. No test key exists.
+          submitSignedEvmTransaction(
+            '0x',
+            networkDenied,
+            submission,
+            undefined,
+            '0x'
+          )
+      );
     keyring = {
       ethereumTransaction: sdk,
       setVaultStateGetter: jest.fn((getter) => {
@@ -241,6 +261,16 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       expect(installed.version).toBe(spec);
     }
     expect(jest.isMockFunction(sdk.cancelSentTransaction)).toBe(false);
+  });
+
+  it('does not promote unbranded signer error fields into unsent evidence', async () => {
+    jest.mocked(sendLocalEvmTransaction).mockRejectedValueOnce(
+      Object.assign(new Error('untrusted signer error'), {
+        transactionNotBroadcast: true,
+        signedTransactionHash: HASH,
+      })
+    );
+    await expect(run()).resolves.toEqual({ isCanceled: false, error: true });
   });
 
   it('admits a matching authenticated lookup only to the denied unsigned boundary', async () => {

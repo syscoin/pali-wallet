@@ -6,6 +6,7 @@ export const PRIVACY_PROVING_KEY_BYTES = 14522256;
 export const PRIVACY_PROVING_KEY_SHA256 =
   '8e2d2f22beafb5a9666daebca57b13f8029c3656c65fcfbcc86e2418fa16a3af';
 const ASSET_ROOT = 'assets/privacy-prover/';
+export type PrivacyArtifactPolicy = 'extension-public' | 'bundled';
 const PINS = {
   metadata: {
     file: 'metadata.json.gz',
@@ -125,19 +126,20 @@ function cacheTransaction(
   });
 }
 
-export async function loadPrivacyProvingKey(
-  options: {
-    cache?: IProverArtifactCache;
-    fetcher?: typeof fetch;
-    onProgress?: (progress: IPrivacyProofProgress) => void;
-    signal?: AbortSignal;
-  } = {}
-): Promise<ArrayBuffer> {
-  const { signal, onProgress } = options;
-  const cache = options.cache || artifactCache;
+export async function loadPrivacyProvingKey(options: {
+  cache?: IProverArtifactCache;
+  fetcher?: typeof fetch;
+  onProgress?: (progress: IPrivacyProofProgress) => void;
+  policy: PrivacyArtifactPolicy;
+  signal?: AbortSignal;
+}): Promise<ArrayBuffer> {
+  const { signal, onProgress, policy } = options;
+  if (policy !== 'extension-public' && policy !== 'bundled') throw failure();
+  const cache =
+    policy === 'extension-public' ? options.cache || artifactCache : undefined;
   checkAbort(signal);
   try {
-    const saved = await cache.get();
+    const saved = await cache?.get();
     checkAbort(signal);
     if (saved) {
       await verifyPrivacyArtifact(
@@ -151,7 +153,12 @@ export async function loadPrivacyProvingKey(
   } catch {
     checkAbort(signal);
   }
-  const response = await (options.fetcher || fetch)(PRIVACY_PROVING_KEY_URL, {
+  const url =
+    policy === 'bundled'
+      ? new URL('/' + ASSET_ROOT + 'tornadoProvingKey.bin', self.location.href)
+          .href
+      : PRIVACY_PROVING_KEY_URL;
+  const response = await (options.fetcher || fetch)(url, {
     credentials: 'omit',
     cache: 'no-store',
     redirect: 'error',
@@ -175,7 +182,7 @@ export async function loadPrivacyProvingKey(
   );
   checkAbort(signal);
   // Public artifact caching is an optimization; a quota failure must not invalidate verified bytes.
-  await cache.put(bytes).catch(() => undefined);
+  await cache?.put(bytes).catch(() => undefined);
   checkAbort(signal);
   return bytes;
 }
@@ -186,7 +193,7 @@ export async function loadPrivacyWitnessAssets(): Promise<{
 }> {
   const load = async (pin: typeof PINS.metadata) => {
     const response = await fetch(
-      new URL(ASSET_ROOT + pin.file, `${self.location.origin}/`).href,
+      new URL('/' + ASSET_ROOT + pin.file, self.location.href).href,
       { credentials: 'omit', redirect: 'error' }
     );
     const bytes = await readBytes(response, pin.bytes);

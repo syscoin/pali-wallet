@@ -9,7 +9,10 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { webcrypto } from 'node:crypto';
 
-import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
+import {
+  createOfflineTrezorHost,
+  createTestKeyringManager,
+} from '../../../../tests/fixtures/extensionKeyring';
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -263,6 +266,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     const testCapture = createTestEvmSubmissionCapture();
     keyring = createTestKeyringManager(undefined, {
       hardwareManager: hardware,
+      trezorHost: createOfflineTrezorHost(),
       captureEvmSubmission: (context) =>
         useActualLifecycle
           ? wallet.captureEvmSignedSubmission(keyring, context)
@@ -553,8 +557,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           expect(
             await journal.withReplayAdmission(
               journalSession,
-              spend,
-              () => 'eligible'
+              { ...spend, metadata: spend.metadata },
+              async () => ({ result: 'eligible' })
             )
           ).toBeNull();
           expect(
@@ -649,8 +653,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       expect(
         await journal.withReplayAdmission(
           journalSession,
-          entries[1]!,
-          () => 'eligible'
+          { ...entries[1]!, metadata: entries[1]!.metadata },
+          async () => ({ result: 'eligible' })
         )
       ).toEqual({ result: 'eligible' });
       const lookups = provider.getTransaction.mock.calls.length;
@@ -864,7 +868,11 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         );
         expect(payment?.rawTransaction).toBe(retained.serialized);
         expect(
-          await journal.withReplayAdmission(recordSession, payment!, () => true)
+          await journal.withReplayAdmission(
+            recordSession,
+            { ...payment!, metadata: payment!.metadata },
+            async () => ({ result: true })
+          )
         ).toBeNull();
         posted.resolve();
         await acknowledge.promise;
@@ -941,8 +949,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
             expect(
               await journal.withReplayAdmission(
                 recordSession,
-                entries[0]!,
-                () => true
+                { ...entries[0]!, metadata: entries[0]!.metadata },
+                async () => ({ result: true })
               )
             ).toEqual({ result: true });
           }

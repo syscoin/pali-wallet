@@ -338,7 +338,7 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
       )
     );
     expect(reusedPost).toBe(1);
-    expect(evmSubmissionFailure(reusedError).transactionNotBroadcast).toBe(
+    expect(evmSubmissionFailure(reusedError)?.transactionNotBroadcast).toBe(
       false
     );
     expect(uncertain.error).not.toHaveProperty(

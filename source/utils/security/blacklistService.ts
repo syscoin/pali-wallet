@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-import { IBlacklistCheckResult } from 'types/security';
+import type { IBlacklistCheckResult } from '../../types/security.ts';
 
 /**
  * Blacklist Service for Pali Wallet - Memory-Only Implementation
@@ -32,7 +32,7 @@ class BlacklistService {
 
   private lastFetch: number = 0;
   private REFETCH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
-  private isFetching = false;
+  private fetchPromise: Promise<void> | undefined;
 
   // Cache axios instances with proper headers
   private axiosInstance = axios.create({
@@ -91,22 +91,25 @@ class BlacklistService {
     await this.ensureDataLoaded();
   }
 
-  private async ensureDataLoaded() {
+  private async ensureDataLoaded(waitForRefresh = true) {
     // Check if we need to fetch data
     const now = Date.now();
     const dataExpired = now - this.lastFetch > this.REFETCH_INTERVAL;
     const noData =
       this.addressBlacklist.size === 0 && this.urlBlacklist.size === 0;
 
-    if ((dataExpired || noData) && !this.isFetching) {
-      await this.fetchAllBlacklists();
+    if ((dataExpired || noData) && !this.fetchPromise) {
+      this.fetchPromise = this.fetchAllBlacklists().finally(() => {
+        this.fetchPromise = undefined;
+      });
     }
+
+    // Every cold-cache caller joins the same load. Existing data can still be
+    // used by checks while its background refresh runs.
+    if (noData || waitForRefresh) await this.fetchPromise;
   }
 
   private async fetchAllBlacklists() {
-    if (this.isFetching) return;
-    this.isFetching = true;
-
     console.log('[BlacklistService] Fetching blacklists from sources');
 
     try {
@@ -248,8 +251,6 @@ class BlacklistService {
       this.lastFetch = Date.now();
     } catch (error) {
       console.error('[BlacklistService] Error fetching blacklists:', error);
-    } finally {
-      this.isFetching = false;
     }
   }
 
@@ -296,10 +297,7 @@ class BlacklistService {
   }
 
   async checkAddress(address: string): Promise<IBlacklistCheckResult> {
-    // Trigger data loading in background without waiting
-    this.ensureDataLoaded().catch((err) =>
-      console.error('[BlacklistService] Background fetch failed:', err)
-    );
+    await this.ensureDataLoaded(false);
 
     const normalized = address.toLowerCase();
     const comment = this.addressBlacklist.get(normalized);
@@ -319,10 +317,7 @@ class BlacklistService {
   }
 
   async checkUrl(url: string): Promise<IBlacklistCheckResult> {
-    // Trigger data loading in background without waiting
-    this.ensureDataLoaded().catch((err) =>
-      console.error('[BlacklistService] Background fetch failed:', err)
-    );
+    await this.ensureDataLoaded(false);
 
     const normalized = this.normalizeUrl(url);
     if (!normalized) return { isBlacklisted: false, severity: 'low' };
@@ -378,11 +373,11 @@ class BlacklistService {
     }
 
     const urlParts = url.split('.');
-    const urlDomain = urlParts[0];
+    const urlDomain = urlParts[0]!;
 
     for (const legitSite of this.legitimateSites) {
       const legitParts = legitSite.split('.');
-      const legitDomain = legitParts[0];
+      const legitDomain = legitParts[0]!;
 
       // Quick length check
       if (Math.abs(urlDomain.length - legitDomain.length) > 3) continue;
@@ -423,24 +418,24 @@ class BlacklistService {
       .fill(null)
       .map(() => Array(n + 1).fill(0));
 
-    for (let i = 0; i <= m; i++) dp[i][0] = i;
-    for (let j = 0; j <= n; j++) dp[0][j] = j;
+    for (let i = 0; i <= m; i++) dp[i]![0] = i;
+    for (let j = 0; j <= n; j++) dp[0]![j] = j;
 
     for (let i = 1; i <= m; i++) {
       for (let j = 1; j <= n; j++) {
         if (str1[i - 1] === str2[j - 1]) {
-          dp[i][j] = dp[i - 1][j - 1];
+          dp[i]![j] = dp[i - 1]![j - 1]!;
         } else {
-          dp[i][j] = Math.min(
-            dp[i - 1][j] + 1,
-            dp[i][j - 1] + 1,
-            dp[i - 1][j - 1] + 1
+          dp[i]![j] = Math.min(
+            dp[i - 1]![j]! + 1,
+            dp[i]![j - 1]! + 1,
+            dp[i - 1]![j - 1]! + 1
           );
         }
       }
     }
 
-    return dp[m][n];
+    return dp[m]![n]!;
   }
 
   private checkCharacterSubstitution(

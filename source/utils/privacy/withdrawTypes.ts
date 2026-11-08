@@ -1,11 +1,14 @@
 import type { IPrivacyProofProgress, IPrivacyProofResult } from './proverTypes';
 import type { IPrivacyRelayerClient } from './relayers';
 import type { PrivacyRelayerJobState } from './relayJobs';
-import type { IPrivacyDepositFees } from './transactionTypes';
+import type {
+  IPrivacyDepositFees,
+  IPrivacySubmissionFailure,
+} from './transactionTypes';
 import type { IPrivacySnapshotAccess } from './trustedSnapshot';
 import type { PrivacyPoolId } from './types';
 import type {
-  IPrivacyWithdrawalOptions,
+  IPrivacyWithdrawalPreparationOptions,
   IPrivacyWithdrawalRequest,
 } from './withdrawal';
 import type {
@@ -47,6 +50,7 @@ export interface IPrivacyWithdrawalSubmission
   intentId: string;
   noteId: string;
   phase: 'submitted' | 'unknown';
+  signedTransactionHash?: string;
 }
 export interface IPrivacyWithdrawalStatus {
   claimedStatus?: PrivacyRelayerJobState;
@@ -67,15 +71,19 @@ export interface IPrivacyWithdrawalsHost {
   /** Durably reserve the attempt and return its synchronous final-submission fence. */
   beforeSubmission: (attempt: IPrivacyWithdrawalAttempt) => Promise<() => void>;
   captureSession: (requireSigner?: boolean) => IPrivacyWithdrawalSession;
+  /** Classify only owned submission-stage evidence, never provider error fields. */
+  classifySubmissionFailure(
+    error: unknown
+  ): Readonly<IPrivacySubmissionFailure>;
   getSnapshot: (poolId: PrivacyPoolId) => Promise<IPrivacySnapshotAccess>;
   getWithdrawalAttempt: (
     noteId: string,
     session: IPrivacyWithdrawalSession
   ) => Promise<IPrivacyWithdrawalStatusRecord | null>;
   onProgress?: (progress: IPrivacyProofProgress) => void;
-  prove?: (
+  prove: (
     request: IPrivacyWithdrawalRequest,
-    options: IPrivacyWithdrawalOptions
+    options: IPrivacyWithdrawalPreparationOptions
   ) => Promise<IPrivacyProofResult>;
   /** Fixed gas 650000; quote only wallet fees, nonce and balance. No estimate/call containing the note. */
   quoteDirectFees: (
@@ -89,7 +97,7 @@ export interface IPrivacyWithdrawalsHost {
     acknowledgement: IPrivacyWithdrawalAcknowledgement,
     session: IPrivacyWithdrawalSession
   ) => Promise<void>;
-  recordNotBroadcast?: (attempt: IPrivacyWithdrawalAttempt) => Promise<void>;
+  recordNotBroadcast: (attempt: IPrivacyWithdrawalAttempt) => Promise<void>;
   /** Must journal against the original attempt after an acknowledgement, even if the UI session changed. */
   recordSubmission: (
     attempt: IPrivacyWithdrawalAttempt,

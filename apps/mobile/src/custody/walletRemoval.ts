@@ -24,6 +24,8 @@ type Dependencies = Readonly<{
   source(): Source | undefined;
   reopen(installationId: string): Promise<OpenWalletStorage>;
   clearNativeSelection(assertCurrent: () => void): Promise<void>;
+  /** Retire asynchronous producers before sealing the authenticated removal snapshot. */
+  beforeSnapshot(assertCurrent: () => void): Promise<void>;
   assertActive(): void;
   monotonicMilliseconds?: () => number;
 }>;
@@ -72,10 +74,12 @@ export class NativeWalletRemoval {
   private disposed = false;
   private verified = false;
   private unresolved = false;
+  private producersRetired = false;
   private readonly unsubscribe: () => void;
   private readonly dependencies: Dependencies;
 
   constructor(dependencies: Dependencies) {
+    if (typeof dependencies.beforeSnapshot !== 'function') throw new TypeError('A pre-snapshot retirement boundary is required');
     this.dependencies = dependencies;
     this.unsubscribe = dependencies.owner.subscribe((snapshot) => {
       if (this.ready && snapshot !== this.ready.owner) this.cancel();
@@ -146,7 +150,12 @@ export class NativeWalletRemoval {
       return this.own(Promise.resolve().then(async () => {
         try {
           check();
-          const { snapshot: before, assertCurrent: assertRuntime } = await authorize(password, check);
+          const { snapshot: before, assertCurrent: assertRuntime } = await authorize(password, check, async (assertCurrent) => {
+            checkGuard(assertCurrent);
+            check();
+            this.producersRetired = true;
+            await this.dependencies.beforeSnapshot(assertCurrent);
+          });
           check();
           const installation = before.metadata.find((entry) => entry.key === 'installation')?.value;
           if (before.state.presence !== 'existing' || !before.identity || !installation || !/^[0-9a-f]{32}$/.test(installation))
@@ -180,6 +189,11 @@ export class NativeWalletRemoval {
     let result: WalletRemovalResult;
     try {
       this.check(authorized, owner, deadline, guard);
+      authorized.assertRuntime();
+      this.check(authorized, owner, deadline, guard);
+      const current = await source.storage.recovery!.readSnapshot();
+      this.check(authorized, owner, deadline, guard);
+      if (!sameRecoverySnapshot(current, authorized.before)) return fail('STATE_CHANGED');
       authorized.assertRuntime();
       this.check(authorized, owner, deadline, guard);
       result = await this.dependencies.owner.retireForRemoval(owner, async () => {
@@ -230,6 +244,8 @@ export class NativeWalletRemoval {
   }
 
   hasVerifiedRemoval(): boolean { return this.verified; }
+
+  requiresControllerReopen(): boolean { return this.producersRetired; }
 
   cancel(): void { this.generation++; this.clearTicket(); }
 

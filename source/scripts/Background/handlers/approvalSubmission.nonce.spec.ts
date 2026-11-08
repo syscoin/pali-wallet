@@ -96,7 +96,14 @@ test('batch only advances on acknowledgement and stops after an unknown outcome'
   const stop = watchApprovalSubmission(
     'approval',
     jest.fn(),
-    review({ batch: {} })
+    review({
+      batch: {
+        host: 'test.invalid',
+        id: 'id',
+        reservationId: 'reservation',
+        callCount: 2,
+      },
+    })
   );
   try {
     const approval = captureDappEvmSubmission(sender)!;
@@ -136,7 +143,14 @@ test('a definite batch failure requires a fresh quote and cannot rebase behind t
   const stop = watchApprovalSubmission(
     'approval',
     jest.fn(),
-    review({ batch: {} })
+    review({
+      batch: {
+        host: 'test.invalid',
+        id: 'id',
+        reservationId: 'reservation',
+        callCount: 2,
+      },
+    })
   );
   try {
     const approval = captureDappEvmSubmission(sender)!;
@@ -221,7 +235,14 @@ test('invalidates a pre-claim quote and refuses new quotes while a batch item is
   const stop = watchApprovalSubmission(
     'approval',
     jest.fn(),
-    review({ batch: {} })
+    review({
+      batch: {
+        host: 'test.invalid',
+        id: 'id',
+        reservationId: 'reservation',
+        callCount: 2,
+      },
+    })
   );
   try {
     const approval = captureDappEvmSubmission(sender)!;

@@ -61,10 +61,10 @@ void import(
 // MV3 classic workers reject previously unseen script URLs after install.
 // Register optional privacy modules now, without starting a sync, proof or send.
 void import(
-  /* webpackChunkName: "privacy-transactions" */ './controllers/privacyTransactions'
+  /* webpackChunkName: "privacy-transactions" */ '../../wallet/privacyTransactions'
 ).catch(() => undefined);
 void import(
-  /* webpackChunkName: "privacy-withdrawals" */ './controllers/privacyWithdrawals'
+  /* webpackChunkName: "privacy-withdrawals" */ '../../wallet/privacyWithdrawals'
 ).catch(() => undefined);
 void import(
   /* webpackChunkName: "privacy-relayers" */ 'utils/privacy/relayers'

@@ -1,3 +1,4 @@
+import { snapshotNftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import {
   validateActivityView as view,
   validateActivityCandidate as candidate,
@@ -17,7 +18,7 @@ import {
   type ActivityCandidate,
   type ActivityScope,
   type ActivityViewState,
-  type TerminalActivityRecord,
+  type ArchivedActivityRecord,
 } from './types.ts';
 
 export const ACTIVITY_STORAGE_KEY = 'native-activity-v1';
@@ -34,12 +35,12 @@ type Document = Readonly<{
   walletFingerprint: string;
   revision: number;
   truncated: boolean;
-  archived: readonly TerminalActivityRecord[];
+  archived: readonly ArchivedActivityRecord[];
   cached: readonly Cached[];
   views: readonly SavedView[];
 }>;
 export type ActivityHistorySnapshot = Readonly<{
-  archived: readonly TerminalActivityRecord[];
+  archived: readonly ArchivedActivityRecord[];
   candidates: readonly ActivityCandidate[];
   view: ActivityViewState;
   truncated: boolean;
@@ -68,9 +69,9 @@ function exact(
     return invalid();
   return value as Record<string, unknown>;
 }
-export function validateTerminalActivity(
+export function validateArchivedActivity(
   value: unknown
-): TerminalActivityRecord {
+): ArchivedActivityRecord {
   const data = exact(copy(value), [
     'walletFingerprint',
     'accountId',
@@ -85,6 +86,17 @@ export function validateTerminalActivity(
     'recipient',
     'amountUnits',
     'maximumFeeUnits',
+    ...(value &&
+    typeof value === 'object' &&
+    Object.hasOwn(value, 'smartAccount')
+      ? ['smartAccount']
+      : []),
+    ...(value && typeof value === 'object' && Object.hasOwn(value, 'contractInteraction') ? ['contractInteraction'] : []),
+    ...(value &&
+    typeof value === 'object' &&
+    Object.hasOwn(value, 'collectibleTransfer')
+      ? ['collectibleTransfer']
+      : []),
     ...(value && typeof value === 'object' && Object.hasOwn(value, 'token')
       ? ['token']
       : []),
@@ -106,7 +118,7 @@ export function validateTerminalActivity(
     !/^[1-9][0-9]{0,77}$/.test(data.chainId) ||
     typeof data.hash !== 'string' ||
     !/^0x[0-9a-f]{64}$/.test(data.hash) ||
-    !['confirmed', 'reverted', 'nonce-consumed'].includes(
+    !['confirmed', 'reverted', 'nonce-consumed', 'submitted'].includes(
       data.phase as string
     ) ||
     !Number.isSafeInteger(data.nonce) ||
@@ -118,6 +130,51 @@ export function validateTerminalActivity(
     )
   )
     return invalid();
+  if (
+    data.accountId.startsWith('smart:') !== (data.smartAccount !== undefined) ||
+    (data.phase === 'submitted' && data.smartAccount === undefined)
+  )
+    return invalid();
+  if (data.smartAccount !== undefined) {
+    const identity = exact(data.smartAccount, [
+      'payer',
+      'operationHash',
+      'operationNonce',
+    ]);
+    if (
+      !data.accountId.startsWith('smart:') ||
+      typeof identity.payer !== 'string' ||
+      getAddress(identity.payer) !== identity.payer ||
+      typeof identity.operationHash !== 'string' ||
+      !/^0x[0-9a-f]{64}$/.test(identity.operationHash) ||
+      typeof identity.operationNonce !== 'string' ||
+      !/^(0|[1-9][0-9]{0,77})$/.test(identity.operationNonce) ||
+      BigInt(identity.operationNonce) >= BigInt(1) << BigInt(256)
+    )
+      return invalid();
+    data.smartAccount = Object.freeze(identity);
+  }
+  if (
+    data.contractInteraction !== undefined &&
+    (data.contractInteraction !== true ||
+      !data.smartAccount ||
+      data.token !== undefined ||
+      data.collectibleTransfer !== undefined)
+  )
+    return invalid();
+  if (data.collectibleTransfer !== undefined) {
+    const intent = snapshotNftTransferIntent(data.collectibleTransfer);
+    if (
+      data.token !== undefined ||
+      !data.smartAccount ||
+      intent.from !== data.address ||
+      intent.chainId !== data.chainId ||
+      intent.recipient !== data.recipient ||
+      intent.amountUnits !== data.amountUnits
+    )
+      return invalid();
+    data.collectibleTransfer = intent;
+  }
   if (data.token !== undefined) {
     try {
       data.token = parseErc20Metadata(data.token);
@@ -125,7 +182,7 @@ export function validateTerminalActivity(
       return invalid();
     }
   }
-  return Object.freeze(data as unknown as TerminalActivityRecord);
+  return Object.freeze(data as unknown as ArchivedActivityRecord);
 }
 function decode(value: unknown, fingerprint: string): Document {
   const data = exact(copy(value), [
@@ -151,7 +208,7 @@ function decode(value: unknown, fingerprint: string): Document {
     data.views.length > ACTIVITY_VIEW_LIMIT
   )
     return invalid();
-  const archived = data.archived.map(validateTerminalActivity);
+  const archived = data.archived.map(validateArchivedActivity);
   if (
     archived.some((r) => r.walletFingerprint !== fingerprint) ||
     new Set(archived.map((r) => `${localScopeKey(r)}:${r.hash}`)).size !==
@@ -321,9 +378,12 @@ export class NativeActivityHistory {
         try {
           committed =
             raw === undefined
-              ? await this.storage.createManyIfAbsent({
-                  [ACTIVITY_STORAGE_KEY]: stored,
-                }, guard)
+              ? await this.storage.createManyIfAbsent(
+                  {
+                    [ACTIVITY_STORAGE_KEY]: stored,
+                  },
+                  guard
+                )
               : await this.storage.compareAndSet(
                   ACTIVITY_STORAGE_KEY,
                   raw,
@@ -362,11 +422,11 @@ export class NativeActivityHistory {
       throw new ActivityError('CONFLICT');
     });
   }
-  archiveTerminal(
-    record: TerminalActivityRecord,
+  recordObservation(
+    record: ArchivedActivityRecord,
     guard: () => void
   ): Promise<void> {
-    const checked = validateTerminalActivity(record);
+    const checked = validateArchivedActivity(record);
     const id = `${localScopeKey(checked)}:${checked.hash}`;
     return this.mutate(
       checked.walletFingerprint,
@@ -402,8 +462,10 @@ export class NativeActivityHistory {
   clearScope(scope: ActivityScope, guard: () => void): Promise<void> {
     return this.mutate(scope.walletFingerprint, guard, (data) => ({
       ...data,
-      archived: data.archived.filter((record) =>
-        record.chainId !== scope.network.chainId || record.address !== scope.address
+      archived: data.archived.filter(
+        (record) =>
+          record.chainId !== scope.network.chainId ||
+          record.address !== scope.address
       ),
       // These disposable indexes also cover aliases removed from the catalogue.
       cached: [],

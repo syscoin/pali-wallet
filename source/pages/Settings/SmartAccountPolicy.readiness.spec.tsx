@@ -7,6 +7,7 @@ import {
   screen,
 } from '@testing-library/react';
 import React from 'react';
+import { guardianRecoveryFixture } from 'tests/fixtures/guardianRecoveryClaim';
 
 import { KeyringAccountType } from 'types/network';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
@@ -90,26 +91,12 @@ jest.mock('utils/navigationState', () => ({
 }));
 
 const storeRecovery = (readyAt: unknown) => {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      authenticator: {
-        id: 'ecdsa',
-        config: { owners: [OWNER], threshold: 1 },
-      },
-      kind: 'ecdsa',
-      recoveryOperation: {
-        account: ACCOUNT,
-        chainId: CHAIN_ID,
-        policyEpoch: '7',
-        recoveryModule: getPaliModuleAddress(CHAIN_ID, 'guardian-recovery'),
-        executionCalldata: '0x1234',
-        mode: `0x${'00'.repeat(32)}`,
-        readyAt,
-        salt: `0x${'66'.repeat(32)}`,
-      },
-    })
-  );
+  const fixture = guardianRecoveryFixture(ACCOUNT, OWNER);
+  mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim = {
+    ...fixture.claim,
+    guardian: { kind: 'ecdsa', guardian: GUARDIAN },
+    readyAt: Number.isSafeInteger(readyAt) ? readyAt : 0,
+  };
 };
 const settle = async () => {
   await act(async () => {
@@ -182,9 +169,11 @@ beforeEach(() => {
     if (method === 'getWalletSessionGeneration') return 7;
     if (method === 'getSLHDSASmartAccountSetupStatus') return null;
     if (method === 'getSmartAccountGuardianRecoveryStatus') {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      const operationId = stored?.recoveryOperation
-        ? getGuardianRecoveryOperationId(stored.recoveryOperation)
+      const operation =
+        mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+          ?.intent.operation;
+      const operationId = operation
+        ? getGuardianRecoveryOperationId(operation)
         : null;
       const pending = operationId
         ? {
@@ -218,7 +207,11 @@ beforeEach(() => {
       };
     }
     if (method === 'hydrateSmartAccount') return metadata;
-    if (method === 'finalizeSmartAccountGuardianRecovery') return {};
+    if (
+      method === 'finalizeSmartAccountGuardianRecovery' ||
+      method === 'retireSmartAccountGuardianRecovery'
+    )
+      return {};
     throw new Error(`Unexpected controller method ${method}`);
   });
   storeRecovery(Math.floor(NOW.getTime() / 1000) + 60);
@@ -257,7 +250,18 @@ it('enables Finalize only after an explicit refresh observes the chain deadline'
   await settle();
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'finalizeSmartAccountGuardianRecovery'],
-    [expect.objectContaining({ account: ACCOUNT, chainId: CHAIN_ID })],
+    [
+      expect.objectContaining({
+        claim: expect.objectContaining({
+          intent: expect.objectContaining({
+            operation: expect.objectContaining({
+              account: ACCOUNT,
+              chainId: CHAIN_ID,
+            }),
+          }),
+        }),
+      }),
+    ],
     300000
   );
 });

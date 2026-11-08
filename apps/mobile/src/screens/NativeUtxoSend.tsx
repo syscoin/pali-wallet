@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
@@ -27,6 +27,8 @@ import {
   styles,
   Text,
 } from '../ui';
+import { NativeLedgerConnectionModal } from './NativeLedger';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 import type { UtxoNetwork } from '../core/utxoNetworks';
@@ -62,18 +64,32 @@ export function NativeUtxoSendScreen({
   network,
   open,
   onBack,
+  ledgerConnection,
+  initialDraft,
+  beforeClose,
 }: {
   accountLabel: string;
+  ledgerConnection?: NativeLedgerConnectionView;
+  initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean }>;
+  beforeClose?(): Promise<void>;
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
   open(assertCurrent: () => void): Promise<NativeUtxoSend>;
   onBack(): void;
 }) {
+  const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
+  const ledgerReady = useSyncExternalStore(
+    (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
+    () => ledgerConnection?.isConnected() ?? true,
+    () => false,
+  );
   const [send, setSend] = useState<NativeUtxoSend | null>(null);
-  const [address, setAddress] = useState('');
-  const [amount, setAmount] = useState('');
-  const [max, setMax] = useState(false);
-  const [busy, setBusy] = useState(true);
+  const [address, setAddress] = useState(initialDraft?.recipient ?? '');
+  const [amount, setAmount] = useState(initialDraft?.amount ?? '');
+  const [max, setMax] = useState(initialDraft?.max ?? false);
+  const [working, setBusy] = useState(true);
+  const [closingHardware, setClosingHardware] = useState(false);
+  const busy = working || closingHardware;
   const [review, setReview] = useState<NativeUtxoReview | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [saved, setSaved] = useState<
@@ -83,6 +99,7 @@ export function NativeUtxoSendScreen({
   const [error, setError] = useState('');
   const owner = useRef({ revision: 0 });
   const inFlight = useRef(false);
+  const closing = useRef(false);
   useEffect(() => {
     const lifetime = owner.current;
     const revision = ++lifetime.revision;
@@ -114,6 +131,7 @@ export function NativeUtxoSendScreen({
     };
   }, [open]);
   const close = () => {
+    if (closing.current) return;
     Keyboard.dismiss();
     if (review && !busy) {
       send?.cancel();
@@ -122,7 +140,19 @@ export function NativeUtxoSendScreen({
       return;
     }
     send?.cancel();
-    onBack();
+    if (!beforeClose) { onBack(); return; }
+    closing.current = true;
+    setClosingHardware(true);
+    const revision = owner.current.revision;
+    void Promise.resolve().then(beforeClose).then(() => {
+      if (owner.current.revision === revision) onBack();
+    }, () => {
+      if (owner.current.revision === revision) {
+        closing.current = false;
+        setClosingHardware(false);
+        setError('The hardware request is still closing. Try again.');
+      }
+    });
   };
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
@@ -135,7 +165,7 @@ export function NativeUtxoSendScreen({
     return () => subscription.remove();
   });
   const run = (work: (current: () => boolean) => Promise<void>) => {
-    if (inFlight.current) return;
+    if (inFlight.current || closing.current) return;
     const revision = owner.current.revision,
       current = () => revision === owner.current.revision;
     inFlight.current = true;
@@ -211,8 +241,9 @@ export function NativeUtxoSendScreen({
   const confirm = review && (
     <Button
       title={review.retryTxid ? 'Resend saved transfer' : 'Confirm and send'}
-      disabled={busy}
+      disabled={busy || !review.retryTxid && !ledgerReady}
       onPress={() => {
+        if (!review.retryTxid && ledgerConnection && !ledgerConnection.isConnected()) return;
         run(async (current) => {
           setReview(null);
           try {
@@ -252,6 +283,10 @@ export function NativeUtxoSendScreen({
             subtitle={subtitle}
             onBack={close}
           />
+          {ledgerConnection && !ledgerReady && review && !review.retryTxid && !outcome && <Button
+            title="Connect Ledger" disabled={busy}
+            onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
+          />}
           {outcome ? (
             <>
               <Notice
@@ -451,6 +486,13 @@ export function NativeUtxoSendScreen({
           )}
         </Screen>
       </KeyboardAvoidingView>
+      {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
+        controller={ledgerPicker}
+        onClose={() => setLedgerPicker(null)}
+        onFinished={() => {
+          setLedgerPicker(null);
+        }}
+      />}
     </SafeAreaView>
   );
 }

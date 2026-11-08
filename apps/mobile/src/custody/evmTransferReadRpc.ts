@@ -1,3 +1,5 @@
+import { privacyWithdrawalFees } from '../../../../source/utils/privacy/withdrawalFees.ts';
+import { captureEvmGasPolicy, prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappTransactionRequest, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { getAddress } from 'ethers/address';
 import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees, planEvmSpeedUpFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { Transaction } from 'ethers/transaction';
@@ -15,11 +17,13 @@ import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFee
 import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
 import { evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest.ts';
-import { assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
+import { type EvmFeeFunding, captureNativeEvmFeeCoverage, assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
 import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
+export type { EvmDappPreparedQuote, EvmDappTransactionRequest } from '../../../../source/shared/evmDappPreparation.ts';
+
 const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> = Object.freeze({
   eth_chainId: true,
   eth_getBlockByNumber: true,
@@ -27,6 +31,7 @@ const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> 
   eth_getTransactionReceipt: true,
 });
 const BLOCK_BYTES = 512 * 1024;
+const RECEIPT_BYTES = 1024 * 1024;
 const CODE_BYTES = 32 * 1024;
 type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
   'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount' | 'eth_getTransactionByHash';
@@ -112,11 +117,12 @@ export class EvmTransferReadRpc {
     this.monotonicMilliseconds = options.monotonicMilliseconds ?? (() => Math.floor(performance.now()));
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 30000) throw new Error('Invalid read timeout');
   }
-  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>, scope?: 'endpoint' | 'nft-quote'): Promise<T> {
+  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>, scope?: 'endpoint' | 'nft-quote' | 'smart-account'): Promise<T> {
     guardedRead(guard);
     if (external.aborted) return rejectRead('CANCELLED');
     const controller = new AbortController();
     const nft = scope === 'nft-quote';
+    const boundedContractCode = nft || scope === 'smart-account';
     const expectedUrl = scope ? new URL(this.network.rpcUrl).href : undefined;
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
@@ -141,7 +147,7 @@ export class EvmTransferReadRpc {
       if (!response.ok) return rejectRead('UNAVAILABLE');
       const contentType = response.headers.get('content-type');
       if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
-      const limit = method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (nft ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
+      const limit = method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
       const text = await cancellable(boundedResponseText(response, controller.signal, limit), controller.signal);
       guardedRead(guard);
       const result = object(JSON.parse(text));
@@ -206,7 +212,67 @@ export class EvmTransferReadRpc {
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
   }
+  smartAccountRead(method: 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
+    params: readonly unknown[], signal: AbortSignal, guard: () => void): Promise<unknown> {
+    const allowed = ['eth_call', 'eth_getCode', 'eth_getBalance', 'eth_estimateGas', 'eth_getBlockByNumber', 'eth_chainId', 'eth_gasPrice', 'eth_maxPriorityFeePerGas', 'eth_feeHistory'];
+    if (!allowed.includes(method) || !Array.isArray(params) || params.length > 5)
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const result = await read(method, params);
+      await this.checkChain(read);
+      return result;
+    }, 'smart-account');
+  }
+  smartAccountFeeData(signal: AbortSignal, guard: () => void) {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const fees = await this.feeData(read, sampled, signal);
+      await this.checkChain(read);
+      return fees;
+    }, 'smart-account');
+  }
+  async assertSmartAccountSupported(signal: AbortSignal, guard: () => void): Promise<void> {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      await this.checkSmartAccountInfrastructure(read);
+    }, 'smart-account');
+  }
+  private async checkSmartAccountInfrastructure(read: Reader): Promise<void> {
+    const { assertSmartAccountInfrastructureReady, projectSmartAccountInfrastructureObservation,
+      SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
+    const codes = await Promise.all(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => read('eth_getCode', [address, 'latest'])));
+    const status = projectSmartAccountInfrastructureObservation(Number(this.network.chainId), codes);
+    if (!status) return rejectRead('INVALID_RESPONSE');
+    assertSmartAccountInfrastructureReady(status);
+  }
+  prepareSmartAccount(accountIndex: number, managementAddress: string, signal: AbortSignal, guard: () => void) {
+    return this.operation(signal, guard, async (read) => {
+      const { deriveDefaultSmartAccount } = await import('../../../../source/utils/smartAccount/bootstrap.ts');
+      const chainId = Number(this.network.chainId);
+      return deriveDefaultSmartAccount({
+        accountIndex, chainId, managementAddress, assertCurrent: read.assertCurrent,
+        provider: {
+          async getNetwork() { return { chainId: quantity(await read('eth_chainId', [])) }; },
+          verifyConfiguredChainId: () => this.checkChain(read),
+          async call(transaction) {
+            const result = await read('eth_call', [transaction, 'latest']);
+            if (typeof result !== 'string' || !/^0x(?:[a-f\d]{2})*$/i.test(result)) return rejectRead('INVALID_RESPONSE');
+            return result;
+          },
+        },
+        assertInfrastructureSupported: () => this.checkSmartAccountInfrastructure(read),
+      });
+    }, 'smart-account');
+  }
   readGuardianRecoveryStatus(account: string, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
+    return this.readGuardianRecovery(account, undefined, signal, guard);
+  }
+  readGuardianRecoveryOperation(account: string, operationId: string, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
+    return this.readGuardianRecovery(account, operationId, signal, guard);
+  }
+  private readGuardianRecovery(account: string, knownOperationId: string | undefined, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
     return this.operation(signal, guard, async (read) => {
       const [{ readGuardianRecoveryObservation, GuardianRecoveryUnsupportedError, GuardianRecoveryNoAccountCodeError }, { getPaliModuleAddress }] = await Promise.all([
         import('../../../../source/utils/smartAccount/guardianStatus.ts'),
@@ -218,6 +284,7 @@ export class EvmTransferReadRpc {
           account,
           chainId,
           moduleAddress: getPaliModuleAddress(chainId, 'guardian-recovery'),
+          knownOperationId,
           provider: { send: read },
           assertCurrent: read.assertCurrent,
         });
@@ -281,7 +348,7 @@ export class EvmTransferReadRpc {
         from, to: from, chainId: this.network.chainId, nonce: String(nonce),
         value: '0', data: '0x', gasLimit: feePlan.gasLimit.toString(),
         ...(feePlan.type === 0 ? { type: 0, gasPrice: feePlan.gasPrice.toString() } : {
-          type: 2, maxFeePerGas: feePlan.maxFeePerGas.toString(), maxPriorityFeePerGas: feePlan.maxPriorityFeePerGas.toString(),
+          type: 2, accessList: [], maxFeePerGas: feePlan.maxFeePerGas.toString(), maxPriorityFeePerGas: feePlan.maxPriorityFeePerGas.toString(),
         }),
       }, this.network, from, feePlan);
       await this.canonical(read, sampled);
@@ -322,7 +389,7 @@ export class EvmTransferReadRpc {
         from, to, chainId: this.network.chainId, nonce: String(nonce),
         value: value.toString(), data, gasLimit: plan.gasLimit.toString(),
         ...(plan.type === 0 ? { type: 0, gasPrice: plan.gasPrice.toString() } : {
-          type: 2, maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
+          type: 2, accessList: [], maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
         }),
       }, this.network);
       const balance = quantity(rawBalance);
@@ -330,7 +397,7 @@ export class EvmTransferReadRpc {
       const approval = captureEvmFeeApproval(transaction, this.network.registrationHash, now + EVM_FEE_APPROVAL_LIFETIME_MS);
       try {
         assertEvmFeeEstimateApproved(approval, { estimatedGas: gasLimit, balance, sampledBlockGasLimit: sampled.gasLimit,
-          ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, now);
+          ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, now, captureNativeEvmFeeCoverage(approval));
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
@@ -495,7 +562,7 @@ export class EvmTransferReadRpc {
         try {
           assertEvmFeeEstimateApproved(approval, { balance: rawBalance,
             estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
-            ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds());
+            ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));
         } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
         await assertEvmAssetStateCanonical(read, assetState);
       }
@@ -553,7 +620,7 @@ export class EvmTransferReadRpc {
           balance: rawBalance,
           estimatedGas: quantity(rawEstimate), sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }),
-        }, now);
+        }, now, captureNativeEvmFeeCoverage(approval));
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
@@ -580,9 +647,9 @@ export class EvmTransferReadRpc {
       return rejectRead('NONCE_UNAVAILABLE');
     const selectedFees = approved
       ? approved.type === 0 ? { type: 0 as const, gasPrice: approved.gasPrice }
-        : { type: 2 as const, maxFeePerGas: approved.maxFeePerGas, maxPriorityFeePerGas: approved.maxPriorityFeePerGas }
+        : { type: 2 as const, accessList: [], maxFeePerGas: approved.maxFeePerGas, maxPriorityFeePerGas: approved.maxPriorityFeePerGas }
       : fees.baseFeePerGas === undefined ? { type: 0 as const, gasPrice: fees.gasPrice.toString() }
-        : { type: 2 as const, maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() };
+        : { type: 2 as const, accessList: [], maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() };
     if (approved && (approved.nonce !== nonce.toString() || approved.from !== request.from || approved.to !== request.to || approved.value !== request.value || approved.data !== request.data)) return rejectRead('REVIEW_REQUIRED');
     if (selectedFees.type === 2 && (sampled.baseFee === null || BigInt(selectedFees.maxFeePerGas) < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
     const estimate = quantity(await read('eth_estimateGas', [evmEstimateRequest({
@@ -608,13 +675,71 @@ export class EvmTransferReadRpc {
       const approval = captureEvmFeeApproval(tx, this.network.registrationHash,
         this.feeQuoteExpiry());
       try { assertEvmFeeEstimateApproved(approval, { estimatedGas: estimate, sampledBlockGasLimit: sampled.gasLimit,
-        ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }), balance }, this.monotonicMilliseconds()); }
+        ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }), balance }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval)); }
       catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
     }
     return Object.freeze({ transaction: tx, balanceUnits: balance.toString(), maximumFeeUnits: cost.maximumFee.toString(), totalUnits: cost.total.toString() });
   }
+  /** Public fee observations only; no note or proof is passed to this reader. */
+  withdrawalGasPrice(signal: AbortSignal, guard: () => void): Promise<string> {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const fees = await this.feeData(read, sampled, signal);
+      const price = fees.maxFeePerGas ?? fees.gasPrice;
+      if (!price || price <= BigInt(0)) return rejectRead('INVALID_RESPONSE');
+      await this.canonical(read, sampled);
+      return price.toString();
+    }, 'endpoint');
+  }
+
+  /** The shared fixed-gas formatter uses the ordinary nonce and spend-budget policy. */
+  withdrawalFees(from: string, planner: NativeAutomaticNoncePlanner, signal: AbortSignal, guard: () => void) {
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const nonce = this.sampleSendNonce(read, from, sampled, undefined, planner);
+      const [plan, balance, fees] = await Promise.all([
+        nonce, this.readSendBalance(read, from, sampled, nonce), this.feeData(read, sampled, signal),
+      ]);
+      await this.canonical(read, sampled);
+      read.assertCurrent();
+      return privacyWithdrawalFees(fees, plan.nonce, balance);
+    }, 'endpoint');
+  }
+
+  /** Generic dapp envelope through the same owned reads, nonce planner and fee policy. */
+  prepareDapp(request: EvmDappTransactionRequest, signal: AbortSignal, guard: () => void,
+    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy): Promise<EvmDappPreparedQuote> {
+    gasPolicy = captureEvmGasPolicy(gasPolicy);
+    return this.operation(signal, guard, async (read) => {
+      try {
+        return await prepareEvmDappQuote(request, {
+          chainId: this.network.chainId,
+          scope: this.network.registrationHash,
+          funding,
+          gasPolicy,
+          assertCurrent: read.assertCurrent,
+          read,
+          now: this.monotonicMilliseconds,
+          verifyChain: () => this.checkChain(read),
+          verifyBlock: (sampled) => this.canonical(read, sampled),
+          nonce: (sampled, requested) =>
+            this.sampleSendNonce(read, request.from, sampled, requested, automaticNonce),
+          balance: (sampled, nonce) => this.readSendBalance(read, request.from, sampled, nonce),
+          fees: (sampled) => this.feeData(read, sampled, signal),
+        }, approved);
+      } catch (error) {
+        if (error instanceof EvmFeeBalanceError) return rejectRead('INSUFFICIENT_BALANCE');
+        if (error instanceof EvmDappReviewRequiredError) return rejectRead('REVIEW_REQUIRED');
+        if (error instanceof EvmObservationError) return rejectRead('INVALID_RESPONSE');
+        throw error;
+      }
+    }, 'endpoint');
+  }
+
   quoteFees(input: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void): Promise<EvmFeeQuote> {
     const transaction = snapshotUnsignedTransfer(input, this.network);
     return this.operation(signal, guard, async (read) => {
@@ -626,12 +751,12 @@ export class EvmTransferReadRpc {
       const balance = quantity(await read('eth_getBalance', [transaction.from, 'pending']));
       const observation = { balance, sampledBlockGasLimit: sampled.gasLimit,
         ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) };
-      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: BigInt(transaction.gasLimit) }, now); }
+      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: BigInt(transaction.gasLimit) }, now, captureNativeEvmFeeCoverage(approval)); }
       catch { return rejectRead('REVIEW_REQUIRED'); }
       const cap = BigInt(transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas);
       const price = transaction.type === 0 ? cap : (sampled.baseFee ?? rejectRead('INVALID_RESPONSE')) + BigInt(transaction.maxPriorityFeePerGas);
       const gas = quantity(await read('eth_estimateGas', [evmEstimateRequest(transaction), 'pending']));
-      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: gas }, this.monotonicMilliseconds()); }
+      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: gas }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval)); }
       catch { return rejectRead('REVIEW_REQUIRED'); }
       await this.canonical(read, sampled); await this.checkChain(read);
       return assembleFeeQuote(transaction, this.network, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, approval.expiresAtMonotonicMilliseconds);

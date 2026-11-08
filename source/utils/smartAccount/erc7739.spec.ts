@@ -16,8 +16,11 @@ import {
   hashPersonalSignMessage,
   PALI_ERC7739_DOMAIN_NAME,
   PALI_ERC7739_DOMAIN_VERSION,
-  signPaliErc7739TypedDataV4,
 } from './erc7739';
+import {
+  encodeSmartAccountMessageSignature,
+  prepareSmartAccountMessage,
+} from './messageSigning';
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const OTHER_ACCOUNT = '0x2222222222222222222222222222222222222222';
@@ -213,7 +216,7 @@ describe('Pali ERC-7739 helpers', () => {
     );
   });
 
-  it('does not sign a Pali-labeled dapp actionHash as a raw digest', async () => {
+  it('binds a Pali-labeled dapp actionHash to the Smart-account domain', () => {
     const attackerChosenUserOpHash = keccak256(
       toUtf8Bytes('attacker-chosen UserOperation')
     );
@@ -247,21 +250,22 @@ describe('Pali ERC-7739 helpers', () => {
       chainId: CHAIN_ID,
       typedData,
     });
-    let signedActionHash = '';
-    const signature = await signPaliErc7739TypedDataV4({
+    const prepared = prepareSmartAccountMessage({
       accountAddress: ACCOUNT,
       chainId: CHAIN_ID,
-      signActionHash: async (actionHash) => {
-        signedActionHash = actionHash;
-        return '0x1234';
+      request: {
+        method: 'eth_signTypedData_v4',
+        address: ACCOUNT,
+        typedData,
+        version: 'V4',
       },
-      typedData,
     });
+    const signature = encodeSmartAccountMessageSignature(prepared, '0x1234');
 
     expect(request.actionHash).not.toBe(attackerChosenUserOpHash);
     expect(request.actionHash).not.toBe(otherAccountRequest.actionHash);
-    expect(signedActionHash).toBe(request.actionHash);
-    expect(signedActionHash).not.toBe(attackerChosenUserOpHash);
+    expect(prepared.actionHash).toBe(request.actionHash);
+    expect(prepared.actionHash).not.toBe(attackerChosenUserOpHash);
     expect(signature).toBe(
       encodePaliErc7739TypedDataSignature('0x1234', request)
     );

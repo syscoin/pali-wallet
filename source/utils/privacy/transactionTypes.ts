@@ -57,10 +57,16 @@ export interface IPrivacyDepositReview {
   valueWei: string;
 }
 
+export interface IPrivacySubmissionFailure {
+  signedTransactionHash?: string;
+  transactionNotBroadcast: boolean;
+}
+
 export interface IPrivacyDepositSubmission {
   intentId: string;
   noteId: string;
   phase: 'submitted' | 'unknown';
+  signedTransactionHash?: string;
   transactionHash?: string;
 }
 
@@ -69,6 +75,10 @@ export interface IPrivacyTransactionsHost {
   beforeSubmission: (attempt: IPrivacyDepositAttempt) => Promise<() => void>;
   /** Capture the active account/network/session; assertCurrent must fence ABA changes. */
   captureContext: () => IPrivacyDepositSession;
+  /** Interpret only host-owned stage evidence; provider error fields are untrusted. */
+  classifySubmissionFailure(
+    error: unknown
+  ): Readonly<IPrivacySubmissionFailure>;
   /** Read-only gas/fee/nonce/balance preflight against the captured provider. Never sign. */
   prepareFees: (
     transaction: Readonly<IPrivacyDepositCall>,
@@ -85,8 +95,8 @@ export interface IPrivacyTransactionsHost {
     attempt: IPrivacyDepositAttempt,
     transactionHash: string
   ) => Promise<void>;
-  /** Optional recovery of a matching reservation after proven pre-broadcast failure. */
-  recordNotBroadcast?: (attempt: IPrivacyDepositAttempt) => Promise<void>;
+  /** Recover a matching reservation only after proven pre-broadcast failure. */
+  recordNotBroadcast: (attempt: IPrivacyDepositAttempt) => Promise<void>;
   /** Assert the fence at final signing; record acknowledgments before later context checks. */
   sendTransaction: (
     transaction: PrivacyDepositTransaction,

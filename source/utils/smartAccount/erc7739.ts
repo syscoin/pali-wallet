@@ -9,7 +9,7 @@ import {
   keccak256,
   toBeHex,
   toUtf8Bytes,
-} from 'utils/ethersV6Compat';
+} from '../ethersV6Compat.ts';
 
 export const PALI_ERC7739_DOMAIN_NAME = 'pali.smart-account.erc1271';
 export const PALI_ERC7739_DOMAIN_VERSION = '1';
@@ -187,16 +187,4 @@ export const encodePaliErc7739TypedDataSignature = (
     descriptionBytes,
     toBeHex(descriptionBytes.length, 2),
   ]);
-};
-
-/** Sign untrusted dapp typed data only after applying the ERC-7739 transform. */
-export const signPaliErc7739TypedDataV4 = async (params: {
-  accountAddress: string;
-  chainId: number;
-  signActionHash: (actionHash: string) => Promise<string>;
-  typedData: PaliErc7739TypedData;
-}): Promise<string> => {
-  const request = buildPaliErc7739TypedDataRequest(params);
-  const moduleSignature = await params.signActionHash(request.actionHash);
-  return encodePaliErc7739TypedDataSignature(moduleSignature, request);
 };

@@ -11,6 +11,8 @@ jest.mock('@trezor/connect-webextension', () => ({
 
 import { webcrypto } from 'crypto';
 
+import { createOfflineTrezorHost } from '../../../../tests/fixtures/extensionKeyring';
+
 import { readWalletPresence } from './readWalletPresence';
 
 describe('fresh keyring creation persistence', () => {
@@ -78,6 +80,7 @@ describe('fresh keyring creation persistence', () => {
     const keyring: any = new KeyringManager(
       createBrowserKeyringHost(chrome.storage.local),
       {
+        trezorHost: createOfflineTrezorHost(),
         captureEvmSubmission: () => {
           throw new Error('EVM submission is outside this fixture');
         },

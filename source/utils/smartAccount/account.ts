@@ -1,24 +1,24 @@
+import { defaultAbiCoder } from '../ethersV6Compat.ts';
+import { getAddress } from '../ethersV6Compat.ts';
+import { BigNumber } from '../ethersV6Compat.ts';
+import { hexConcat, hexDataSlice, hexZeroPad } from '../ethersV6Compat.ts';
+import { keccak256 } from '../ethersV6Compat.ts';
+
+import {
+  ERC7579_MODULE_TYPE_EXECUTOR,
+  ERC7579_MODULE_TYPE_VALIDATOR,
+  getPaliModuleAddress,
+  type PaliAuthenticatorModuleId,
+  type PaliSmartAccountAuthenticatorId,
+  paliSmartAccountInterface,
+} from './contracts.ts';
 import type {
   ISmartAccountMetadata,
   KeyringAccountType,
   SmartAccountP256WebAuthnConfig,
   SmartAccountSLHDSAConfig,
   SmartAccountValidatorModule,
-} from 'types/network';
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
-import { getAddress } from 'utils/ethersV6Compat';
-import { BigNumber } from 'utils/ethersV6Compat';
-import { hexConcat, hexDataSlice, hexZeroPad } from 'utils/ethersV6Compat';
-import { keccak256 } from 'utils/ethersV6Compat';
-
-import {
-  ERC7579_MODULE_TYPE_EXECUTOR,
-  ERC7579_MODULE_TYPE_VALIDATOR,
-  getPaliModuleAddress,
-  PaliAuthenticatorModuleId,
-  PaliSmartAccountAuthenticatorId,
-  paliSmartAccountInterface,
-} from './contracts';
+} from '../../types/network.ts';
 
 export const ERC7579_CALL_TYPE_SINGLE = '0x00';
 export const ERC7579_CALL_TYPE_BATCH = '0x01';
@@ -219,7 +219,7 @@ export const encodeERC7579Executions = (
 
   return normalized.length === 1
     ? {
-        executionCalldata: encodePackedSingleERC7579Execution(normalized[0]),
+        executionCalldata: encodePackedSingleERC7579Execution(normalized[0]!),
         executions: normalized,
         mode: ERC7579_MODE_SINGLE_DEFAULT,
       }
@@ -266,7 +266,7 @@ export const encodeRotateValidatorModuleCall = (
   ]);
 
 const sameAddress = (left?: string, right?: string) =>
-  Boolean(left && right) && left.toLowerCase() === right.toLowerCase();
+  !!left && !!right && left.toLowerCase() === right.toLowerCase();
 
 const sameHexData = (left?: string, right?: string) =>
   (left || '0x').toLowerCase() === (right || '0x').toLowerCase();

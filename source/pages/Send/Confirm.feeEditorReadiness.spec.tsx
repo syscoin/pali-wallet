@@ -291,7 +291,7 @@ it.each(['rejected quote', 'zero maximum fee'])(
     ).toHaveLength(1);
     await act(async () => fireEvent.click(edit()));
     const dialog = within(screen.getByRole('dialog'));
-    expect(dialog.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue(3);
+    expect(dialog.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue('3');
     expect(dialog.getByRole('button', { name: 'buttons.save' })).toBeEnabled();
   }
 );
@@ -305,10 +305,10 @@ it.each(['1000000000', '0'])(
     await waitFor(() => expect(edit()).toBeEnabled());
     await act(async () => fireEvent.click(edit()));
     const dialog = within(screen.getByRole('dialog'));
-    expect(dialog.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue(3);
+    expect(dialog.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue('3');
     expect(
       dialog.getByPlaceholderText('send.maxPriorityFee (GWEI)')
-    ).toHaveValue(Number(priority) / 1e9);
+    ).toHaveValue(String(Number(priority) / 1e9));
     expect(dialog.getByPlaceholderText('send.gasLimit')).toHaveValue(21000);
     expect(dialog.getByRole('button', { name: 'buttons.save' })).toBeEnabled();
     fireEvent.change(dialog.getByPlaceholderText('send.maxFee (GWEI)'), {
@@ -324,7 +324,7 @@ it.each(['1000000000', '0'])(
       within(screen.getByRole('dialog')).getByPlaceholderText(
         'send.maxFee (GWEI)'
       )
-    ).toHaveValue(4);
+    ).toHaveValue('4');
   }
 );
 

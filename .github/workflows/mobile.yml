@@ -4,27 +4,38 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - 'scripts/apply-walletconnect-terminal.cjs'
+      - 'scripts/walletconnect-terminal.json'
+      - 'scripts/apply-quickcrypto-sentry.cjs'
+      - 'scripts/quickcrypto-sentry.json'
       - 'apps/mobile/**'
       - 'source/shared/**'
+      - 'source/scripts/privacyProver/**'
+      - 'source/utils/privacy/prover*'
+      - 'scripts/build-native-private-prover.cjs'
+      - 'scripts/prepare-native-private-prover.cjs'
       - 'source/wallet/**'
+      - 'source/utils/sentry/importBatch.ts'
       - 'source/constants/trustedApps.json'
       - 'source/types/network.ts'
+      - 'source/types/security.ts'
       - 'source/types/utxoTransaction.ts'
       - 'source/scripts/Background/controllers/assets/nft-utils.ts'
+      - 'source/utils/accountCompatibility.ts'
       - 'source/utils/asyncMutex.ts'
+      - 'source/utils/cleanErrorStack.ts'
+      - 'source/utils/dappApprovalLifetime.ts'
       - 'source/utils/dappOrigin.ts'
       - 'source/utils/defaultNetworks.ts'
       - 'source/utils/ethersV6Compat.ts'
-      - 'source/utils/smartAccount/contracts.ts'
-      - 'source/utils/smartAccount/deployment.ts'
-      - 'source/utils/smartAccount/deploymentMetadata.ts'
-      - 'source/utils/smartAccount/guardianStatus.ts'
+      - 'source/utils/smartAccount/**'
       - 'source/utils/evmNonce.ts'
       - 'source/utils/evmReplacement.ts'
       - 'source/utils/evmTransactionContext.ts'
       - 'source/utils/nativeBalance.ts'
       - 'source/utils/nftTokenId.ts'
       - 'source/utils/personalSignReview.ts'
+      - 'source/utils/passkey/account.ts'
       - 'source/utils/privacy/note.ts'
       - 'source/utils/privacy/merkle.ts'
       - 'source/utils/privacy/merklePath.ts'
@@ -32,12 +43,18 @@ on:
       - 'source/utils/privacy/publicSyncProtocol.ts'
       - 'source/utils/privacy/privateVaultTypes.ts'
       - 'source/utils/privacy/registry.ts'
+      - 'source/utils/privacy/relayJobs.ts'
+      - 'source/utils/privacy/relayers.ts'
       - 'source/utils/privacy/snapshotValidation.ts'
       - 'source/utils/privacy/trustedSnapshot.ts'
       - 'source/utils/privacy/transactionTypes.ts'
       - 'source/utils/privacy/types.ts'
+      - 'source/utils/privacy/withdrawalFees.ts'
+      - 'source/utils/privacy/withdrawalMetadata.ts'
       - 'source/utils/privacy/withdrawalTransactionTypes.ts'
+      - 'source/utils/privacy/withdrawTypes.ts'
       - 'source/utils/requestPayloadBudget.ts'
+      - 'source/utils/security/blacklistService.ts'
       - 'source/utils/psbtWorkBudget.ts'
       - 'source/utils/slhDsa/constants.ts'
       - 'source/utils/slhDsa/hex.ts'
@@ -45,6 +62,8 @@ on:
       - 'source/utils/syscoinPsbtValues.ts'
       - 'source/utils/utxoAcknowledgedInputs.ts'
       - 'source/utils/tokenDiscovery.ts'
+      - 'source/utils/typedDataWorkBudget.ts'
+      - 'source/utils/typedOrderReview.ts'
       - 'source/utils/watchOnlyIdentifier.ts'
       - 'source/assets/all_assets/favicon-128.png'
       - '.github/workflows/mobile.yml'
@@ -81,6 +100,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: npm run postinstall
+      - run: node scripts/qualification-sdk.cjs
       - name: Reject moderate and higher dependency advisories
         run: npm audit --audit-level=moderate
       - run: npm run lint
@@ -125,6 +146,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: npm run postinstall
+      - run: node scripts/qualification-sdk.cjs
       - name: Build preview
         if: matrix.suite == 'preview'
         run: npm run build:web
@@ -166,7 +189,7 @@ jobs:
       - name: Run browser suite
         run: ${{ matrix.command }}
       - name: Upload browser failure evidence
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: mobile-browser-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}

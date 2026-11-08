@@ -1,5 +1,14 @@
 import { ethErrors } from 'helpers/errors';
 
+import {
+  assertDappCallsAtomicSupport,
+  normalizeDappCallsRequest,
+} from '../../../../shared/dappCalls.ts';
+import {
+  normalizeDappCapabilitiesRequest,
+  projectDappCapabilities,
+} from '../../../../shared/dappCapabilities.ts';
+import { hasLiveEoaCallsSequence } from '../../handlers/approvalSubmission';
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
@@ -18,7 +27,6 @@ import { requestCancelledError } from './request-lifetime';
 import { requestCoordinator } from './request-pipeline';
 import {
   generateWalletBundleId,
-  isValidAppProvidedBundleId,
   releaseSendCallsBundleReservation,
   reserveSendCallsBundle,
   resolveCallsStatus,
@@ -135,7 +143,9 @@ export class WalletMethodHandler implements IMethodHandler {
       methodConfig.popupEventName
     ) {
       if (methodName === 'sendCalls') {
-        const sendCallsRequest = params?.[0] || {};
+        if (!params || params.length !== 1)
+          throw ethErrors.rpc.invalidParams('Expected one calls request');
+        const sendCallsRequest = normalizeDappCallsRequest(params[0]);
         const connection = dapp.get(host);
         if (
           !account?.address ||
@@ -153,47 +163,6 @@ export class WalletMethodHandler implements IMethodHandler {
             )
           );
 
-        // Atomicity is handled through atomicRequired below. No additional
-        // top-level or per-call capability is currently implemented.
-        const capabilitySets = [
-          sendCallsRequest.capabilities,
-          ...(Array.isArray(sendCallsRequest.calls)
-            ? sendCallsRequest.calls.map((call) => call?.capabilities)
-            : []),
-        ];
-        for (const capabilitySet of capabilitySets) {
-          if (capabilitySet === undefined) continue;
-          if (
-            !capabilitySet ||
-            typeof capabilitySet !== 'object' ||
-            Array.isArray(capabilitySet)
-          ) {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidParams('Invalid capabilities')
-            );
-          }
-          for (const capability of Object.values(capabilitySet) as any[]) {
-            if (
-              !capability ||
-              typeof capability !== 'object' ||
-              Array.isArray(capability) ||
-              (capability.optional !== undefined &&
-                typeof capability.optional !== 'boolean')
-            ) {
-              throw cleanErrorStack(
-                ethErrors.rpc.invalidParams('Invalid capability')
-              );
-            }
-            if (capability.optional !== true) {
-              throw cleanErrorStack(
-                ethErrors.rpc.custom({
-                  code: 5700,
-                  message: 'Unsupported non-optional capability',
-                })
-              );
-            }
-          }
-        }
         const approvedContext = {
           account: {
             address: account.address,
@@ -209,31 +178,10 @@ export class WalletMethodHandler implements IMethodHandler {
           account?.isSmartAccount &&
           account.smartAccount?.chainId === activeNetwork?.chainId;
 
-        if (
-          sendCallsRequest.atomicRequired === true &&
-          !smartAccountAtomicSupported
-        ) {
-          throw cleanErrorStack(
-            ethErrors.rpc.custom({
-              code: 5700,
-              message:
-                'Atomic wallet_sendCalls requires an active smart account on the selected chain.',
-            })
-          );
-        }
-
-        // EIP-5792: when the dapp supplies its own bundle id the wallet must
-        // respect it, return it, and reject duplicates (error 5720).
-        if (
-          sendCallsRequest.id !== undefined &&
-          !isValidAppProvidedBundleId(sendCallsRequest.id)
-        ) {
-          throw cleanErrorStack(
-            ethErrors.rpc.invalidParams(
-              'wallet_sendCalls id must be a 0x-prefixed hex string of at most 4096 bytes.'
-            )
-          );
-        }
+        assertDappCallsAtomicSupport(
+          sendCallsRequest,
+          Boolean(smartAccountAtomicSupported)
+        );
 
         // Reserve the bundle id atomically before opening the approval popup
         // so concurrent wallet_sendCalls requests reusing the same id are
@@ -251,7 +199,8 @@ export class WalletMethodHandler implements IMethodHandler {
             chainId: activeNetwork?.chainId,
             smartAccount: Boolean(smartAccountAtomicSupported),
           },
-          reservationId
+          reservationId,
+          account.address
         );
         if (!reserved) {
           throw cleanErrorStack(
@@ -306,6 +255,11 @@ export class WalletMethodHandler implements IMethodHandler {
             )
           );
         }
+        if (!hasLiveEoaCallsSequence(host, params[0]))
+          await wallet.recoverStoppedEoaCalls(host, params[0], () => {
+            if (hasLiveEoaCallsSequence(host, params[0]))
+              throw new Error('Calls sequence is still active');
+          });
         const callsStatus = await resolveCallsStatus(
           (bundleChainId: number) =>
             wallet?.getEvmProviderForChain(bundleChainId) ?? null,
@@ -587,6 +541,11 @@ export class WalletMethodHandler implements IMethodHandler {
             );
           }
 
+          if (!hasLiveEoaCallsSequence(host, params[0]))
+            await wallet.recoverStoppedEoaCalls(host, params[0], () => {
+              if (hasLiveEoaCallsSequence(host, params[0]))
+                throw new Error('Calls sequence is still active');
+            });
           return resolveCallsStatus(
             (bundleChainId: number) =>
               wallet?.getEvmProviderForChain(bundleChainId) ?? null,
@@ -595,56 +554,20 @@ export class WalletMethodHandler implements IMethodHandler {
           );
 
         case 'getCapabilities': {
-          // Older callers omit params; an explicit address must still belong
-          // to this origin, and explicit chain filters must be respected.
-          const requestedAddress = params?.[0];
-          const requestedChains = params?.[1];
-          if (
-            (params !== undefined && !Array.isArray(params)) ||
-            (params?.length ?? 0) > 2 ||
-            (requestedAddress !== undefined &&
-              (typeof requestedAddress !== 'string' ||
-                !/^0x[\da-f]{40}$/i.test(requestedAddress))) ||
-            (requestedChains !== undefined &&
-              (!Array.isArray(requestedChains) ||
-                requestedChains.some(
-                  (id) => typeof id !== 'string' || !/^0x[\da-f]+$/i.test(id)
-                )))
-          ) {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidParams('Invalid capability query params')
-            );
-          }
-          if (
-            !account?.address ||
-            (requestedAddress !== undefined &&
-              requestedAddress.toLowerCase() !== account.address.toLowerCase())
-          ) {
-            throw cleanErrorStack(ethErrors.provider.unauthorized());
-          }
-          // Smart accounts execute wallet_sendCalls as a single ERC-7579 batch,
-          // while regular EOAs are still submitted sequentially.
-          const chainId = `0x${activeNetwork.chainId.toString(16)}`;
-          if (
-            requestedChains !== undefined &&
-            !requestedChains.some((id) => BigInt(id) === BigInt(chainId))
-          ) {
-            return {};
-          }
-          const smartAccountAtomicSupported =
-            account?.isSmartAccount &&
-            account.smartAccount?.chainId === activeNetwork.chainId;
-          const capabilities = {
-            [chainId]: {
-              atomic: {
-                status: smartAccountAtomicSupported
-                  ? 'supported'
-                  : 'unsupported',
+          return projectDappCapabilities(
+            normalizeDappCapabilitiesRequest(params),
+            {
+              accountAddress: account?.address,
+              chain: {
+                chainId: activeNetwork.chainId,
+                batchSupported: true,
+                atomicSupported: Boolean(
+                  account?.isSmartAccount &&
+                    account.smartAccount?.chainId === activeNetwork.chainId
+                ),
               },
-            },
-          };
-
-          return capabilities;
+            }
+          );
         }
 
         default:

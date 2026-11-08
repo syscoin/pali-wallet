@@ -5,7 +5,7 @@ import { getNativeNetwork, createNativeNetwork, NATIVE_NETWORKS } from '../src/c
 import { assembleFeeQuote, assertFeeRefreshApproved, snapshotUnsignedTransfer, unsignedTransferBytes } from '../src/custody/evmFeeContracts.ts';
 import type { EvmUnsignedTransfer } from '../src/custody/evmFeeContracts.ts';
 const from = '0x1111111111111111111111111111111111111111', to = '0x2222222222222222222222222222222222222222';
-const input: EvmUnsignedTransfer = { type: 2, from, to, chainId: '1', nonce: '0', value: '100', gasLimit: '21000', data: '0x', maxFeePerGas: '10', maxPriorityFeePerGas: '1' };
+const input: EvmUnsignedTransfer = { type: 2, accessList: [], from, to, chainId: '1', nonce: '0', value: '100', gasLimit: '21000', data: '0x', maxFeePerGas: '10', maxPriorityFeePerGas: '1' };
 const block = { number: '1', hash: `0x${'1'.repeat(64)}` };
 function quote(overrides: Partial<EvmUnsignedTransfer> = {}, expires = 1000) { return assembleFeeQuote({ ...input, ...overrides } as EvmUnsignedTransfer, getNativeNetwork('ethereum'), block, 6n, expires); }
 
@@ -15,6 +15,14 @@ test('exact unsigned snapshots reject extra secret/signature fields and never se
   let calls = 0;
   assert.throws(() => snapshotUnsignedTransfer({ ...input, get from() { calls++; return from; } }, getNativeNetwork('ethereum')));
   assert.equal(calls, 0);
+});
+test('ordinary transfer snapshots keep their recipient and empty-access-list restrictions', () => {
+  const network = getNativeNetwork('ethereum');
+  for (const candidate of [
+    { ...input, to: null },
+    { ...input, to: `0x${'0'.repeat(40)}` },
+    { ...input, accessList: [{ address: to, storageKeys: [] }] },
+  ]) assert.throws(() => snapshotUnsignedTransfer(candidate as EvmUnsignedTransfer, network));
 });
 test('exact execution fee arithmetic preserves bounded units for type0 and type2', () => {
   const value = quote();

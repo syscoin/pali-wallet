@@ -31,9 +31,11 @@ import {
   snapshotNativeNetwork,
   type NativeNetworkRegistration,
 } from '../custody/networkContext.ts';
+import {
+  NATIVE_PRIVACY_RUN_BYTES,
+  NATIVE_PRIVACY_SNAPSHOT_BYTES,
+} from './nativePrivacySnapshotBudget.ts';
 
-const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
-const MAX_RUN_BYTES = 4 * 1024 * 1024;
 const MAX_PULL_BYTES = 64 * 1024;
 const RUN_TIMEOUT_MS = 45_000;
 const BATCH_LEAVES = 128;
@@ -295,8 +297,8 @@ export function createNativePrivacyPoolSync(
           byteCount >
           Math.min(
             limit(status),
-            MAX_RESPONSE_BYTES,
-            MAX_RUN_BYTES - active.bytes
+            NATIVE_PRIVACY_SNAPSHOT_BYTES,
+            NATIVE_PRIVACY_RUN_BYTES - active.bytes
           )
         )
           throw new Error('privacy_data_too_large');

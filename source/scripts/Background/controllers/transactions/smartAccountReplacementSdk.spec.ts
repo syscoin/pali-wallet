@@ -12,7 +12,10 @@ import {
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
-import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
+import {
+  createOfflineTrezorHost,
+  createTestKeyringManager,
+} from '../../../../../tests/fixtures/extensionKeyring';
 import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -64,7 +67,12 @@ const ACCESS_LIST = [
 ];
 const deviceSignature = async (params: any, wallet = hardwareWallet) => {
   const tx = Transaction.from(
-    typeof params === 'string' ? params : serializeTransaction(params)
+    typeof params === 'string'
+      ? params
+      : serializeTransaction({
+          ...params,
+          type: params.type ?? (params.gasPrice !== undefined ? 0 : 2),
+        })
   );
   const signed = await wallet.signTransaction({
     chainId: tx.chainId,
@@ -1262,7 +1270,8 @@ describe('pinned keyring account-scoped replacement signing', () => {
         transaction({ type: 1, nonce: 0, accessList: ACCESS_LIST })
       );
       const deviceCall = jest.fn(async (tx) => {
-        expect(tx.type).toBe(2);
+        // Connect selects dynamic fees from these fields and omits `type`.
+        expect(tx.type).toBeUndefined();
         expect(tx.gasPrice).toBeUndefined();
         expect(typeof tx.maxFeePerGas).toBe('string');
         expect(typeof tx.maxPriorityFeePerGas).toBe('string');
@@ -1429,6 +1438,7 @@ describe('pinned keyring account-scoped replacement signing', () => {
     actualHardware = new HardwareWalletManager();
     const manager: any = createTestKeyringManager(undefined, {
       hardwareManager: actualHardware,
+      trezorHost: createOfflineTrezorHost(),
       captureEvmSubmission: createTestEvmSubmissionCapture(),
     });
     const vault = {

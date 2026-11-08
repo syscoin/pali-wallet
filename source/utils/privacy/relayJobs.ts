@@ -1,8 +1,8 @@
 import { AbiCoder, keccak256 } from 'ethers';
 
-import { getPrivacyPool } from './registry';
-import { validatePrivacyRelayerEndpoint } from './relayers';
-import type { PrivacyPoolId } from './types';
+import { getPrivacyPool } from './registry.ts';
+import { validatePrivacyRelayerEndpoint } from './relayers.ts';
+import type { PrivacyPoolId } from './types.ts';
 
 export type PrivacyRelayerJobState =
   | 'QUEUED'
@@ -78,8 +78,8 @@ export async function readPrivacyRelayerJob(
     pool = getPrivacyPool(fixed.poolId);
   const url = `${origin}/v1/jobs/${fixed.jobId}`;
   const abort = new AbortController();
-  let timer: ReturnType<typeof setTimeout>,
-    remove = () => undefined;
+  let timer: ReturnType<typeof setTimeout>;
+  let remove: () => void = () => undefined;
   const interrupted = new Promise<never>((_, reject) => {
     const cancel = () => {
       abort.abort();

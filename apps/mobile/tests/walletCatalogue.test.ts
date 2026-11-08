@@ -11,7 +11,7 @@ import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords
 import { SigningKey } from 'ethers/crypto';
 import { NativeActivityHistory } from '../src/activity/historyStore.ts';
 
-import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY, WalletCatalogueError } from '../src/custody/walletCatalogue.ts';
+import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY, WalletCatalogueError, type CatalogueRemovalCommit } from '../src/custody/walletCatalogue.ts';
 import { AccountRecoveryRequiredError } from '../../../source/wallet/accountRecords.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
@@ -43,6 +43,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     async cleanup() { await sdk.close(); await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
 }
+
+// Catalogue-only controls provide the required atomic writer explicitly.
+const removalCommit = (f: Awaited<ReturnType<typeof fixture>>): CatalogueRemovalCommit =>
+  (key, expected, value, guard) => f.storage.keyringStorage.compareAndSetMany(
+    [{ key, expected, value }], guard
+  );
 
 async function signedStore(f: Awaited<ReturnType<typeof fixture>>) {
   const session = { keyring: f.sdk.keyring, assertCurrent: current };
@@ -231,16 +237,43 @@ const derived = (index: number) => {
   return { address: computeAddress(publicKey), publicKey };
 };
 
+test('account removal requires the coupled commit capability before touching storage', async () => {
+  const f = await fixture();
+  try {
+    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    let state = await catalogue.reconcile(f.identity, current);
+    state = await catalogue.mutate(state.revision, { kind: 'create', account: await f.sdk.derive(1) }, current);
+    state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
+    const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+    // JavaScript callers must fail closed too, before the removed account is changed.
+    await assert.rejects(Reflect.apply(catalogue.mutate, catalogue, [
+      state.revision, { kind: 'remove', id: 'hd:60:1' }, current,
+    ]), /CATALOGUE_INVALID/);
+    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), stored);
+    assert.equal(catalogue.requiresReopen, false);
+    let commits = 0;
+    const next = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current,
+      async (key, expected, value, guard) => {
+        commits++;
+        assert.equal(key, WALLET_CATALOGUE_KEY);
+        assert.deepEqual(expected, stored);
+        return removalCommit(f)(key, expected, value, guard);
+      });
+    assert.equal(commits, 1);
+    assert.equal(next.accounts.length, 1);
+  } finally { await f.cleanup(); }
+});
+
 test('SDK-created HD gaps retain explicit identities and reuse the free SDK slot', async () => {
   const f=await fixture();
   try {
     const catalogue=new NativeWalletCatalogue(f.storage.keyringStorage);
     let state=await catalogue.reconcile(f.identity,current);
     state=await catalogue.mutate(state.revision,{kind:'create',account:await f.sdk.derive(1,'Savings')},current);
-    await assert.rejects(catalogue.mutate(state.revision,{kind:'remove',id:'hd:60:1'},current),/CATALOGUE_NOT_REMOVABLE/);
+    await assert.rejects(catalogue.mutate(state.revision,{kind:'remove',id:'hd:60:1'},current, removalCommit(f)),/CATALOGUE_NOT_REMOVABLE/);
     state=await catalogue.mutate(state.revision,{kind:'select',id:'hd:60:0'},current);
-    await assert.rejects(catalogue.mutate(state.revision,{kind:'remove',id:'hd:60:0'},current),/CATALOGUE_NOT_REMOVABLE/);
-    state=await catalogue.mutate(state.revision,{kind:'remove',id:'hd:60:1'},current);
+    await assert.rejects(catalogue.mutate(state.revision,{kind:'remove',id:'hd:60:0'},current, removalCommit(f)),/CATALOGUE_NOT_REMOVABLE/);
+    state=await catalogue.mutate(state.revision,{kind:'remove',id:'hd:60:1'},current, removalCommit(f));
     assert.deepEqual(Object.keys(catalogue.privateRecords.groups[0]!.accounts.HDAccount),['0']);
     f.sdk.useRecord(catalogue.privateRecords);
     const replacement=await f.sdk.keyring.addNewAccount('Gap replacement');assert.equal(replacement.id,1);
@@ -309,7 +342,7 @@ test('signed raw records survive 70 account removals and cold reopen', async () 
       await view.transition(signed.hash, 'attempted');
       await view.transition(signed.hash, 'confirmed');
       state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-      state = await catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}` }, current);
+      state = await catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}` }, current, removalCommit(f));
       assert.equal((await store.records.readExact(store.session, '1', signer.address, signed.hash))!.rawTransaction, raw);
       expected.push({ address: signer.address, hash: signed.hash, raw });
     }
@@ -353,13 +386,13 @@ test('a losing catalogue CAS preserves the winning account edit and retained sig
     await winner.reconcile(f.identity, current);
     let raced = false;
     const port = { ...f.storage.keyringStorage,
-      async compareAndSet(...args: Parameters<typeof f.storage.keyringStorage.compareAndSet>) {
+      async compareAndSetMany(...args: Parameters<typeof f.storage.keyringStorage.compareAndSetMany>) {
         if (!raced) { raced = true; await winner.mutate(state.revision, { kind: 'rename', id: 'hd:60:0', label: 'Concurrent label' }, current); }
-        return f.storage.keyringStorage.compareAndSet(...args);
+        return f.storage.keyringStorage.compareAndSetMany(...args);
       } };
     const loser = new NativeWalletCatalogue(port);
     await loser.reconcile(f.identity, current);
-    await assert.rejects(loser.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current), /CATALOGUE_CONTEXT_CHANGED/);
+    await assert.rejects(loser.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current, (key, expected, value, guard) => port.compareAndSetMany([{ key, expected, value }], guard)), /CATALOGUE_CONTEXT_CHANGED/);
     const saved = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
     assert.equal(Object.keys(saved.groups[0].accounts.HDAccount).length, 2);
     assert.equal(saved.groups[0].accounts.HDAccount[0].label, 'Concurrent label');
@@ -471,7 +504,7 @@ test('catalogue removal retains signed records from every chain without owning t
     const second = await store.view(signer.address, 1, getNativeNetwork('base')).saveSigned(baseRaw);
     const profile = await store.session.keyring.getPrivateRecordProfileId();
     const encoded = await f.storage.signedRecords.read(profile);
-    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current);
+    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current, removalCommit(f));
     assert.equal(state.accounts.length, 1);
     assert.equal(await f.storage.signedRecords.read(profile), encoded);
     assert.equal((await store.records.readExact(store.session, '1', signer.address, first.hash))!.rawTransaction, raw);
@@ -499,7 +532,7 @@ test('same-chain RPC/name edits preserve wire bytes, signer identity, tokens and
       assert.equal(originalHash, undefined);
       assert.equal(speedUpEligible, true);
       assert.ok(record.recipient);
-      await history.archiveTerminal({ ...record, recipient: record.recipient, phase: 'confirmed' }, current);
+      await history.recordObservation({ ...record, recipient: record.recipient, phase: 'confirmed' }, current);
     };
     const originalView = store.view(signer.address, 0, before);
     const previousRaw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 2n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });

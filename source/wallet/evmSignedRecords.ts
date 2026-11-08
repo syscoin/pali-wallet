@@ -12,6 +12,13 @@ import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 
+import {
+  decodeRetainedSmartAccountTransfer,
+  decodeRetainedSmartAccountOperations,
+  type RetainedSmartAccountOperation,
+  isSmartAccountActivityCandidate,
+  type RetainedSmartAccountTransfer,
+} from './smartAccountActivity.ts';
 import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
 import type {
@@ -100,6 +107,12 @@ export type EvmSignedRecordStorage = {
   ): Promise<boolean>;
   read(profileId: string): Promise<string | undefined>;
 };
+export type SmartAccountPendingRecords = Readonly<{
+  profileId: string;
+  read(fresh: boolean): Promise<readonly RetainedSmartAccountOperation[]>;
+}>;
+const mutationSerials = new WeakMap<EvmSignedRecordStorage, number>();
+
 export type EvmSignedRecordSession = {
   assertCurrent(): void;
   keyring: {
@@ -326,19 +339,20 @@ const signedCapacityRefusals = new WeakMap<
 let currentPersistToken: object | undefined;
 export function consumeSignedEvmCapacityRefusal(
   error: unknown,
-  readFailure?: (failure: unknown) => Readonly<{
-    signedTransactionHash?: string;
-    transactionNotBroadcast: boolean;
-  }>
+  readFailure?: (failure: unknown) =>
+    | Readonly<{
+        signedTransactionHash?: string;
+        transactionNotBroadcast: boolean;
+      }>
+    | undefined
 ): boolean {
   if (!error || typeof error !== 'object') return false;
   const refusal = signedCapacityRefusals.get(error);
   if (!refusal || refusal.token !== currentPersistToken || !readFailure)
     return false;
   const { hash } = refusal;
-  // SDK 2.1.6's failure map is locally owned. Its default has no hash, so a
-  // refusal is recognized only after this exact envelope's SDK failure is
-  // recorded and the latest SDK stage still says no dispatch occurred.
+  // Only SDK-owned failure metadata for this exact signed envelope can
+  // establish that its dispatch never started.
   let failure: ReturnType<NonNullable<typeof readFailure>>;
   try {
     failure = readFailure(error);
@@ -346,7 +360,7 @@ export function consumeSignedEvmCapacityRefusal(
     return false;
   }
   const matches =
-    failure.transactionNotBroadcast === true &&
+    failure?.transactionNotBroadcast === true &&
     failure.signedTransactionHash === hash &&
     'transactionNotBroadcast' in error &&
     error.transactionNotBroadcast === true &&
@@ -855,6 +869,10 @@ export class EvmSignedRecords {
       assertFresh?.();
     };
     assertWrite();
+    mutationSerials.set(
+      this.storage,
+      (mutationSerials.get(this.storage) ?? 0) + 1
+    );
     const committed = await this.storage.compareAndSet(
       id,
       before,
@@ -1062,6 +1080,14 @@ export class EvmSignedRecords {
     const tracked = entries.find(
       (entry) => entry.hash === original.originalHash
     );
+    if (
+      tracked &&
+      original.operation === 'speed-up' &&
+      tracked.metadata &&
+      (Object.hasOwn(tracked.metadata, 'privateDeposit') ||
+        Object.hasOwn(tracked.metadata, 'privateWithdrawal'))
+    )
+      throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
     if (tracked && !matchesNonce(tracked, original))
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
     if (sameNonce.some((entry) => entry.operation === 'cancel')) {
@@ -1301,6 +1327,13 @@ export class EvmSignedRecords {
       if (!lineage || !tip) return null;
 
       const original = await this.materialize(session, selected);
+      if (
+        operation === 'speed-up' &&
+        original.metadata &&
+        (Object.hasOwn(original.metadata, 'privateDeposit') ||
+          Object.hasOwn(original.metadata, 'privateWithdrawal'))
+      )
+        return null;
       const base = Transaction.from(original.rawTransaction);
       if (base.type !== 0 && base.type !== 2) return null;
       let cap = base.maxFeePerGas ?? base.gasPrice ?? BigInt(0);
@@ -1962,6 +1995,128 @@ export class EvmSignedRecords {
       });
     });
   }
+  /** A private operation-owned projection. Final admission explicitly reauthenticates storage. */
+  async captureSmartAccountPendingRecords(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string
+  ): Promise<SmartAccountPendingRecords> {
+    session = this.captureSession(session);
+    const owner = getAddress(address);
+    const id = await profile(session);
+    guard(session);
+    let serial = -1;
+    let cached: readonly RetainedSmartAccountOperation[] | undefined;
+    return Object.freeze({
+      profileId: id,
+      read: (fresh: boolean) =>
+        this.exclusive(async () => {
+          guard(session);
+          const currentSerial = mutationSerials.get(this.storage) ?? 0;
+          if (!fresh && cached && serial === currentSerial) return cached;
+          const { bundle } = await this.load(session, id);
+          const operations: RetainedSmartAccountOperation[] = [];
+          for (const entry of bundle?.entries ?? []) {
+            if (entry.chainId !== chainId) continue;
+            const materialized = await this.materialize(session, entry);
+            operations.push(
+              ...decodeRetainedSmartAccountOperations(materialized).filter(
+                (operation) => operation.account === owner
+              )
+            );
+          }
+          guard(session);
+          cached = Object.freeze(operations);
+          serial = currentSerial;
+          return cached;
+        }),
+    });
+  }
+
+  readSmartAccountActivity(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    options: Readonly<{
+      beforeHash?: string;
+      maximum: number;
+    }>
+  ): Promise<
+    Readonly<{
+      nextCursor: string | null;
+      total: number;
+      transfers: readonly RetainedSmartAccountTransfer[];
+    }>
+  > {
+    const owner = getAddress(address);
+    const { maximum, beforeHash } = options;
+    if (
+      !Number.isSafeInteger(maximum) ||
+      maximum < 1 ||
+      maximum > 48 ||
+      (beforeHash !== undefined && !HASH.test(beforeHash))
+    )
+      throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const candidates = (bundle?.entries ?? []).filter(
+        (entry) =>
+          entry.chainId === chainId &&
+          isSmartAccountActivityCandidate(entry, owner)
+      );
+      const end =
+        beforeHash === undefined
+          ? candidates.length
+          : candidates.findIndex((entry) => entry.hash === beforeHash);
+      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      const visible = candidates.slice(0, end);
+      const start = Math.max(0, visible.length - maximum),
+        transfers: RetainedSmartAccountTransfer[] = [];
+      for (const entry of visible.slice(start).reverse()) {
+        const decoded = decodeRetainedSmartAccountTransfer(
+          await this.materialize(session, entry),
+          owner
+        );
+        if (decoded) transfers.push(decoded);
+      }
+      guard(session);
+      return Object.freeze({
+        transfers: Object.freeze(transfers),
+        total: candidates.length,
+        nextCursor: start > 0 ? visible[start]!.hash : null,
+      });
+    });
+  }
+
+  readSmartAccountActivityExact(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    hash: string
+  ): Promise<RetainedSmartAccountTransfer | null> {
+    const owner = getAddress(address);
+    if (!HASH.test(hash)) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const entry = bundle?.entries.find(
+        (item) =>
+          item.chainId === chainId &&
+          item.hash === hash &&
+          isSmartAccountActivityCandidate(item, owner)
+      );
+      return entry
+        ? decodeRetainedSmartAccountTransfer(
+            await this.materialize(session, entry),
+            owner
+          )
+        : null;
+    });
+  }
+
   readPage(
     session: EvmSignedRecordSession,
     chainId: string,
@@ -2042,11 +2197,15 @@ export class EvmSignedRecords {
       nonce,
       operation,
       originalHash,
+      metadata,
     }: Pick<
       EvmSignedRecordSummary,
       'chainId' | 'from' | 'hash' | 'nonce' | 'operation' | 'originalHash'
-    >,
-    admit: (predecessors: readonly EvmSignedRecordSummary[]) => T,
+    > &
+      Readonly<{ metadata: EvmSignedRecordSummary['metadata'] }>,
+    admit: (
+      predecessors: readonly EvmSignedRecordSummary[]
+    ) => Promise<Readonly<{ result: T }>>,
     predecessorNonce?: number,
     preflight?: Readonly<{
       assertCurrent(): void;
@@ -2075,7 +2234,8 @@ export class EvmSignedRecords {
       if (
         !retained ||
         retained.operation !== operation ||
-        retained.originalHash !== originalHash
+        retained.originalHash !== originalHash ||
+        JSON.stringify(retained.metadata) !== JSON.stringify(metadata)
       )
         return null;
       const predecessors =
@@ -2099,7 +2259,7 @@ export class EvmSignedRecords {
         );
         guard(session);
       }
-      return { result: admit(predecessors) };
+      return await admit(predecessors);
     });
   }
   async readExact(
@@ -2340,6 +2500,10 @@ export function createEvmSignedRecordLifecycle(
   )
     throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
   const retirementReadForChain = options.retirementReadForChain;
+  const metadata =
+    options.metadata === undefined
+      ? undefined
+      : snapshotMetadata(options.metadata);
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -2358,10 +2522,6 @@ export function createEvmSignedRecordLifecycle(
           network: Object.freeze({ ...record.context.network }),
         }),
       });
-      const metadata =
-        options.metadata === undefined
-          ? undefined
-          : snapshotMetadata(options.metadata);
       const replacement = options.replacement && (await options.replacement);
       try {
         await records.append(session, signed, metadata, replacement);
@@ -2432,8 +2592,9 @@ export function createEvmSignedRecordLifecycle(
             hash: record.hash,
             operation: record.context.operation,
             originalHash: record.context.originalHash?.toLowerCase(),
+            metadata,
           },
-          () => {
+          async () => {
             assertAdmission();
             const recordAcknowledgement = trackAcknowledgement?.();
             let response: Promise<T>;
@@ -2469,7 +2630,7 @@ export function createEvmSignedRecordLifecycle(
               );
             }
             void response.catch(() => undefined);
-            return response;
+            return { result: response };
           },
           undefined,
           {

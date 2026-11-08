@@ -3,6 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
 import {
+  reviewDappMessageAdvisories,
+  type DappAddressAdvisory,
+} from '../../shared/dappMessageAdvisories';
+import {
   Button,
   DeviceWaitingBanner,
   ErrorModal,
@@ -33,11 +37,15 @@ import {
   encodeSmartAccountAuthenticatorSignature,
   getPaliErc7739PersonalSignHash,
   getSmartAccountLocalOwnerContexts,
-  hashPersonalSignMessage,
-  signPaliErc7739TypedDataV4,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
+import {
+  prepareSmartAccountMessage,
+  encodeSmartAccountMessageSignature,
+} from 'utils/smartAccount/messageSigning';
 import { getTypedOrderReview } from 'utils/typedOrderReview';
+
+import type { DappMessageRequest } from '../../shared/dappMessageRequest';
 
 interface ISign {
   send?: boolean;
@@ -100,14 +108,8 @@ const EthSign: React.FC<ISign> = () => {
     show: boolean;
   }>({ show: false });
   const [blacklistedAddresses, setBlacklistedAddresses] = useState<
-    Array<{
-      address: string;
-      field: string;
-      reason?: string;
-      severity: 'low' | 'medium' | 'high' | 'critical';
-    }>
+    readonly DappAddressAdvisory[]
   >([]);
-  const [hasCheckedBlacklist, setHasCheckedBlacklist] = useState(false);
 
   const tabLabel = ['Details', 'Data'];
   const { accounts, activeAccount: activeAccountMeta } = useSelector(
@@ -293,18 +295,56 @@ const EthSign: React.FC<ISign> = () => {
         throw { message: t('send.smartAccountActiveAccountRequired') };
       }
 
-      return controllerEmitter(
+      const personalIdentity = currentPersonalSignReviewRef.current;
+      const typedIdentity = currentTypedOrderRequestRef.current;
+      const metadata = (await controllerEmitter(
         ['wallet', 'hydrateSmartAccount'],
         [activeAccount.id],
         300000
-      ) as Promise<ISmartAccountMetadata>;
+      )) as ISmartAccountMetadata;
+      if (
+        !mountedRef.current ||
+        signingRef.current !== 'submitting' ||
+        currentPersonalSignReviewRef.current !== personalIdentity ||
+        currentTypedOrderRequestRef.current !== typedIdentity
+      )
+        throw new Error('Signing request changed');
+      return metadata;
     };
 
   const signSmartAccountHash = async (
     smartAccount: ISmartAccountMetadata,
     actionHash: string
   ) => {
+    const messageIdentity = currentPersonalSignReviewRef.current;
+    const typedIdentity = currentTypedOrderRequestRef.current;
+    const generation = await controllerEmitter(
+      ['wallet', 'getWalletSessionGeneration'],
+      []
+    );
     const signature = await signSmartAccountActionHash({
+      async assertBeforeAuthentication() {
+        if (
+          !mountedRef.current ||
+          signingRef.current !== 'submitting' ||
+          currentPersonalSignReviewRef.current !== messageIdentity ||
+          currentTypedOrderRequestRef.current !== typedIdentity
+        )
+          throw new Error('Signing request changed');
+        if (
+          (await controllerEmitter(
+            ['wallet', 'getWalletSessionGeneration'],
+            []
+          )) !== generation
+        )
+          throw new Error('Signing request changed');
+        if (
+          !mountedRef.current ||
+          currentPersonalSignReviewRef.current !== messageIdentity ||
+          currentTypedOrderRequestRef.current !== typedIdentity
+        )
+          throw new Error('Signing request changed');
+      },
       actionHash,
       authenticatorContexts: getSmartAccountLocalOwnerContexts({
         accounts,
@@ -327,7 +367,7 @@ const EthSign: React.FC<ISign> = () => {
     return encodeSmartAccountAuthenticatorSignature(signature);
   };
 
-  const encodeSmartAccountPersonalSignature = async (hash: string) => {
+  const encodeSmartAccountEthSignSignature = async (hash: string) => {
     const smartAccount = await getHydratedSmartAccountMetadata();
     return signSmartAccountHash(
       smartAccount,
@@ -339,22 +379,23 @@ const EthSign: React.FC<ISign> = () => {
     );
   };
 
-  const signSmartAccountErc7739TypedDataV4 = async (typedData: any) => {
-    const smartAccount = await getHydratedSmartAccountMetadata();
-    return signPaliErc7739TypedDataV4({
+  const signSmartAccountMessage = async (request: DappMessageRequest) => {
+    const prepared = prepareSmartAccountMessage({
       accountAddress: address,
-      chainId: smartAccount.chainId,
-      signActionHash: (actionHash) =>
-        signSmartAccountHash(smartAccount, actionHash),
-      typedData,
+      chainId: activeNetwork.chainId,
+      request,
     });
+    const smartAccount = await getHydratedSmartAccountMetadata();
+    if (smartAccount.chainId !== activeNetwork.chainId)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const moduleSignature = await signSmartAccountHash(
+      smartAccount,
+      prepared.actionHash
+    );
+    return encodeSmartAccountMessageSignature(prepared, moduleSignature);
   };
 
-  const getSmartAccountPersonalHash = (payload?: string) => {
-    if (data.eventName === 'personal_sign' && payload !== undefined) {
-      return hashPersonalSignMessage(payload);
-    }
-
+  const getSmartAccountEthSignHash = () => {
     if (data.eventName === 'eth_sign') {
       const ethSignPayload = getEthSignPayload();
       if (!isHexString(ethSignPayload, 32)) {
@@ -422,10 +463,21 @@ const EthSign: React.FC<ISign> = () => {
             };
           }
           assertPaliErc7739TypedDataV4Method(data.eventName);
-          response = await signSmartAccountErc7739TypedDataV4(typedData);
+          response = await signSmartAccountMessage({
+            method: 'eth_signTypedData_v4',
+            address,
+            typedData,
+            version: 'V4',
+          });
+        } else if (data.eventName === 'personal_sign' && personalRequest) {
+          response = await signSmartAccountMessage({
+            method: 'personal_sign',
+            address,
+            message: personalRequest.message,
+          });
         } else {
-          response = await encodeSmartAccountPersonalSignature(
-            getSmartAccountPersonalHash(personalRequest?.message)
+          response = await encodeSmartAccountEthSignSignature(
+            getSmartAccountEthSignHash()
           );
         }
       } else if (
@@ -635,362 +687,51 @@ const EthSign: React.FC<ISign> = () => {
     }
   }, [copied, alert, t]);
 
-  // Reset the blacklist check flag when data changes
   useEffect(() => {
-    setHasCheckedBlacklist(false);
+    let cancelled = false;
+    const captured = typedOrderRequest;
     setBlacklistedAddresses([]);
     setBlacklistWarning({ show: false });
-  }, [data.eventName]);
+    if (!captured?.modernData) return;
 
-  // Check for malicious addresses in EIP-712 permit messages
-  useEffect(() => {
-    const checkPermitBlacklist = async () => {
-      // Only check for typed data v3 and v4
-      if (
-        data.eventName !== 'eth_signTypedData_v3' &&
-        data.eventName !== 'eth_signTypedData_v4'
-      ) {
-        return;
-      }
-
-      // Don't check again if we've already checked for this data
-      if (hasCheckedBlacklist) {
-        return;
-      }
-
-      const typedData = typedOrderRequest?.modernData;
-      if (!typedData) return;
-
-      try {
-        // Mark as checked before starting the async operation
-        setHasCheckedBlacklist(true);
-
-        // Check if this is a permit message
-        const primaryType = typedData.primaryType;
-        const typedMessage = typedData.message;
-        const foundBlacklisted: typeof blacklistedAddresses = [];
-        let showModal = false;
-
-        if (primaryType === 'Permit' && typedMessage) {
-          // Check the spender address
-          if (typedMessage.spender) {
-            const result = (await controllerEmitter(
-              ['wallet', 'checkAddressBlacklist'],
-              [typedMessage.spender]
-            )) as IBlacklistCheckResult;
-            if (result.isBlacklisted) {
-              foundBlacklisted.push({
-                field: 'spender',
-                address: typedMessage.spender,
-                reason: result.reason,
-                severity: result.severity,
-              });
-
-              // Show modal for high/critical severity
-              if (
-                result.severity === 'high' ||
-                result.severity === 'critical'
-              ) {
-                showModal = true;
-                setBlacklistWarning({
-                  show: true,
-                  address: typedMessage.spender,
-                  reason: result.reason,
-                  severity: result.severity,
-                  fieldName: 'spender',
-                });
-              }
-            }
-          }
-        }
-
-        // Check for ERC721Order (NFT trade orders)
-        if (primaryType === 'ERC721Order' && typedMessage) {
-          console.log('[Blacklist Check] Checking ERC721Order');
-          // Check maker (creator of the order)
-          if (
-            typedMessage.maker &&
-            typeof typedMessage.maker === 'string' &&
-            typedMessage.maker.startsWith('0x')
-          ) {
-            const result = (await controllerEmitter(
-              ['wallet', 'checkAddressBlacklist'],
-              [typedMessage.maker]
-            )) as IBlacklistCheckResult;
-            if (result.isBlacklisted) {
-              foundBlacklisted.push({
-                field: 'maker',
-                address: typedMessage.maker,
-                reason: result.reason,
-                severity: result.severity,
-              });
-
-              if (
-                !showModal &&
-                (result.severity === 'high' || result.severity === 'critical')
-              ) {
-                showModal = true;
-                setBlacklistWarning({
-                  show: true,
-                  address: typedMessage.maker,
-                  reason: result.reason,
-                  severity: result.severity,
-                  fieldName: 'maker',
-                });
-              }
-            }
-          }
-
-          // Check taker (if specified and not zero address)
-          if (
-            typedMessage.taker &&
-            typeof typedMessage.taker === 'string' &&
-            typedMessage.taker.startsWith('0x') &&
-            typedMessage.taker !== '0x0000000000000000000000000000000000000000'
-          ) {
-            const result = (await controllerEmitter(
-              ['wallet', 'checkAddressBlacklist'],
-              [typedMessage.taker]
-            )) as IBlacklistCheckResult;
-            if (result.isBlacklisted) {
-              foundBlacklisted.push({
-                field: 'taker',
-                address: typedMessage.taker,
-                reason: result.reason,
-                severity: result.severity,
-              });
-
-              if (
-                !showModal &&
-                (result.severity === 'high' || result.severity === 'critical')
-              ) {
-                showModal = true;
-                setBlacklistWarning({
-                  show: true,
-                  address: typedMessage.taker,
-                  reason: result.reason,
-                  severity: result.severity,
-                  fieldName: 'taker',
-                });
-              }
-            }
-          }
-
-          // Check fee recipients if fees array exists
-          if (typedMessage.fees && Array.isArray(typedMessage.fees)) {
-            for (let i = 0; i < typedMessage.fees.length; i++) {
-              const fee = typedMessage.fees[i];
-              if (
-                fee &&
-                fee.recipient &&
-                typeof fee.recipient === 'string' &&
-                fee.recipient.startsWith('0x')
-              ) {
-                const result = (await controllerEmitter(
-                  ['wallet', 'checkAddressBlacklist'],
-                  [fee.recipient]
-                )) as IBlacklistCheckResult;
-                if (result.isBlacklisted) {
-                  foundBlacklisted.push({
-                    field: `fees[${i}].recipient`,
-                    address: fee.recipient,
-                    reason: result.reason,
-                    severity: result.severity,
-                  });
-
-                  if (
-                    !showModal &&
-                    (result.severity === 'high' ||
-                      result.severity === 'critical')
-                  ) {
-                    showModal = true;
-                    setBlacklistWarning({
-                      show: true,
-                      address: fee.recipient,
-                      reason: result.reason,
-                      severity: result.severity,
-                      fieldName: `fees[${i}].recipient`,
-                    });
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Check for OrderComponents (Seaport/OpenSea orders)
-        if (primaryType === 'OrderComponents' && typedMessage) {
-          // Check offerer (creator of the order)
-          if (
-            typedMessage.offerer &&
-            typeof typedMessage.offerer === 'string' &&
-            typedMessage.offerer.startsWith('0x')
-          ) {
-            const result = (await controllerEmitter(
-              ['wallet', 'checkAddressBlacklist'],
-              [typedMessage.offerer]
-            )) as IBlacklistCheckResult;
-            if (result.isBlacklisted) {
-              foundBlacklisted.push({
-                field: 'offerer',
-                address: typedMessage.offerer,
-                reason: result.reason,
-                severity: result.severity,
-              });
-
-              if (
-                !showModal &&
-                (result.severity === 'high' || result.severity === 'critical')
-              ) {
-                showModal = true;
-                setBlacklistWarning({
-                  show: true,
-                  address: typedMessage.offerer,
-                  reason: result.reason,
-                  severity: result.severity,
-                  fieldName: 'offerer',
-                });
-              }
-            }
-          }
-
-          // Check zone (additional validation contract)
-          if (
-            typedMessage.zone &&
-            typeof typedMessage.zone === 'string' &&
-            typedMessage.zone.startsWith('0x') &&
-            typedMessage.zone !== '0x0000000000000000000000000000000000000000'
-          ) {
-            const result = (await controllerEmitter(
-              ['wallet', 'checkAddressBlacklist'],
-              [typedMessage.zone]
-            )) as IBlacklistCheckResult;
-            if (result.isBlacklisted) {
-              foundBlacklisted.push({
-                field: 'zone',
-                address: typedMessage.zone,
-                reason: result.reason,
-                severity: result.severity,
-              });
-
-              if (
-                !showModal &&
-                (result.severity === 'high' || result.severity === 'critical')
-              ) {
-                showModal = true;
-                setBlacklistWarning({
-                  show: true,
-                  address: typedMessage.zone,
-                  reason: result.reason,
-                  severity: result.severity,
-                  fieldName: 'zone',
-                });
-              }
-            }
-          }
-
-          // Check consideration array (items required in return, includes recipient addresses)
-          if (
-            typedMessage.consideration &&
-            Array.isArray(typedMessage.consideration)
-          ) {
-            for (let i = 0; i < typedMessage.consideration.length; i++) {
-              const item = typedMessage.consideration[i];
-              if (
-                item &&
-                item.recipient &&
-                typeof item.recipient === 'string' &&
-                item.recipient.startsWith('0x')
-              ) {
-                const result = (await controllerEmitter(
-                  ['wallet', 'checkAddressBlacklist'],
-                  [item.recipient]
-                )) as IBlacklistCheckResult;
-                if (result.isBlacklisted) {
-                  foundBlacklisted.push({
-                    field: `consideration[${i}].recipient`,
-                    address: item.recipient,
-                    reason: result.reason,
-                    severity: result.severity,
-                  });
-
-                  if (
-                    !showModal &&
-                    (result.severity === 'high' ||
-                      result.severity === 'critical')
-                  ) {
-                    showModal = true;
-                    setBlacklistWarning({
-                      show: true,
-                      address: item.recipient,
-                      reason: result.reason,
-                      severity: result.severity,
-                      fieldName: `consideration[${i}].recipient`,
-                    });
-                  }
-                }
-              }
-            }
-          }
-        }
-
-        // Check for other potentially dangerous addresses in typed data
-        if (typedMessage) {
-          // Check common fields that might contain addresses that receive funds/permissions
-          const addressFields = [
-            'to',
-            'recipient',
-            'operator',
-            'approved',
-            'delegate',
-          ];
-
-          for (const field of addressFields) {
-            if (
-              typedMessage[field] &&
-              typeof typedMessage[field] === 'string' &&
-              typedMessage[field].startsWith('0x')
-            ) {
-              const result = (await controllerEmitter(
-                ['wallet', 'checkAddressBlacklist'],
-                [typedMessage[field]]
-              )) as IBlacklistCheckResult;
-              if (result.isBlacklisted) {
-                foundBlacklisted.push({
-                  field,
-                  address: typedMessage[field],
-                  reason: result.reason,
-                  severity: result.severity,
-                });
-
-                // Show modal for the first high/critical severity
-                if (
-                  !showModal &&
-                  (result.severity === 'high' || result.severity === 'critical')
-                ) {
-                  showModal = true;
-                  setBlacklistWarning({
-                    show: true,
-                    address: typedMessage[field],
-                    reason: result.reason,
-                    severity: result.severity,
-                    fieldName: field,
-                  });
-                }
-              }
-            }
-          }
-        }
-
-        // Update the list of all blacklisted addresses found
-        setBlacklistedAddresses(foundBlacklisted);
-      } catch (error) {
-        console.error('Error checking permit blacklist:', error);
-      }
+    const isCurrent = () =>
+      !cancelled &&
+      mountedRef.current &&
+      signingRef.current !== 'completed' &&
+      currentTypedOrderRequestRef.current === captured;
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
-
-    checkPermitBlacklist();
-  }, [data, address, hasCheckedBlacklist]);
+    reviewDappMessageAdvisories({
+      method: data.eventName,
+      typedData: captured.modernData,
+      checkAddress: (target) =>
+        controllerEmitter(
+          ['wallet', 'checkAddressBlacklist'],
+          [target]
+        ) as Promise<IBlacklistCheckResult>,
+      assertCurrent,
+      onWarning: (warning) => {
+        assertCurrent();
+        setBlacklistWarning({
+          ...warning,
+          fieldName: warning.field,
+          show: true,
+        });
+      },
+    })
+      .then(({ addresses }) => {
+        if (!isCurrent()) return;
+        if (addresses.length) setBlacklistedAddresses(addresses);
+      })
+      .catch((error) => {
+        if (isCurrent())
+          console.error('Error checking permit blacklist:', error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [controllerEmitter, data.eventName, typedOrderRequest]);
 
   const AccountDetailsSignature = () => (
     <div className="min-w-0 space-y-3">

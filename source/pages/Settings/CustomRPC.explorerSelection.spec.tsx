@@ -197,14 +197,25 @@ const save = async (
 it.each([INetworkType.Ethereum, INetworkType.Syscoin])(
   'saves a fresh %s suggestion with its own explorer',
   async (kind) => {
-    const user = await open(kind);
-    await choose(user, kind);
-    const saved = await save(user);
-    expect(saved).toMatchObject({
-      kind,
-      url: chains[kind].rpc[0].url,
-      explorer: chains[kind].explorers[0].url,
-    });
+    jest.useFakeTimers();
+    try {
+      const user = await open(
+        kind,
+        userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+      );
+      await choose(user, kind, async () => {
+        // Drive the presentation delay without racing waitFor's deadline.
+        await act(async () => jest.advanceTimersByTimeAsync(300));
+      });
+      const saved = await save(user);
+      expect(saved).toMatchObject({
+        kind,
+        url: chains[kind].rpc[0].url,
+        explorer: chains[kind].explorers[0].url,
+      });
+    } finally {
+      jest.useRealTimers();
+    }
   }
 );
 

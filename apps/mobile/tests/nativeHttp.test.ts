@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { createSecurityTestFixture } from './idleComponentFixture.ts';
 import {
   createNativeHttpFetch,
@@ -315,8 +316,35 @@ test('native factory explicitly wires one owned transport to all network consume
     throw Error('no HTTP in wiring test');
   };
   const balance = { readBalance() {} };
+  const prepareWalletConnectRuntime = () => {
+    assert.fail('unexpected WalletConnect runtime preparation');
+  };
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     './security': security,
+    './walletConnectRuntime': { prepareWalletConnectRuntime },
+    './deviceUnlockCredential.native': {
+      createNativeDeviceUnlockCapability: () => ({
+        prompt: { cancel() { retired.push('authentication'); } },
+      }),
+    },
+    '../hardware/trezorTransport.native': {
+      createNativeTrezorSessions: (options: { randomBytes(length: number): Uint8Array }) => createTrezorSessions({
+        ...options,
+        loadClient: async () => assert.fail('unexpected Trezor SDK load in native factory fixture'),
+        openURL: async () => assert.fail('unexpected Trezor handoff in native factory fixture'),
+      }),
+    },
+    '../crypto/sentryPublicKey.native': {
+      createNativeSentryPublicKeyDeriver: () => () => assert.fail('unexpected Sentry derivation in native factory fixture'),
+    },
+    '../custody/ledgerAccounts.ts': { NativeLedgerAccounts: capture('ledger') },
+    '../../../../source/utils/security/blacklistService': {
+      blacklistService: {
+        checkUrl() { assert.fail('unexpected site check in factory wiring test'); },
+        checkAddress() { assert.fail('unexpected address check in factory wiring test'); },
+      },
+    },
+    '../connections/controller.ts': { NativeConnectionsController: capture('connections') },
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
     '../custody/utxoActivity.ts': {
       createNativeUtxoActivity: (...args: unknown[]) => {
@@ -401,8 +429,13 @@ test('native factory explicitly wires one owned transport to all network consume
       },
     },
     './http': { walletFetch: fetcher },
-  });
+  }, { process: { env: {} } });
   const bundle = factory.createNativeWalletControllers();
+  const ledgerCount = bundle.ledgerConnection ? 2 : 1;
+  assert.equal(captures.ledger!.length, ledgerCount);
+  for (const args of captures.ledger!) assert.equal(args[0], bundle.authority);
+  assert.equal(captures.connections![0][0].source, bundle.authority);
+  assert.equal(captures.connections![0][0].preparePlatform, prepareWalletConnectRuntime);
   assert.equal(bundle.balanceReader.readBalance, balance.readBalance);
   assert.equal(typeof bundle.balanceReader.readUtxoBalance, 'function');
   assert.equal(typeof captures.factory![0].readUtxoAccount, 'function');
@@ -428,8 +461,12 @@ test('native factory explicitly wires one owned transport to all network consume
   const recovery = captures.recovery![0][0];
   assert.equal(recovery.owner, bundle.authority);
   assert.equal(typeof recovery.openStorage, 'function');
-  recovery.retireControllers();
-  assert.deepEqual(retired, ['tokens', 'transfers', 'key', 'backup']);
+  await recovery.retireControllers();
+  assert.deepEqual(retired, [
+    ...(bundle.authentication ? ['authentication'] : []),
+    'tokens', 'transfers', 'key', 'backup', 'connections',
+    ...Array.from({ length: ledgerCount }, () => 'ledger'),
+  ]);
 });
 
 test('public platform and native Portfolio fallback bind platform-owned fetch; NativeWallet passes the explicit reader', () => {

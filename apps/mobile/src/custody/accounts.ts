@@ -3,6 +3,9 @@ import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 /** UI requests contain no SDK records, private keys or arbitrary method names. */
 export type NativeAccountRequest =
   | Readonly<{ kind: 'create'; label: string; password: string }>
+  | Readonly<{ kind: 'create-smart'; label: string; password: string }>
+  | Readonly<{ kind: 'import-ledger'; label: string }>
+  | Readonly<{ kind: 'import-trezor'; label: string }>
   | Readonly<{ kind: 'select'; id: string }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
   | Readonly<{ kind: 'remove'; id: string; password: string }>;
@@ -14,6 +17,7 @@ export interface NativeAccountRuntime {
     cancel(): void;
   };
   supported(): boolean;
+  supportsSmartAccounts?(): boolean;
   getSnapshot(): NativeWalletCatalogueSnapshot | null;
 }
 
@@ -23,6 +27,7 @@ export interface NativeAccountView {
   subscribe(listener: () => void): () => void;
   execute(request: NativeAccountRequest, contextRevision: number, catalogueRevision: number): Promise<void>;
   cancel(): void;
+  supportsSmartAccounts?(): boolean;
 }
 
 export type NativeUtxoNetworkDraft = Readonly<{ endpoint: string; name: string; explorer: string }>;

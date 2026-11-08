@@ -2,7 +2,7 @@ import type {
   ISmartAccountMetadata,
   SmartAccountExecutorModule,
   SmartAccountValidatorModule,
-} from 'types/network';
+} from '../../types/network.ts';
 
 export const getInstalledValidatorModule = <
   T extends SmartAccountValidatorModule

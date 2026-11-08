@@ -16,6 +16,7 @@ import { encodeAccountRecord } from '../src/storage/accountRecordKey.ts';
 import { createAccountRecordTestFixture } from './accountRecordTestFixture.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection, validPair } from './storageHelpers.ts';
+import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 
 // Setup uses actual SDK-encrypted account records. Inventory itself only reads public counts.
 const KEY = `0x${'1'.padStart(64, '0')}`;
@@ -83,6 +84,26 @@ test('unverified inventory is read-only, byte preserving and never claims phrase
     }
     assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
     await f.reopen(); assert.equal(f.bytes(), before);
+  } finally { await f.close(); }
+});
+
+test('connection records are recovery-bound without exposing transport secrets in inventory', async () => {
+  const f = await fixture();
+  try {
+    const repository = await openNativeConnectionRepository({ storage: f.storage.keyringStorage, walletBindingId: f.fingerprint, assertOwner() {} });
+    await repository.transport.setItem('protocol-secret', { key: 'test-only-secret-value' });
+    await repository.dispose();
+    const before = f.bytes(); f.sql.length = 0;
+    const inventory = await readRecoveryInventory(f.storage);
+    assert.equal(inventory.status, 'needs-matching-phrase-verification');
+    assert.equal(JSON.stringify(inventory).includes('test-only-secret-value'), false);
+    assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
+    const foreign = f.value(NATIVE_CONNECTION_STORAGE_KEY);
+    foreign.walletBindingId = 'b'.repeat(64);
+    f.put(NATIVE_CONNECTION_STORAGE_KEY, foreign);
+    const rejected = f.bytes();
+    assert.equal((await readRecoveryInventory(f.storage)).reason, 'invalid-record');
+    assert.equal(f.bytes(), rejected);
   } finally { await f.close(); }
 });
 

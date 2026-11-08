@@ -1,10 +1,14 @@
 import type { DeviceUnlockEnrollmentSnapshot } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import { inspectNoteDomain, NOTE_DOMAIN_MAX_BYTES } from './noteDomain.ts';
 import { ACCOUNT_RECORD_KEY, ACCOUNT_RECORD_LIMITS, encodeAccountRecord, decodeAccountRecord } from './accountRecordKey.ts';
+import { NATIVE_CONNECTION_STORAGE_KEY, CONNECTION_RECORD_LIMITS, encodeConnectionRecord, decodeConnectionRecord } from './connectionRecordKey.ts';
 import { EVM_SIGNED_RECORD_LIMITS, inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
 import { inspectUtxoSignedBundle, UTXO_SIGNED_RECORD_BYTES, UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
+import { deriveSentryVaultId, sentryKeyVaultStorageKey, type ISentryKeyStore, type ISentryKeyVaultHost } from '../../../../source/wallet/sentryKeyVault.ts';
+import { readSentrySlot, SENTRY_SLOT_KEYS, SENTRY_SLOT_LIMITS, sentrySlotNetwork } from './sentryKeyDomain.ts';
 import {
   decodeStorageValue,
+  encodeBoundedStorageValue,
   encodeStorageValue,
   STORAGE_LIMITS,
   validateStorageKey,
@@ -25,21 +29,24 @@ import type {
   RecoveryRoot,
   NoteDomainRow,
   SignedRecordDomainRow,
+  SentryStorageScope,
   WalletRemovalResult,
 } from './types.ts';
 
-const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} ELSE 65536 END))`;
+const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} WHEN '${NATIVE_CONNECTION_STORAGE_KEY}' THEN ${CONNECTION_RECORD_LIMITS.valueBytes} ELSE 65536 END))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
 const NOTES = `CREATE TABLE private_note_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 16777216))`;
 const SIGNED = `CREATE TABLE evm_signed_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ${EVM_SIGNED_RECORD_LIMITS.bytes}))`;
+const SENTRY = `CREATE TABLE sentry_key_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND key IN ('${SENTRY_SLOT_KEYS.mainnet}', '${SENTRY_SLOT_KEYS.testnet}')), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ${SENTRY_SLOT_LIMITS.valueBytes}))`;
 const boundedValueColumns = (selected = 'value') =>
   `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN ${selected} ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const boundedColumns = boundedValueColumns();
 // Refuse multiple profiles before any ciphertext crosses the SQL connection.
 const boundedNoteColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM private_note_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const boundedSignedColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM evm_signed_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
-const boundedRecordColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ? WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} ELSE ? END THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
+const boundedRecordColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ? WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} WHEN '${NATIVE_CONNECTION_STORAGE_KEY}' THEN ${CONNECTION_RECORD_LIMITS.valueBytes} ELSE ? END THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const GET = `SELECT ${boundedColumns} FROM keyring_records WHERE key = ?`;
+const GET_SENTRY = `SELECT ${boundedColumns} FROM sentry_key_records WHERE key = ?`;
 const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth', 'identity')`;
 const ENROLLMENT_KEY = 'device-unlock-enrollment';
 const ENROLLMENT_BYTES = 256;
@@ -47,14 +54,20 @@ const ENROLLMENT_BYTES = 256;
 const ENROLLMENT_HEX = 'hex(CAST(value AS BLOB))';
 const boundedMetadataColumns = boundedValueColumns(`CASE WHEN key = '${ENROLLMENT_KEY}' THEN ${ENROLLMENT_HEX} ELSE value END`);
 const PAIR_WITH_ENROLLMENT = `${PAIR} UNION ALL SELECT 'meta' AS source, key, ${boundedValueColumns(ENROLLMENT_HEX)} FROM wallet_metadata WHERE key = '${ENROLLMENT_KEY}'`;
-const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedRecordColumns}, NULL AS wallet_binding FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedMetadataColumns}, NULL AS wallet_binding FROM wallet_metadata UNION ALL SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records UNION ALL SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY source, key LIMIT 72`;
+const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedRecordColumns}, NULL AS wallet_binding FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedMetadataColumns}, NULL AS wallet_binding FROM wallet_metadata UNION ALL SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records UNION ALL SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records UNION ALL SELECT 'sentry' AS source, CASE WHEN key IN ('${SENTRY_SLOT_KEYS.mainnet}', '${SENTRY_SLOT_KEYS.testnet}') THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM sentry_key_records ORDER BY source, key LIMIT 74`;
 
 const NOTE_ROWS = `SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY profile_id LIMIT 2`;
 const SIGNED_ROWS = `SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY profile_id LIMIT 2`;
-const recordBytes = (key: string) => key === ACCOUNT_RECORD_KEY ? ACCOUNT_RECORD_LIMITS.valueBytes : key === UTXO_SIGNED_RECORD_KEY ? UTXO_SIGNED_RECORD_BYTES : STORAGE_LIMITS.valueBytes;
-const encodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? encodeAccountRecord(value) : encodeStorageValue(value);
-const decodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? decodeAccountRecord(value) : decodeStorageValue(value);
+const recordBytes = (key: string) => key === ACCOUNT_RECORD_KEY ? ACCOUNT_RECORD_LIMITS.valueBytes : key === UTXO_SIGNED_RECORD_KEY ? UTXO_SIGNED_RECORD_BYTES : key === NATIVE_CONNECTION_STORAGE_KEY ? CONNECTION_RECORD_LIMITS.valueBytes : sentrySlotNetwork(key) ? SENTRY_SLOT_LIMITS.valueBytes : STORAGE_LIMITS.valueBytes;
+const encodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? encodeAccountRecord(value) : key === NATIVE_CONNECTION_STORAGE_KEY ? encodeConnectionRecord(value) : encodeStorageValue(value);
+const decodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? decodeAccountRecord(value) : key === NATIVE_CONNECTION_STORAGE_KEY ? decodeConnectionRecord(value) : decodeStorageValue(value);
 const failure = () => new WalletStorageError('STORAGE_CORRUPT');
+function assertOrdinaryRecordKey(key: unknown): asserts key is string {
+  validateStorageKey(key);
+  if (sentrySlotNetwork(key)) throw failure();
+}
+const isSha256Hex = (value: unknown): value is string =>
+  typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const safeError = (error: unknown) =>
   error instanceof WalletStorageError
     ? error
@@ -182,6 +195,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   readonly notes: NonNullable<OpenWalletStorage['notes']>;
   readonly signedRecords: OpenWalletStorage['signedRecords'];
   readonly utxoSignedRecords: NonNullable<OpenWalletStorage['utxoSignedRecords']>;
+  readonly sentryKeys: NonNullable<OpenWalletStorage['sentryKeys']>;
   readonly recovery: NonNullable<OpenWalletStorage['recovery']>;
   readonly removal: NonNullable<OpenWalletStorage['removal']>;
   private tail: Promise<void> = Promise.resolve();
@@ -197,6 +211,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   private lastMonotonic: number | null = null;
   private authenticationWindow: { raw: string | undefined; notBefore: number } | null = null;
   private writeGeneration = {};
+  private readonly sentrySlotRevision = { mainnet: {}, testnet: {} };
   private readonly recoverySnapshots = new WeakMap<RecoveryStorageSnapshot, object>();
   private enrollmentRevision = {};
   private readonly enrollmentReads = new WeakMap<DeviceUnlockEnrollmentSnapshot, { rawHex: string | undefined; revision: object }>();
@@ -230,6 +245,13 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       readDeviceUnlockVaultPair: () => this.readDeviceUnlockVaultPair(),
       compareAndSet: (key, expected, value, removeIfEqual, assertCurrent) =>
         this.compareAndSet(key, expected, value, removeIfEqual, assertCurrent),
+      compareAndSetMany: (changes, assertCurrent) => {
+        if (typeof assertCurrent !== 'function')
+          return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+        if (!Array.isArray(changes) || changes.length > STORAGE_LIMITS.batchKeys)
+          return Promise.reject(failure());
+        return this.compareAndSetRecords(changes, assertCurrent);
+      },
     });
     this.deviceUnlockEnrollment = Object.freeze<NonNullable<OpenWalletStorage['deviceUnlockEnrollment']>>({
       read: () => this.readDeviceUnlockEnrollment(),
@@ -257,6 +279,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       }),
       compareAndSet: (profileId, expected, next, assertCurrent) =>
         this.compareAndSetUtxoSigned(profileId, expected, next, assertCurrent),
+    });
+    this.sentryKeys = Object.freeze<NonNullable<OpenWalletStorage['sentryKeys']>>({
+      bind: (scope, assertCurrent) => this.bindSentryKeyStorage(scope, assertCurrent),
     });
     this.authGuard = Object.freeze({
       checkAllowed: () => this.checkAllowed(),
@@ -320,8 +345,11 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds, installationId);
     try {
       const tables = await db.getAllAsync<{ name: string; sql: string }>(
-        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 5"
+        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 6"
       );
+      const sentryTable = tables.find(({ name }) => name === 'sentry_key_records');
+      if (sentryTable && sentryTable.sql !== SENTRY) throw failure();
+      const walletTables = tables.filter(({ name }) => name !== 'sentry_key_records');
       const version = await db.getFirstAsync<{ user_version: number }>(
         'PRAGMA user_version'
       );
@@ -337,9 +365,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           );
           await db.execAsync('PRAGMA user_version = 1');
         });
-      } else if (version?.user_version !== 1 || tables.length !== 4 || tables[0]?.name !== 'evm_signed_records' || tables[0].sql !== SIGNED ||
-        tables[1]?.name !== 'keyring_records' || tables[1].sql !== TABLE || tables[2]?.name !== 'private_note_records' || tables[2].sql !== NOTES ||
-        tables[3]?.name !== 'wallet_metadata' || tables[3].sql !== META) throw failure();
+      } else if (version?.user_version !== 1 || walletTables.length !== 4 || walletTables[0]?.name !== 'evm_signed_records' || walletTables[0].sql !== SIGNED ||
+        walletTables[1]?.name !== 'keyring_records' || walletTables[1].sql !== TABLE || walletTables[2]?.name !== 'private_note_records' || walletTables[2].sql !== NOTES ||
+        walletTables[3]?.name !== 'wallet_metadata' || walletTables[3].sql !== META) throw failure();
       const installation = await db.getFirstAsync<{ value: unknown }>(
         "SELECT CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) = 32 THEN value ELSE NULL END AS value FROM wallet_metadata WHERE key = 'installation'"
       );
@@ -360,6 +388,16 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         'PRAGMA quick_check(1)'
       );
       if (health?.quick_check !== 'ok') throw failure();
+      // Add this feature's one canonical domain without changing existing wallet tables.
+      if (!sentryTable) {
+        await storage.transaction(async () => {
+          await db.execAsync(SENTRY.replace('CREATE TABLE ', 'CREATE TABLE IF NOT EXISTS '));
+          const table = await db.getFirstAsync<{ sql: string }>(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'sentry_key_records'"
+          );
+          if (table?.sql !== SENTRY) throw failure();
+        });
+      }
       await storage.readState();
       // Reject malformed or orphaned note rows before handing an owner to a runtime.
       await storage.notes.read();
@@ -449,7 +487,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   }
 
   private get(key: string): Promise<unknown> {
-    validateStorageKey(key);
+    assertOrdinaryRecordKey(key);
     return this.queued(async () => {
       const row = await this.db.getFirstAsync<StoredRow>(GET, [
         recordBytes(key),
@@ -460,7 +498,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   }
 
   private set(key: string, value: unknown): Promise<void> {
-    validateStorageKey(key);
+    assertOrdinaryRecordKey(key);
     const raw = encodeRecord(key, value);
     return this.queued(() =>
       this.transaction(async () => {
@@ -486,7 +524,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   }
 
   private deleteItem(key: string): Promise<void> {
-    validateStorageKey(key);
+    assertOrdinaryRecordKey(key);
     return this.queued(() =>
       this.transaction(async () => {
         await this.db.runAsync('DELETE FROM keyring_records WHERE key = ?', [
@@ -507,7 +545,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     const keys = Reflect.ownKeys(items);
     if (keys.length > STORAGE_LIMITS.batchKeys) throw failure();
     const entries = keys.map((key) => {
-      validateStorageKey(key);
+      assertOrdinaryRecordKey(key);
       const descriptor = Object.getOwnPropertyDescriptor(items, key);
       if (
         !descriptor ||
@@ -547,36 +585,137 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     );
   }
 
-  private compareAndSet(key: string, expected: unknown, value: unknown,
-    removeIfEqual: Readonly<Record<string, unknown>> = {}, assertCurrent?: () => void): Promise<boolean> {
-    validateStorageKey(key);
-    const before = encodeRecord(key, expected);
-    const after = encodeRecord(key, value);
-    if (!removeIfEqual || typeof removeIfEqual !== 'object' || Array.isArray(removeIfEqual) ||
-        ![Object.prototype, null].includes(Object.getPrototypeOf(removeIfEqual))) throw failure();
+  private compareAndSet(
+    key: string,
+    expected: unknown,
+    value: unknown,
+    removeIfEqual: Readonly<Record<string, unknown>> = {},
+    assertCurrent?: () => void
+  ): Promise<boolean> {
+    assertOrdinaryRecordKey(key);
+    // Preserve the existing single-row API's required present values.
+    encodeRecord(key, expected);
+    encodeRecord(key, value);
+    if (
+      !removeIfEqual ||
+      typeof removeIfEqual !== 'object' ||
+      Array.isArray(removeIfEqual) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(removeIfEqual))
+    )
+      throw failure();
     const names = Reflect.ownKeys(removeIfEqual);
     if (names.length > STORAGE_LIMITS.batchKeys) throw failure();
     const removals = names.map((name) => {
       if (typeof name !== 'string' || name === key) throw failure();
-      validateStorageKey(name);
+      assertOrdinaryRecordKey(name);
       const descriptor = Object.getOwnPropertyDescriptor(removeIfEqual, name);
-      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw failure();
-      return [name, descriptor.value === undefined ? undefined : encodeRecord(name, descriptor.value)] as const;
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor))
+        throw failure();
+      return { key: name, expected: descriptor.value, value: undefined };
     });
-    return this.queued(() => this.guardedMutation(async (check) => {
-      check?.();
-      const row = await this.db.getFirstAsync<StoredRow>(GET, [recordBytes(key), key]);
-      if (row === null || admittedRow(row, recordBytes(key)) !== before) return false;
-      for (const [name, snapshot] of removals) {
-        const candidate = await this.db.getFirstAsync<StoredRow>(GET, [recordBytes(name), name]);
-        if (snapshot === undefined ? candidate !== null : candidate === null || admittedRow(candidate, recordBytes(name)) !== snapshot) return false;
+    return this.compareAndSetRecords(
+      [{ key, expected, value }, ...removals],
+      assertCurrent
+    );
+  }
+
+  private compareAndSetRecords(
+    changes: readonly Readonly<{
+      key: string;
+      expected: unknown;
+      value: unknown;
+    }>[],
+    assertCurrent?: () => void
+  ): Promise<boolean> {
+    if (
+      !Array.isArray(changes) ||
+      !changes.length ||
+      changes.length > STORAGE_LIMITS.batchKeys + 1
+    )
+      throw failure();
+    const names = new Set<string>();
+    const entries = changes.map((change) => {
+      if (!change || typeof change !== 'object' || Array.isArray(change))
+        throw failure();
+      const keys = Reflect.ownKeys(change);
+      if (
+        keys.length !== 3 ||
+        !['key', 'expected', 'value'].every((key) => keys.includes(key))
+      )
+        throw failure();
+      for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(change, key);
+        if (!descriptor?.enumerable || !('value' in descriptor))
+          throw failure();
       }
-      await this.db.runAsync('UPDATE keyring_records SET value = ? WHERE key = ?', [after, key]);
-      for (const [name, snapshot] of removals) {
-        if (snapshot !== undefined) await this.db.runAsync('DELETE FROM keyring_records WHERE key = ?', [name]);
-      }
-      return true;
-    }, assertCurrent));
+      assertOrdinaryRecordKey(change.key);
+      if (names.has(change.key)) throw failure();
+      names.add(change.key);
+      return {
+        key: change.key,
+        before:
+          change.expected === undefined
+            ? undefined
+            : encodeRecord(change.key, change.expected),
+        after:
+          change.value === undefined
+            ? undefined
+            : encodeRecord(change.key, change.value),
+      };
+    });
+    return this.queued(() =>
+      this.guardedMutation(async (check) => {
+        check?.();
+        let additions = 0;
+        let removals = 0;
+        for (const entry of entries) {
+          const row = await this.db.getFirstAsync<StoredRow>(GET, [
+            recordBytes(entry.key),
+            entry.key,
+          ]);
+          if (
+            entry.before === undefined
+              ? row !== null
+              : row === null ||
+                admittedRow(row, recordBytes(entry.key)) !== entry.before
+          )
+            return false;
+          if (entry.before === undefined && entry.after !== undefined)
+            additions++;
+          if (entry.before !== undefined && entry.after === undefined)
+            removals++;
+        }
+        if (additions) {
+          const count = await this.db.getFirstAsync<{ count: number }>(
+            'SELECT COUNT(*) AS count FROM keyring_records'
+          );
+          if (
+            !Number.isSafeInteger(count?.count) ||
+            count!.count + additions - removals > STORAGE_LIMITS.records
+          )
+            throw failure();
+        }
+        for (const entry of entries) {
+          if (entry.after === undefined) {
+            if (entry.before !== undefined)
+              await this.db.runAsync(
+                'DELETE FROM keyring_records WHERE key = ?',
+                [entry.key]
+              );
+          } else if (entry.before === undefined) {
+            await this.db.runAsync(
+              'INSERT INTO keyring_records (key, value) VALUES (?, ?)',
+              [entry.key, entry.after]
+            );
+          } else
+            await this.db.runAsync(
+              'UPDATE keyring_records SET value = ? WHERE key = ?',
+              [entry.after, entry.key]
+            );
+        }
+        return true;
+      }, assertCurrent)
+    );
   }
 
   private async pair(includeEnrollment = false): Promise<Pair> {
@@ -811,6 +950,109 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     return identity;
   }
 
+  private bindSentryKeyStorage(
+    scope: SentryStorageScope, assertCurrent: () => void
+  ) {
+    const { network, pairFingerprint, profileId, vaultId, walletBindingId } = scope;
+    const changed = () => new WalletStorageError('STORAGE_CHANGED');
+    if (
+      !Object.hasOwn(SENTRY_SLOT_KEYS, network) ||
+      !isSha256Hex(vaultId) || !isSha256Hex(pairFingerprint) ||
+      !isSha256Hex(walletBindingId) || typeof assertCurrent !== 'function'
+    )
+      throw changed();
+    const slot = SENTRY_SLOT_KEYS[network];
+    const ownerKey = sentryKeyVaultStorageKey(vaultId, network);
+    const assertOwner = storageGuard(assertCurrent);
+    const observations = new WeakMap<ISentryKeyStore, { raw: string; revision: object }>();
+    const assertScope = async (check: () => void) => {
+      check();
+      const identity = await this.identityForProfile(profileId);
+      check();
+      if (identity.walletBindingId !== walletBindingId || identity.pairFingerprint !== pairFingerprint)
+        throw changed();
+      const row = await this.db.getFirstAsync<StoredRow>(GET, [
+        ACCOUNT_RECORD_LIMITS.valueBytes, ACCOUNT_RECORD_KEY,
+      ]);
+      check();
+      if (!row) throw changed();
+      const raw = admittedRow(row, ACCOUNT_RECORD_LIMITS.valueBytes);
+      const { catalogueAccountGroup, recoveryVerificationRecords, sentryRootPublicIdentity } =
+        await import('../custody/walletCatalogue.ts');
+      check();
+      const catalogue = recoveryVerificationRecords(decodeAccountRecord(raw), walletBindingId);
+      const root = catalogueAccountGroup(catalogue, 'ethereum')?.accounts.HDAccount[0];
+      if (!root || root.address !== identity.root?.address ||
+          root.xpub.toLowerCase() !== identity.root?.publicKey) throw changed();
+      const canonical = await deriveSentryVaultId(
+        sentryRootPublicIdentity(catalogue, network), this.digest
+      );
+      check();
+      if (vaultId !== canonical) throw changed();
+    };
+    const readRaw = async () => {
+      const row = await this.db.getFirstAsync<StoredRow>(GET_SENTRY, [SENTRY_SLOT_LIMITS.valueBytes, slot]);
+      return row === null ? undefined : admittedRow(row, SENTRY_SLOT_LIMITS.valueBytes);
+    };
+    return Object.freeze<Pick<ISentryKeyVaultHost, 'read' | 'write'>>({
+      read: async (key) => {
+        if (key !== ownerKey) throw changed();
+        assertOwner();
+        return this.queued(async () => {
+          await assertScope(assertOwner);
+          const raw = await readRaw();
+          assertOwner();
+          if (raw === undefined) return undefined;
+          const store = readSentrySlot(raw, network, vaultId);
+          observations.set(store, { raw, revision: this.sentrySlotRevision[network] });
+          return store;
+        });
+      },
+      write: async (key, expected, value, assertOperation) => {
+        if (key !== ownerKey || typeof assertOperation !== 'function') throw changed();
+        const assertWrite = storageGuard(assertOperation);
+        const check = () => {
+          assertOwner();
+          assertWrite();
+          assertOwner();
+        };
+        check();
+        const observed = expected && observations.get(expected);
+        if (expected !== undefined && !observed) throw changed();
+        if (expected) observations.delete(expected);
+        const next = encodeBoundedStorageValue(value, SENTRY_SLOT_LIMITS);
+        readSentrySlot(next, network, vaultId);
+        await this.queued(async () => {
+          const committed = await this.guardedMutation(async () => {
+            await assertScope(check);
+            if (observed && observed.revision !== this.sentrySlotRevision[network])
+              return false;
+            if (await readRaw() !== observed?.raw) return false;
+            if (!observed) {
+              const count = await this.db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM sentry_key_records');
+              if (!Number.isSafeInteger(count?.count) || count!.count >= 2) throw failure();
+            }
+            check();
+            await this.db.runAsync(
+              'INSERT INTO sentry_key_records (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+              [slot, next]
+            );
+            return true;
+          }, check).catch((error) => this.requireReopenIfPoisoned(error));
+          if (!committed) throw changed();
+          this.sentrySlotRevision[network] = {};
+          try {
+            if (await readRaw() !== next) throw failure();
+          } catch (error) {
+            this.poisoned = true;
+            this.requireReopenIfPoisoned(error);
+          }
+          check();
+        });
+      },
+    });
+  }
+
   private async readSignedRows(): Promise<readonly SignedRecordDomainRow[]> {
     const rows = await this.db.getAllAsync<PairRow>(SIGNED_ROWS, [EVM_SIGNED_RECORD_LIMITS.bytes]);
     if (rows.length > 1) throw failure();
@@ -965,16 +1207,18 @@ export class SqliteWalletStorage implements OpenWalletStorage {
 
   /** One bounded SELECT gives a coherent SQLite snapshot without a write transaction. */
   private async captureSnapshot(): Promise<RecoveryStorageSnapshot> {
-      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [ACCOUNT_RECORD_LIMITS.valueBytes, STORAGE_LIMITS.valueBytes, 1024, NOTE_DOMAIN_MAX_BYTES, EVM_SIGNED_RECORD_LIMITS.bytes]);
-      if (rows.length > STORAGE_LIMITS.records + 7) throw failure();
+      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [ACCOUNT_RECORD_LIMITS.valueBytes, STORAGE_LIMITS.valueBytes, 1024, NOTE_DOMAIN_MAX_BYTES, EVM_SIGNED_RECORD_LIMITS.bytes, SENTRY_SLOT_LIMITS.valueBytes]);
+      if (rows.length > STORAGE_LIMITS.records + 9) throw failure();
       const records: { key: string; value: string }[] = [], metadata: { key: string; value: string }[] = [];
       const seen = new Set<string>(), pair: Pair = {};
       const notes: NoteDomainRow[] = [];
       const signedRecords: SignedRecordDomainRow[] = [];
       for (const row of rows) {
-        if (!['record', 'meta', 'note', 'signed'].includes(row.source)) throw failure();
+        if (!['record', 'meta', 'note', 'signed', 'sentry'].includes(row.source)) throw failure();
         validateStorageKey(row.key);
-        const id = `${row.source}:${row.key}`;
+        const sentry = sentrySlotNetwork(row.key);
+        if (row.source === 'sentry' ? !sentry : row.source === 'record' && sentry) throw failure();
+        const id = `${row.source === 'sentry' ? 'record' : row.source}:${row.key}`;
         if (seen.has(id)) throw failure();
         seen.add(id);
         const enrollment = row.source === 'meta' && row.key === ENROLLMENT_KEY;
@@ -985,14 +1229,15 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         }
         // Include the schema-bounded enrollment bytes in the exact seal without parsing them.
         if (row.source === 'meta' && !['installation', 'backup', 'auth', 'identity', ENROLLMENT_KEY].includes(row.key)) throw failure();
-        (row.source === 'record' ? records : metadata).push(Object.freeze({ key: row.key, value }));
+        (row.source === 'record' || row.source === 'sentry' ? records : metadata).push(Object.freeze({ key: row.key, value }));
         if (row.source === 'record' && row.key === 'vault') pair.vault = value;
         if (row.source === 'record' && row.key === 'vault-keys') pair.keys = value;
         if (row.source === 'meta' && row.key === 'backup') pair.backup = value;
         if (row.source === 'meta' && row.key === 'auth') pair.auth = value;
         if (row.source === 'meta' && row.key === 'identity') pair.identity = value;
       }
-      if (records.length > STORAGE_LIMITS.records || metadata.length > 5 ||
+      if (records.filter(({ key }) => !sentrySlotNetwork(key)).length > STORAGE_LIMITS.records ||
+          records.filter(({ key }) => sentrySlotNetwork(key)).length > 2 || metadata.length > 5 ||
           !metadata.some((row) => row.key === 'installation' && row.value === this.installationId)) throw failure();
       const state = await this.storedState(pair);
       const identity = state.presence === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
@@ -1000,6 +1245,12 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       if (utxo) {
         if (!identity?.root) throw failure();
         inspectUtxoSignedBundle(utxo.value, identity.root.profileId);
+      }
+      for (const { key, value } of records) {
+        const network = sentrySlotNetwork(key);
+        if (!network) continue;
+        if (!identity?.root) throw failure();
+        readSentrySlot(value, network);
       }
       if (notes.length && !identity) throw failure();
       if (identity) inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
@@ -1046,6 +1297,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           const secureDelete = await this.db.getFirstAsync<{ secure_delete: number }>('PRAGMA secure_delete');
           if (secureDelete?.secure_delete !== 1) throw failure();
           for (const sql of [
+            'DELETE FROM sentry_key_records',
             'DELETE FROM evm_signed_records',
             'DELETE FROM private_note_records',
             'DELETE FROM keyring_records',
@@ -1121,6 +1373,11 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         root: capturedRoot,
       });
       const checkedIdentity = readWalletIdentity(fingerprint, identity);
+      if (before.records.some(({ key }) => sentrySlotNetwork(key)) &&
+          (before.identity.root?.profileId !== checkedIdentity.root?.profileId ||
+           before.identity.root?.publicKey !== checkedIdentity.root?.publicKey ||
+           before.identity.root?.address !== checkedIdentity.root?.address))
+        throw new WalletStorageError('STORAGE_CHANGED');
       const auth = encodeStorageValue({ version: 1, failures: 0, lastAttempt: this.timestamp(), notBefore: 0 });
       const metadata = new Map(
         before.metadata.map((row) => [row.key, row.value])

@@ -12,7 +12,7 @@ import {
 import {
   bindMessageSignApproval,
   captureMessageSignApproval,
-  messageSignApprovalExpired,
+  dappSigningApprovalExpired,
 } from '../../handlers/messageSignApproval';
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
@@ -188,7 +188,12 @@ const openApprovalPopup = async (
     route === MethodRoute.SendCalls &&
     typeof bundleId === 'string' &&
     typeof reservationId === 'string'
-      ? { host, id: bundleId, reservationId }
+      ? {
+          host,
+          id: bundleId,
+          reservationId,
+          callCount: (data as { calls: readonly unknown[] }).calls.length,
+        }
       : undefined;
   const smartMethods: readonly DappSmartAccountMethod[] | undefined =
     route === MethodRoute.SmartAccount
@@ -571,7 +576,7 @@ const openApprovalPopup = async (
         submissionStarted
           ? cancellationError()
           : messageSignApproval
-          ? messageSignApprovalExpired()
+          ? dappSigningApprovalExpired()
           : requestCancelledError()
       );
     };

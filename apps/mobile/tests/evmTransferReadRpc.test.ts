@@ -14,7 +14,7 @@ const from = Wallet.fromPhrase('test test test test test test test test test tes
 const to = '0x1111111111111111111111111111111111111111';
 const hash = '0x' + '1'.repeat(64), blockHash = '0x' + '2'.repeat(64);
 const custom = createNativeNetwork({ id:'custom-fee-chain',name:'Custom fee chain',kind:'evm',chainId:'454545',slip44:60,rpcUrl:'https://custom-fee.example/rpc',symbol:'TEST',decimals:18,testnet:true });
-const transaction = (network: NativeNetworkRegistration = getNativeNetwork('ethereum')): EvmUnsignedTransfer => ({ type: 2, from, to, chainId:network.chainId, nonce:'0',value:'100',gasLimit:'21000',data:'0x',maxFeePerGas:'10',maxPriorityFeePerGas:'2' });
+const transaction = (network: NativeNetworkRegistration = getNativeNetwork('ethereum')): EvmUnsignedTransfer => ({ type: 2, accessList: [], from, to, chainId:network.chainId, nonce:'0',value:'100',gasLimit:'21000',data:'0x',maxFeePerGas:'10',maxPriorityFeePerGas:'2' });
 const request={hash,from,to,nonce:'0'};
 const signal=()=>new AbortController().signal;
 type Call={method:string;params:unknown[];signal:AbortSignal};
@@ -43,7 +43,7 @@ for(const network of [...NATIVE_NETWORKS,custom])test(`${network.id} quotes the 
  const f=fixture(network),quote=await f.rpc.quoteFees(transaction(network),signal(),()=>undefined);
  assert.equal(quote.envelopeFeeCapUnits,'210000');assert.equal(quote.estimatedFeeUnits,'126000');assert.equal(quote.fundingEstimateUnits,'210100');assert.equal(quote.maximumTotalUnits,'210100');
  assert.equal(f.calls.filter(c=>c.method==='eth_estimateGas').length,1);
- assert.deepEqual(f.calls.find(c=>c.method==='eth_estimateGas')!.params,[{from,to,data:'0x',value:'0x64',maxFeePerGas:'0xa',maxPriorityFeePerGas:'0x2',type:'0x2',chainId:'0x'+BigInt(network.chainId).toString(16),nonce:'0x0'},'pending']);
+ assert.deepEqual(f.calls.find(c=>c.method==='eth_estimateGas')!.params,[{from,to,data:'0x',accessList:[],value:'0x64',maxFeePerGas:'0xa',maxPriorityFeePerGas:'0x2',type:'0x2',chainId:'0x'+BigInt(network.chainId).toString(16),nonce:'0x0'},'pending']);
  assert.equal(f.calls.some(c=>['eth_call','eth_getCode','eth_getStorageAt'].includes(c.method)||c.params.includes('finalized')),false);
 });
 
@@ -309,4 +309,18 @@ test('the native retirement adapter reclaims a confirmed journal entry after exa
  assert.equal(await records.validate(signedRecordTestSession()), 0);
  assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 2);
  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+});
+
+
+test('receipt reads accept bounded batch logs while preserving scalar and receipt limits', async () => {
+ const logs = Array.from({ length: 50 }, (_, index) => ({ address: to, topics: [hash, hash, hash],
+   data: '0x' + index.toString(16).padStart(64, '0'), blockHash, transactionHash: hash, logIndex: '0x' + index.toString(16) }));
+ const receipt = { transactionHash: hash, blockHash, blockNumber: '0x1', gasUsed: '0x5208', status: '0x1', logs };
+ assert(JSON.stringify(receipt).length > 16 * 1024);
+ const f = fixture(custom, call => call.method === 'eth_getTransactionReceipt' ? receipt : undefined);
+ assert.deepEqual(await f.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined), receipt);
+ const tooLarge = fixture(custom, call => call.method === 'eth_getTransactionReceipt' ? { ...receipt, padding: 'x'.repeat(1024 * 1024) } : undefined);
+ await assert.rejects(tooLarge.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined), { code: 'UNAVAILABLE' });
+ const scalar = fixture(custom, call => call.method === 'eth_getBalance' ? '0x' + '1'.repeat(16 * 1024) : undefined);
+ await assert.rejects(scalar.rpc.smartAccountRead('eth_getBalance', [from, 'pending'], signal(), () => undefined), { code: 'UNAVAILABLE' });
 });

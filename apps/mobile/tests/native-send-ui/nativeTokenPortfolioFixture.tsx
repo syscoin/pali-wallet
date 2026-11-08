@@ -64,6 +64,9 @@ const storage: KeyringStoragePort = {
       localStorage.setItem(storageKey(key), encodeStorageValue(value));
     return true;
   },
+  async compareAndSetMany() {
+    throw new Error('Unexpected multi-record mutation in token portfolio fixture');
+  },
   async compareAndSet(key, expected, value) {
     if (localStorage.getItem(storageKey(key)) !== encodeStorageValue(expected))
       return false;

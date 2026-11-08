@@ -40,6 +40,7 @@ const envelope: EvmAssetEnvelope = {
   gasLimit: '50000',
   nonce: '1',
   type: 2,
+  accessList: [],
   maxFeePerGas: '3',
   maxPriorityFeePerGas: '1',
 };

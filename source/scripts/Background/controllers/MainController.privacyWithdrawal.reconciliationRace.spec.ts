@@ -20,6 +20,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: jest.fn(() => ({})),
   clearNavigationState: jest.fn(async () => undefined),
   clearTransactionNavigationState: jest.fn(async () => undefined),
 }));
@@ -32,6 +33,7 @@ jest.mock('utils/slhDsa', () => ({
 
 import { webcrypto } from 'crypto';
 
+import { createPrivacyWithdrawalsController } from '../../../wallet/privacyWithdrawals';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -42,7 +44,6 @@ import { PRIVACY_POOLS } from 'utils/privacy/registry';
 import type { IPrivacyWithdrawalsHost } from 'utils/privacy/withdrawTypes';
 
 import MainController from './MainController';
-import { createPrivacyWithdrawalsController } from './privacyWithdrawals';
 
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 const NOTE_ID = '00000000-0000-4000-8000-000000001000';
@@ -84,7 +85,20 @@ function setup() {
   state.vaultGlobal.activeSlip44 = 60;
   jest.spyOn(store, 'getState').mockImplementation(() => state);
   const events: string[] = [];
-  const keyring = { isUnlocked: jest.fn(() => true) };
+  let unlockEpoch = 0;
+  const keyring = {
+    isUnlocked: jest.fn(() => true),
+    lockWallet: jest.fn(async () => {
+      unlockEpoch++;
+    }),
+    captureUnlockedSessionGuard: jest.fn(() => {
+      const epoch = unlockEpoch;
+      return () => {
+        if (epoch !== unlockEpoch || !keyring.isUnlocked())
+          throw new Error('retired unlock');
+      };
+    }),
+  };
   const wallet: any = Object.create(MainController.prototype);
   const pendingNonce = jest.fn(async () => 7);
   const provider = {
@@ -94,8 +108,21 @@ function setup() {
         return `0x${(await pendingNonce()).toString(16)}`;
       }
       if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getBlockByNumber')
+        return {
+          number: '0x10',
+          hash: '0x' + 'aa'.repeat(32),
+          gasLimit: '0x1c9c380',
+          baseFeePerGas: '0x2',
+        };
+      if (method === 'eth_getBalance')
+        return '0x' + (await provider.getBalance()).toString(16);
+      if (method === 'eth_maxPriorityFeePerGas') return '0x1';
       throw new Error('Unexpected synthetic RPC');
     }),
+    getGasPrice: jest.fn(async () => BigInt(5)),
+    verifyConfiguredChainId: jest.fn(async () => undefined),
+    signal: new AbortController().signal,
     estimateGas: jest.fn(() => {
       throw new Error('No note-specific estimation allowed');
     }),
@@ -180,6 +207,32 @@ function setup() {
     authenticationMutex: new AsyncMutex(),
     privacyDepositSessions: new WeakMap(),
     assertWalletReadyForSigning: jest.fn(),
+    captureFreshEvmRead: jest.fn(() => ({
+      network: state.vault.activeNetwork,
+      assertCurrent: () => undefined,
+      overrides: {},
+      run: (operation: (reader: unknown) => unknown) =>
+        operation(wallet.ethereumTransaction.web3Provider),
+    })),
+    inspectOrdinaryEvmNonce: jest.fn(async (_read, address, options) => {
+      options?.assertCurrent?.();
+      const observed = Number(
+        BigInt(
+          await wallet.ethereumTransaction.web3Provider.send(
+            'eth_getTransactionCount',
+            [address, 'pending']
+          )
+        )
+      );
+      options?.assertCurrent?.();
+      return {
+        nonce: observed,
+        state: 'pending',
+        balanceState: 'pending',
+        canonicalBlock: { hash: '0x' + 'aa'.repeat(32), number: '16' },
+        nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
+      };
+    }),
     getActiveKeyring: () => keyring,
     getPrivateVaultController: jest.fn(async () => vault),
     privacySnapshotReader: jest.fn(() => ({
@@ -276,8 +329,8 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-// Establish a real encrypted unknown journal whose write completed before its
-// old session was invalidated; no sender or relayer is entered.
+// Establish a real encrypted unknown journal whose immediate cleanup failed
+// after its old session was invalidated; no sender or relayer is entered.
 async function pendingRecovery() {
   const { createPrivateVaultController } = await import('./privateVault');
   const ActualKeyring = jest.requireActual(
@@ -289,6 +342,7 @@ async function pendingRecovery() {
   keyring.privateRecordSessionRevision = 0;
   keyring.getDecryptedMnemonic = () => 'synthetic private vault test root';
   keyring.isUnlocked = () => true;
+  keyring.captureUnlockedSessionGuard = () => () => undefined;
   const run = setup();
   run.wallet.getActiveKeyring = () => keyring;
   run.wallet.getWalletSetupStatus = () => false;
@@ -324,6 +378,9 @@ async function pendingRecovery() {
   run.wallet.getPrivateVaultController.mockResolvedValue(vault);
   await vault.importNote(NOTE);
   const review = await prepare(run.wallet);
+  jest
+    .spyOn(vault, 'clearUnbroadcastWithdrawalAttempt')
+    .mockRejectedValueOnce(new Error('synthetic interrupted cleanup'));
   const written = deferred(),
     release = deferred();
   const write = storage.setItem.getMockImplementation()!;

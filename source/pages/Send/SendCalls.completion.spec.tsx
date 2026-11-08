@@ -7,10 +7,14 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { Transaction, Wallet } from 'ethers';
 import React from 'react';
 
+import { captureSmartAccountCallsIdentity } from '../../shared/dappCallsStatus';
+import { buildSmartAccountUserOperation } from '../../utils/smartAccount/account';
 import {
   recordSendCallsBundle,
+  recordStoppedEoaAttempt,
   reserveSendCallsBundle,
   resolveCallsStatus,
 } from 'scripts/Background/controllers/message-handler/sendCallsBundles';
@@ -29,8 +33,29 @@ let mockApprove: () => Promise<void>;
 let mockReject: () => Promise<void>;
 let mockRecordGate: (descriptor: any) => Promise<void> | void;
 let mockStored: any;
+let mockFeeGate: (transaction: any) => any;
+let mockFeeId = 0;
+let mockStoppedRaw: string | undefined;
 const HASH_A = '0x' + 'a'.repeat(64);
 const HASH_B = '0x' + 'b'.repeat(64);
+const mockFeeReview = (transaction: any) => ({
+  id: `fee-${transaction.nonce}-${transaction.to}-${mockFeeId++}`,
+  transaction: {
+    ...transaction,
+    chainId: String(transaction.chainId),
+    nonce: String(transaction.nonce),
+    value: BigInt(transaction.value ?? '0x0').toString(),
+    to: transaction.to ?? null,
+    type: 0,
+    gasLimit: '21000',
+    gasPrice: '2',
+  },
+  maximumFeeUnits: '42000',
+  maximumTotalUnits: (
+    BigInt(transaction.value ?? '0x0') + BigInt(42000)
+  ).toString(),
+  validForMs: 90000,
+});
 
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
@@ -114,15 +139,22 @@ beforeEach(() => {
     },
     calls: [{ to: `0x${'2'.repeat(40)}` }],
   };
+  mockFeeId = 0;
+  mockStoppedRaw = undefined;
+  mockFeeGate = mockFeeReview;
   mockCleanup.mockResolvedValue(undefined);
-  mockEmitter.mockReset().mockImplementation(async ([, method]) => {
+  mockEmitter.mockReset().mockImplementation(async ([, method], args) => {
+    if (method === 'reviewDappEvmFee') return mockFeeGate(args[0]);
+    if (method === 'discardNativeEvmFeeReview') return undefined;
     if (method === 'getRecommendedNonceForBatch') return 5;
     if (method === 'sendAndSaveEthTransaction')
       return { hash: `0x${'a'.repeat(64)}` };
     return undefined;
   });
   mockSmartSubmit.mockReset().mockImplementation(async (params) => {
-    await params.onBeforeSubmit();
+    await params.onBeforeSubmit({
+      executionContextId: 'prepared-smart-context',
+    });
     return { hash: HASH_A };
   });
   mockRecordGate = () => undefined;
@@ -172,22 +204,53 @@ const pending = () => {
 };
 const prepare = async (
   smart = false,
-  send: (index: number) => any = (index) => ({ hash: index ? HASH_B : HASH_A })
+  send: (index: number, transaction: any) => any = (index) => ({
+    hash: index ? HASH_B : HASH_A,
+  }),
+  waitForReview = true
 ) => {
   let count = 0;
   await reserveSendCallsBundle(
     mockQuery.host,
     mockQuery.bundleId,
     { atomic: smart, smartAccount: smart, chainId: 1 },
-    mockQuery.reservationId
+    mockQuery.reservationId,
+    mockQuery.approvedContext.account.address
   );
   mockEmitter.mockImplementation(async (path, args) => {
+    if (path[1] === 'reviewDappEvmFee') return mockFeeGate(args[0]);
+    if (path[1] === 'discardNativeEvmFeeReview') return undefined;
     if (path[1] === 'getRecommendedNonceForBatch') return 5 + sends().length;
     if (path[1] === 'recordSendCallsBundle') {
       await mockRecordGate(args[2]);
-      return recordSendCallsBundle(...(args as [string, string, any]));
+      const { smartAccountExecutionContextId, ...record } = args[2];
+      if (record.smartAccount && record.submissionStarted) {
+        expect(smartAccountExecutionContextId).toMatch(
+          /^prepared-smart-context(?:-retry)?$/
+        );
+        record.smartAccountIdentity = captureSmartAccountCallsIdentity(
+          buildSmartAccountUserOperation({
+            sender: mockQuery.approvedContext.account.address,
+            nonce: smartAccountExecutionContextId.endsWith('-retry')
+              ? '1'
+              : '0',
+            callData: '0x',
+          }),
+          1
+        );
+      }
+      return recordSendCallsBundle(args[0], args[1], record);
     }
-    if (path[1] === 'sendAndSaveEthTransaction') return send(count++);
+    if (path[1] === 'recordStoppedEoaCalls')
+      return recordStoppedEoaAttempt(
+        args[0],
+        args[1],
+        args[2],
+        args[3],
+        args[4],
+        async () => mockStoppedRaw
+      );
+    if (path[1] === 'sendAndSaveEthTransaction') return send(count++, args[0]);
     throw new Error(
       'Unexpected controller or irreversible method ' + path.join('.')
     );
@@ -198,17 +261,35 @@ const prepare = async (
       smartAccount: { chainId: 1 },
     });
   const view = render(<SendCalls />);
-  await waitFor(() =>
-    expect(
-      (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-        .disabled
-    ).toBe(false)
-  );
+  if (waitForReview)
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: smart ? 'send.sign' : /^buttons.confirm /,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
   return view;
 };
 const approve = async () => {
-  await act(async () => mockApprove());
-  await flush();
+  // Every call requires its own visible confirmation. Stop at a failed suffix.
+  for (let step = 0; step <= mockQuery.calls.length; step++) {
+    const button = screen.getByRole('button', {
+      name: /^(send.sign|buttons.confirm \d+\/\d+)$/,
+    }) as HTMLButtonElement;
+    if (
+      button.disabled ||
+      (step > 0 && !button.textContent?.startsWith('buttons.confirm'))
+    )
+      return;
+    await act(async () => {
+      void mockApprove();
+    });
+    await flush();
+    if (!screen.queryByRole('button', { name: /^buttons.confirm / })) return;
+  }
 };
 const close = async () => {
   await act(async () => mockReject());
@@ -222,6 +303,7 @@ const status = async () =>
   (
     await resolveCallsStatus(
       () => ({
+        getBlock: async () => ({ hash: HASH_A }),
         getTransactionReceipt: async (hash) => ({
           hash,
           status: 1,
@@ -379,14 +461,78 @@ it('does not return an earlier known hash as completion after a later unknown se
   await approve();
   expect(await status()).toBe(100);
   expect(
-    (screen.getByRole('button', { name: 'send.sign' }) as HTMLButtonElement)
-      .disabled
+    (
+      screen.getByRole('button', {
+        name: /^(send.sign|buttons.confirm \d+\/\d+)$/,
+      }) as HTMLButtonElement
+    ).disabled
   ).toBe(true);
   await act(async () => mockApprove());
   expect(sends()).toHaveLength(2);
   await close();
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
 });
+
+it.each([
+  [0, 0, 500],
+  [0, 1, 600],
+  [1, 0, 600],
+  [1, 1, 200],
+])(
+  'reconciles stopped call %s with canonical receipt %s as status %s',
+  async (lostAt, receiptStatus, expectedStatus) => {
+    const wallet = new Wallet('0x' + '01'.repeat(32));
+    mockState.vault.accounts.HDAccount[0].address = wallet.address;
+    mockQuery.approvedContext.account.address = wallet.address;
+    const hashes: string[] = [];
+    await prepare(false, async (index, transaction) => {
+      const raw = await wallet.signTransaction({
+        ...transaction,
+        nonce: Number(transaction.nonce),
+      });
+      const hash = Transaction.from(raw).hash!;
+      hashes.push(hash);
+      if (index === lostAt) {
+        mockStoppedRaw = raw;
+        throw Object.assign(new Error('Lost response after submission'), {
+          signedTransactionHash: hash,
+          transactionNotBroadcast: false,
+        });
+      }
+      return { hash };
+    });
+    await approve();
+    expect(mockStored[mockQuery.host][mockQuery.bundleId]).toEqual(
+      expect.objectContaining({
+        stoppedTransactionHash: hashes[lostAt],
+        submissionCompleted: false,
+      })
+    );
+    const result = await resolveCallsStatus(
+      () => ({
+        async getTransactionReceipt(hash) {
+          return {
+            hash,
+            status: hash === hashes[lostAt] ? receiptStatus : 1,
+            blockHash: HASH_A,
+            blockNumber: 1,
+            gasUsed: 21000,
+            logs: [],
+          };
+        },
+        async getBlock() {
+          return { hash: HASH_A };
+        },
+      }),
+      mockQuery.host,
+      mockQuery.bundleId
+    );
+    expect(result.status).toBe(expectedStatus);
+    await act(async () => mockApprove());
+    expect(sends()).toHaveLength(lostAt + 1);
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  }
+);
 
 it('cannot complete from an acknowledged hash whose persistence failed', async () => {
   mockRecordGate = (descriptor) => {
@@ -476,6 +622,11 @@ it('invalidates old completion while a newer admitted retry is pending', async (
     active = retry();
   });
   await flush();
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(3);
   await act(async () => retainedClose());
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(mockClose).not.toHaveBeenCalled();
@@ -571,4 +722,171 @@ it('does not invoke a sender after unmounting while the durable begin is pending
   });
   expect(sends()).toHaveLength(0);
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'requires an acknowledged unsent record before automatic smart retry (storage failure=%s)',
+  async (failRetirement) => {
+    await prepare(true);
+    const stages: string[] = [];
+    mockRecordGate = (record) => {
+      if (record.submissionStarted) stages.push('begin');
+      if (record.submissionNotBroadcast) {
+        stages.push('unsent');
+        if (failRetirement)
+          throw new Error('Synthetic retirement write failure');
+      }
+    };
+    mockSmartSubmit.mockImplementation(async (params) => {
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context',
+      });
+      await params.onSubmissionNotBroadcast();
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context-retry',
+      });
+      return { hash: HASH_A };
+    });
+    await approve();
+    expect(stages).toEqual(
+      failRetirement ? ['begin', 'unsent'] : ['begin', 'unsent', 'begin']
+    );
+    if (failRetirement) {
+      expect(await status()).toBe(100);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: /^(send.sign|buttons.confirm \d+\/\d+)$/,
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(true);
+      await act(async () => mockApprove());
+      expect(mockSmartSubmit).toHaveBeenCalledTimes(1);
+    } else {
+      expect(mockStored[mockQuery.host][mockQuery.bundleId]).toMatchObject({
+        submissionCompleted: true,
+        txHashes: [HASH_A],
+      });
+    }
+  }
+);
+
+it('requires fresh visible consent for each call and ignores a previous call confirmation', async () => {
+  await prepare();
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 1/2' })
+  ).toBeTruthy();
+  expect(sends()).toHaveLength(0);
+  expect(
+    mockStored[mockQuery.host][mockQuery.bundleId].submissionStarted
+  ).not.toBe(true);
+  const firstConfirmation = mockApprove;
+  await act(async () => {
+    void firstConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 2/2' })
+  ).toBeTruthy();
+  expect(mockStored[mockQuery.host][mockQuery.bundleId].txHashes).toEqual([
+    HASH_A,
+  ]);
+  await act(async () => {
+    void firstConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(2);
+  expect(sends().map((call) => call[1][4].genericReviewId)).toEqual([
+    `fee-5-${mockQuery.calls[0].to}-0`,
+    `fee-6-${mockQuery.calls[1].to}-1`,
+  ]);
+});
+
+it('discards a late quote after the review view unmounts without starting submission', async () => {
+  const quotation = pending();
+  mockFeeGate = () => quotation.promise;
+  const view = await prepare(false, () => ({ hash: HASH_A }), false);
+  await flush();
+  const quoteCall = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'reviewDappEvmFee'
+  );
+  expect(quoteCall).toBeDefined();
+  expect(sends()).toHaveLength(0);
+  view.unmount();
+  await act(async () => quotation.resolve(mockFeeReview(quoteCall![1][0])));
+  await flush();
+  expect(sends()).toHaveLength(0);
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path, args]) =>
+        path[1] === 'recordSendCallsBundle' && args[2].submissionStarted
+    )
+  ).toBe(false);
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'discardNativeEvmFeeReview'],
+    [`fee-5-${mockQuery.calls[0].to}-0`]
+  );
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+});
+
+it('expires a held quote and requires another explicit confirmation after retry', async () => {
+  await prepare();
+  const expiredConfirmation = mockApprove;
+  await act(async () => {
+    jest.advanceTimersByTime(90001);
+  });
+  await flush();
+  await act(async () => {
+    void expiredConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(0);
+  expect(
+    screen.queryByRole('button', { name: 'buttons.confirm 1/2' })
+  ).toBeNull();
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 1/2' })
+  ).toBeTruthy();
+  expect(sends()).toHaveLength(0);
+  await act(async () => {
+    void expiredConfirmation();
+  });
+  await flush();
+  expect(sends()).toHaveLength(0);
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+});
+
+it('retains the acknowledged prefix when the next call is rejected at its fee review', async () => {
+  await prepare();
+  await act(async () => {
+    void mockApprove();
+  });
+  await flush();
+  expect(sends()).toHaveLength(1);
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm 2/2' })
+  ).toBeTruthy();
+  await close();
+  expect(sends()).toHaveLength(1);
+  expect(mockStored[mockQuery.host][mockQuery.bundleId].txHashes).toEqual([
+    HASH_A,
+  ]);
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'sendCalls.' + mockQuery.host,
+    reply()
+  );
 });

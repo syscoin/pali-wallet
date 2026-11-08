@@ -3,12 +3,19 @@ import {
   isPrivacyProofJobId,
   PRIVACY_PROVER_PORT_PREFIX,
 } from 'utils/privacy/proverTypes';
+
+import { startPrivacyProofWorkers } from './workerHost';
 export function installPrivacyProverHost(
   makeWorker: (kind: 'main' | 'sub') => Worker,
   makeChannel: () => MessageChannel = () => new MessageChannel()
 ) {
   let connection: chrome.runtime.Port | undefined;
-  let disposeActive: (() => void) | undefined;
+  let disposeActive: (() => boolean) | undefined;
+  let retirementFailed = false;
+  const retireActive = () => {
+    if (disposeActive && !disposeActive()) retirementFailed = true;
+    disposeActive = undefined;
+  };
 
   function connect(id: string) {
     if (connection) return;
@@ -18,7 +25,7 @@ export function installPrivacyProverHost(
     connection = port;
     port.onDisconnect.addListener(() => {
       if (connection === port) {
-        disposeActive?.();
+        retireActive();
         connection = undefined;
       }
     });
@@ -27,72 +34,30 @@ export function installPrivacyProverHost(
       // future worker creation nor cancellation of the replacement job.
       if (connection !== port) return;
       if (message?.type === 'cancel') {
-        disposeActive?.();
+        retireActive();
         return;
       }
       if (message?.type !== 'prove' || message.id !== id) return;
-      if (disposeActive) {
+      if (disposeActive || retirementFailed) {
         port.postMessage({ id: message.id, type: 'error' });
         return;
       }
-      const workers: Worker[] = [];
-      const channels: MessageChannel[] = [];
-      let settled = false;
-      const finish = (response?: unknown) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        for (const worker of workers) worker.terminate();
-        for (const channel of channels) {
-          channel.port1.close();
-          channel.port2.close();
-        }
-        disposeActive = undefined;
-        if (response) {
+      const job = startPrivacyProofWorkers(
+        makeWorker,
+        makeChannel,
+        'extension-public',
+        message.id,
+        message.input,
+        (response) => {
+          if (response.type !== 'progress') disposeActive = undefined;
           try {
             port.postMessage(response);
           } catch {
             /* Disconnected caller. */
           }
         }
-      };
-      const timeout = setTimeout(
-        () => finish({ id: message.id, type: 'error' }),
-        120000
       );
-      disposeActive = () => finish();
-      try {
-        const main = makeWorker('main');
-        workers.push(main);
-        main.onmessage = (event) => {
-          if (event.data?.id !== message.id || settled) return;
-          if (event.data.type === 'progress') {
-            port.postMessage(event.data);
-            return;
-          }
-          finish(event.data);
-        };
-        const fail = () => finish({ id: message.id, type: 'error' });
-        main.onerror = fail;
-        const ports: MessagePort[] = [];
-        for (let i = 0; i < 2; i++) {
-          const worker = makeWorker('sub');
-          workers.push(worker);
-          worker.onerror = fail;
-          const channel = makeChannel();
-          channels.push(channel);
-          ports.push(channel.port1);
-          worker.postMessage({ port: channel.port2 }, [channel.port2]);
-        }
-        main.postMessage(
-          { id: message.id, input: message.input, ports },
-          ports
-        );
-        message.input.nullifier = '';
-        message.input.secret = '';
-      } catch {
-        finish({ id: message.id, type: 'error' });
-      }
+      disposeActive = job.isRetired() ? undefined : job.cancel;
     });
   }
 
@@ -121,11 +86,11 @@ export function installPrivacyProverHost(
       return false;
     }
     if (message.type === 'PALI_PRIVACY_PROVER_CANCEL_WORKER') {
-      disposeActive?.();
+      retireActive();
       const retired = connection;
       connection = undefined;
       retired?.disconnect();
-      reply({ success: true });
+      reply({ success: !retirementFailed });
       return false;
     }
     if (!isPrivacyProofJobId(message.id)) {
@@ -134,12 +99,12 @@ export function installPrivacyProverHost(
     }
     // A new background request owns a new port, including when the previous
     // disconnect event is still queued after cancellation.
-    disposeActive?.();
+    retireActive();
     const previous = connection;
     connection = undefined;
     previous?.disconnect();
-    connect(message.id);
-    reply({ success: true });
+    if (!retirementFailed) connect(message.id);
+    reply({ success: !retirementFailed });
     return false;
   };
   const announceReady = () => {
@@ -151,7 +116,7 @@ export function installPrivacyProverHost(
   announceReady();
   return () => {
     chrome.runtime.onMessage.removeListener(listener);
-    disposeActive?.();
+    retireActive();
     const retired = connection;
     connection = undefined;
     retired?.disconnect();

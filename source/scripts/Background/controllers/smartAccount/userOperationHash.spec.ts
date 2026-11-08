@@ -8,8 +8,8 @@ jest.mock('utils/ethersV6Compat', () => ({
   ...jest.requireActual('utils/ethersV6Compat'),
   Contract: jest.fn(),
 }));
-jest.mock('utils/smartAccount', () => ({
-  ...jest.requireActual('utils/smartAccount'),
+jest.mock('utils/smartAccount/gas', () => ({
+  ...jest.requireActual('utils/smartAccount/gas'),
   estimateSmartAccountUserOpGas: jest.fn(),
 }));
 
@@ -93,6 +93,28 @@ describe('smart-account owner signing intent', () => {
         verificationGasLimit: 150000,
       });
       const provider = {
+        verifyConfiguredChainId: jest.fn(async () => {
+          if ((await provider.send('eth_chainId', [])) !== '0x1')
+            throw new Error('wrong chain');
+        }),
+        send: jest.fn(async (method, params) => {
+          if (method === 'eth_chainId') return '0x1';
+          if (method === 'eth_call') {
+            const [, key] = paliEntryPointInterface.decodeFunctionData(
+              'getNonce',
+              params[0].data
+            );
+            return paliEntryPointInterface.encodeFunctionResult('getNonce', [
+              BigInt(key) << BigInt(64),
+            ]);
+          }
+          if (method === 'eth_estimateGas')
+            return (
+              '0x' + BigInt(await provider.estimateGas(params[0])).toString(16)
+            );
+          if (method === 'eth_getCode') return '0x01';
+          throw new Error('Unexpected RPC ' + method);
+        }),
         estimateGas: jest
           .fn()
           .mockRejectedValue(new Error('malicious RPC rejects')),
@@ -117,6 +139,10 @@ describe('smart-account owner signing intent', () => {
         vaultGlobal: { activeSlip44: 60 },
       });
       const controller: any = new SmartAccountController({
+        captureSmartAccountPendingRecords: async () => ({
+          profileId: '0x' + '11'.repeat(32),
+          read: async () => [],
+        }),
         getEthereumTransaction: () => ethereumTransaction,
         sendAndSaveEthTransaction: send,
       } as any);
@@ -151,13 +177,26 @@ describe('smart-account owner signing intent', () => {
         null
       );
       const signature = await signSmartAccountActionHash({
+        assertBeforeAuthentication: async () => undefined,
         accountId: 7,
         actionHash: prepared.actionHash,
         authenticatorContexts: {
           ecdsa: {
             localOwners: [{ address: owner.address, id: 0, type: ownerType }],
             signActionHash: ({ actionHash }) =>
-              signer.ethSign([owner.address, actionHash]),
+              signer.ethSign([owner.address, actionHash], {
+                selectedAccount: {
+                  id: 0,
+                  type: ownerType,
+                  expectedAddress: owner.address,
+                },
+                targetAccount: {
+                  id: 0,
+                  type: ownerType,
+                  expectedAddress: owner.address,
+                },
+                assertCurrent: () => undefined,
+              }),
           },
         },
         smartAccount: metadata as any,

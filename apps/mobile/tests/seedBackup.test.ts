@@ -19,7 +19,23 @@ async function fixture() {
   let fingerprint = 'wallet-one';
   let confirms = 0;
   const runtime: KeyringRuntime = {
+    trezor: { getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null }),
+      subscribe: () => () => {}, async startImport() { throw new Error('Hardware is outside this fixture'); },
+      async resumeImport() { throw new Error('Hardware is outside this fixture'); },
+      async resumeSend() { throw new Error('Hardware is outside this fixture'); }, async cancel() {} },
+    ledger: { subscribeStatus: () => () => {}, isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
     catalogue: { getSnapshot: () => null },
+    async openSmartAccountSend() { throw new Error('not used'); },
+    openSmartAccountDeployment() { throw new Error('Unused test capability'); },
+    async openWalletAuthenticator() { throw new Error('Authenticator is outside this fixture'); },
+    canUseWalletAuthenticator: () => false,
+    async refreshSmartAccountMetadata() { throw new Error('Metadata is outside this fixture'); },
+    getGuardianRecoveryIntent: () => null,
+    async openGuardianRecovery() { throw new Error('Recovery is outside this fixture'); },
+    async openGuardianPolicy() { throw new Error('Policy is outside this fixture'); },
+    canManageGuardianPolicy: () => false,
+    async inspectGuardianRemoval() { throw new Error('Removal is outside this fixture'); },
+    async openConnectionHost() { throw new Error('Connections are outside this fixture'); },
     async resetActivity() { throw new Error('Activity is outside this fixture'); },
     async withUtxoActivityRead() { throw new Error('Activity is outside this fixture'); },
     session: {

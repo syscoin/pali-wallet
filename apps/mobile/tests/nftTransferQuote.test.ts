@@ -173,7 +173,7 @@ test('ERC721 token zero has exact standard bytes and the existing dynamic fee po
   const { rpc, calls } = fixture();
   const quote = await rpc.prepareNft(selection, request, signal(), current, undefined, emptyNoncePlanner);
   assert.deepEqual(quote.envelope, {
-    type: 2, from: owner, to: target, chainId: network.chainId, nonce: '7',
+    type: 2, accessList: [], from: owner, to: target, chainId: network.chainId, nonce: '7',
     value: '0', gasLimit: '36000', data: erc721Data,
     maxFeePerGas: '252', maxPriorityFeePerGas: '2',
   });
@@ -195,7 +195,7 @@ test('ERC721 token zero has exact standard bytes and the existing dynamic fee po
     [[{ from: owner, to: target, value: '0x0', data: erc721Data, gas: '0x8ca0', nonce: '0x7', type: '0x2', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2' }, block.number]]);
   assert.deepEqual(calls.find((c) => c.method === 'eth_estimateGas')?.params, [{
     from: owner, to: target, value: '0x0', data: erc721Data, type: '0x2',
-    chainId: '0x4d2', nonce: '0x7', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
+    chainId: '0x4d2', nonce: '0x7', accessList: [], maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
   }, 'pending']);
   assert.equal(calls.at(0)?.method, 'eth_chainId');
   assert.equal(calls.at(-1)?.method, 'eth_chainId');
@@ -360,7 +360,8 @@ test('failed ERC1155 batch does not issue a third ownership call or a transfer s
 });
 
 const signedQuote = async (quote: EvmNftPreparedQuote) => {
-  const raw = await wallet.signTransaction({ ...quote.envelope, nonce: Number(quote.envelope.nonce) });
+  const transaction = quote.envelope.type === 2 ? { ...quote.envelope, accessList: quote.envelope.accessList.map(entry => ({ address: entry.address, storageKeys: [...entry.storageKeys] })) } : quote.envelope;
+  const raw = await wallet.signTransaction({ ...transaction, nonce: Number(transaction.nonce) });
   return { raw, hash: Transaction.from(raw).hash! };
 };
 
@@ -389,7 +390,7 @@ test('owned NFT requote repeats exact simulation and ownership and never renews 
   const estimate = f.calls.find((c) => c.method === 'eth_estimateGas');
   assert.deepEqual(estimate?.params, [{
     from: owner, to: target, value: '0x0', data: erc721Data, type: '0x2',
-    chainId: '0x4d2', nonce: '0x7', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
+    chainId: '0x4d2', nonce: '0x7', accessList: [], maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
   }, 'pending']);
   time = approval.expiresAtMonotonicMilliseconds;
   f.calls.length = 0;
@@ -435,7 +436,8 @@ test('NFT POST requires same-owner requote and exact signed bytes, then starts o
     await assert.rejects(rpc.broadcast(signed.raw, signed.hash, signal(), admission(rpc, approval)), { name: 'NativeTransferRpcError', code: 'REVIEW_REQUIRED' });
   }
   await assert.rejects(f.createOwner().broadcast(signed.raw, signed.hash, signal(), admission(rpc, fresh)), { name: 'NativeTransferRpcError', code: 'REVIEW_REQUIRED' });
-  const wrong = await wallet.signTransaction({ ...fresh.envelope, nonce: 8 });
+  const transaction = fresh.envelope.type === 2 ? { ...fresh.envelope, accessList: fresh.envelope.accessList.map(entry => ({ address: entry.address, storageKeys: [...entry.storageKeys] })) } : fresh.envelope;
+  const wrong = await wallet.signTransaction({ ...transaction, nonce: 8 });
   await assert.rejects(rpc.broadcast(wrong, Transaction.from(wrong).hash!, signal(), admission(rpc, fresh)), { name: 'NativeTransferRpcError', code: 'INVALID_RESPONSE' });
   await assert.rejects(rpc.broadcast(signed.raw, signed.hash, signal(), {
     ...admission(rpc, fresh), admit: (send: () => Promise<string>) => send(),

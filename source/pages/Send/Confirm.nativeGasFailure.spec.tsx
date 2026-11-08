@@ -704,7 +704,9 @@ it.each([false, true])(
         fireEvent.click(screen.getByRole('button', { name: 'send.editFee' }))
       );
       const editor = within(screen.getByRole('dialog'));
-      expect(editor.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue(4);
+      expect(editor.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue(
+        '4'
+      );
       expect(editor.getByPlaceholderText('send.gasLimit')).toHaveValue(27000);
       fireEvent.change(editor.getByPlaceholderText('send.gasLimit'), {
         target: { value: '28000' },

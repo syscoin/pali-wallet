@@ -1,474 +1,184 @@
-import { ethErrors } from 'helpers/errors';
-
-import cleanErrorStack from 'utils/cleanErrorStack';
 import {
-  CALLS_STATUS_PENDING,
-  computeCallsStatusCode,
-  ISendCallsBatchDescriptor,
-} from 'utils/sendCallsBatch';
-import {
-  getPaliEntryPointAddress,
-  paliEntryPointInterface,
-} from 'utils/smartAccount';
-
-// ---------------------------------------------------------------------------
-// EIP-5792 bundle registry + status resolution.
-//
-// The per-host registry is the single source of truth for bundle ids: only
-// ids that wallet_sendCalls actually issued (wallet-minted random ids or
-// validated app-provided ids) resolve in wallet_getCallsStatus /
-// wallet_showCallsStatus; anything else is the spec 5730 unknown-bundle
-// error. Ids are reserved atomically before the approval popup opens (so
-// concurrent duplicate app-provided ids are rejected with 5720) and updated
-// with the transaction hashes after broadcast. Records are persisted in
-// chrome.storage.local so they survive MV3 service-worker restarts, scoped
-// per host (the spec scopes id uniqueness per sender per app).
-// ---------------------------------------------------------------------------
+  createCallsBundleRegistry,
+  assertCallsBundleStore,
+  captureEoaCallsSignedMetadata as captureSharedEoaCallsSignedMetadata,
+  bindEoaCallsSignedLifecycle as bindSharedEoaCallsSignedLifecycle,
+  recoverRetainedEoaCallsAttempt,
+  settleEoaCallsSignedSubmission as settleSharedEoaCallsSignedSubmission,
+  type CallsBundleStore,
+} from '../../../../wallet/dappCallsBundles.ts';
+export type { EoaSendCallsReservation } from '../../../../wallet/dappCallsBundles.ts';
 
 const STORAGE_KEY = 'pali-sendcalls-bundles';
-const MAX_BUNDLES_PER_HOST = 50;
-const BUNDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-// Spec: ids MUST be unique strings up to 4096 bytes (8194 chars with 0x).
-const MAX_BUNDLE_ID_CHARS = 8194;
+type Registry = ReturnType<typeof createCallsBundleRegistry>;
+let owner: Readonly<{ assertCurrent(): void; registry: Registry }> | undefined;
 
-interface IStoredSendCallsBundle extends ISendCallsBatchDescriptor {
-  createdAt: number;
-  // True while the id is reserved but the batch has not been broadcast yet.
-  pending?: boolean;
-  reservationId?: string;
-  submissionId?: string;
-  // Persisted before invoking a sender. A missing hash cannot prove that an
-  // interrupted popup failed to broadcast, including after a worker restart.
-}
-
-// All store mutations run through this queue: the background service worker
-// is the only writer, so serializing read-modify-write cycles makes
-// reserve/record/release atomic with respect to each other.
-let storeQueue: Promise<unknown> = Promise.resolve();
-const withStoreLock = <T>(fn: () => Promise<T>): Promise<T> => {
-  const run = storeQueue.then(fn, fn);
-  storeQueue = run.then(
-    () => undefined,
-    () => undefined
-  );
-  return run;
-};
-
-type TBundleStore = {
-  [host: string]: { [id: string]: IStoredSendCallsBundle };
-};
-
-const readBundleStore = (): Promise<TBundleStore> =>
-  new Promise((resolve, reject) => {
-    chrome.storage.local.get([STORAGE_KEY], (result) => {
-      if (chrome.runtime.lastError) {
-        console.error(
-          '[sendCallsBundles] Failed to read store:',
-          chrome.runtime.lastError
-        );
-        reject(new Error('Unable to read sendCalls bundle reservations'));
-        return;
-      }
-      resolve((result?.[STORAGE_KEY] as TBundleStore) || {});
-    });
-  });
-
-const writeBundleStore = (storeData: TBundleStore): Promise<void> =>
-  new Promise((resolve, reject) => {
-    chrome.storage.local.set({ [STORAGE_KEY]: storeData }, () => {
-      if (chrome.runtime.lastError) {
-        console.error(
-          '[sendCallsBundles] Failed to write store:',
-          chrome.runtime.lastError
-        );
-        reject(new Error('Unable to persist sendCalls bundle reservations'));
-        return;
-      }
-      resolve();
-    });
-  });
-
-const hasUnresolvedSubmission = (bundle: IStoredSendCallsBundle) =>
-  bundle.submissionStarted && !bundle.submissionCompleted;
-
-export const isValidAppProvidedBundleId = (id: unknown): id is string =>
-  typeof id === 'string' &&
-  /^0x[0-9a-fA-F]+$/.test(id) &&
-  id.length <= MAX_BUNDLE_ID_CHARS;
-
-// Wallet-minted bundle ids are 32 random bytes: unguessable and carrying no
-// information, so a dapp cannot fabricate an id this wallet never issued nor
-// correlate ids across apps.
-export const generateWalletBundleId = (): string => {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return `0x${Array.from(bytes)
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')}`;
-};
-
-export const getStoredSendCallsBundle = async (
-  host: string,
-  id: string
-): Promise<ISendCallsBatchDescriptor | null> => {
-  const storeData = await readBundleStore();
-  const bundle = storeData[host]?.[id];
-  if (!bundle) {
-    return null;
-  }
-  return {
-    atomic: bundle.atomic,
-    chainId: bundle.chainId,
-    failed: bundle.failed,
-    smartAccount: bundle.smartAccount,
-    submissionCompleted: bundle.submissionCompleted,
-    submissionStarted: bundle.submissionStarted,
-    txHashes: bundle.txHashes,
-  };
-};
-
-const evictAndWrite = async (
-  storeData: TBundleStore,
-  host: string,
-  hostBundles: { [id: string]: IStoredSendCallsBundle },
-  now: number
-): Promise<void> => {
-  // Unknown submissions must keep their duplicate-id protection until an
-  // outcome is recorded. Age or other requests cannot prove they never sent.
-  const entries = Object.entries(hostBundles).filter(
-    ([, bundle]) =>
-      hasUnresolvedSubmission(bundle) || now - bundle.createdAt <= BUNDLE_TTL_MS
-  );
-  entries.sort(([, a], [, b]) => b.createdAt - a.createdAt);
-  const unknown = entries.filter(([, bundle]) =>
-    hasUnresolvedSubmission(bundle)
-  );
-  const remaining = entries.filter(
-    ([, bundle]) => !hasUnresolvedSubmission(bundle)
-  );
-  storeData[host] = Object.fromEntries([
-    ...unknown,
-    ...remaining.slice(0, Math.max(0, MAX_BUNDLES_PER_HOST - unknown.length)),
-  ]);
-  await writeBundleStore(storeData);
-};
-
-// Atomically reserves a bundle id before the approval popup opens. Returns
-// false when the id is already taken for this host (reserved or completed),
-// which the caller maps to the spec 5720 duplicate-id error.
-export const reserveSendCallsBundle = (
-  host: string,
-  id: string,
-  descriptor: Omit<ISendCallsBatchDescriptor, 'txHashes'>,
-  reservationId: string
-): Promise<boolean> =>
-  withStoreLock(async () => {
-    const storeData = await readBundleStore();
-    const now = Date.now();
-    const hostBundles = storeData[host] || {};
-    const existing = hostBundles[id];
+/** One background realm owns this Chrome record across ordinary wallet locks. */
+function ownedRegistry() {
+  if (owner) return owner;
+  const runtime = chrome.runtime;
+  const storage = chrome.storage.local;
+  const runtimeId = runtime.id;
+  const check = () => {
     if (
-      existing &&
-      (hasUnresolvedSubmission(existing) ||
-        now - existing.createdAt <= BUNDLE_TTL_MS)
-    ) {
-      return false;
-    }
-    if (
-      Object.values(hostBundles).filter(hasUnresolvedSubmission).length >=
-      MAX_BUNDLES_PER_HOST
+      chrome.runtime !== runtime ||
+      chrome.storage.local !== storage ||
+      runtime.id !== runtimeId
     )
-      throw new Error('Too many unresolved sendCalls bundles for this app');
-    hostBundles[id] = {
-      ...descriptor,
-      txHashes: [],
-      createdAt: now,
-      pending: true,
-      reservationId,
-    };
-    await evictAndWrite(storeData, host, hostBundles, now);
-    return true;
+      throw new Error('Calls bundle owner changed');
+  };
+  const registry = createCallsBundleRegistry({
+    assertCurrent: check,
+    now: () => Date.now(),
+    randomBytes: (length) => crypto.getRandomValues(new Uint8Array(length)),
+    storage: {
+      read: () =>
+        new Promise<CallsBundleStore>((resolve, reject) => {
+          check();
+          storage.get([STORAGE_KEY], (result) => {
+            if (runtime.lastError) {
+              console.error(
+                '[sendCallsBundles] Failed to read store:',
+                runtime.lastError
+              );
+              reject(new Error('Unable to read sendCalls bundle reservations'));
+              return;
+            }
+            try {
+              const value = result?.[STORAGE_KEY] || {};
+              assertCallsBundleStore(value);
+              resolve(value);
+            } catch (error) {
+              reject(error);
+            }
+          });
+        }),
+      write: (next, assertCurrent) =>
+        new Promise<void>((resolve, reject) => {
+          // This background realm is the sole writer; the shared registry owns
+          // the read/modify/write queue and checks before the Chrome commit.
+          assertCurrent();
+          storage.set({ [STORAGE_KEY]: next }, () => {
+            if (runtime.lastError) {
+              console.error(
+                '[sendCallsBundles] Failed to write store:',
+                runtime.lastError
+              );
+              reject(
+                new Error('Unable to persist sendCalls bundle reservations')
+              );
+              return;
+            }
+            resolve();
+          });
+        }),
+    },
   });
-
-// Finalizes a reservation with the broadcast transaction hashes (also used
-// by the SendCalls popup through MainController.recordSendCallsBundle).
-export const recordSendCallsBundle = (
-  host: string,
-  id: string,
-  descriptor: ISendCallsBatchDescriptor & {
-    previousSubmissionId?: string;
-    reservationId: string;
-    submissionId?: string;
-    submissionNotBroadcast?: boolean;
-    submissionStarted?: boolean;
-  }
-): Promise<void> =>
-  withStoreLock(async () => {
-    const storeData = await readBundleStore();
-    const now = Date.now();
-    const hostBundles = storeData[host] || {};
-    const existing = hostBundles[id];
-    if (!existing || existing.reservationId !== descriptor.reservationId)
-      throw new Error('sendCalls bundle reservation is unavailable');
-    if (existing.chainId !== descriptor.chainId)
-      throw new Error('sendCalls bundle network changed');
-    if (descriptor.submissionStarted) {
-      if (!descriptor.submissionId)
-        throw new Error('sendCalls submission identity is unavailable');
-      if (descriptor.submissionId !== existing.submissionId) {
-        if (descriptor.previousSubmissionId !== existing.submissionId)
-          throw new Error('sendCalls submission changed');
-        hostBundles[id] = {
-          ...existing,
-          submissionId: descriptor.submissionId,
-          submissionStarted: true,
-          submissionCompleted: false,
-        };
-      } else hostBundles[id] = { ...existing, submissionStarted: true };
-      await evictAndWrite(storeData, host, hostBundles, now);
-      return;
-    }
-    if (descriptor.submissionId !== existing.submissionId)
-      throw new Error('sendCalls submission changed');
-    if (descriptor.submissionNotBroadcast) {
-      if (existing.txHashes.length === 0 && !existing.submissionCompleted)
-        hostBundles[id] = {
-          ...existing,
-          failed: true,
-          pending: true,
-          submissionStarted: false,
-        };
-    } else {
-      hostBundles[id] = {
-        ...descriptor,
-        failed: existing.submissionCompleted
-          ? existing.failed
-          : descriptor.failed,
-        createdAt: existing?.createdAt ?? now,
-        pending: false,
-        submissionCompleted:
-          existing.submissionCompleted ||
-          descriptor.submissionCompleted === true,
-        submissionStarted: existing?.submissionStarted,
-        txHashes: Array.from(
-          new Set([...(existing?.txHashes || []), ...descriptor.txHashes])
-        ),
-      };
-    }
-    await evictAndWrite(storeData, host, hostBundles, now);
-  });
-
-// Only an unstarted approval can be released. Popup closure/navigation after
-// submission began is ambiguous even when no hash reached the component.
-export const releaseSendCallsBundleReservation = (
-  host: string,
-  id: string,
-  reservationId: string
-): Promise<void> =>
-  withStoreLock(async () => {
-    const storeData = await readBundleStore();
-    const bundle = storeData[host]?.[id];
-    if (
-      !bundle ||
-      bundle.reservationId !== reservationId ||
-      (!bundle.pending && !bundle.failed) ||
-      bundle.submissionStarted ||
-      bundle.txHashes.length > 0
-    ) {
-      return;
-    }
-    delete storeData[host][id];
-    await writeBundleStore(storeData);
-  });
-
-export type EoaSendCallsReservation = Readonly<{
-  host: string;
-  id: string;
-  reservationId: string;
-}>;
-
-/** Bind the current durable EOA attempt before entering the background sender. */
-export async function captureStartedEoaSendCallsAttempt(
-  { host, id, reservationId }: EoaSendCallsReservation,
-  chainId: number,
-  submissionId: unknown
-): Promise<(() => Promise<void>) | undefined> {
-  if (typeof submissionId !== 'string' || !submissionId) return;
-  const matches = (bundle: IStoredSendCallsBundle | undefined) =>
-    bundle?.reservationId === reservationId &&
-    bundle.chainId === chainId &&
-    bundle.submissionId === submissionId &&
-    !bundle.smartAccount &&
-    !bundle.atomic &&
-    bundle.submissionStarted === true &&
-    bundle.submissionCompleted !== true;
-  if (!matches((await readBundleStore())[host]?.[id])) return;
-  return () =>
-    withStoreLock(async () => {
-      const storeData = await readBundleStore();
-      const bundle = storeData[host]?.[id];
-      if (!bundle || !matches(bundle) || bundle.txHashes.length !== 0) return;
-      delete storeData[host][id];
-      await writeBundleStore(storeData);
-    });
+  owner = Object.freeze({ registry, assertCurrent: check });
+  return owner;
 }
 
-const unknownBundleError = () => {
-  const error = new Error('Unknown bundle id');
-  (error as any).code = 5730;
-  return cleanErrorStack(error);
-};
-
-// Resolves an id to its batch descriptor from the per-host registry: only
-// ids this wallet actually issued to the host resolve. Null when unknown.
-export const resolveSendCallsBundleDescriptor = (
+export const generateWalletBundleId = () =>
+  ownedRegistry().registry.generateWalletBundleId();
+export const captureEoaCallsSignedMetadata = (
+  ...args: Parameters<typeof captureSharedEoaCallsSignedMetadata> extends [
+    unknown,
+    ...infer Rest
+  ]
+    ? Rest
+    : never
+) => captureSharedEoaCallsSignedMetadata(ownedRegistry().registry, ...args);
+export const recoverStoppedEoaCalls = (
+  records: Parameters<typeof recoverRetainedEoaCallsAttempt>[0],
+  session: Parameters<typeof recoverRetainedEoaCallsAttempt>[1],
   host: string,
-  id: string
-): Promise<ISendCallsBatchDescriptor | null> =>
-  getStoredSendCallsBundle(host, id);
-
-// The outer EntryPoint.handleOps transaction can mine successfully even when
-// the inner user operation reverted, so for smart-account batches the
-// UserOperationEvent.success flag is the source of truth. Returns undefined
-// when no UserOperationEvent was found in any receipt.
-const aggregateUserOperationSuccess = (
-  receipts: any[],
-  chainId: number
-): boolean | undefined => {
-  const userOpEventTopic =
-    paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash;
-  const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
-  let found = false;
-  let allSucceeded = true;
-  for (const receipt of receipts) {
-    for (const log of receipt?.logs || []) {
-      if (
-        String(log.address || '').toLowerCase() !== entryPoint ||
-        log.topics?.[0] !== userOpEventTopic
-      ) {
-        continue;
-      }
-      try {
-        const parsed = paliEntryPointInterface.parseLog(log);
-        found = true;
-        allSucceeded = allSucceeded && Boolean(parsed.args.success);
-      } catch (error) {
-        // Ignore logs that do not decode as UserOperationEvent.
-      }
-    }
-  }
-  return found ? allSucceeded : undefined;
-};
-
-// EIP-5792 v2.0.0 wallet_getCallsStatus: resolves a bundle id into the status
-// object by fetching transaction receipts. Receipts are queried on the
-// bundle's own chain (the descriptor carries its chainId), not the active
-// network, so status stays correct after the user switches networks. Throws
-// the spec "Unknown bundle id" error (5730) for ids this wallet did not
-// produce or record, and 5710 when the bundle's chain is no longer
-// configured in the wallet.
-export const resolveCallsStatus = async (
+  id: string,
+  assertStopped: () => void
+) =>
+  recoverRetainedEoaCallsAttempt(
+    records,
+    session,
+    ownedRegistry().registry,
+    host,
+    id,
+    assertStopped
+  );
+export const bindEoaCallsSignedLifecycle = (
+  lifecycle: Parameters<typeof bindSharedEoaCallsSignedLifecycle>[0],
+  attempt: Parameters<typeof bindSharedEoaCallsSignedLifecycle>[2]
+) =>
+  bindSharedEoaCallsSignedLifecycle(
+    lifecycle,
+    ownedRegistry().registry,
+    attempt
+  );
+export const settleEoaCallsSignedSubmission = <T>(
+  work: Promise<T>,
+  attempt: Parameters<typeof bindSharedEoaCallsSignedLifecycle>[2]
+) =>
+  settleSharedEoaCallsSignedSubmission(work, ownedRegistry().registry, attempt);
+export const getStoredSendCallsBundle = (
+  ...args: Parameters<
+    ReturnType<typeof createCallsBundleRegistry>['getStoredSendCallsBundle']
+  >
+) => ownedRegistry().registry.getStoredSendCallsBundle(...args);
+export const reserveSendCallsBundle = (
+  ...args: Parameters<
+    ReturnType<typeof createCallsBundleRegistry>['reserveSendCallsBundle']
+  >
+) => ownedRegistry().registry.reserveSendCallsBundle(...args);
+export const recordSendCallsBundle = (
+  ...args: Parameters<
+    ReturnType<typeof createCallsBundleRegistry>['recordSendCallsBundle']
+  >
+) => ownedRegistry().registry.recordSendCallsBundle(...args);
+export const recordStoppedEoaAttempt = (
+  ...args: Parameters<Registry['recordStoppedEoaAttempt']>
+) => ownedRegistry().registry.recordStoppedEoaAttempt(...args);
+export const releaseSendCallsBundleReservation = (
+  ...args: Parameters<
+    ReturnType<
+      typeof createCallsBundleRegistry
+    >['releaseSendCallsBundleReservation']
+  >
+) => ownedRegistry().registry.releaseSendCallsBundleReservation(...args);
+export const captureStartedEoaSendCallsAttempt = (
+  ...args: Parameters<
+    ReturnType<
+      typeof createCallsBundleRegistry
+    >['captureStartedEoaSendCallsAttempt']
+  >
+) => ownedRegistry().registry.captureStartedEoaSendCallsAttempt(...args);
+export const resolveSendCallsBundleDescriptor = (
+  ...args: Parameters<
+    ReturnType<
+      typeof createCallsBundleRegistry
+    >['resolveSendCallsBundleDescriptor']
+  >
+) => ownedRegistry().registry.resolveSendCallsBundleDescriptor(...args);
+export const resolveCallsStatus = (
   getProviderForChain: (chainId: number) => any | null,
   host: string,
   id: string
-): Promise<any> => {
-  const descriptor = await resolveSendCallsBundleDescriptor(host, id);
-  if (!descriptor) {
-    throw unknownBundleError();
-  }
-
-  // No broadcast hashes: still pending while the approval popup is open, or
-  // an offchain failure when the batch terminally failed before broadcast.
-  if (descriptor.txHashes.length === 0) {
-    return {
-      version: '2.0.0',
-      id,
-      chainId: `0x${descriptor.chainId.toString(16)}`,
-      atomic: descriptor.atomic,
-      status:
-        descriptor.submissionStarted && !descriptor.submissionCompleted
-          ? CALLS_STATUS_PENDING
-          : computeCallsStatusCode({
-              atomic: descriptor.atomic,
-              receiptStatuses: [],
-              smartAccount: descriptor.smartAccount,
-              someCallsFailedToBroadcast: descriptor.failed,
-            }),
-    };
-  }
-
-  const provider = getProviderForChain(descriptor.chainId);
-  if (!provider) {
-    throw cleanErrorStack(
-      ethErrors.rpc.custom({
-        code: 5710,
-        message: `This wallet has no RPC configured for the bundle's chain (chainId ${descriptor.chainId}).`,
-      })
-    );
-  }
-
-  const receipts = await Promise.all(
-    descriptor.txHashes.map((hash) =>
-      provider.getTransactionReceipt(hash).catch(() => null)
-    )
+) => {
+  const owned = ownedRegistry();
+  return owned.registry.resolveCallsStatus(
+    {
+      assertCurrent: owned.assertCurrent,
+      forChain: (chainId) => {
+        const provider = getProviderForChain(chainId);
+        return provider
+          ? {
+              getTransactionReceipt: (hash: string) =>
+                provider.getTransactionReceipt(hash),
+              async getBlockHash(blockNumber: string) {
+                return (await provider.getBlock(blockNumber))?.hash ?? null;
+              },
+            }
+          : null;
+      },
+    },
+    host,
+    id
   );
-  const receiptStatuses = receipts.map((receipt) =>
-    receipt ? (receipt.status === 0 ? '0x0' : '0x1') : null
-  ) as Array<'0x0' | '0x1' | null>;
-
-  let smartAccountInnerSuccess: boolean | undefined;
-  if (descriptor.smartAccount) {
-    smartAccountInnerSuccess = aggregateUserOperationSuccess(
-      receipts,
-      descriptor.chainId
-    );
-    if (
-      smartAccountInnerSuccess === undefined &&
-      receipts.every((receipt) => receipt !== null)
-    ) {
-      // Mined but no UserOperationEvent decoded (unexpected for Pali batches):
-      // fall back to the outer receipt status instead of reporting pending.
-      smartAccountInnerSuccess = receipts.every(
-        (receipt) => receipt && receipt.status !== 0
-      );
-    }
-  }
-
-  const status =
-    descriptor.submissionStarted && !descriptor.submissionCompleted
-      ? CALLS_STATUS_PENDING
-      : computeCallsStatusCode({
-          atomic: descriptor.atomic,
-          receiptStatuses,
-          smartAccount: descriptor.smartAccount,
-          someCallsFailedToBroadcast: descriptor.failed,
-          smartAccountInnerSuccess,
-        });
-
-  const minedReceipts = receipts
-    .filter((receipt) => Boolean(receipt))
-    .map((receipt: any) => ({
-      blockHash: receipt.blockHash,
-      blockNumber: `0x${Number(receipt.blockNumber).toString(16)}`,
-      gasUsed:
-        typeof receipt.gasUsed?.toHexString === 'function'
-          ? receipt.gasUsed.toHexString()
-          : `0x${BigInt(receipt.gasUsed ?? 0).toString(16)}`,
-      logs: (receipt.logs || []).map((log: any) => ({
-        address: log.address,
-        data: log.data,
-        topics: log.topics,
-      })),
-      status: receipt.status === 0 ? '0x0' : '0x1',
-      transactionHash: receipt.hash,
-    }));
-
-  return {
-    version: '2.0.0',
-    id,
-    chainId: `0x${descriptor.chainId.toString(16)}`,
-    atomic: descriptor.atomic,
-    status,
-    ...(minedReceipts.length > 0 ? { receipts: minedReceipts } : {}),
-  };
 };

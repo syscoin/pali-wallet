@@ -61,3 +61,29 @@ it.each([true, false])(
     ).toBeTruthy();
   }
 );
+
+it.each([true, false])(
+  'uses Unlimited only for a verified ERC20 approve request: %s',
+  (standardVerified) => {
+    const raw = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+    render(
+      <DecodedTransactionParams
+        decodedData={{
+          method: 'approve',
+          inputs: [OPERATOR, raw],
+          names: ['spender', 'amount'],
+          types: ['address', 'uint256'],
+          approvalType: 'erc20-amount',
+          tokenStandard: standardVerified ? 'ERC-20' : 'Unknown',
+          standardVerified,
+        }}
+      />
+    );
+    if (standardVerified)
+      expect(screen.getByText('⚠️ transactions.unlimited')).toBeTruthy();
+    else {
+      expect(screen.queryByText('⚠️ transactions.unlimited')).toBeNull();
+      expect(screen.getByText(raw)).toBeTruthy();
+    }
+  }
+);

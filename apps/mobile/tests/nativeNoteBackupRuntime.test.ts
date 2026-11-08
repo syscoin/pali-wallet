@@ -3,12 +3,14 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import * as sdk from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { createNoteBackupCodec, type INoteBackupEntry } from '../../../source/wallet/noteBackup.ts';
 import { NOTE_BACKUP_PREVIEW_TTL_MS } from '../../../source/wallet/noteBackupService.ts';
-import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
+import type { createNativePrivacyPoolSync } from '../src/privacy/nativePrivacyPoolSync.ts';
+const sdk = await loadNativeKeyringSdk();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'PUBLIC fixture wallet password 1!';
@@ -36,7 +38,7 @@ function pause() {
   return { entered, release, async wait() { enter(); await held; } };
 }
 
-async function fixture() {
+async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacyPool']) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-note-backup-runtime-'));
   const file = path.join(directory, 'wallet.sqlite');
   let storage!: SqliteWalletStorage;
@@ -48,9 +50,9 @@ async function fixture() {
   let beforeNoteInsert: ReturnType<typeof pause> | undefined;
   let afterNoteRead: ReturnType<typeof pause> | undefined;
   let noteCommits = 0;
-  const owners: sdk.SoftwareKeyring[] = [];
-  class ObservedKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) { super(...options); owners.push(this); }
+  const owners: InstanceType<typeof sdk.HostKeyring>[] = [];
+  class ObservedKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) { super(...options); owners.push(this); }
     override async unlock(password: string) {
       unlockCalls++;
       const before = beforeUnlock, after = afterUnlock;
@@ -62,8 +64,9 @@ async function fixture() {
     }
   }
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
+    openPrivacyPool,
     ensureCryptoReady: async () => undefined,
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ObservedKeyring }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
     async openStorage() {
       const { connection } = nodeConnection(file, { before(kind, sql) {
         if (kind === 'run' && sql.startsWith('INSERT INTO private_note_records') && beforeNoteInsert) {
@@ -683,5 +686,88 @@ test('native note capacity quarantines a lost save acknowledgement and only reop
     assert.equal(data.capacity, 256);
     assert.equal(data.noteCount, 0);
     assert.equal(f.noteWrites, 1);
+  } finally { await f.dispose(); }
+});
+
+function verifiedPool(assertCurrent = () => undefined): ReturnType<typeof createNativePrivacyPoolSync> {
+  return {
+    getStatus: () => { assertCurrent(); return { poolId: 'eth-1', phase: 'ready' }; },
+    refresh: async () => ({ poolId: 'eth-1', phase: 'ready' }),
+    readNote: async () => ({ phase: 'verified', blockNumber: 10 }),
+    readSnapshot: async () => { throw new Error('Unused snapshot reader'); },
+    dispose: async () => undefined,
+  };
+}
+
+test('raw import uses shared encrypted retention, deduplicates and survives reopen', async () => {
+  let checks = 0;
+  const f = await fixture(async (network, poolId, signal, guard) => {
+    guard(); assert.equal(network.chainId, '1'); assert.equal(poolId, 'eth-1');
+    assert.equal(signal.aborted, false); checks++; return verifiedPool();
+  });
+  try {
+    const importer = await f.runtime.openNoteImport!(current);
+    assert.deepEqual(await importer.importNote(NOTE.note), { amount: '1', phase: 'verified' });
+    assert.deepEqual(await importer.importNote(` ${NOTE.note} `), { amount: '1', phase: 'verified' });
+    assert.equal(f.noteCommits, 1);
+    assert.equal(checks, 2);
+    const stored = await f.storage.notes.read();
+    assert.equal(JSON.stringify(stored).includes(NOTE.note), false);
+    await importer.dispose();
+    await f.reopen();
+    const inventory = await f.runtime.readNoteInventory!(current);
+    assert.equal(inventory.notes.length, 1);
+    assert.equal(await inventory.revealNote(inventory.notes[0]!, PASSWORD, current), NOTE.note);
+    assert.equal(checks, 2, 'local inventory and reveal do not download a pool');
+  } finally { await f.dispose(); }
+});
+
+test('raw import rolls back when lock revokes the owner during protected SQL commit', async () => {
+  const f = await fixture(async () => verifiedPool());
+  try {
+    const importer = await f.runtime.openNoteImport!(current);
+    const hold = f.holdNoteInsert();
+    const work = assert.rejects(importer.importNote(NOTE.note));
+    await hold.entered;
+    const locked = f.runtime.session.lock();
+    hold.release(); await work; await locked;
+    await importer.dispose();
+    await f.reopen();
+    assert.equal((await f.runtime.readNoteInventory!(current)).notes.length, 0);
+  } finally { await f.dispose(); }
+});
+
+test('raw import carries current pool and service authority into the protected SQL commit', async () => {
+  let serviceCurrent = true;
+  const f = await fixture(async () => verifiedPool(() => {
+    if (!serviceCurrent) throw new Error('privacy_service_changed');
+  }));
+  try {
+    const importer = await f.runtime.openNoteImport!(current);
+    const held = f.holdNoteInsert();
+    const work = assert.rejects(importer.importNote(NOTE.note));
+    await held.entered;
+    serviceCurrent = false;
+    held.release(); await work; await importer.dispose();
+    assert.equal((await f.runtime.readNoteInventory!(current)).notes.length, 0);
+    assert.equal(f.noteCommits, 0);
+  } finally { await f.dispose(); }
+});
+
+test('raw import preserves an acknowledged-uncertain write through cold reopen', async () => {
+  const f = await fixture(async () => verifiedPool());
+  try {
+    const importer = await f.runtime.openNoteImport!(current);
+    f.loseAck();
+    await assert.rejects(importer.importNote(NOTE.note));
+    assert.equal(f.unlocked, false);
+    assert.equal(f.noteCommits, 1);
+    await importer.dispose();
+    await f.reopen();
+    assert.equal((await f.runtime.readNoteInventory!(current)).notes.length, 1);
+    const reopened = await f.runtime.openNoteImport!(current);
+    await reopened.importNote(NOTE.note);
+    assert.equal(f.noteCommits, 1, 'duplicate recovery does not repeat the write');
+    await reopened.dispose();
   } finally { await f.dispose(); }
 });

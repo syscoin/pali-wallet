@@ -14,7 +14,10 @@ import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
-import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
+import {
+  createOfflineTrezorHost,
+  createTestKeyringManager,
+} from '../../../../../tests/fixtures/extensionKeyring';
 import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import DAppController from '../DAppController';
 import MainController from '../MainController';
@@ -173,6 +176,7 @@ beforeEach(async () => {
   hardwareManager = new HardwareWalletManager();
   manager = createTestKeyringManager(undefined, {
     hardwareManager,
+    trezorHost: createOfflineTrezorHost(),
     captureEvmSubmission: createTestEvmSubmissionCapture(),
   });
   manager.setVaultStateGetter(() => mockStore.getState().vault);

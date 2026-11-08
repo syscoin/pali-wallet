@@ -1,4 +1,5 @@
 import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { snapshotEvmAccessList } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
 import {
   availableEvmNativeBalance,
@@ -8,11 +9,12 @@ import { evmEstimateRequest } from '../../../shared/evmEstimateRequest';
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeEstimateApproved,
-  assertSynchronousEvmFeeGuard,
   bufferEvmFeeEstimate,
   captureEvmFeeApproval,
+  captureNativeEvmFeeCoverage,
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
+import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
 import { BigNumber } from '../../../utils/ethersV6Compat';
 
 import type {
@@ -84,11 +86,17 @@ export function captureReviewedNativeEvmTransfer(
   if (
     !input ||
     input.data !== '0x' ||
-    (input.accessList !== undefined && input.accessList !== null) ||
     typeof input.from !== 'string' ||
     input.from.toLowerCase() !== from.toLowerCase() ||
     typeof input.to !== 'string' ||
-    !/^0x[\da-f]{40}$/i.test(input.to)
+    !/^0x[\da-f]{40}$/i.test(input.to) ||
+    /^0x0{40}$/i.test(input.to)
+  )
+    throw new Error('Invalid reviewed native transfer');
+  if (
+    input.accessList !== undefined &&
+    input.accessList !== null &&
+    (isLegacy || snapshotEvmAccessList(input.accessList).length !== 0)
   )
     throw new Error('Invalid reviewed native transfer');
   if (
@@ -114,6 +122,7 @@ export function captureReviewedNativeEvmTransfer(
       }
     : {
         type: 2 as const,
+        accessList: [],
         maxFeePerGas: parseEvmFeeQuantity(input.maxFeePerGas).toString(),
         maxPriorityFeePerGas: parseEvmFeeQuantity(
           input.maxPriorityFeePerGas
@@ -209,7 +218,8 @@ export async function recheckReviewedNativeEvmTransfer(
   assertEvmFeeEstimateApproved(
     review.approval,
     { ...observation, estimatedGas: BigInt(tx.gasLimit) },
-    Math.floor(performance.now())
+    Math.floor(performance.now()),
+    captureNativeEvmFeeCoverage(review.approval)
   );
   const request = { ...tx, nonce: nonce.toString() };
   const estimate = parseEvmFeeQuantity(
@@ -219,7 +229,8 @@ export async function recheckReviewedNativeEvmTransfer(
   assertEvmFeeEstimateApproved(
     review.approval,
     { ...observation, estimatedGas: estimate },
-    Math.floor(performance.now())
+    Math.floor(performance.now()),
+    captureNativeEvmFeeCoverage(review.approval)
   );
   const canonical = await read('eth_getBlockByNumber', [
     canonicalBlock.number,

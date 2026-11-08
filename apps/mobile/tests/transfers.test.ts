@@ -1,3 +1,4 @@
+import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -5,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
-import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import type { EvmUnsignedTransfer } from '../src/custody/evmFeeContracts.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
@@ -100,7 +101,7 @@ function fixture() {
       return { rawTransaction: retained.original.rawTransaction, binding: retained.binding, rates: retained.rates };
     },
     replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
-      return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
+      return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
         context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
     },
     submit: submitFixtureEvmTransaction(signedRecords),
@@ -117,9 +118,10 @@ function fixture() {
     },
     assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
-      transaction: PreparedEvmTransaction,
-      guard: () => void
+      transaction: EvmUnsignedTransfer,
+      authority: Readonly<{ assertCurrent(): void; signal: AbortSignal }>
     ) {
+      const guard = authority.assertCurrent;
       guard();
       signatures++;
       if (signGate) await signGate;
@@ -127,8 +129,9 @@ function fixture() {
       const signer = altered === 'signer'
         ? new Wallet(`0x${'22'.repeat(32)}`)
         : wallet;
+      const request = transaction.type === 2 ? { ...transaction, accessList: transaction.accessList.map(entry => ({ address: entry.address, storageKeys: [...entry.storageKeys] })) } : transaction;
       const raw = await signer.signTransaction({
-        ...transaction,
+        ...request,
         ...(altered === 'signer' ? { from: signer.address } : {}),
         nonce: Number(transaction.nonce),
         ...(altered === 'value' ? { value: '999' } : {}),

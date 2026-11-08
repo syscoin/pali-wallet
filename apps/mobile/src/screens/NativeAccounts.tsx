@@ -33,8 +33,8 @@ import {
 } from '../ui';
 
 type Form = {
-  accountType?: 'HDAccount' | 'Imported';
-  kind: 'create' | 'rename' | 'remove';
+  accountType?: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger' | 'Trezor';
+  kind: 'create' | 'create-smart' | 'rename' | 'remove';
   id?: string;
   index?: number;
   label: string;
@@ -68,12 +68,16 @@ export function NativeAccounts({
   controller,
   onBack,
   onImport,
+  onLedger,
+  onTrezor,
   networkLabel = 'EVM',
 }: {
   controller: NativeAccountView;
   networkLabel?: string;
   onBack(): void;
   onImport?(): void;
+  onLedger?(): void;
+  onTrezor?(): void;
 }) {
   const [form, setForm] = useState<Form | null>(null);
   const [name, setName] = useState('');
@@ -176,8 +180,8 @@ export function NativeAccounts({
       return;
     let entered = password;
     const request: NativeAccountRequest =
-      form.kind === 'create'
-        ? { kind: 'create', label: name.trim(), password: entered }
+      form.kind === 'create' || form.kind === 'create-smart'
+        ? { kind: form.kind, label: name.trim(), password: entered }
         : form.kind === 'remove'
         ? { kind: 'remove', id: form.id!, password: entered }
         : { kind: 'rename', id: form.id!, label: name.trim() };
@@ -215,6 +219,8 @@ export function NativeAccounts({
   const needsPassword = form && form.kind !== 'rename';
   const title = !form
     ? 'Accounts'
+    : form.kind === 'create-smart'
+    ? 'Create a smart account'
     : form.kind === 'create'
     ? 'Add an account'
     : form.kind === 'remove'
@@ -248,6 +254,10 @@ export function NativeAccounts({
                 title="Add account"
                 onPress={() => open({ kind: 'create', label: '' })}
               />
+              {controller.supportsSmartAccounts?.() && <Button title="Create smart account" variant="secondary"
+                onPress={() => open({ kind: 'create-smart', label: '' })} />}
+              {onLedger && <Button title="Connect Ledger" variant="secondary" onPress={onLedger} />}
+              {onTrezor && <Button title="Connect Trezor" variant="secondary" onPress={onTrezor} />}
               {onImport && (
                 <Button
                   title="Import private key"
@@ -287,9 +297,9 @@ export function NativeAccounts({
                   )}
                 </View>
                 <Text style={s.kind}>
-                  {account.type === 'Imported'
-                    ? 'Imported key · Separate backup'
-                    : 'Recovery phrase account'}
+                  {account.type === 'Imported' ? 'Imported key · Separate backup'
+                    : account.type === 'SmartAccount' ? 'Smart account · ECDSA owner'
+                    : account.type === 'Ledger' ? 'Ledger hardware wallet' : 'Recovery phrase account'}
                 </Text>
                 <Text selectable style={s.address}>
                   {account.address}
@@ -347,8 +357,8 @@ export function NativeAccounts({
             form ? (
               <Button
                 title={
-                  form.kind === 'create'
-                    ? 'Create account'
+                  form.kind === 'create-smart' ? 'Create smart account'
+                    : form.kind === 'create' ? 'Create account'
                     : form.kind === 'remove'
                     ? 'Remove from this device'
                     : 'Save name'
@@ -402,7 +412,9 @@ export function NativeAccounts({
                   <Notice
                     title="Your funds stay at this address"
                     body={
-                      form.accountType === 'Imported'
+                      form.accountType === 'Ledger' || form.accountType === 'Trezor' ? `Removing this local account keeps its keys on your ${form.accountType}. Connect the same device to add it again.`
+                        : form.accountType === 'SmartAccount' ? 'Removing this local record does not move funds or change its on-chain owners. Keep the account address and wallet backup.'
+                        : form.accountType === 'Imported'
                         ? 'Removing this account removes its saved key from this wallet. Your recovery phrase cannot restore it. Keep the original key backed up separately. This does not move funds or cancel transactions.'
                         : 'Removing this account removes its local record. Add account reuses the next available recovery-phrase account. This does not move funds or cancel transactions.'
                     }
@@ -429,8 +441,8 @@ export function NativeAccounts({
                   {field('Account name', name, setName)}
                   {form.kind !== 'rename' && (
                     <Notice
-                      title="One recovery phrase, another address"
-                      body="This account is derived from your existing recovery phrase. Keep that phrase backed up offline."
+                      title={form.kind === 'create-smart' ? 'Managed by your wallet' : 'One recovery phrase, another address'}
+                      body={form.kind === 'create-smart' ? 'Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.' : 'This account is derived from your existing recovery phrase. Keep that phrase backed up offline.'}
                     />
                   )}
                 </>

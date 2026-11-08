@@ -33,7 +33,7 @@ const maximum = (
   BigInt(approved.maxFeePerGas) * BigInt(approved.gasLimit)
 ).toString();
 const hex = (value: string | number) => `0x${BigInt(value).toString(16)}`;
-const capture = (input = approved) =>
+const capture = (input: Record<string, unknown> = approved) =>
   captureReviewedNativeEvmTransfer(
     input,
     false,
@@ -43,6 +43,47 @@ const capture = (input = approved) =>
     {},
     'fixture'
   );
+
+it('keeps the ordinary native-send restriction on zero-address recipients', () => {
+  expect(() => capture({ ...approved, to: `0x${'0'.repeat(40)}` })).toThrow(
+    'Invalid reviewed native transfer'
+  );
+});
+
+it('recaptures a canonical type2 review after automatic nonce allocation', () => {
+  const first = capture({ ...approved, nonce: undefined });
+  const second = capture({ ...first.transaction, nonce: 10 });
+  expect(second.transaction).toEqual({ ...first.transaction, nonce: '10' });
+  expect(second.transaction).toHaveProperty('accessList', []);
+  expect(second.nonce).toBe(BigInt(10));
+});
+
+it('rejects nonempty and malformed access lists in ordinary reviews', () => {
+  const accessorList: unknown[] = [];
+  Object.defineProperty(accessorList, '0', {
+    get() {
+      throw new Error('Access list getter must not execute');
+    },
+  });
+  for (const accessList of [
+    [{ address: recipient, storageKeys: [] }],
+    {},
+    accessorList,
+  ]) {
+    expect(() => capture({ ...approved, accessList })).toThrow();
+  }
+  expect(() =>
+    captureReviewedNativeEvmTransfer(
+      { ...approved, accessList: [], gasPrice: '1' },
+      true,
+      '25200',
+      sender,
+      chainId,
+      {},
+      'fixture'
+    )
+  ).toThrow('Invalid reviewed native transfer');
+});
 
 function fixture() {
   const abort = new AbortController();
@@ -286,6 +327,7 @@ it.each([0, 9])(
       );
       expect(transaction).toEqual({
         ...approved,
+        accessList: [],
         from: getAddress(sender),
         to: getAddress(recipient),
         type: 2,
@@ -307,6 +349,7 @@ it.each([0, 9])(
           value: hex(approved.value),
           data: '0x',
           type: '0x2',
+          accessList: [],
           chainId: hex(chainId),
           nonce: nonce === 0 ? '0x0' : '0x9',
           maxFeePerGas: hex(approved.maxFeePerGas),

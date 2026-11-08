@@ -145,7 +145,7 @@ describe('transaction approval submission lifetime', () => {
       route: config.popupRoute!,
       data: request.startsWith('sys_sign')
         ? { ...utxoPsbt, approvedContext: utxoContext }
-        : { approvedContext, ...batch },
+        : { approvedContext, ...batch, ...(batch ? { calls: [{}, {}] } : {}) },
       signal,
     });
     await new Promise(setImmediate);
@@ -179,7 +179,13 @@ describe('transaction approval submission lifetime', () => {
     method: string,
     sourceSender: any = sender(),
     params: any[] = method === 'sendAndSaveEthTransaction'
-      ? [{ nonce: 4 }]
+      ? [
+          { nonce: 4 },
+          false,
+          undefined,
+          undefined,
+          { genericReviewId: 'review-id' },
+        ]
       : [{}]
   ) =>
     new Promise<any>((resolve) => {
@@ -472,7 +478,8 @@ describe('transaction approval submission lifetime', () => {
           data.host,
           batch.bundleId,
           descriptor,
-          batch.reservationId
+          batch.reservationId,
+          approvedContext.account.address
         );
         await recordSendCallsBundle(data.host, batch.bundleId, {
           ...descriptor,
@@ -571,9 +578,18 @@ describe('transaction approval submission lifetime', () => {
                 false,
                 undefined,
                 undefined,
-                { sendCallsSubmissionId: submissionId },
+                {
+                  sendCallsSubmissionId: submissionId,
+                  genericReviewId: 'review-id',
+                },
               ]
-            : [{ nonce }]
+            : [
+                { nonce },
+                false,
+                undefined,
+                undefined,
+                { genericReviewId: 'review-id' },
+              ]
         );
       if (outcome === 'earlier-ack') {
         send.mockResolvedValueOnce(acknowledgement);

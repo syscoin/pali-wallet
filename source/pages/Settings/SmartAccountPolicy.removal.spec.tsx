@@ -190,6 +190,8 @@ beforeEach(() => {
       return mockMetadata;
     }
     if (method === 'getSLHDSASmartAccountSetupStatus') return null;
+    if (method === 'getSmartAccountGuardianRemovalStatus')
+      return { status: 'retry-ready', transactions: [], totalPending: 0 };
     if (method === 'getSmartAccountGuardianRecoveryStatus')
       return {
         delay: '600',
@@ -815,4 +817,99 @@ test('unreadable cleanup after a failed retry cannot overwrite a newer window ma
   render(<SmartAccountPolicy />);
   await screen.findByRole('button', { name: CHECK });
   expect(localStorage.getItem(removalKey)).toBe(newer);
+});
+
+test.each(['install', 'update'] as const)(
+  'the live guardian %s action uses the shared configured executor and current approval',
+  async (kind) => {
+    mockMetadata = metadata(57057, kind === 'update');
+    mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata;
+    render(<SmartAccountPolicy />);
+    const guardian = await screen.findByPlaceholderText(
+      'settings.smartAccountGuardianAddress'
+    );
+    fireEvent.change(guardian, { target: { value: OWNER } });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryDelayThreeDays',
+      })
+    );
+    const action = await screen.findByRole('button', {
+      name:
+        kind === 'install'
+          ? 'settings.smartAccountGuardianRecoveryConnect'
+          : 'settings.smartAccountGuardianRecoveryUpdate',
+    });
+    await waitFor(() =>
+      expect((action as HTMLButtonElement).disabled).toBe(false)
+    );
+    fireEvent.click(action);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    const submission = mockSubmit.mock.calls[0][0];
+    expect(submission.expectedContext).toMatchObject({
+      account: { id: 1, type: 'SmartAccount', address: ACCOUNT },
+      chainId: 57057,
+      sessionGeneration: 7,
+    });
+    expect(submission.waitForConfirmation).toBe(true);
+    expect(submission.executions).toHaveLength(kind === 'install' ? 1 : 2);
+    const install = submission.executions.at(-1);
+    expect(install.target).toBe(ACCOUNT);
+    const [moduleType, moduleAddress] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'installModule',
+        install.data
+      );
+    expect(Number(moduleType)).toBe(2);
+    expect(moduleAddress.toLowerCase()).toBe(
+      getPaliModuleAddress(57057, 'guardian-recovery').toLowerCase()
+    );
+    if (kind === 'update') {
+      const removal = paliSmartAccountInterface.decodeFunctionData(
+        'uninstallModule',
+        submission.executions[0].data
+      );
+      expect(Number(removal[0])).toBe(2);
+      expect(removal[1]).toBe(MODULE);
+    }
+  }
+);
+
+test.each(['pending', 'unknown'])(
+  'a saved %s removal blocks another review before signing',
+  async (status) => {
+    const emit = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (method: string[], ...args: any[]) => {
+      if (method[1] === 'getSmartAccountGuardianRemovalStatus')
+        return { status, transactions: [], totalPending: 1 };
+      return emit(method, ...args);
+    });
+    render(<SmartAccountPolicy />);
+    fireEvent.click(await screen.findByRole('button', { name: REMOVE }));
+    await screen.findByRole('button', { name: CHECK });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(mockBroadcast).not.toHaveBeenCalled();
+    expect(localStorage.getItem(removalKey)).not.toBeNull();
+  }
+);
+
+test('an unresolved removal found after confirmation prevents broadcast', async () => {
+  let inspections = 0;
+  const emit = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (method: string[], ...args: any[]) => {
+    if (method[1] === 'getSmartAccountGuardianRemovalStatus')
+      return {
+        status: ++inspections === 1 ? 'retry-ready' : 'pending',
+        transactions: [],
+        totalPending: 1,
+      };
+    return emit(method, ...args);
+  });
+  render(<SmartAccountPolicy />);
+  await openConfirmation();
+  await confirm();
+  await waitFor(() => expect(inspections).toBe(2));
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalled();
 });

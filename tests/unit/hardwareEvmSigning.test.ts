@@ -12,7 +12,8 @@ import { HardwareWalletManager } from '@sidhujag/sysweb3-keyring/cjs/hardware-wa
 import { LedgerKeyring } from '@sidhujag/sysweb3-keyring/cjs/ledger';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 import { TrezorKeyring } from '@sidhujag/sysweb3-keyring/cjs/trezor';
-import TrezorTransport from '@sidhujag/sysweb3-keyring/cjs/trezor/connect';
+import { createTrezorConnection } from '@sidhujag/sysweb3-keyring/cjs/trezor/connect';
+import { createTrezorWebExtensionHost } from '@sidhujag/sysweb3-keyring/cjs/trezor/webextension-host';
 import { Interface } from 'ethers/abi';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
@@ -46,6 +47,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
     let device: jest.Mock;
     let transport: any;
     let manager: any;
+    let trezorTransport: ReturnType<typeof createTrezorConnection> | undefined;
     let getPrivateKey: jest.Mock;
     let expectedUnsigned: string;
     let deviceBytes: Buffer;
@@ -70,6 +72,16 @@ describe.each(['Ledger', 'Trezor'] as const)(
       sdk.sendFormattedTransaction(params(legacy), legacy, {
         assertCurrent: () => undefined,
         mode: 'specialized',
+        selectedAccount: {
+          id: state.activeAccountId,
+          type: state.activeAccountType,
+          expectedAddress: wallet.address,
+        },
+        targetAccount: {
+          id: state.activeAccountId,
+          type: state.activeAccountType,
+          expectedAddress: wallet.address,
+        },
       });
     const finishDelay = async () => {
       // Advance only the installed Trezor adapter's documented popup interval.
@@ -92,13 +104,16 @@ describe.each(['Ledger', 'Trezor'] as const)(
         windows: { getCurrent: jest.fn() },
       });
       if (kind === 'Trezor') {
-        await TrezorTransport.init({
-          manifest: {
-            appName: 'Pali public fixture',
-            appUrl: 'https://paliwallet.com',
-            email: 'test@example.invalid',
-          },
-        });
+        trezorTransport = createTrezorConnection(
+          createTrezorWebExtensionHost({
+            manifest: {
+              appName: 'Pali public fixture',
+              appUrl: 'https://paliwallet.com',
+              email: 'test@example.invalid',
+            },
+          })
+        );
+        await trezorTransport.init();
       }
       const denyNetwork = () => {
         throw new Error('Hardware fixture must not access a network');
@@ -180,6 +195,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
       const ledger = new LedgerKeyring(manager, transport);
       const trezor: any = Object.create(TrezorKeyring.prototype);
       trezor.initialized = true;
+      trezor.connection = trezorTransport;
       trezor.hardwareWalletManager = manager;
       trezor.paths = {};
       (TrezorConnect.ethereumSignTransaction as jest.Mock).mockImplementation(
@@ -224,7 +240,9 @@ describe.each(['Ledger', 'Trezor'] as const)(
       });
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+      await trezorTransport?.retire();
+      trezorTransport = undefined;
       expect(getPrivateKey).not.toHaveBeenCalled();
       for (const spy of networkSpies) expect(spy).not.toHaveBeenCalled();
       jest.restoreAllMocks();
@@ -465,7 +483,20 @@ describe.each(['Ledger', 'Trezor'] as const)(
       const sending = sdk.sendFormattedTransaction(
         { ...params(), data, gasLimit: '200000' },
         false,
-        { assertCurrent: () => undefined, mode: 'specialized' }
+        {
+          assertCurrent: () => undefined,
+          mode: 'specialized',
+          selectedAccount: {
+            id: state.activeAccountId,
+            type: state.activeAccountType,
+            expectedAddress: wallet.address,
+          },
+          targetAccount: {
+            id: state.activeAccountId,
+            type: state.activeAccountType,
+            expectedAddress: wallet.address,
+          },
+        }
       );
       await finishDelay();
       await sending;

@@ -3,8 +3,13 @@ import {
   bufferedEvmGasLimit,
   parseEvmFeeQuantity,
 } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import {
+  snapshotEvmAccessList,
+  type EvmAccessList,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { getAddress } from 'ethers/address';
 
+import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
 import {
   EVM_NATIVE_INTRINSIC_GAS,
   getEvmTransferCost,
@@ -28,11 +33,16 @@ export type EvmFeeEnvelope = Readonly<
     from: string;
     gasLimit: string;
     nonce?: string;
-    to: string;
+    to: string | null;
     value: string;
   } & (
     | { gasPrice: string; type: 0 }
-    | { maxFeePerGas: string; maxPriorityFeePerGas: string; type: 2 }
+    | {
+        accessList: EvmAccessList;
+        maxFeePerGas: string;
+        maxPriorityFeePerGas: string;
+        type: 2;
+      }
   )
 >;
 
@@ -44,19 +54,66 @@ export type EvmFeeApproval = Readonly<{
   transaction: EvmFeeEnvelope;
 }>;
 
+export type EvmFeeFunding = Readonly<{ kind: 'native' | 'verified-credit' }>;
+export type EvmFeeCoverage = Readonly<{ coveredFeeUnits: string }>;
+export const NATIVE_EVM_FEE_FUNDING: EvmFeeFunding = Object.freeze({
+  kind: 'native',
+});
+const fundingVerifiers = new WeakMap<
+  EvmFeeFunding,
+  (approval: EvmFeeApproval, guard: () => void) => Promise<bigint>
+>();
+const issuedCoverage = new WeakMap<EvmFeeCoverage, EvmFeeApproval>();
+
+/** Host-private funding capability. Callers must bind the verifier to its exact owned operation. */
+export function createOwnedEvmFeeFunding(
+  verify: (approval: EvmFeeApproval, guard: () => void) => Promise<bigint>
+): EvmFeeFunding {
+  const funding = Object.freeze({ kind: 'verified-credit' as const });
+  fundingVerifiers.set(funding, verify);
+  return funding;
+}
+
+export function captureNativeEvmFeeCoverage(
+  approval: EvmFeeApproval
+): EvmFeeCoverage {
+  const coverage = Object.freeze({ coveredFeeUnits: '0' });
+  issuedCoverage.set(coverage, approval);
+  return coverage;
+}
+
+export async function resolveEvmFeeFunding(
+  funding: EvmFeeFunding,
+  approval: EvmFeeApproval,
+  guard: () => void
+): Promise<EvmFeeCoverage> {
+  assertSynchronousEvmFeeGuard(guard);
+  if (funding === NATIVE_EVM_FEE_FUNDING)
+    return captureNativeEvmFeeCoverage(approval);
+  const verify = fundingVerifiers.get(funding);
+  if (!verify) throw new Error('EVM fee funding is unavailable');
+  const covered = await verify(approval, guard);
+  assertSynchronousEvmFeeGuard(guard);
+  if (boundedQuantity(covered) > BigInt(approval.maximumFeeUnits))
+    throw new Error('Invalid EVM fee coverage');
+  const coverage = Object.freeze({ coveredFeeUnits: covered.toString() });
+  issuedCoverage.set(coverage, approval);
+  return coverage;
+}
+
+export function getEvmCoveredFee(
+  approval: EvmFeeApproval,
+  coverage: EvmFeeCoverage
+): bigint {
+  if (issuedCoverage.get(coverage) !== approval)
+    throw new Error('EVM fee coverage does not match approval');
+  return quantity(coverage.coveredFeeUnits);
+}
+
 const issuedApprovals = new WeakSet<object>();
 const invalid = (message: string): never => {
   throw new Error(message);
 };
-
-export function assertSynchronousEvmFeeGuard(guard: () => void): void {
-  const result: unknown = guard();
-  if (result !== undefined) {
-    if (result && (typeof result === 'object' || typeof result === 'function'))
-      void Promise.resolve(result).catch(() => undefined);
-    invalid('EVM fee approval guard must be synchronous');
-  }
-}
 
 function quantity(value: unknown): bigint {
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(value))
@@ -72,7 +129,7 @@ function boundedQuantity(value: bigint): bigint {
   return value;
 }
 
-/** Copy own scalar data before any asynchronous approval or provider work. */
+/** Copy the complete execution envelope before asynchronous approval or provider work. */
 export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
   if (
     !input ||
@@ -92,7 +149,9 @@ export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
     'data',
     'gasLimit',
     'type',
-    ...(type === 0 ? ['gasPrice'] : ['maxFeePerGas', 'maxPriorityFeePerGas']),
+    ...(type === 0
+      ? ['gasPrice']
+      : ['accessList', 'maxFeePerGas', 'maxPriorityFeePerGas']),
     ...(Object.hasOwn(descriptors, 'nonce') ? ['nonce'] : []),
   ];
   if (
@@ -109,15 +168,14 @@ export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
   }
   if (
     typeof data.from !== 'string' ||
-    typeof data.to !== 'string' ||
+    (data.to !== null && typeof data.to !== 'string') ||
     typeof data.data !== 'string' ||
     !/^0x(?:[0-9a-f]{2})*$/.test(data.data)
   )
     return invalid('Invalid EVM fee envelope');
   const from = getAddress(data.from),
-    to = getAddress(data.to);
-  if (/^0x0{40}$/i.test(from) || /^0x0{40}$/i.test(to))
-    return invalid('Invalid EVM fee envelope');
+    to = typeof data.to === 'string' ? getAddress(data.to) : null;
+  if (/^0x0{40}$/i.test(from)) return invalid('Invalid EVM fee envelope');
   const chainId = quantity(data.chainId),
     value = quantity(data.value);
   const gasLimit = assertEvmGasLimit(quantity(data.gasLimit), chainId);
@@ -148,6 +206,7 @@ export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
   return Object.freeze({
     ...common,
     type,
+    accessList: snapshotEvmAccessList(data.accessList),
     maxFeePerGas: cap.toString(),
     maxPriorityFeePerGas: tip.toString(),
   });
@@ -278,9 +337,11 @@ export function assertEvmFeeEstimateApproved(
     estimatedGas: bigint;
     sampledBlockGasLimit: bigint;
   }>,
-  now: number
+  now: number,
+  coverage: EvmFeeCoverage
 ): void {
   assertEvmFeeApprovalCurrent(approval, now);
+  const coveredFee = getEvmCoveredFee(approval, coverage);
   const transaction = approval.transaction;
   const gasLimit = BigInt(transaction.gasLimit);
   assertEvmGasLimit(
@@ -293,7 +354,10 @@ export function assertEvmFeeEstimateApproved(
     observed.estimatedGas > gasLimit
   )
     invalid('Reviewed EVM gas limit is no longer sufficient');
-  if (boundedQuantity(observed.balance) < BigInt(approval.maximumTotalUnits))
+  if (
+    boundedQuantity(observed.balance) <
+    BigInt(approval.maximumTotalUnits) - coveredFee
+  )
     throw new EvmFeeBalanceError();
   if (
     transaction.type === 2 &&

@@ -172,7 +172,8 @@ test('ordinary dapp transaction review preserves every native-value decimal befo
         if (method === 'eth_estimateGas') {
           const tx = params[0];
           if (
-            params.length !== 1 ||
+            params.length !== 2 ||
+            params[1] !== 'pending' ||
             String(tx?.from).toLowerCase() !== from.toLowerCase() ||
             String(tx?.to).toLowerCase() !== to.toLowerCase() ||
             tx?.data !== '0x' ||

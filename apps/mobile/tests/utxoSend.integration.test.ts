@@ -1,3 +1,4 @@
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -594,14 +595,14 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     return storage;
   };
   const reader = createUtxoBalanceReader({ fetch: fetcher });
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   let interceptExport: ((key: string) => Promise<string>) | undefined;
   let exports = 0;
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage,
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: class extends sdk.SoftwareKeyring {
-      constructor(...args: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+    loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {
+      constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
         super(...args);
         const unwrap = this.getPrivateKeyByAccountId;
         this.getPrivateKeyByAccountId = async (...input) => {
@@ -1100,7 +1101,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     const nextPassword = 'PUBLIC changed WIF fixture password 2!';
     owner.lock();
     const recovery = new NativeRecoveryCoordinator({
-      owner, retireControllers() {}, ensureCryptoReady: async () => undefined, openStorage,
+      owner, async retireControllers() {}, ensureCryptoReady: async () => undefined, openStorage,
     });
     try {
       const proof = await recovery.prepare(phrase, nextPassword, current);

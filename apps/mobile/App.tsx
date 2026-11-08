@@ -1,3 +1,4 @@
+import { NativePairingInbox, observePairingLinks } from './src/connections/pairingLinks';
 import { securityPreferences, watchIdle, custodyIdle } from './src/platform/security';
 import { IdleActivityBoundary, IdleTextInput, IdlePressable } from './src/screens/IdleActivityBoundary';
 import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
@@ -9,6 +10,7 @@ import {
   Platform,
   AppState,
   AccessibilityInfo,
+  Linking,
   BackHandler,
   Share,
   KeyboardAvoidingView,
@@ -198,6 +200,9 @@ type Sheet = 'send' | 'receive' | 'filter' | 'accounts';
 type AppProps = { availableWatchNetworks?: readonly WatchAccountNetwork[] };
 function AppContent({ availableWatchNetworks }: AppProps) {
   const [watchAccounts] = useState(() => new WatchAccounts(publicAccountRecords));
+  const [pairingInbox] = useState(() => new NativePairingInbox());
+  const incomingPairing = useSyncExternalStore(pairingInbox.subscribe, pairingInbox.getSnapshot, pairingInbox.getSnapshot);
+  const pairingHandled = useCallback((id: string) => pairingInbox.consume(id), [pairingInbox]);
   const watchState = useSyncExternalStore(watchAccounts.subscribe, watchAccounts.getSnapshot, watchAccounts.getSnapshot);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [requestedHdId, setRequestedHdId] = useState<string | undefined>();
@@ -257,10 +262,33 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const foreground = useRef(
     Platform.OS === 'web' || AppState.currentState === 'active'
   );
-  const go = (next: Route) => {
+  const go = useCallback((next: Route) => {
     navigationGeneration.current++;
+    if (next !== 'native') {
+      const pending = pairingInbox.getSnapshot();
+      if (pending) pairingInbox.consume(pending.id);
+    }
     setRoute(next);
-  };
+  }, [pairingInbox]);
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    const navigation = navigationGeneration.current;
+    const close = observePairingLinks(Linking, (value) => {
+      const entry = pairingInbox.offer(value);
+      if (!entry) return;
+      // A link opens connection review without choosing or persisting an account.
+      setRequestedHdId(undefined);
+      authority.current?.lock();
+      setPreview(false);
+      setSheet(null);
+      go('native');
+    }, () => navigationGeneration.current === navigation);
+    return () => {
+      close();
+      const pending = pairingInbox.getSnapshot();
+      if (pending) pairingInbox.consume(pending.id);
+    };
+  }, [go, pairingInbox, setSheet]);
   const rememberSelection = (selection: AccountSelection | null) => {
     if ((!selection && !lastSelection.current) || (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id)) return;
     lastSelection.current = selection;
@@ -309,6 +337,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   };
   useEffect(() => {
     let active = true;
+    const navigation = navigationGeneration.current;
     void (async () => {
       try {
         const next = await watchAccounts.load().then(() => watchAccounts.getSnapshot());
@@ -317,15 +346,15 @@ function AppContent({ availableWatchNetworks }: AppProps) {
         if (!active) return;
         try {
           const saved = await loadAccountSelection();
-          if (!active) return;
+          if (!active || navigationGeneration.current !== navigation) return;
           lastSelection.current = saved;
           if (saved?.kind === 'watch' && next.accounts.some((entry) => entry.id === saved.id)) {
             // Restore only an advisory choice; the authority remains privacy-locked.
             authority.current?.restoreSelection(saved.id);
           }
-          if (saved && saved.kind !== 'watch' && Platform.OS !== 'web') { setRequestedHdId(saved.id); go('native'); }
-          else if (next.accounts.length) go('locked');
-        } catch { if (active) { setSelectionError('Your last account choice could not be read. Your accounts are unchanged.'); if (next.accounts.length) go('locked'); } }
+          if (saved && saved.kind !== 'watch' && Platform.OS !== 'web') { setRequestedHdId(saved.id); setRoute('native'); }
+          else if (next.accounts.length) setRoute('locked');
+        } catch { if (active && navigationGeneration.current === navigation) { setSelectionError('Your last account choice could not be read. Your accounts are unchanged.'); if (next.accounts.length) setRoute('locked'); } }
       } catch (cause) { if (active) setStartupError(cause instanceof Error ? cause.message : 'Your saved accounts could not be read. Nothing has been replaced.'); }
       finally { if (active) setLoading(false); }
     })();
@@ -350,7 +379,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       }
     });
     return () => { sub.remove(); blur?.remove(); };
-  }, [preview, requestedRoute, setSheet]);
+  }, [preview, requestedRoute, setSheet, go]);
   useEffect(() => {
     if (route === 'design' || route === 'native' || route === 'accounts' || route === 'add' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -365,7 +394,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       return false;
     });
     return () => sub.remove();
-  }, [route, sheet, setSheet]);
+  }, [route, sheet, setSheet, go]);
   const activeAccount = snapshot.accounts.find(
     (a) => a.id === snapshot.selectedAccountId
   );
@@ -526,7 +555,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   } : {};
   const accountActions = { ...watchNetworkActions, watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
-  if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
+  if (route === 'native') return <><NativeWalletScreen onExit={exit} incomingPairing={incomingPairing} onPairingHandled={pairingHandled} initialAccountId={requestedHdId} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
     active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
     onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}

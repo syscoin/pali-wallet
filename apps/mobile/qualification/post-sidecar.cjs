@@ -5,7 +5,7 @@ const { PUBLIC_POOL_FAILURE_FILE, PUBLIC_POOL_FAILURE_BYTES } = require('./publi
 const MAX_SIDECAR_BYTES = 8192;
 function sidecarName(name) {
   if (name === PUBLIC_POOL_FAILURE_FILE) return name;
-  if (typeof name !== 'string' || !/^pali-native-(?:http|post|public-pool)-[0-9a-f]{32}\.json$/.test(name)) throw Error('HTTP_SIDECAR_INVALID');
+  if (typeof name !== 'string' || !/^pali-native-(?:http|post|walletconnect|public-pool|private-proof)-[0-9a-f]{32}\.json$/.test(name)) throw Error('HTTP_SIDECAR_INVALID');
   return name;
 }
 const sidecarLimit = (name) => name === PUBLIC_POOL_FAILURE_FILE ? PUBLIC_POOL_FAILURE_BYTES : MAX_SIDECAR_BYTES;

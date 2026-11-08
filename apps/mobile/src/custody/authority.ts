@@ -87,6 +87,30 @@ export class NativeCustodyAuthority {
     }, expectedRevision);
   }
 
+  /** A connection request selects through the same owned context publication as account management. */
+  selectConnectionAccount(accountId: string, expectedRevision: number, assertRequestCurrent: () => void): Promise<void> {
+    const checkRequest = () => {
+      const result: unknown = assertRequestCurrent();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new CustodyOperationError('CANCELLED');
+      }
+    };
+    checkRequest();
+    const catalogue = this.getCatalogue();
+    if (!catalogue) return Promise.reject(new CustodyOperationError('NOT_READY'));
+    return this.manageContext((runtime) => {
+      if (!runtime.accounts) throw new CustodyRuntimeError('NOT_READY');
+      const selection = runtime.accounts.reserve({ kind: 'select', id: accountId }, catalogue.revision);
+      return {
+        cancel: selection.cancel,
+        execute: (assertCurrent) => selection.execute(() => {
+          assertCurrent(); checkRequest(); assertCurrent();
+        }),
+      };
+    }, expectedRevision);
+  }
+
   /** Local, read-only SDK preview. The form receives only the public address. */
   async previewUtxoImport(input: NativeUtxoImportDraft, expectedRevision: number,
     expectedCatalogueRevision: number, assertCurrent: () => void): Promise<string> {
@@ -404,6 +428,24 @@ export class NativeCustodyAuthority {
     return this.authenticate('unlock', password);
   }
 
+  async getDeviceUnlockStatus(): Promise<Readonly<{ available: boolean; enabled: boolean }> | null> {
+    const runtime = this.runtime, revision = this.revision;
+    if (!runtime?.deviceUnlock || this.snapshot.phase === 'disposed') return null;
+    const status = await runtime.deviceUnlock.status();
+    const current = this.getSnapshot();
+    if (runtime !== this.runtime || revision !== this.revision || current.phase === 'disposed')
+      throw new CustodyOperationError('CANCELLED');
+    return status;
+  }
+
+  unlockWithDevice(assertCurrent: () => void): Promise<void> {
+    return this.authenticate('device-unlock', '', undefined, assertCurrent);
+  }
+
+  setDeviceUnlock(enabled: boolean, password: string, assertCurrent: () => void): Promise<void> {
+    return this.authenticate(enabled ? 'enroll-device' : 'disable-device', password, undefined, assertCurrent);
+  }
+
   /** Refresh wallet-bound setup metadata only while the same session is live. */
   refreshAuthenticatedMetadata(): Promise<void> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
@@ -477,19 +519,27 @@ export class NativeCustodyAuthority {
   }
 
   private authenticate(
-    operation: 'create' | 'import' | 'unlock',
+    operation: 'create' | 'import' | 'unlock' | 'device-unlock' | 'enroll-device' | 'disable-device',
     password: string,
-    phrase?: string
+    phrase?: string,
+    assertOwner: () => void = () => undefined
   ): Promise<void> {
+    const creating = operation === 'create' || operation === 'import';
+    const deviceUnlock = operation === 'device-unlock';
+    const settingDevice = operation === 'enroll-device' || operation === 'disable-device';
     if (
-      typeof password !== 'string' || password.length === 0 || password.length > 1024 ||
+      (!deviceUnlock && (typeof password !== 'string' || password.length === 0 || password.length > 1024)) ||
       (operation === 'import' &&
         (typeof phrase !== 'string' || phrase.length === 0 || phrase.length > 4096))
     ) return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     try { this.checkIdle(); } catch (error) { return Promise.reject(error); }
-    const expectedPhase = operation === 'unlock' ? 'locked' : 'empty';
-    if (!this.runtime || this.snapshot.phase !== expectedPhase)
+    const expectedPhase = creating ? 'empty' : 'locked';
+    if (!this.runtime || (settingDevice
+      ? !['ready', 'backup-required'].includes(this.snapshot.phase)
+      : this.snapshot.phase !== expectedPhase))
+      return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if ((deviceUnlock || settingDevice) && !this.runtime.deviceUnlock)
       return Promise.reject(new CustodyOperationError('NOT_READY'));
     const runtime = this.runtime;
     const revision = this.revision;
@@ -500,6 +550,11 @@ export class NativeCustodyAuthority {
       if (revision !== this.revision || this.snapshot.phase === 'disposed')
         throw new CustodyOperationError('CANCELLED');
       this.checkIdle();
+      const result: unknown = assertOwner();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new CustodyOperationError('CANCELLED');
+      }
       if (this.lockFailed || this.snapshot.phase === 'unavailable')
         throw new CustodyOperationError('UNAVAILABLE');
     };
@@ -520,19 +575,21 @@ export class NativeCustodyAuthority {
           operationSucceeded = true;
         }
         else {
-          const result = await runtime.session.unlock(password);
+          const result = deviceUnlock ? await runtime.deviceUnlock!.unlock(assertCurrent)
+            : settingDevice ? await runtime.deviceUnlock![operation === 'enroll-device' ? 'enroll' : 'disable'](password, assertCurrent)
+            : await runtime.session.unlock(password);
           assertCurrent();
           if (!result || typeof result.authenticated !== 'boolean')
             throw new CustodyOperationError('OPERATION_FAILED');
           if (!result.authenticated) {
-            credentialRejected = true;
-            throw new CustodyOperationError('INVALID_CREDENTIAL');
+            credentialRejected = !deviceUnlock;
+            throw new CustodyOperationError(deviceUnlock ? 'DEVICE_UNLOCK_UNAVAILABLE' : 'INVALID_CREDENTIAL');
           }
         }
         assertCurrent();
         await this.readState(true);
         assertCurrent();
-        if (operation !== 'unlock' && this.snapshot.backup !== 'unconfirmed') {
+        if (creating && this.snapshot.backup !== 'unconfirmed') {
           this.failUnavailable();
           throw new CustodyOperationError('UNAVAILABLE');
         }
@@ -552,7 +609,7 @@ export class NativeCustodyAuthority {
         // admitting the next attempt; cleanup must never target a newer session.
         this.requestLock();
         try { await this.drainLocks(); } catch { /* quarantined by requestLock */ }
-        if (attempted && operation !== 'unlock' && this.snapshot.phase !== 'disposed') {
+        if (attempted && creating && this.snapshot.phase !== 'disposed') {
           try { await this.readState(operationSucceeded); } catch { this.failUnavailable(); }
         }
         if (this.snapshot.phase === 'disposed' || revision !== this.revision) {
@@ -567,7 +624,7 @@ export class NativeCustodyAuthority {
         const code = credentialRejected ? 'INVALID_CREDENTIAL' :
           cause instanceof CustodyRuntimeError &&
           (cause.code === 'AUTH_THROTTLED' || cause.code === 'INVALID_INPUT')
-            ? cause.code : 'OPERATION_FAILED';
+            ? cause.code : deviceUnlock ? 'DEVICE_UNLOCK_UNAVAILABLE' : 'OPERATION_FAILED';
         this.publish({
           phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
           account: null,

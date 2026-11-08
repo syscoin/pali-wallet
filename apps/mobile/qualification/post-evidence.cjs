@@ -68,6 +68,7 @@ const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "source/shared/passwordPolicy.ts",
   "source/shared/networkText.ts",
   "source/shared/paliHttpIdentity.ts",
+  "source/shared/evmFeeGuard.ts",
   "source/shared/evmTransactionObservation.ts",
   "source/wallet/accountRecords.ts",
   "source/wallet/accountRecovery.ts",
@@ -89,7 +90,7 @@ function assertPostMappedSources(map, readExpected) {
     const source = map.sources[i];
     if (typeof source !== 'string') throw Error('POST_SOURCE_MAP_INVALID');
     if (source.startsWith('\0') || source.includes('/node_modules/')) continue;
-    const relative = source.startsWith('/qualification/') || source.startsWith('/src/') ? `apps/mobile${source}`
+    const relative = source.startsWith('/qualification/') || source.startsWith('/src/') || source.startsWith('/modules/') ? `apps/mobile${source}`
       : source.startsWith('/source/') ? source.slice(1) : null;
     if (!relative || relative.split('/').includes('..') || seen.has(relative) || typeof map.sourcesContent[i] !== 'string') throw Error('POST_SOURCE_MAP_INVALID');
     const expected = readExpected(relative);

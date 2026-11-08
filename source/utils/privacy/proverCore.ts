@@ -1,6 +1,6 @@
 import { bn254 } from '@noble/curves/bn254';
 
-import verificationKey from 'scripts/privacyProver/assets/verification-key.json';
+import verificationKey from '../../scripts/privacyProver/assets/verification-key.json';
 
 import type { IPrivacyProofInput, IPrivacyProofResult } from './proverTypes';
 
@@ -93,13 +93,13 @@ const g2 = (value: string[][]) => {
     !Array.isArray(value) ||
     value.length !== 3 ||
     value.some((row) => !Array.isArray(row) || row.length !== 2) ||
-    value[2][0] !== '1' ||
-    value[2][1] !== '0'
+    value[2]![0] !== '1' ||
+    value[2]![1] !== '0'
   )
     throw invalid();
   const point = bn254.G2.ProjectivePoint.fromAffine({
-    x: { c0: coordinate(value[0][0]), c1: coordinate(value[0][1]) },
-    y: { c0: coordinate(value[1][0]), c1: coordinate(value[1][1]) },
+    x: { c0: coordinate(value[0]![0]), c1: coordinate(value[0]![1]) },
+    y: { c0: coordinate(value[1]![0]), c1: coordinate(value[1]![1]) },
   });
   point.assertValidity();
   return point;
@@ -113,11 +113,11 @@ export function verifyPrivacyProof(proof: IProof, signals: string[]): boolean {
     const A = g1(proof.pi_a),
       B = g2(proof.pi_b),
       C = g1(proof.pi_c);
-    let aggregate = g1(verificationKey.IC[0]);
-    for (let i = 0; i < values.length; i++)
-      if (values[i] !== BigInt(0))
+    let aggregate = g1(verificationKey.IC[0]!);
+    for (const [i, value] of values.entries())
+      if (value !== BigInt(0))
         aggregate = aggregate.add(
-          g1(verificationKey.IC[i + 1]).multiply(values[i])
+          g1(verificationKey.IC[i + 1]!).multiply(value)
         );
     const pairs = [
       { g1: A.negate(), g2: B },
@@ -143,10 +143,10 @@ export function encodePrivacyProof(
   const coordinates = [
     proof.pi_a[0],
     proof.pi_a[1],
-    proof.pi_b[0][1],
-    proof.pi_b[0][0],
-    proof.pi_b[1][1],
-    proof.pi_b[1][0],
+    proof.pi_b[0]![1],
+    proof.pi_b[0]![0],
+    proof.pi_b[1]![1],
+    proof.pi_b[1]![0],
     proof.pi_c[0],
     proof.pi_c[1],
   ];

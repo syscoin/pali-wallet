@@ -27,6 +27,15 @@ export type DappPublicAccount = {
   xpub: string;
 };
 
+/** Account retirement uses the same type and index identity as grant selection. */
+export function matchesDappAccountIdentity(
+  grant: DappGrant,
+  accountId: number,
+  accountType: KeyringAccountType
+): boolean {
+  return grant.accountId === accountId && grant.accountType === accountType;
+}
+
 /** A UTXO grant names a stable account, even when its receive address rotates. */
 export function matchesDappAccountReference(
   grant: DappGrant | undefined,

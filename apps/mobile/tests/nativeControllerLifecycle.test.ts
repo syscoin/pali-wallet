@@ -3,12 +3,35 @@ import test from 'node:test';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 
-const deferred = () => { let resolve!: () => void; const promise = new Promise<void>((yes) => { resolve = yes; }); return { promise, resolve }; };
+const deferred = () => { let resolve!: () => void; let reject!: (error: Error) => void; const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test('retirement cancels native authentication before locking and closing its owner', async () => {
+  const events: string[] = [];
+  const lifecycle = new NativeControllerLifecycle({
+    async protect() {},
+    create: () => ({
+      authentication: { cancel() { events.push('cancel-authentication'); } },
+      authority: {
+        getSnapshot: () => ({ phase: 'locked' as const, presence: 'existing' as const, backup: 'confirmed' as const, revision: 0, account: null, error: null }),
+        async initialize() {}, lock() { events.push('lock'); }, async dispose() { events.push('close'); },
+      },
+      keyExport: { dispose() {} }, backup: { dispose() {} },
+      disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
+    }),
+    recovery: () => ({ cancel() {}, async dispose() {} }),
+  });
+  const token = {};
+  await lifecycle.acquire(token, () => true);
+  await lifecycle.release(token);
+  assert.deepEqual(events, ['cancel-authentication', 'lock', 'close']);
+});
+
 function fixture() {
   const events: string[] = []; let count = 0;
   let close: Promise<void> = Promise.resolve(), recoveryClose: Promise<void> = Promise.resolve();
   let removalClose: Promise<void> = Promise.resolve(), removed = false;
+  let connectionClose = () => Promise.resolve();
   let onLock = () => {}, onCreate = () => {}, onRecovery = () => {};
   let presence: 'existing' | 'empty' = 'existing';
   const gate = new NativeControllerLifecycle({
@@ -19,6 +42,7 @@ function fixture() {
       return {
         authority: { getSnapshot: () => state, async initialize() { events.push(`init${id}`); }, lock() { events.push(`lock${id}`); onLock(); }, async dispose() { events.push(`close${id}`); await close; state = { ...state, phase: 'disposed' }; } },
         backup: { dispose() { events.push(`backup${id}`); } }, keyExport: { dispose() {} }, disposeTokens() {}, disposeTransfers() {},
+        disposeConnections() { events.push(`connections-close${id}`); return connectionClose(); },
         removal: { cancel() {}, async dispose() { await removalClose; }, hasVerifiedRemoval() { return removed; } },
       };
     },
@@ -26,8 +50,63 @@ function fixture() {
   });
   return { gate, events, count: () => count, closing(value: Promise<void>) { close = value; }, recoveryClosing(value: Promise<void>) { recoveryClose = value; },
     onLock(value: () => void) { onLock = value; }, onCreate(value: () => void) { onCreate = value; }, onRecovery(value: () => void) { onRecovery = value; }, empty() { presence = 'empty'; },
-    removalClosing(value: Promise<void>) { removalClose = value; }, verifyRemoval() { removed = true; } };
+    removalClosing(value: Promise<void>) { removalClose = value; }, verifyRemoval() { removed = true; },
+    connectionClosing(value: () => Promise<void>) { connectionClose = value; } };
 }
+
+for (const mode of ['release', 'replacement'] as const) test(`${mode} drains connections before closing storage or admitting a replacement`, async () => {
+  const f = fixture(), first = {}, next = {}, connections = deferred();
+  await f.gate.acquire(first, () => true);
+  f.connectionClosing(() => connections.promise);
+  const retiring = mode === 'release' ? f.gate.release(first) : undefined;
+  const opening = f.gate.acquire(next, () => true);
+  assert(f.events.includes('lock1'));
+  assert(f.events.includes('connections-close1'));
+  assert(f.events.indexOf('lock1') < f.events.indexOf('connections-close1'));
+  await tick();
+  assert(!f.events.includes('close1'));
+  assert.equal(f.count(), 1);
+  connections.resolve();
+  await retiring;
+  assert(await opening);
+  assert(f.events.indexOf('connections-close1') < f.events.indexOf('close1'));
+  assert(f.events.indexOf('close1') < f.events.indexOf('create2'));
+  assert.equal(f.events.filter((event) => event === 'connections-close1').length, 1);
+  await f.gate.release(next);
+});
+
+test('failed connection drain still closes authority before rejecting release and replacement', async () => {
+  const f = fixture(), first = {}, connections = deferred(), authority = deferred();
+  await f.gate.acquire(first, () => true);
+  f.connectionClosing(() => connections.promise);
+  f.closing(authority.promise);
+  const retiring = f.gate.release(first), opening = f.gate.acquire({}, () => true);
+  const rejectedRetirement = assert.rejects(retiring, { message: 'REOPEN_REQUIRED' });
+  const rejectedReplacement = assert.rejects(opening, { message: 'REOPEN_REQUIRED' });
+  let settled = false;
+  void retiring.catch(() => { settled = true; });
+  await tick();
+  assert(!f.events.includes('close1'));
+  connections.reject(new Error('private transport error'));
+  await tick();
+  assert(f.events.includes('close1'));
+  assert.equal(settled, false);
+  assert.equal(f.count(), 1);
+  authority.resolve();
+  await Promise.all([rejectedRetirement, rejectedReplacement]);
+  assert.equal(f.count(), 1);
+});
+
+test('synchronous connection cleanup failure still retires authority and blocks replacement', async () => {
+  const f = fixture(), first = {};
+  await f.gate.acquire(first, () => true);
+  f.connectionClosing(() => { throw new Error('private transport error'); });
+  await assert.rejects(f.gate.release(first), { message: 'REOPEN_REQUIRED' });
+  assert(f.events.includes('lock1'));
+  assert(f.events.includes('close1'));
+  await assert.rejects(f.gate.acquire({}, () => true), { message: 'REOPEN_REQUIRED' });
+  assert.equal(f.count(), 1);
+});
 
 test('new mount waits for both recovery and authority drain, with synchronous revocation', async () => {
   const f = fixture(), first = {}, next = {}, close = deferred(), recovery = deferred();

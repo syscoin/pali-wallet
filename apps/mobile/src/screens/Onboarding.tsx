@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 
@@ -49,73 +50,111 @@ function BrandMark({ small = false }: { small?: boolean }) {
   return <PaliMark size={small ? 32 : 112} />;
 }
 
-export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps) {
+export function Welcome({
+  onPreview,
+  onWatch,
+  onDesign,
+  onWallet,
+}: WelcomeProps) {
+  const compact = useWindowDimensions().height < 740;
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.welcomeContent}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.brandRow}>
-        <BrandMark small />
-        <Text style={styles.brandName}>pali</Text>
-      </View>
-
-      <View
-        style={styles.hero}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
+    <View style={styles.screen}>
+      <ScrollView
+        style={styles.welcomeScroll}
+        contentContainerStyle={styles.welcomeContent}
+        showsVerticalScrollIndicator={false}
       >
-        <View style={styles.haloOuter} />
-        <View style={styles.haloInner} />
-        <View style={styles.heroPlate}>
-          <BrandMark />
+        <View style={styles.brandRow}>
+          <BrandMark small />
+          <Text style={styles.brandName}>pali</Text>
         </View>
-        <View style={[styles.orbitDot, styles.orbitDotBlue]} />
-        <View style={[styles.orbitDot, styles.orbitDotPink]} />
-        <View style={styles.heroChip}>
-          <Icon name="eye" size={16} color={colors.blue} />
-          <Text style={styles.heroChipText}>A little more clarity</Text>
+
+        <View
+          style={[styles.hero, compact && styles.heroCompact]}
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+        >
+          <View style={styles.haloOuter} />
+          <View style={styles.haloInner} />
+          <View style={styles.heroPlate}>
+            <BrandMark />
+          </View>
+          <View style={[styles.orbitDot, styles.orbitDotBlue]} />
+          <View style={[styles.orbitDot, styles.orbitDotPink]} />
+          <View style={styles.heroChip}>
+            <Icon name="eye" size={16} color={colors.blue} />
+            <Text style={styles.heroChipText}>A little more clarity</Text>
+          </View>
         </View>
-      </View>
 
-      <View style={styles.intro}>
-        <Text accessibilityRole="header" style={styles.welcomeTitle}>
-          Your crypto.{'\n'}
-          <Text style={styles.titleAccent}>A clearer view.</Text>
-        </Text>
-        <Text style={styles.welcomeDescription}>
-          {onWallet ? 'Create a wallet that stays with you, or follow a public address.' : 'Follow your balances with a public address. Your recovery phrase and private keys stay with you.'}
-        </Text>
-      </View>
-
-      <View style={styles.trustRow}>
-        <View style={styles.trustIcon}>
-          <Icon name="shield" size={18} color={colors.green} />
+        <View style={styles.intro}>
+          <Text accessibilityRole="header" style={styles.welcomeTitle}>
+            Your crypto.{'\n'}
+            <Text style={styles.titleAccent}>A clearer view.</Text>
+          </Text>
+          <Text style={styles.welcomeDescription}>
+            {onWallet
+              ? 'Create a wallet that stays with you, or follow a public address.'
+              : 'Follow your balances with a public address. Your recovery phrase and private keys stay with you.'}
+          </Text>
         </View>
-        <Text style={styles.trustText}>
-          {onWallet ? 'Your wallet. Your recovery phrase. Your control.' : 'Watch-only. No access to spend your funds.'}
-        </Text>
-      </View>
 
+        <View style={styles.trustRow}>
+          <View style={styles.trustIcon}>
+            <Icon name="shield" size={18} color={colors.green} />
+          </View>
+          <Text style={styles.trustText}>
+            {onWallet
+              ? 'Your wallet. Your recovery phrase. Your control.'
+              : 'Watch-only. No access to spend your funds.'}
+          </Text>
+        </View>
+
+        {!onWallet && (
+          <View style={styles.previewActions}>
+            {onDesign && (
+              <IdlePressable
+                accessibilityRole="button"
+                onPress={onDesign}
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.primaryButtonText}>
+                  Review full wallet design
+                </Text>
+                <Icon name="arrow-right" size={21} color={colors.bg} />
+              </IdlePressable>
+            )}
+            <IdlePressable
+              accessibilityRole="button"
+              accessibilityHint="Open a separate interactive preview using sample balances"
+              onPress={onPreview}
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.secondaryButtonText}>Explore the design</Text>
+            </IdlePressable>
+            <Text style={styles.previewNote}>
+              The design preview uses sample balances.
+            </Text>
+          </View>
+        )}
+      </ScrollView>
       <View style={styles.welcomeActions}>
-        {onWallet && <IdlePressable accessibilityRole="button" onPress={onWallet}
-          style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
-          <Text style={styles.primaryButtonText}>Set up your wallet</Text>
-          <Icon name="arrow-right" size={21} color={colors.bg} />
-        </IdlePressable>}
-        {onDesign && (
+        {onWallet && (
           <IdlePressable
             accessibilityRole="button"
-            onPress={onDesign}
+            onPress={onWallet}
             style={({ pressed }) => [
               styles.primaryButton,
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>
-              Review full wallet design
-            </Text>
+            <Text style={styles.primaryButtonText}>Set up your wallet</Text>
             <Icon name="arrow-right" size={21} color={colors.bg} />
           </IdlePressable>
         )}
@@ -124,29 +163,21 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
           accessibilityHint="Add a public address or account key to view its balance"
           onPress={onWatch}
           style={({ pressed }) => [
-            styles.primaryButton,
+            onWallet ? styles.secondaryButton : styles.primaryButton,
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.primaryButtonText}>Watch an account</Text>
-          <Icon name="arrow-right" size={21} color={colors.bg} />
+          <Text
+            style={
+              onWallet ? styles.secondaryButtonText : styles.primaryButtonText
+            }
+          >
+            Watch an account
+          </Text>
+          {!onWallet && <Icon name="arrow-right" size={21} color={colors.bg} />}
         </IdlePressable>
-        <IdlePressable
-          accessibilityRole="button"
-          accessibilityHint="Open a separate interactive preview using sample balances"
-          onPress={onPreview}
-          style={({ pressed }) => [
-            styles.secondaryButton,
-            pressed && styles.pressed,
-          ]}
-        >
-          <Text style={styles.secondaryButtonText}>Explore the design</Text>
-        </IdlePressable>
-        <Text style={styles.previewNote}>
-          The design preview uses sample balances.
-        </Text>
       </View>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -260,6 +291,7 @@ const styles = StyleSheet.create({
   reviewText: { color: colors.text, fontSize: 17, lineHeight: 26 },
   reviewAddress: { color: colors.text, fontSize: 16, lineHeight: 26, flexShrink: 1 },
   screen: { flex: 1, backgroundColor: colors.bg },
+  welcomeScroll: { flex: 1 },
   welcomeContent: {
     flexGrow: 1,
     paddingHorizontal: 26,
@@ -331,6 +363,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
     marginBottom: 8,
   },
+  heroCompact: { height: 180, transform: [{ scale: 0.75 }] },
   haloOuter: {
     position: 'absolute',
     width: 218,
@@ -413,7 +446,15 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   trustText: { flex: 1, color: colors.muted, fontSize: 12, lineHeight: 18 },
-  welcomeActions: { marginTop: 'auto', gap: 10, paddingTop: 8 },
+  previewActions: { marginTop: 'auto', gap: 10, paddingTop: 8 },
+  welcomeActions: {
+    gap: 10,
+    paddingHorizontal: 26,
+    paddingTop: 12,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
   primaryButton: {
     minHeight: 56,
     paddingVertical: 15,

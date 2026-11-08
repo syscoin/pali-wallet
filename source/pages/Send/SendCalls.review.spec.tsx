@@ -8,13 +8,23 @@ import React from 'react';
 import { onMessage } from 'scripts/Background/controllers/message-handler';
 import { Interface } from 'utils/ethersV6Compat';
 
+import { reviewedDappFeeFixture } from './fixtures/reviewedDappFee';
 import { SendCalls } from './SendCalls';
 
 let mockState: any;
 let mockQuery: any;
 let mockController: any;
-const mockEmitter = jest.fn(() => {
-  throw new Error('Review must not sign, submit or mutate wallet state');
+const mockEmitter = jest.fn(async ([, method]: string[], args: any[] = []) => {
+  if (method === 'getRecommendedNonceForBatch') return 0;
+  if (method === 'reviewDappEvmFee') return reviewedDappFeeFixture(args[0]);
+  if (method === 'discardNativeEvmFeeReview') return;
+  if (
+    method === 'recordSendCallsBundle' &&
+    args[2].failed &&
+    !args[2].submissionStarted
+  )
+    return;
+  throw new Error('Review must not sign, submit or start a transaction');
 });
 const mockCleanup = jest.fn(async () => undefined);
 const mockDispatch = jest.fn();
@@ -93,7 +103,6 @@ jest.mock(
   () => ({
     reserveSendCallsBundle: jest.fn(async () => true),
     generateWalletBundleId: () => '0x1234',
-    isValidAppProvidedBundleId: () => true,
     releaseSendCallsBundleReservation: jest.fn(async () => undefined),
   })
 );
@@ -174,7 +183,18 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
-  expect(mockEmitter).not.toHaveBeenCalled();
+  for (const [[, method], args] of mockEmitter.mock.calls) {
+    expect([
+      'getRecommendedNonceForBatch',
+      'reviewDappEvmFee',
+      'discardNativeEvmFeeReview',
+      'recordSendCallsBundle',
+    ]).toContain(method);
+    if (method === 'recordSendCallsBundle') {
+      expect(args[2].failed).toBe(true);
+      expect(args[2].submissionStarted).not.toBe(true);
+    }
+  }
   jest.restoreAllMocks();
 });
 
@@ -206,7 +226,9 @@ const openReview = async (calls = [call()], host = HOST) => {
   expect(mockQuery.calls).toEqual(calls);
   const view = render(<SendCalls />);
   expect(
-    await screen.findByRole('button', { name: 'send.sign' })
+    await screen.findByRole('button', {
+      name: `buttons.confirm 1/${calls.length}`,
+    })
   ).toBeEnabled();
   expect(screen.getByText(`send.from: ${ACCOUNT}`)).toBeVisible();
   return view;
@@ -468,7 +490,7 @@ it('retains ordinary Reject without starting a transaction or accepting the requ
 
 it('refuses unsupported required atomicity before opening approval', async () => {
   expect(await request([call()], HOST, true)).toMatchObject({
-    error: { code: 5700 },
+    error: { code: 5760 },
   });
   expect(mockPopup).not.toHaveBeenCalled();
 });

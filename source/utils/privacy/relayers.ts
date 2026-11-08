@@ -1,7 +1,7 @@
 import { ensNormalize, namehash, parseEther } from 'ethers';
 
-import { getPrivacyPool, PRIVACY_POOLS } from './registry';
-import type { PrivacyPoolId } from './types';
+import { getPrivacyPool, PRIVACY_POOLS } from './registry.ts';
+import type { PrivacyPoolId } from './types.ts';
 
 export const PRIVACY_RELAYER_DIRECTORY_URL =
   'https://sysnode.info/api/privacy/v1/relayers';
@@ -384,7 +384,7 @@ export function createPrivacyRelayerClient(
     if (signal?.aborted) throw new Error('privacy_relayer_cancelled');
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
-    let remove = () => undefined;
+    let remove: () => void = () => undefined;
     const cancelled = new Promise<never>((_, reject) => {
       const cancel = () => {
         abort.abort();
@@ -532,7 +532,7 @@ export function quotePrivacyRelayerFee(
   const rate = percent(serviceFeePercent),
     [whole, fraction = ''] = rate.split('.');
   const scale = BigInt('1' + '0'.repeat(fraction.length));
-  const numerator = BigInt(whole) * scale + BigInt(fraction || '0');
+  const numerator = BigInt(whole!) * scale + BigInt(fraction || '0');
   const divisor = BigInt(100) * scale;
   const serviceFee = (amount * numerator + divisor - BigInt(1)) / divisor;
   const gas = uint(gasLimit),

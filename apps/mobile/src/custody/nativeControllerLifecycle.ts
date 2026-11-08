@@ -5,12 +5,14 @@ export interface RecoveryOwner {
   dispose(): Promise<void>;
 }
 export interface ManagedNativeControllers {
+  authentication?: { cancel(): void };
   authority: { getSnapshot(): CustodySnapshot; initialize(): Promise<void>; lock(): void; dispose(): Promise<void> };
   keyExport: { dispose(): void };
   backup: { dispose(): void };
   removal?: RecoveryOwner & { hasVerifiedRemoval(): boolean };
   disposeTokens(): void;
   disposeTransfers(): void;
+  disposeConnections(): Promise<void>;
 }
 type Entry<T> = { token: object; value: T; recovery: RecoveryOwner | null; retiring: Promise<void> | null };
 
@@ -40,14 +42,31 @@ export class NativeControllerLifecycle<T extends ManagedNativeControllers, R ext
     void this.barrier.catch(() => undefined); void entry.retiring.catch(() => undefined);
     const work: Promise<unknown>[] = [];
     let failed = false;
-    const invoke = (action: () => unknown) => { try { work.push(Promise.resolve(action())); } catch { failed = true; } };
+    const invoke = (action: () => unknown): Promise<unknown> => {
+      try {
+        const task = Promise.resolve(action());
+        work.push(task);
+        return task;
+      } catch {
+        failed = true;
+        return Promise.resolve();
+      }
+    };
     // Reserve retirement before any injected callback can reenter this gate.
+    invoke(() => entry.value.authentication?.cancel());
     invoke(() => entry.recovery?.cancel());
     invoke(() => entry.value.removal?.cancel());
     invoke(() => entry.value.disposeTokens()); invoke(() => entry.value.disposeTransfers());
     invoke(() => entry.value.keyExport.dispose()); invoke(() => entry.value.backup.dispose());
     invoke(() => entry.value.authority.lock());
-    invoke(() => entry.recovery?.dispose()); invoke(() => entry.value.authority.dispose());
+    const connections = invoke(() => entry.value.disposeConnections());
+    invoke(() => entry.recovery?.dispose());
+    invoke(async () => {
+      // The protocol adapter drains against this authority's still-open storage.
+      // A connection cleanup failure still retires custody and poisons the gate.
+      await connections.catch(() => undefined);
+      await entry.value.authority.dispose();
+    });
     invoke(() => entry.value.removal?.dispose());
     void Promise.allSettled(work).then((results) => {
       if (failed || results.some((result) => result.status === 'rejected')) {

@@ -117,6 +117,7 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
           case 'setAccount':
           case 'registerSmartAccountOnChain':
           case 'connect':
+          case 'assertSmartAccountPreparedNonce':
           case 'assertSmartAccountExecutionContext':
             return undefined;
           case 'provisionSLHDSASmartAccountValidator':
@@ -125,6 +126,7 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
             return { hasNativeGas: true };
           case 'prepareSmartAccountExecutions':
             return {
+              accountId: ACCOUNT_ID,
               actionHash: `0x${'55'.repeat(32)}`,
               executionContextId: 'local-pq-install',
               executions: params[0],

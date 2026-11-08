@@ -255,7 +255,7 @@ export async function qualifyNativeNevmTransfer(
     guard();
     const signed = await transfer.sign(
       {
-        type: 2,
+        type: 2, accessList: [],
         from: address,
         to: recipient,
         chainId: getNativeNetwork(network).chainId,
@@ -266,7 +266,7 @@ export async function qualifyNativeNevmTransfer(
         maxFeePerGas: '3',
         maxPriorityFeePerGas: '1',
       },
-      guard
+      { assertCurrent: guard, signal: new AbortController().signal }
     );
     guard();
     const journal = await transfer.journal(guard);

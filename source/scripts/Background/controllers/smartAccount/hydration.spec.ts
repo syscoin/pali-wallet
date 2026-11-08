@@ -38,7 +38,13 @@ import {
   buildSmartAccountUserOperation,
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
+  encodeERC7579Executions,
 } from 'utils/smartAccount';
+import {
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from 'utils/smartAccount/contracts';
+import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
 
 import SmartAccountController from './index';
 
@@ -176,6 +182,10 @@ describe('SmartAccountController smart account execution fees', () => {
     });
     const transaction = { web3Provider: { estimateGas } };
     const controller: any = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       sendAndSaveEthTransaction,
     } as any);
@@ -186,6 +196,9 @@ describe('SmartAccountController smart account execution fees', () => {
         deploymentGasPayer: gasPayer,
       },
     }));
+    controller.getSmartAccountById = jest.fn(() =>
+      controller.getActiveSmartAccount()
+    );
     controller.getWalletGasPayerAccount = jest.fn().mockResolvedValue(gasPayer);
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
     controller.invalidateHydratedMetadata = jest.fn();
@@ -199,7 +212,15 @@ describe('SmartAccountController smart account execution fees', () => {
         callGasLimit: 1,
         verificationGasLimit: 1,
       }),
-      callData: '0x',
+      callData: (() => {
+        const execution = encodeERC7579Executions([
+          { target: ACCOUNT_ADDRESS, value: '0', data: '0x' },
+        ]);
+        return paliSmartAccountInterface.encodeFunctionData('execute', [
+          execution.mode,
+          execution.executionCalldata,
+        ]);
+      })(),
       gasFees: encodeSmartAccountGasFees({
         maxFeePerGas: 1,
         maxPriorityFeePerGas: 0,
@@ -215,15 +236,55 @@ describe('SmartAccountController smart account execution fees', () => {
     gasPrice?: string
   ) => {
     const executionContextId = 'reviewed-deployment';
+    const provider = controller.ethereumTransaction.web3Provider;
+    provider.verifyConfiguredChainId ??= jest.fn(async () => undefined);
+    provider.send ??= jest.fn(async (method: string, params: any[]) => {
+      if (method === 'eth_call')
+        return paliEntryPointInterface.encodeFunctionResult('getNonce', [
+          userOperation.nonce,
+        ]);
+      if (method === 'eth_getBalance') return '0x0';
+      if (method === 'eth_getCode') return '0x01';
+      if (method === 'eth_estimateGas')
+        return (
+          '0x' + BigInt(await provider.estimateGas(params[0])).toString(16)
+        );
+      throw new Error('Unexpected RPC ' + method);
+    });
+    const pending = createSmartAccountPendingState(
+      provider,
+      { profileId: '0x' + '11'.repeat(32), read: async () => [] },
+      CHAIN_ID,
+      ACCOUNT_ADDRESS,
+      () => undefined
+    );
     controller.executionContexts.set(executionContextId, {
       accountId: 9,
       expiresAt: Date.now() + 60_000,
       snapshot: controller.infrastructureContext(),
       gasPrice,
       userOperation: { ...userOperation },
+      pending,
     });
-    return { executionContextId, userOperation };
+    return { accountId: 9, executionContextId, userOperation };
   };
+
+  // Unit fixtures supply the exact prepared operation context explicitly.
+  const submitReviewed = (controller: any, params: any, guard?: () => void) =>
+    controller.submitSmartAccountExecution(
+      {
+        accountId: 9,
+        ...(params.executionContextId
+          ? {}
+          : withPreparedDeployment(
+              controller,
+              params.userOperation,
+              params.gasPrice
+            )),
+        ...params,
+      },
+      guard
+    );
 
   describe.each([
     ['native gas', 'insufficient funds', 'PALI_NATIVE_GAS_REQUIRED'],
@@ -232,7 +293,7 @@ describe('SmartAccountController smart account execution fees', () => {
     const submitRejected = async (error: unknown) => {
       const { controller, sendAndSaveEthTransaction } = buildController();
       sendAndSaveEthTransaction.mockRejectedValueOnce(error);
-      return controller.submitSmartAccountExecution({
+      return submitReviewed(controller, {
         executions: [],
         gasPayer,
         signature: '0x1234',
@@ -303,7 +364,7 @@ describe('SmartAccountController smart account execution fees', () => {
     sendAndSaveEthTransaction.mockRejectedValueOnce(error);
 
     await expect(
-      controller.submitSmartAccountExecution({
+      submitReviewed(controller, {
         executions: [],
         gasPayer,
         signature: '0x1234',
@@ -319,7 +380,7 @@ describe('SmartAccountController smart account execution fees', () => {
       new Error('Selected gas payer is no longer available')
     );
     await expect(
-      controller.submitSmartAccountExecution({
+      submitReviewed(controller, {
         executions: [],
         gasPayer,
         signature: '0x1234',
@@ -351,7 +412,7 @@ describe('SmartAccountController smart account execution fees', () => {
     estimateGas.mockRejectedValueOnce(error);
 
     await expect(
-      controller.submitSmartAccountExecution({
+      submitReviewed(controller, {
         executions: [],
         gasPayer,
         signature: '0x1234',
@@ -378,7 +439,7 @@ describe('SmartAccountController smart account execution fees', () => {
     };
 
     await expect(
-      controller.submitSmartAccountExecution({
+      submitReviewed(controller, {
         executions: [],
         gasPayer,
         signature: '0x1234',
@@ -396,7 +457,7 @@ describe('SmartAccountController smart account execution fees', () => {
       'ensureSmartAccountDeploymentPrefund'
     );
     await expect(
-      controller.submitSmartAccountExecution({
+      submitReviewed(controller, {
         executions: [],
         gasPayer,
         signature: '0x1234',
@@ -449,7 +510,7 @@ describe('SmartAccountController smart account execution fees', () => {
       estimateGas.mockRejectedValueOnce(error);
 
       await expect(
-        controller.submitSmartAccountExecution({
+        submitReviewed(controller, {
           executions: [],
           gasPayer,
           signature: '0x1234',
@@ -470,7 +531,7 @@ describe('SmartAccountController smart account execution fees', () => {
     sendAndSaveEthTransaction.mockRejectedValueOnce(error);
 
     await expect(
-      controller.submitSmartAccountExecution({
+      submitReviewed(controller, {
         executions: [],
         gasPayer,
         signature: '0x1234',
@@ -483,7 +544,7 @@ describe('SmartAccountController smart account execution fees', () => {
   it('does not add EIP-1559 outer fees when legacy preparation has no priority fee', async () => {
     const { controller, sendAndSaveEthTransaction } = buildController();
 
-    await controller.submitSmartAccountExecution({
+    await submitReviewed(controller, {
       executions: [],
       gasPayer,
       maxFeePerGas: '1000000000',
@@ -507,7 +568,7 @@ describe('SmartAccountController smart account execution fees', () => {
     const { controller, estimateGas, sendAndSaveEthTransaction } =
       buildController();
 
-    await controller.submitSmartAccountExecution({
+    await submitReviewed(controller, {
       executions: [],
       gasPayer,
       maxFeePerGas: '1000000000',
@@ -559,7 +620,7 @@ describe('SmartAccountController smart account execution fees', () => {
       maxPriorityFeePerGas: 0,
     });
 
-    await controller.submitSmartAccountExecution({
+    await submitReviewed(controller, {
       executions: [],
       gasPayer,
       maxFeePerGas: '1000000000',
@@ -596,7 +657,7 @@ describe('SmartAccountController smart account execution fees', () => {
       maxFeePerGas: 0,
       maxPriorityFeePerGas: 0,
     });
-    await controller.submitSmartAccountExecution({
+    await submitReviewed(controller, {
       executions: [],
       gasPayer,
       gasPrice: '13',
@@ -604,7 +665,8 @@ describe('SmartAccountController smart account execution fees', () => {
       userOperation,
     });
     expect(controller.assertZkSysGasTankCoversTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ gasPrice: '13', maxFeePerGas: '13' })
+      expect.objectContaining({ gasPrice: '13', maxFeePerGas: '13' }),
+      expect.anything()
     );
     expect(estimateGas).not.toHaveBeenCalled();
     expect(sendAndSaveEthTransaction.mock.calls[0][0]).toMatchObject({
@@ -732,6 +794,16 @@ describe('SmartAccountController smart account execution fees', () => {
                 options.assertBeforeSign?.();
               },
               mode: 'specialized',
+              selectedAccount: {
+                id: 0,
+                type: 'HDAccount',
+                expectedAddress: owner.address,
+              },
+              targetAccount: {
+                id: 0,
+                type: 'HDAccount',
+                expectedAddress: owner.address,
+              },
             }
           );
           await options.onBroadcast?.(response);
@@ -745,7 +817,8 @@ describe('SmartAccountController smart account execution fees', () => {
           ? { initCode: identity.deploymentInitCode }
           : {}),
       };
-      const approval = controller.submitSmartAccountExecution(
+      const approval = submitReviewed(
+        controller,
         {
           executions: [],
           gasPayer: fixturePayer,
@@ -851,9 +924,19 @@ describe('SmartAccountController smart account execution fees', () => {
           sdk.sendFormattedTransaction(transaction, legacy, {
             assertCurrent: approval.assertCurrentContext,
             mode: 'specialized',
+            selectedAccount: {
+              id: 0,
+              type: 'HDAccount',
+              expectedAddress: owner.address,
+            },
+            targetAccount: {
+              id: 0,
+              type: 'HDAccount',
+              expectedAddress: owner.address,
+            },
           })
       );
-      await controller.submitSmartAccountExecution({
+      await submitReviewed(controller, {
         executions: [],
         gasPayer: fixturePayer,
         gasPrice,

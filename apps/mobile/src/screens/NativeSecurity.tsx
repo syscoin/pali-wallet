@@ -9,18 +9,20 @@ type Props = {
   keyExport: HdKeyExportFlow;
   keyFormat: 'evm' | { kind: 'wif' | 'extended'; networkLabel: string; addressType: string } | null;
   accountId: string;
-  accountType: 'HDAccount' | 'Imported';
+  accountType: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger' | 'Trezor';
   accountLabel: string;
   address: string;
   onViewRecovery(): void;
   onRemoveWallet?(): void;
+  onDeviceUnlock?(): void;
+  deviceUnlockEnabled?: boolean;
   onLock(): void;
   onBack(): void;
   captureFailureHandler(): (error: unknown) => void;
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, deviceUnlockEnabled, onLock, onBack, captureFailureHandler }: Props) {
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
@@ -85,19 +87,30 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const shown = presentation && presentation.accountId === accountId && presentation.address === address &&
     keyExport.isCurrent(presentation.id) ? presentation : null;
   const utxo = keyFormat !== 'evm' ? keyFormat : null;
+  let backupTitle = 'Recovery phrase backed up';
+  let backupBody = 'Your written recovery phrase restores the accounts derived from this wallet. Keep it private and offline.';
+  if (accountType === 'Ledger' || accountType === 'Trezor') {
+    backupTitle = `Back up your ${accountType}`;
+    backupBody = `Use your ${accountType} recovery backup to restore this account. Pali stores its public account details.`;
+  } else if (accountType === 'Imported') {
+    backupTitle = 'Imported key needs a separate backup';
+    backupBody = 'Your recovery phrase cannot restore this account. Keep its original private key backed up separately.';
+  }
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen><Header title={mode === 'key' ? 'Account private key' : mode === 'recovery' ? 'Recovery guide' : 'Security & backups'} subtitle="Development build · Use a test wallet" onBack={back} />
         {mode === 'hub' ? <>
-          <Notice title={accountType === 'Imported' ? 'Imported key needs a separate backup' : 'Recovery phrase backed up'} body={accountType === 'Imported' ? 'Your recovery phrase cannot restore this account. Keep its original private key backed up separately.' : 'Your written recovery phrase restores the accounts derived from this wallet. Keep it private and offline.'} />
-          <Card><Row title="View recovery phrase" subtitle="Confirm your password to view your words" icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
-            {keyFormat && <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
+          <Notice title={backupTitle} body={backupBody} />
+          <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? 'View Pali wallet recovery phrase' : 'View recovery phrase'} subtitle="Confirm your password to view your words" icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
+            {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
+            {onDeviceUnlock && <Row title="Biometric unlock" subtitle={deviceUnlockEnabled ? 'On' : 'Off'} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
             <Row title="Recovery guide" subtitle="Understand what your backups restore" icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
           <Button title="Lock wallet" variant="secondary" icon="lock" onPress={() => { hide(); onLock(); }} />
           {onRemoveWallet && <Button title="Remove wallet from this device" variant="danger" onPress={() => { hide(); onRemoveWallet(); }} />}
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>Keep your recovery phrase offline</Text>
+          {(accountType === 'Ledger' || accountType === 'Trezor') && <Text style={styles.muted}>Your {accountType} account uses its own recovery backup. The phrase shown in Pali belongs to this Pali wallet.</Text>}
           <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts. Keep a separate backup of each imported private key.</Text>
           <Text style={styles.muted}>If you forget this device’s password, lock your wallet and choose Forgot password? to verify the matching recovery phrase and preserve supported saved records. On a new or lost device, the phrase restores derived accounts; imported keys still need their separate backups.</Text>
           <Notice title="Keep secrets to yourself" body="Pali support will never ask for recovery words, private keys or your password. Never enter them into a website or send them to anyone." tone="amber" />

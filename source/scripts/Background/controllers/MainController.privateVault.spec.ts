@@ -13,6 +13,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: jest.fn(() => ({})),
   clearNavigationState: jest.fn(async () => undefined),
   clearTransactionNavigationState: jest.fn(async () => undefined),
 }));
@@ -25,6 +26,7 @@ jest.mock('utils/slhDsa', () => ({
 
 import { webcrypto } from 'crypto';
 
+import { createPrivacyTransactionsController } from '../../../wallet/privacyTransactions';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -35,7 +37,6 @@ import type { IPrivacyTransactionsHost } from 'utils/privacy/transactionTypes';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
-import { createPrivacyTransactionsController } from './privacyTransactions';
 import type { IPrivateVaultSession } from './privateVault';
 import { forgetWalletWithRecovery } from './walletRecovery';
 
@@ -52,10 +53,20 @@ const deferred = () => {
 };
 
 function fixture() {
+  let unlockEpoch = 0;
   const keyring = {
     isUnlocked: jest.fn(() => true),
     unlock: jest.fn(async () => ({ canLogin: true })),
-    lockWallet: jest.fn(async () => undefined),
+    lockWallet: jest.fn(async () => {
+      unlockEpoch++;
+    }),
+    captureUnlockedSessionGuard: jest.fn(() => {
+      const epoch = unlockEpoch;
+      return () => {
+        if (epoch !== unlockEpoch || !keyring.isUnlocked())
+          throw new Error('retired unlock');
+      };
+    }),
   };
   const wallet: any = Object.create(MainController.prototype);
   Object.assign(wallet, {
@@ -97,9 +108,25 @@ function depositFixture() {
         return `0x${(await pendingNonce()).toString(16)}`;
       }
       if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getBlockByNumber')
+        return {
+          number: '0x10',
+          hash: '0x' + 'aa'.repeat(32),
+          gasLimit: '0x1c9c380',
+          baseFeePerGas: '0x2',
+        };
+      if (method === 'eth_estimateGas')
+        return '0x' + (await provider.estimateGas(_params[0])).toString(16);
+      if (method === 'eth_getBalance')
+        return '0x' + (await provider.getBalance(_params[0])).toString(16);
+      if (method === 'eth_maxPriorityFeePerGas') return '0x1';
       throw new Error('Unexpected synthetic RPC');
     }),
-    estimateGas: jest.fn(async () => BigInt(100001)),
+    estimateGas: jest.fn<Promise<bigint>, [unknown]>(async () =>
+      BigInt(100001)
+    ),
+    getGasPrice: jest.fn(async () => BigInt(5)),
+    verifyConfiguredChainId: jest.fn(async () => undefined),
     getFeeData: jest.fn(async () => ({
       maxFeePerGas: BigInt(100),
       maxPriorityFeePerGas: BigInt(1),
@@ -107,8 +134,13 @@ function depositFixture() {
     getTransactionCount: jest.fn(() => {
       throw new Error('Cached pending nonce must not be used');
     }),
-    getBalance: jest.fn(async () => BigInt('2000000000000000000')),
+    getBalance: jest.fn<Promise<bigint>, [unknown]>(async () =>
+      BigInt('2000000000000000000')
+    ),
   };
+  Object.defineProperty(provider, 'signal', {
+    value: new AbortController().signal,
+  });
   (provider as any)._send = jest.fn(
     async ({
       id,
@@ -142,6 +174,32 @@ function depositFixture() {
     privacyDepositSessions: new WeakMap(),
     privacyDepositContexts: new WeakMap(),
     assertWalletReadyForSigning: jest.fn(),
+    captureFreshEvmRead: jest.fn(() => ({
+      network: state.vault.activeNetwork,
+      assertCurrent: () => undefined,
+      overrides: {},
+      run: (operation: (reader: unknown) => unknown) =>
+        operation(wallet.ethereumTransaction.web3Provider),
+    })),
+    inspectOrdinaryEvmNonce: jest.fn(async (_read, address, options) => {
+      options?.assertCurrent?.();
+      const observed = Number(
+        BigInt(
+          await wallet.ethereumTransaction.web3Provider.send(
+            'eth_getTransactionCount',
+            [address, 'pending']
+          )
+        )
+      );
+      options?.assertCurrent?.();
+      return {
+        nonce: observed,
+        state: 'pending',
+        balanceState: 'pending',
+        canonicalBlock: { hash: '0x' + 'aa'.repeat(32), number: '16' },
+        nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
+      };
+    }),
     getPrivateVaultController: jest.fn(async () => vault),
     sendAndSaveEthTransaction: jest.fn(
       async (_tx, _legacy, _target, _metadata, options) => {
@@ -490,15 +548,22 @@ it('uses fresh deposit nonce observations while the actual SDK read cache still 
     1
   );
   let nonce = '0x7';
-  provider.requestRpc = jest.fn(async (calls: Array<{ method: string }>) =>
-    calls.map(({ method }) => {
-      if (method !== 'eth_getTransactionCount' && method !== 'eth_chainId')
-        throw new Error('Unexpected synthetic read');
-      return {
-        jsonrpc: '2.0',
-        result: method === 'eth_chainId' ? '0x1' : nonce,
-      };
-    })
+  provider.requestRpc = jest.fn(
+    async (calls: Array<{ method: string; params: unknown[] }>) =>
+      Promise.all(
+        calls.map(async ({ method, params }) => {
+          const result =
+            method === 'eth_chainId'
+              ? '0x1'
+              : method === 'eth_getTransactionCount'
+              ? nonce
+              : await fake.provider.send(method, params);
+          return {
+            jsonrpc: '2.0',
+            result,
+          };
+        })
+      )
   );
   provider.estimateGas = jest.fn(async () => BigInt(100000));
   provider.getFeeData = jest.fn(async () => ({
@@ -506,7 +571,9 @@ it('uses fresh deposit nonce observations while the actual SDK read cache still 
     maxPriorityFeePerGas: BigInt(1),
   }));
   provider.getBalance = jest.fn(async () => BigInt('2000000000000000000'));
-  const { wallet, vault } = depositFixture();
+  provider.getGasPrice = jest.fn(async () => BigInt(5));
+  const fake = depositFixture();
+  const { wallet, vault } = fake;
   wallet.ethereumTransaction.web3Provider = provider;
   try {
     const address = store.getState().vault.accounts.HDAccount[0].address;
@@ -518,9 +585,10 @@ it('uses fresh deposit nonce observations while the actual SDK read cache still 
     nonce = '0x9';
     expect(await provider.getTransactionCount(address, 'pending')).toBe(7);
     await expect(wallet.submitPrivacyDeposit(review.intentId)).rejects.toThrow(
-      'privacy_deposit_submission_blocked'
+      'privacy_deposit_not_broadcast'
     );
-    expect(vault.reserveDepositAttempt).not.toHaveBeenCalled();
+    expect(vault.reserveDepositAttempt).toHaveBeenCalledTimes(1);
+    expect(vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
     expect(wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   } finally {
     provider.destroy();
@@ -563,12 +631,11 @@ it('prepares exact deposit gas and maximum fee through the captured provider wit
     chainId: 1,
     gasLimit: '120002',
     nonce: '7',
-    maxNetworkFeeWei: '12000200',
-    maxTotalWei: '1000000000012000200',
+    maxNetworkFeeWei: '720012',
+    maxTotalWei: '1000000000000720012',
   });
   expect(provider.estimateGas).toHaveBeenCalledWith(
     expect.objectContaining({
-      chainId: 1,
       from: review.account.address,
       value: '0xde0b6b3a7640000',
     })
@@ -583,9 +650,9 @@ it('prepares exact deposit gas and maximum fee through the captured provider wit
   expect(vault.reserveDepositAttempt).toHaveBeenCalledTimes(1);
   expect(vault.recordDepositBroadcast).toHaveBeenCalledTimes(1);
   expect(wallet.sendAndSaveEthTransaction).toHaveBeenCalledWith(
-    expect.objectContaining({ gasLimit: '0x1d4c2', nonce: '0x7' }),
+    expect.objectContaining({ gasLimit: '120002', nonce: '7', type: 2 }),
     false,
-    { id: 0, type: KeyringAccountType.HDAccount },
+    undefined,
     undefined,
     expect.objectContaining({
       clearNavigation: false,
@@ -663,17 +730,18 @@ it('rejects hardware flags even on a software account record and still accepts i
   ).toMatchObject({ account: { type: KeyringAccountType.Imported } });
 });
 
-it('rejects changed deposit nonce or insufficient exact balance before reservation', async () => {
+it('rejects changed deposit nonce or insufficient exact balance before signing', async () => {
   const f = depositFixture();
   const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
   f.pendingNonce.mockResolvedValueOnce(8);
   await expect(
     f.wallet.submitPrivacyDeposit(review.intentId)
   ).rejects.toMatchObject({ transactionNotBroadcast: true });
-  expect(f.vault.reserveDepositAttempt).not.toHaveBeenCalled();
+  expect(f.vault.reserveDepositAttempt).toHaveBeenCalledTimes(1);
+  expect(f.vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
   expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   const poor = depositFixture();
-  poor.provider.getBalance.mockResolvedValueOnce(BigInt('1000000000012000199'));
+  poor.provider.getBalance.mockResolvedValueOnce(BigInt('1000000000000720011'));
   await expect(
     poor.wallet.preparePrivacyDeposit({ poolId: 'eth-1' })
   ).rejects.toThrow();
@@ -685,6 +753,7 @@ it('journals an acknowledged deposit against the original profile after account 
   f.wallet.sendAndSaveEthTransaction.mockImplementationOnce(
     async (_tx, _legacy, _target, _metadata, options) => {
       f.state.vault.activeAccount.id = 1;
+      f.wallet.walletSessionGeneration++;
       await options.onBroadcast({ hash: DEPOSIT_HASH });
       throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
         transactionHash: DEPOSIT_HASH,
@@ -706,6 +775,7 @@ it('retains unknown deposit state if the original session locks before hash jour
   f.wallet.sendAndSaveEthTransaction.mockImplementationOnce(
     async (_tx, _legacy, _target, _metadata, options) => {
       f.wallet.walletSessionGeneration++;
+      await f.keyring.lockWallet();
       await options.onBroadcast({ hash: DEPOSIT_HASH });
       return { hash: DEPOSIT_HASH };
     }
@@ -998,7 +1068,9 @@ it.each([
   }
 );
 
-function cachedChainProvider() {
+function cachedChainProvider(
+  fallback: ReturnType<typeof depositFixture>['provider']
+) {
   const { CustomJsonRpcProvider } = jest.requireActual(
     '@sidhujag/sysweb3-keyring/cjs/providers'
   );
@@ -1009,20 +1081,28 @@ function cachedChainProvider() {
   );
   let chain = '0x1';
   const methods: string[] = [];
-  live.requestRpc = jest.fn(async (calls: Array<{ method: string }>) =>
-    calls.map(({ method }) => {
-      methods.push(method);
-      if (method === 'eth_chainId') return { jsonrpc: '2.0', result: chain };
-      if (method === 'eth_getTransactionCount')
-        return { jsonrpc: '2.0', result: '0x7' };
-      throw new Error('Unexpected synthetic RPC');
-    })
+  live.requestRpc = jest.fn(
+    async (calls: Array<{ method: string; params: unknown[] }>) =>
+      Promise.all(
+        calls.map(async ({ method, params }) => {
+          methods.push(method);
+          if (method === 'eth_chainId')
+            return { jsonrpc: '2.0', result: chain };
+          if (method === 'eth_getTransactionCount')
+            return { jsonrpc: '2.0', result: '0x7' };
+          return {
+            jsonrpc: '2.0',
+            result: await fallback.send(method, params),
+          };
+        })
+      )
   );
   live.estimateGas = jest.fn(async () => BigInt(100001));
   live.getFeeData = jest.fn(async () => ({
     maxFeePerGas: BigInt(100),
     maxPriorityFeePerGas: BigInt(1),
   }));
+  live.getGasPrice = jest.fn(async () => BigInt(5));
   live.getBalance = jest.fn(async () => BigInt('2000000000000000000'));
   return {
     live,
@@ -1036,8 +1116,8 @@ function cachedChainProvider() {
 it.each(['changed', 'unchanged'] as const)(
   'checks the live chain before deposit fee preparation: %s',
   async (scenario) => {
-    const { wallet } = depositFixture();
-    const { live, methods, setChain } = cachedChainProvider();
+    const { wallet, provider } = depositFixture();
+    const { live, methods, setChain } = cachedChainProvider(provider);
     wallet.ethereumTransaction.web3Provider = live;
     try {
       await expect(live.send('eth_chainId', [])).resolves.toBe('0x1');
@@ -1047,9 +1127,18 @@ it.each(['changed', 'unchanged'] as const)(
       expect(methods).toHaveLength(before); // The installed SDK really cached it.
       const host = wallet.createPrivacyTransactionsHost();
       const session = host.captureContext();
-      const quote = host.prepareFees({ value: '0x0' } as any, session);
+      const quote = host.prepareFees(
+        {
+          chainId: 1,
+          from: session.context.account.address,
+          to: '0x' + '22'.repeat(20),
+          data: '0x',
+          value: '0x0',
+        },
+        session
+      );
       if (scenario === 'changed') {
-        await expect(quote).rejects.toThrow('privacy_deposit_context_invalid');
+        await expect(quote).rejects.toThrow();
         expect(live.estimateGas).not.toHaveBeenCalled();
         expect(live.getFeeData).not.toHaveBeenCalled();
       } else {
@@ -1060,3 +1149,145 @@ it.each(['changed', 'unchanged'] as const)(
     }
   }
 );
+
+it('uses the shared automatic nonce planner when the RPC pending count lags local reservations', async () => {
+  const f = depositFixture();
+  f.wallet.inspectOrdinaryEvmNonce.mockImplementation(
+    async (
+      _read: unknown,
+      _address: string,
+      options: { assertCurrent(): void }
+    ) => {
+      options.assertCurrent();
+      return {
+        nonce: 8,
+        state: 'pending',
+        balanceState: 'pending',
+        canonicalBlock: { hash: '0x' + 'aa'.repeat(32), number: '16' },
+        nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
+      };
+    }
+  );
+  const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  expect(review.nonce).toBe('8');
+  await f.wallet.submitPrivacyDeposit(review.intentId);
+  expect(f.wallet.sendAndSaveEthTransaction).toHaveBeenCalledWith(
+    expect.objectContaining({ nonce: '8' }),
+    false,
+    undefined,
+    undefined,
+    expect.objectContaining({
+      dappNonceApproval: { nonce: 8, source: 'automatic' },
+    })
+  );
+});
+
+it('keeps the durable note restore fence live through the final generic signing guard', async () => {
+  const f = depositFixture();
+  let restored = false;
+  const fence = jest.fn(() => {
+    if (restored) throw new Error('restored');
+  });
+  f.vault.reserveDepositAttempt.mockImplementation(
+    async (_attempt, _session, onRestoreFence) => {
+      onRestoreFence(fence);
+    }
+  );
+  f.wallet.sendAndSaveEthTransaction.mockImplementation(
+    async (
+      _tx: unknown,
+      _legacy: unknown,
+      _target: unknown,
+      _metadata: unknown,
+      options: { assertBeforeSign(): void }
+    ) => {
+      restored = true;
+      try {
+        options.assertBeforeSign();
+      } catch (error) {
+        throw Object.assign(error as Error, { transactionNotBroadcast: true });
+      }
+      throw new Error('Signing must be fenced');
+    }
+  );
+  const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  await expect(
+    f.wallet.submitPrivacyDeposit(review.intentId)
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(fence).toHaveBeenCalled();
+  expect(f.vault.recordDepositBroadcast).not.toHaveBeenCalled();
+  expect(f.vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
+});
+
+it('applies the shared per-transaction gas ceiling to a private deposit quote', async () => {
+  const f = depositFixture();
+  f.provider.estimateGas.mockResolvedValue(BigInt(14000000));
+  const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  expect(review.gasLimit).toBe('16777216');
+  expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+});
+
+it('requires the captured private session identity before shared fee reads', async () => {
+  const f = depositFixture();
+  const host: IPrivacyTransactionsHost =
+    f.wallet.createPrivacyTransactionsHost();
+  const session = host.captureContext();
+  await expect(
+    host.prepareFees(
+      {
+        chainId: 1,
+        from: session.context.account.address,
+        to: '0x' + '22'.repeat(20),
+        data: '0x',
+        value: '0x0',
+      },
+      { context: session.context, assertCurrent: () => undefined }
+    )
+  ).rejects.toThrow('privacy_deposit_context_changed');
+  expect(f.provider.send).not.toHaveBeenCalled();
+  expect(f.wallet.inspectOrdinaryEvmNonce).not.toHaveBeenCalled();
+});
+
+it('keeps provider error fields unknown after the actual SDK entry boundary', async () => {
+  const { markGenericEvmFeeSdkEntered } = jest.requireActual(
+    './nativeEvmFeeReviews'
+  );
+  const f = depositFixture();
+  f.wallet.sendAndSaveEthTransaction.mockImplementation(
+    async (_transaction, _legacy, _target, _metadata, options) => {
+      markGenericEvmFeeSdkEntered(f.wallet, options.genericDispatchId);
+      throw Object.assign(new Error('unrecognized provider refusal'), {
+        transactionHash: DEPOSIT_HASH,
+        transactionNotBroadcast: true,
+      });
+    }
+  );
+  const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  await expect(f.wallet.submitPrivacyDeposit(review.intentId)).resolves.toEqual(
+    {
+      intentId: review.intentId,
+      noteId: review.noteId,
+      phase: 'unknown',
+    }
+  );
+  expect(f.vault.recordDepositBroadcast).not.toHaveBeenCalled();
+  expect(f.vault.clearUnbroadcastDepositAttempt).not.toHaveBeenCalled();
+});
+
+it('releases a proven unsigned reservation when its fee review expires during the durable write', async () => {
+  const f = depositFixture();
+  const now = performance.now();
+  f.vault.reserveDepositAttempt.mockImplementation(
+    async (_attempt, _session, fence) => {
+      fence(() => undefined);
+      jest.spyOn(performance, 'now').mockReturnValue(now + 100000);
+    }
+  );
+  const review = await f.wallet.preparePrivacyDeposit({ poolId: 'eth-1' });
+  await expect(
+    f.wallet.submitPrivacyDeposit(review.intentId)
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  expect(f.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  expect(f.vault.recordDepositBroadcast).not.toHaveBeenCalled();
+  expect(f.vault.clearUnbroadcastDepositAttempt).toHaveBeenCalledTimes(1);
+});

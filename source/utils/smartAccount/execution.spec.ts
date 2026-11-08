@@ -68,6 +68,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
         if (method === 'prepareSmartAccountExecutions')
           return {
+            accountId: 0,
             actionHash: `0x${'12'.repeat(32)}`,
             executionContextId: 'fee-context',
             executions: [],
@@ -85,7 +86,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
                 BigInt(3).toString(16).padStart(32, '0'),
             },
           };
-        if (method === 'assertSmartAccountExecutionContext') return;
+        if (
+          method === 'assertSmartAccountExecutionContext' ||
+          method === 'assertSmartAccountPreparedNonce'
+        )
+          return;
         if (method === 'submitSmartAccountExecution') return payload[0];
         throw Error(method);
       });
@@ -126,6 +131,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         if (method === 'prepareSmartAccountExecutions') {
           expect(payload[2].expectedContext).toEqual(expectedContext);
           return {
+            accountId: 0,
             actionHash: `0x${'12'.repeat(32)}`,
             executionContextId: 'prepared-context',
             executions: [],
@@ -133,6 +139,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
             userOperation: { sender: ACCOUNT_ADDRESS },
           };
         }
+        if (method === 'assertSmartAccountPreparedNonce') return;
         if (method === 'assertSmartAccountExecutionContext') {
           expect(payload).toEqual(['prepared-context', `0x${'12'.repeat(32)}`]);
           if (++checks === expectedCheck)
@@ -161,6 +168,10 @@ describe('signAndSubmitSmartAccountExecutions', () => {
           expect.objectContaining({ executionContextId: 'prepared-context' })
         );
       expect(beforeSubmit).toHaveBeenCalledTimes(expectedCheck === 3 ? 1 : 0);
+      if (expectedCheck === 3)
+        expect(beforeSubmit).toHaveBeenCalledWith({
+          executionContextId: 'prepared-context',
+        });
       expect(
         emitter.mock.calls.some(
           ([[, method]]) => method === 'submitSmartAccountExecution'
@@ -191,13 +202,18 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: 0,
           actionHash: `0x${'12'.repeat(32)}`,
           executionContextId: `prepared-${++preparations}`,
           executions: [],
           smartAccount,
           userOperation: { sender: ACCOUNT_ADDRESS },
         };
-      if (method === 'assertSmartAccountExecutionContext') return;
+      if (
+        method === 'assertSmartAccountExecutionContext' ||
+        method === 'assertSmartAccountPreparedNonce'
+      )
+        return;
       if (method === 'submitSmartAccountExecution') return payload[0];
       throw Error(`Unexpected method ${method}`);
     });
@@ -256,12 +272,17 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: 0,
           actionHash: `0x${'12'.repeat(32)}`,
           executionContextId: 'policy-context',
           executions: [],
           smartAccount,
         };
-      if (method === 'assertSmartAccountExecutionContext') return;
+      if (
+        method === 'assertSmartAccountExecutionContext' ||
+        method === 'assertSmartAccountPreparedNonce'
+      )
+        return;
       if (method === 'submitSmartAccountExecution') return payload[0];
       throw Error(method);
     });
@@ -303,12 +324,17 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
         if (method === 'prepareSmartAccountExecutions')
           return {
+            accountId: 0,
             actionHash: `0x${'12'.repeat(32)}`,
             executionContextId: 'policy-context',
             executions: [],
             smartAccount,
           };
-        if (method === 'assertSmartAccountExecutionContext') return;
+        if (
+          method === 'assertSmartAccountExecutionContext' ||
+          method === 'assertSmartAccountPreparedNonce'
+        )
+          return;
         if (method === 'submitSmartAccountExecution') return payload[0];
         throw Error(method);
       });
@@ -349,9 +375,16 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
       const controllerEmitter = jest.fn(
         async ([, method]: string[], payload: any[]) => {
+          if (
+            method === 'assertSmartAccountExecutionContext' ||
+            method === 'assertSmartAccountPreparedNonce'
+          )
+            return;
           if (method === 'prepareSmartAccountExecutions') {
             const options = payload[2] || {};
             return {
+              accountId: 0,
+              executionContextId: 'fixture-context',
               actionHash:
                 options.feeOverrides?.[feeField] === '2'
                   ? '0x' + '02'.repeat(32)
@@ -448,8 +481,15 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         transactionHash: acknowledged ? `0x${'12'.repeat(32)}` : undefined,
       });
       const emitter = jest.fn(async ([, method]: string[]) => {
+        if (
+          method === 'assertSmartAccountExecutionContext' ||
+          method === 'assertSmartAccountPreparedNonce'
+        )
+          return;
         if (method === 'prepareSmartAccountExecutions')
           return {
+            accountId: 0,
+            executionContextId: 'fixture-context',
             actionHash: `0x${'01'.repeat(32)}`,
             executions,
             smartAccount,
@@ -472,6 +512,9 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         onBeforeSubmit: async () => {
           events.push('durable begin');
         },
+        onSubmissionNotBroadcast: async () => {
+          events.push('proven unsent');
+        },
       });
       if (expected === 2)
         await expect(submitting).resolves.toEqual({ hash: 'retried' });
@@ -482,16 +525,23 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       expect(calls).toHaveLength(expected);
       for (const call of calls) expect(call.slice(2)).toEqual([300000, false]);
       expect(events).toEqual(
-        Array.from({ length: expected }, () => [
-          'durable begin',
-          'submit',
-        ]).flat()
+        expected === 2
+          ? [
+              'durable begin',
+              'submit',
+              'proven unsent',
+              'durable begin',
+              'submit',
+            ]
+          : ['durable begin', 'submit']
       );
     }
   );
 
   it('does not invoke smart submission if its durable boundary fails', async () => {
     const emitter = jest.fn().mockResolvedValue({
+      accountId: 0,
+      executionContextId: 'fixture-context',
       actionHash: `0x${'01'.repeat(32)}`,
       executions: [],
       smartAccount,
@@ -513,6 +563,9 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     ).rejects.toThrow('Persistence failed');
     expect(emitter.mock.calls.map(([[, method]]) => method)).toEqual([
       'prepareSmartAccountExecutions',
+      'assertSmartAccountExecutionContext',
+      'assertSmartAccountPreparedNonce',
+      'assertSmartAccountExecutionContext',
     ]);
   });
 });
@@ -581,6 +634,7 @@ describe('getSmartAccountLocalOwnerContexts', () => {
 
     await expect(
       signSmartAccountActionHash({
+        assertBeforeAuthentication: async () => undefined,
         actionHash,
         authenticatorContexts: {
           ecdsa: { localOwners: [owner], signActionHash },

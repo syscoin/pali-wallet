@@ -27,3 +27,14 @@ test('HTTP companion accepts only a paired fixed-loopback port and fresh token',
   for (const suffix of ['&httpPort=45454', `&httpToken=${'a'.repeat(32)}`, `&httpPort=65536&httpToken=${'a'.repeat(32)}`,
     `&httpPort=45454&httpToken=${'a'.repeat(32)}&host=external.invalid`]) assert.throws(() => parseQualificationLaunch(base + suffix));
 });
+
+test('private proof launch uses a fresh token without admitting mixed modes or arbitrary input', () => {
+  const base = 'pali-wallet-qualification://run?phase=create&scenario=import';
+  const token = 'b'.repeat(32);
+  assert.deepEqual(parseQualificationLaunch(`${base}&proofToken=${token}`).privateProof, { token });
+  for (const suffix of ['&proofToken=', '&proofToken=invalid', `&proofToken=${token}&proofToken=${token}`,
+    `&proofToken=${token}&httpPort=45454&httpToken=${token}`, `&proofToken=${token}&input=secret`])
+    assert.throws(() => parseQualificationLaunch(base + suffix), /QUALIFICATION_LINK_INVALID/);
+  assert.throws(() => parseQualificationLaunch(`${base.replace('import', 'generate')}&proofToken=${token}`));
+  assert.throws(() => parseQualificationLaunch(`pali-wallet-qualification://run?phase=restart&scenario=import&address=0x${'11'.repeat(20)}&proofToken=${token}`));
+});

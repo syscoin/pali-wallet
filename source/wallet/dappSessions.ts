@@ -1,4 +1,5 @@
 import {
+  matchesDappAccountIdentity,
   matchesDappAccountReference,
   MAX_DAPP_ORIGIN_LENGTH,
   type DappGrant as IDApp,
@@ -607,9 +608,8 @@ export function createDappSessions<Account extends DappPublicAccount>(
   ) => {
     const generation = host.wallet().generation;
     let retired = false;
-    const grants = Object.values(getAll()).filter(
-      (grant) =>
-        grant.accountId === accountId && grant.accountType === accountType
+    const grants = Object.values(getAll()).filter((grant) =>
+      matchesDappAccountIdentity(grant, accountId, accountType)
     );
     return {
       grants,

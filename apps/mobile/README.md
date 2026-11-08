@@ -15,10 +15,11 @@ Native custody and public watch accounts use **Wallet / Activity / Tools / Setti
 | Networks                  | Select shared built-in registrations and add, edit or remove eligible custom EVM and UTXO registrations. UTXO custody requires a network and signing rule supported by the shared software engine. Endpoint identity and retained-transfer checks protect registration changes.                                                                                       |
 | EVM assets and transfers  | Native coin, ERC20 and supported ERC721/ERC1155 transfers, exact amounts, manual token/collectible import, explicit explorer-backed discovery, ownership checks and local list removal. Automatic nonce selection and an advanced override share the extension's policy. Saved pending transactions expose eligible Cancel and Speed Up actions and exact-byte retry. |
 | UTXO assets and transfers | Native-coin sends for supported software accounts and registrations, including maximum amount. Syscoin UTXO exposes exact SYSX holdings and allocation sends with separate native funding and change. Saved transfers support reviewed retry through their original verified route.                                                                                   |
+| Hardware wallets | Ledger BLE import and wallet signing use the shared SDK. Trezor import and EVM/UTXO wallet sends use official Suite app links, the same shared signers, and fresh review after returning from background lock. Saved signed-byte retry remains device-free. Actual model/OS qualification and hardware dapp signing remain open. |
 | Activity                  | Shared EVM explorer, filtering and normalization for custody and watch accounts. Seeded and watch UTXO accounts use shared indexed history and bounded transaction details. The view combines public observations with retained local submissions.                                                                                                                    |
 | Security and recovery     | Foreground idle lock, lifecycle lock, authentication throttling, seed/key reveal, matching-phrase password recovery, and authenticated removal of the wallet from this device. Recovery preserves supported account records, imported-key recovery copies, private notes and signed records.                                                                          |
-| Private notes             | List locally saved notes, inspect details, reveal an individual note after fresh authentication, adjust the shared capacity policy, and export or restore the encrypted whole-note bundle through native file adapters. Pool status and spending remain separate work.                                                                                                |
-| Tools and preferences     | Account/network management, local trusted-site lookup, read-only guardian recovery status, Display currency, Help & about, and an explicit external testnet-faucet link where available.                                                                                                                                                                              |
+| Private notes             | List locally saved notes, inspect details, reveal an individual note after fresh authentication, adjust the shared capacity policy, and export or restore the encrypted whole-note bundle through native file adapters. Software HD/imported accounts can review and submit Classic ETH deposits through the shared fee, nonce and signed-record path. Explicit note-status checks use the owned pool verifier; withdrawals and native/device qualification remain pending.                                                                                                |
+| Tools and preferences     | Account/network management, local trusted-site lookup, guardian status and policy management, threshold-1 ECDSA recovery for saved Smart accounts, Display currency, Help & about, and an explicit external testnet-faucet link where available.                                                                                                                                                                              |
 
 ### Asset observations and history
 
@@ -31,6 +32,8 @@ Native funding uses shared canonical and pending balance bounds. Ordinary single
 Ordinary Activity rows use indexed facts without per-row RPC enrichment. Retained unconfirmed EVM submissions use the shared observer, and opening a detail can request additional facts. A canonical receipt supplies the confirmation or revert observation. Later observations can reflect a reorganization. EVM internal transfers, full collectible enumeration and complete historical indexing remain open scope.
 
 UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation window. EVM recent-history storage keeps up to 48 local terminal summaries, 24 indexed candidates and 20 list preferences within 60 KiB. Byte limits can reduce those counts. Older history remains available through a configured explorer.
+
+Guardian recovery uses an existing verified Smart account with local HD/imported guardian and replacement keys. The first flow supports threshold 1 and uses the guardian as fee payer. It saves public recovery intent before signing, resumes after interruption, and atomically adopts recovered metadata before releasing intent references. Pure watch accounts provide read-only status. Separate fee payers, higher thresholds, other authenticators and physical-device qualification remain open.
 
 ### Signed transaction recovery
 
@@ -50,7 +53,9 @@ Settings → Auto-lock stores a device-local preference for custody and watch se
 
 ## Remaining implementation and qualification
 
-Operational dapp sessions and approvals, native Ledger/Trezor transport, smart-account operations, privacy-pool operations and Sentry management remain outstanding. Biometric/passkey enrollment and login, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
+Saved-note direct and relayed withdrawal adapters and review UI are implemented as a qualification candidate. They reuse the shared proof, fixed-gas transaction and note-reservation paths. Native proof/resource qualification and production pool qualification remain required before release. Failed-withdrawal recovery and completed-note cleanup remain separate work.
+
+Remaining dapp methods, hardware model/transport qualification and hardware dapp signing, additional smart-account authenticators, broader guardian recovery, privacy-pool qualification and Sentry management remain outstanding. Native biometric qualification, remaining passkey support, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
 
 The [shared-core audit](docs/shared-core-audit.md), [security requirements](SECURITY.md) and [native qualification contract](qualification/README.md) describe the host boundaries and release gates. Track live-network, physical-device and full user-journey acceptance separately from source implementation.
 
@@ -71,7 +76,15 @@ npm run ios       # macOS, full Xcode and iOS build dependencies
 npm run android   # Android SDK, Java and an emulator or device
 ```
 
+The `preios` and `preandroid` hooks download the pinned public proving key and run the shared proof-asset packager before the native build. Install the root Yarn dependencies as well as the mobile npm dependencies. The packager verifies asset hashes and removes its temporary key directory. A failed download or pin check stops the build. No proving key is downloaded during wallet operation.
+
 Native onboarding offers wallet creation, phrase restoration and watch-only accounts directly. Custody requires the native runtime checks. The package scripts disable Expo CLI telemetry. Over-the-air application updates are disabled in app configuration.
+
+### Connected apps configuration
+
+The native build uses Pali Mobile's public [WalletConnect project ID](https://dashboard.walletconnect.com/). Set `EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID` at build time to select another project. This public client identifier is separate from the Chrome Web Store extension ID.
+
+The native connection implementation supports pasted links, QR and deep-link entry, explicit account/network consent, saved sessions, revocation, public reads, and software-account message and transaction reviews through shared policy. Locally controlled ECDSA Smart accounts support personal-sign and V4 typed-data review through the same ERC-7739 digest and signature-envelope preparation as the extension. The current native flow uses existing local HD/imported owner keys after a fresh validator read. Other Smart authenticators and native/device signing qualification remain open. Remaining dapp methods and native transport qualification are tracked in the parity matrix. Transport credentials use the existing protected database, and recovery preserves the connection record. Removing an account atomically retires its grants while preserving unrelated connections.
 
 ## Shared code and dependencies
 
@@ -83,12 +96,14 @@ The [mobile lockfile](package-lock.json) pins the official npm releases below wi
 
 | Dependency                   | Version |
 | ---------------------------- | ------- |
-| `@sidhujag/sysweb3-keyring`  | 2.1.6   |
+| `@sidhujag/sysweb3-keyring`  | 2.1.9   |
 | `@sidhujag/sysweb3-network`  | 2.0.0   |
 | `syscoinjs-lib`              | 2.0.0   |
 | `syscointx-js`               | 2.0.0   |
 | `react-native-quick-crypto`  | 1.1.9   |
 | `react-native-nitro-modules` | 0.37.2  |
+
+Keyring 2.1.9 provides the shared native-host and hardware signing paths, including Trezor envelope validation. Both hosts use the official SDK package. Qualification records bind the exact installed version and lockfile hash; the [shared-core audit](docs/shared-core-audit.md) tracks completion.
 
 QuickCrypto uses its native scheduler. Crypto, Buffer and stream adapters support the native dependency graph. Unsupported Node transports fail closed. The lockfile also pins the reviewed tooling overrides, including `glob` 14.0.3 and `minimatch` 11.0.4.
 

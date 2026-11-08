@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import {
   formatApprovalTokenAmount,
   getApprovalAddressValues,
-} from '../approval';
+} from '../../../shared/approval';
 import { Interface } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import * as validations from 'utils/validations';
@@ -50,6 +50,33 @@ const decodeApproval = async (
 };
 
 describe('ApprovalDetails', () => {
+  it.each([true, false])(
+    'shows the exact operator flag %s without verified metadata',
+    async (approved) => {
+      const decodedTx = await decodeApproval(
+        'setApprovalForAll',
+        approved,
+        'Unknown'
+      );
+      const values = getApprovalAddressValues(
+        decodedTx,
+        TOKEN_CONTRACT,
+        decodedTx.approvalType
+      );
+      const markup = renderToStaticMarkup(
+        <ApprovalDetails
+          {...values}
+          standardVerified={false}
+          approved={decodedTx.inputs[1]}
+        />
+      );
+      expect(markup).toContain('send.approvalRawValue');
+      expect(markup).toContain(`>${String(approved)}</span>`);
+      expect(markup).not.toContain('send.grantCollectionAccess');
+      expect(markup).not.toContain('send.revokeCollectionAccess');
+    }
+  );
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
@@ -66,7 +93,12 @@ describe('ApprovalDetails', () => {
       decodedTx.approvalType
     );
     const markup = renderToStaticMarkup(
-      <ApprovalDetails {...values} formattedAmount="0" isUnlimited />
+      <ApprovalDetails
+        standardVerified={true}
+        {...values}
+        formattedAmount="0"
+        isUnlimited
+      />
     );
 
     expect(decodedTx.method).toBe('approve');
@@ -120,6 +152,7 @@ describe('ApprovalDetails', () => {
       );
       const markup = renderToStaticMarkup(
         <ApprovalDetails
+          standardVerified={true}
           {...values}
           formattedAmount={formatApprovalTokenAmount(decodedTx.inputs[1], 6)}
           tokenSymbol="TEST"
@@ -140,7 +173,9 @@ describe('ApprovalDetails', () => {
       TOKEN_CONTRACT,
       decodedTx.approvalType
     );
-    const markup = renderToStaticMarkup(<ApprovalDetails {...values} />);
+    const markup = renderToStaticMarkup(
+      <ApprovalDetails standardVerified={true} {...values} />
+    );
 
     expect(values.isValid).toBe(true);
     expect(markup).toContain('transactions.approvedTo');
@@ -156,7 +191,9 @@ describe('ApprovalDetails', () => {
       TOKEN_CONTRACT,
       decodedTx.approvalType
     );
-    const markup = renderToStaticMarkup(<ApprovalDetails {...values} />);
+    const markup = renderToStaticMarkup(
+      <ApprovalDetails standardVerified={true} {...values} />
+    );
 
     expect(values.isValid).toBe(true);
     expect(values.isNftRevocation).toBe(true);
@@ -176,7 +213,9 @@ describe('ApprovalDetails', () => {
       TOKEN_CONTRACT,
       decodedTx.approvalType
     );
-    const markup = renderToStaticMarkup(<ApprovalDetails {...values} />);
+    const markup = renderToStaticMarkup(
+      <ApprovalDetails standardVerified={true} {...values} />
+    );
 
     expect(values.isValid).toBe(true);
     expect(markup).toContain('transactions.operator');
@@ -189,7 +228,9 @@ describe('ApprovalDetails', () => {
       TOKEN_CONTRACT,
       'erc20-amount'
     );
-    const markup = renderToStaticMarkup(<ApprovalDetails {...values} />);
+    const markup = renderToStaticMarkup(
+      <ApprovalDetails standardVerified={true} {...values} />
+    );
 
     expect(values.isValid).toBe(false);
     expect(markup).toContain('send.invalidApprovalDetails');

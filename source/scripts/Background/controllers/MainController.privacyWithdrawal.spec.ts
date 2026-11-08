@@ -20,6 +20,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: jest.fn(() => ({})),
   clearNavigationState: jest.fn(async () => undefined),
   clearTransactionNavigationState: jest.fn(async () => undefined),
 }));
@@ -30,11 +31,13 @@ jest.mock('utils/slhDsa', () => ({
   clearSLHDSAXmssTreeCache: jest.fn().mockResolvedValue(undefined),
 }));
 
+import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { webcrypto } from 'crypto';
-import { Interface } from 'ethers';
+import { Interface, Transaction } from 'ethers';
 
 import { getController } from '..';
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+import { createPrivacyWithdrawalsController } from '../../../wallet/privacyWithdrawals';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -45,7 +48,10 @@ import { PRIVACY_POOLS } from 'utils/privacy/registry';
 import type { IPrivacyWithdrawalsHost } from 'utils/privacy/withdrawTypes';
 
 import MainController from './MainController';
-import { createPrivacyWithdrawalsController } from './privacyWithdrawals';
+import {
+  captureGenericEvmFeeDispatch,
+  markGenericEvmFeeSdkEntered,
+} from './nativeEvmFeeReviews';
 
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 const NOTE_ID = '00000000-0000-4000-8000-000000001000';
@@ -90,7 +96,20 @@ function setup() {
   state.vaultGlobal.activeSlip44 = 60;
   jest.spyOn(store, 'getState').mockImplementation(() => state);
   const events: string[] = [];
-  const keyring = { isUnlocked: jest.fn(() => true) };
+  let unlockEpoch = 0;
+  const keyring = {
+    isUnlocked: jest.fn(() => true),
+    lockWallet: jest.fn(async () => {
+      unlockEpoch++;
+    }),
+    captureUnlockedSessionGuard: jest.fn(() => {
+      const epoch = unlockEpoch;
+      return () => {
+        if (epoch !== unlockEpoch || !keyring.isUnlocked())
+          throw new Error('retired unlock');
+      };
+    }),
+  };
   const wallet: any = Object.create(MainController.prototype);
   const pendingNonce = jest.fn(async () => 7);
   const provider = {
@@ -100,8 +119,21 @@ function setup() {
         return `0x${(await pendingNonce()).toString(16)}`;
       }
       if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getBlockByNumber')
+        return {
+          number: '0x10',
+          hash: '0x' + 'aa'.repeat(32),
+          gasLimit: '0x1c9c380',
+          baseFeePerGas: '0x2',
+        };
+      if (method === 'eth_getBalance')
+        return '0x' + (await provider.getBalance()).toString(16);
+      if (method === 'eth_maxPriorityFeePerGas') return '0x1';
       throw new Error('Unexpected synthetic RPC');
     }),
+    getGasPrice: jest.fn(async () => BigInt(5)),
+    verifyConfiguredChainId: jest.fn(async () => undefined),
+    signal: new AbortController().signal,
     estimateGas: jest.fn(() => {
       throw new Error('No note-specific estimation allowed');
     }),
@@ -186,6 +218,32 @@ function setup() {
     authenticationMutex: new AsyncMutex(),
     privacyDepositSessions: new WeakMap(),
     assertWalletReadyForSigning: jest.fn(),
+    captureFreshEvmRead: jest.fn(() => ({
+      network: state.vault.activeNetwork,
+      assertCurrent: () => undefined,
+      overrides: {},
+      run: (operation: (reader: unknown) => unknown) =>
+        operation(wallet.ethereumTransaction.web3Provider),
+    })),
+    inspectOrdinaryEvmNonce: jest.fn(async (_read, address, options) => {
+      options?.assertCurrent?.();
+      const observed = Number(
+        BigInt(
+          await wallet.ethereumTransaction.web3Provider.send(
+            'eth_getTransactionCount',
+            [address, 'pending']
+          )
+        )
+      );
+      options?.assertCurrent?.();
+      return {
+        nonce: observed,
+        state: 'pending',
+        balanceState: 'pending',
+        canonicalBlock: { hash: '0x' + 'aa'.repeat(32), number: '16' },
+        nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
+      };
+    }),
     getActiveKeyring: () => keyring,
     getPrivateVaultController: jest.fn(async () => vault),
     privacySnapshotReader: jest.fn(() => ({
@@ -202,7 +260,7 @@ function setup() {
       }
     ),
   });
-  Object.defineProperty(wallet, 'ethereumTransaction', {
+  Object.defineProperty(keyring, 'ethereumTransaction', {
     configurable: true,
     value: { web3Provider: provider },
   });
@@ -291,7 +349,7 @@ it.each(['healthy', 'snapshot', 'expiry', 'service change'] as const)(
       run.events.push('sign');
       return { hash: HASH, nonce: 7 };
     });
-    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+    Object.defineProperty(run.keyring, 'ethereumTransaction', {
       configurable: true,
       value: {
         web3Provider: run.provider,
@@ -380,6 +438,7 @@ it.each(['healthy', 'snapshot', 'expiry', 'expiry after broadcast'] as const)(
     const provider = {
       ...run.provider,
       verifyConfiguredChainId: jest.fn(async () => {
+        if (!run.vault.reserveWithdrawalAttempt.mock.calls.length) return;
         entered.resolve();
         await release.promise;
       }),
@@ -409,7 +468,7 @@ it.each(['healthy', 'snapshot', 'expiry', 'expiry after broadcast'] as const)(
       get: () => provider,
     });
     const sign = jest.spyOn(localSigner, 'signTransaction');
-    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+    Object.defineProperty(run.keyring, 'ethereumTransaction', {
       configurable: true,
       value: sdk,
     });
@@ -488,7 +547,22 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
     calls.map(({ method }) => {
       requests.push(method);
       if (method !== 'eth_getTransactionCount' && method !== 'eth_chainId')
-        throw new Error('Unexpected synthetic read');
+        return {
+          jsonrpc: '2.0',
+          result:
+            method === 'eth_getBlockByNumber'
+              ? {
+                  number: '0x10',
+                  hash: '0x' + 'aa'.repeat(32),
+                  gasLimit: '0x1c9c380',
+                  baseFeePerGas: '0x2',
+                }
+              : method === 'eth_getBalance'
+              ? '0x3dfd240'
+              : method === 'eth_maxPriorityFeePerGas'
+              ? '0x1'
+              : undefined,
+        };
       return {
         jsonrpc: '2.0',
         result: method === 'eth_chainId' ? '0x1' : pending,
@@ -500,6 +574,7 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
     maxPriorityFeePerGas: BigInt(1),
   }));
   live.getBalance = jest.fn(async () => BigInt(65000000));
+  live.getGasPrice = jest.fn(async () => BigInt(5));
   const { wallet, host, vault } = setup();
   wallet.ethereumTransaction.web3Provider = live;
   try {
@@ -599,6 +674,30 @@ it.each(['preparation', 'confirmation'] as const)(
 
 it('carries the actual controller cloned context through fixed-gas Main preparation, reservation and sender', async () => {
   const { wallet, provider, vault, host, events } = setup();
+  let retainedMetadata: Readonly<Record<string, unknown>> | undefined;
+  const originalSend = wallet.sendAndSaveEthTransaction.getMockImplementation();
+  wallet.sendAndSaveEthTransaction.mockImplementationOnce(async (...args) => {
+    const [transaction, , , , options] = args;
+    const context = options.expectedContext;
+    retainedMetadata = captureGenericEvmFeeDispatch(wallet, {
+      operation: 'send',
+      account: context.account,
+      network: {
+        kind: 'ethereum',
+        chainId: context.chainId,
+        url: context.rpcUrl,
+        slip44: context.slip44,
+      },
+      walletNonce: options.dappNonceApproval,
+      review: {
+        id: options.genericDispatchId,
+        unsignedHash: Transaction.from(
+          serializePreparedEvmTransaction(transaction)
+        ).unsignedHash,
+      },
+    })?.metadata;
+    return originalSend(...args);
+  });
   const review = await prepare(wallet);
   expect(review).toMatchObject({
     intentId: INTENT_ID,
@@ -615,6 +714,15 @@ it('carries the actual controller cloned context through fixed-gas Main preparat
     wallet.submitPrivacyWithdrawal(review.intentId)
   ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
   expect(events).toEqual(['reserve', 'send', 'record']);
+  expect(retainedMetadata).toMatchObject({
+    privateWithdrawal: {
+      noteId: NOTE_ID,
+      proof: PROOF,
+      nullifierHash: IDENTITY.nullifierHash,
+      mode: 'direct',
+      transaction: { gasLimit: '0x9eb10', nonce: '0x7' },
+    },
+  });
   const [attempt, session] = vault.reserveWithdrawalAttempt.mock.calls[0];
   expect(attempt.context).not.toBe((host.captureSession() as any).context);
   expect(attempt.context.account).toEqual({
@@ -626,24 +734,29 @@ it('carries the actual controller cloned context through fixed-gas Main preparat
   expect(vault.recordWithdrawalSubmission).toHaveBeenCalledWith(
     attempt,
     { transactionHash: HASH },
-    session
+    expect.objectContaining({
+      keyring: session.keyring,
+      generation: session.generation,
+    })
   );
   const [transaction, legacy, account, metadata, options] =
     wallet.sendAndSaveEthTransaction.mock.calls[0];
   expect(transaction).toMatchObject({
-    chainId: 1,
+    chainId: '1',
     from: ADDRESS,
-    to: PRIVACY_POOLS[1].address,
-    value: '0x0',
-    gasLimit: '0x9eb10',
-    nonce: '0x7',
-    maxFeePerGas: '0x64',
-    maxPriorityFeePerGas: '0x1',
+    to: expect.stringMatching(new RegExp(PRIVACY_POOLS[1].address, 'i')),
+    value: '0',
+    gasLimit: '650000',
+    nonce: '7',
+    maxFeePerGas: '100',
+    maxPriorityFeePerGas: '1',
   });
   expect(legacy).toBe(false);
-  expect(account).toEqual({ id: 0, type: KeyringAccountType.HDAccount });
+  expect(account).toBeUndefined();
+  expect(options.dappNonceApproval).toEqual({ nonce: 7, source: 'automatic' });
+  expect(options.genericDispatchId).toEqual(expect.any(String));
   expect(metadata).toBeUndefined();
-  expect(options.expectedContext).toBe(attempt.context);
+  expect(options.expectedContext).toEqual(attempt.context);
   expect(options.clearNavigation).toBe(false);
   const decoded = ABI.parseTransaction({ data: transaction.data });
   expect(Array.from(decoded!.args)).toEqual([
@@ -657,11 +770,20 @@ it('carries the actual controller cloned context through fixed-gas Main preparat
   ]);
   expect(provider.estimateGas).not.toHaveBeenCalled();
   expect(provider.call).not.toHaveBeenCalled();
-  expect(provider.send.mock.calls).toEqual([
-    ['eth_chainId', []],
-    ['eth_getTransactionCount', [ADDRESS, 'pending']],
-    ['eth_getTransactionCount', [ADDRESS, 'pending']],
-  ]);
+  expect(
+    provider.send.mock.calls.some(
+      ([method]) => method === 'eth_estimateGas' || method === 'eth_call'
+    )
+  ).toBe(false);
+  expect(JSON.stringify(provider.send.mock.calls)).not.toContain(PROOF);
+  expect(JSON.stringify(provider.send.mock.calls)).not.toContain(
+    IDENTITY.nullifierHash
+  );
+  expect(
+    provider.send.mock.calls.filter(
+      ([method]) => method === 'eth_getTransactionCount'
+    ).length
+  ).toBeGreaterThanOrEqual(2);
   expect(provider.getTransactionCount).not.toHaveBeenCalled();
 });
 
@@ -767,6 +889,7 @@ it('journals a successful acknowledgement to the original attempt when the selec
     async (_tx, _legacy, _account, _metadata, options) => {
       options.assertCurrentContext();
       state.vault.activeAccount = { id: 1, type: KeyringAccountType.HDAccount };
+      wallet.walletSessionGeneration++;
       await options.onBroadcast({ hash: HASH });
       return { hash: HASH };
     }
@@ -776,7 +899,10 @@ it('journals a successful acknowledgement to the original attempt when the selec
   ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
   const [attempt, , session] = vault.recordWithdrawalSubmission.mock.calls[0];
   expect(attempt.context.account.id).toBe(0);
-  expect(session).toBe(vault.reserveWithdrawalAttempt.mock.calls[0][1]);
+  expect(session.keyring).toBe(
+    vault.reserveWithdrawalAttempt.mock.calls[0][1].keyring
+  );
+  expect(session).not.toBe(vault.reserveWithdrawalAttempt.mock.calls[0][1]);
   expect(vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
 });
 
@@ -880,6 +1006,7 @@ it('quotes relayer gas from chain and public fees only, without recipient or not
 
 it.each([
   'session invalidation after commit',
+  'session invalidation after commit when cleanup is unavailable',
   'healthy pre-sign invalidation',
   'sender entered with unknown outcome',
 ] as const)('real Main host and vault reservation: %s', async (scenario) => {
@@ -894,7 +1021,12 @@ it.each([
   let testRoot = 'synthetic private vault test root';
   keyring.getDecryptedMnemonic = () => testRoot;
   keyring.isUnlocked = () => true;
+  keyring.captureUnlockedSessionGuard = () => () => undefined;
   const run = setup();
+  Object.defineProperty(keyring, 'ethereumTransaction', {
+    configurable: true,
+    value: run.wallet.ethereumTransaction,
+  });
   run.wallet.getActiveKeyring = () => keyring;
   run.wallet.getWalletSetupStatus = () => false;
   const records: Record<string, any> = {};
@@ -931,7 +1063,13 @@ it.each([
   const review = await prepare(run.wallet);
   const committed = deferred(),
     release = deferred();
-  if (scenario === 'session invalidation after commit') {
+  const invalidatedAfterCommit = scenario.startsWith(
+    'session invalidation after commit'
+  );
+  const cleanupUnavailable =
+    scenario ===
+    'session invalidation after commit when cleanup is unavailable';
+  if (invalidatedAfterCommit) {
     const write = storage.setItem.getMockImplementation()!;
     storage.setItem.mockImplementationOnce(async (key, value) => {
       await write(key, value);
@@ -950,17 +1088,23 @@ it.each([
       });
   }
   if (scenario === 'sender entered with unknown outcome')
-    run.wallet.sendAndSaveEthTransaction.mockRejectedValue(
-      new Error('transport indeterminate')
+    run.wallet.sendAndSaveEthTransaction.mockImplementation(
+      async (_tx, _legacy, _account, _metadata, options) => {
+        markGenericEvmFeeSdkEntered(run.wallet, options.genericDispatchId);
+        throw new Error('transport indeterminate');
+      }
     );
   const clear = jest.spyOn(vault, 'clearUnbroadcastWithdrawalAttempt');
+  if (cleanupUnavailable)
+    clear.mockRejectedValueOnce(new Error('Synthetic cleanup storage refusal'));
   const result = run.controller.submitWithdrawal(review.intentId);
   const outcome =
     scenario === 'sender entered with unknown outcome'
       ? expect(result).resolves.toMatchObject({ phase: 'unknown' })
       : expect(result).rejects.toMatchObject({ transactionNotBroadcast: true });
-  if (scenario === 'session invalidation after commit') {
+  if (invalidatedAfterCommit) {
     await committed.promise;
+    expect(run.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
     run.wallet.walletSessionGeneration += 1;
     release.resolve();
   }
@@ -970,8 +1114,8 @@ it.each([
   else expect(run.wallet.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   const session = run.wallet.capturePrivateVaultSession();
   const saved = await vault.getWithdrawalAttempt(NOTE_ID, session);
-  if (scenario === 'session invalidation after commit') {
-    expect(clear).not.toHaveBeenCalled();
+  if (cleanupUnavailable) {
+    expect(clear).toHaveBeenCalledTimes(1);
     expect(saved).toMatchObject({ phase: 'unknown' });
     expect((await vault.getNotes()).notes[0].phase).toBe('waiting');
     run.state.vault.activeAccount = {
@@ -1040,7 +1184,7 @@ it.each([
   async (kind, stage) => {
     const { createPrivateVaultController } = await import('./privateVault');
     const { createPrivacyTransactionsController } = await import(
-      './privacyTransactions'
+      '../../../wallet/privacyTransactions'
     );
     const ActualKeyring = jest.requireActual(
       '@sidhujag/sysweb3-keyring'
@@ -1051,7 +1195,12 @@ it.each([
     keyring.privateRecordSessionRevision = 0;
     keyring.getDecryptedMnemonic = () => 'synthetic restore host race wallet';
     keyring.isUnlocked = () => true;
+    keyring.captureUnlockedSessionGuard = () => () => undefined;
     const run = setup();
+    Object.defineProperty(keyring, 'ethereumTransaction', {
+      configurable: true,
+      value: run.wallet.ethereumTransaction,
+    });
     run.wallet.getActiveKeyring = () => keyring;
     run.wallet.getWalletSetupStatus = () => undefined;
     run.wallet.privacyDepositContexts = new WeakMap();
@@ -1059,6 +1208,60 @@ it.each([
     (run.provider.estimateGas as jest.Mock).mockImplementation(() =>
       Promise.resolve(BigInt(100001))
     );
+    if (kind === 'deposit') {
+      Object.defineProperty(run.provider, 'signal', {
+        value: new AbortController().signal,
+      });
+      Object.assign(run.provider, {
+        getGasPrice: jest.fn(async () => BigInt(5)),
+        verifyConfiguredChainId: jest.fn(async () => undefined),
+      });
+      const originalRead = run.provider.send.getMockImplementation()!;
+      run.provider.send.mockImplementation(async (method, params) => {
+        if (method === 'eth_getBlockByNumber')
+          return {
+            hash: '0x' + 'aa'.repeat(32),
+            number: '0x10',
+            gasLimit: '0x1c9c380',
+            baseFeePerGas: '0x2',
+          } as any;
+        if (method === 'eth_estimateGas')
+          return '0x' + BigInt(await run.provider.estimateGas()).toString(16);
+        if (method === 'eth_getBalance')
+          return '0x' + (await run.provider.getBalance()).toString(16);
+        if (method === 'eth_maxPriorityFeePerGas') return '0x1';
+        return originalRead(method, params);
+      });
+      run.wallet.captureFreshEvmRead = () => ({
+        network: run.state.vault.activeNetwork,
+        assertCurrent: () => undefined,
+        overrides: {},
+        run: (action: (provider: unknown) => unknown) => action(run.provider),
+      });
+      run.wallet.inspectOrdinaryEvmNonce = async (
+        _read: unknown,
+        address: string,
+        options: { assertCurrent(): void }
+      ) => {
+        options.assertCurrent();
+        const nonce = Number(
+          BigInt(
+            await run.provider.send('eth_getTransactionCount', [
+              address,
+              'pending',
+            ])
+          )
+        );
+        options.assertCurrent();
+        return {
+          nonce,
+          state: 'pending',
+          balanceState: 'pending',
+          canonicalBlock: { hash: '0x' + 'aa'.repeat(32), number: '16' },
+          nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
+        };
+      };
+    }
     const records: Record<string, unknown> = {};
     let sequence = 100;
     const vault = createPrivateVaultController(
@@ -1100,7 +1303,7 @@ it.each([
       }
       return { hash: HASH, nonce: 7 };
     });
-    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+    Object.defineProperty(keyring, 'ethereumTransaction', {
       configurable: true,
       value: { web3Provider: run.provider, sendFormattedTransaction: signer },
     });
@@ -1235,5 +1438,30 @@ it.each(['direct', 'relayer'] as const)(
         live.destroy();
       }
     }
+  }
+);
+
+it.each(['lock-unlock', 'wallet-reset', 'keyring-replacement'] as const)(
+  'does not journal an old withdrawal ACK after %s',
+  async (change) => {
+    const run = setup();
+    const review = await prepare(run.wallet);
+    run.wallet.sendAndSaveEthTransaction.mockImplementationOnce(
+      async (_tx, _legacy, _account, _metadata, options) => {
+        if (change === 'lock-unlock') {
+          await run.keyring.lockWallet();
+          run.keyring.isUnlocked.mockReturnValue(true);
+        } else if (change === 'wallet-reset')
+          run.wallet.walletStateGeneration++;
+        else run.wallet.getActiveKeyring = () => ({ ...run.keyring });
+        await options.onBroadcast({ hash: HASH });
+        return { hash: HASH };
+      }
+    );
+    await expect(
+      run.wallet.submitPrivacyWithdrawal(review.intentId)
+    ).resolves.toMatchObject({ phase: 'unknown', transactionHash: HASH });
+    expect(run.vault.recordWithdrawalSubmission).not.toHaveBeenCalled();
+    expect(run.vault.clearUnbroadcastWithdrawalAttempt).not.toHaveBeenCalled();
   }
 );

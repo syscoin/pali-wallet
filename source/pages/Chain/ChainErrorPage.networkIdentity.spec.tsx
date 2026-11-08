@@ -179,7 +179,7 @@ const initialize = (source: INetwork, target: INetwork) => {
   );
   sourceKeyring = {
     isUnlocked: jest.fn(() => true),
-    transferSessionTo: jest.fn(() => {
+    prepareSessionTransfer: jest.fn(() => {
       throw new Error('Must not reach transfer after failed load');
     }),
   };
@@ -211,7 +211,10 @@ const initialize = (source: INetwork, target: INetwork) => {
     ts.ScriptTarget.Latest,
     true
   );
-  const klass = ast.statements.find(ts.isClassDeclaration)!;
+  const klass = ast.statements.find(
+    (item): item is ts.ClassDeclaration =>
+      ts.isClassDeclaration(item) && item.name?.text === 'MainController'
+  )!;
   for (const name of ['setActiveNetworkLogic', 'handleNetworkChangeError']) {
     const declaration = klass.members.find(
       (member) =>
@@ -314,7 +317,7 @@ it.each([
     expect(store.getState().vaultGlobal.activeSlip44).toBe(source.slip44);
     expect(store.getState().vaultGlobal.networkTarget).toEqual(target);
     expect(store.getState().vaultGlobal.error).toBe(FAILURE);
-    expect(sourceKeyring.transferSessionTo).not.toHaveBeenCalled();
+    expect(sourceKeyring.prepareSessionTransfer).not.toHaveBeenCalled();
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     await user.click(
       screen.getByTestId('status-tooltip').firstElementChild as HTMLElement

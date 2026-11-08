@@ -15,7 +15,10 @@ import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from '
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
 import { httpBuild, type HttpLaunch } from './http-contract.ts';
+import { withWalletConnectQualificationScope } from './walletconnect-scope.ts';
+import type { WalletConnectQualificationDiagnostic } from './walletconnect-native.ts';
 import { makePublicPoolFailure, PUBLIC_POOL_FAILURE_FILE, publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
+import { parsePrivateProofReport, privateProofReportName } from './private-proof-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -53,6 +56,7 @@ type LaunchParameters = {
   physical?: never;
   http?: HttpLaunch;
   publicPool?: PublicPoolLaunch;
+  privateProof?: Readonly<{ token: string }>;
 } | PhysicalLaunch;
 const expect = (value: unknown) => {
   if (!value) throw Error('QUALIFICATION_ASSERTION_FAILED');
@@ -107,6 +111,8 @@ function QualificationApp() {
   const [status, setStatus] = useState('Waiting for qualification command');
   useEffect(() => {
     let started = false;
+    let privateProofLifetime: AbortController | undefined;
+    const qualificationLifetime = new AbortController();
     const run = async () => {
       if (started) return;
       started = true;
@@ -119,6 +125,7 @@ function QualificationApp() {
       let authority: NativeCustodyAuthority | undefined;
       let backup: SeedBackupFlow | undefined;
       let cryptoEvidence: FullCryptoQualification | undefined;
+      let walletConnectDiagnostic: WalletConnectQualificationDiagnostic | undefined;
       let fullCryptoCase: CryptoFullCase | undefined;
       let qualificationLoadDiagnostic: CryptoLoadDiagnostic | undefined;
       const storageDiagnostic = createStorageQualificationDiagnostic();
@@ -131,6 +138,8 @@ function QualificationApp() {
       let expectedZksysAddress: string | undefined;
       let networkCalls = 0;
       let verifiedSdkVersion: string | undefined;
+      let verifiedQuickCryptoIdentity: string | undefined;
+      let sentryBlindingCalls = 0;
       const check = async <T,>(
         name: string,
         fn: () => Promise<T>
@@ -144,6 +153,8 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
+        const { getWalletConnectWebSocket } = await import('../src/platform/walletConnectRuntime.native');
+        const NativeWebSocket = await getWalletConnectWebSocket();
         globalThis.fetch = (() => {
           networkCalls++;
           throw Error('QUALIFICATION_NETWORK_FORBIDDEN');
@@ -156,6 +167,50 @@ function QualificationApp() {
           forbiddenTransport as unknown as typeof XMLHttpRequest;
         globalThis.WebSocket =
           forbiddenTransport as unknown as typeof WebSocket;
+        const privateProofConfiguration = Constants.expoConfig?.extra?.paliPrivateProofQualification;
+        if (privateProofConfiguration !== undefined || (!parameters.physical && parameters.privateProof)) {
+          if (parameters.physical || parameters.http || parameters.publicPool || !parameters.privateProof ||
+              parameters.phase !== 'create' || parameters.scenario !== 'import' || publicPoolConfiguration !== undefined ||
+              !['ios', 'android'].includes(Platform.OS) || !FileSystem.documentDirectory)
+            throw Error('PRIVATE_PROOF_QUALIFICATION_BUILD_INVALID');
+          const build = httpBuild(privateProofConfiguration);
+          const token = parameters.privateProof.token;
+          const installedVersion = require('@sidhujag/sysweb3-keyring/package.json').version;
+          const { paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+          expect(typeof installedVersion === 'string' && installedVersion === paliQualificationSdkVersion &&
+            typeof paliQualificationSdkIdentity === 'string');
+          const destination = `${FileSystem.documentDirectory}${privateProofReportName(token)}`;
+          expect(!(await FileSystem.getInfoAsync(destination)).exists && !(await FileSystem.getInfoAsync(`${destination}.tmp`)).exists);
+          stage = 'private proof host';
+          const owner = new AbortController();
+          privateProofLifetime = owner;
+          const appState = AppState.addEventListener('change', (state) => { if (state !== 'active') owner.abort(); });
+          const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => owner.abort()) : undefined;
+          const assertCurrent = () => {
+            if (owner.signal.aborted || AppState.currentState !== 'active') throw Error('PRIVATE_PROOF_QUALIFICATION_INACTIVE');
+          };
+          try {
+            assertCurrent();
+            await ensureNativeCryptoReady();
+            const { qualifyNativePrivateProof } = await import('./native-private-proof.ts');
+            const result = await qualifyNativePrivateProof({ assertCurrent, signal: owner.signal });
+            assertCurrent();
+            expect(networkCalls === 0);
+            const expected = { ...build, token, sdkVersion: paliQualificationSdkIdentity, sdkPackageVersion: installedVersion,
+              platform: Platform.OS as 'ios' | 'android' };
+            const text = JSON.stringify({
+              ...build, token, sdkVersion: paliQualificationSdkIdentity, sdkPackageVersion: installedVersion,
+              kind: 'native-private-proof', status: 'passed', platform: Platform.OS, sessionId: Constants.sessionId,
+              jsNetworkCalls: networkCalls, nativeNetworkObservation: 'unmeasured', result,
+            });
+            parsePrivateProofReport(text, expected);
+            await FileSystem.writeAsStringAsync(`${destination}.tmp`, text);
+            assertCurrent();
+            await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            setStatus('Native public proof vector passed');
+          } finally { owner.abort(); appState.remove(); blur?.remove(); }
+          return;
+        }
         if (parameters.phase === 'reset') {
           // Deliberate host-requested cleanup in this fixed fixture's private
           // Keychain group. The production entry never imports this module.
@@ -257,6 +312,7 @@ function QualificationApp() {
           subtle: nativeCrypto.subtle,
           getRandomValues<T extends ArrayBufferView>(array: T): T {
             const result = nativeCrypto.getRandomValues(array);
+            if (result?.byteLength === 16) sentryBlindingCalls++;
             if (observingGeneration && result?.byteLength === 16) {
               if (mnemonicEntropy.length >= 32)
                 throw Error('QUALIFICATION_ENTROPY_BOUND');
@@ -290,6 +346,17 @@ function QualificationApp() {
           const { qualifyNativeSlhLeaf } = await import('./native-slh-leaf.ts');
           await qualifyNativeSlhLeaf(requireNativeModule('PaliWalletCrypto'));
         });
+        const { createNativeSentryPublicKeyDeriver } = await import('../src/crypto/sentryPublicKey.native');
+        const { qualifyNativeSentryClassical, SENTRY_CLASSICAL_CHECK } = await import('./native-sentry-classical.ts');
+        const { qualifyNativeSentryShake, SENTRY_SHAKE_CHECK } = await import('./native-sentry-shake.ts');
+        const sentryDerive = createNativeSentryPublicKeyDeriver();
+        await check(SENTRY_CLASSICAL_CHECK, () => qualifyNativeSentryClassical(
+          qualificationLifetime.signal, () => sentryBlindingCalls, sentryDerive));
+        await check(SENTRY_SHAKE_CHECK, () => qualifyNativeSentryShake(qualificationLifetime.signal, sentryDerive));
+        const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+        expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0 &&
+          paliQualificationSdkIdentity === `${paliQualificationSdkVersion}.${paliQuickCryptoSentryIdentity}`);
+        verifiedQuickCryptoIdentity = paliQuickCryptoSentryIdentity;
         if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
           stage = 'public pool configuration';
           if (parameters.physical || parameters.http || !parameters.publicPool || !['ios', 'android'].includes(Platform.OS) ||
@@ -342,6 +409,39 @@ function QualificationApp() {
               sessionId: Constants.sessionId, networkCalls: () => networkCalls });
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
             await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            const candidateIdentity = Constants.expoConfig?.extra?.paliWalletConnectIdentity;
+            if (candidateIdentity !== undefined) {
+              if (typeof candidateIdentity !== 'string') throw Error('WALLETCONNECT_NATIVE_BUILD_INVALID');
+              stage = 'native WalletConnect lifecycle';
+              const { http: launch, phase, scenario } = parameters;
+              let connectionEvidence;
+              try {
+                connectionEvidence = await withWalletConnectQualificationScope({
+                  crypto: nativeCrypto, WebSocket: NativeWebSocket, launch,
+                  onForbidden() { networkCalls++; throw Error('QUALIFICATION_NETWORK_FORBIDDEN'); },
+                }, async () => {
+                  const NetInfo = await import('@react-native-community/netinfo');
+                  // Keep native connectivity and events, but suppress the default
+                  // internet probe for this loopback-only qualification process.
+                  // Restoring defaults would start another probe under the fence.
+                  NetInfo.configure({ reachabilityShouldRun: () => false });
+                  const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
+                  await prepareWalletConnectRuntime();
+                  const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
+                  return qualifyNativeWalletConnect({ launch, build,
+                    candidateIdentity, walletFetch, phase, scenario,
+                    platform: Platform.OS as 'ios' | 'android', sessionId: Constants.sessionId });
+                });
+              } catch (error) {
+                const { WalletConnectQualificationError } = await import('./walletconnect-native.ts');
+                walletConnectDiagnostic = error instanceof WalletConnectQualificationError
+                  ? error.diagnostic : new WalletConnectQualificationError('init', error).diagnostic;
+                throw error;
+              }
+              const connectionDestination = `${FileSystem.documentDirectory}pali-native-walletconnect-${parameters.http.token}.json`;
+              await FileSystem.writeAsStringAsync(`${connectionDestination}.tmp`, JSON.stringify(connectionEvidence));
+              await FileSystem.moveAsync({ from: `${connectionDestination}.tmp`, to: connectionDestination });
+            }
             stage = 'native POST transport';
             const postDestination = `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json`;
             const postEvidence = await qualifyNativePost({ launch: parameters.http, build, walletFetch,
@@ -401,8 +501,14 @@ function QualificationApp() {
               'software-sdk-load',
               // Capture only this first dependency evaluation, before any SDK
               // instance, wallet phrase or session can exist. No retry on failure.
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
-              () => require('@sidhujag/sysweb3-keyring/cjs/software.js') as typeof import('@sidhujag/sysweb3-keyring/cjs/software.js'),
+              () => ({
+                // eslint-disable-next-line @typescript-eslint/no-require-imports -- Capture synchronous native module loading.
+                ...require('@sidhujag/sysweb3-keyring/cjs/software.js'),
+                // eslint-disable-next-line @typescript-eslint/no-require-imports -- Capture synchronous native module loading.
+                HostKeyring: require('@sidhujag/sysweb3-keyring/cjs/host-keyring.js').HostKeyring,
+                // eslint-disable-next-line @typescript-eslint/no-require-imports -- Capture synchronous native module loading.
+                createLedgerHardware: require('@sidhujag/sysweb3-keyring/cjs/ledger-hardware.js').createLedgerHardware,
+              }) as import('../src/custody/keyringSdk.ts').NativeKeyringSdk,
               async (text) => {
                 if (!FileSystem.documentDirectory) throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
                 await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}pali-native-qualification-sdk-load-error.json`, text);
@@ -605,6 +711,7 @@ function QualificationApp() {
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: verifiedSdkVersion,
+          ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),
           ...hdEvidence,
           ...erc20Evidence,
           ...nevmEvidence,
@@ -643,6 +750,8 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),
+          ...(walletConnectDiagnostic ? { walletConnectDiagnostic } : {}),
           ...(cryptoEvidence ? { cryptoEvidence, nativeBridgeExercised: true } : {}),
           storageDiagnostic: storageDiagnostic.report(),
           cryptoDiagnostic: { bootstrap: qualificationLoadDiagnostic ? 'quick-crypto-load' : nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...((qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()) ? { load: qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic() } : {}) },
@@ -654,6 +763,7 @@ function QualificationApp() {
       }
     };
     void run();
+    return () => { qualificationLifetime.abort(); privateProofLifetime?.abort(); };
   }, []);
   return (
     <View

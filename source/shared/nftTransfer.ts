@@ -29,9 +29,11 @@ const fields = [
   'amountUnits',
 ] as const;
 const erc721Method = 'transferFrom(address,address,uint256)';
+const erc721SafeMethod = 'safeTransferFrom(address,address,uint256)';
 const erc1155Method = 'safeTransferFrom(address,address,uint256,uint256,bytes)';
 const abi = new Interface([
   `function ${erc721Method}`,
+  `function ${erc721SafeMethod}`,
   `function ${erc1155Method}`,
 ]);
 const { normalizeNonzeroHexAddress } = createErc20Policy(getAddress);
@@ -95,16 +97,25 @@ export function snapshotNftTransferIntent(value: unknown): NftTransferIntent {
   });
 }
 
-/** Encode a validated intent with the published keyring's ordinary software-wallet selectors. */
-export function encodeNftTransferData(intent: NftTransferIntent): string {
+/** Internal selector dispatch for the two explicit transfer APIs. */
+function encodeNftTransfer(intent: NftTransferIntent, safe: boolean): string {
   const args = [intent.from, intent.recipient, intent.tokenId];
   return intent.tokenStandard === 'ERC-721'
-    ? abi.encodeFunctionData(erc721Method, args)
+    ? abi.encodeFunctionData(safe ? erc721SafeMethod : erc721Method, args)
     : abi.encodeFunctionData(erc1155Method, [
         ...args,
         intent.amountUnits,
         '0x',
       ]);
+}
+
+export function encodeNftTransferData(intent: NftTransferIntent): string {
+  return encodeNftTransfer(intent, false);
+}
+
+/** Smart accounts preserve the extension's explicit receiver-checked ERC721 call. */
+export function encodeNftSafeTransferData(intent: NftTransferIntent): string {
+  return encodeNftTransfer(snapshotNftTransferIntent(intent), true);
 }
 
 type RetainedNftContext = Readonly<{
@@ -123,17 +134,22 @@ export function isRetainedNftReplayEnvelope(
 }
 
 /** Decode the canonical wallet transfer call shared by review and retained-byte verification. */
-export function decodeNftTransferData(
+function decodeNftTransfer(
   data: string,
   context: Pick<
     NftTransferIntent,
     'chainId' | 'from' | 'contractAddress' | 'tokenStandard'
-  >
+  >,
+  safe: boolean
 ): NftTransferIntent | undefined {
   try {
     const isErc721 = context.tokenStandard === 'ERC-721';
     if (!isErc721 && context.tokenStandard !== 'ERC-1155') return undefined;
-    const method = isErc721 ? erc721Method : erc1155Method;
+    const method = isErc721
+      ? safe
+        ? erc721SafeMethod
+        : erc721Method
+      : erc1155Method;
     // Three static words, or five head words and one zero-length bytes tail.
     if (data.length !== 2 + 2 * (4 + (isErc721 ? 3 : 6) * 32)) return undefined;
     const from = normalizeNonzeroHexAddress(context.from);
@@ -150,10 +166,30 @@ export function decodeNftTransferData(
       tokenId: decoded[2].toString(),
       amountUnits: isErc721 ? '1' : decoded[3].toString(),
     });
-    return encodeNftTransferData(intent) === data ? intent : undefined;
+    return encodeNftTransfer(intent, safe) === data ? intent : undefined;
   } catch {
     return undefined;
   }
+}
+
+export function decodeNftTransferData(
+  data: string,
+  context: Pick<
+    NftTransferIntent,
+    'chainId' | 'from' | 'contractAddress' | 'tokenStandard'
+  >
+): NftTransferIntent | undefined {
+  return decodeNftTransfer(data, context, false);
+}
+
+export function decodeNftSafeTransferData(
+  data: string,
+  context: Pick<
+    NftTransferIntent,
+    'chainId' | 'from' | 'contractAddress' | 'tokenStandard'
+  >
+): NftTransferIntent | undefined {
+  return decodeNftTransfer(data, context, true);
 }
 
 /** Derive typed intent from authenticated retained bytes and operation. */

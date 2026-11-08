@@ -150,6 +150,39 @@ it('uses the same SDK floor and exact tx through a fresh read-only provider', as
   expect(mockEstimate).toHaveBeenCalledWith(tx);
   expect(sdk.web3Provider).toBe(originalProvider);
 });
+it('captures a type2 fee review through the controller after allocating its nonce', async () => {
+  wallet.captureFreshEvmRead = jest.fn(() => ({
+    network: mockState.vault.activeNetwork,
+    overrides: {},
+    assertCurrent: () => undefined,
+  }));
+  wallet.inspectOrdinaryEvmNonce = jest.fn().mockResolvedValue({ nonce: 3 });
+  const result = await wallet.captureNativeEvmFeeReview(
+    {
+      ...tx,
+      gasLimit: '25200',
+      maxFeePerGas: '10',
+      maxPriorityFeePerGas: '1',
+    },
+    false,
+    '252000',
+    getWalletNavigationScope()
+  );
+  expect(result.review.transaction).toEqual({
+    from: ADDRESS,
+    to: TO,
+    chainId: '5700',
+    value: '1',
+    data: '0x',
+    gasLimit: '25200',
+    type: 2,
+    accessList: [],
+    maxFeePerGas: '10',
+    maxPriorityFeePerGas: '1',
+    nonce: '3',
+  });
+  expect(wallet.inspectOrdinaryEvmNonce).toHaveBeenCalledTimes(1);
+});
 it('uses the same SDK20 percent buffer above the configured floor', async () => {
   mockEstimate.mockResolvedValue(BigNumber.from(50000));
   await expect(run()).resolves.toEqual(BigNumber.from(60000));

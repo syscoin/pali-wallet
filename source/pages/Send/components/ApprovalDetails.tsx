@@ -1,16 +1,19 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { IApprovalAddressValues } from '../approval';
+import { IApprovalAddressValues } from '../../../shared/approval';
 import { AddressText } from 'components/AddressText';
 
 interface IApprovalDetailsProps extends IApprovalAddressValues {
+  approved?: boolean;
   formattedAmount?: string;
   isUnlimited?: boolean;
+  standardVerified: boolean;
   tokenSymbol?: string;
 }
 
 export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
+  approved,
   approvalType,
   authority,
   authorityLabelKey,
@@ -20,6 +23,7 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
   method,
   tokenContract,
   tokenSymbol,
+  standardVerified,
 }) => {
   const { t } = useTranslation();
 
@@ -37,7 +41,9 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
   return (
     <div className="flex flex-col gap-3 p-3 w-full max-w-sm text-xs rounded-xl bg-bkg-2">
       <div className="flex items-center justify-between gap-3 w-full">
-        <span className="text-brand-graylight">{t(authorityLabelKey)}</span>
+        <span className="text-brand-graylight">
+          {t(!standardVerified ? 'send.approvalAuthority' : authorityLabelKey)}
+        </span>
         <AddressText
           className="text-brand-white"
           value={authority}
@@ -54,6 +60,16 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
           preset="short"
         />
       </div>
+      {!standardVerified &&
+        approvalType === 'nft-all' &&
+        typeof approved === 'boolean' && (
+          <div className="flex items-center justify-between gap-3 w-full">
+            <span className="text-brand-graylight">
+              {t('send.approvalRawValue')}
+            </span>
+            <span className="text-brand-white">{String(approved)}</span>
+          </div>
+        )}
       {approvalType === 'erc20-amount' && (
         <>
           <div className="flex items-center justify-between gap-3 w-full">
@@ -65,14 +81,18 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
           {formattedAmount !== undefined && (
             <div className="flex items-start justify-between gap-3 w-full">
               <span className="shrink-0 text-brand-graylight">
-                {t('transactions.approvalAmount')}
+                {t(
+                  !standardVerified
+                    ? 'send.approvalRawValue'
+                    : 'transactions.approvalAmount'
+                )}
               </span>
               <span
                 className={`min-w-0 break-all text-right ${
                   isUnlimited ? 'text-warning-error' : 'text-brand-white'
                 }`}
               >
-                {isUnlimited
+                {isUnlimited && standardVerified
                   ? `⚠️ ${t('transactions.unlimited')}`
                   : `${formattedAmount}${tokenSymbol ? ` ${tokenSymbol}` : ''}`}
               </span>

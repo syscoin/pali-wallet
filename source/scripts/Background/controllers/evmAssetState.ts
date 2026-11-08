@@ -139,6 +139,7 @@ export async function inspectWorkerAssetState(
         }
       : {
           type: 2 as const,
+          accessList: [],
           maxFeePerGas: parseEvmFeeQuantity(tx.maxFeePerGas).toString(),
           maxPriorityFeePerGas: parseEvmFeeQuantity(
             tx.maxPriorityFeePerGas

@@ -7,6 +7,7 @@
     "types": ["node"],
     "target": "ES2022",
     "paths": {
+      "@noble/curves/bn254": ["./node_modules/@noble/curves/bn254"],
       "@noble/curves/abstract/edwards": [
         "./node_modules/@noble/curves/abstract/edwards.d.ts"
       ],
@@ -22,6 +23,9 @@
       "@sidhujag/sysweb3-network": [
         "./node_modules/@sidhujag/sysweb3-network/types/index.d.ts"
       ],
+      "@sidhujag/sysweb3-network/cjs/evm.js": [
+        "./node_modules/@sidhujag/sysweb3-network/types/evm.d.ts"
+      ],
       "@sidhujag/sysweb3-network/cjs/coin-utils.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/coin-utils.d.ts"
       ],
@@ -34,12 +38,16 @@
       "@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/ownedUtxoRpc.d.ts"
       ],
+      "axios": ["./node_modules/axios/index.d.ts"],
+      "fast-safe-stringify": ["./node_modules/fast-safe-stringify/index.d.ts"],
       "bitcoinjs-lib": ["./node_modules/bitcoinjs-lib"],
+      "ethers": ["./node_modules/ethers"],
       "ethers/abi": ["./node_modules/ethers/lib.esm/abi/index.d.ts"],
       "ethers/address": ["./node_modules/ethers/lib.esm/address/index.d.ts"],
       "ethers/contract": ["./node_modules/ethers/lib.esm/contract/index.d.ts"],
       "ethers/crypto": ["./node_modules/ethers/lib.esm/crypto/index.d.ts"],
       "ethers/hash": ["./node_modules/ethers/lib.esm/hash/index.d.ts"],
+      "ethers/providers": ["./node_modules/ethers/lib.esm/providers/index.d.ts"],
       "ethers/transaction": [
         "./node_modules/ethers/lib.esm/transaction/index.d.ts"
       ],

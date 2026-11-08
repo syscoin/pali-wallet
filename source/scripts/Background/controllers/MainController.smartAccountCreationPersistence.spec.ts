@@ -262,6 +262,10 @@ beforeEach(async () => {
   };
   const transaction = { web3Provider: provider };
   wallet.smartAccount = new SmartAccountController({
+    captureSmartAccountPendingRecords: async () => ({
+      profileId: '0x' + '11'.repeat(32),
+      read: async () => [],
+    }),
     getEthereumTransaction: () => transaction,
     getWalletSessionGeneration: () => wallet.walletSessionGeneration,
   } as any);
@@ -701,5 +705,45 @@ it('restores a refused attempt from cold storage before deriving the same first 
   expect(retry.smartAccount.deploymentSalt).toBe(salt);
   expect(projection(await loadSlip44State(60))).toEqual(
     projection(store.getState().vault)
+  );
+});
+
+it('keeps HD account zero as the default management owner when another account is selected', () => {
+  store.dispatch(
+    createAccount({
+      account: {
+        id: 3,
+        address: '0x3333333333333333333333333333333333333333',
+        xpub: 'another-owner',
+        label: 'Another owner',
+      } as any,
+      accountType: KeyringAccountType.HDAccount,
+    } as any)
+  );
+  store.dispatch(
+    setActiveAccount({ id: 3, type: KeyringAccountType.HDAccount })
+  );
+  expect(wallet.smartAccount.getWalletManagementAddress()).toBe(
+    '0x0000000000000000000000000000000000000001'
+  );
+});
+
+it('preserves the active non-smart management-owner fallback when HD account zero is absent', () => {
+  const vault = store.getState().vault;
+  const imported = {
+    id: 4,
+    address: '0x4444444444444444444444444444444444444444',
+    xpub: 'imported-owner',
+    label: 'Imported owner',
+  };
+  store.dispatch(
+    restoreVaultSnapshot({
+      ...vault,
+      accounts: { ...vault.accounts, HDAccount: {}, Imported: { 4: imported } },
+      activeAccount: { id: 4, type: KeyringAccountType.Imported },
+    } as any)
+  );
+  expect(wallet.smartAccount.getWalletManagementAddress()).toBe(
+    imported.address
   );
 });

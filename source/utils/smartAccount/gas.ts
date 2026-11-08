@@ -1,8 +1,8 @@
-import type { ISmartAccountMetadata } from 'types/network';
-import { BigNumber } from 'utils/ethersV6Compat';
-import type { Provider } from 'utils/ethersV6Compat';
+import type { ISmartAccountMetadata } from '../../types/network.ts';
+import { BigNumber } from '../ethersV6Compat.ts';
+import type { Provider } from '../ethersV6Compat.ts';
 
-import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts';
+import { PALI_ENTRYPOINT_V09_ADDRESS } from './contracts.ts';
 
 // ---------------------------------------------------------------------------
 // Shared UserOperation gas estimator (ERC-4337 / EntryPoint v0.9).

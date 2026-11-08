@@ -47,8 +47,6 @@ import {
   buildSmartAccountValidatorSwitchPlan,
   clearStaleGuardianRecoveryOperation,
   encodeEcdsaValidatorInitData,
-  encodeGuardianRecoveryInitData,
-  ERC7579_MODULE_TYPE_EXECUTOR,
   encodeSmartAccountAuthenticatorSignature,
   getAvailablePaliModules,
   getConfiguredAuthenticatorAddress,
@@ -57,7 +55,6 @@ import {
   getGuardianRecoveryDelayOptions,
   isGuardianRecoveryDelayAllowed,
   SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
-  paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
@@ -67,10 +64,23 @@ import type {
   SmartAccountAuthenticatorBuildResult,
   SmartAccountGuardianRecoveryDigestContext,
 } from 'utils/smartAccount';
+import { buildGuardianPolicyExecutions } from 'utils/smartAccount/guardianPolicy';
+import { captureGuardianRecoveryClaim } from 'utils/smartAccount/guardianRecoveryClaim';
+import {
+  captureGuardianRecoveryIntent,
+  type GuardianRecoveryIntent,
+} from 'utils/smartAccount/guardianRecoveryIntent';
+import { guardianRecoveryIntentResolved } from 'utils/smartAccount/guardianRecoveryLifecycle';
 import {
   getGuardianRecoveryOperationId,
   GuardianRecoveryObservation,
 } from 'utils/smartAccount/guardianStatus';
+import {
+  assertPaliWalletValidatorSwitchApplied,
+  assertPaliWalletValidatorSwitchCurrent,
+  buildPaliWalletValidatorSwitch,
+  type PaliWalletValidatorSwitch,
+} from 'utils/smartAccount/validatorSwitch';
 import {
   getSmartAccountActionErrorMessage,
   isGuardianRecoveryAlreadyScheduledError,
@@ -81,6 +91,8 @@ import {
   isSmartAccountPrefundError,
   isSmartAccountSignatureError,
 } from 'utils/smartAccountErrors';
+
+import type { GuardianRemovalInspection } from '../../wallet/guardianRemoval';
 
 const shortAddress = (address: string) =>
   `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -116,23 +128,29 @@ const moduleHintKey = (id: string, capability?: string) => {
 };
 
 type RecoveryAuthenticatorId = 'ecdsa' | 'p256-webauthn';
-type GuardianRecoveryStatus = GuardianRecoveryObservation | null;
+type GuardianRecoveryStatus =
+  | (GuardianRecoveryObservation & { recoveryTransactionHash?: string | null })
+  | null;
 
 type GuardianReplacementCredential = {
   authenticator: PaliSmartAccountAuthenticatorSetup;
   backupStatus?: string;
   credentialId?: string;
   credentialIdHash?: string;
+  guardian?: string;
+  guardianApproval?: 'ecdsa' | 'contract';
   kind: RecoveryAuthenticatorId;
   recoveryOperation?: SmartAccountGuardianRecoveryDigestContext & {
     account: string;
     chainId: number;
     executionCalldata: string;
+    hash?: string;
     mode: string;
     readyAt: number;
     recoveryModule?: string;
     salt: string;
   };
+  recoveryTarget?: PaliRecoveryTarget;
   userHandle?: string;
 };
 
@@ -162,6 +180,12 @@ type SLHDSAPreparedSignerRecord = {
 type PolicyApprovalScope = {
   assertCurrent: () => void;
   expectedContext: IEvmTransactionContext;
+};
+type WalletAuthenticatorReconciliation = {
+  approval: PolicyApprovalScope;
+  command: PaliWalletValidatorSwitch;
+  hash: string;
+  scope: string;
 };
 
 type GuardianDisablePending = {
@@ -524,6 +548,11 @@ const SmartAccountPolicy = () => {
     key: string;
     promise: Promise<void>;
   } | null>(null);
+  const walletAuthenticatorBusy = useRef<object | null>(null);
+  const [walletAuthenticatorPending, setWalletAuthenticatorPending] =
+    useState<WalletAuthenticatorReconciliation | null>(null);
+  const walletAuthenticatorPendingRef = useRef(walletAuthenticatorPending);
+  walletAuthenticatorPendingRef.current = walletAuthenticatorPending;
   useEffect(() => {
     setLoading(false);
     setModuleActionKey('');
@@ -549,6 +578,9 @@ const SmartAccountPolicy = () => {
     slhDsaSetupOwnerRef.current = '';
     slhDsaApprovalRef.current = null;
     validatorSwitchRef.current = null;
+    walletAuthenticatorBusy.current = null;
+    walletAuthenticatorPendingRef.current = null;
+    setWalletAuthenticatorPending(null);
   }, [scopeKey, selectedAccountKey]);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
   const installedModuleIds = new Set(
@@ -594,20 +626,11 @@ const SmartAccountPolicy = () => {
   const smartAccountAddress = account?.address
     ? getAddress(account.address)
     : '';
-  const readGuardianStatus = useCallback(
-    (params: { knownOperationId?: string } = {}) =>
-      controllerEmitter(
-        ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
-        [{ account: smartAccountAddress, ...params }],
-        30000
-      ) as Promise<GuardianRecoveryObservation>,
-    [controllerEmitter, smartAccountAddress]
-  );
   const displayedGuardianAddress =
     guardianStatus?.guardians?.[0] ||
     installedGuardianRecovery?.config.guardians?.[0] ||
     smartAccountAddress;
-  const storedGuardianReplacement = useMemo(() => {
+  const storedGuardianDraft = useMemo(() => {
     if (!smartAccountAddress) return null;
     const stored = localStorage.getItem(
       guardianReplacementAuthenticatorKey(
@@ -626,6 +649,29 @@ const SmartAccountPolicy = () => {
     activeNetwork.chainId,
     guardianReplacementStorageVersion,
   ]);
+  const durableGuardianClaim = account?.smartAccount?.guardianRecoveryClaim;
+  const storedGuardianReplacement =
+    useMemo<GuardianReplacementCredential | null>(
+      () =>
+        durableGuardianClaim
+          ? {
+              ...durableGuardianClaim.replacement,
+              guardian: durableGuardianClaim.guardian.guardian,
+              guardianApproval: durableGuardianClaim.guardian.kind,
+              recoveryTarget: durableGuardianClaim.intent.target,
+              recoveryOperation: {
+                ...durableGuardianClaim.intent.operation,
+                readyAt: durableGuardianClaim.readyAt,
+              },
+            }
+          : account?.smartAccount?.guardianRecoveryReplacement ??
+            storedGuardianDraft,
+      [
+        durableGuardianClaim,
+        account?.smartAccount?.guardianRecoveryReplacement,
+        storedGuardianDraft,
+      ]
+    );
   const localRecoveryOperation = storedGuardianReplacement?.recoveryOperation;
   const localRecoveryOperationId = (() => {
     try {
@@ -638,29 +684,138 @@ const SmartAccountPolicy = () => {
       return undefined;
     }
   })();
+  const localRecoveryIntent = useMemo(() => {
+    if (
+      !localRecoveryOperationId ||
+      !storedGuardianReplacement?.recoveryTarget ||
+      !localRecoveryOperation?.hash ||
+      !storedGuardianReplacement.guardian ||
+      !['ecdsa', 'contract'].includes(
+        storedGuardianReplacement.guardianApproval
+      )
+    )
+      return undefined;
+    try {
+      const saved = captureGuardianRecoveryIntent({
+        operation:
+          localRecoveryOperation as GuardianRecoveryIntent['operation'],
+        target: storedGuardianReplacement.recoveryTarget,
+      });
+      const authenticator = storedGuardianReplacement.authenticator;
+      const target =
+        storedGuardianReplacement.kind === 'ecdsa' &&
+        authenticator.id === 'ecdsa'
+          ? {
+              auth: {
+                module: 'ecdsa' as const,
+                validator: getConfiguredAuthenticatorAddress(
+                  activeNetwork.chainId,
+                  'ecdsa'
+                ),
+                data: encodeEcdsaValidatorInitData(
+                  authenticator.config.owners,
+                  authenticator.config.threshold
+                ),
+              },
+            }
+          : storedGuardianReplacement.kind === 'p256-webauthn' &&
+            authenticator.id === 'p256-webauthn'
+          ? toP256WebAuthnRecoveryTarget({
+              validator: getConfiguredAuthenticatorAddress(
+                activeNetwork.chainId,
+                'p256-webauthn'
+              ),
+              ...authenticator.config.publicKey,
+            })
+          : null;
+      if (!target) return undefined;
+      return captureGuardianRecoveryIntent({
+        operation: saved.operation,
+        target,
+      });
+    } catch {
+      return undefined;
+    }
+  }, [
+    localRecoveryOperationId,
+    storedGuardianReplacement,
+    activeNetwork.chainId,
+  ]);
+  const localRecoveryInvalid = Boolean(
+    storedGuardianReplacement?.recoveryTarget && !localRecoveryIntent
+  );
+  const readGuardianStatus = useCallback(
+    (params: { knownOperationId?: string } = {}) =>
+      controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRecoveryStatus'],
+        [
+          {
+            account: smartAccountAddress,
+            ...(localRecoveryIntent
+              ? {
+                  intent: localRecoveryIntent,
+                  guardian: storedGuardianReplacement!.guardian,
+                  guardianApproval: storedGuardianReplacement!.guardianApproval,
+                }
+              : {}),
+            ...params,
+          },
+        ],
+        30000
+      ) as Promise<NonNullable<GuardianRecoveryStatus>>,
+    [
+      controllerEmitter,
+      smartAccountAddress,
+      localRecoveryIntent,
+      storedGuardianReplacement?.guardian,
+    ]
+  );
   const knownLocalObservation =
     !guardianStatusError &&
     localRecoveryOperationId &&
     guardianStatus?.knownOperation?.operationId === localRecoveryOperationId
       ? guardianStatus.knownOperation
       : null;
+  const localRecoveryExecuted = Boolean(
+    durableGuardianClaim &&
+      !localRecoveryInvalid &&
+      knownLocalObservation?.status === 'executed'
+  );
   const localRecoveryResolved = Boolean(
-    knownLocalObservation &&
-      ['executed', 'canceled', 'expired', 'inactive'].includes(
-        knownLocalObservation.status
-      )
+    !localRecoveryInvalid &&
+      knownLocalObservation &&
+      (localRecoveryIntent && guardianStatus
+        ? guardianRecoveryIntentResolved(
+            localRecoveryIntent.operation,
+            guardianStatus,
+            guardianStatus.recoveryTransactionHash
+          )
+        : ['executed', 'canceled', 'expired', 'inactive'].includes(
+            knownLocalObservation.status
+          ))
+  );
+  const localRecoveryRetryReady = Boolean(
+    localRecoveryIntent &&
+      !guardianStatusError &&
+      guardianStatus?.recoveryTransactionHash === null &&
+      knownLocalObservation?.status === 'unknown' &&
+      guardianStatus.policyEpoch ===
+        localRecoveryIntent.operation.policyEpoch &&
+      guardianStatus.moduleAddress.toLowerCase() ===
+        localRecoveryIntent.operation.recoveryModule.toLowerCase()
   );
   // Observations affect the displayed/action state only. Never erase a saved
   // replacement credential or unresolved intent as a side effect of a read.
   const activeGuardianReplacement =
-    localRecoveryResolved && storedGuardianReplacement
+    localRecoveryResolved && !localRecoveryExecuted && storedGuardianReplacement
       ? { ...storedGuardianReplacement, recoveryOperation: undefined }
       : storedGuardianReplacement;
   const onChainPending = !guardianStatusError ? guardianStatus?.pending : null;
   const localRecoveryMatches = (() => {
     try {
       return Boolean(
-        localRecoveryOperation &&
+        !localRecoveryInvalid &&
+          localRecoveryOperation &&
           localRecoveryOperationId &&
           onChainPending &&
           onChainPending.operationId === localRecoveryOperationId &&
@@ -770,13 +925,16 @@ const SmartAccountPolicy = () => {
     Boolean(guardianDisablePending) ||
     !guardianPolicyReady ||
     !isReplacementAuthenticatorReady ||
-    Boolean(activeGuardianReplacement?.recoveryOperation);
+    (Boolean(activeGuardianReplacement?.recoveryOperation) &&
+      !localRecoveryRetryReady);
   const isFinalizeGuardianRecoveryDisabled =
     guardianActionLoading ||
     guardianStatusLoading ||
     Boolean(guardianDisablePending) ||
-    !activeGuardianReplacement?.recoveryOperation ||
-    !guardianRecoveryReady;
+    (Boolean(guardianStatus?.recoveryTransactionHash) &&
+      !localRecoveryExecuted) ||
+    (!activeGuardianReplacement?.recoveryOperation && !localRecoveryExecuted) ||
+    (!guardianRecoveryReady && !localRecoveryExecuted);
   const hasPendingGuardianRecovery = Boolean(
     onChainPending || activeGuardianReplacement?.recoveryOperation
   );
@@ -867,6 +1025,8 @@ const SmartAccountPolicy = () => {
       return '';
     }
   })();
+  const walletManagementAddressRef = useRef(walletManagementAddress);
+  walletManagementAddressRef.current = walletManagementAddress;
 
   const storeGuardianReplacementCredential = (
     credential: GuardianReplacementCredential
@@ -877,7 +1037,14 @@ const SmartAccountPolicy = () => {
           smartAccountAddress,
           activeNetwork.chainId
         ),
-        JSON.stringify(credential)
+        JSON.stringify({
+          authenticator: credential.authenticator,
+          backupStatus: credential.backupStatus,
+          credentialId: credential.credentialId,
+          credentialIdHash: credential.credentialIdHash,
+          kind: credential.kind,
+          userHandle: credential.userHandle,
+        })
       );
     }
     if (createUiGuard()()) {
@@ -1188,7 +1355,7 @@ const SmartAccountPolicy = () => {
     executions: Array<{ data: string; target: string; value: string }>,
     options: {
       approval?: PolicyApprovalScope;
-      onBeforeSubmit?: () => void;
+      onBeforeSubmit?: () => void | Promise<void>;
       refreshAfterSubmit?: boolean;
       retrySignature?: boolean;
       useCachedMetadata?: boolean;
@@ -1215,7 +1382,7 @@ const SmartAccountPolicy = () => {
         onPrepared: approval.assertCurrent,
         onBeforeSubmit: async () => {
           await assertApprovalSession(approval);
-          options.onBeforeSubmit?.();
+          await options.onBeforeSubmit?.();
         },
         onAuthenticatorSigningResolved: (authenticatorId) => {
           if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
@@ -1581,48 +1748,111 @@ const SmartAccountPolicy = () => {
     }
   };
 
+  const reconcileWalletAuthenticator = async (
+    pending: WalletAuthenticatorReconciliation
+  ) => {
+    const isCurrentUi = createUiGuard();
+    await assertApprovalSession(pending.approval);
+    const hydrated = await refreshMetadata(pending.approval, false);
+    if (!hydrated) throw new Error('Smart account metadata unavailable');
+    assertPaliWalletValidatorSwitchApplied(pending.command, hydrated);
+    if (isCurrentUi() && walletAuthenticatorPendingRef.current === pending) {
+      walletAuthenticatorPendingRef.current = null;
+      setWalletAuthenticatorPending(null);
+      alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+    }
+  };
+
+  const retryWalletAuthenticatorMetadata = async () => {
+    const pending = walletAuthenticatorPendingRef.current;
+    if (!pending || walletAuthenticatorBusy.current) return;
+    const run = {};
+    const isCurrentUi = createUiGuard();
+    walletAuthenticatorBusy.current = run;
+    setLoading(true);
+    try {
+      await reconcileWalletAuthenticator(pending);
+    } catch {
+      // The submitted transaction remains recorded while its metadata is unavailable.
+    } finally {
+      if (walletAuthenticatorBusy.current === run)
+        walletAuthenticatorBusy.current = null;
+      if (isCurrentUi()) setLoading(false);
+    }
+  };
+
   const setupPaliWalletAuthenticator = async () => {
     if (!account?.isSmartAccount || !metadata || !walletManagementAddress) {
       return;
     }
-    const isCurrentUi = createUiGuard();
-    const ecdsaValidator = getConfiguredAuthenticatorAddress(
-      activeNetwork.chainId,
-      'ecdsa'
-    );
-    if (!ecdsaValidator) {
+    if (
+      walletAuthenticatorBusy.current ||
+      walletAuthenticatorPendingRef.current
+    )
       return;
-    }
-
+    const run = {};
+    walletAuthenticatorBusy.current = run;
+    const isCurrentUi = createUiGuard();
     setLoading(true);
     setModuleActionKey('ecdsa:use');
     try {
       const approval = await capturePolicyApproval();
-      const data = encodeEcdsaValidatorInitData([walletManagementAddress], 1);
-      await replaceActiveValidator(
-        {
-          auth: {
-            data,
-            module: 'ecdsa',
-            validator: ecdsaValidator,
-          },
-          metadata: {
-            installedModules: [
-              {
-                address: getAddress(ecdsaValidator),
-                config: { owners: [walletManagementAddress], threshold: 1 },
-                data,
-                id: 'ecdsa',
-                type: 'validator',
-              },
-            ],
-          },
+      const hydrated = await refreshMetadata(approval);
+      if (!hydrated) throw new Error('Smart account metadata unavailable');
+      const command = buildPaliWalletValidatorSwitch({
+        accountAddress: account.address,
+        chainId: activeNetwork.chainId,
+        metadata: hydrated,
+        ownerAddress: walletManagementAddress,
+      });
+      const boundApproval: PolicyApprovalScope = {
+        expectedContext: approval.expectedContext,
+        assertCurrent() {
+          approval.assertCurrent();
+          if (
+            walletManagementAddressRef.current.toLowerCase() !==
+            command.ownerAddress.toLowerCase()
+          )
+            throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
         },
-        approval
-      );
-      if (isCurrentUi()) {
-        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      };
+      if (command.executions.length === 0) {
+        if (isCurrentUi())
+          alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+        return;
       }
+      const response = await submitModuleExecutions(
+        command.executions.map((execution) => ({ ...execution })),
+        {
+          approval: boundApproval,
+          retrySignature: false,
+          useCachedMetadata: true,
+          waitForConfirmation: false,
+          refreshAfterSubmit: false,
+          onBeforeSubmit: async () => {
+            const current = await refreshMetadata(boundApproval);
+            if (!current) throw new Error('Smart account metadata unavailable');
+            assertPaliWalletValidatorSwitchCurrent(command, current);
+          },
+        }
+      );
+      if (
+        !response ||
+        typeof response.hash !== 'string' ||
+        !/^0x[0-9a-f]{64}$/i.test(response.hash)
+      )
+        throw new Error('Smart account transaction status unavailable');
+      const pending = {
+        approval: boundApproval,
+        command,
+        hash: response.hash,
+        scope: metadataEntryKey,
+      };
+      if (isCurrentUi()) {
+        walletAuthenticatorPendingRef.current = pending;
+        setWalletAuthenticatorPending(pending);
+      }
+      await reconcileWalletAuthenticator(pending).catch(() => undefined);
     } catch (error: any) {
       if (!isCurrentUi()) return;
       const wasHandled = handleWalletLockedError(error);
@@ -1637,6 +1867,8 @@ const SmartAccountPolicy = () => {
         );
       }
     } finally {
+      if (walletAuthenticatorBusy.current === run)
+        walletAuthenticatorBusy.current = null;
       if (isCurrentUi(false)) {
         setModuleActionKey('');
         setLoading(false);
@@ -1883,38 +2115,21 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     setModuleActionKey('guardian-recovery:update');
     try {
-      const installExecution = {
-        data: paliSmartAccountInterface.encodeFunctionData('installModule', [
-          ERC7579_MODULE_TYPE_EXECUTOR,
-          guardianRecoveryModule,
-          encodeGuardianRecoveryInitData({
-            delaySeconds: guardianDelaySeconds,
-            expirationSeconds: guardianDelaySeconds * 2,
-            guardians: [normalizedGuardianAddress],
-            threshold: 1,
-          }),
-        ]),
-        target: account.address,
-        value: '0x0',
+      const configuration = {
+        accountAddress: account.address,
+        chainId: activeNetwork.chainId,
+        delaySeconds: guardianDelaySeconds,
+        guardian: normalizedGuardianAddress,
       };
-      const executions =
+      const executions = buildGuardianPolicyExecutions(
         hasGuardianRecovery && installedGuardianRecovery
-          ? [
-              {
-                data: paliSmartAccountInterface.encodeFunctionData(
-                  'uninstallModule',
-                  [
-                    ERC7579_MODULE_TYPE_EXECUTOR,
-                    installedGuardianRecovery.address,
-                    '0x',
-                  ]
-                ),
-                target: account.address,
-                value: '0x0',
-              },
-              installExecution,
-            ]
-          : [installExecution];
+          ? {
+              ...configuration,
+              kind: 'update',
+              previousModuleAddress: installedGuardianRecovery.address,
+            }
+          : { ...configuration, kind: 'install' }
+      );
 
       await submitModuleExecutions(executions, {
         useCachedMetadata: true,
@@ -2083,6 +2298,30 @@ const SmartAccountPolicy = () => {
     const isCurrentUi = createUiGuard();
     setLoading(true);
     try {
+      const removal = (await controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRemovalStatus'],
+        [account.id],
+        60000
+      )) as GuardianRemovalInspection;
+      if (!isCurrentUi()) return;
+      if (removal.status === 'pending' || removal.status === 'unknown') {
+        if (!previousPending)
+          rememberGuardianDisable(
+            {
+              accountAddress: getAddress(account.address),
+              chainId: activeNetwork.chainId,
+              moduleAddress: getConfiguredAuthenticatorAddress(
+                activeNetwork.chainId,
+                'guardian-recovery'
+              ),
+              localRecoverySalt:
+                activeGuardianReplacement?.recoveryOperation?.salt,
+            },
+            true
+          );
+        alert.info(t('settings.smartAccountGuardianRecoveryDisableUnverified'));
+        return;
+      }
       const approval = await capturePolicyApproval();
       const hydrated = await refreshMetadata(approval);
       approval.assertCurrent();
@@ -2180,19 +2419,22 @@ const SmartAccountPolicy = () => {
         throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
       }
       await submitModuleExecutions(
-        [
-          {
-            data: paliSmartAccountInterface.encodeFunctionData(
-              'uninstallModule',
-              [ERC7579_MODULE_TYPE_EXECUTOR, target.moduleAddress, '0x']
-            ),
-            target: target.accountAddress,
-            value: '0x0',
-          },
-        ],
+        buildGuardianPolicyExecutions({
+          accountAddress: target.accountAddress,
+          kind: 'remove',
+          moduleAddress: target.moduleAddress,
+        }),
         {
           approval: target.approval,
-          onBeforeSubmit: () => {
+          onBeforeSubmit: async () => {
+            const removal = (await controllerEmitter(
+              ['wallet', 'getSmartAccountGuardianRemovalStatus'],
+              [account.id],
+              60000
+            )) as GuardianRemovalInspection;
+            await assertApprovalSession(target.approval);
+            if (removal.status !== 'retry-ready')
+              throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
             // This synchronous checkpoint follows asynchronous preparation and
             // signing. Do not replace a different window's newer attempt.
             const latest = readGuardianDisablePending(
@@ -2293,6 +2535,12 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     setGuardianDisableRetryReady(false);
     try {
+      const removal = (await controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRemovalStatus'],
+        [account.id],
+        60000
+      )) as GuardianRemovalInspection;
+      if (!isCurrentUi()) return;
       const hydrated = await refreshMetadata();
       if (!isCurrentUi()) return;
       if (guardianRemovalConfirmed(target, hydrated)) {
@@ -2301,6 +2549,7 @@ const SmartAccountPolicy = () => {
         alert.success(t('settings.smartAccountGuardianRecoveryDisabled'));
       } else {
         if (
+          removal.status === 'retry-ready' &&
           hydrated?.chainId === target.chainId &&
           hydrated?.isDeployed === true &&
           hydrated.installedModules?.some(
@@ -2334,7 +2583,9 @@ const SmartAccountPolicy = () => {
     try {
       // A displayed observation is informational, not authorization. Re-read
       // before creating a replacement key or asking any signer to approve it.
-      const current = await readGuardianStatus();
+      const current = await readGuardianStatus({
+        knownOperationId: localRecoveryOperationId,
+      });
       if (!isCurrentUi()) return;
       const configuredModule = getConfiguredAuthenticatorAddress(
         activeNetwork.chainId,
@@ -2381,8 +2632,34 @@ const SmartAccountPolicy = () => {
       );
       let target: PaliRecoveryTarget;
       let replacementCredential: GuardianReplacementCredential;
+      const resumedIntent = activeGuardianReplacement?.recoveryOperation
+        ? localRecoveryIntent
+        : undefined;
 
-      if (replacementAuthenticator === 'p256-webauthn') {
+      if (activeGuardianReplacement?.recoveryOperation) {
+        if (
+          !resumedIntent ||
+          current.recoveryTransactionHash !== null ||
+          current.knownOperation?.status !== 'unknown' ||
+          current.policyEpoch !== resumedIntent.operation.policyEpoch ||
+          storedGuardianReplacement?.guardian?.toLowerCase() !==
+            guardian.toLowerCase()
+        )
+          throw new Error(t('settings.smartAccountGuardianStatusUnavailable'));
+        target = resumedIntent.target;
+        replacementCredential = activeGuardianReplacement;
+        if (replacementCredential.authenticator.id === 'p256-webauthn') {
+          const config = replacementCredential.authenticator.config;
+          await assertApprovalSession(policyApproval);
+          await signP256WebAuthnActionHash({
+            actionHash: resumedIntent.operation.hash,
+            credentialId: config.credentialId || undefined,
+            expectedCredentialIdHash: config.credentialIdHash,
+            expectedPublicKey: config.publicKey,
+          });
+          await assertApprovalSession(policyApproval);
+        }
+      } else if (replacementAuthenticator === 'p256-webauthn') {
         const replacementAuthenticatorName = t(
           'settings.smartAccountRecoveryReplacementName',
           { account: shortAddress(smartAccountAddress) }
@@ -2527,6 +2804,20 @@ const SmartAccountPolicy = () => {
           {
             account: smartAccountAddress,
             guardian,
+            operation: resumedIntent?.operation ?? null,
+            expectedClaimHash:
+              durableGuardianClaim?.intent.operation.hash ?? null,
+            readyAt:
+              replacementCredential.recoveryOperation?.readyAt ??
+              Math.floor(Date.now() / 1000) + delaySeconds,
+            replacement: {
+              authenticator: replacementCredential.authenticator,
+              backupStatus: replacementCredential.backupStatus,
+              credentialId: replacementCredential.credentialId,
+              credentialIdHash: replacementCredential.credentialIdHash,
+              kind: replacementCredential.kind,
+              userHandle: replacementCredential.userHandle,
+            },
             target,
             expectedContext: policyApproval.expectedContext,
           },
@@ -2534,6 +2825,28 @@ const SmartAccountPolicy = () => {
         300000
       )) as any;
       await assertApprovalSession(policyApproval);
+      const recoveryIntent = captureGuardianRecoveryIntent({
+        operation: preparedRecovery.operation,
+        target,
+      });
+      if (
+        recoveryIntent.operation.account !== smartAccountAddress ||
+        recoveryIntent.operation.chainId !== activeNetwork.chainId ||
+        (resumedIntent &&
+          recoveryIntent.operation.hash !== resumedIntent.operation.hash)
+      )
+        throw new Error(
+          'Recovery intent belongs to a different account or network'
+        );
+      const claimedRecovery = captureGuardianRecoveryClaim(
+        preparedRecovery.claim
+      );
+      if (
+        claimedRecovery.intent.operation.hash !== recoveryIntent.operation.hash
+      )
+        throw new Error('Guardian recovery claim changed');
+      if (isCurrentUi())
+        setGuardianReplacementStorageVersion((version) => version + 1);
       if (!preparedRecovery.approval && preparedRecovery.smartGuardian) {
         await controllerEmitter(
           ['wallet', 'validateSmartAccountGuardianRecoveryOperation'],
@@ -2553,6 +2866,14 @@ const SmartAccountPolicy = () => {
               guardian,
               signature: encodeSmartAccountAuthenticatorSignature(
                 await signSmartAccountActionHash({
+                  assertBeforeAuthentication: async () => {
+                    await assertApprovalSession(policyApproval);
+                    await controllerEmitter(
+                      ['wallet', 'assertSmartAccountPreparedNonce'],
+                      [preparedRecovery.executionContextId]
+                    );
+                    await assertApprovalSession(policyApproval);
+                  },
                   accountId: getLocalSmartAccountIdByAddress(guardian),
                   executionContextId: preparedRecovery.executionContextId,
                   actionHash: getPaliErc7739PersonalSignHash({
@@ -2570,38 +2891,22 @@ const SmartAccountPolicy = () => {
         throw new Error(t('settings.smartAccountGuardianRecoveryStartFailed'));
       }
       await assertApprovalSession(policyApproval);
-      const recoveryResponse = (await controllerEmitter(
+      await controllerEmitter(
         ['wallet', 'submitPreparedSmartAccountGuardianStartRecovery'],
         [
           {
             account: smartAccountAddress,
+            claimHash: claimedRecovery.intent.operation.hash,
             executionContextId: preparedRecovery.executionContextId,
             expectedContext: policyApproval.expectedContext,
             approval,
             gasPayer: preparedRecovery.gasPayer,
             guardian,
-            operation: preparedRecovery.operation,
+            operation: recoveryIntent.operation,
           },
         ],
         300000
-      )) as any;
-      const recoveryOperation = recoveryResponse?.operation
-        ? {
-            account: recoveryResponse.operation.account,
-            chainId: recoveryResponse.operation.chainId,
-            policyEpoch: recoveryResponse.operation.policyEpoch,
-            executionCalldata: recoveryResponse.operation.executionCalldata,
-            mode: recoveryResponse.operation.mode,
-            readyAt: Math.floor(Date.now() / 1000) + delaySeconds,
-            recoveryModule: recoveryResponse.operation.recoveryModule,
-            salt: recoveryResponse.operation.salt,
-          }
-        : undefined;
-      const credentialWithOperation = {
-        ...replacementCredential,
-        recoveryOperation,
-      };
-      storeGuardianReplacementCredential(credentialWithOperation);
+      );
       if (isCurrentUi()) {
         alert.success(t('settings.smartAccountGuardianRecoveryStarted'));
       }
@@ -2612,9 +2917,8 @@ const SmartAccountPolicy = () => {
       }
       const wasHandled = handleWalletLockedError(error);
       if (!wasHandled) {
-        // Keep the stored replacement credential: it has no recovery
-        // operation attached yet, so it does not block the UI, and a retry
-        // reuses the already-created passkey instead of minting another.
+        // Keep the exact saved intent through unknown submission outcomes.
+        // Only retained signed bytes and a fresh chain read can authorize retry.
         const errorMessage =
           error?.message === 'Local smart-account guardian was not found'
             ? t('settings.localSmartAccountGuardianMissing')
@@ -2640,6 +2944,64 @@ const SmartAccountPolicy = () => {
     }
   };
 
+  const clearCompletedGuardianRecovery = async () => {
+    const isCurrentUi = createUiGuard();
+    if (
+      !durableGuardianClaim ||
+      !localRecoveryExecuted ||
+      guardianActionLoading
+    )
+      return;
+    setGuardianLoading(true);
+    try {
+      const claim = captureGuardianRecoveryClaim(durableGuardianClaim);
+      const approval = await capturePolicyApproval(false);
+      const operationId = getGuardianRecoveryOperationId(
+        claim.intent.operation
+      );
+      const current = await readGuardianStatus({
+        knownOperationId: operationId,
+      });
+      await assertApprovalSession(approval);
+      if (
+        !current.observedBlock ||
+        current.knownOperation?.operationId !== operationId ||
+        current.knownOperation.status !== 'executed' ||
+        !guardianRecoveryIntentResolved(
+          claim.intent.operation,
+          current,
+          current.recoveryTransactionHash
+        )
+      )
+        throw new Error(t('settings.smartAccountGuardianStatusUnavailable'));
+      setGuardianStatus(current);
+      await controllerEmitter(
+        ['wallet', 'retireSmartAccountGuardianRecovery'],
+        [
+          {
+            account: claim.intent.operation.account,
+            expectedClaimHash: claim.intent.operation.hash,
+            expectedContext: approval.expectedContext,
+          },
+        ]
+      );
+      // Retirement retains replacement refs and does not adopt an obsolete signer.
+      await assertApprovalSession(approval);
+      if (isCurrentUi())
+        alert.success(
+          t('settings.smartAccountGuardianRecoveryTrackingCleared')
+        );
+    } catch (error: any) {
+      if (!isCurrentUi()) return;
+      if (!handleWalletLockedError(error))
+        alert.error(
+          t('settings.smartAccountGuardianRecoveryClearTrackingFailed')
+        );
+    } finally {
+      if (isCurrentUi(false)) setGuardianLoading(false);
+    }
+  };
+
   const finalizeGuardianRecovery = async () => {
     const isCurrentUi = createUiGuard();
     if (!smartAccountAddress || !activeGuardianReplacement?.recoveryOperation) {
@@ -2655,16 +3017,22 @@ const SmartAccountPolicy = () => {
       });
       if (!isCurrentUi()) return;
       setGuardianStatus(current);
+      const executed =
+        durableGuardianClaim &&
+        current.knownOperation?.status === 'executed' &&
+        current.knownOperation.operationId === operationId;
       if (
-        !current?.pending ||
-        current.pending.status !== 'ready' ||
-        current.pending.operationId !== operationId ||
-        current.policyEpoch !== recoveryOperation.policyEpoch ||
-        current.account !== smartAccountAddress ||
-        current.chainId !== activeNetwork.chainId ||
-        !recoveryOperation.recoveryModule ||
-        getAddress(current.moduleAddress) !==
-          getAddress(recoveryOperation.recoveryModule)
+        !executed &&
+        (current.recoveryTransactionHash ||
+          !current?.pending ||
+          current.pending.status !== 'ready' ||
+          current.pending.operationId !== operationId ||
+          current.policyEpoch !== recoveryOperation.policyEpoch ||
+          current.account !== smartAccountAddress ||
+          current.chainId !== activeNetwork.chainId ||
+          !recoveryOperation.recoveryModule ||
+          getAddress(current.moduleAddress) !==
+            getAddress(recoveryOperation.recoveryModule))
       ) {
         throw new Error(t('settings.smartAccountGuardianStatusUnavailable'));
       }
@@ -2678,17 +3046,43 @@ const SmartAccountPolicy = () => {
           'Recovery intent belongs to a different account or network'
         );
       }
-      await controllerEmitter(
-        ['wallet', 'finalizeSmartAccountGuardianRecovery'],
-        [
-          {
-            ...recoveryOperation,
-            account: smartAccountAddress,
-            expectedContext: approval.expectedContext,
+      const claim = captureGuardianRecoveryClaim(
+        durableGuardianClaim ?? {
+          intent: localRecoveryIntent,
+          guardian: {
+            kind: activeGuardianReplacement.guardianApproval,
+            guardian: activeGuardianReplacement.guardian,
           },
-        ],
-        300000
+          replacement: activeGuardianReplacement,
+          readyAt: recoveryOperation.readyAt,
+        }
       );
+      if (executed) {
+        await controllerEmitter(
+          ['wallet', 'reconcileSmartAccountGuardianRecovery'],
+          [
+            {
+              account: smartAccountAddress,
+              expectedClaimHash: claim.intent.operation.hash,
+              expectedContext: approval.expectedContext,
+            },
+          ],
+          300000
+        );
+      } else {
+        await controllerEmitter(
+          ['wallet', 'finalizeSmartAccountGuardianRecovery'],
+          [
+            {
+              claim,
+              expectedClaimHash:
+                durableGuardianClaim?.intent.operation.hash ?? null,
+              expectedContext: approval.expectedContext,
+            },
+          ],
+          300000
+        );
+      }
       // Preserve previous credentials: other chains or composite policies can
       // still reference them even after this account's recovery is finalized.
       if (
@@ -2712,6 +3106,16 @@ const SmartAccountPolicy = () => {
           throw new Error(t('connections.smartAccountPasskeySaveFailed'));
         }
       }
+      await controllerEmitter(
+        ['wallet', 'retireSmartAccountGuardianRecovery'],
+        [
+          {
+            account: smartAccountAddress,
+            expectedClaimHash: claim.intent.operation.hash,
+            expectedContext: approval.expectedContext,
+          },
+        ]
+      );
       clearGuardianReplacementCredential();
       await refreshMetadata(approval, false).catch(() => null);
       if (!isCurrentUi()) return;
@@ -3104,6 +3508,20 @@ const SmartAccountPolicy = () => {
               {t('settings.smartAccountGuardianRecoveryFinalize')}
             </button>
           </div>
+          {localRecoveryExecuted && localRecoveryResolved && (
+            <button
+              type="button"
+              className="self-start rounded-full border border-alpha-whiteAlpha300 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-alpha-whiteAlpha100 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={
+                guardianActionLoading ||
+                guardianStatusLoading ||
+                Boolean(guardianDisablePending)
+              }
+              onClick={clearCompletedGuardianRecovery}
+            >
+              {t('settings.smartAccountGuardianRecoveryClearTracking')}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -3244,6 +3662,21 @@ const SmartAccountPolicy = () => {
             <p className="mb-2 text-sm font-semibold text-brand-white">
               {t('settings.smartAccountModules')}
             </p>
+            {walletAuthenticatorPending?.scope === metadataEntryKey && (
+              <div className="mb-3 rounded-2xl border border-brand-yellowInfo p-3 text-xs">
+                <p role="status">{t('notifications.submitted')}</p>
+                <p className="break-all font-mono">
+                  {walletAuthenticatorPending.hash}
+                </p>
+                <p>{t('smartAccountHub.moduleMetadataSaveFailed')}</p>
+                {renderModuleAction(
+                  retryWalletAuthenticatorMetadata,
+                  loading,
+                  loading,
+                  t('header.refresh')
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-3">
               {modules.map((module) => {
                 const installedModule = metadata?.installedModules?.find(
@@ -3262,8 +3695,13 @@ const SmartAccountPolicy = () => {
                 const canInstallPaliWallet =
                   module.id === 'ecdsa' &&
                   module.supported &&
-                  !isActiveValidator &&
-                  Boolean(walletManagementAddress);
+                  Boolean(walletManagementAddress) &&
+                  (!isActiveValidator ||
+                    metadata?.auth?.data.toLowerCase() !==
+                      encodeEcdsaValidatorInitData(
+                        [walletManagementAddress],
+                        1
+                      ).toLowerCase());
                 const canInstallSLHDSA =
                   module.id === 'slh-dsa' &&
                   module.supported &&
@@ -3283,7 +3721,10 @@ const SmartAccountPolicy = () => {
                   canInstallPasskey ||
                   canInstallSLHDSA ||
                   canManageGuardianRecovery;
-                if (isActiveValidator || !hasAction) {
+                if (
+                  (isActiveValidator && !canInstallPaliWallet) ||
+                  !hasAction
+                ) {
                   return null;
                 }
 
@@ -3303,7 +3744,7 @@ const SmartAccountPolicy = () => {
                             {t(moduleDisplayKey(module.id)) ||
                               module.displayName}
                           </p>
-                          {paliWalletOwnerAddress && (
+                          {paliWalletOwnerAddress && !isActiveValidator && (
                             <button
                               type="button"
                               className={`mt-1 max-w-full truncate text-xs text-brand-graylight ${copyAddressMotion}`}
@@ -3336,13 +3777,21 @@ const SmartAccountPolicy = () => {
                           moduleActionKey === `${module.id}:use`,
                           t('settings.useSmartAccountValidator')
                         )}
-                      {canInstallPaliWallet &&
-                        renderModuleAction(
-                          setupPaliWalletAuthenticator,
-                          loading,
-                          moduleActionKey === `${module.id}:use`,
-                          t('settings.useSmartAccountValidator')
-                        )}
+                      {canInstallPaliWallet && (
+                        <>
+                          <p className="break-all text-xs font-mono">
+                            {walletManagementAddress}
+                          </p>
+                          {renderModuleAction(
+                            setupPaliWalletAuthenticator,
+                            loading ||
+                              walletAuthenticatorPending?.scope ===
+                                metadataEntryKey,
+                            moduleActionKey === `${module.id}:use`,
+                            t('settings.useSmartAccountValidator')
+                          )}
+                        </>
+                      )}
                       {canInstallSLHDSA && (
                         <div className="space-y-3">
                           <PqOperationStatus

@@ -349,7 +349,7 @@ export async function qualifyNativeErc20Transfer(
         same([]);
         result = '0x1';
       } else if (body.method === 'eth_estimateGas') {
-        same([{ ...unsigned, type: '0x2', chainId: '0x1', nonce: '0x0', maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' }, 'pending']);
+        same([{ ...unsigned, type: '0x2', chainId: '0x1', nonce: '0x0', accessList: [], maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' }, 'pending']);
         result = '0xc350';
       } else if (body.method === 'eth_call') {
         if (

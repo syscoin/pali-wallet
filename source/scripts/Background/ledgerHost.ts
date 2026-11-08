@@ -30,6 +30,10 @@ export class LedgerHostBroker {
   private failReady?: (error: Error) => void;
   private startupTimer?: ReturnType<typeof setTimeout>;
   private creation?: Promise<chrome.windows.Window>;
+  private cleanup: Promise<void> = Promise.resolve();
+  private retirement?: Promise<() => void>;
+  private readonly closingWindows = new Set<number>();
+  private readonly removedWindows = new Set<number>();
   private pending = new Map<
     number,
     {
@@ -68,6 +72,7 @@ export class LedgerHostBroker {
         return this.abortable(() => this.connect(), options, 'connect');
       },
       disconnect: () => this.disconnect(),
+      retire: () => this.retire(),
       getStatus: () => ({ connected: Boolean(this.port && this.deviceReady) }),
       evm: {
         getAddress: request('evm.getAddress'),
@@ -87,7 +92,10 @@ export class LedgerHostBroker {
       if (port.name.startsWith(LEDGER_HOST_PORT)) void this.accept(port);
     });
     this.api.windows.onRemoved.addListener((id) => {
-      if (id === this.windowId) void this.disconnect();
+      if (id === this.windowId) {
+        this.removedWindows.add(id);
+        void this.disconnect();
+      } else if (this.closingWindows.has(id)) this.removedWindows.add(id);
     });
   }
 
@@ -97,6 +105,7 @@ export class LedgerHostBroker {
     kind: 'connect' | 'request' | 'join'
   ): Promise<T> {
     if (options?.signal?.aborted) throw CANCELLED();
+    if (this.retirement) throw BUSY();
     // Only the operation that opened or focused the device may close it.
     // A caller joining initial readiness can only cancel its own wait.
     const owner = kind === 'join' ? undefined : { kind };
@@ -282,8 +291,7 @@ export class LedgerHostBroker {
       void this.creation!.then(
         (window) => {
           if (generation === this.generation) this.windowId = window.id;
-          else if (window.id)
-            void this.api.windows.remove(window.id).catch(() => undefined);
+          // Revocation owns cleanup, including a window created after it.
         },
         () => {
           if (generation === this.generation) void this.disconnect();
@@ -332,11 +340,13 @@ export class LedgerHostBroker {
     });
   }
 
-  async disconnect(): Promise<void> {
+  private revoke() {
     this.generation++;
     this.operationOwner = undefined;
     const port = this.port;
     const windowId = this.windowId;
+    const creation = this.creation;
+    if (windowId !== undefined) this.closingWindows.add(windowId);
     this.port = undefined;
     this.deviceReady = false;
     this.windowId = undefined;
@@ -352,13 +362,124 @@ export class LedgerHostBroker {
       reject(CANCELLED());
     }
     this.pending.clear();
+    return { port, windowId, creation };
+  }
+
+  private async closeWindow(owner: {
+    creation?: Promise<chrome.windows.Window>;
+    windowId?: number;
+  }): Promise<void> {
+    const window = await owner.creation?.catch(() => undefined);
+    const id = owner.windowId ?? window?.id;
+    if (id === undefined) return;
+    this.closingWindows.add(id);
+    try {
+      if (!this.removedWindows.has(id)) await this.api.windows.remove(id);
+    } catch (error) {
+      if (!this.removedWindows.has(id)) throw error;
+    } finally {
+      this.closingWindows.delete(id);
+      this.removedWindows.delete(id);
+    }
+  }
+
+  private closePort(port?: chrome.runtime.Port): void {
     try {
       port?.disconnect();
     } catch {
       /* Already disconnected. */
     }
-    if (windowId !== undefined)
-      await this.api.windows.remove(windowId).catch(() => undefined);
+  }
+
+  disconnect(): Promise<void> {
+    const owner = this.revoke();
+    this.closePort(owner.port);
+    const closing = this.closeWindow(owner);
+    this.cleanup = Promise.all([this.cleanup, closing]).then(() => undefined);
+    void this.cleanup.catch(() => undefined);
+    // Immediate cancellation keeps the established disconnect behavior.
+    return owner.windowId === undefined
+      ? Promise.resolve()
+      : closing.catch(() => undefined);
+  }
+
+  private retirePort(port: chrome.runtime.Port): Promise<void> {
+    const id = ++this.sequence;
+    return new Promise((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timer);
+        port.onMessage.removeListener(receive);
+        port.onDisconnect.removeListener(disconnected);
+        if (error) reject(error);
+        else resolve();
+      };
+      const disconnected = () => finish(CANCELLED());
+      const receive = (input: unknown) => {
+        try {
+          const reply = snapshotLedgerMessage(input);
+          if (reply.type !== 'retired' || reply.id !== id) return;
+          finish(reply.ok === true ? undefined : CANCELLED());
+        } catch {
+          finish(CANCELLED());
+        }
+      };
+      const timer = setTimeout(() => finish(CANCELLED()), 300000);
+      port.onMessage.addListener(receive);
+      port.onDisconnect.addListener(disconnected);
+      try {
+        port.postMessage({ type: 'retire', id });
+      } catch {
+        finish(CANCELLED());
+      }
+    });
+  }
+
+  retire(): Promise<() => void> {
+    if (this.retirement) return this.retirement;
+    let resolve!: (guard: () => void) => void;
+    let reject!: (error: unknown) => void;
+    const retirement = new Promise<() => void>((accept, refuse) => {
+      resolve = accept;
+      reject = refuse;
+    });
+    this.retirement = retirement;
+    const owner = this.revoke();
+    const generation = this.generation;
+    const previousCleanup = this.cleanup;
+    void (async () => {
+      try {
+        try {
+          if (owner.port) await this.retirePort(owner.port);
+          await previousCleanup;
+        } finally {
+          this.closePort(owner.port);
+          const closing = this.closeWindow(owner);
+          this.cleanup = Promise.all([previousCleanup, closing]).then(
+            () => undefined
+          );
+          await this.cleanup;
+        }
+        const assertRetired = () => {
+          if (
+            generation !== this.generation ||
+            this.port ||
+            this.windowId !== undefined ||
+            this.creation ||
+            this.connecting ||
+            this.operationOwner ||
+            this.pending.size
+          )
+            throw CANCELLED();
+        };
+        assertRetired();
+        resolve(assertRetired);
+      } catch (error) {
+        reject(error);
+      } finally {
+        if (this.retirement === retirement) this.retirement = undefined;
+      }
+    })();
+    return retirement;
   }
 }
 
@@ -378,6 +499,12 @@ const activeHost = () => (broker ??= new LedgerHostBroker()).host;
 const lazyHost: LedgerHost = {
   connect: (...args) => activeHost().connect(...args),
   disconnect: () => broker?.host.disconnect() ?? Promise.resolve(),
+  retire: () =>
+    broker
+      ? broker.host.retire()
+      : Promise.resolve(() => {
+          if (broker) throw CANCELLED();
+        }),
   getStatus: () => broker?.host.getStatus() ?? { connected: false },
   evm: {
     getAddress: (...args) => activeHost().evm.getAddress(...args),

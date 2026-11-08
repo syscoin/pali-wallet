@@ -1,5 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
+import { normalizeDappCallsRequest } from '../../../../shared/dappCalls.ts';
 import { normalizeDappTransaction } from '../../../../shared/dappTransaction.ts';
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -120,6 +121,11 @@ export const methodRequest = async (
     if (!data.params || data.params.length !== 1)
       throw ethErrors.rpc.invalidParams('Expected one transaction');
     data.params = [normalizeDappTransaction(data.params[0])];
+  }
+  if (data.method === 'wallet_sendCalls') {
+    if (!data.params || data.params.length !== 1)
+      throw ethErrors.rpc.invalidParams('Expected one calls request');
+    data.params = [normalizeDappCallsRequest(data.params[0])];
   }
   if (data.method === 'personal_sign') {
     const params = getPersonalSignParams(data.params);

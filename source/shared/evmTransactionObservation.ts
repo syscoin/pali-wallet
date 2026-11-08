@@ -21,6 +21,17 @@ export type EvmObservationMethod =
   | 'eth_getTransactionReceipt'
   | 'eth_getTransactionCount'
   | 'eth_getBlockByNumber';
+
+export function getObservedEvmTerminalPhase(
+  observation: EvmTransactionObservation,
+  nonce: number | string
+) {
+  return observation.status === 'mined'
+    ? observation.outcome
+    : BigInt(observation.latestNonce) > BigInt(nonce)
+    ? ('nonce-consumed' as const)
+    : null;
+}
 export class EvmObservationError extends Error {
   readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CONTEXT_CHANGED';
   constructor(code: EvmObservationError['code']) {
@@ -40,6 +51,7 @@ const quantity = (value: unknown): bigint =>
   typeof value === 'string' && /^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(value)
     ? BigInt(value)
     : invalid();
+export { hash as readEvmRpcHash, quantity as readEvmRpcQuantity };
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)

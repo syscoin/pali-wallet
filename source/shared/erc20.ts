@@ -199,8 +199,11 @@ export function formatErc20Balance(
   };
 }
 
-/** Exact decimal input for the full uint8 precision range, without rounding. */
-export function parseTokenAmount(value: unknown, decimals: number): string {
+/** Exact nonnegative decimal input, including zero allowances. */
+export function parseUnsignedTokenAmount(
+  value: unknown,
+  decimals: number
+): string {
   const precision = parseErc20Decimals(decimals);
   if (
     typeof value !== 'string' ||
@@ -213,6 +216,12 @@ export function parseTokenAmount(value: unknown, decimals: number): string {
   const units = parseErc20Units(
     `${integer}${fraction.padEnd(precision, '0')}`.replace(/^0+(?=\d)/, '')
   );
+  return units;
+}
+
+/** Exact positive transfer input for the full uint8 precision range. */
+export function parseTokenAmount(value: unknown, decimals: number): string {
+  const units = parseUnsignedTokenAmount(value, decimals);
   return units === '0' ? invalid() : units;
 }
 

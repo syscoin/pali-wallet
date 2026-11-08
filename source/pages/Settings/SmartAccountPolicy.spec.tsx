@@ -1,10 +1,11 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
+import { acknowledgedGuardianRecoveryClaim } from 'tests/fixtures/guardianRecoveryClaim';
 
 import { useController } from 'hooks/useController';
 import { useUtils } from 'hooks/useUtils';
 import { KeyringAccountType } from 'types/network';
-import { hexConcat } from 'utils/ethersV6Compat';
+import { getAddress, hexConcat } from 'utils/ethersV6Compat';
 import {
   SLH_DSA_PARAMETER_SET,
   SLH_DSA_SIGNATURE_LENGTH,
@@ -12,7 +13,9 @@ import {
   getSLHDSAKeyId,
 } from 'utils/slhDsa';
 import { getPaliErc7739PersonalSignHash } from 'utils/smartAccount';
+import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
+import { buildSmartAccountGuardianRecoveryOperation } from 'utils/smartAccount/recovery';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
 
@@ -55,16 +58,22 @@ const OWNER = '0x3333333333333333333333333333333333333333';
 const VALIDATOR = '0x4444444444444444444444444444444444444444';
 const CHAIN_ID = 57057;
 const GUARDIAN_MODULE = getPaliModuleAddress(CHAIN_ID, 'guardian-recovery');
-const OPERATION = {
+const OPERATION = buildSmartAccountGuardianRecoveryOperation({
   account: ACCOUNT,
-  chainId: CHAIN_ID,
-  executionCalldata: '0x1234',
-  hash: `0x${'55'.repeat(32)}`,
-  mode: `0x${'00'.repeat(32)}`,
+  chainId: 57057,
   policyEpoch: '7',
+  recoveryModule: getAddress(getPaliModuleAddress(57057, 'guardian-recovery')),
   salt: `0x${'66'.repeat(32)}`,
-};
+  target: {
+    auth: {
+      module: 'ecdsa',
+      validator: getPaliModuleAddress(57057, 'ecdsa'),
+      data: encodeEcdsaValidatorInitData([OWNER], 1),
+    },
+  },
+});
 const SIGNATURE = `0x${'77'.repeat(65)}`;
+const RECOVERY_CONTEXT = 'prepared-guardian-recovery';
 const guardianObservation = () => ({
   account: ACCOUNT,
   chainId: CHAIN_ID,
@@ -188,26 +197,47 @@ describe('SmartAccountPolicy guardian approval', () => {
       navigate: mockNavigate,
       useCopyClipboard: () => [null, copy],
     });
-    controllerEmitter = jest.fn(async ([, method]: string[]) => {
-      switch (method) {
-        case 'getSmartAccountGuardianRecoveryStatus':
-          return guardianObservation();
-        case 'getWalletSessionGeneration':
-          return 7;
-        case 'prepareSmartAccountGuardianStartRecovery':
-          return { operation: OPERATION, smartGuardian };
-        case 'validateSmartAccountGuardianRecoveryOperation':
-          return true;
-        case 'signSmartAccountActionDigestInternal':
-          return SIGNATURE;
-        case 'submitPreparedSmartAccountGuardianStartRecovery':
-          return { operation: OPERATION };
-        default:
-          throw new Error(`Unexpected controller method ${method}`);
+    controllerEmitter = jest.fn(
+      async ([, method]: string[], payload: any[] = []) => {
+        switch (method) {
+          case 'getSmartAccountGuardianRecoveryStatus':
+            return guardianObservation();
+          case 'getWalletSessionGeneration':
+            return 7;
+          case 'prepareSmartAccountGuardianStartRecovery':
+            return {
+              operation: OPERATION,
+              smartGuardian,
+              executionContextId: RECOVERY_CONTEXT,
+            };
+          case 'validateSmartAccountGuardianRecoveryOperation':
+            return true;
+          case 'assertSmartAccountPreparedNonce':
+            expect(payload).toEqual([RECOVERY_CONTEXT]);
+            return undefined;
+          case 'signSmartAccountActionDigestInternal':
+            return SIGNATURE;
+          case 'submitPreparedSmartAccountGuardianStartRecovery':
+            return { operation: OPERATION };
+          default:
+            throw new Error(`Unexpected controller method ${method}`);
+        }
       }
-    });
+    );
     (useController as jest.Mock).mockReturnValue({
-      controllerEmitter,
+      controllerEmitter: async (
+        path: string[],
+        payload: any[] = [],
+        ...rest: any[]
+      ) => {
+        const response = await controllerEmitter(path, payload, ...rest);
+        if (path[1] !== 'prepareSmartAccountGuardianStartRecovery')
+          return response;
+        return {
+          ...response,
+          claim: acknowledgedGuardianRecoveryClaim(payload[0], response),
+        };
+      },
       handleWalletLockedError: () => false,
     });
     const vault = {
@@ -446,7 +476,11 @@ describe('SmartAccountPolicy guardian approval', () => {
     expect(wrappedHash).not.toBe(OPERATION.hash);
     expect(controllerEmitter).toHaveBeenCalledWith(
       ['wallet', 'signSmartAccountActionDigestInternal'],
-      [[OWNER, wrappedHash], { id: 0, type: KeyringAccountType.HDAccount }],
+      [
+        [OWNER, wrappedHash],
+        { id: 0, type: KeyringAccountType.HDAccount },
+        RECOVERY_CONTEXT,
+      ],
       10000
     );
     expect(controllerEmitter).toHaveBeenCalledWith(
@@ -454,7 +488,8 @@ describe('SmartAccountPolicy guardian approval', () => {
       [
         {
           account: ACCOUNT,
-          executionContextId: undefined,
+          claimHash: OPERATION.hash,
+          executionContextId: RECOVERY_CONTEXT,
           expectedContext: expect.objectContaining({ sessionGeneration: 7 }),
           approval: {
             guardian: GUARDIAN,
@@ -467,6 +502,15 @@ describe('SmartAccountPolicy guardian approval', () => {
       ],
       300000
     );
+    const methods = controllerEmitter.mock.calls.map(([[, method]]) => method);
+    expect(methods).toContain('validateSmartAccountGuardianRecoveryOperation');
+    expect(methods).toContain('assertSmartAccountPreparedNonce');
+    expect(
+      methods.indexOf('validateSmartAccountGuardianRecoveryOperation')
+    ).toBeLessThan(methods.indexOf('assertSmartAccountPreparedNonce'));
+    expect(methods.indexOf('assertSmartAccountPreparedNonce')).toBeLessThan(
+      methods.indexOf('signSmartAccountActionDigestInternal')
+    );
     expect(alert.error).not.toHaveBeenCalled();
     expect(alert.success).toHaveBeenCalled();
   });
@@ -476,7 +520,11 @@ describe('SmartAccountPolicy guardian approval', () => {
     const original = controllerEmitter.getMockImplementation()!;
     controllerEmitter.mockImplementation((path, ...args) =>
       path[1] === 'prepareSmartAccountGuardianStartRecovery'
-        ? Promise.resolve({ approval, operation: OPERATION })
+        ? Promise.resolve({
+            approval,
+            operation: OPERATION,
+            executionContextId: RECOVERY_CONTEXT,
+          })
         : original(path, ...args)
     );
 
@@ -556,7 +604,11 @@ describe('SmartAccountPolicy guardian approval', () => {
       controllerEmitter.mockImplementation(
         async (path: string[], payload: any[]) => {
           if (path[1] === 'prepareSmartAccountGuardianStartRecovery') {
-            return { operation: OPERATION, smartGuardian: pqGuardian };
+            return {
+              operation: OPERATION,
+              smartGuardian: pqGuardian,
+              executionContextId: RECOVERY_CONTEXT,
+            };
           }
           if (path[1] === 'signSLHDSAActionHash') return pqSignature;
           return original(path, payload);
@@ -576,6 +628,7 @@ describe('SmartAccountPolicy guardian approval', () => {
           {
             ...publicKey,
             accountId: 2,
+            executionContextId: RECOVERY_CONTEXT,
             actionHash: wrappedHash,
             allowReservedSignature: undefined,
             keyId,
@@ -594,7 +647,8 @@ describe('SmartAccountPolicy guardian approval', () => {
         [
           {
             account: ACCOUNT,
-            executionContextId: undefined,
+            claimHash: OPERATION.hash,
+            executionContextId: RECOVERY_CONTEXT,
             expectedContext: expect.objectContaining({ sessionGeneration: 7 }),
             approval: {
               guardian: GUARDIAN,
@@ -610,6 +664,30 @@ describe('SmartAccountPolicy guardian approval', () => {
       expect(alert.error).not.toHaveBeenCalled();
     }
   );
+
+  it('does not sign or submit when the issued recovery context expires before authentication', async () => {
+    const original = controllerEmitter.getMockImplementation()!;
+    controllerEmitter.mockImplementation((path, ...args) =>
+      path[1] === 'assertSmartAccountPreparedNonce'
+        ? Promise.reject(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'))
+        : original(path, ...args)
+    );
+
+    await startRecovery();
+
+    expect(controllerEmitter).toHaveBeenCalledWith(
+      ['wallet', 'assertSmartAccountPreparedNonce'],
+      [RECOVERY_CONTEXT]
+    );
+    const methods = controllerEmitter.mock.calls.map(([[, method]]) => method);
+    expect(methods).not.toContain('signSmartAccountActionDigestInternal');
+    expect(methods).not.toContain('signSLHDSAActionHash');
+    expect(methods).not.toContain(
+      'submitPreparedSmartAccountGuardianStartRecovery'
+    );
+    expect(alert.error).toHaveBeenCalled();
+    expect(alert.success).not.toHaveBeenCalled();
+  });
 
   it('does not sign or submit a smart guardian approval when policy revalidation fails', async () => {
     const original = controllerEmitter.getMockImplementation()!;

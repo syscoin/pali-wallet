@@ -6,6 +6,8 @@ export const DAPP_REQUEST_LIMITS = {
   depth: 32,
   nodes: 10_000,
   calls: 50,
+  pendingRequests: 64,
+  requestsPerOrigin: 4,
 } as const;
 
 export const payloadBudgetError = (detail: string): Error & { code: number } =>

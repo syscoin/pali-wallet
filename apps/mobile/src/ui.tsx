@@ -329,10 +329,12 @@ export function Card({ children, style, ...props }: ViewProps) {
 export function Screen({
   children,
   footer,
+  footerScrollable = false,
   gap = 22,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
+  footerScrollable?: boolean;
   gap?: number;
 }) {
   return (
@@ -351,7 +353,17 @@ export function Screen({
       >
         {children}
       </ScrollView>
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+      {footer ? (
+        footerScrollable ? (
+          <ScrollView
+            style={{ flexGrow: 0, maxHeight: '60%' }}
+            contentContainerStyle={styles.footer}
+            keyboardShouldPersistTaps="handled"
+          >
+            {footer}
+          </ScrollView>
+        ) : <View style={styles.footer}>{footer}</View>
+      ) : null}
     </View>
   );
 }

@@ -1,8 +1,11 @@
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { NativeConnectionsController } from '../src/connections/controller.ts';
+import type { WalletConnectTransportEvent, WalletConnectSession, WalletConnectResponse } from '../src/connections/walletConnect.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { WalletStorageError } from '../src/storage/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
@@ -16,6 +19,11 @@ import { getNativeNetwork, createNativeNetwork, NATIVE_NETWORKS, type NativeNetw
 import { type NativeAccountRecord, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
+import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
+import type { DappGrant } from '../../../source/shared/dappTypes.ts';
+import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
+import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { recoverPersonalSignature, recoverTypedSignature, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
@@ -24,7 +32,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void) {
+function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch) {
   const records = new Map<string, unknown>();
   let confirmation: string | undefined;
   let failures = 0;
@@ -38,6 +46,12 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   let identity: import('../src/storage/types.ts').WalletIdentityRead | null = null;
   const signedBundles = new Map<string,string>();
   let recordHook: ((kind: string, key: string) => Promise<void>) | undefined;
+  let identityHook: (() => Promise<void>) | undefined;
+  let utxoSigned: string | undefined;
+  const utxoPort: NonNullable<OpenWalletStorage['utxoSignedRecords']> = {
+    async read() { return utxoSigned; },
+    async compareAndSet(_profile, expected, next, guard) { guard(); if (utxoSigned !== expected) return false; utxoSigned = next; return true; },
+  };
   const originalFetch = globalThis.fetch;
   const fingerprint = () => createHash('sha256')
     .update(JSON.stringify([records.get('vault'), records.get('vault-keys')])).digest('hex');
@@ -49,6 +63,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   });
   const plans = new WeakMap<object, { before: ReturnType<typeof snapshot>; after: ReturnType<typeof snapshot> }>();
   const open = async (): Promise<OpenWalletStorage> => { let signedUnavailable=false; return ({
+    utxoSignedRecords: utxoPort,
     signedRecords: {
       async read(profileId) { if(signedUnavailable) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED'); await recordHook?.('get','pali-evm-signed-v1:'+profileId); if (!identity?.root || identity.root.profileId !== profileId) throw Error('profile mismatch'); return signedBundles.get(profileId); },
       async compareAndSet(profileId, expected, next, guard) { guard(); if(signedUnavailable) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED'); if (!identity?.root || identity.root.profileId !== profileId) throw Error('profile mismatch'); if (signedBundles.get(profileId) !== expected) return false; signedBundles.set(profileId,next); await recordHook?.('create','pali-evm-signed-v1:'+profileId); if(failAcknowledgement || failCasAcknowledgement){failAcknowledgement=false;failCasAcknowledgement=false;signedUnavailable=true;throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');} return true; },
@@ -73,7 +88,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         if(failCatalogueAcknowledgement){failCatalogueAcknowledgement=false;signedUnavailable=true;throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');}
         guard();
       },
-      async readIdentity() { if (!records.has('vault')) return null; if (identity && identity.pairFingerprint !== fingerprint()) throw Error('pair changed'); return identity ?? {walletBindingId:fingerprint(),pairFingerprint:fingerprint(),root:null,verification:'requires-unlock'}; },
+      async readIdentity() { await identityHook?.(); if (!records.has('vault')) return null; if (identity && identity.pairFingerprint !== fingerprint()) throw Error('pair changed'); return identity ?? {walletBindingId:fingerprint(),pairFingerprint:fingerprint(),root:null,verification:'requires-unlock'}; },
       async bindIdentity(expected, root, guard) { guard(); assert.equal(expected,fingerprint()); if (identity) assert.deepEqual(identity.root,root); else identity={walletBindingId:expected,pairFingerprint:expected,root,verification:'requires-unlock'}; },
       async readSnapshot() { return snapshot(); },
       async recordFailureForPair(pair) { assert.equal(pair,fingerprint()); failures++; failureWrites++; },
@@ -86,6 +101,24 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         await recordHook?.('cas', key);
         for (const name of Object.keys(removals)) records.delete(name);
         if (failCasAcknowledgement) { failCasAcknowledgement = false; throw Error('Lost CAS acknowledgement'); }
+        return true;
+      },
+      async compareAndSetMany(changes, guard) {
+        guard();
+        const matches = () => changes.every(({ key, expected }) =>
+          JSON.stringify(records.get(key)) === JSON.stringify(expected));
+        if (!matches()) return false;
+        for (const { key } of changes) await recordHook?.('cas', key);
+        guard();
+        if (!matches()) return false;
+        for (const { key, value } of changes) {
+          if (value === undefined) records.delete(key);
+          else records.set(key, structuredClone(value));
+        }
+        if (failCasAcknowledgement) {
+          failCasAcknowledgement = false;
+          throw Error('Lost CAS acknowledgement');
+        }
         return true;
       },
       async readDeviceUnlockVaultPair() {
@@ -127,11 +160,12 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   }); };
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null, ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
-  }, openStorage: open, loadSdk, assertActive });
+  }, openStorage: open, loadSdk, assertActive, connectionFetch, trezorSessions, utxoFetch });
   return {
     clearFixtureIdentity() { identity = null; }, fixtureIdentity: () => identity,
-    records, factory, signedBundles, signedValue: () => [...signedBundles.values()][0],
+    records, factory, signedBundles, utxoPort, signedValue: () => [...signedBundles.values()][0],
     onRecord(hook?: (kind: string, key: string) => Promise<void>) { recordHook = hook; },
+    onIdentity(hook?: () => Promise<void>) { identityHook = hook; },
     get closes() { return closes; },
     loseCasAcknowledgement() { failCasAcknowledgement = true; },
     loseCatalogueAcknowledgement() { failCatalogueAcknowledgement = true; },
@@ -145,6 +179,42 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
     restoreNetwork() { globalThis.fetch = originalFetch; assert.equal(networkCalls, 0); },
   };
 }
+
+test('connection host retains its wallet owner across lock while disclosing only unlocked public accounts', async () => {
+  const disk = memoryDisk();
+  disk.denyNetwork();
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  try {
+    await assert.rejects(runtime.openConnectionHost(), /CANCELLED|NOT_READY/);
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    const host = await runtime.openConnectionHost();
+    const initial = host.context();
+    assert.equal(initial.unlocked, true);
+    assert.equal(initial.accounts[0]?.address, ADDRESS);
+    assert.equal(initial.accounts[0]?.id, initial.activeAccountId);
+    assert.equal(Object.keys(initial.accounts[0]!).sort().join(','), 'address,id,index,label,type,xpub');
+    assert.equal(Object.isFrozen(initial.accounts[0]), true);
+    assert.equal(Object.isFrozen(initial.network), true);
+    const target = getNativeNetwork('syscoin-nevm');
+    await runtime.networks!.reserve(target.id, runtime.catalogue.getSnapshot()!.revision).execute(() => undefined);
+    assert.equal(host.context().networkId, target.id);
+    await runtime.session.lock();
+    assert.doesNotThrow(host.assertOwner);
+    assert.equal(host.context().unlocked, false);
+    assert.equal(host.context().networkId, target.id);
+    assert.deepEqual(host.context().accounts, []);
+    assert.equal(host.context().activeAccountId, null);
+    assert.equal((await runtime.session.unlock(PASSWORD)).authenticated, true);
+    assert.doesNotThrow(host.assertOwner);
+    assert.equal(host.context().accounts[0]?.address, ADDRESS);
+    await runtime.storage.close();
+    assert.throws(host.assertOwner, /CANCELLED/);
+    assert.throws(host.context, /CANCELLED/);
+  } finally {
+    await runtime.storage.close().catch(() => undefined);
+    disk.restoreNetwork();
+  }
+});
 
 test('recovery retirement captures the original runtime pair and ordinary close joins the same drain', async () => {
   const disk = memoryDisk(); disk.denyNetwork();
@@ -252,14 +322,14 @@ test('backup uses fresh SDK authentication and a wallet-bound storage receipt', 
 });
 
 async function controlledSdk() {
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   let entered = () => {};
   let release = Promise.resolve();
   let holding = false;
   let unlockCalls = 0;
   let hydrations = 0;
-  class ControlledKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class ControlledKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => { hydrations++; return hydrate(...args); };
@@ -274,7 +344,7 @@ async function controlledSdk() {
     }
   }
   return {
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ControlledKeyring }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: ControlledKeyring }),
     get hydrations() { return hydrations; },
     get unlockCalls() { return unlockCalls; },
     hold() {
@@ -344,8 +414,8 @@ test('native transfers reuse the unlocked shared SDK session without password ch
   try {
     await runtime.session.importWallet(PHRASE, PASSWORD);
     const transfers = runtime.transfers; assert.ok(transfers);
-    const transaction = { type: 2 as const, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
-    const signed = await transfers.sign(transaction, () => undefined);
+    const transaction = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
+    const signed = await transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const { Transaction } = await import('ethers/transaction');
     const decoded = Transaction.from(signed.rawTransaction);
     assert.equal(decoded.from, ADDRESS); assert.equal(decoded.hash, signed.hash); assert.equal(decoded.value, 123n);
@@ -353,16 +423,16 @@ test('native transfers reuse the unlocked shared SDK session without password ch
     assert.equal((await journal.saveSigned(signed.rawTransaction)).hash, signed.hash);
     assert.equal((await journal.transition(signed.hash, 'attempted')).phase, 'attempted');
     const writes = { success: disk.successWrites, failure: disk.failureWrites };
-    assert.equal((await transfers.sign(transaction, () => undefined)).hash, signed.hash);
+    assert.equal((await transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal })).hash, signed.hash);
     transfers.assertUnlocked(() => undefined);
     assert.deepEqual({ success: disk.successWrites, failure: disk.failureWrites }, writes);
     await runtime.session.lock();
-    await assert.rejects(transfers.sign(transaction, () => undefined), /CANCELLED/);
+    await assert.rejects(transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal }), /CANCELLED/);
     assert.throws(() => transfers.assertUnlocked(() => undefined), /NOT_READY/);
     assert.equal((await runtime.session.unlock(PASSWORD)).authenticated, true);
     const afterUnlock = disk.successWrites;
     transfers.assertUnlocked(() => undefined);
-    await transfers.sign(transaction, () => undefined);
+    await transfers.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(disk.successWrites, afterUnlock);
     assert.equal((await (await transfers.journal(() => undefined)).load())?.rawTransaction, signed.rawTransaction);
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
@@ -443,8 +513,8 @@ test('lost catalogue acknowledgement quarantines authority but close and fresh-r
 });
 
 
-async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
-  const disk = memoryDisk(loadSdk); disk.denyNetwork();
+async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk'], connectionFetch?: KeyringRuntimeDependencies['connectionFetch']) {
+  const disk = memoryDisk(loadSdk, undefined, connectionFetch); disk.denyNetwork();
   let runtime!: KeyringRuntime;
   const authority = new NativeCustodyAuthority({ async open() { runtime = await disk.factory.open() as KeyringRuntime; return runtime; } });
   await authority.initialize();
@@ -453,6 +523,262 @@ async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   authority.lock(); await authority.unlock(PASSWORD);
   const execute = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) => authority.manageAccounts(request, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
   return { disk, authority, get runtime() { return runtime; }, execute };
+}
+
+function approveRuntimeMessage(
+  f: Awaited<ReturnType<typeof readyAccounts>>,
+  host: Awaited<ReturnType<KeyringRuntime['openConnectionHost']>>,
+  request: DappMessageRequest,
+  accountId = host.context().activeAccountId!
+) {
+  const approved = host
+    .context()
+    .accounts.find((account) => account.id === accountId)!;
+  const grant: DappGrant = {
+    accountId: approved.index,
+    accountType: approved.type as DappGrant['accountType'],
+    chain: 'ethereum' as DappGrant['chain'],
+    chainId: host.context().network.chainId,
+    date: 1,
+    host: 'https://approved-message.example',
+  };
+  const approval = createDappSigningApproval({
+    readScope: () => {
+      const context = host.context();
+      const account = context.accounts.find((value) => value.id === accountId);
+      return {
+        account: {
+          id: approved.index,
+          type: approved.type,
+          address: account?.address,
+          xpub: account?.xpub,
+        },
+        grant,
+        isBitcoinBased: context.network.kind !== 'ethereum',
+        network: context.network,
+        sessionGeneration: host.sessionGeneration(),
+      };
+    },
+    subscribe: (changed) => f.authority.subscribe(changed),
+  });
+  return { accountId, networkId: host.context().networkId, request, approval };
+}
+
+test('connection message signing uses the published SDK for personal and typed V1/V3/V4 without changing selection', async () => {
+  const f = await readyAccounts();
+  try {
+    const host = await f.runtime.openConnectionHost();
+    for (const imported of [false, true]) {
+      if (imported) await importTestKey(f);
+      const before = f.authority.getCatalogue()!.active.accountId;
+      const address = f.authority.getSnapshot().account!.address;
+      const payloads = [
+        { method: 'personal_sign', data: '0x68656c6c6f' },
+        { method: 'personal_sign', data: '0x' + '22'.repeat(20) },
+        {
+          method: 'eth_signTypedData',
+          data: [{ name: 'value', type: 'uint256', value: '7' }],
+        },
+        ...['eth_signTypedData_v3', 'eth_signTypedData_v4'].map((method) => ({
+          method,
+          data: {
+            types: {
+              EIP712Domain: [{ name: 'chainId', type: 'uint256' }],
+              Message: [{ name: 'value', type: 'uint256' }],
+            },
+            primaryType: 'Message',
+            domain: { chainId: 1 },
+            message: { value: '7' },
+          },
+        })),
+      ];
+      for (const { method, data } of payloads) {
+        const request = readDappMessageRequest(
+          method,
+          method === 'personal_sign' ? [data, address] : [address, data],
+          address
+        )!;
+        assert(request);
+        const input = approveRuntimeMessage(f, host, request);
+        try {
+          const signature = await host.signMessage(input);
+          const recovered =
+            request.method === 'personal_sign'
+              ? recoverPersonalSignature({ data: request.message, signature })
+              : recoverTypedSignature({
+                  data: request.typedData as Parameters<
+                    typeof recoverTypedSignature
+                  >[0]['data'],
+                  signature,
+                  version: request.version as SignTypedDataVersion,
+                });
+          assert.equal(recovered.toLowerCase(), address.toLowerCase());
+          assert.equal(f.authority.getCatalogue()!.active.accountId, before);
+          assert.equal(f.authority.getSnapshot().phase, 'ready');
+        } finally {
+          input.approval.dispose();
+        }
+      }
+    }
+  } finally {
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
+});
+
+test('message signing requires an explicit account switch and a new approval after that switch', async () => {
+  const f = await readyAccounts();
+  try {
+    const host = await f.runtime.openConnectionHost();
+    await f.execute({
+      kind: 'create',
+      label: 'Other account',
+      password: PASSWORD,
+    });
+    const request = readDappMessageRequest(
+      'personal_sign',
+      [ADDRESS, 'hello'],
+      ADDRESS
+    )!;
+    const old = approveRuntimeMessage(f, host, request, 'hd:60:0');
+    await assert.rejects(host.signMessage(old), /INVALID_INPUT/);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
+    const generation = host.sessionGeneration();
+    await f.authority.selectConnectionAccount('hd:60:0', f.authority.getSnapshot().revision, () => undefined);
+    assert(host.sessionGeneration() > generation);
+    assert.throws(old.approval.assertCurrent);
+    assert.throws(() => host.signMessage(old), { code: 4001 });
+    old.approval.dispose();
+    const next = approveRuntimeMessage(f, host, request);
+    try {
+      assert.match(await host.signMessage(next), /^0x[0-9a-f]{130}$/i);
+    } finally {
+      next.approval.dispose();
+    }
+  } finally {
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
+});
+
+test('a message signature completing after lock is discarded and shares the privileged-operation mutex', async () => {
+  const sdk = await loadNativeKeyringSdk();
+  const entered = deferredAccount(),
+    release = deferredAccount();
+  class HeldMessageKeyring extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...args);
+      const sign = this.ethereumTransaction.signPersonalMessage;
+      this.ethereumTransaction.signPersonalMessage = async (params) => {
+        const signature = await sign(params);
+        entered.resolve();
+        await release.promise;
+        return signature;
+      };
+    }
+  }
+  const f = await readyAccounts(async () => ({
+    ...sdk,
+    HostKeyring: HeldMessageKeyring,
+  }));
+  try {
+    const host = await f.runtime.openConnectionHost();
+    const request = readDappMessageRequest(
+      'personal_sign',
+      [ADDRESS, 'hello'],
+      ADDRESS
+    )!;
+    const input = approveRuntimeMessage(f, host, request);
+    const signing = host.signMessage(input);
+    const rejected = assert.rejects(signing, /CANCELLED/);
+    await entered.promise;
+    await assert.rejects(host.signMessage(input), /BUSY/);
+    f.authority.lock();
+    release.resolve();
+    await rejected;
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
+    input.approval.dispose();
+  } finally {
+    release.resolve();
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
+});
+
+async function grantConnection(host: Awaited<ReturnType<KeyringRuntime['openConnectionHost']>>, accountId: number, suffix: string) {
+  const origin = `https://app-${suffix}.example`;
+  const port = host.repository.permissions({
+    peerPublicKey: suffix.repeat(64), topic: suffix.repeat(64), origin,
+  });
+  const grant: DappGrant = {
+    accountId, accountType: 'HDAccount' as DappGrant['accountType'],
+    chain: 'ethereum' as DappGrant['chain'], chainId: 1, date: 1, host: origin,
+  };
+  const frame = { dapps: { [origin]: grant }, pendingOrigins: [] };
+  await port.exclusive(async () => { await port.write(frame); port.publish(frame); });
+  return { port, origin };
+}
+
+test('account removal and connection retirement share one repository and survive ID reuse', async () => {
+  const f = await readyAccounts();
+  try {
+    await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    const host = await f.runtime.openConnectionHost();
+    assert.equal((await f.runtime.openConnectionHost()).repository, host.repository);
+    const target = await grantConnection(host, 1, 'a');
+    const retained = await grantConnection(host, 0, 'b');
+    await host.repository.transport.setItem('test-protocol-key', { secret: 'fixture-secret' });
+    await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
+    assert.deepEqual(target.port.read().dapps, {});
+    assert.ok(retained.port.read().dapps[retained.origin]);
+    assert.deepEqual(await host.repository.transport.getItem('test-protocol-key'), { secret: 'fixture-secret' });
+    await f.execute({ kind: 'create', label: 'Reused', password: PASSWORD });
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
+    assert.deepEqual(target.port.read().dapps, {});
+    await f.authority.dispose();
+    const reopened = await f.disk.factory.open() as KeyringRuntime;
+    try {
+      await reopened.session.unlock(PASSWORD);
+      const restored = await reopened.openConnectionHost();
+      assert.equal(restored.repository.bindings().length, 1);
+      assert.deepEqual(await restored.repository.transport.getItem('test-protocol-key'), { secret: 'fixture-secret' });
+      assert.equal(restored.context().activeAccountId, 'hd:60:1');
+    } finally { await reopened.storage.close(); }
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+for (const fault of ['cancel', 'lost-ack'] as const) {
+  test(`account removal ${fault} cannot persist only one side of permission retirement`, async () => {
+    const f = await readyAccounts();
+    try {
+      await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
+      await f.execute({ kind: 'select', id: 'hd:60:0' });
+      const host = await f.runtime.openConnectionHost();
+      await grantConnection(host, 1, 'a');
+      const before = structuredClone(f.disk.records.get(NATIVE_CONNECTION_STORAGE_KEY));
+      if (fault === 'cancel') f.disk.onRecord(async (kind, key) => {
+        if (kind === 'cas' && key === WALLET_CATALOGUE_KEY) {
+          f.disk.onRecord();
+          f.authority.lock();
+        }
+      });
+      else f.disk.loseCasAcknowledgement();
+      await assert.rejects(f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD }));
+      const catalogue = f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+      const connection = f.disk.records.get(NATIVE_CONNECTION_STORAGE_KEY) as { sessions: readonly unknown[] };
+      assert.equal(Boolean(catalogue.groups[0]!.accounts.HDAccount[1]), fault === 'cancel');
+      if (fault === 'cancel') assert.deepEqual(connection, before);
+      else assert.equal(connection.sessions.length, 0);
+      await f.authority.dispose().catch(() => undefined);
+      const reopened = await f.disk.factory.open() as KeyringRuntime;
+      try {
+        await reopened.session.unlock(PASSWORD);
+        const restored = await reopened.openConnectionHost();
+        assert.equal(restored.repository.bindings().length, fault === 'cancel' ? 1 : 0);
+      } finally { await reopened.storage.close(); }
+    } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+  });
 }
 
 test('real SDK HD accounts reuse deleted indices and preserve full records across reopen', async () => {
@@ -476,8 +802,8 @@ test('real SDK HD accounts reuse deleted indices and preserve full records acros
     await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
     await f.execute({ kind: 'create', label: 'Recreated savings', password: PASSWORD });
     assert.equal(f.authority.getSnapshot().account?.address, second.address);
-    const signed = await f.runtime.transfers!.sign({ type: 2, from: second.address,
-      to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: second.address,
+      to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const { Transaction } = await import('ethers/transaction');
     assert.equal(Transaction.from(signed.rawTransaction).from, second.address);
     const persisted = JSON.stringify([...f.disk.records]);
@@ -494,10 +820,10 @@ test('real SDK HD accounts reuse deleted indices and preserve full records acros
 
 test('sender-owned records preserve first and additional accounts across selection', async () => {
   const f = await readyAccounts();
-  const tx = (from: string) => ({ type: 2 as const, from,
+  const tx = (from: string) => ({ type: 2 as const, accessList: [], from,
     to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' });
   try {
-    const first = await f.runtime.transfers!.sign(tx(ADDRESS), () => undefined);
+    const first = await f.runtime.transfers!.sign(tx(ADDRESS), { assertCurrent: () => undefined, signal: new AbortController().signal });
     let journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(first.rawTransaction); await journal.transition(first.hash, 'attempted');
     assert.equal(JSON.parse(f.disk.signedValue()!).entries.length, 1);
@@ -505,7 +831,7 @@ test('sender-owned records preserve first and additional accounts across selecti
     const secondAddress = f.authority.getSnapshot().account!.address;
     journal = await f.runtime.transfers!.journal(() => undefined);
     assert.equal(await journal.load(), null);
-    const second = await f.runtime.transfers!.sign(tx(secondAddress), () => undefined);
+    const second = await f.runtime.transfers!.sign(tx(secondAddress), { assertCurrent: () => undefined, signal: new AbortController().signal });
     journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(second.rawTransaction); await journal.transition(second.hash, 'attempted');
     assert.equal(JSON.parse(f.disk.signedValue()!).entries.length, 2);
@@ -544,7 +870,7 @@ const deferredAccount = () => {
   return { promise, resolve };
 };
 async function raceSdk() {
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   let gate: { phase: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let signingHook: (() => void) | undefined;
   let exportResult: string | undefined;
@@ -559,8 +885,8 @@ async function raceSdk() {
     if (gate?.phase !== phase) return;
     const current = gate; current.entered.resolve(); await current.released.promise;
   };
-  class RaceKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class RaceKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
       const allocate = this.addNewAccount.bind(this);
       this.addNewAccount = async (...args) => {
@@ -593,7 +919,7 @@ async function raceSdk() {
     async unlock(password: string) { unlocks++; const result = super.unlock(password); await hold('password'); return result; }
   }
   return {
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: RaceKeyring }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: RaceKeyring }),
     onSign(hook?: () => void) { signingHook = hook; },
     get exports() { return exports; },
     get imports() { return imports; },
@@ -666,8 +992,8 @@ async function prepareAccountTransfer(transfers: NativeTransfers) {
 
 test('activity reset retires saved handles and clears only the selected account and chain', async () => {
   const f = await readyAccounts();
-  const sign = (chainId: string) => f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
-    chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+  const sign = (chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
+    chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
   try {
     const ethereum = await sign('1');
     const first = await f.runtime.transfers!.journal(() => undefined);
@@ -693,15 +1019,15 @@ test('activity reset inside signing revokes the result without locking the curre
   let reset: Promise<void> | undefined;
   try {
     sdk.onSign(() => { reset = f.runtime.resetActivity(() => undefined, () => undefined); });
-    await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
-      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /CANCELLED/);
+    await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal }), /CANCELLED/);
     assert(reset);
     await reset;
     assert.equal(await f.runtime.session.readSelectedAddress(), ADDRESS);
     assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
     sdk.onSign(() => { throw Error('current signing failed'); });
-    await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
-      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /OPERATION_FAILED/);
+    await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal }), /OPERATION_FAILED/);
     assert.equal(f.runtime.catalogue.getSnapshot(), null);
     await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { sdk.onSign(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
@@ -711,8 +1037,8 @@ test('locking an in-flight activity reset preserves its stored records', async (
   const f = await readyAccounts();
   const entered = deferredAccount(), release = deferredAccount();
   try {
-    const signed = await f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: ADDRESS,
-      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: ADDRESS,
+      chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
     const before = f.disk.signedValue();
     f.disk.onRecord(async (kind, key) => {
@@ -870,7 +1196,7 @@ test('async host guards never authorize account mutation, journal access or a si
     await f.runtime.session.unlock(PASSWORD);
     await assert.rejects(f.runtime.transfers!.journal(asynchronousGuard), /CANCELLED/);
     assert.throws(() => f.runtime.transfers!.assertUnlocked(asynchronousGuard), /CANCELLED/);
-    await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, asynchronousGuard), /CANCELLED/);
+    await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: asynchronousGuard, signal: new AbortController().signal }), /CANCELLED/);
     assert.equal(JSON.stringify(f.disk.records.get(WALLET_CATALOGUE_KEY)), before);
     assert.equal(f.disk.records.has('native-evm-transfer-v1'), false);
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -941,7 +1267,7 @@ test('all EVM contexts preserve SDK HD addresses and all valid EVM registrations
       await select(network.id);
       assert.equal(f.authority.getSnapshot().account!.network, network.id);
       assert.equal(f.authority.getSnapshot().account!.address, address);
-      const signed = await f.runtime.transfers!.sign({ type: 2, from: address, to: ADDRESS, chainId: network.chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+      const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: address, to: ADDRESS, chainId: network.chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
       assert.equal(Transaction.from(signed.rawTransaction).chainId, BigInt(network.chainId));
     }
     await select('syscoin-nevm');
@@ -965,15 +1291,15 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
   try {
     await f.execute({ kind: 'create', label: 'Cross-chain', password: PASSWORD });
     const account = f.authority.getSnapshot().account!.address;
-    const transaction = (chainId: string) => ({ type: 2 as const, from: account, to: ADDRESS, chainId,
+    const transaction = (chainId: string) => ({ type: 2 as const, accessList: [], from: account, to: ADDRESS, chainId,
       nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' });
     const signedByNetwork = new Map<TransferTestNetwork, { rawTransaction: string; hash: string }>();
     for (const networkId of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'] as const) {
       await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
       const chainId = getNativeNetwork(networkId).chainId;
       const wrongChainId = networkId === 'ethereum' ? '57057' : '1';
-      await assert.rejects(f.runtime.transfers!.sign(transaction(wrongChainId), () => undefined), /INVALID_INPUT/);
-      const signed = await f.runtime.transfers!.sign(transaction(chainId), () => undefined);
+      await assert.rejects(f.runtime.transfers!.sign(transaction(wrongChainId), { assertCurrent: () => undefined, signal: new AbortController().signal }), /INVALID_INPUT/);
+      const signed = await f.runtime.transfers!.sign(transaction(chainId), { assertCurrent: () => undefined, signal: new AbortController().signal });
       const parsed = Transaction.from(signed.rawTransaction);
       assert.equal(parsed.chainId, BigInt(chainId)); assert.equal(parsed.from, account); assert.equal(parsed.nonce, 0);
       const journal = await f.runtime.transfers!.journal(() => undefined);
@@ -1135,7 +1461,7 @@ for (const expensiveAfterReview of [false, true]) {
       for (const request of estimates) {
         assert.equal(request.params[1], 'pending');
         assert.deepEqual(request.params[0], {
-          type: '0x2', chainId: '0xdee1', from: ADDRESS,
+          type: '0x2', accessList: [], chainId: '0xdee1', from: ADDRESS,
           to: '0x1111111111111111111111111111111111111111',
           nonce: '0x0', value: '0x38d7ea4c68000', data: '0x',
           maxFeePerGas: '0x19', maxPriorityFeePerGas: '0x0',
@@ -1208,7 +1534,7 @@ test('account removal checks every chain and keeps all sender-owned signed bytes
   try {
     await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
     const address = f.authority.getSnapshot().account!.address;
-    const sign = async (chainId: string) => f.runtime.transfers!.sign({ type: 2, from: address, to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    const sign = async (chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: address, to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const first = await sign('1'); let journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(first.rawTransaction); await journal.transition(first.hash,'nonce-consumed');
     await f.authority.selectNetwork('syscoin-nevm',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision);
@@ -1281,8 +1607,8 @@ test('an ambiguous journal acknowledgement after background lock cannot be unloc
 test('fresh runtime validates the complete retained container before publishing ready', async () => {
   const f = await readyAccounts();
   try {
-    const tx = { type: 2 as const, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
-    const signed = await f.runtime.transfers!.sign(tx, () => undefined);
+    const tx = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
+    const signed = await f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal });
     await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
     const row = JSON.parse(f.disk.signedValue()!);
     row.entries[0].from = '0x' + '99'.repeat(20);
@@ -1302,8 +1628,8 @@ test('journal quarantine rejects every later secret operation on the same runtim
   const f = await readyAccounts();
   try {
     const exportScope = selectedKeyScope(f);
-    const tx = { type: 2 as const, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
-    const signed = await f.runtime.transfers!.sign(tx, () => undefined);
+    const tx = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
+    const signed = await f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(signed.rawTransaction);
     f.disk.loseCasAcknowledgement();
@@ -1317,7 +1643,7 @@ test('journal quarantine rejects every later secret operation on the same runtim
       () => f.runtime.backup.readPhrase(PASSWORD),
       () => f.runtime.backup.confirm('1'.repeat(64)),
       () => f.runtime.keyExport!.readSelected(exportScope, PASSWORD, () => undefined),
-      () => f.runtime.transfers!.sign(tx, () => undefined),
+      () => f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal }),
       () => Promise.resolve().then(() => f.runtime.transfers!.assertUnlocked(() => undefined)),
     ];
     for (const operation of operations) await assert.rejects(operation(), /CLEANUP_FAILED|CANCELLED/);
@@ -1333,7 +1659,7 @@ test('journal quarantine rejects every later secret operation on the same runtim
 test('journal ambiguity retires an already-running secret operation before it returns recovery words', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
-    const signed = await f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    const signed = await f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(signed.rawTransaction);
     const hold = sdk.hold('password');
@@ -1528,9 +1854,9 @@ for (const phase of ['password', 'record-read', 'export-before', 'export-after']
       await assert.rejects(flow.begin(PASSWORD), /BUSY/);
       await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /BUSY/);
       assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
-      await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: ADDRESS,
+      await assert.rejects(f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS,
         to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1',
-        gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined), /BUSY/);
+        gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal }), /BUSY/);
       await assert.rejects(f.execute({ kind: 'create', label: 'Must not start', password: PASSWORD }), /BUSY/);
       f.authority.lock(); await assert.rejects(f.authority.unlock(PASSWORD), /OPERATION_FAILED|BUSY/);
       hold.release(); await assert.rejects(pending, /CANCELLED/);
@@ -1662,9 +1988,9 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
     assert.equal(JSON.stringify(f.authority.getCatalogue()).includes('ciphertext'), false);
     for (const network of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'] as const) {
       await f.authority.selectNetwork(network, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
-      const tx = { type: 2 as const, from: importedAddress(), to: ADDRESS, chainId: getNativeNetwork(network).chainId,
+      const tx = { type: 2 as const, accessList: [], from: importedAddress(), to: ADDRESS, chainId: getNativeNetwork(network).chainId,
         nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
-      const signed = await f.runtime.transfers!.sign(tx, () => undefined);
+      const signed = await f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal });
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress());
       await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
     }
@@ -1708,8 +2034,8 @@ test('SDK imported gap reuse retains the higher account through cold reopen, exp
       assert.equal(reopened.getSnapshot().account!.address, importedAddress(key));
       const flow: HdKeyExportFlow = new HdKeyExportFlow(reopened, () => runtime.keyExport);
       try { assert.equal((await flow.begin(PASSWORD)).privateKey, key); } finally { flow.dispose(); }
-      const signed = await runtime.transfers!.sign({ type: 2, from: importedAddress(key), to: ADDRESS,
-        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+      const signed = await runtime.transfers!.sign({ type: 2, accessList: [], from: importedAddress(key), to: ADDRESS,
+        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress(key));
     }
     assert.deepEqual((f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups[0]!.accounts.Imported[1], retained);
@@ -1826,8 +2152,8 @@ test('invalid imported recovery identity prevents partial unlock and preserves e
 test('imported removal checks every chain, archives terminal rows, and never consumes an HD journal', async () => {
   const f = await readyAccounts();
   try {
-    const rawFor = async (address: string, chainId: string) => f.runtime.transfers!.sign({ type: 2, from: address,
-      to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
+    const rawFor = async (address: string, chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: address,
+      to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const hd = await rawFor(ADDRESS, '1'); await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(hd.rawTransaction);
     const hdHash = hd.hash;
     await importTestKey(f);
@@ -1880,9 +2206,9 @@ test('explicit same-chain RPC edits preserve tokens, exact-byte retries and cold
 test('shared SDK signing snapshots the approved envelope before queued work', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
-    const transaction = { type: 2 as const, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
+    const transaction = { type: 2 as const, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
     const before = [sdk.unlocks, sdk.hydrations, f.disk.successWrites, f.disk.failureWrites];
-    const signing = f.runtime.transfers!.sign(transaction, () => undefined);
+    const signing = f.runtime.transfers!.sign(transaction, { assertCurrent: () => undefined, signal: new AbortController().signal });
     transaction.to = '0x2222222222222222222222222222222222222222';
     transaction.value = '999'; transaction.nonce = '8';
     const decoded = Transaction.from((await signing).rawTransaction);
@@ -1899,7 +2225,7 @@ for (const boundary of ['queued', 'sdk-guard'] as const) {
     try {
       const before = [sdk.unlocks, sdk.hydrations];
       sdk.onSign(() => { signatures++; if (boundary === 'sdk-guard') f.authority.lock(); });
-      const signing = f.runtime.transfers!.sign({ type: 2, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' }, () => undefined);
+      const signing = f.runtime.transfers!.sign({ type: 2, accessList: [], from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
       if (boundary === 'queued') f.authority.lock();
       await assert.rejects(signing, /CANCELLED/);
       assert.equal(signatures, boundary === 'queued' ? 0 : 1);
@@ -2093,4 +2419,622 @@ test('two real submissions remain in local Activity after offline cold reopen', 
     assert.equal(after.locals.length,2);
     assert(!JSON.stringify(after).includes(network.broadcasts[0]!));
   } finally {transfers.dispose();await reopened?.dispose();await f.authority.dispose().catch(()=>undefined);f.disk.restoreNetwork();}
+});
+
+
+test('connection transactions use real SDK signing and durable shared submission for calls, creation and nonce queueing', async () => {
+  const { inspectEvmSignedBundle } = await import('../../../source/wallet/evmSignedRecords.ts');
+  const { evmSubmissionFailure } = await import('@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js');
+  const submitted: string[] = [];
+  const reported: string[] = [];
+  let loseResponse = false, pendingNonce = '0x0';
+  let assertBundleAdmission: ((hash: string) => Promise<void>) | undefined;
+  let f!: Awaited<ReturnType<typeof readyAccounts>>;
+  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async (_url, init) => {
+    const { id, method, params } = JSON.parse(String(init?.body));
+    let result: unknown;
+    if (method === 'eth_chainId') result = '0x1';
+    else if (method === 'eth_getTransactionCount') result = params[1] === 'pending' ? pendingNonce : '0x0';
+    else if (method === 'eth_getBalance') result = '0x10000000000000000';
+    else if (method === 'eth_getBlockByNumber') result = { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+    else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
+    else if (method === 'eth_estimateGas') result = '0x10000';
+    else if (method === 'eth_getTransactionByHash') {
+      const raw = submitted.find(value => keccak256(value) === params[0]);
+      const tx = raw && Transaction.from(raw);
+      result = tx ? { hash: tx.hash, from: tx.from, nonce: `0x${tx.nonce.toString(16)}`, blockHash: null, blockNumber: null, transactionIndex: null } : null;
+    } else if (method === 'eth_sendRawTransaction') {
+      const raw = params[0] as string, hash = keccak256(raw);
+      await assertBundleAdmission?.(hash);
+      assert.equal(reported.at(-1), hash, 'controller learns irreversible dispatch before POST');
+      const identity = f.disk.fixtureIdentity()!;
+      assert(identity.root);
+      assert.equal(inspectEvmSignedBundle(f.disk.signedValue()!, identity.root.profileId).transactions, submitted.length + 1);
+      assert.equal(f.disk.signedValue()!.includes(raw), false, 'the shared journal encrypts raw transaction bytes');
+      submitted.push(raw);
+      if (loseResponse) throw new Error('lost response after POST');
+      result = hash;
+    } else throw new Error(`Unexpected method ${method}`);
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
+  };
+  f = await readyAccounts(undefined, fetch);
+  try {
+    const host = await f.runtime.openConnectionHost();
+    const submit = async (transaction: object, submission: import('../../../source/shared/evmDappReview.ts').EvmDappSubmission = { kind: 'transaction' }) => {
+      const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
+      const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
+      try {
+        const review = await host.prepareTransaction({ ...scope, transaction }, () => undefined);
+        assert(!('operation' in review));
+        const hash = await review.submit(() => undefined, value => { reported.push(value); }, submission);
+        await assert.rejects(review.submit(() => undefined, () => undefined, { kind: 'transaction' }), /REVIEW_REQUIRED/);
+        return hash;
+      } finally { scope.approval.dispose(); }
+    };
+    await submit({ from: ADDRESS, to: `0x${'22'.repeat(20)}`, data: '0x6000' });
+    await submit({ from: ADDRESS, to: null, data: '0x60006000', accessList: [{ address: `0x${'33'.repeat(20)}`, storageKeys: [`0x${'44'.repeat(32)}`] }] });
+    assert.deepEqual(submitted.map(raw => Transaction.from(raw).nonce), [0, 1], 'shared acknowledgement advances the automatic nonce despite a lagging RPC');
+    assert.equal(Transaction.from(submitted[1]!).to, null);
+    assert.equal(Transaction.from(submitted[1]!).accessList?.[0]?.storageKeys[0], `0x${'44'.repeat(32)}`);
+    const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
+    const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
+    const revoked = await host.prepareTransaction({ ...scope, transaction: { from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' } }, () => undefined);
+    assert(!('operation' in revoked));
+    f.authority.lock();
+    await assert.rejects(revoked.submit(() => undefined, () => assert.fail('Revoked review cannot dispatch'), { kind: 'transaction' }));
+    assert.equal(submitted.length, 2);
+    scope.approval.dispose();
+    await f.authority.unlock(PASSWORD);
+    const origin = 'https://app.example', bundleId = host.calls.generateWalletBundleId(), reservationId = 'reservation', submissionId = 'submission';
+    await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: false, smartAccount: false, chainId: 1 }, reservationId, ADDRESS);
+    await host.calls.recordSendCallsBundle(origin, bundleId, { atomic: false, smartAccount: false, chainId: 1,
+      reservationId, submissionId, submissionStarted: true, txHashes: [] });
+    assertBundleAdmission = async (hash) => {
+      const bundle = await host.calls.getStoredSendCallsBundle(origin, bundleId);
+      assert.deepEqual(bundle?.txHashes, [hash], 'the normal keyring path associates the canonical hash before POST');
+      assert.equal(bundle?.stoppedTransactionHash, undefined, 'wire admission does not retire live consent');
+    };
+    await submit({ from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' }, { kind: 'eoa-calls',
+      attempt: { origin, bundleId, reservationId, submissionId, failed: false } });
+    assertBundleAdmission = undefined;
+    loseResponse = true; pendingNonce = '0x6';
+    await assert.rejects(submit({ from: ADDRESS, to: `0x${'55'.repeat(20)}`, nonce: '0x4', data: '0x6000' }), error => {
+      const failure = evmSubmissionFailure(error);
+      assert.equal(failure?.transactionNotBroadcast, false);
+      assert.equal(failure?.signedTransactionHash, keccak256(submitted[3]!));
+      return true;
+    });
+    assert.deepEqual(submitted.map(raw => Transaction.from(raw).nonce), [0, 1, 2, 4]);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+
+for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
+  const submitted: string[] = [];
+  const connectionFetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async (_url, init) => {
+    const { id, method, params } = JSON.parse(String(init?.body));
+    let result: unknown;
+    if (method === 'eth_chainId') result = '0x1';
+    else if (method === 'eth_getTransactionCount') result = '0x0';
+    else if (method === 'eth_getBalance') result = '0x10000000000000000';
+    else if (method === 'eth_getBlockByNumber') result = { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+    else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
+    else if (method === 'eth_estimateGas') result = '0x10000';
+    else if (method === 'eth_getTransactionByHash' || method === 'eth_getTransactionReceipt') result = null;
+    else if (method === 'eth_sendRawTransaction') { submitted.push(params[0]); result = keccak256(params[0]); }
+    else throw Error(`Unexpected method ${method}`);
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
+  };
+  const f = await readyAccounts(undefined, connectionFetch);
+  const transaction = outcome.startsWith('transaction');
+  let controller: NativeConnectionsController | undefined;
+  let unsubscribe: () => void = () => undefined;
+  try {
+    await f.execute({ kind: 'create', label: 'Other account', password: PASSWORD });
+    const previous = f.authority.getSnapshot().account!.address;
+    assert.notEqual(previous, ADDRESS);
+    const host = await f.runtime.openConnectionHost();
+    const { origin } = await grantConnection(host, 0, 'e');
+    const session: WalletConnectSession = {
+      binding: { origin, peerPublicKey: 'e'.repeat(64), topic: 'e'.repeat(64) },
+      metadata: { name: 'Authorized app', description: '', url: origin, icons: [] },
+      expiry: Math.floor(Date.now() / 1000) + 3600,
+      namespaces: { eip155: { accounts: [`eip155:1:${ADDRESS}`], chains: ['eip155:1'], methods: ['personal_sign', 'eth_sendTransaction'], events: [] } },
+    };
+    let event!: (value: WalletConnectTransportEvent) => void;
+    const responses: WalletConnectResponse[] = [];
+    controller = new NativeConnectionsController({
+      source: f.authority,
+      activateAccount: (id, revision, guard) => f.authority.selectConnectionAccount(id, revision, guard),
+      openHost: async () => host,
+      preparePlatform: async () => undefined,
+      projectId: 'public-authority-fixture',
+      metadata: { name: 'Pali', description: '', url: 'https://paliwallet.com', icons: [] },
+      checkSite: async () => ({ isBlacklisted: false }),
+      checkAddress: async () => ({ isBlacklisted: false, severity: 'low' }),
+      async openTransport(options) {
+        event = options.onEvent;
+        return {
+          async sessions() { return [session]; },
+          async pair() { throw Error('Unexpected pair'); },
+          async approve() { throw Error('Unexpected approval'); },
+          async reject() {}, async disconnect() {}, async close() {},
+          async emit(_binding, _chain, _value, guard) { guard(); },
+          async respond(_binding, _id, value, guard, onDispatch) { guard(); onDispatch(); responses.push(value); },
+        };
+      },
+    });
+    for (let i = 0; i < 20 && !controller.view.getSnapshot().sessions.length; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    event({ type: 'request', request: { id: 42, expiresAt: Date.now() + 60000, session, chainId: 'eip155:1', method: transaction ? 'eth_sendTransaction' : 'personal_sign', params: transaction ? [{ from: ADDRESS, to: `0x${'22'.repeat(20)}`, value: '0x1' }] : ['Hello', ADDRESS], verification: { validation: 'VALID', isScam: false } } });
+    for (let i = 0; i < 20 && controller.view.getSnapshot().signingReview?.busy !== false; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    const review = controller.view.getSnapshot().signingReview;
+    assert(review?.needsAccountSwitch);
+    const published: string[] = [];
+    unsubscribe = f.authority.subscribe(snapshot => {
+      if (snapshot.account) published.push(snapshot.account.address);
+      if (outcome === 'lock' && snapshot.phase === 'authenticating') f.authority.lock();
+    });
+    const switching = controller.view.activateRequestAccount(review.id, review.revision);
+    if (outcome === 'lock') {
+      await assert.rejects(switching);
+      assert.equal(controller.view.getSnapshot().signingReview, null);
+      assert.equal(f.authority.getSnapshot().account, null);
+      assert.equal(f.authority.getSnapshot().phase, 'locked');
+      unsubscribe();
+      await f.authority.unlock(PASSWORD);
+      assert.equal(f.authority.getSnapshot().account!.address, previous);
+      assert.equal(responses.some(response => 'result' in response), false);
+      return;
+    }
+    await switching;
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal(f.authority.getSnapshot().account!.address, ADDRESS);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
+    assert.equal(host.context().activeAccountId, 'hd:60:0');
+    assert.equal(published.at(-1), ADDRESS);
+    const switched = controller.view.getSnapshot().signingReview;
+    assert(switched && !switched.needsAccountSwitch);
+    if (outcome === 'sign' || outcome === 'transaction-sign') {
+      await controller.view.approveRequest(switched.id, switched.revision, false);
+      const reply = responses.find(response => 'result' in response);
+      assert(reply && 'result' in reply);
+      if (transaction) {
+        assert.equal(reply.result, keccak256(submitted[0]!));
+        assert.equal(Transaction.from(submitted[0]!).from, ADDRESS);
+      } else assert.equal(recoverPersonalSignature({ data: '0x48656c6c6f', signature: String(reply.result) }).toLowerCase(), ADDRESS.toLowerCase());
+    } else await controller.view.rejectRequest(switched.id);
+    assert.equal(controller.view.getSnapshot().signingReview, null);
+    assert.equal(f.authority.getSnapshot().account!.address, ADDRESS);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
+  } finally {
+    unsubscribe();
+    await controller?.dispose();
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
+});
+
+function trezorFixtureSessions() {
+  type Sessions = NonNullable<KeyringRuntimeDependencies['trezorSessions']>;
+  let generation = 0;
+  let state: ReturnType<Sessions['getSnapshot']> = null;
+  const listeners = new Set<() => void>();
+  const paths: string[] = [];
+  let beforeAddress: (() => Promise<void>) | undefined;
+  let beforeRetirement: (() => Promise<void>) | undefined;
+  let beforeCancellation: (() => Promise<void>) | undefined;
+  let inAddress = false;
+  const publish = () => { for (const listener of listeners) listener(); };
+  const sessions: Sessions = {
+    advanceSessionGeneration: () => ++generation,
+    getSnapshot: () => state,
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    receiveCallback: () => false,
+    async cancel() { state = null; publish(); await beforeCancellation?.(); },
+    async dispose() { state = null; publish(); },
+    start(request) {
+      assert.equal(request.sessionGeneration, generation);
+      request.assertCurrent();
+      const job = {} as NonNullable<typeof state>['job'];
+      state = { job, owner: request.owner, workflow: request.workflow, phase: 'active', expiresAt: request.expiresAt, completedSteps: 0 };
+      publish();
+      return open(request.assertCurrent, job);
+    },
+    resume(request) {
+      assert.equal(request.accepted, true);
+      assert.equal(request.sessionGeneration, generation);
+      assert.equal(request.job, state?.job);
+      request.assertCurrent();
+      return open(request.assertCurrent, request.job);
+    },
+  };
+  function open(check: () => void, job: NonNullable<typeof state>['job']) {
+    let live = true;
+    const host = new Proxy<Record<string, unknown>>({
+      async init(guard: () => void) { check(); guard(); },
+      async dispose() { live = false; },
+    }, {
+      get(target, method: string) {
+        if (method === 'then') return undefined;
+        if (method in target) return target[method as keyof typeof target];
+        return async (guard: () => void, request: { path: string; transaction?: Record<string, unknown> }) => {
+          check(); guard(); assert(live);
+          const path = request.path;
+          paths.push(path);
+          if (method === 'getAccountInfo') {
+            const [{ getNetworkConfig }, { utils }] = await Promise.all([import('@sidhujag/sysweb3-network'), import('syscoinjs-lib')]);
+            const [, , slip, index] = path.split('/');
+            const slip44 = Number(slip!.replace("'", ''));
+            const currency = slip44 === 57 ? 'sys' : 'btc';
+            const config = getNetworkConfig(slip44, currency);
+            const hd = new utils.HDSigner('test test test test test test test test test test test junk', null, slip44 === 1,
+              config.networks, slip44, config.types.zPubType, 84);
+            hd.createAccountAtIndex(Number(index!.replace("'", '')), 84);
+            return { success: true, payload: { descriptor: hd.getAccountXpub(), balance: '0', empty: true, history: { total: 0, unconfirmed: 0 } } };
+          }
+          const wallet = HDNodeWallet.fromPhrase('test test test test test test test test test test test junk', undefined, path);
+          if (method === 'ethereumGetAddress') {
+            inAddress = true;
+            await beforeAddress?.();
+            inAddress = false;
+            if (state?.job === job && state.phase === 'locked') { state = { ...state, phase: 'response-ready' }; publish(); }
+            check(); guard();
+            return { success: true, payload: { address: wallet.address } };
+          }
+          if (method === 'ethereumGetPublicKey')
+            return { success: true, payload: { publicKey: wallet.publicKey.slice(2) } };
+          if (method === 'ethereumSignTransaction') {
+            const tx = request.transaction!;
+            const parsed = Transaction.from({ ...tx, type: tx.gasPrice === undefined ? 2 : 0 });
+            const signature = wallet.signingKey.sign(parsed.unsignedHash);
+            return { success: true, payload: { r: signature.r, s: signature.s, v: signature.v.toString(16) } };
+          }
+          throw new Error(`Unexpected Trezor method ${method}`);
+        };
+      },
+    }) as unknown as import('@sidhujag/sysweb3-keyring/cjs/trezor/host-types.js').TrezorHost;
+    return { job, host,
+      async retire(retireSdk: () => Promise<void>) {
+        live = false;
+        if (state?.job === job) { state = { ...state, phase: inAddress ? 'locked' : 'response-ready' }; publish(); }
+        await beforeRetirement?.();
+        await retireSdk();
+      },
+      async finish() { check(); state = null; live = false; publish(); },
+      async cancel() { await sessions.cancel(job); },
+    };
+  }
+  return { sessions, paths, holdAddress(hook: () => Promise<void>) { beforeAddress = hook; },
+    holdRetirement(hook: () => Promise<void>) { beforeRetirement = hook; },
+    holdCancellation(hook: () => Promise<void>) { beforeCancellation = hook; } };
+}
+
+test('Trezor runtime uses shared allocation, preserves records on unlock and signs the exact reviewed envelope', async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    const idle = runtime.trezor.getSnapshot();
+    assert.equal(runtime.trezor.getSnapshot(), idle);
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await runtime.trezor.startImport('Trezor one');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Trezor one' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    assert.equal(owner.getCatalogue()!.active.accountId, 'trezor:60:0');
+    await runtime.trezor.startImport('Trezor two');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Trezor two' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    assert.equal(owner.getCatalogue()!.active.accountId, 'trezor:60:1');
+    assert(fixture.paths.includes("m/44'/60'/0'/0/1"));
+    const saved = owner.getCatalogue()!.accounts.find(account => account.id === 'trezor:60:1')!;
+    assert(saved.address); assert(!JSON.stringify(saved).includes('xprv'));
+    owner.lock(); await owner.unlock(PASSWORD);
+    assert.equal(owner.getCatalogue()!.active.accountId, saved.id);
+    const prepared = { type: 2 as const, accessList: [], from: saved.address, to: '0x' + '22'.repeat(20), chainId: '1',
+      nonce: '9', value: '123', gasLimit: '25200', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
+    const signed = await runtime.transfers!.sign(prepared, { signal: new AbortController().signal, assertCurrent() {} });
+    const parsed = Transaction.from(signed.rawTransaction);
+    assert.equal(parsed.from, saved.address); assert.equal(parsed.nonce, 9); assert.equal(parsed.value, 123n);
+    assert.equal(parsed.hash, signed.hash);
+    assert.equal(runtime.trezor.getSnapshot(), runtime.trezor.getSnapshot());
+    let broadcasts = 0;
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum', fetch: async (_url, init) => {
+      const request = JSON.parse(String(init.body));
+      const result = await (async () => {
+        switch (request.method) {
+          case 'eth_chainId': return '0x1';
+          case 'eth_getTransactionCount': return '0x0';
+          case 'eth_getBalance': return '0x10000000000000000';
+          case 'eth_gasPrice': return '0x2';
+          case 'eth_feeHistory': return { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
+          case 'eth_maxPriorityFeePerGas': return '0x1';
+          case 'eth_estimateGas': return '0x5208';
+          case 'eth_getTransactionByHash': case 'eth_getTransactionReceipt': return null;
+          case 'eth_getBlockByNumber': return { number: '0x20', hash: '0x' + 'ab'.repeat(32), baseFeePerGas: '0x1', gasLimit: '0x1c9c380' };
+          case 'eth_sendRawTransaction': {
+            broadcasts++;
+            const raw = request.params[0];
+            const saved = await (await runtime.transfers!.journal(() => undefined)).load(keccak256(raw));
+            assert(saved?.rawTransaction === raw);
+            return keccak256(raw);
+          }
+          default: throw new Error('Unexpected test RPC ' + request.method);
+        }
+      })();
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
+    } });
+    const transfers = new NativeTransfers(owner, () => runtime.transfers, { rpc });
+    try {
+      await transfers.prepare('0x' + '22'.repeat(20), '0.001', '7');
+      await transfers.confirm(transfers.getSnapshot().review!.id);
+      assert.equal(transfers.getSnapshot().phase, 'pending');
+      assert.equal(broadcasts, 1);
+    } finally { transfers.dispose(); }
+  } finally { await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime keeps a stable waiting snapshot and cannot save an import after lock', async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    fixture.holdAddress(async () => { entered(); await held; });
+    const pending = runtime.trezor.startImport('Cancelled Trezor');
+    void pending.catch(() => undefined);
+    await started; owner.lock();
+    const waiting = runtime.trezor.getSnapshot();
+    assert.equal(waiting.phase, 'waiting');
+    assert.equal(runtime.trezor.getSnapshot(), waiting);
+    release(); await assert.rejects(pending, /CANCELLED|no longer current/);
+    await owner.unlock(PASSWORD);
+    assert(!owner.getCatalogue()!.accounts.some(account => account.type === 'Trezor'));
+    assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
+  } finally { release(); await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime cancellation before identity admission never opens a device session', async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    disk.onIdentity(async () => { entered(); await held; });
+    const pending = runtime.trezor.startImport('Cancelled before device');
+    void pending.catch(() => undefined);
+    await started; await runtime.trezor.cancel(); release();
+    await assert.rejects(pending, /CANCELLED/);
+    assert.equal(fixture.paths.length, 0);
+    assert.equal(fixture.sessions.getSnapshot(), null);
+  } finally { release(); await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runtime waits for zero-step UTXO retirement with ${failure} failure`, async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions, async () => { throw new Error('No network needed'); });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await runtime.trezor.startImport('Bitcoin Trezor');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    assert.equal(owner.getCatalogue()!.active.accountId, 'trezor:0:0');
+    const calls = fixture.paths.length;
+    await runtime.openUtxoSend!(() => undefined);
+    await runtime.trezor.cancel();
+    await runtime.openUtxoSend!(() => undefined);
+    assert.equal(fixture.paths.length, calls);
+    if (failure === 'cancellation') fixture.holdCancellation(async () => { throw new Error('Cancellation refused'); });
+    fixture.holdRetirement(async () => { entered(); await held; if (failure === 'retirement') throw new Error('Retirement refused'); });
+    const cancelled = runtime.trezor.cancel();
+    void cancelled.catch(() => undefined);
+    await started;
+    const cancelledAgain = runtime.trezor.cancel();
+    assert.equal(cancelledAgain, cancelled);
+    let settled = false;
+    const closing = runtime.storage.close().finally(() => { settled = true; });
+    void closing.catch(() => undefined);
+    await Promise.resolve(); assert.equal(settled, false); release();
+    if (failure !== 'none') {
+      await assert.rejects(cancelled);
+      await assert.rejects(closing, /CLEANUP_FAILED/);
+    } else { await cancelled; await closing; }
+  } finally { release(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime replays saved UTXO bytes without Suite or a new signature', async () => {
+  const [{ UtxoSignedRecords }, { getUtxoNetwork }, { utxoSubmissionUrl }, { utils }, { metadata }] = await Promise.all([
+    import('../../../source/wallet/utxoSignedRecords.ts'), import('../src/core/utxoNetworks.ts'),
+    import('../../../source/wallet/utxoSignedBinding.ts'), import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
+  ]);
+  const fixture = trezorFixtureSessions();
+  const sdk = await loadNativeKeyringSdk();
+  let ring!: InstanceType<typeof sdk.HostKeyring>;
+  class Host extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) { super(...args); ring = this; }
+  }
+  let broadcasts = 0;
+  const network = getUtxoNetwork('bitcoin');
+  const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: Host }), undefined, undefined, fixture.sessions,
+    async (url, init) => {
+      if (String(url) === network.endpoint + '/api/v2/') {
+        const response = Response.json(metadata(network)); Object.defineProperty(response, 'url', { value: String(url) }); return response;
+      }
+      if (String(url) === network.endpoint + '/api/v2/block-index/0') {
+        const response = Response.json({ blockHash: network.genesisHash }); Object.defineProperty(response, 'url', { value: String(url) }); return response;
+      }
+      assert.equal(String(url), utxoSubmissionUrl(network.endpoint));
+      assert.equal(init?.method, 'POST'); broadcasts++;
+      const raw = utils.bitcoinjs.Transaction.fromHex(String(init?.body));
+      const response = Response.json({ result: raw.getId() });
+      Object.defineProperty(response, 'url', { value: String(url) });
+      return response;
+    });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await runtime.trezor.startImport('Bitcoin Trezor');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    const account = owner.getCatalogue()!.accounts.find(account => account.type === 'Trezor')!;
+    const previous = new utils.bitcoinjs.Transaction();
+    previous.addInput(Buffer.alloc(32, 7), 0);
+    previous.addOutput(utils.bitcoinjs.address.toOutputScript(account.address, network.addressNetwork), 1000n);
+    const txid = previous.getId();
+    const record = { operation: 'wallet' as const, rawTransaction: previous.toHex(), txid,
+      url: utxoSubmissionUrl(network.endpoint), feeSatoshis: '10', virtualSize: previous.virtualSize(),
+      outpoints: ['07'.repeat(32) + ':0'],
+      owner: { chainId: network.chainId, genesisHash: network.genesisHash, slip44: network.slip44,
+        account: { id: 0, type: 'Trezor', xpub: (disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.find(group => group.activeNetwork.slip44 === 0)!.accounts.Trezor[0]!.xpub } },
+    };
+    const records = new UtxoSignedRecords(disk.utxoPort, disk.utxoPort);
+    await records.admit({ keyring: ring, assertCurrent() {} }, record, 'initial', async prepare => { await prepare(); });
+    const calls = fixture.paths.length;
+    const send = await runtime.openUtxoSend!(() => undefined);
+    const review = await send.prepareRetry(txid);
+    const result = await send.confirm(review);
+    assert.equal(result.txid, txid); assert.equal(broadcasts, 1);
+    assert.equal(fixture.paths.length, calls);
+    assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
+    let entered!: () => void, release!: () => void;
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    disk.onIdentity(async () => { entered(); await held; });
+    const preparing = send.prepare({ recipient: account.address, amount: '0.00001' });
+    void preparing.catch(() => undefined);
+    await reached; await runtime.trezor.cancel(); release();
+    await assert.rejects(preparing, /CANCELLED/);
+    assert.equal(fixture.sessions.getSnapshot(), null);
+    assert.equal(fixture.paths.length, calls);
+    disk.onIdentity();
+  } finally { await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature', async () => {
+  const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
+    import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
+    import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
+  ]);
+  const network = getUtxoNetwork('bitcoin');
+  const config = getNetworkConfig(0, 'btc');
+  const hd = new utils.HDSigner('test test test test test test test test test test test junk', null, false,
+    config.networks, 0, config.types.zPubType, 84);
+  hd.createAccountAtIndex(0, 84);
+  const address = utils.bitcoinjs.payments.p2wpkh({ pubkey: hd.getRootNode().derivePath("m/84'/0'/0'/0/0").publicKey,
+    network: network.addressNetwork }).address!;
+  const previous = new utils.bitcoinjs.Transaction();
+  previous.addInput(Buffer.alloc(32, 7), 0);
+  previous.addOutput(utils.bitcoinjs.address.toOutputScript(address, network.addressNetwork), 100000n);
+  const recipient = utils.bitcoinjs.payments.p2wpkh({ hash: Buffer.alloc(20, 8), network: network.addressNetwork }).address!;
+  const methods: string[] = [];
+  let random = 0, requestId = 0, broadcasts = 0;
+  const sessions = createTrezorSessions({
+    randomBytes: length => new Uint8Array(length).fill(++random),
+    async loadClient() {
+      let settings!: Parameters<import('../src/hardware/trezorHost.ts').NativeTrezorClient['init']>[0];
+      let resolve!: (value: unknown) => void;
+      const pending = new Promise<unknown>(done => { resolve = done; });
+      return {
+        async init(value) { settings = value; },
+        call({ method, ...params }) {
+          const callback = new URL(settings.deeplinkCallbackUrl); callback.searchParams.set('id', `call-${++requestId}`);
+          const url = new URL(settings.connectSrc + 'deeplink/1/');
+          url.searchParams.set('method', String(method)); url.searchParams.set('params', JSON.stringify(params));
+          url.searchParams.set('callback', callback.toString()); url.searchParams.set('appName', settings.manifest.appName);
+          settings.deeplinkOpen(url.toString()); return pending;
+        },
+        cancel() { resolve(undefined); }, async dispose() {},
+      };
+    },
+    async openURL(value) {
+      const url = new URL(value), method = url.searchParams.get('method')!;
+      const params = JSON.parse(url.searchParams.get('params')!);
+      methods.push(method);
+      let payload: unknown;
+      if (method === 'getAccountInfo') payload = { descriptor: hd.getAccountXpub(), balance: '0', empty: true, history: { total: 0, unconfirmed: 0 } };
+      else if (method === 'getFeatures') payload = { major_version: 2, minor_version: 8, patch_version: 0, model: 'T' };
+      else if (method === 'signTransaction') {
+        // Connect's existing fixPath normalizes its public address_n values to uint32.
+        const pathText = (path: number[]) => 'm/' + path.map(value => {
+          const index = value >>> 0;
+          return index >= 0x80000000 ? `${index - 0x80000000}'` : String(index);
+        }).join('/');
+        const psbt = new utils.bitcoinjs.Psbt({ network: network.addressNetwork });
+        psbt.setVersion(params.version); psbt.setLocktime(params.locktime);
+        for (const input of params.inputs) {
+          const path = pathText(input.address_n);
+          const key = hd.getRootNode().derivePath(path);
+          psbt.addInput({ hash: input.prev_hash, index: input.prev_index, sequence: input.sequence,
+            witnessUtxo: previous.outs[input.prev_index],
+            bip32Derivation: [{ path, masterFingerprint: hd.getMasterFingerprint(), pubkey: key.publicKey }],
+          });
+        }
+        for (const output of params.outputs) {
+          const destination = output.address ?? utils.bitcoinjs.payments.p2wpkh({
+            pubkey: hd.getRootNode().derivePath(pathText(output.address_n)).publicKey, network: network.addressNetwork,
+          }).address;
+          psbt.addOutput({ address: destination, value: BigInt(output.amount) });
+        }
+        psbt.signAllInputsHD(hd.getRootNode()); psbt.finalizeAllInputs();
+        payload = { serializedTx: psbt.extractTransaction().toHex(), signatures: [] };
+      } else throw new Error(`Unexpected device method ${method}`);
+      const callback = new URL(url.searchParams.get('callback')!);
+      callback.searchParams.set('response', JSON.stringify({ success: true, payload }));
+      assert.equal(sessions.receiveCallback(callback.toString()), true);
+    },
+  });
+  const disk = memoryDisk(undefined, undefined, undefined, sessions, async (input, init) => {
+    const url = String(input), route = url.slice(network.endpoint.length);
+    let result: unknown;
+    if (route === '/api/v2/') result = metadata(network);
+    else if (route === '/api/v2/block-index/0') result = { blockHash: network.genesisHash };
+    else if (route === '/api/v2/estimatefee/1') result = { result: '0.00001024' };
+    else if (route.startsWith('/api/v2/xpub/')) result = { tokens: [] };
+    else if (route.startsWith('/api/v2/utxo/')) result = [{ txid: previous.getId(), vout: 0, value: '100000', address, confirmations: 10, path: "m/84'/0'/0'/0/0" }];
+    else if (route === '/api/v2/tx/' + previous.getId()) result = { hex: previous.toHex() };
+    else if (route === '/api/v2/sendtx/' && init?.method === 'POST') { broadcasts++; result = { result: utils.bitcoinjs.Transaction.fromHex(String(init.body)).getId() }; }
+    else throw new Error('Unexpected UTXO route ' + route);
+    const response = Response.json(result); Object.defineProperty(response, 'url', { value: url }); return response;
+  });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await runtime.trezor.startImport('Bitcoin Trezor');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    const callCount = methods.length;
+    const first = await runtime.openUtxoSend!(() => undefined);
+    const review = await first.prepare({ recipient, amount: '0.0005' });
+    assert.equal(methods.length, callCount);
+    owner.lock(); await owner.unlock(PASSWORD);
+    assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
+    await assert.rejects(first.confirm(review), /CANCELLED|NOT_READY/);
+    const intent = await runtime.trezor.resumeSend(); assert.equal(intent.kind, 'utxo');
+    if (intent.kind !== 'utxo') throw new Error('Unexpected draft');
+    const fresh = await runtime.openUtxoSend!(() => undefined);
+    const freshReview = await fresh.prepare(intent);
+    assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
+    await fresh.confirm(freshReview);
+    assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
+    assert.equal(broadcasts, 1);
+  } finally { await owner.dispose(); await sessions.dispose(); }
 });

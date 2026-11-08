@@ -39,7 +39,7 @@ const fixture = (tokenStandard: 'ERC-721' | 'ERC-1155', nonce: string) => {
     from, to: target, chainId: '1', nonce, value: '0',
     data: encodeNftTransferData(intent), gasLimit: '150000',
     ...(is721
-      ? { type: 2 as const, maxFeePerGas: '3', maxPriorityFeePerGas: '1' }
+      ? { type: 2 as const, accessList: [], maxFeePerGas: '3', maxPriorityFeePerGas: '1' }
       : { type: 0 as const, gasPrice: '2' }),
   };
   return { intent, approved };
@@ -237,41 +237,41 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
       { ...approved, chainId: '57' },
       { ...approved, data: approved.data + '00' },
     ])
-      await assert.rejects(transfers.sign(altered, current, intent), { code: 'INVALID_INPUT' });
-    await assert.rejects(transfers.sign(approved, current), { code: 'INVALID_INPUT' });
+      await assert.rejects(transfers.sign(altered, { assertCurrent: current, signal: new AbortController().signal }, intent), { code: 'INVALID_INPUT' });
+    await assert.rejects(transfers.sign(approved, { assertCurrent: current, signal: new AbortController().signal }), { code: 'INVALID_INPUT' });
     assert.equal(owner.getSnapshot().phase, 'ready');
 
-    const signed = await transfers.sign(approved, currentSingle, intent);
+    const signed = await transfers.sign(approved, { assertCurrent: currentSingle, signal: new AbortController().signal }, intent);
     const expected = await wallet.signTransaction({ ...approved, nonce: 0 });
     assert.equal(signed.rawTransaction, expected);
     assert.equal(Transaction.from(signed.rawTransaction).from, from);
     assert.equal((await storage.recovery.readSnapshot()).signedRecords.length, 0);
 
-    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, approved), { code: 'EXPIRED' });
-    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, undefined!));
-    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, undefined, undefined!));
-    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, {
+    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, { broadcast: noBroadcast, verifyChain: async () => undefined }, intent, approved), { code: 'EXPIRED' });
+    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, { broadcast: noBroadcast, verifyChain: async () => undefined }, intent, undefined!));
+    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, { broadcast: noBroadcast, verifyChain: async () => undefined }, undefined, undefined!));
+    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, { broadcast: noBroadcast, verifyChain: async () => undefined }, intent, {
       ...approved, nonce: '1',
     }, undefined, validationFor({ intent, approved })), /does not match expected unsigned envelope/);
-    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, {
+    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, { broadcast: noBroadcast, verifyChain: async () => undefined }, intent, {
       ...approved, gasLimit: '160000',
     }, undefined, validationFor({ intent, approved })), /does not match expected unsigned envelope/);
     const accessList = await wallet.signTransaction({ ...approved, nonce: 0, accessList: [
       { address: contractAddress, storageKeys: ['0x' + '1'.repeat(64)] },
     ] });
-    await assert.rejects(transfers.submit(accessList, Transaction.from(accessList).hash!, current, noBroadcast, intent, approved, undefined, validationFor({ intent, approved })),
+    await assert.rejects(transfers.submit(accessList, Transaction.from(accessList).hash!, current, { broadcast: noBroadcast, verifyChain: async () => undefined }, intent, approved, undefined, validationFor({ intent, approved })),
       /does not match expected unsigned envelope/);
     const otherWallet = new Wallet('0x' + '01'.repeat(32));
     const otherSigned = await otherWallet.signTransaction({ ...approved, from: otherWallet.address, nonce: 0 });
-    await assert.rejects(transfers.submit(otherSigned, Transaction.from(otherSigned).hash!, current, noBroadcast, intent, approved, undefined, validationFor({ intent, approved })));
+    await assert.rejects(transfers.submit(otherSigned, Transaction.from(otherSigned).hash!, current, { broadcast: noBroadcast, verifyChain: async () => undefined }, intent, approved, undefined, validationFor({ intent, approved })));
     await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, () => { throw Error('Stale review'); },
-      noBroadcast, intent, approved, undefined, validationFor({ intent, approved })), /Stale review/);
+      { broadcast: noBroadcast, verifyChain: async () => undefined }, intent, approved, undefined, validationFor({ intent, approved })), /Stale review/);
     assert.equal((await storage.recovery.readSnapshot()).signedRecords.length, 0);
 
     let sent = 0;
     const mutableApproval = { ...approved };
     const mutableIntent = { ...intent };
-    const dispatch = transfers.submit(signed.rawTransaction, signed.hash, currentSingle, ({ rawTransaction, admit }) => admit(async () => {
+    const dispatch = transfers.submit(signed.rawTransaction, signed.hash, currentSingle, { broadcast: ({ rawTransaction, admit }) => admit(async () => {
       assert.equal(rawTransaction, signed.rawTransaction);
       const { signedRecords } = await storage.recovery.readSnapshot();
       assert.equal(signedRecords.length, 1);
@@ -283,18 +283,18 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
       assert.equal(Object.hasOwn(row, 'metadata'), false);
       sent++;
       return signed.hash;
-    }, async () => undefined), mutableIntent, mutableApproval, undefined, validationFor({ intent, approved }));
+    }, async () => undefined), verifyChain: async () => undefined }, mutableIntent, mutableApproval, undefined, validationFor({ intent, approved }));
     mutableApproval.nonce = '17';
     mutableIntent.recipient = contractAddress;
     await dispatch;
     assert.equal(sent, 1);
 
     const multiple = fixture('ERC-1155', '1');
-    const signed1155 = await transfers.sign(multiple.approved, currentMulti, multiple.intent);
+    const signed1155 = await transfers.sign(multiple.approved, { assertCurrent: currentMulti, signal: new AbortController().signal }, multiple.intent);
     assert.equal(signed1155.rawTransaction, await wallet.signTransaction({ ...multiple.approved, nonce: 1 }));
     const gate = { entered: Promise.withResolvers<string>(), release: Promise.withResolvers<void>() };
     held = gate;
-    const pending = transfers.submit(signed1155.rawTransaction, signed1155.hash, currentMulti, noBroadcast, multiple.intent, multiple.approved, undefined, validationFor(multiple));
+    const pending = transfers.submit(signed1155.rawTransaction, signed1155.hash, currentMulti, { broadcast: noBroadcast, verifyChain: async () => undefined }, multiple.intent, multiple.approved, undefined, validationFor(multiple));
     const beforeDispatch = await Promise.race([
       gate.entered.promise,
       pending.then(() => assert.fail('Submission crossed the held acknowledgement')),
@@ -311,7 +311,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
     gate.release.resolve();
     held = undefined;
     await assert.rejects(pending);
-    await assert.rejects(transfers.sign(multiple.approved, current, multiple.intent), { code: 'CANCELLED' });
+    await assert.rejects(transfers.sign(multiple.approved, { assertCurrent: current, signal: new AbortController().signal }, multiple.intent), { code: 'CANCELLED' });
     await owner.dispose();
 
     const reopened = await open();

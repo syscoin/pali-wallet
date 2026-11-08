@@ -22,7 +22,7 @@ export type UtxoSignedScope = Readonly<{
   account: Readonly<{
     address: string;
     id: number;
-    type: 'HDAccount' | 'Imported';
+    type: 'HDAccount' | 'Imported' | 'Ledger' | 'Trezor';
     xpub: string;
   }>;
   network: Readonly<{
@@ -306,7 +306,10 @@ export async function prepareUtxoSignedBinding(
     !/^0x[0-9a-f]{64}$/.test(scope.profileId) ||
     !Number.isSafeInteger(scope.account.id) ||
     scope.account.id < 0 ||
-    (scope.account.type !== 'HDAccount' && scope.account.type !== 'Imported') ||
+    (scope.account.type !== 'HDAccount' &&
+      scope.account.type !== 'Imported' &&
+      scope.account.type !== 'Ledger' &&
+      scope.account.type !== 'Trezor') ||
     !scope.account.address ||
     !scope.account.xpub ||
     scope.network.kind !== 'syscoin' ||

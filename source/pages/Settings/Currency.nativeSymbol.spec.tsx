@@ -397,9 +397,15 @@ beforeEach(async () => {
     const keyring: any = {
       unlocked: slip44 === 57,
       isUnlocked: () => keyring.unlocked,
-      transferSessionTo: (target: any) => {
-        target.unlocked = true;
-      },
+      prepareSessionTransfer: async (
+        target: any,
+        assertCurrent: () => void
+      ) => ({
+        transfer() {
+          assertCurrent();
+          target.unlocked = true;
+        },
+      }),
       lockWallet: async () => {
         keyring.unlocked = false;
       },
@@ -443,7 +449,10 @@ beforeEach(async () => {
     ts.ScriptTarget.Latest,
     true
   );
-  const klass = ast.statements.find(ts.isClassDeclaration)!;
+  const klass = ast.statements.find(
+    (item): item is ts.ClassDeclaration =>
+      ts.isClassDeclaration(item) && item.name?.text === 'MainController'
+  )!;
   for (const name of ['setActiveNetworkLogic', 'handleNetworkChangeError']) {
     const declaration = klass.members.find(
       (member) =>

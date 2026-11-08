@@ -1,10 +1,9 @@
-import {
+import { isHexString } from './ethersV6Compat.ts';
+import type {
   IKeyringAccountState,
   INetwork,
-  INetworkType,
   KeyringAccountType,
-} from 'types/network';
-import { isHexString } from 'utils/ethersV6Compat';
+} from '../types/network.ts';
 
 type AccountForCompatibility = Pick<IKeyringAccountState, 'address'> &
   Partial<Pick<IKeyringAccountState, 'slip44' | 'smartAccount'>>;
@@ -21,9 +20,9 @@ export const isAccountCompatibleWithNetwork = (
 ): boolean => {
   if (!account) return false;
 
-  if (String(type) === KeyringAccountType.SmartAccount) {
+  if (String(type) === 'SmartAccount') {
     return (
-      network.kind === INetworkType.Ethereum &&
+      network.kind === 'ethereum' &&
       Number(account.smartAccount?.chainId) === Number(network.chainId)
     );
   }
@@ -32,7 +31,7 @@ export const isAccountCompatibleWithNetwork = (
     return false;
   }
 
-  if (network.kind === INetworkType.Syscoin) {
+  if (network.kind === 'syscoin') {
     if (isHexString(account.address)) return false;
 
     // UTXO accounts are not interchangeable: a Bitcoin account (slip44 0)
@@ -45,3 +44,16 @@ export const isAccountCompatibleWithNetwork = (
 
   return isHexString(account.address);
 };
+
+export function getFirstCompatibleAccountForNetwork(
+  accounts: Record<string, Record<number, IKeyringAccountState> | undefined>,
+  network: Pick<INetwork, 'kind' | 'chainId' | 'slip44'>
+) {
+  for (const [type, entries] of Object.entries(accounts)) {
+    for (const account of Object.values(entries || {})) {
+      if (isAccountCompatibleWithNetwork(account, type, network))
+        return { account, id: account.id, type: type as KeyringAccountType };
+    }
+  }
+  return null;
+}

@@ -1,7 +1,7 @@
 // Real batch approval and completion against narrowly fenced synthetic RPC.
 import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import { createHash } from 'crypto';
-import { Transaction, keccak256 } from 'ethers';
+import { Transaction, formatEther, keccak256 } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 
@@ -604,10 +604,29 @@ for (const scenario of [
       await step(
         'approve through the real sender and await the deterministic outcome',
         async (capture) => {
-          await popup
-            .getByRole('button', { name: en.send.sign, exact: true })
-            .click();
+          const confirmCall = async (index: number) => {
+            const confirm = popup.getByRole('button', {
+              name: `${en.buttons.confirm} ${index + 1}/${CALLS.length}`,
+              exact: true,
+            });
+            await expect(confirm).toBeEnabled();
+            expect(rpc!.acks).toHaveLength(index);
+            const fee = popup.getByRole('region', {
+              name: en.send.networkFee,
+              exact: true,
+            });
+            // The SDK recommends 2.5 times the 1 gwei base plus the 1 gwei tip.
+            const maximumFee = BigInt(25200) * BigInt(3500000000);
+            await expect(fee).toContainText(formatEther(maximumFee));
+            await expect(fee).toContainText(
+              formatEther(maximumFee + BigInt(CALLS[index].value))
+            );
+            await capture(popup);
+            await confirm.click();
+          };
+          if (scenario !== 'pre-send-rejection') await confirmCall(0);
           if (scenario === 'all-success') {
+            await confirmCall(1);
             const settled = await settle(dapp, requestId, 30000);
             expect(settled.error).toBeUndefined();
             expect(settled.result).toMatchObject({ id: bundleId });

@@ -4,9 +4,8 @@ import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSi
 import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, consumeSignedEvmCapacityRefusal, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
-import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { EvmCancellationQuote, EvmNftPreparedQuote, NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
-import { EvmAutomaticNonceUnresolved } from './evmFeeContracts.ts';
+import { EvmAutomaticNonceUnresolved, unsignedTransferBytes, type EvmUnsignedTransfer } from './evmFeeContracts.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
@@ -82,7 +81,7 @@ export interface NativeTransferJournalHandle {
 }
 export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export interface NativeTransferRuntime {
-  evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }>;
+  evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }> | undefined;
   replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
     options: { now: () => number; randomBytes: (length: number) => Uint8Array }): Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
   token?(
@@ -101,15 +100,15 @@ export interface NativeTransferRuntime {
     rawTransaction: string,
     hash: string,
     assertCurrent: () => void,
-    broadcast: EvmSignedBroadcast<string>,
+    transport: Readonly<{ broadcast: EvmSignedBroadcast<string>; verifyChain(): Promise<void> }>,
     intent: NativeAssetTransferIntent | undefined,
-    approved: PreparedEvmTransaction,
+    approved: EvmUnsignedTransfer,
     replacement?: NativeReplacementApproval,
     verifyDispatch?: NativeTransferDispatchValidation
   ): Promise<void>;
   sign(
-    transaction: PreparedEvmTransaction,
-    assertCurrent: () => void,
+    transaction: EvmUnsignedTransfer,
+    authority: Readonly<{ assertCurrent(): void; signal: AbortSignal }>,
     intent?: NativeAssetTransferIntent,
     replacement?: NativeReplacementApproval
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
@@ -186,7 +185,7 @@ type CollectibleReview = Readonly<{
 }>;
 type PrivateReview = {
   public: NativeTransferReview;
-  transaction?: PreparedEvmTransaction;
+  transaction?: EvmUnsignedTransfer;
   expires: number;
   feeApproval?: EvmFeeApproval;
   replay?: Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
@@ -609,7 +608,7 @@ export class NativeTransfers {
     return pending;
   }
   private showReview(
-    transaction: PreparedEvmTransaction,
+    transaction: EvmUnsignedTransfer,
     inputIntent?: Erc20TransferIntent,
     context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks),
     { replacement, collectible, nonceOverride }: {
@@ -989,7 +988,7 @@ export class NativeTransfers {
         const signed = await this.runSecretOperation(() =>
           runtime.sign(
             approved.transaction!,
-            guard,
+            { assertCurrent: guard, signal },
             intent,
             replacement
           )
@@ -1030,7 +1029,8 @@ export class NativeTransfers {
           rawTransaction,
           transactionHash,
           guard,
-          ({ rawTransaction: approvedBytes, admit }) => {
+          { verifyChain: () => rpc.verifyChain(signal, guard),
+          broadcast: ({ rawTransaction: approvedBytes, admit }) => {
             if (collectible) {
               if (!freshCollectible) throw new NativeTransferError('EXPIRED');
               return rpc.broadcast(approvedBytes, transactionHash, signal, {
@@ -1058,7 +1058,7 @@ export class NativeTransfers {
               assertDispatchAdmission: assertDispatchAdmission!,
               admit: atDispatch,
             });
-          },
+          } },
           intent,
           approved.transaction!,
           approved.replacement,
@@ -1143,7 +1143,7 @@ export class NativeTransfers {
     });
   }
   private verifySigned(
-    expected: PreparedEvmTransaction,
+    expected: EvmUnsignedTransfer,
     signed: Readonly<{ rawTransaction: string; hash: string }>
   ) {
     if (
@@ -1151,26 +1151,11 @@ export class NativeTransfers {
       signed.rawTransaction.length > 4096
     )
       throw new Error('Invalid signed transfer');
-    const unsigned = Transaction.from({
-      type: expected.type,
-      to: expected.to,
-      chainId: BigInt(expected.chainId),
-      nonce: Number(expected.nonce),
-      value: BigInt(expected.value),
-      gasLimit: BigInt(expected.gasLimit),
-      data: expected.data,
-      ...(expected.type === 0
-        ? { gasPrice: BigInt(expected.gasPrice) }
-        : {
-            maxFeePerGas: BigInt(expected.maxFeePerGas),
-            maxPriorityFeePerGas: BigInt(expected.maxPriorityFeePerGas),
-          }),
-    });
     let tx: Transaction;
     try {
       tx = assertSignedEvmTransactionMatches(
         signed.rawTransaction,
-        unsigned.unsignedSerialized,
+        unsignedTransferBytes(expected),
         expected.from
       );
     } catch {
