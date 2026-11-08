@@ -57,12 +57,13 @@ it.each([false, true])(
     const get = jest
       .spyOn(chrome.storage.local, 'get')
       .mockImplementation((_keys, callback: any) => {
-        callback({ [storageKey]: structuredClone(store) });
+        // Chrome storage returns JSON records in the receiving realm.
+        callback({ [storageKey]: JSON.parse(JSON.stringify(store)) });
       });
     const set = jest
       .spyOn(chrome.storage.local, 'set')
       .mockImplementation((value: any, callback: any) => {
-        if (!rejectWrite) store = structuredClone(value[storageKey]);
+        if (!rejectWrite) store = JSON.parse(JSON.stringify(value[storageKey]));
         (chrome.runtime as any).lastError = rejectWrite
           ? { message: 'Synthetic write failure' }
           : undefined;
