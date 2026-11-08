@@ -76,14 +76,14 @@ describe.each(['approve', 'increaseAllowance', 'decreaseAllowance'])(
       'retains the dedicated approval amount %s',
       async (amount) => {
         const decoded = await decode(method, amount);
-        expect(decoded).toMatchObject({ approvalType: 'erc20-amount' });
+        expect(decoded).toMatchObject({
+          approvalType: 'erc20-amount',
+          standardVerified: false,
+        });
         render(<DecodedTransactionParams decodedData={decoded} />);
         expect(screen.getByText('transactions.approvalAmount:')).toBeTruthy();
-        expect(
-          screen.getByText(
-            amount === MAXIMUM ? '⚠️ transactions.unlimited' : amount
-          )
-        ).toBeTruthy();
+        expect(screen.getByText(amount)).toBeTruthy();
+        expect(screen.queryByText('⚠️ transactions.unlimited')).toBeNull();
       }
     );
   }
