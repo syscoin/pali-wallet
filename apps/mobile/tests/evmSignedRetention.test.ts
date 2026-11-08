@@ -267,9 +267,10 @@ test('clear blocks held dispatch before broadcast', async () => {
   let posts = 0;
   const admission = f.records.withReplayAdmission(
     f.session(),
-    { ...first, operation: 'send' },
-    () => {
+    { ...first, operation: 'send', metadata: undefined },
+    async () => {
       posts++;
+      return { result: undefined };
     },
     undefined,
     {

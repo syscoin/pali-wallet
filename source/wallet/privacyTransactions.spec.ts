@@ -38,6 +38,9 @@ function setup() {
     sessionGeneration: 1,
   };
   const host: IPrivacyTransactionsHost = {
+    classifySubmissionFailure: jest.fn(() => ({
+      transactionNotBroadcast: false,
+    })),
     captureContext: jest.fn(() => {
       const captured = generation;
       const identity = JSON.stringify(context);
@@ -372,8 +375,11 @@ it('honors the durable per-note guard across a controller restart after an unkno
   expect(f.host.recordNotBroadcast).not.toHaveBeenCalled();
 });
 
-it('honors only explicit proven-not-broadcast errors before any acknowledgement', async () => {
+it('honors only host-owned proven-not-broadcast errors before any acknowledgement', async () => {
   const f = setup();
+  jest
+    .mocked(f.host.classifySubmissionFailure)
+    .mockReturnValue({ transactionNotBroadcast: true });
   jest
     .mocked(f.host.sendTransaction)
     .mockRejectedValue(
@@ -517,4 +523,106 @@ it('bounds concurrent preparation including expired in-flight host work', async 
   held.resolve({ id: NOTE_ID, poolId: 'eth-1' });
   await settled;
   expect(f.host.sendTransaction).not.toHaveBeenCalled();
+});
+
+it('requires the durable pre-broadcast recovery port before admitting an intent', () => {
+  const f = setup();
+  const incomplete: Partial<IPrivacyTransactionsHost> = { ...f.host };
+  delete incomplete.recordNotBroadcast;
+  expect(() =>
+    createPrivacyTransactionsController(incomplete as IPrivacyTransactionsHost)
+  ).toThrow('privacy_deposit_host_invalid');
+  expect(f.host.prepareNote).not.toHaveBeenCalled();
+});
+
+it.each([() => Promise.resolve(), () => true])(
+  'rejects a non-synchronous session guard before note or fee work',
+  (assertCurrent) => {
+    const f = setup();
+    jest
+      .mocked(f.host.captureContext)
+      .mockReturnValue({ context: f.context, assertCurrent } as never);
+    return expect(f.controller.prepareDeposit({ poolId: 'eth-1' }))
+      .rejects.toThrow('privacy_deposit_context_changed')
+      .then(() => {
+        expect(f.host.prepareNote).not.toHaveBeenCalled();
+        expect(f.host.prepareFees).not.toHaveBeenCalled();
+        expect(f.host.sendTransaction).not.toHaveBeenCalled();
+      });
+  }
+);
+
+it.each([() => Promise.resolve(), () => true])(
+  'rejects a non-synchronous reserved-note guard before signing',
+  async (assertCurrent) => {
+    const f = setup();
+    const review = await f.controller.prepareDeposit({ poolId: 'eth-1' });
+    jest
+      .mocked(f.host.beforeSubmission)
+      .mockResolvedValue(assertCurrent as never);
+    await expect(f.controller.submitDeposit(review.intentId)).rejects.toThrow(
+      'privacy_deposit_submission_blocked'
+    );
+    expect(f.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
+    expect(f.host.sendTransaction).not.toHaveBeenCalled();
+  }
+);
+
+it('keeps a saved signed hash unknown until a broadcast is acknowledged', async () => {
+  const f = setup();
+  jest.mocked(f.host.classifySubmissionFailure).mockReturnValue({
+    transactionNotBroadcast: true,
+    signedTransactionHash: HASH,
+  });
+  jest.mocked(f.host.sendTransaction).mockRejectedValue(
+    Object.assign(new Error('response lost'), {
+      signedTransactionHash: HASH,
+      transactionNotBroadcast: false,
+    })
+  );
+  const review = await f.controller.prepareDeposit({ poolId: 'eth-1' });
+  await expect(f.controller.submitDeposit(review.intentId)).resolves.toEqual({
+    intentId: review.intentId,
+    noteId: NOTE_ID,
+    phase: 'unknown',
+    signedTransactionHash: HASH,
+  });
+  expect(f.host.recordBroadcast).not.toHaveBeenCalled();
+  expect(f.host.recordNotBroadcast).not.toHaveBeenCalled();
+});
+
+it('does not promote a provider transaction hash into an acknowledged deposit', async () => {
+  const f = setup();
+  jest.mocked(f.host.sendTransaction).mockRejectedValue(
+    Object.assign(new Error('untrusted provider fields'), {
+      transactionHash: HASH,
+      transactionNotBroadcast: true,
+    })
+  );
+  const review = await f.controller.prepareDeposit({ poolId: 'eth-1' });
+  await expect(f.controller.submitDeposit(review.intentId)).resolves.toEqual({
+    intentId: review.intentId,
+    noteId: NOTE_ID,
+    phase: 'unknown',
+  });
+  expect(f.host.recordBroadcast).not.toHaveBeenCalled();
+  expect(f.host.recordNotBroadcast).not.toHaveBeenCalled();
+});
+
+it('keeps a durably acknowledged submission authoritative if later host classification fails', async () => {
+  const f = setup();
+  jest
+    .mocked(f.host.sendTransaction)
+    .mockImplementation(async (_transaction, _session, onBroadcast) => {
+      await onBroadcast({ hash: HASH });
+      throw Error('late response failure');
+    });
+  jest.mocked(f.host.classifySubmissionFailure).mockImplementation(() => {
+    throw Error('must not classify acknowledged sends');
+  });
+  const review = await f.controller.prepareDeposit({ poolId: 'eth-1' });
+  await expect(
+    f.controller.submitDeposit(review.intentId)
+  ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
+  expect(f.host.classifySubmissionFailure).not.toHaveBeenCalled();
 });

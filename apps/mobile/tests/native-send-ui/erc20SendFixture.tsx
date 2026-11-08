@@ -1,3 +1,4 @@
+import { authorizePrivateDepositReplay } from '../../../../source/wallet/privateDepositReplay.ts';
 import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networkContext';
 // Synthetic public wallet only. Production never imports this fixture.
 import React, { useState, useSyncExternalStore } from 'react';
@@ -162,7 +163,7 @@ const rpc = new NativeTransferRpc({
 });
 const runtime: NativeTransferRuntime = {
   replay(guard, transport, options) {
-    return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
+    return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateDepositReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
   },
   submit: submitFixtureEvmTransaction(signedRecords),

@@ -339,19 +339,20 @@ const signedCapacityRefusals = new WeakMap<
 let currentPersistToken: object | undefined;
 export function consumeSignedEvmCapacityRefusal(
   error: unknown,
-  readFailure?: (failure: unknown) => Readonly<{
-    signedTransactionHash?: string;
-    transactionNotBroadcast: boolean;
-  }>
+  readFailure?: (failure: unknown) =>
+    | Readonly<{
+        signedTransactionHash?: string;
+        transactionNotBroadcast: boolean;
+      }>
+    | undefined
 ): boolean {
   if (!error || typeof error !== 'object') return false;
   const refusal = signedCapacityRefusals.get(error);
   if (!refusal || refusal.token !== currentPersistToken || !readFailure)
     return false;
   const { hash } = refusal;
-  // SDK 2.1.6's failure map is locally owned. Its default has no hash, so a
-  // refusal is recognized only after this exact envelope's SDK failure is
-  // recorded and the latest SDK stage still says no dispatch occurred.
+  // Only SDK-owned failure metadata for this exact signed envelope can
+  // establish that its dispatch never started.
   let failure: ReturnType<NonNullable<typeof readFailure>>;
   try {
     failure = readFailure(error);
@@ -359,7 +360,7 @@ export function consumeSignedEvmCapacityRefusal(
     return false;
   }
   const matches =
-    failure.transactionNotBroadcast === true &&
+    failure?.transactionNotBroadcast === true &&
     failure.signedTransactionHash === hash &&
     'transactionNotBroadcast' in error &&
     error.transactionNotBroadcast === true &&
@@ -1079,6 +1080,13 @@ export class EvmSignedRecords {
     const tracked = entries.find(
       (entry) => entry.hash === original.originalHash
     );
+    if (
+      tracked &&
+      original.operation === 'speed-up' &&
+      tracked.metadata &&
+      Object.hasOwn(tracked.metadata, 'privateDeposit')
+    )
+      throw new Error('EVM_PRIVATE_DEPOSIT_REPLACEMENT_UNAVAILABLE');
     if (tracked && !matchesNonce(tracked, original))
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
     if (sameNonce.some((entry) => entry.operation === 'cancel')) {
@@ -1318,6 +1326,12 @@ export class EvmSignedRecords {
       if (!lineage || !tip) return null;
 
       const original = await this.materialize(session, selected);
+      if (
+        operation === 'speed-up' &&
+        original.metadata &&
+        Object.hasOwn(original.metadata, 'privateDeposit')
+      )
+        return null;
       const base = Transaction.from(original.rawTransaction);
       if (base.type !== 0 && base.type !== 2) return null;
       let cap = base.maxFeePerGas ?? base.gasPrice ?? BigInt(0);
@@ -2181,11 +2195,15 @@ export class EvmSignedRecords {
       nonce,
       operation,
       originalHash,
+      metadata,
     }: Pick<
       EvmSignedRecordSummary,
       'chainId' | 'from' | 'hash' | 'nonce' | 'operation' | 'originalHash'
-    >,
-    admit: (predecessors: readonly EvmSignedRecordSummary[]) => T,
+    > &
+      Readonly<{ metadata: EvmSignedRecordSummary['metadata'] }>,
+    admit: (
+      predecessors: readonly EvmSignedRecordSummary[]
+    ) => Promise<Readonly<{ result: T }>>,
     predecessorNonce?: number,
     preflight?: Readonly<{
       assertCurrent(): void;
@@ -2214,7 +2232,8 @@ export class EvmSignedRecords {
       if (
         !retained ||
         retained.operation !== operation ||
-        retained.originalHash !== originalHash
+        retained.originalHash !== originalHash ||
+        JSON.stringify(retained.metadata) !== JSON.stringify(metadata)
       )
         return null;
       const predecessors =
@@ -2238,7 +2257,7 @@ export class EvmSignedRecords {
         );
         guard(session);
       }
-      return { result: admit(predecessors) };
+      return await admit(predecessors);
     });
   }
   async readExact(
@@ -2479,6 +2498,10 @@ export function createEvmSignedRecordLifecycle(
   )
     throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
   const retirementReadForChain = options.retirementReadForChain;
+  const metadata =
+    options.metadata === undefined
+      ? undefined
+      : snapshotMetadata(options.metadata);
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -2497,10 +2520,6 @@ export function createEvmSignedRecordLifecycle(
           network: Object.freeze({ ...record.context.network }),
         }),
       });
-      const metadata =
-        options.metadata === undefined
-          ? undefined
-          : snapshotMetadata(options.metadata);
       const replacement = options.replacement && (await options.replacement);
       try {
         await records.append(session, signed, metadata, replacement);
@@ -2571,8 +2590,9 @@ export function createEvmSignedRecordLifecycle(
             hash: record.hash,
             operation: record.context.operation,
             originalHash: record.context.originalHash?.toLowerCase(),
+            metadata,
           },
-          () => {
+          async () => {
             assertAdmission();
             const recordAcknowledgement = trackAcknowledgement?.();
             let response: Promise<T>;
@@ -2608,7 +2628,7 @@ export function createEvmSignedRecordLifecycle(
               );
             }
             void response.catch(() => undefined);
-            return response;
+            return { result: response };
           },
           undefined,
           {

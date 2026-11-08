@@ -7,6 +7,12 @@ import {
   type Erc20Metadata,
 } from '../shared/erc20.ts';
 import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import {
+  getObservedEvmTerminalPhase,
+  type EvmObservationRequest,
+  type EvmTransactionObservation,
+} from '../shared/evmTransactionObservation.ts';
 import {
   decodeRetainedNftTransfer,
   isRetainedNftReplayEnvelope,
@@ -19,11 +25,6 @@ import {
   type EvmRetainedSignedRecord,
   type EvmSignedRecordSummary,
 } from './evmSignedRecords.ts';
-import {
-  getObservedEvmTerminalPhase,
-  type EvmObservationRequest,
-  type EvmTransactionObservation,
-} from '../shared/evmTransactionObservation.ts';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 
 export type EvmReplayCandidate = Pick<
@@ -93,8 +94,18 @@ export type EvmReplayDispatchContext = Pick<
   'operation' | 'originalHash' | 'chainId' | 'from' | 'nonce' | 'hash'
 > &
   Readonly<{ requiresPayerCheck?: true }>;
+export type EvmReplayAuthorization = Readonly<{
+  assertCurrent(): void;
+  onAcknowledged(hash: string): Promise<void>;
+  withAdmission<T>(
+    admit: () => Promise<Readonly<{ result: T }>>
+  ): Promise<Readonly<{ result: T }> | null>;
+}>;
 export type EvmReplaySession = Readonly<{
   assertCurrent(): void;
+  authorizeReplay(
+    entry: EvmRetainedSignedRecord
+  ): Promise<EvmReplayAuthorization>;
   context: Pick<EvmSubmissionContext, 'account' | 'network'>;
   /** Replay supplies its bounded host preflight to admission. `send`
    * synchronously initiates transport and returns its acknowledgment promise. */
@@ -273,6 +284,7 @@ export class EvmSignedReplay {
   private pending: Pending | null = null;
   private ownerId: string | null = null;
   private generation = 0;
+  private reconciliation: Promise<void> | null = null;
   private readonly records: EvmSignedRecords;
   private readonly capture: () => EvmReplaySession;
   private readonly now: () => number;
@@ -359,7 +371,7 @@ export class EvmSignedReplay {
     expires: number,
     assertCurrent: () => void,
     preflight: () => Promise<void>
-  ): Promise<void> {
+  ): Promise<number> {
     assertCurrent();
     const started = this.time();
     const cutoff = Math.min(expires, started + REPLAY_PREFLIGHT_MS);
@@ -377,6 +389,7 @@ export class EvmSignedReplay {
       const result = await Promise.race([preflight(), deadline]);
       if (this.time() >= cutoff) throw new EvmReplayError('EXPIRED');
       if (result !== undefined) throw new EvmReplayError('CONTEXT_CHANGED');
+      return cutoff;
     } finally {
       clearTimeout(timer);
     }
@@ -398,6 +411,7 @@ export class EvmSignedReplay {
       assertCurrent: captured.assertCurrent,
       observe: captured.observe,
       dispatch: captured.dispatch,
+      authorizeReplay: captured.authorizeReplay,
     });
     const state = {
       session,
@@ -419,12 +433,33 @@ export class EvmSignedReplay {
       () => this.check(state)
     );
     this.check(state);
-    if (phase)
+    if (phase) {
+      if (phase === 'confirmed' && this.reconciliation === null) {
+        // Explicit status inspection may reconcile a missed private ACK. One
+        // bounded task never holds the public terminal result behind storage.
+        const task = Promise.resolve()
+          .then(async () => {
+            this.check(state);
+            const authorization = await session.authorizeReplay(entry);
+            this.check(state);
+            assertSynchronousEvmFeeGuard(authorization.assertCurrent);
+            await authorization.onAcknowledged(entry.hash);
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            if (this.reconciliation === task) this.reconciliation = null;
+          });
+        this.reconciliation = task;
+      }
       return Object.freeze({
         status: phase,
         hash: entry.hash,
         transaction: projectSavedEvmTransaction(entry),
       });
+    }
+    const authorization = await session.authorizeReplay(entry);
+    this.check(state);
+    assertSynchronousEvmFeeGuard(authorization.assertCurrent);
     const missingNonce =
       observation.status === 'missing' &&
       BigInt(observation.latestNonce) < BigInt(entry.nonce)
@@ -432,8 +467,8 @@ export class EvmSignedReplay {
         : undefined;
     const eligible = await this.records.withReplayAdmission(
       session.recordSession,
-      entry,
-      (candidates) => candidates,
+      { ...entry, metadata: entry.metadata },
+      async (candidates) => ({ result: candidates }),
       missingNonce === undefined ? undefined : Number(missingNonce)
     );
     this.check(state);
@@ -511,8 +546,15 @@ export class EvmSignedReplay {
       entry.hash
     );
     check();
-    if (!current || current.rawTransaction !== entry.rawTransaction)
+    if (
+      !current ||
+      current.rawTransaction !== entry.rawTransaction ||
+      JSON.stringify(current.metadata) !== JSON.stringify(entry.metadata)
+    )
       throw new EvmReplayError('CONTEXT_CHANGED');
+    const authorization = await session.authorizeReplay(current);
+    check();
+    assertSynchronousEvmFeeGuard(authorization.assertCurrent);
     const observed = await session.observe(request(entry));
     check();
     if (
@@ -556,31 +598,40 @@ export class EvmSignedReplay {
             if (!open || requested || typeof preflight !== 'function')
               throw new EvmReplayError('CONTEXT_CHANGED');
             requested = true;
+            let preflightExpires = pending.expires;
             const checkAdmission = () => {
               if (!open) throw new EvmReplayError('CONTEXT_CHANGED');
               check();
+              if (this.time() >= preflightExpires)
+                throw new EvmReplayError('EXPIRED');
             };
             const admission = await this.records.withReplayAdmission(
               session.recordSession,
-              entry,
-              () => {
-                checkAdmission();
-                if (!requiresPayerCheck) dispatched = true;
-                const response = send();
-                dispatched = true;
-                // The response can reject before the storage queue yields.
-                void response.catch(() => undefined);
-                return response;
+              { ...current, metadata: current.metadata },
+              async () => {
+                const boxed = await authorization.withAdmission(async () => {
+                  checkAdmission();
+                  assertSynchronousEvmFeeGuard(authorization.assertCurrent);
+                  if (!requiresPayerCheck) dispatched = true;
+                  const response = send();
+                  dispatched = true;
+                  // The response can reject before the storage queue yields.
+                  void response.catch(() => undefined);
+                  return { result: response };
+                });
+                if (!boxed) throw new EvmReplayError('CONTEXT_CHANGED');
+                return boxed;
               },
               undefined,
               {
                 assertCurrent: checkAdmission,
-                run: () =>
-                  this.waitReplayPreflight(
+                run: async () => {
+                  preflightExpires = await this.waitReplayPreflight(
                     pending.expires,
                     checkAdmission,
                     preflight
-                  ),
+                  );
+                },
               }
             );
             if (!admission) throw new EvmReplayError('CONTEXT_CHANGED');
@@ -594,6 +645,7 @@ export class EvmSignedReplay {
       } finally {
         open = false;
       }
+      await authorization.onAcknowledged(hash);
       check();
       await this.records.updatePhase(
         session.recordSession,

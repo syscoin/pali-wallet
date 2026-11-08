@@ -81,7 +81,7 @@ export interface NativeTransferJournalHandle {
 }
 export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export interface NativeTransferRuntime {
-  evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }>;
+  evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }> | undefined;
   replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
     options: { now: () => number; randomBytes: (length: number) => Uint8Array }): Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
   token?(

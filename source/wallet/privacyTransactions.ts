@@ -1,6 +1,9 @@
-import { Interface, parseEther } from 'ethers';
+import { Interface } from 'ethers/abi';
+import { parseEther } from 'ethers/utils';
 
-import { getPrivacyPool } from 'utils/privacy/registry';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { getPrivacyPool } from '../utils/privacy/registry.ts';
+
 import type {
   IPrivacyDepositAttempt,
   IPrivacyDepositCall,
@@ -10,7 +13,7 @@ import type {
   IPrivacyDepositSubmission,
   IPrivacyTransactionsController,
   IPrivacyTransactionsHost,
-} from 'utils/privacy/transactionTypes';
+} from '../utils/privacy/transactionTypes.ts';
 
 const ABI = new Interface(['function deposit(bytes32 commitment) payable']);
 const UUID =
@@ -117,13 +120,18 @@ export function createPrivacyTransactionsController(
     randomId = () => crypto.randomUUID(),
   }: { now?: () => number; randomId?: () => string } = {}
 ): IPrivacyTransactionsController {
+  if (
+    typeof host.recordNotBroadcast !== 'function' ||
+    typeof host.classifySubmissionFailure !== 'function'
+  )
+    throw new Error('privacy_deposit_host_invalid');
   const intents = new Map<string, IIntent>();
   const submittingNotes = new Set<string>();
   let closed = false;
   const assertCurrent = (session: IPrivacyDepositSession) => {
     if (closed) throw failure('privacy_deposit_closed');
     try {
-      session.assertCurrent();
+      assertSynchronousEvmFeeGuard(session.assertCurrent);
     } catch {
       throw failure('privacy_deposit_context_changed');
     }
@@ -357,7 +365,7 @@ export function createPrivacyTransactionsController(
             throw failure('privacy_deposit_intent_expired');
           if (typeof assertReservedCurrent !== 'function')
             throw failure('privacy_deposit_context_changed');
-          assertReservedCurrent();
+          assertSynchronousEvmFeeGuard(assertReservedCurrent);
         };
         assertBeforeSign();
         senderEntered = true;
@@ -375,21 +383,6 @@ export function createPrivacyTransactionsController(
           transactionHash: acknowledged,
         };
       } catch (error) {
-        const e = error as {
-          transactionHash?: unknown;
-          transactionNotBroadcast?: unknown;
-        };
-        if (
-          !acknowledged &&
-          typeof e?.transactionHash === 'string' &&
-          HASH.test(e.transactionHash)
-        ) {
-          try {
-            await onBroadcast({ hash: e.transactionHash });
-          } catch {
-            /* Keep the durable unknown marker. */
-          }
-        }
         if (saved && !acknowledgementConflict)
           return {
             intentId: id,
@@ -397,13 +390,25 @@ export function createPrivacyTransactionsController(
             phase: 'submitted',
             transactionHash: acknowledged,
           };
+        const failureState = senderEntered
+          ? host.classifySubmissionFailure(error)
+          : { transactionNotBroadcast: true };
+        if (
+          !failureState ||
+          typeof failureState.transactionNotBroadcast !== 'boolean' ||
+          (failureState.signedTransactionHash !== undefined &&
+            (typeof failureState.signedTransactionHash !== 'string' ||
+              !HASH.test(failureState.signedTransactionHash)))
+        )
+          throw new Error('privacy_deposit_classification_invalid');
         if (
           !senderEntered ||
-          (e?.transactionNotBroadcast === true && !acknowledged)
+          (failureState.transactionNotBroadcast &&
+            !failureState.signedTransactionHash &&
+            !acknowledged)
         ) {
           try {
-            if (reservationAcknowledged)
-              await host.recordNotBroadcast?.(attempt);
+            if (reservationAcknowledged) await host.recordNotBroadcast(attempt);
           } catch {
             /* Never reinterpret a persistence error as a broadcast. */
           }
@@ -419,6 +424,8 @@ export function createPrivacyTransactionsController(
           phase: 'unknown',
         };
         if (acknowledged) result.transactionHash = acknowledged;
+        if (failureState.signedTransactionHash)
+          result.signedTransactionHash = failureState.signedTransactionHash;
         return result;
       } finally {
         submittingNotes.delete(attempt.noteId);

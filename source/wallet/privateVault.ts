@@ -12,6 +12,10 @@ import { AbiCoder, Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
 import { parseEther, toUtf8Bytes } from 'ethers/utils';
 
+import {
+  capturePrivateDepositAttempt,
+  normalizePrivateDepositAttempt,
+} from '../utils/privacy/depositMetadata.ts';
 import { getPrivacyPool } from '../utils/privacy/registry.ts';
 
 import {
@@ -87,16 +91,25 @@ import type {
 import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
-const DEPOSIT_ABI = new Interface([
-  'function deposit(bytes32 commitment) payable',
-]);
 const WITHDRAWAL_ABI = new Interface([
   'function withdraw(bytes proof, bytes32 root, bytes32 nullifierHash, address recipient, address relayer, uint256 fee, uint256 refund)',
 ]);
 const HASH = /^0x[0-9a-f]{64}$/;
 const restoreEpochs = new WeakMap<IPrivateVaultMutex, Map<string, object>>();
 const UINT256_MAX = (BigInt(1) << BigInt(256)) - BigInt(1);
+export interface IPrivateVaultDepositReplayLease {
+  assertCurrent(): void;
+  onAcknowledged(transactionHash: string): Promise<void>;
+  withAdmission<T>(
+    admit: () => Promise<Readonly<{ result: T }> | null>
+  ): Promise<Readonly<{ result: T }> | null>;
+}
+
 export interface IPrivateVaultDepositController {
+  authorizeDepositReplay: (
+    attempt: IPrivacyDepositAttempt,
+    session: IPrivateVaultSession
+  ) => Promise<IPrivateVaultDepositReplayLease>;
   clearUnbroadcastDepositAttempt: (
     attempt: IPrivacyDepositAttempt,
     session: IPrivateVaultSession
@@ -383,109 +396,12 @@ function depositJournal(
   note: IStoredNote,
   identity: IClassicNoteIdentity
 ): IPrivateVaultDepositJournal {
-  const context = attempt?.context;
-  const tx = attempt?.transaction;
-  const pool = getPrivacyPool(identity.poolId);
-  if (
-    !attempt ||
-    typeof attempt.intentId !== 'string' ||
-    !UUID.test(attempt.intentId) ||
-    attempt.noteId !== note.id ||
-    attempt.poolId !== identity.poolId ||
-    !Number.isSafeInteger(attempt.createdAt) ||
-    attempt.createdAt < 0 ||
-    !Number.isSafeInteger(attempt.expiresAt) ||
-    attempt.expiresAt <= attempt.createdAt ||
-    !context ||
-    context.chainId !== 1 ||
-    !Number.isSafeInteger(context.sessionGeneration) ||
-    context.sessionGeneration! < 0 ||
-    !Number.isSafeInteger(context.slip44) ||
-    context.slip44 < 0 ||
-    typeof context.rpcUrl !== 'string' ||
-    !context.rpcUrl ||
-    context.rpcUrl.length > 2048 ||
-    !context.account ||
-    !Number.isSafeInteger(context.account.id) ||
-    context.account.id < 0 ||
-    typeof context.account.type !== 'string' ||
-    typeof context.account.address !== 'string' ||
-    !ADDRESS.test(context.account.address) ||
-    !tx ||
-    tx.chainId !== 1 ||
-    typeof tx.from !== 'string' ||
-    tx.from.toLowerCase() !== context.account.address.toLowerCase() ||
-    typeof tx.to !== 'string' ||
-    tx.to.toLowerCase() !== pool.address ||
-    tx.data !==
-      DEPOSIT_ABI.encodeFunctionData('deposit', [identity.commitment]) ||
-    uint(tx.value) !== parseEther(pool.amount) ||
-    Object.keys(tx).some(
-      (key) =>
-        ![
-          'chainId',
-          'from',
-          'to',
-          'value',
-          'data',
-          'gasLimit',
-          'nonce',
-          'gasPrice',
-          'maxFeePerGas',
-          'maxPriorityFeePerGas',
-        ].includes(key)
-    )
-  )
-    throw new Error('privacy_deposit_attempt_invalid');
-  const nonce = uint(tx.nonce);
-  if (nonce >= BigInt(1) << BigInt(64))
-    throw new Error('privacy_deposit_attempt_invalid');
-  const fees: Record<string, string> = {
-    gasLimit: String(uint(tx.gasLimit, true)),
-    nonce: String(nonce),
-  };
-  if (tx.gasPrice !== undefined) {
-    if (tx.maxFeePerGas !== undefined || tx.maxPriorityFeePerGas !== undefined)
-      throw new Error('privacy_deposit_attempt_invalid');
-    fees.gasPrice = String(uint(tx.gasPrice, true));
-  } else {
-    const max = uint(tx.maxFeePerGas, true),
-      priority = uint(tx.maxPriorityFeePerGas);
-    if (priority > max) throw new Error('privacy_deposit_attempt_invalid');
-    fees.maxFeePerGas = String(max);
-    fees.maxPriorityFeePerGas = String(priority);
-  }
-  const normalized = {
-    intentId: attempt.intentId,
-    noteId: note.id,
-    poolId: identity.poolId,
-    createdAt: attempt.createdAt,
-    expiresAt: attempt.expiresAt,
-    context: {
-      chainId: 1,
-      rpcUrl: context.rpcUrl,
-      slip44: context.slip44,
-      sessionGeneration: context.sessionGeneration,
-      account: {
-        id: context.account.id,
-        type: context.account.type,
-        address: context.account.address.toLowerCase(),
-      },
-    },
-    transaction: {
-      chainId: 1,
-      from: tx.from.toLowerCase(),
-      to: pool.address,
-      data: tx.data,
-      value: String(uint(tx.value)),
-      ...fees,
-    },
-  };
+  const normalized = normalizePrivateDepositAttempt(attempt, note.id, identity);
   return {
-    intentId: attempt.intentId,
-    createdAt: attempt.createdAt,
-    from: tx.from.toLowerCase(),
-    nonce: String(nonce),
+    intentId: normalized.intentId,
+    createdAt: normalized.createdAt,
+    from: normalized.transaction.from,
+    nonce: normalized.transaction.nonce,
     phase: 'unknown',
     attemptHash: keccak256(toUtf8Bytes(JSON.stringify(normalized))),
   };
@@ -1145,6 +1061,38 @@ export function createPrivateVaultController(
       throw new Error('privacy_deposit_attempt_invalid');
     return note.deposit;
   };
+  const recordDepositBroadcast = async (
+    context: IContext,
+    attempt: IPrivacyDepositAttempt,
+    transactionHash: string
+  ) => {
+    if (
+      typeof transactionHash !== 'string' ||
+      !/^0x[0-9a-fA-F]{64}$/.test(transactionHash)
+    )
+      throw new Error('privacy_deposit_attempt_invalid');
+    const hash = transactionHash.toLowerCase();
+    const { manifest, basis } = await load(context);
+    const note = findNote(manifest, attempt?.noteId);
+    const previous = matchingAttempt(note, attempt);
+    if (previous.phase === 'submitted') {
+      if (previous.transactionHash !== hash)
+        throw new Error('privacy_deposit_attempt_invalid');
+      return;
+    }
+    const deposit = {
+      ...previous,
+      phase: 'submitted' as const,
+      transactionHash: hash,
+    };
+    await persist(
+      context,
+      manifest.notes.map((entry) =>
+        entry.id === note.id ? { ...entry, deposit } : entry
+      ),
+      basis
+    );
+  };
   const assertWithdrawable = async (context: IContext, note: IStoredNote) => {
     if (restoredNoteBlocksWithdrawal(note.restoreGuard))
       throw new Error('privacy_note_restore_required');
@@ -1698,34 +1646,68 @@ export function createPrivateVaultController(
         );
       }),
     recordDepositBroadcast: (attempt, transactionHash, session) =>
-      internal(session, async (context) => {
-        if (
-          typeof transactionHash !== 'string' ||
-          !/^0x[0-9a-fA-F]{64}$/.test(transactionHash)
-        )
-          throw new Error('privacy_deposit_attempt_invalid');
-        const hash = transactionHash.toLowerCase();
-        const { manifest, basis } = await load(context);
-        const note = findNote(manifest, attempt?.noteId);
-        const previous = matchingAttempt(note, attempt);
-        if (previous.phase === 'submitted') {
-          if (previous.transactionHash !== hash)
-            throw new Error('privacy_deposit_attempt_invalid');
-          return;
-        }
-        const deposit = {
-          ...previous,
-          phase: 'submitted' as const,
-          transactionHash: hash,
+      internal(session, (context) =>
+        recordDepositBroadcast(context, attempt, transactionHash)
+      ),
+    authorizeDepositReplay: async (input, session) => {
+      let attempt: Readonly<IPrivacyDepositAttempt>;
+      try {
+        attempt = capturePrivateDepositAttempt(input);
+        assertPrivateVaultSession(session, true);
+      } catch (error) {
+        throw publicError(error);
+      }
+      return internal(session, async (context) => {
+        const assertRestoreCurrent = restoreFence(context);
+        const assertCurrent = () => {
+          assertPrivateVaultSession(session, true);
+          assertRestoreCurrent();
         };
-        await persist(
-          context,
-          manifest.notes.map((entry) =>
-            entry.id === note.id ? { ...entry, deposit } : entry
-          ),
-          basis
-        );
-      }),
+        const validate = async (current: IContext) => {
+          assertCurrent();
+          if (current.profileId !== context.profileId)
+            throw new Error('privacy_vault_session_changed');
+          const { manifest } = await load(current);
+          assertCurrent();
+          const note = findNote(manifest, attempt.noteId);
+          if (note.restoreGuard)
+            throw new Error('privacy_note_restore_required');
+          if (note.origin !== 'generated')
+            throw new Error('privacy_deposit_note_ineligible');
+          if (note.withdrawal)
+            throw new Error('privacy_withdrawal_attempt_exists');
+          matchingAttempt(note, attempt);
+          const status = await readStatus(current, identify(note.note));
+          if (status.phase === 'spent') throw new Error('privacy_note_spent');
+          await assertProfile(current);
+          assertCurrent();
+        };
+        await validate(context);
+        return Object.freeze({
+          assertCurrent,
+          withAdmission: async <T>(
+            admit: () => Promise<Readonly<{ result: T }> | null>
+          ) => {
+            assertCurrent();
+            return internal(session, async (current) => {
+              await validate(current);
+              assertCurrent();
+              // The caller boxes the network promise so admission releases the
+              // note mutex immediately after synchronous dispatch initiation.
+              return admit();
+            });
+          },
+          onAcknowledged: async (transactionHash: string) => {
+            assertPrivateVaultSession(session, true);
+            return internal(session, async (current) => {
+              if (current.profileId !== context.profileId)
+                throw new Error('privacy_vault_session_changed');
+              await recordDepositBroadcast(current, attempt, transactionHash);
+            });
+          },
+        });
+      });
+    },
     clearUnbroadcastDepositAttempt: (attempt, session) =>
       internal(session, async (context) => {
         const { manifest, basis } = await load(context);

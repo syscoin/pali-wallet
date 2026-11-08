@@ -557,8 +557,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
           expect(
             await journal.withReplayAdmission(
               journalSession,
-              spend,
-              () => 'eligible'
+              { ...spend, metadata: spend.metadata },
+              async () => ({ result: 'eligible' })
             )
           ).toBeNull();
           expect(
@@ -653,8 +653,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       expect(
         await journal.withReplayAdmission(
           journalSession,
-          entries[1]!,
-          () => 'eligible'
+          { ...entries[1]!, metadata: entries[1]!.metadata },
+          async () => ({ result: 'eligible' })
         )
       ).toEqual({ result: 'eligible' });
       const lookups = provider.getTransaction.mock.calls.length;
@@ -868,7 +868,11 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
         );
         expect(payment?.rawTransaction).toBe(retained.serialized);
         expect(
-          await journal.withReplayAdmission(recordSession, payment!, () => true)
+          await journal.withReplayAdmission(
+            recordSession,
+            { ...payment!, metadata: payment!.metadata },
+            async () => ({ result: true })
+          )
         ).toBeNull();
         posted.resolve();
         await acknowledge.promise;
@@ -945,8 +949,8 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
             expect(
               await journal.withReplayAdmission(
                 recordSession,
-                entries[0]!,
-                () => true
+                { ...entries[0]!, metadata: entries[0]!.metadata },
+                async () => ({ result: true })
               )
             ).toEqual({ result: true });
           }
