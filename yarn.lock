@@ -2708,10 +2708,9 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz#b13e85229a1aeb727a9616719ea4ba8bed14e691"
   integrity sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==
 
-"@sidhujag/sysweb3-keyring@2.1.6":
+"@sidhujag/sysweb3-keyring@file:apps/mobile/vendor/sysweb3-keyring-2.1.6-reviewed-f6aeb05bffd62045554467c8925b5476cba828d3.tgz":
   version "2.1.6"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.6.tgz#ecf1f6a938a3de3b3592584b5346d936828acb2f"
-  integrity sha512-uSyyzGD7gPY8FQiL9l2qZC/TaYtmWb7b9IyrvHzPO8ZooOqS147eqJ13o7W7MgmafsKJe2qxUigoNVCrQbz+mw==
+  resolved "file:apps/mobile/vendor/sysweb3-keyring-2.1.6-reviewed-f6aeb05bffd62045554467c8925b5476cba828d3.tgz#09c2ec1cbbd7242e9ad57a4c44fd9f393441b3e9"
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"

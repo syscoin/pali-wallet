@@ -9,7 +9,7 @@ const packageDirectory = `node_modules/${name}`;
 const exactVersion =
   /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/;
 const reviewedArchive =
-  /^file:(vendor\/sysweb3-keyring-((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-speedup-[0-9a-f]{7,40}\.tgz)$/;
+  /^file:(vendor\/sysweb3-keyring-((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))-reviewed-[0-9a-f]{7,40}\.tgz)$/;
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));

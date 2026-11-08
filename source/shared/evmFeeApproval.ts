@@ -3,6 +3,10 @@ import {
   bufferedEvmGasLimit,
   parseEvmFeeQuantity,
 } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import {
+  snapshotEvmAccessList,
+  type EvmAccessList,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { getAddress } from 'ethers/address';
 
 import {
@@ -28,11 +32,16 @@ export type EvmFeeEnvelope = Readonly<
     from: string;
     gasLimit: string;
     nonce?: string;
-    to: string;
+    to: string | null;
     value: string;
   } & (
     | { gasPrice: string; type: 0 }
-    | { maxFeePerGas: string; maxPriorityFeePerGas: string; type: 2 }
+    | {
+        accessList: EvmAccessList;
+        maxFeePerGas: string;
+        maxPriorityFeePerGas: string;
+        type: 2;
+      }
   )
 >;
 
@@ -72,7 +81,7 @@ function boundedQuantity(value: bigint): bigint {
   return value;
 }
 
-/** Copy own scalar data before any asynchronous approval or provider work. */
+/** Copy the complete execution envelope before asynchronous approval or provider work. */
 export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
   if (
     !input ||
@@ -92,7 +101,9 @@ export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
     'data',
     'gasLimit',
     'type',
-    ...(type === 0 ? ['gasPrice'] : ['maxFeePerGas', 'maxPriorityFeePerGas']),
+    ...(type === 0
+      ? ['gasPrice']
+      : ['accessList', 'maxFeePerGas', 'maxPriorityFeePerGas']),
     ...(Object.hasOwn(descriptors, 'nonce') ? ['nonce'] : []),
   ];
   if (
@@ -109,15 +120,14 @@ export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
   }
   if (
     typeof data.from !== 'string' ||
-    typeof data.to !== 'string' ||
+    (data.to !== null && typeof data.to !== 'string') ||
     typeof data.data !== 'string' ||
     !/^0x(?:[0-9a-f]{2})*$/.test(data.data)
   )
     return invalid('Invalid EVM fee envelope');
   const from = getAddress(data.from),
-    to = getAddress(data.to);
-  if (/^0x0{40}$/i.test(from) || /^0x0{40}$/i.test(to))
-    return invalid('Invalid EVM fee envelope');
+    to = typeof data.to === 'string' ? getAddress(data.to) : null;
+  if (/^0x0{40}$/i.test(from)) return invalid('Invalid EVM fee envelope');
   const chainId = quantity(data.chainId),
     value = quantity(data.value);
   const gasLimit = assertEvmGasLimit(quantity(data.gasLimit), chainId);
@@ -148,6 +158,7 @@ export function snapshotEvmFeeEnvelope(input: EvmFeeEnvelope): EvmFeeEnvelope {
   return Object.freeze({
     ...common,
     type,
+    accessList: snapshotEvmAccessList(data.accessList),
     maxFeePerGas: cap.toString(),
     maxPriorityFeePerGas: tip.toString(),
   });

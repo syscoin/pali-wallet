@@ -39,7 +39,7 @@ const fixture = (tokenStandard: 'ERC-721' | 'ERC-1155', nonce: string) => {
     from, to: target, chainId: '1', nonce, value: '0',
     data: encodeNftTransferData(intent), gasLimit: '150000',
     ...(is721
-      ? { type: 2 as const, maxFeePerGas: '3', maxPriorityFeePerGas: '1' }
+      ? { type: 2 as const, accessList: [], maxFeePerGas: '3', maxPriorityFeePerGas: '1' }
       : { type: 0 as const, gasPrice: '2' }),
   };
   return { intent, approved };

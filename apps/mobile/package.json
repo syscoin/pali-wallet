@@ -23,7 +23,7 @@
     "@noble/curves": "1.9.7",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
-    "@sidhujag/sysweb3-keyring": "2.1.6",
+    "@sidhujag/sysweb3-keyring": "file:vendor/sysweb3-keyring-2.1.6-reviewed-f6aeb05bffd62045554467c8925b5476cba828d3.tgz",
     "@sidhujag/sysweb3-network": "2.0.0",
     "@walletconnect/core": "2.26.0",
     "@walletconnect/sign-client": "2.26.0",

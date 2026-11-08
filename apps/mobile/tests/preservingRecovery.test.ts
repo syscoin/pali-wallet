@@ -545,7 +545,7 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
   const f = await fixture();
   try {
     const approval = {
-      type: 2 as const, chainId: '1', nonce: '0', from: sourceWallet.address,
+      type: 2 as const, accessList: [], chainId: '1', nonce: '0', from: sourceWallet.address,
       to: importedWallet.address, value: '1', gasLimit: '21000', data: '0x',
       maxFeePerGas: '2', maxPriorityFeePerGas: '1',
     };
@@ -622,7 +622,7 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     let broadcasts = 0;
     await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined,
       ({ admit }) => admit(async () => { broadcasts++; return transaction.hash!; }), undefined, {
-        type: 2, chainId: '1', nonce: '0', from: importedWallet.address, to: sourceWallet.address,
+        type: 2, accessList: [], chainId: '1', nonce: '0', from: importedWallet.address, to: sourceWallet.address,
         value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1',
       }));
     assert.equal(broadcasts, 0, 'historical attribution does not select or authorize a missing account');

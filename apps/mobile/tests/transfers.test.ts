@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
-import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import type { EvmUnsignedTransfer } from '../src/custody/evmFeeContracts.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
@@ -117,7 +117,7 @@ function fixture() {
     },
     assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
-      transaction: PreparedEvmTransaction,
+      transaction: EvmUnsignedTransfer,
       guard: () => void
     ) {
       guard();
@@ -127,8 +127,9 @@ function fixture() {
       const signer = altered === 'signer'
         ? new Wallet(`0x${'22'.repeat(32)}`)
         : wallet;
+      const request = transaction.type === 2 ? { ...transaction, accessList: transaction.accessList.map(entry => ({ address: entry.address, storageKeys: [...entry.storageKeys] })) } : transaction;
       const raw = await signer.signTransaction({
-        ...transaction,
+        ...request,
         ...(altered === 'signer' ? { from: signer.address } : {}),
         nonce: Number(transaction.nonce),
         ...(altered === 'value' ? { value: '999' } : {}),

@@ -336,7 +336,7 @@ test('an endpoint chain change during the wire pending-nonce read prevents a new
   });
   const hash = keccak256(raw);
   const tx = Transaction.from(raw);
-  const envelope = { type: 2 as const, from: tx.from!, to: tx.to!, chainId: '1', nonce: '0', value: '1', data: '0x', gasLimit: '21000', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
+  const envelope = { type: 2 as const, accessList: [], from: tx.from!, to: tx.to!, chainId: '1', nonce: '0', value: '1', data: '0x', gasLimit: '21000', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
   let verified = false;
   const nonceEntered = Promise.withResolvers<void>();
   const nonceResponse = Promise.withResolvers<string>();

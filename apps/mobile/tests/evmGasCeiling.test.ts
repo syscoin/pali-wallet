@@ -16,7 +16,7 @@ const custom = createNativeNetwork({ id: 'custom-gas-test', name: 'Gas test', ki
 const customEthereum = createNativeNetwork({ ...custom, id: 'custom-ethereum-gas', chainId: '1' });
 const input = { from, to, value: '1', data: '0x' };
 const envelope = (network: NativeNetworkRegistration, gas: bigint): EvmUnsignedTransfer => ({
-  ...input, chainId: network.chainId, gasLimit: gas.toString(), nonce: '0', type: 2, maxFeePerGas: '3', maxPriorityFeePerGas: '1',
+  ...input, chainId: network.chainId, gasLimit: gas.toString(), nonce: '0', type: 2, accessList: [], maxFeePerGas: '3', maxPriorityFeePerGas: '1',
 });
 function fixture(network: NativeNetworkRegistration, estimate: bigint, blockGas = 30000000n) {
   const calls: string[] = [];

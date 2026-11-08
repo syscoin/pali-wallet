@@ -533,7 +533,7 @@ export class NativeTransferRpc {
         const envelope = tx.type === 0 && tx.gasPrice !== null
           ? { ...fields, type: 0 as const, gasPrice: tx.gasPrice.toString() }
           : tx.type === 2 && tx.maxFeePerGas !== null && tx.maxPriorityFeePerGas !== null
-            ? { ...fields, type: 2 as const, maxFeePerGas: tx.maxFeePerGas.toString(), maxPriorityFeePerGas: tx.maxPriorityFeePerGas.toString() }
+            ? { ...fields, type: 2 as const, accessList: [], maxFeePerGas: tx.maxFeePerGas.toString(), maxPriorityFeePerGas: tx.maxPriorityFeePerGas.toString() }
             : invalid();
         nft = { intent: owned, envelope };
       }

@@ -1,6 +1,6 @@
-import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmCancellationEnvelope, type EvmCancellationEnvelopeIntent } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-cancellation.js';
+import { serializePreparedEvmTransaction, type PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { assertBaseUnits } from '../core/amounts.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 import { captureEvmFeeApproval, snapshotEvmFeeEnvelope, assertEvmFeeRefreshApproved, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
@@ -26,8 +26,7 @@ export function matchesSendNonce(observed: bigint, nonce: bigint, manual: boolea
   return manual ? nonce >= observed : nonce === observed;
 }
 
-type EvmTransferFields = Readonly<{ from: string; to: string; chainId: string; nonce: string; value: string; gasLimit: string; data: string }>;
-export type EvmUnsignedTransfer = EvmTransferFields & Readonly<{ type: 0; gasPrice: string } | { type: 2; maxFeePerGas: string; maxPriorityFeePerGas: string }>;
+export type EvmUnsignedTransfer = PreparedEvmTransaction & Readonly<{ to: string }>;
 export type EvmSampledBlock = Readonly<{ number: string; hash: string }>;
 export type EvmFeeQuote = Readonly<{ registrationHash: string; from: string; unsignedEnvelopeHash: string; sampledBlock: EvmSampledBlock;
   envelopeFeeCapUnits: string; estimatedEnvelopeFeeUnits: string; estimatedFeeUnits: string; fundingEstimateUnits: string;
@@ -65,7 +64,8 @@ export function checkedReadHash(value: unknown): string {
 function snapshotEvmEnvelope(value: EvmUnsignedTransfer, network: NativeNetworkRegistration, maxDataLength = 138): EvmUnsignedTransfer {
   try {
     const transaction = snapshotEvmFeeEnvelope(value);
-    if (transaction.chainId !== network.chainId || transaction.nonce === undefined ||
+    if (transaction.chainId !== network.chainId || transaction.nonce === undefined || transaction.to === null ||
+        /^0x0{40}$/i.test(transaction.to) || transaction.type === 2 && transaction.accessList.length !== 0 ||
         transaction.data.length > maxDataLength || BigInt(transaction.gasLimit) > BigInt(Number.MAX_SAFE_INTEGER))
       return rejectRead('INVALID_INPUT');
     return transaction as EvmUnsignedTransfer;
@@ -94,11 +94,8 @@ export function snapshotCancellationTransfer(value: EvmUnsignedTransfer, network
   return transaction;
 }
 export function unsignedTransferBytes(transaction: EvmUnsignedTransfer): string {
-  const tx = Transaction.from({ type: transaction.type, to: transaction.to, chainId: BigInt(transaction.chainId),
-    nonce: Number(transaction.nonce), value: BigInt(transaction.value), gasLimit: BigInt(transaction.gasLimit), data: transaction.data,
-    ...(transaction.type === 0 ? { gasPrice: BigInt(transaction.gasPrice) } : { maxFeePerGas: BigInt(transaction.maxFeePerGas), maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas) }) });
-  const raw = tx.unsignedSerialized;
-  if (tx.isSigned() || raw.length > 4096) return rejectRead('INVALID_INPUT');
+  const raw = serializePreparedEvmTransaction(transaction);
+  if (raw.length > 4096) return rejectRead('INVALID_INPUT');
   return raw;
 }
 const issuedQuotes = new WeakMap<object, EvmFeeApproval>();

@@ -281,7 +281,7 @@ export class EvmTransferReadRpc {
         from, to: from, chainId: this.network.chainId, nonce: String(nonce),
         value: '0', data: '0x', gasLimit: feePlan.gasLimit.toString(),
         ...(feePlan.type === 0 ? { type: 0, gasPrice: feePlan.gasPrice.toString() } : {
-          type: 2, maxFeePerGas: feePlan.maxFeePerGas.toString(), maxPriorityFeePerGas: feePlan.maxPriorityFeePerGas.toString(),
+          type: 2, accessList: [], maxFeePerGas: feePlan.maxFeePerGas.toString(), maxPriorityFeePerGas: feePlan.maxPriorityFeePerGas.toString(),
         }),
       }, this.network, from, feePlan);
       await this.canonical(read, sampled);
@@ -322,7 +322,7 @@ export class EvmTransferReadRpc {
         from, to, chainId: this.network.chainId, nonce: String(nonce),
         value: value.toString(), data, gasLimit: plan.gasLimit.toString(),
         ...(plan.type === 0 ? { type: 0, gasPrice: plan.gasPrice.toString() } : {
-          type: 2, maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
+          type: 2, accessList: [], maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
         }),
       }, this.network);
       const balance = quantity(rawBalance);
@@ -580,9 +580,9 @@ export class EvmTransferReadRpc {
       return rejectRead('NONCE_UNAVAILABLE');
     const selectedFees = approved
       ? approved.type === 0 ? { type: 0 as const, gasPrice: approved.gasPrice }
-        : { type: 2 as const, maxFeePerGas: approved.maxFeePerGas, maxPriorityFeePerGas: approved.maxPriorityFeePerGas }
+        : { type: 2 as const, accessList: [], maxFeePerGas: approved.maxFeePerGas, maxPriorityFeePerGas: approved.maxPriorityFeePerGas }
       : fees.baseFeePerGas === undefined ? { type: 0 as const, gasPrice: fees.gasPrice.toString() }
-        : { type: 2 as const, maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() };
+        : { type: 2 as const, accessList: [], maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() };
     if (approved && (approved.nonce !== nonce.toString() || approved.from !== request.from || approved.to !== request.to || approved.value !== request.value || approved.data !== request.data)) return rejectRead('REVIEW_REQUIRED');
     if (selectedFees.type === 2 && (sampled.baseFee === null || BigInt(selectedFees.maxFeePerGas) < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
     const estimate = quantity(await read('eth_estimateGas', [evmEstimateRequest({

@@ -255,7 +255,7 @@ export async function qualifyNativeNevmTransfer(
     guard();
     const signed = await transfer.sign(
       {
-        type: 2,
+        type: 2, accessList: [],
         from: address,
         to: recipient,
         chainId: getNativeNetwork(network).chainId,

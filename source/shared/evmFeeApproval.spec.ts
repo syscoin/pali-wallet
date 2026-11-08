@@ -1,3 +1,4 @@
+import { evmEstimateRequest } from './evmEstimateRequest';
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeEstimateApproved,
@@ -10,6 +11,7 @@ import {
 
 const envelope: EvmFeeEnvelope = {
   type: 2,
+  accessList: [],
   from: `0x${'11'.repeat(20)}`,
   to: `0x${'22'.repeat(20)}`,
   chainId: '743211',
@@ -20,8 +22,11 @@ const envelope: EvmFeeEnvelope = {
   maxFeePerGas: '9007199254740999',
   maxPriorityFeePerGas: '0',
 };
-const capture = (value = envelope, scope = 'fixture', expires = 1000) =>
-  captureEvmFeeApproval(value, scope, expires);
+const capture = (
+  value: EvmFeeEnvelope = envelope,
+  scope = 'fixture',
+  expires = 1000
+) => captureEvmFeeApproval(value, scope, expires);
 const observation = {
   balance: BigInt(1) << BigInt(255),
   estimatedGas: BigInt(21000),
@@ -54,6 +59,69 @@ it('rejects accessor fields and an unissued copied approval', () => {
   expect(() => snapshotEvmFeeEnvelope(withAccessor)).toThrow();
   expect(getter).not.toHaveBeenCalled();
   expect(() => assertEvmFeeApprovalCurrent({ ...capture() }, 10)).toThrow();
+});
+
+it('binds creation and ordered access lists without retaining caller-owned arrays', () => {
+  const keys = [`0x${'ab'.repeat(32)}`];
+  const accessList = [
+    { address: envelope.from, storageKeys: keys },
+    { address: envelope.from, storageKeys: [...keys] },
+  ];
+  const approved = capture({ ...envelope, to: null, accessList });
+  const transaction = approved.transaction;
+  expect(transaction.to).toBeNull();
+  if (transaction.type !== 2) throw new Error('Expected a type-2 envelope');
+  expect(transaction.accessList).toEqual(accessList);
+  expect(Object.isFrozen(transaction.accessList)).toBe(true);
+  expect(Object.isFrozen(transaction.accessList[0])).toBe(true);
+  expect(Object.isFrozen(transaction.accessList[0].storageKeys)).toBe(true);
+  keys[0] = `0x${'cd'.repeat(32)}`;
+  expect(transaction.accessList[0].storageKeys[0]).toBe(`0x${'ab'.repeat(32)}`);
+  expect(() =>
+    assertEvmFeeRefreshApproved(
+      approved,
+      capture({ ...envelope, to: null, accessList }),
+      10
+    )
+  ).toThrow('changed');
+});
+
+it('accepts a zero-address destination but rejects a zero-address sender', () => {
+  const zero = `0x${'0'.repeat(40)}`;
+  expect(capture({ ...envelope, to: zero }).transaction.to).toBe(zero);
+  expect(() => capture({ ...envelope, from: zero })).toThrow();
+});
+
+it('requires an explicit type-2 access list and forbids it on type 0', () => {
+  const { accessList, ...missingList } = envelope;
+  expect(accessList).toEqual([]);
+  expect(() => snapshotEvmFeeEnvelope(missingList as EvmFeeEnvelope)).toThrow();
+  const { maxFeePerGas, maxPriorityFeePerGas, ...common } = missingList;
+  expect(maxFeePerGas).toBeDefined();
+  expect(maxPriorityFeePerGas).toBeDefined();
+  const legacy: EvmFeeEnvelope = { ...common, type: 0, gasPrice: '1' };
+  expect(capture(legacy).transaction.to).toBe(envelope.to);
+  expect(() =>
+    snapshotEvmFeeEnvelope({ ...legacy, accessList: [] } as EvmFeeEnvelope)
+  ).toThrow();
+});
+
+it('estimates the approved contract-creation payload and access list', () => {
+  const accessList = [
+    { address: envelope.from, storageKeys: [`0x${'ab'.repeat(32)}`] },
+  ];
+  const transaction = snapshotEvmFeeEnvelope({
+    ...envelope,
+    to: null,
+    accessList,
+  });
+  const estimate = evmEstimateRequest({ ...transaction, nonce: '0' });
+  expect(Object.hasOwn(estimate, 'to')).toBe(false);
+  expect(estimate.data).toBe(transaction.data);
+  expect(estimate).toMatchObject({ type: '0x2', accessList });
+  if (!('accessList' in estimate))
+    throw new Error('Expected a type-2 estimate');
+  expect(estimate.accessList).not.toBe(accessList);
 });
 
 it('preserves the reviewed envelope and scope through refresh', () => {

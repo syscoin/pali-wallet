@@ -5,7 +5,7 @@ import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
-import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import type { EvmUnsignedTransfer } from '../../src/custody/evmFeeContracts';
 import type { CustodySnapshot } from '../../src/custody/types';
 import {
   NativeTransfers,
@@ -179,7 +179,7 @@ const runtime: NativeTransferRuntime = {
     guard();
     unlockChecks++;
   },
-  async sign(transaction: PreparedEvmTransaction, guard, intent) {
+  async sign(transaction: EvmUnsignedTransfer, guard, intent) {
     guard();
     assertTransferIntentEnvelope(transaction, intent);
     const rawTransaction = await wallet.signTransaction({
@@ -194,6 +194,7 @@ const runtime: NativeTransferRuntime = {
         ? {
             maxFeePerGas: BigInt(transaction.maxFeePerGas),
             maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas),
+            accessList: transaction.accessList.map(entry => ({ address: entry.address, storageKeys: [...entry.storageKeys] })),
           }
         : { gasPrice: BigInt(transaction.gasPrice) }),
     });
