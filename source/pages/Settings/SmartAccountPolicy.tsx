@@ -2553,6 +2553,14 @@ const SmartAccountPolicy = () => {
               guardian,
               signature: encodeSmartAccountAuthenticatorSignature(
                 await signSmartAccountActionHash({
+                  assertBeforeAuthentication: async () => {
+                    await assertApprovalSession(policyApproval);
+                    await controllerEmitter(
+                      ['wallet', 'assertSmartAccountPreparedNonce'],
+                      [preparedRecovery.executionContextId]
+                    );
+                    await assertApprovalSession(policyApproval);
+                  },
                   accountId: getLocalSmartAccountIdByAddress(guardian),
                   executionContextId: preparedRecovery.executionContextId,
                   actionHash: getPaliErc7739PersonalSignHash({

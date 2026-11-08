@@ -722,7 +722,9 @@ export interface SmartAccountAuthenticatorDriver<
   ) => SmartAccountExternalSignatureRequest;
   id: T['id'];
   signActionHash: (
-    context: SmartAccountAuthenticatorContext<T>
+    context: SmartAccountAuthenticatorContext<T> & {
+      assertBeforeAuthentication(): Promise<void>;
+    }
   ) => Promise<SmartAccountAuthenticatorSignature>;
 }
 
@@ -950,6 +952,7 @@ const compositeDriver: SmartAccountAuthenticatorDriver<
       )!;
       if (child.id === 'custom') continue;
       const driver = getAuthenticatorDriver(child);
+      await context.assertBeforeAuthentication();
       context.onAuthenticatorSigningStarted?.(child.id);
       try {
         const signature = await driver.signActionHash({
@@ -1055,18 +1058,22 @@ export const signSmartAccountActionHash = async (params: {
   accountId?: number;
   actionHash: string;
   allowReservedSLHDSASignature?: boolean;
+  assertBeforeAuthentication(): Promise<void>;
   authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
   executionContextId?: string;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
   smartAccount: ISmartAccountMetadata;
 }): Promise<SmartAccountAuthenticatorSignature> => {
+  params = Object.freeze({ ...params });
   const validator = getCurrentValidatorModule(params.smartAccount);
   const driver = getAuthenticatorDriver(validator);
 
+  await params.assertBeforeAuthentication();
   params.onAuthenticatorSigningStarted?.(validator.id);
   const signature = await driver
     .signActionHash({
+      assertBeforeAuthentication: params.assertBeforeAuthentication,
       accountId: params.accountId,
       actionHash: params.actionHash,
       authenticatorContexts: params.authenticatorContexts,
@@ -1193,6 +1200,12 @@ export const signAndSubmitSmartAccountExecutions = async (
     await assertContext();
 
     const signature = await signSmartAccountActionHash({
+      assertBeforeAuthentication: async () => {
+        await controllerEmitter(
+          ['wallet', 'assertSmartAccountPreparedNonce'],
+          [prepared.executionContextId, prepared.actionHash]
+        );
+      },
       accountId: prepared.accountId,
       actionHash: prepared.actionHash,
       executionContextId: prepared.executionContextId,

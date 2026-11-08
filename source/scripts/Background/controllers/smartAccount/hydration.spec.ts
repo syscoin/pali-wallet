@@ -39,6 +39,8 @@ import {
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
 } from 'utils/smartAccount';
+import { paliEntryPointInterface } from 'utils/smartAccount/contracts';
+import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
 
 import SmartAccountController from './index';
 
@@ -176,6 +178,10 @@ describe('SmartAccountController smart account execution fees', () => {
     });
     const transaction = { web3Provider: { estimateGas } };
     const controller: any = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       sendAndSaveEthTransaction,
     } as any);
@@ -218,12 +224,35 @@ describe('SmartAccountController smart account execution fees', () => {
     gasPrice?: string
   ) => {
     const executionContextId = 'reviewed-deployment';
+    const provider = controller.ethereumTransaction.web3Provider;
+    provider.verifyConfiguredChainId ??= jest.fn(async () => undefined);
+    provider.send ??= jest.fn(async (method: string, params: any[]) => {
+      if (method === 'eth_call')
+        return paliEntryPointInterface.encodeFunctionResult('getNonce', [
+          userOperation.nonce,
+        ]);
+      if (method === 'eth_getBalance') return '0x0';
+      if (method === 'eth_getCode') return '0x01';
+      if (method === 'eth_estimateGas')
+        return (
+          '0x' + BigInt(await provider.estimateGas(params[0])).toString(16)
+        );
+      throw new Error('Unexpected RPC ' + method);
+    });
+    const pending = createSmartAccountPendingState(
+      provider,
+      { profileId: '0x' + '11'.repeat(32), read: async () => [] },
+      CHAIN_ID,
+      ACCOUNT_ADDRESS,
+      () => undefined
+    );
     controller.executionContexts.set(executionContextId, {
       accountId: 9,
       expiresAt: Date.now() + 60_000,
       snapshot: controller.infrastructureContext(),
       gasPrice,
       userOperation: { ...userOperation },
+      pending,
     });
     return { accountId: 9, executionContextId, userOperation };
   };
@@ -624,7 +653,8 @@ describe('SmartAccountController smart account execution fees', () => {
       userOperation,
     });
     expect(controller.assertZkSysGasTankCoversTransaction).toHaveBeenCalledWith(
-      expect.objectContaining({ gasPrice: '13', maxFeePerGas: '13' })
+      expect.objectContaining({ gasPrice: '13', maxFeePerGas: '13' }),
+      expect.anything()
     );
     expect(estimateGas).not.toHaveBeenCalled();
     expect(sendAndSaveEthTransaction.mock.calls[0][0]).toMatchObject({

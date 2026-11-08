@@ -43,6 +43,14 @@ export function createNativeSmartAccountProvider(
     return output;
   };
   return {
+    send(method: string, params: readonly unknown[]) {
+      if (
+        method === 'eth_getTransactionReceipt' ||
+        method === 'eth_getTransactionCount'
+      )
+        return rpc.retirementRead(method, params, signal, assertCurrent);
+      return read(method as ReadMethod, params);
+    },
     async getNetwork() {
       assertCurrent();
       return { chainId: BigInt(network.chainId) };

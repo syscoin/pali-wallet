@@ -92,6 +92,10 @@ describe('guardian recovery originating wallet context', () => {
       return { hash: HASH, wait: async () => undefined };
     });
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => generation,
       signSmartAccountActionDigestInternal: sign,

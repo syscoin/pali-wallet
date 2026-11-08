@@ -106,6 +106,7 @@ describe('smart-account signing and outer broadcast context', () => {
     wallet.getActiveKeyring = jest.fn(() => keyring);
     wallet.sendAndSaveTransaction = jest.fn().mockResolvedValue(undefined);
     wallet.smartAccount = {
+      assertSmartAccountPreparedNonce: jest.fn(async () => undefined),
       assertSmartAccountExecutionContext: jest.fn((id, digest) => {
         if (id !== EXECUTION_CONTEXT_ID || digest !== ACTION_HASH)
           throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
@@ -114,6 +115,20 @@ describe('smart-account signing and outer broadcast context', () => {
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  it('rejects a stale prepared nonce before starting the SLH signing path', async () => {
+    wallet.configureSLHDSASessionStateCrypto = jest.fn();
+    wallet.smartAccount.assertSmartAccountPreparedNonce.mockRejectedValueOnce(
+      new Error('nonce changed')
+    );
+    await expect(
+      wallet.signSLHDSAActionHash({
+        actionHash: ACTION_HASH,
+        executionContextId: EXECUTION_CONTEXT_ID,
+      })
+    ).rejects.toThrow('nonce changed');
+    expect(wallet.configureSLHDSASessionStateCrypto).not.toHaveBeenCalled();
+  });
 
   it('checks the bound action digest before signing and before exposing the result', async () => {
     await expect(
@@ -161,14 +176,20 @@ describe('smart-account signing and outer broadcast context', () => {
 
   it('suppresses a completed signature when the wallet context changed while signing', async () => {
     let finishSigning!: (value: string) => void;
-    sign.mockImplementation(
-      () => new Promise((resolve) => (finishSigning = resolve))
-    );
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    sign.mockImplementation(() => {
+      entered();
+      return new Promise((resolve) => (finishSigning = resolve));
+    });
     const signing = wallet.signSmartAccountActionDigestInternal(
       [OWNER_ADDRESS, ACTION_HASH],
       owner,
       EXECUTION_CONTEXT_ID
     );
+    await started;
     wallet.smartAccount.assertSmartAccountExecutionContext.mockImplementation(
       () => {
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
@@ -280,7 +301,10 @@ describe('smart-account signing and outer broadcast context', () => {
         false,
         owner,
         metadata,
-        { assertCurrentContext: contextGuard }
+        {
+          assertCurrentContext: contextGuard,
+          assertPendingState: async () => undefined,
+        }
       );
       if (change === 'rpc') currentState.vault.activeNetwork.url = 'rpc-b';
       if (change === 'account')
@@ -312,7 +336,10 @@ describe('smart-account signing and outer broadcast context', () => {
         false,
         owner,
         metadata,
-        { assertCurrentContext: contextGuard }
+        {
+          assertCurrentContext: contextGuard,
+          assertPendingState: async () => undefined,
+        }
       )
     ).rejects.toMatchObject({
       message: EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -329,7 +356,10 @@ describe('smart-account signing and outer broadcast context', () => {
         false,
         owner,
         metadata,
-        { assertCurrentContext: contextGuard }
+        {
+          assertCurrentContext: contextGuard,
+          assertPendingState: async () => undefined,
+        }
       )
     ).resolves.toMatchObject(response);
     expect(send).toHaveBeenCalledTimes(1);
@@ -383,6 +413,10 @@ describe('smart-account signing and outer broadcast context', () => {
 
       const getEthereumTransaction = jest.fn();
       const smartController = new SmartAccountController({
+        captureSmartAccountPendingRecords: async () => ({
+          profileId: '0x' + '11'.repeat(32),
+          read: async () => [],
+        }),
         getEthereumTransaction,
         getWalletSessionGeneration: () => wallet.getWalletSessionGeneration(),
       } as any);

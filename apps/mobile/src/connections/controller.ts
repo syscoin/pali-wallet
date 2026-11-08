@@ -8,7 +8,10 @@ import {
 } from '../../../../source/shared/dappMessageRequest.ts';
 import { assertDappTypedDataValid } from '../../../../source/shared/dappTypedDataValidation.ts';
 import { getPersonalSignReview } from '../../../../source/utils/personalSignReview.ts';
-import { reviewDappMessageAdvisories, reviewDappAddressAdvisories } from '../../../../source/shared/dappMessageAdvisories.ts';
+import {
+  reviewDappMessageAdvisories,
+  reviewDappAddressAdvisories,
+} from '../../../../source/shared/dappMessageAdvisories.ts';
 import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
 import { getEffectiveApprovalData } from '../../../../source/shared/approval.ts';
@@ -66,9 +69,18 @@ type TransactionRequest = Readonly<{
   transaction: ReturnType<typeof normalizeDappTransaction>;
 }>;
 type PrivateSigningReview =
-  | Omit<NativeMessageReview, 'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'>
-  | Omit<NativeTransactionReview, 'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'>
-  | Omit<NativeSmartTransactionReview, 'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'>;
+  | Omit<
+      NativeMessageReview,
+      'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
+    >
+  | Omit<
+      NativeTransactionReview,
+      'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
+    >
+  | Omit<
+      NativeSmartTransactionReview,
+      'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
+    >;
 type PendingSigning = {
   id: string;
   wire: WalletConnectRequest;
@@ -96,7 +108,11 @@ type PendingSigning = {
 const MESSAGE_REVIEW_LIFETIME_MS = 5 * 60_000;
 type Options = {
   source: Source;
-  activateAccount(accountId: string, expectedRevision: number, assertCurrent: () => void): Promise<void>;
+  activateAccount(
+    accountId: string,
+    expectedRevision: number,
+    assertCurrent: () => void
+  ): Promise<void>;
   openHost(): Promise<NativeConnectionHost>;
   preparePlatform(): Promise<void>;
   checkSite(origin: string): Promise<Readonly<{ isBlacklisted: boolean }>>;
@@ -1107,6 +1123,7 @@ export class NativeConnectionsController {
     message.approval?.dispose();
     clearTimeout(message.timer);
     this.publish();
+    void this.prepareForegroundRequest();
     if (
       !respond ||
       message.dispatched ||
@@ -1324,7 +1341,11 @@ export class NativeConnectionsController {
           error: 'BLOCKED_SITE',
         });
       if (request.method === 'eth_sendTransaction') {
-        if (context.activeAccountId === account.id && !message.review.error)
+        if (
+          this.requests.values().next().value === message &&
+          context.activeAccountId === account.id &&
+          !message.review.error
+        )
           await this.prepareTransactionReview(message);
         message.busy = false;
         this.publish();
@@ -1384,6 +1405,37 @@ export class NativeConnectionsController {
         return;
       }
       await this.retireRequest(message);
+    }
+  }
+  private async prepareForegroundRequest(): Promise<void> {
+    const message = this.requests.values().next().value;
+    if (
+      !message ||
+      message.busy ||
+      message.prepared ||
+      message.smart ||
+      message.review.error ||
+      message.request.method !== 'eth_sendTransaction' ||
+      this.disposed ||
+      this.options.source.getSnapshot().phase !== 'ready' ||
+      this.host?.context().activeAccountId !== message.accountId
+    )
+      return;
+    message.busy = true;
+    this.publish();
+    try {
+      await this.prepareTransactionReview(message);
+      message.busy = false;
+      this.publish();
+    } catch {
+      if (this.requests.get(message.id) === message) {
+        message.busy = false;
+        message.review = Object.freeze({
+          ...message.review,
+          error: 'TRANSACTION_UNAVAILABLE',
+        });
+        this.publish();
+      }
     }
   }
   private async prepareTransactionReview(message: PendingSigning) {
@@ -1630,6 +1682,11 @@ export class NativeConnectionsController {
           await message.smart.authorize(message.smart.getSnapshot().revision);
           approval.assertCurrent();
           const snapshot = message.smart.getSnapshot();
+          if (snapshot.phase === 'authorize') {
+            message.busy = false;
+            this.publish();
+            return;
+          }
           if (snapshot.phase !== 'complete' || !snapshot.transactionHash)
             throw new Error('Smart operation ended');
           result = snapshot.transactionHash;

@@ -1028,6 +1028,24 @@ class MainController {
     this.cancellablePromises = new CancellablePromises();
     this.smartAccount = new SmartAccountController({
       getEthereumTransaction: () => this.ethereumTransaction,
+      captureSmartAccountPendingRecords: async (
+        chainId,
+        address,
+        assertCurrent
+      ) => {
+        assertCurrent();
+        const keyring = this.getActiveKeyring();
+        const generation = this.walletSessionGeneration;
+        const guard = () => {
+          this.assertCurrentWalletSession(generation, keyring);
+          assertCurrent();
+        };
+        return this.getRetainedEvmRecords().captureSmartAccountPendingRecords(
+          { keyring, assertCurrent: guard },
+          String(chainId),
+          address
+        );
+      },
       getWalletSessionGeneration: () => this.walletSessionGeneration,
       getWalletStateGeneration: () => this.walletStateGeneration,
       getLatestUpdateForCurrentAccount: (
@@ -8697,6 +8715,7 @@ class MainController {
     saveOptions?: {
       assertBeforeSign?: () => void;
       assertCurrentContext?: () => void;
+      assertPendingState?: () => Promise<void>;
       authorizeDapp?: () => void;
       clearNavigation?: boolean;
       dappNonceApproval?: ExtensionReviewedNonce;
@@ -8982,6 +9001,12 @@ class MainController {
         type: target.type,
         expectedAddress: targetAccountExists.address,
       };
+      if (transactionMetadata?.smartAccountExecution === true) {
+        if (typeof saveOptions?.assertPendingState !== 'function')
+          throw new Error('Smart account pending-state approval is required');
+        await saveOptions.assertPendingState();
+        assertAuthority();
+      }
       const keyring = this.getActiveKeyring();
       // No asynchronous work may intervene between this check and the
       // keyring's synchronous capture of the account and network.
@@ -9114,6 +9139,11 @@ class MainController {
         assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertContext();
+    if (executionContextId)
+      await this.smartAccount.assertSmartAccountPreparedNonce(
+        executionContextId
+      );
+    assertContext();
     const { accounts, activeAccount } = store.getState().vault;
     const targetAccountExists =
       accounts[targetAccount.type]?.[targetAccount.id];
@@ -9156,6 +9186,22 @@ class MainController {
     actionHash?: string
   ): void {
     this.assertWalletReadyForSigning();
+    this.smartAccount.assertSmartAccountExecutionContext(
+      executionContextId,
+      actionHash
+    );
+  }
+
+  public async assertSmartAccountPreparedNonce(
+    executionContextId: string,
+    actionHash?: string
+  ): Promise<void> {
+    this.assertWalletReadyForSigning();
+    this.smartAccount.assertSmartAccountExecutionContext(
+      executionContextId,
+      actionHash
+    );
+    await this.smartAccount.assertSmartAccountPreparedNonce(executionContextId);
     this.smartAccount.assertSmartAccountExecutionContext(
       executionContextId,
       actionHash
@@ -9402,6 +9448,12 @@ class MainController {
       approval?.assertCurrent();
     };
     assertContext();
+    if (params.executionContextId)
+      await this.assertSmartAccountPreparedNonce(
+        params.executionContextId,
+        params.actionHash
+      );
+    assertContext();
     this.configureSLHDSASessionStateCrypto();
     const sessionGeneration = getSLHDSASessionGeneration();
     try {
@@ -9418,6 +9470,11 @@ class MainController {
         throw error;
       }
       await this.hydrateActiveSLHDSAStateForSigning(params, sessionGeneration);
+      if (params.executionContextId)
+        await this.assertSmartAccountPreparedNonce(
+          params.executionContextId,
+          params.actionHash
+        );
       assertContext();
       try {
         const signature = await signSLHDSAActionHashLocal(

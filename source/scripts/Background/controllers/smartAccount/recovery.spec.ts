@@ -80,6 +80,10 @@ describe('guardian recovery policy freshness', () => {
     send = jest.fn().mockResolvedValue({ wait: jest.fn() });
     const transaction = { web3Provider: {} };
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       sendAndSaveEthTransaction: send,
       signSmartAccountActionDigestInternal: sign,
@@ -212,6 +216,10 @@ describe('guardian recovery installed policy discovery', () => {
   beforeEach(() => {
     aggregate.mockReset();
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => ({ web3Provider: {} }),
     } as any);
   });

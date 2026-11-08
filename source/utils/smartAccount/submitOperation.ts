@@ -27,6 +27,7 @@ import {
   hasSmartAccountSignatureFailure,
 } from './operationErrors.ts';
 import { createSmartAccountGasTankFunding } from './payerPolicy.ts';
+import type { SmartAccountPendingState } from './pendingState.ts';
 import {
   getExplicitSmartAccountGasPrice,
   type SmartAccountGasPayer,
@@ -105,6 +106,7 @@ export type SmartAccountSubmitHost<
     options?: { requirePreferred?: boolean }
   ): Promise<SmartAccountGasPayer>;
   invalidateMetadata(address: string): void;
+  pending: SmartAccountPendingState;
   provider: any;
   sendTransaction(
     params: any,
@@ -115,8 +117,56 @@ export type SmartAccountSubmitHost<
   ): Promise<TResponse>;
 };
 
+function snapshotSubmitParams(
+  params: SmartAccountSubmitParams
+): SmartAccountSubmitParams {
+  return Object.freeze({
+    ...params,
+    userOperation: Object.freeze({ ...params.userOperation }),
+    ...(params.gasPayer
+      ? { gasPayer: Object.freeze({ ...params.gasPayer }) }
+      : {}),
+    ...(params.executions
+      ? {
+          executions: params.executions.map((execution) =>
+            Object.freeze({ ...execution })
+          ),
+        }
+      : {}),
+    ...(params.expectedContext
+      ? {
+          expectedContext: {
+            ...params.expectedContext,
+            account: { ...params.expectedContext.account },
+          },
+        }
+      : {}),
+  });
+}
+
 /** Shared financial submission order and acknowledged/unknown outcome handling. */
 export async function submitSmartAccountOperation<
+  TResponse extends { hash: string; wait(): Promise<unknown> }
+>(
+  params: SmartAccountSubmitParams,
+  host: SmartAccountSubmitHost<TResponse>,
+  assertApprovalCurrent: () => void
+) {
+  try {
+    assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+  } catch (error) {
+    throw Object.assign(
+      new Error(error instanceof Error ? error.message : 'Invalid approval'),
+      { transactionNotBroadcast: true }
+    );
+  }
+  params = snapshotSubmitParams(params);
+  return host.pending.submit(params.userOperation, () =>
+    submitOwnedSmartAccountOperation(params, host, assertApprovalCurrent)
+  );
+}
+
+async function submitOwnedSmartAccountOperation<
   TResponse extends { hash: string; wait(): Promise<unknown> }
 >(
   params: SmartAccountSubmitParams,
@@ -131,28 +181,6 @@ export async function submitSmartAccountOperation<
   let acknowledgedHandleOpsHash: string | undefined;
   try {
     assertSynchronousEvmFeeGuard(assertApprovalCurrent);
-    params = Object.freeze({
-      ...params,
-      userOperation: Object.freeze({ ...params.userOperation }),
-      ...(params.gasPayer
-        ? { gasPayer: Object.freeze({ ...params.gasPayer }) }
-        : {}),
-      ...(params.executions
-        ? {
-            executions: params.executions.map((execution) =>
-              Object.freeze({ ...execution })
-            ),
-          }
-        : {}),
-      ...(params.expectedContext
-        ? {
-            expectedContext: {
-              ...params.expectedContext,
-              account: { ...params.expectedContext.account },
-            },
-          }
-        : {}),
-    });
     const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
     const assertContext = () => {
       if (params.expectedContext) {
@@ -306,6 +334,7 @@ export async function submitSmartAccountOperation<
       );
       assertCurrent();
     }
+    await host.pending.assertNonce(params.userOperation);
     assertCurrent();
     financialSubmissionAttempted = true;
     handleOpsStarted = true;
@@ -366,6 +395,8 @@ export async function submitSmartAccountOperation<
           : NATIVE_EVM_FEE_FUNDING,
         assertBeforeSign: assertCurrent,
         assertCurrentContext: assertContext,
+        assertPendingState: () =>
+          host.pending.assertNonce(params.userOperation),
         clearNavigation: true,
         async onBroadcast(broadcast: { hash: string }) {
           acknowledgedHandleOpsHash = broadcast.hash;

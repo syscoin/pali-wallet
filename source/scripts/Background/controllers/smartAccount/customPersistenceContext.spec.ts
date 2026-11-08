@@ -60,6 +60,10 @@ describe.each(['add', 'remove'])(
       };
       (store.getState as jest.Mock).mockImplementation(() => state);
       controller = new SmartAccountController({
+        captureSmartAccountPendingRecords: async () => ({
+          profileId: '0x' + '11'.repeat(32),
+          read: async () => [],
+        }),
         getWalletSessionGeneration: () => generation,
       } as any);
       controller.getSmartAccountById = jest.fn(() => ({

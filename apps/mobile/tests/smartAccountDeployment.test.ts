@@ -270,3 +270,31 @@ test('native MAX cannot authorize a self-consistent ERC20 operation returned by 
     assert.equal(signed, 0);
   } finally { model.dispose(); }
 });
+
+
+for (const cancel of [false, true]) test(`pending Smart preparation remains cancellable (${cancel ? 'cancel' : 'resume'})`, async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  let waiting = true, preparations = 0, signatures = 0;
+  const model = new NativeSmartAccountOperation({
+    account: address, intent: { kind: 'deploy' }, network: getNativeNetwork('ethereum'), assertCurrent() {},
+    async prepare() {
+      preparations++;
+      if (waiting) throw new Error('SMART_ACCOUNT_PENDING_STATE');
+      return { kind: 'authorization', intent: { kind: 'deploy' }, operation: prepared };
+    },
+    async sign() { signatures++; return '0x1234'; },
+    async submit() { return hash; },
+  });
+  try {
+    const opening = model.prepare(); await flush();
+    assert.equal(model.getSnapshot().phase, 'preparing');
+    assert.match(model.getSnapshot().error!, /earlier pending operation/);
+    assert.equal(preparations, 1); assert.equal(signatures, 0);
+    if (cancel) model.dispose();
+    else { waiting = false; context.mock.timers.tick(2000); }
+    await opening;
+    assert.equal(signatures, 0);
+    assert.equal(preparations, cancel ? 1 : 2);
+    if (!cancel) assert.equal(model.getSnapshot().phase, 'authorize');
+  } finally { model.dispose(); }
+});

@@ -67,6 +67,10 @@ beforeEach(() => {
   // Real existing assertion: no mocked context verdict.
   // Only the lower metadata I/O is stubbed; no provider calls are made.
   wallet.smartAccount = new SmartAccountController({
+    captureSmartAccountPendingRecords: async () => ({
+      profileId: '0x' + '11'.repeat(32),
+      read: async () => [],
+    }),
     getEthereumTransaction: () => wallet.ethereumTransaction,
     getWalletSessionGeneration: () => wallet.getWalletSessionGeneration(),
   } as any);
