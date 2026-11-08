@@ -4,6 +4,7 @@ import { Form, Input, Radio, RadioChangeEvent } from 'antd';
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { parseApprovalAmount } from '../../shared/approval';
 import {
   CenterPanel,
   DialogActionButton,
@@ -17,8 +18,6 @@ import {
   ICustomApprovedAllowanceAmount,
   IIsEditedAllowanceModalProps,
 } from 'types/transactions';
-
-import { parseApprovalAmount } from './approval';
 
 export const EditApprovedAllowanceValueModal = (
   props: IIsEditedAllowanceModalProps

@@ -112,9 +112,12 @@ export interface ITransactionParams {
   value?: string | number; // Should be string for wei values to avoid precision loss
 }
 export interface IDecodedTx {
+  approvalType?: 'erc20-amount' | 'erc721-single' | 'nft-all';
   inputs: any[];
   method: string | null;
   names: string[];
+  standardVerified?: boolean;
+  tokenStandard?: string;
   types: string[];
 }
 

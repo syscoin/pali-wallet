@@ -1,6 +1,7 @@
 import type { WalletConnectVerification } from './walletConnect.ts';
 import type { DappMessageMethod } from '../../../../source/shared/dappMessageRequest.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
 
 export type NativeConnectionError =
   | 'INVALID_LINK'
@@ -69,6 +70,7 @@ export type NativeTransactionReview = NativeSigningReviewBase & Readonly<{
   symbol: string;
   decimals: number;
   broadcastHash: string | null;
+  approval: ApprovalSummary | null;
 }>;
 
 export type NativeSigningReview = NativeMessageReview | NativeTransactionReview;
@@ -118,5 +120,6 @@ export type NativeConnectionsView = Readonly<{
   ): Promise<void>;
   rejectRequest(id: string): Promise<void>;
   activateRequestAccount(id: string, revision: number): Promise<void>;
+  editApprovalAmount(id: string, revision: number, amount: string): Promise<void>;
   cancel(): void;
 }>;

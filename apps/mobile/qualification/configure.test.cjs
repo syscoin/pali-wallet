@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('../scripts/qualification-sdk.cjs');
+const { readQualificationSdkPin } = require('../scripts/qualification-sdk.cjs');
 
 test('qualification configuration is explicit, isolated, and preserves the production entry bytes', () => {
   const keyringVersion = '3.9.7'; // Arbitrary exact fixture version, not an SDK release assumption.

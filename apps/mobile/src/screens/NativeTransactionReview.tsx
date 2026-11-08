@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, BackHandler, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeConnectionsView, NativeTransactionReview } from '../connections/types';
 import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 import { IdlePressable } from './IdleActivityBoundary';
+import { ApprovalReview } from './ApprovalReview';
 
 const reviewErrors = {
   INVALID_MESSAGE: 'The app sent an invalid request.',
@@ -70,7 +71,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
   const amount = (units: string) => `${formatBaseUnits(units, review.decimals)} ${review.symbol}`;
 
-  return <SafeAreaView edges={['top']} style={s.container}><Screen>
+  return <SafeAreaView edges={['top']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
     <Header title="Review transaction" onBack={close} />
     <Card style={s.card}>
       <Text style={s.appName}>{review.appName}</Text>
@@ -81,6 +82,9 @@ export function NativeTransactionReviewScreen({ review, controller }: {
       <Text selectable style={s.address}>{review.address}</Text>
       <Text style={s.muted}>{review.networkLabel} · Chain ID {review.chainId}</Text>
     </Card>
+    {review.approval && <ApprovalReview summary={review.approval} revision={review.revision}
+      disabled={review.busy || submitted || review.needsAccountSwitch || review.error !== null}
+      edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
     {transaction && <Card style={s.card}>
       <Text style={s.label}>{transaction.to === null ? 'Contract deployment' : transaction.data === '0x' ? 'Send' : 'Contract interaction'}</Text>
       <Text selectable style={s.amount}>{amount(transaction.value)}</Text>
@@ -123,7 +127,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
       disabled={review.error !== null || review.busy || !review.needsAccountSwitch &&
         (!prepared || review.requiresWarningAcknowledgement && !acknowledged)} onPress={approve} />}
     <Button title={submitted ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
-  </Screen></SafeAreaView>;
+  </Screen></KeyboardAvoidingView></SafeAreaView>;
 }
 
 const s = StyleSheet.create({
