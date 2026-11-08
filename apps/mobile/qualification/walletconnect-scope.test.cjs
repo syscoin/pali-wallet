@@ -134,7 +134,7 @@ test('a failed scoped import restores both guards', async () => {
 test('native entry captures its socket before guarding and scopes preparation before SDK loading', () => {
   const source = fs.readFileSync(require.resolve('./index.tsx'), 'utf8');
   assert(
-    source.indexOf('const NativeWebSocket = globalThis.WebSocket') <
+    source.indexOf('const NativeWebSocket = await getWalletConnectWebSocket()') <
       source.indexOf('globalThis.WebSocket =')
   );
   const scoped = source.indexOf('await withWalletConnectQualificationScope(');

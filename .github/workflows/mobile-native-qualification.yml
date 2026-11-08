@@ -269,6 +269,10 @@ jobs:
             --tests expo.modules.paliwalletcrypto.PaliSlhLeafOperationTest \
             --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
             2>&1 | tee "$RUNNER_TEMP/pali-native-android/slh-leaf-ownership.log"
+          (cd android && ./gradlew :pali-walletconnect-socket:testDebugUnitTest \
+            --tests org.syscoin.pali.websocket.SocketRegistryTest \
+            --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
+            2>&1 | tee "$RUNNER_TEMP/pali-native-android/websocket-ownership.log"
       - name: Build real Android binary
         run: |
           (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)

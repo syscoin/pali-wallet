@@ -1,0 +1,7 @@
+{
+  "name": "pali-walletconnect-socket",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Android WebSocket transport with cancellable connection ownership",
+  "license": "MIT"
+}

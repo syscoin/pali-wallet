@@ -7,6 +7,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 const ts = require('typescript');
 const WebSocket = require('ws');
+const { Buffer } = require('node:buffer');
+const {
+  createNativeWebSocket,
+} = require('../modules/pali-walletconnect-socket/socket.ts');
 const { createHttpFixture } = require('./http-server.cjs');
 const {
   assertWalletConnectAudit,
@@ -105,8 +109,56 @@ test('guarded native-entry sequencing reaches the reviewed SDK through a restric
   );
   const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch');
   const nativeCrypto = globalThis.crypto,
-    NativeWebSocket = globalThis.WebSocket,
     nativeFetch = globalThis.fetch;
+  // Exercise the same JavaScript adapter with a controlled native-port stand-in.
+  // The Android registry itself has separate JVM tests in its app module.
+  const nativeSockets = new Map();
+  let receive;
+  const NativeWebSocket = createNativeWebSocket(
+    {
+      createId: () => nativeCrypto.randomUUID(),
+      addListener(_event, listener) {
+        receive = listener;
+        return { remove() {} };
+      },
+      connect(id, url, protocols) {
+        const socket = new WebSocket(url, protocols);
+        nativeSockets.set(id, socket);
+        socket.on('open', () =>
+          receive({ id, type: 'open', protocol: socket.protocol })
+        );
+        socket.on('message', (data, binary) =>
+          receive({
+            id,
+            type: binary ? 'binary' : 'text',
+            data: binary ? data.toString('base64') : data.toString(),
+          })
+        );
+        socket.on('error', () => receive({ id, type: 'error' }));
+        socket.on('close', (code, reason) => {
+          nativeSockets.delete(id);
+          receive({ id, type: 'close', code, reason: reason.toString() });
+        });
+      },
+      send(id, data, binary) {
+        const socket = nativeSockets.get(id);
+        if (socket?.readyState !== WebSocket.OPEN) return false;
+        socket.send(binary ? Buffer.from(data, 'base64') : data);
+        return true;
+      },
+      close(id, code, reason) {
+        const socket = nativeSockets.get(id);
+        if (socket?.readyState === WebSocket.CONNECTING) socket.terminate();
+        else socket?.close(code, reason);
+      },
+      bufferedAmount: (id) => nativeSockets.get(id)?.bufferedAmount ?? 0,
+    },
+    {
+      create: (bytes) => new Blob([bytes]),
+      isBlob: (value) => value instanceof Blob,
+      read: (value) => Blob.prototype.arrayBuffer.call(value),
+    }
+  );
   let forbidden = 0;
   const blocked = function () {
     forbidden++;
@@ -150,6 +202,8 @@ test('guarded native-entry sequencing reaches the reviewed SDK through a restric
             return nativeCrypto;
           },
         };
+      if (name === '../../modules/pali-walletconnect-socket')
+        return { getAndroidWebSocket: () => NativeWebSocket };
       throw Error(`Unexpected preparation import ${name}`);
     },
   });

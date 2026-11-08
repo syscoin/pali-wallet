@@ -150,7 +150,8 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
-        const NativeWebSocket = globalThis.WebSocket;
+        const { getWalletConnectWebSocket } = await import('../src/platform/walletConnectRuntime.native');
+        const NativeWebSocket = await getWalletConnectWebSocket();
         globalThis.fetch = (() => {
           networkCalls++;
           throw Error('QUALIFICATION_NETWORK_FORBIDDEN');

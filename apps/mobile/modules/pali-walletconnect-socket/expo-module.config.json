@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["org.syscoin.pali.websocket.PaliWalletConnectSocketModule"]
+  }
+}
