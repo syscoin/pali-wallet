@@ -12,6 +12,7 @@ import type { NativeSmartOperationPorts } from '../smartAccount/runtime.ts';
 import { snapshotSmartAccountDappTransaction } from '../../../../source/shared/smartAccountDappTransaction.ts';
 import { summarizeApproval, decodeApprovalData } from '../../../../source/shared/approval.ts';
 import type { NativeGuardianPolicyDraft, NativeSmartAccountAmount, NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
+import { guardianPolicyObservationIdentity, inspectGuardianRemovals, type GuardianRemovalInspection } from '../../../../source/wallet/guardianRemoval.ts';
 import { loadNativeKeyringSdk, type NativeKeyringSdk } from './keyringSdk.ts';
 import { createNativeLedgerHost } from '../hardware/ledgerHost.ts';
 import type { NativeLedgerTransport, NativeLedgerOwner } from '../hardware/ownedLedgerTransport.ts';
@@ -173,6 +174,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   refreshSmartAccountMetadata(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRecoveryObservation | null>;
   openGuardianPolicy(draft: NativeGuardianPolicyDraft, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   canManageGuardianPolicy(): boolean;
+  inspectGuardianRemoval(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRemovalInspection>;
   readonly readUtxoBalance?: (id: UtxoNetworkId, address: string, signal: AbortSignal) => Promise<UtxoBalance>;
   /** Owns the private Blockbook identifier; a screen receives only projected rows. */
   withUtxoActivityRead<T>(
@@ -1739,6 +1741,40 @@ export function createKeyringRuntimeFactory(
               request.abort();
             }
         };
+        const inspectGuardianRemoval = async (signal: AbortSignal, assertOwner: () => void): Promise<GuardianRemovalInspection> => {
+          const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
+          if (!snapshot || !ring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+          const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
+          if (selected.type !== 'SmartAccount' || !account?.smartAccount) throw new KeyringRuntimeError('INVALID_INPUT');
+          const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+          if (account.smartAccount.chainId !== Number(network.chainId)) throw new KeyringRuntimeError('INVALID_INPUT');
+          requireSmartAccountAddressIdentity(account, Number(network.chainId));
+          const check = () => {
+            current(captured); checkGuard(assertOwner);
+            if (signal.aborted || ring !== keyring || catalogueSnapshot !== snapshot || selectedAccount() !== selected ||
+                state.accounts.SmartAccount[selected.index] !== account) throw new KeyringRuntimeError('CANCELLED');
+          };
+          check(); await dataBinding(captured, check); check();
+          const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+          const status = await rpc.readGuardianRecoveryStatus(account.address, signal, check);
+          check();
+          if (status.status !== 'observed') throw new KeyringRuntimeError('NOT_READY');
+          if (!status.observation.exists) {
+            await dataBinding(captured, check); check();
+            return { status: 'removed', transactions: [], totalPending: 0 };
+          }
+          const records = await signedRecords.captureSmartAccountPendingRecords({ keyring: ring, assertCurrent: check }, network.chainId, account.address);
+          const inspected = await inspectGuardianRemovals({ account: account.address, chainId: Number(network.chainId), moduleAddress: status.observation.moduleAddress,
+            records, read: (method, params) => rpc.retirementRead(method, params, signal, check), assertCurrent: check });
+          if (inspected.status === 'retry-ready') {
+            const latest = await rpc.readGuardianRecoveryStatus(account.address, signal, check);
+            check();
+            if (latest.status !== 'observed' || guardianPolicyObservationIdentity(latest.observation) !== guardianPolicyObservationIdentity(status.observation))
+              throw new Error('GUARDIAN_POLICY_CHANGED');
+          }
+          await dataBinding(captured, check); check();
+          return inspected;
+        };
         const canManageGuardianPolicy = () => {
           if (!catalogueSnapshot || !keyring.isUnlocked()) return false;
           const selected = selectedAccount();
@@ -1853,25 +1889,36 @@ export function createKeyringRuntimeFactory(
                 snapshot = catalogueSnapshot!;
                 selected = selectedAccount();
                 account = state.accounts.SmartAccount[selected.index]!;
-                if (intent.kind === 'guardian-policy' && (!observation?.exists || observation.threshold !== 1 ||
-                    observation.guardians.length !== 1 || observation.guardians[0]?.toLowerCase() !== intent.command.guardian.toLowerCase() ||
-                    observation.delaySeconds !== intent.command.delaySeconds || observation.expirationSeconds !== intent.command.delaySeconds * 2))
-                  throw new Error('Guardian policy metadata has not caught up');
+                if (intent.kind === 'guardian-policy') {
+                  if (intent.command.kind === 'remove') {
+                    if (!observation || observation.exists) throw new Error('Guardian removal metadata has not caught up');
+                  } else if (!observation?.exists || observation.threshold !== 1 || observation.guardians.length !== 1 ||
+                    observation.guardians[0]?.toLowerCase() !== intent.command.guardian.toLowerCase() ||
+                    observation.delaySeconds !== intent.command.delaySeconds || observation.expirationSeconds !== intent.command.delaySeconds * 2)
+                    throw new Error('Guardian policy metadata has not caught up');
+                }
               },
             });
         };
         return {
           ledger,
           canManageGuardianPolicy,
+          inspectGuardianRemoval,
           refreshSmartAccountMetadata,
           async openGuardianPolicy(draft, signal, assertOwner) {
-            const input = readOwnData(draft, ['guardian', 'delaySeconds', 'acknowledgedPendingOperationId']);
-            if (typeof input.guardian !== 'string' || !Number.isSafeInteger(input.delaySeconds) || Number(input.delaySeconds) <= 0 ||
-                input.acknowledgedPendingOperationId !== null &&
+            const action = draft && Object.getOwnPropertyDescriptor(draft, 'action')?.value;
+            if (action !== 'set' && action !== 'remove') throw new KeyringRuntimeError('INVALID_INPUT');
+            const input = readOwnData(draft, action === 'set'
+              ? ['action', 'guardian', 'delaySeconds', 'acknowledgedPendingOperationId']
+              : ['action', 'recoveryLossAcknowledged', 'acknowledgedPendingOperationId']);
+            if ((action === 'set' && (typeof input.guardian !== 'string' || !Number.isSafeInteger(input.delaySeconds) || Number(input.delaySeconds) <= 0)) ||
+                (action === 'remove' && input.recoveryLossAcknowledged !== true) || input.acknowledgedPendingOperationId !== null &&
                 (typeof input.acknowledgedPendingOperationId !== 'string' || !/^0x[0-9a-f]{64}$/i.test(input.acknowledgedPendingOperationId)))
               throw new KeyringRuntimeError('INVALID_INPUT');
-            const request = Object.freeze({ guardian: normalizePublicAddress(input.guardian, 'ethereum'),
-              delaySeconds: input.delaySeconds as number, acknowledgedPendingOperationId: input.acknowledgedPendingOperationId });
+            const request = action === 'set'
+              ? Object.freeze({ action: 'set' as const, guardian: normalizePublicAddress(input.guardian as string, 'ethereum'),
+                delaySeconds: input.delaySeconds as number, acknowledgedPendingOperationId: input.acknowledgedPendingOperationId })
+              : Object.freeze({ action: 'remove' as const, acknowledgedPendingOperationId: input.acknowledgedPendingOperationId });
             const captured = generation, before = catalogueSnapshot;
             if (!before || !canManageGuardianPolicy()) throw new KeyringRuntimeError('NOT_READY');
             const address = selectedAccount().address;
@@ -1888,24 +1935,30 @@ export function createKeyringRuntimeFactory(
             if (!account?.smartAccount || !canManageGuardianPolicy()) throw new KeyringRuntimeError('NOT_READY');
             if (observation?.pending && observation.pending.operationId !== request.acknowledgedPendingOperationId)
               throw new Error('GUARDIAN_POLICY_CONFIRMATION_REQUIRED');
-            const configuration = { accountAddress: account.address, chainId: account.smartAccount.chainId,
-              guardian: request.guardian, delaySeconds: request.delaySeconds };
-            const command = Object.freeze(observation?.exists
-              ? { ...configuration, kind: 'update' as const, previousModuleAddress: observation.moduleAddress }
-              : { ...configuration, kind: 'install' as const });
+            if (request.action === 'remove') {
+              if (!observation?.exists) throw new Error('GUARDIAN_ALREADY_REMOVED');
+              const state = await inspectGuardianRemoval(signal, check);
+              check();
+              if (state.status !== 'retry-ready') throw new Error('GUARDIAN_REMOVAL_PENDING');
+            }
+            const command = Object.freeze(request.action === 'remove'
+              ? { accountAddress: account.address, kind: 'remove' as const, moduleAddress: observation!.moduleAddress }
+              : { accountAddress: account.address, chainId: account.smartAccount.chainId, guardian: request.guardian, delaySeconds: request.delaySeconds,
+                ...(observation?.exists ? { kind: 'update' as const, previousModuleAddress: observation.moduleAddress } : { kind: 'install' as const }) });
             buildGuardianPolicyExecutions(command);
-            const identity = (value: GuardianRecoveryObservation | null) => JSON.stringify([
-              value?.exists ?? false, value?.moduleAddress ?? null, value?.policyEpoch ?? null, value?.active?.operationId ?? null,
-            ]);
-            const expectedPolicy = identity(observation);
+            const expectedPolicy = guardianPolicyObservationIdentity(observation);
             const network = getNativeNetwork(before.active.networkId, before.networks);
             const assertPolicy = async (operationSignal: AbortSignal, assertCurrent: () => void) => {
               check(); checkGuard(assertCurrent);
+              if (request.action === 'remove') {
+                const state = await inspectGuardianRemoval(operationSignal, assertCurrent);
+                if (state.status !== 'retry-ready') throw new Error('GUARDIAN_REMOVAL_PENDING');
+              }
               const result = await new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch })
                 .readGuardianRecoveryStatus(address, operationSignal, assertCurrent);
               check(); checkGuard(assertCurrent);
               const currentPolicy = result.status === 'observed' ? result.observation : null;
-              if (result.status === 'unsupported' || identity(currentPolicy) !== expectedPolicy)
+              if (result.status === 'unsupported' || guardianPolicyObservationIdentity(currentPolicy) !== expectedPolicy)
                 throw new Error('GUARDIAN_POLICY_CHANGED');
             };
             return openSmartAccountOperation({ kind: 'guardian-policy', command }, assertOwner, undefined, assertPolicy);

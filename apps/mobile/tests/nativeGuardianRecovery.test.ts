@@ -192,7 +192,7 @@ async function fixture(smart = true) {
           },
         });
       };
-      return controllers.openGuardianPolicy({ guardian: '0x' + '22'.repeat(20), delaySeconds: 259200,
+      return controllers.openGuardianPolicy({ action: 'set', guardian: '0x' + '22'.repeat(20), delaySeconds: 259200,
         acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined);
     },
     change(kind: string) {

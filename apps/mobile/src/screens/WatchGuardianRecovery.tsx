@@ -27,7 +27,7 @@ const OPERATION_LABELS = {
 export function WatchGuardianRecovery({ address, networkLabel, read, manage, lifetime, onBack }:
   Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; onBack(): void }) {
   const [state, setState] = useState<State>({ status: 'idle' });
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<'set' | 'remove' | null>(null);
   const owner = useRef<AbortController | null>(null);
   const cancel = () => { owner.current?.abort(); owner.current = null; };
   useLayoutEffect(() => {
@@ -63,7 +63,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, lif
     : null;
 
   if (editing && manage && observation) {
-    return <NativeGuardianPolicy address={address} networkLabel={networkLabel}
+    return <NativeGuardianPolicy key={editing} action={editing} address={address} networkLabel={networkLabel}
       observation={observation} manage={manage} lifetime={lifetime} onBack={onBack} />;
   }
 
@@ -86,7 +86,8 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, lif
         Checked at block {observation.observedBlock.number.toLocaleString()}
       </Text>}
     </Card>}
-    {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing(true)} />}
+    {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing('set')} />}
+    {manage && observation?.exists && <Button title="Remove guardian" variant="quiet" onPress={() => setEditing('remove')} />}
     <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} onPress={() => { void check(); }} disabled={state.status === 'loading'} />
   </Screen></SafeAreaView>;
 }

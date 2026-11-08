@@ -156,7 +156,9 @@ export function NativeSmartAccountOperationContent({
           title={
             state.phase === 'authorize'
               ? guardian
-                ? 'Review guardian policy'
+                ? guardian.kind === 'remove'
+                  ? 'Review guardian removal'
+                  : 'Review guardian policy'
                 : batch
                 ? 'Review calls'
                 : transfer
@@ -167,7 +169,9 @@ export function NativeSmartAccountOperationContent({
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
               : guardian
-              ? 'Guardian policy'
+              ? guardian.kind === 'remove'
+                ? 'Guardian removal'
+                : 'Guardian policy'
               : batch
               ? 'Send calls'
               : transfer
@@ -187,19 +191,37 @@ export function NativeSmartAccountOperationContent({
         {guardian && (
           <Card style={s.card}>
             <Text style={s.label}>
-              {guardian.kind === 'install' ? 'Set guardian' : 'Update guardian'}
+              {guardian.kind === 'remove'
+                ? 'Remove guardian'
+                : guardian.kind === 'install'
+                ? 'Set guardian'
+                : 'Update guardian'}
             </Text>
-            <Text selectable style={s.address}>
-              {guardian.guardian}
-            </Text>
-            <Text style={s.label}>Guardian threshold · 1</Text>
-            <Text style={s.label}>
-              Recovery delay · {guardianDelayLabel(guardian.delaySeconds)}
-            </Text>
-            <Text style={s.label}>
-              Finalization window once ready ·{' '}
-              {guardianDelayLabel(guardian.delaySeconds * 2)}
-            </Text>
+            {guardian.kind === 'remove' ? (
+              <>
+                <Text style={s.label}>Guardian recovery module</Text>
+                <Text selectable style={s.address}>
+                  {guardian.moduleAddress}
+                </Text>
+                <Text style={s.label}>
+                  This removes the account’s guardian recovery module.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text selectable style={s.address}>
+                  {guardian.guardian}
+                </Text>
+                <Text style={s.label}>Guardian threshold · 1</Text>
+                <Text style={s.label}>
+                  Recovery delay · {guardianDelayLabel(guardian.delaySeconds)}
+                </Text>
+                <Text style={s.label}>
+                  Finalization window once ready ·{' '}
+                  {guardianDelayLabel(guardian.delaySeconds * 2)}
+                </Text>
+              </>
+            )}
           </Card>
         )}
         {batch &&
@@ -284,7 +306,9 @@ export function NativeSmartAccountOperationContent({
             <Notice
               title={
                 guardian
-                  ? 'Authorize this guardian policy'
+                  ? guardian.kind === 'remove'
+                    ? 'Authorize guardian removal'
+                    : 'Authorize this guardian policy'
                   : batch
                   ? 'Authorize these calls'
                   : transfer
@@ -295,7 +319,9 @@ export function NativeSmartAccountOperationContent({
               }
               body={
                 guardian
-                  ? 'Authorize the guardian and recovery delay shown above. The following review confirms the paying account and submission fee.'
+                  ? guardian.kind === 'remove'
+                    ? 'Authorize removing guardian recovery from this account. The following review confirms the paying account and submission fee.'
+                    : 'Authorize the guardian and recovery delay shown above. The following review confirms the paying account and submission fee.'
                   : batch
                   ? 'Authorize the ordered calls together. The following review confirms the paying account and submission fee.'
                   : transfer
@@ -349,7 +375,9 @@ export function NativeSmartAccountOperationContent({
             <Button
               title={
                 guardian
-                  ? 'Authorize policy'
+                  ? guardian.kind === 'remove'
+                    ? 'Authorize removal'
+                    : 'Authorize policy'
                   : batch
                   ? 'Authorize calls'
                   : transfer?.kind === 'dapp-call'
@@ -370,7 +398,9 @@ export function NativeSmartAccountOperationContent({
                 payer.purpose === 'fund-account'
                   ? 'Fund the account charge'
                   : guardian
-                  ? 'Submit the authorized guardian policy'
+                  ? guardian.kind === 'remove'
+                    ? 'Submit the authorized removal'
+                    : 'Submit the authorized guardian policy'
                   : batch
                   ? 'Submit the authorized calls'
                   : transfer
@@ -383,7 +413,9 @@ export function NativeSmartAccountOperationContent({
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
                   : guardian
-                  ? 'This transaction submits the guardian policy you authorized.'
+                  ? guardian.kind === 'remove'
+                    ? 'This transaction submits the guardian removal you authorized.'
+                    : 'This transaction submits the guardian policy you authorized.'
                   : batch
                   ? 'This transaction submits the calls you authorized.'
                   : transfer
@@ -418,7 +450,9 @@ export function NativeSmartAccountOperationContent({
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
                   : guardian
-                  ? 'Confirm policy'
+                  ? guardian.kind === 'remove'
+                    ? 'Confirm removal'
+                    : 'Confirm policy'
                   : batch
                   ? 'Confirm calls'
                   : transfer
@@ -441,7 +475,9 @@ export function NativeSmartAccountOperationContent({
                 : state.phase === 'waiting'
                 ? 'Waiting for the network…'
                 : guardian
-                ? 'Preparing guardian policy…'
+                ? guardian.kind === 'remove'
+                  ? 'Preparing removal…'
+                  : 'Preparing guardian policy…'
                 : batch
                 ? 'Preparing calls…'
                 : transfer
@@ -454,7 +490,9 @@ export function NativeSmartAccountOperationContent({
           <Notice
             title={
               guardian
-                ? 'Guardian policy updated'
+                ? guardian.kind === 'remove'
+                  ? 'Guardian recovery removed'
+                  : 'Guardian policy updated'
                 : batch
                 ? 'Calls submitted'
                 : transfer?.kind === 'dapp-call'
@@ -465,7 +503,9 @@ export function NativeSmartAccountOperationContent({
             }
             body={
               guardian
-                ? 'The network confirmed this guardian policy transaction.'
+                ? guardian.kind === 'remove'
+                  ? 'The network confirmed this guardian removal transaction.'
+                  : 'The network confirmed this guardian policy transaction.'
                 : batch
                 ? 'The connected app can check this call bundle’s status.'
                 : transfer
@@ -499,7 +539,9 @@ export function NativeSmartAccountOperationContent({
           <Notice
             title={
               guardian
-                ? 'Check guardian policy status'
+                ? guardian.kind === 'remove'
+                  ? 'Check removal status'
+                  : 'Check guardian policy status'
                 : batch
                 ? 'Check calls status'
                 : transfer

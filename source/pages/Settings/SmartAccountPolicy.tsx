@@ -80,6 +80,8 @@ import {
   isSmartAccountSignatureError,
 } from 'utils/smartAccountErrors';
 
+import type { GuardianRemovalInspection } from '../../wallet/guardianRemoval';
+
 const shortAddress = (address: string) =>
   `${address.slice(0, 6)}...${address.slice(-4)}`;
 
@@ -1186,7 +1188,7 @@ const SmartAccountPolicy = () => {
     executions: Array<{ data: string; target: string; value: string }>,
     options: {
       approval?: PolicyApprovalScope;
-      onBeforeSubmit?: () => void;
+      onBeforeSubmit?: () => void | Promise<void>;
       refreshAfterSubmit?: boolean;
       retrySignature?: boolean;
       useCachedMetadata?: boolean;
@@ -1213,7 +1215,7 @@ const SmartAccountPolicy = () => {
         onPrepared: approval.assertCurrent,
         onBeforeSubmit: async () => {
           await assertApprovalSession(approval);
-          options.onBeforeSubmit?.();
+          await options.onBeforeSubmit?.();
         },
         onAuthenticatorSigningResolved: (authenticatorId) => {
           if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
@@ -2064,6 +2066,30 @@ const SmartAccountPolicy = () => {
     const isCurrentUi = createUiGuard();
     setLoading(true);
     try {
+      const removal = (await controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRemovalStatus'],
+        [account.id],
+        60000
+      )) as GuardianRemovalInspection;
+      if (!isCurrentUi()) return;
+      if (removal.status === 'pending' || removal.status === 'unknown') {
+        if (!previousPending)
+          rememberGuardianDisable(
+            {
+              accountAddress: getAddress(account.address),
+              chainId: activeNetwork.chainId,
+              moduleAddress: getConfiguredAuthenticatorAddress(
+                activeNetwork.chainId,
+                'guardian-recovery'
+              ),
+              localRecoverySalt:
+                activeGuardianReplacement?.recoveryOperation?.salt,
+            },
+            true
+          );
+        alert.info(t('settings.smartAccountGuardianRecoveryDisableUnverified'));
+        return;
+      }
       const approval = await capturePolicyApproval();
       const hydrated = await refreshMetadata(approval);
       approval.assertCurrent();
@@ -2168,7 +2194,15 @@ const SmartAccountPolicy = () => {
         }),
         {
           approval: target.approval,
-          onBeforeSubmit: () => {
+          onBeforeSubmit: async () => {
+            const removal = (await controllerEmitter(
+              ['wallet', 'getSmartAccountGuardianRemovalStatus'],
+              [account.id],
+              60000
+            )) as GuardianRemovalInspection;
+            await assertApprovalSession(target.approval);
+            if (removal.status !== 'retry-ready')
+              throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
             // This synchronous checkpoint follows asynchronous preparation and
             // signing. Do not replace a different window's newer attempt.
             const latest = readGuardianDisablePending(
@@ -2269,6 +2303,12 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     setGuardianDisableRetryReady(false);
     try {
+      const removal = (await controllerEmitter(
+        ['wallet', 'getSmartAccountGuardianRemovalStatus'],
+        [account.id],
+        60000
+      )) as GuardianRemovalInspection;
+      if (!isCurrentUi()) return;
       const hydrated = await refreshMetadata();
       if (!isCurrentUi()) return;
       if (guardianRemovalConfirmed(target, hydrated)) {
@@ -2277,6 +2317,7 @@ const SmartAccountPolicy = () => {
         alert.success(t('settings.smartAccountGuardianRecoveryDisabled'));
       } else {
         if (
+          removal.status === 'retry-ready' &&
           hydrated?.chainId === target.chainId &&
           hydrated?.isDeployed === true &&
           hydrated.installedModules?.some(

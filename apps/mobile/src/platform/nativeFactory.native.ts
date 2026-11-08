@@ -301,6 +301,10 @@ export function createNativeWalletControllers() {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openGuardianPolicy(draft, signal, assertCurrent));
   };
+  const inspectGuardianRemoval = async (signal: AbortSignal, assertOwner: () => void) => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    return observeFailure(() => selected.inspectGuardianRemoval(signal, assertCurrent));
+  };
   const openUtxoSend = async (assertOwner: () => void): Promise<NativeUtxoSend> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const open = selected.openUtxoSend;
@@ -364,6 +368,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

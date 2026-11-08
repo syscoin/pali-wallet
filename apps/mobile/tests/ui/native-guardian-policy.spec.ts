@@ -118,6 +118,7 @@ test('pending recovery acknowledgement carries its exact observed operation ID',
     {
       method: 'open',
       draft: {
+        action: 'set',
         guardian: '0x5555555555555555555555555555555555555555',
         delaySeconds: 259200,
         acknowledgedPendingOperationId: '0x' + 'ab'.repeat(32),
@@ -225,4 +226,165 @@ test('short viewport preserves guardian form and close controls', async ({
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(
     320
   );
+});
+
+async function removal(page: Page, query = '') {
+  await open(page, query);
+  await page
+    .getByRole('button', { name: 'Remove guardian', exact: true })
+    .click();
+}
+
+test('removal requires recovery-loss and pending-ID acknowledgement before both transaction reviews', async ({
+  page,
+}, info) => {
+  await removal(page, 'pending&refresh-fails');
+  await page
+    .getByText('Remove guardian', { exact: true })
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath('guardian-remove-form-top-320.png'),
+    fullPage: false,
+  });
+  const review = page.getByRole('button', {
+    name: 'Review removal',
+    exact: true,
+  });
+  await expect(review).toBeDisabled();
+  await page
+    .getByRole('checkbox', {
+      name: 'I understand guardian recovery will be removed',
+      exact: true,
+    })
+    .check();
+  await expect(review).toBeDisabled();
+  await page
+    .getByRole('checkbox', {
+      name: 'I understand this changes the pending recovery policy',
+      exact: true,
+    })
+    .check();
+  await expect(review).toBeEnabled();
+  await visibleAction(review);
+  await visibleAction(
+    page.getByRole('button', { name: 'Cancel', exact: true })
+  );
+  await page.screenshot({
+    path: info.outputPath('guardian-remove-form-bottom-320.png'),
+    fullPage: false,
+  });
+  await review.click();
+  const recorded = await events(page);
+  expect(recorded).toEqual([
+    { method: 'inspect' },
+    {
+      method: 'open',
+      draft: {
+        action: 'remove',
+        acknowledgedPendingOperationId: '0x' + 'ab'.repeat(32),
+        recoveryLossAcknowledged: true,
+      },
+    },
+  ]);
+  await expect(
+    page.getByText('Review guardian removal', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText('Guardian recovery module', { exact: true })
+  ).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath('guardian-remove-review-top-320.png'),
+    fullPage: false,
+  });
+  await visibleAction(
+    page.getByRole('button', { name: 'Authorize removal', exact: true })
+  );
+  await page
+    .getByRole('button', { name: 'Authorize removal', exact: true })
+    .click();
+  await visibleAction(
+    page.getByRole('button', { name: 'Confirm removal', exact: true })
+  );
+  await page
+    .getByRole('button', { name: 'Confirm removal', exact: true })
+    .click();
+  await expect(
+    page.getByText('Guardian recovery removed', { exact: true })
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Refresh account status', exact: true })
+    .click();
+  expect((await events(page)).map((event) => event.method)).toEqual([
+    'inspect',
+    'open',
+    'authorize',
+    'confirm',
+    'refresh',
+  ]);
+});
+
+test('a retained unresolved removal requires an explicit status check before another review', async ({
+  page,
+}) => {
+  await removal(page, 'removal-pending');
+  await expect(
+    page.getByText('Removal awaiting a network result', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Review removal', exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByText('0x' + 'cd'.repeat(32), { exact: true })
+  ).toBeVisible();
+  expect((await events(page)).map((event) => event.method)).toEqual([
+    'inspect',
+  ]);
+  await page
+    .getByRole('button', { name: 'Check removal status', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Review removal', exact: true })
+  ).toBeDisabled();
+  expect((await events(page)).map((event) => event.method)).toEqual([
+    'inspect',
+    'inspect',
+  ]);
+});
+
+for (const status of ['unknown', 'removed'])
+  test(`${status} removal inspection cannot prepare another transaction`, async ({
+    page,
+  }) => {
+    await removal(page, `removal-${status}`);
+    await expect(
+      page.getByText(
+        status === 'unknown'
+          ? 'Removal status unavailable'
+          : 'Guardian recovery is already removed',
+        { exact: true }
+      )
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Review removal', exact: true })
+    ).toHaveCount(0);
+    expect((await events(page)).map((event) => event.method)).toEqual([
+      'inspect',
+    ]);
+  });
+
+test('closing an in-flight removal inspection cannot reopen its form', async ({
+  page,
+}) => {
+  await removal(page, 'hold-inspection');
+  await expect(
+    page.getByText('Checking previous removal attempts…', { exact: true })
+  ).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.evaluate(() => window.__guardianPolicyFixture.resolveInspection());
+  await expect(
+    page.getByText('Guardian tool closed', { exact: true })
+  ).toBeVisible();
+  expect((await events(page)).map((event) => event.method)).toEqual([
+    'inspect',
+  ]);
 });

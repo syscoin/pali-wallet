@@ -129,6 +129,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [guardianEpoch, setGuardianEpoch] = useState(0);
   const [readGuardianRecovery, setReadGuardianRecovery] = useState<Controllers['readGuardianRecovery'] | null>(null);
   const [openGuardianPolicy, setOpenGuardianPolicy] = useState<Controllers['openGuardianPolicy'] | null>(null);
+  const [inspectGuardianRemoval, setInspectGuardianRemoval] = useState<Controllers['inspectGuardianRemoval'] | null>(null);
   const [ledgerView, setLedgerView] = useState<NativeLedgerImportView | null>(null);
   const [ledgerConnection, setLedgerConnection] = useState<NativeLedgerConnectionView | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
@@ -224,8 +225,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const guardianRecovery = selectedAccountType === 'SmartAccount' && snapshot.account && readGuardianRecovery && guardianContext ? {
     scope: `${guardianEpoch}:${guardianContext}`,
     address: snapshot.account.address,
-    manage: openGuardianPolicy ? {
+    manage: openGuardianPolicy && inspectGuardianRemoval ? {
       chainId: Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId),
+      inspectRemoval: (signal: AbortSignal, assertView: () => void) => inspectGuardianRemoval(signal, () => {
+        assertView();
+        if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
+          throw new Error('CANCELLED');
+      }),
       open: (draft: Parameters<Controllers['openGuardianPolicy']>[0], signal: AbortSignal, assertView: () => void) => openGuardianPolicy(draft, signal, () => {
         assertView();
         if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
@@ -363,7 +369,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' ? 'choose' : current);
     }
     setCanRemoveWallet(false); setDeviceUnlockStatus(null);
-    setPublicSource(null); setBalanceReader(null); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -398,6 +404,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setOpenGuardianPolicy(() => local.canManageGuardianPolicy() ? (draft: Parameters<Controllers['openGuardianPolicy']>[0], signal: AbortSignal, assertView: () => void) => {
         const capturedEpoch = epoch.current;
         return local.openGuardianPolicy(draft, signal, () => {
+          assertView();
+          if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
+            throw new Error('CANCELLED');
+        });
+      } : null);
+      setInspectGuardianRemoval(() => local.canManageGuardianPolicy() ? (signal: AbortSignal, assertView: () => void) => {
+        const capturedEpoch = epoch.current;
+        return local.inspectGuardianRemoval(signal, () => {
           assertView();
           if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
             throw new Error('CANCELLED');

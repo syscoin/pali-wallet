@@ -190,6 +190,8 @@ beforeEach(() => {
       return mockMetadata;
     }
     if (method === 'getSLHDSASmartAccountSetupStatus') return null;
+    if (method === 'getSmartAccountGuardianRemovalStatus')
+      return { status: 'retry-ready', transactions: [], totalPending: 0 };
     if (method === 'getSmartAccountGuardianRecoveryStatus')
       return {
         delay: '600',
@@ -872,3 +874,42 @@ test.each(['install', 'update'] as const)(
     }
   }
 );
+
+test.each(['pending', 'unknown'])(
+  'a saved %s removal blocks another review before signing',
+  async (status) => {
+    const emit = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (method: string[], ...args: any[]) => {
+      if (method[1] === 'getSmartAccountGuardianRemovalStatus')
+        return { status, transactions: [], totalPending: 1 };
+      return emit(method, ...args);
+    });
+    render(<SmartAccountPolicy />);
+    fireEvent.click(await screen.findByRole('button', { name: REMOVE }));
+    await screen.findByRole('button', { name: CHECK });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockSubmit).not.toHaveBeenCalled();
+    expect(mockBroadcast).not.toHaveBeenCalled();
+    expect(localStorage.getItem(removalKey)).not.toBeNull();
+  }
+);
+
+test('an unresolved removal found after confirmation prevents broadcast', async () => {
+  let inspections = 0;
+  const emit = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (method: string[], ...args: any[]) => {
+    if (method[1] === 'getSmartAccountGuardianRemovalStatus')
+      return {
+        status: ++inspections === 1 ? 'retry-ready' : 'pending',
+        transactions: [],
+        totalPending: 1,
+      };
+    return emit(method, ...args);
+  });
+  render(<SmartAccountPolicy />);
+  await openConfirmation();
+  await confirm();
+  await waitFor(() => expect(inspections).toBe(2));
+  expect(mockBroadcast).not.toHaveBeenCalled();
+  expect(mockAlert.error).toHaveBeenCalled();
+});

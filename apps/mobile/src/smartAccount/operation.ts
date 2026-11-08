@@ -21,7 +21,7 @@ import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/s
 
 export type NativeSmartAccountResolvedIntent =
   | Readonly<{ kind: 'deploy' }>
-  | Readonly<{ kind: 'guardian-policy'; command: Exclude<GuardianPolicyCommand, { kind: 'remove' }> }>
+  | Readonly<{ kind: 'guardian-policy'; command: GuardianPolicyCommand }>
   | Readonly<{ kind: 'dapp-batch'; calls: readonly DappCall[] }>
   | Readonly<{
       kind: 'native-transfer';
@@ -59,9 +59,9 @@ export type NativeSmartAccountIntent =
   | Readonly<{ kind: 'native-max'; recipient: string }>;
 
 export type NativeGuardianPolicyDraft = Readonly<{
-  guardian: string;
-  delaySeconds: number;
-  acknowledgedPendingOperationId: string | null;
+  action: 'set'; guardian: string; delaySeconds: number; acknowledgedPendingOperationId: string | null;
+}> | Readonly<{
+  action: 'remove'; recoveryLossAcknowledged: true; acknowledgedPendingOperationId: string | null;
 }>;
 
 export type PreparedSmartAccountOperation = Awaited<

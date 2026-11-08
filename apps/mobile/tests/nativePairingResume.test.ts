@@ -205,6 +205,7 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
       throw new Error('Route mocked in parent navigation test');
     },
     canManageGuardianPolicy: () => smartAccount,
+    inspectGuardianRemoval: async (_signal: AbortSignal, check: () => void) => { check(); return { status: 'retry-ready', transactions: [], totalPending: 0 }; },
     openGuardianPolicy: async (_draft: unknown, _signal: AbortSignal, check: () => void) => { check(); guardianOpens++; return { dispose() {} }; },
     readGuardianRecovery: async (_signal: AbortSignal, check: () => void) => { check(); guardianReads++; return { status: 'no-compatible-policy' }; },
     balanceReader: {},
@@ -601,7 +602,7 @@ test('controlled Smart accounts expose the existing guardian-status tool through
   await tools.props.guardianRecovery.read(new AbortController().signal, () => undefined);
   assert.equal(f.guardianReads(), 1);
   assert.equal(tools.props.guardianRecovery.manage.chainId, 1);
-  const draft = { guardian: '0x' + '55'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
+  const draft = { action: 'set', guardian: '0x' + '55'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
   await tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined);
   assert.equal(f.guardianOpens(), 1);
   f.ready();

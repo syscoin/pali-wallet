@@ -26,6 +26,7 @@ async function fixture() {
     async refreshSmartAccountMetadata() { throw new Error('Metadata is outside this fixture'); },
     async openGuardianPolicy() { throw new Error('Policy is outside this fixture'); },
     canManageGuardianPolicy: () => false,
+    async inspectGuardianRemoval() { throw new Error('Removal is outside this fixture'); },
     async openConnectionHost() { throw new Error('Connections are outside this fixture'); },
     async resetActivity() { throw new Error('Activity is outside this fixture'); },
     async withUtxoActivityRead() { throw new Error('Activity is outside this fixture'); },

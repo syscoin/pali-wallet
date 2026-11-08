@@ -18,6 +18,8 @@ const transactionHash = `0x${'cd'.repeat(32)}`;
 const events: { method: string; draft?: NativeGuardianPolicyDraft }[] = [];
 const subscribers = new Set<() => void>();
 let resolveOpening: (() => void) | undefined;
+let resolveInspection: (() => void) | undefined;
+let inspections = 0;
 let disposed = 0;
 let snapshot: NativeSmartAccountOperationSnapshot;
 const show = (patch: Partial<NativeSmartAccountOperationSnapshot>) => {
@@ -81,6 +83,7 @@ declare global {
       events(): typeof events;
       disposed(): number;
       resolveOpening(): void;
+      resolveInspection(): void;
     };
   }
 }
@@ -88,6 +91,7 @@ window.__guardianPolicyFixture = {
   events: () => events,
   disposed: () => disposed,
   resolveOpening: () => resolveOpening?.(),
+  resolveInspection: () => resolveInspection?.(),
 };
 
 export function NativeGuardianPolicyFixture() {
@@ -143,6 +147,40 @@ export function NativeGuardianPolicyFixture() {
           ? undefined
           : {
               chainId,
+              async inspectRemoval(_signal, assertCurrent) {
+                events.push({ method: 'inspect' });
+                inspections++;
+                if (query.has('hold-inspection'))
+                  await new Promise<void>((resolve) => {
+                    resolveInspection = resolve;
+                  });
+                assertCurrent();
+                const inspectionStatus = query.has('removal-removed')
+                  ? 'removed'
+                  : query.has('removal-unknown')
+                  ? 'unknown'
+                  : query.has('removal-pending') && inspections === 1
+                  ? 'pending'
+                  : 'retry-ready';
+                return {
+                  status: inspectionStatus,
+                  totalPending: inspectionStatus === 'pending' ? 1 : 0,
+                  transactions:
+                    inspectionStatus === 'pending'
+                      ? [
+                          {
+                            account,
+                            chainId: String(chainId),
+                            hash: transactionHash,
+                            operationHash: operationId,
+                            operationNonce: '7',
+                            payer: guardian,
+                            payerNonce: 1,
+                          },
+                        ]
+                      : [],
+                };
+              },
               async open(draft, _signal, assertCurrent) {
                 events.push({ method: 'open', draft });
                 if (query.has('hold-open'))
@@ -158,18 +196,25 @@ export function NativeGuardianPolicyFixture() {
                   ),
                   intent: {
                     kind: 'guardian-policy',
-                    command: {
-                      ...(status.observation.exists
+                    command:
+                      draft.action === 'remove'
                         ? {
-                            kind: 'update' as const,
-                            previousModuleAddress: moduleAddress,
+                            kind: 'remove',
+                            accountAddress: account,
+                            moduleAddress,
                           }
-                        : { kind: 'install' as const }),
-                      accountAddress: account,
-                      chainId,
-                      guardian: draft.guardian,
-                      delaySeconds: draft.delaySeconds,
-                    },
+                        : {
+                            ...(status.observation.exists
+                              ? {
+                                  kind: 'update' as const,
+                                  previousModuleAddress: moduleAddress,
+                                }
+                              : { kind: 'install' as const }),
+                            accountAddress: account,
+                            chainId,
+                            guardian: draft.guardian,
+                            delaySeconds: draft.delaySeconds,
+                          },
                   },
                   maximumPrefundUnits: '3000000000000000',
                   userOperationHash: `0x${'12'.repeat(32)}`,
