@@ -136,9 +136,11 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
         <Text style={s.body}>{busy ? 'Review the connection request when it arrives.' : 'Scan a WalletConnect code or paste a connection link.'}</Text>
         {busy ? <><ActivityIndicator color={colors.blue} accessibilityLabel="Waiting for a connection request" />
           <Button title="Cancel" variant="secondary" onPress={() => controller.cancel()} /></>
-          : <><Button title="Scan QR code" icon="scan" disabled={snapshot.status === 'unavailable' || !snapshot.network}
+          : snapshot.status === 'unavailable'
+          ? <Button title="Try again" onPress={() => invoke(() => controller.retry())} />
+          : <><Button title="Scan QR code" icon="scan" disabled={!snapshot.network}
             onPress={() => { lifetime.current.revision++; onScanStarted?.(); setScanning(true); }} />
-            <Button title="Paste connection link" icon="copy" variant="secondary" disabled={snapshot.status === 'unavailable' || !snapshot.network} onPress={paste} /></>}
+            <Button title="Paste connection link" icon="copy" variant="secondary" disabled={!snapshot.network} onPress={paste} /></>}
       </Card>}
       {(snapshot.error || clipboardError) && <Notice title="Connection unavailable"
         body={snapshot.error ? ERRORS[snapshot.error] : 'The clipboard could not be read. Copy the connection link and try again.'} />}
