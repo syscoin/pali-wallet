@@ -1,6 +1,35 @@
 import { test, expect } from '@playwright/test';
+import { expectReceiveFooter, receiveViewports, scaleReceiveText } from '../receiveLayout';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
+
+for (const viewport of receiveViewports) {
+  for (const scale of [1, 1.6]) {
+    test(`Receive address and actions stay reachable at ${viewport.width}x${viewport.height} and ${scale} text`, async ({ page }, info) => {
+      await page.setViewportSize(viewport);
+      await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:4179' ? route.continue() : route.abort());
+      await page.goto('/?network-portfolio');
+      await page.getByTestId('native-portfolio-receive').click();
+      if (scale !== 1) await scaleReceiveText(page, scale);
+      const address = page.getByTestId('native-receive-address');
+      await expect(address).toHaveText('0x52908400098527886E0F7030069857D2E4169EE7');
+      await expect(address).toBeInViewport({ ratio: 1 });
+      if (scale === 1 && viewport.height >= 568) {
+        await expect(page.getByTestId('native-receive-qr')).toBeInViewport({ ratio: 1 });
+        await expect(page.getByTestId('native-receive-copy')).toBeInViewport({ ratio: 1 });
+        await expect(page.getByTestId('native-receive-share')).toBeInViewport({ ratio: 1 });
+      }
+      await expectReceiveFooter(page, address, page.getByTestId('native-receive-qr'));
+      await page.evaluate(() => { navigator.clipboard.writeText = async () => undefined; });
+      await page.getByTestId('native-receive-copy').click();
+      await expect(page.getByText('Ethereum address copied.', { exact: true })).toBeVisible();
+      if (scale !== 1) await scaleReceiveText(page, scale);
+      await expectReceiveFooter(page, address, page.getByTestId('native-receive-qr'));
+      await address.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: info.outputPath('receive-address-footer.png') });
+    });
+  }
+}
 
 test('SYSX appears as an exact read-only balance on the selected Syscoin UTXO account', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
@@ -290,10 +319,10 @@ for (const { width, height } of [{ width: 320, height: 360 }, { width: 844, heig
       const message = page.getByText('Could not copy this address. Try again.', { exact: true });
       await expect(message).toBeVisible();
       if (scale !== 1) await scaleText();
-      await expect(message).toBeInViewport({ ratio: 1 });
-      await expect(copy).toBeInViewport({ ratio: 1 });
-      await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
-      await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeInViewport({ ratio: 1 });
+      for (const control of [message, copy, page.getByRole('button', { name: 'Share address', exact: true }), page.getByRole('button', { name: 'Back', exact: true })]) {
+        await control.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+        await expect(control).toBeInViewport({ ratio: 1 });
+      }
       await page.screenshot({ path: testInfo.outputPath(`native-receive-${width}x${height}-${scale}.png`) });
     });
   }

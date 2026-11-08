@@ -65,6 +65,7 @@ function NativePortfolioContent({ model, snapshot, smartAccount, onDeploySmartAc
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingAction, setPendingAction] = useState<'copy' | 'share' | 'faucet' | null>(null);
   const { width, fontScale } = useWindowDimensions();
+  const receiveQrSize = width <= 340 ? 176 : 204;
   const stackActions = fontScale >= 1.6 && width < 240 * fontScale;
   const actionStyle = [s.flex, width <= 340 && s.compactAction, stackActions && s.stackedAction];
   const lifecycle = useRef({ alive: false, epoch: 0, busy: false });
@@ -148,20 +149,19 @@ function NativePortfolioContent({ model, snapshot, smartAccount, onDeploySmartAc
   const currentFeedback = feedback?.scope === scope ? feedback : null;
   const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const feedbackView = currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>;
-  const actions = receiving ? <>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}>
+  const actions = receiving ? <><Text selectable style={s.receiveAddress} accessibilityLabel={`${networkName} address ${account?.address}`} testID="native-receive-address">{account?.address}</Text>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}>
     <Button title="Copy address" icon="copy" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
     <Button title="Share address" icon="share" variant="secondary" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
   </View></> : undefined;
 
   return <SafeAreaView edges={navigation && !receiving && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
-    <Screen key={receiving ? 'receive' : 'portfolio'} footer={actions}>
+    <Screen key={receiving ? 'receive' : 'portfolio'} footer={actions} footerScrollable={receiving} gap={receiving ? 12 : 22}>
       <Header title={receiving ? `Receive ${symbol}` : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its account." /> : receiving ? <>
         <View style={s.identity}><Coin id={network.networkId} size={48} /><Text style={s.network}>{networkName}</Text><Text style={styles.muted}>{accountLabel}</Text></View>
         <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${networkName} address ${account.address}`} testID="native-receive-qr">
-          <QRCode value={account.address} size={204} quietZone={16} backgroundColor="#ffffff" color={colors.bg} ecl="M" />
+          <QRCode value={account.address} size={receiveQrSize} quietZone={16} backgroundColor="#ffffff" color={colors.bg} ecl="M" />
         </View>
-        <Text selectable style={s.receiveAddress} accessibilityLabel={`${networkName} address ${account.address}`} testID="native-receive-address">{account.address}</Text>
         <Notice title="Check the network" body={`Use ${networkName}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
         {faucetCard}
       </> : <>

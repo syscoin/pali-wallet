@@ -1,4 +1,5 @@
 import { sysxSendFixture } from './sysxSendFixture';
+import { WatchReceiveFixture } from './watchReceiveFixture';
 import { idleFixture } from './security';
 // Synthetic adapters exercise the actual App and native screens. No live funds or RPC.
 import React from 'react';
@@ -150,4 +151,4 @@ window.__watchFixture = {
   async confirmReview(id) { try { await latestTransfers!.view.confirm(id); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
   recoveryAudit: () => ({ ...recoveryAudit }), holdRecovery, releaseRecovery,
 };
-registerRootComponent(() => <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);
+registerRootComponent(() => new URLSearchParams(window.location.search).has('watch-receive-fixture') ? <WatchReceiveFixture /> : <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);
