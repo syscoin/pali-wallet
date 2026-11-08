@@ -280,6 +280,39 @@ test('status forwarding ends on unsubscribe, authority retirement and transport 
   assert.equal(updates, 1);
   await f.transport.dispose();
   assert.equal(f.statusListeners(), 0);
+  assert.equal(updates, 2);
   f.status();
-  assert.equal(updates, 1);
+  assert.equal(updates, 2);
+});
+
+for (const event of ['dispose', 'abort'] as const)
+  test(`${event} notifies disconnected status before native cleanup and drains observers`, async () => {
+    const f = fixture();
+    const observed: boolean[] = [];
+    f.transport.host.subscribeStatus(() => {
+      throw new Error('Observer failed');
+    });
+    f.transport.host.subscribeStatus(() => {
+      observed.push(f.transport.host.getStatus().connected);
+      assert.equal(f.events.includes('dmk-close'), false);
+    });
+    if (event === 'abort') f.signal.abort();
+    await f.transport.dispose();
+    assert.deepEqual(observed, [false]);
+    assert.equal(f.statusListeners(), 0);
+    assert(f.events.includes('native-close'));
+    f.status();
+    assert.deepEqual(observed, [false]);
+  });
+
+test('a disconnect observer reentering disposal joins the reserved cleanup', async () => {
+  const f = fixture();
+  let nested: Promise<void> | undefined;
+  f.transport.host.subscribeStatus(() => {
+    nested = f.transport.dispose();
+  });
+  const outer = f.transport.dispose();
+  assert.equal(nested, outer);
+  await outer;
+  assert.deepEqual(f.events, ['disconnect', 'dmk-close', 'native-close']);
 });
