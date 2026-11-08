@@ -73,17 +73,17 @@ describe('infrastructure transaction broadcast boundary', () => {
     };
     jest.spyOn(store, 'getState').mockImplementation(() => currentState);
     send = jest.fn().mockResolvedValue(response);
+    const ethereumTransaction = {
+      web3Provider: {},
+      sendFormattedTransaction: send,
+    };
     (getController as jest.Mock).mockReturnValue({
-      wallet: {
-        ethereumTransaction: {
-          web3Provider: {},
-          sendFormattedTransaction: send,
-        },
-      },
+      wallet: { ethereumTransaction },
     });
     wallet = Object.create(MainController.prototype);
     wallet.getActiveKeyring = jest.fn(() => ({
       setVaultStateGetter: jest.fn(),
+      ethereumTransaction,
     }));
     wallet.sendAndSaveTransaction = jest.fn().mockResolvedValue(undefined);
   });
