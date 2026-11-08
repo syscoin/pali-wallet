@@ -11,7 +11,7 @@ import {
   selectEvmDappFees,
   selectEvmDappGasLimit,
 } from './evmDappFeePolicy.ts';
-import { evmCallRequest, evmEstimateRequest } from './evmEstimateRequest.ts';
+import { evmEstimateRequest } from './evmEstimateRequest.ts';
 import {
   assertEvmFeeEstimateApproved,
   assertSynchronousEvmFeeGuard,
@@ -237,9 +237,7 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     )
       throw new EvmDappReviewRequiredError();
   } else {
-    const estimateRequest = approved
-      ? evmEstimateRequest(execution)
-      : evmCallRequest({ ...execution, accessList: request.accessList });
+    const estimateRequest = evmEstimateRequest(execution);
     executionGas = readEvmRpcQuantity(
       await ports.read('eth_estimateGas', [estimateRequest, sample.state])
     );
