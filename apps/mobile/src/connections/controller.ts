@@ -109,6 +109,16 @@ const failure = (code: NativeConnectionError): never => {
 };
 const sessionKey = (session: WalletConnectSession) =>
   `${session.binding.peerPublicKey}:${session.binding.topic}`;
+const sessionEventChain = (session: WalletConnectSession, name: string) => {
+  for (const namespace of Object.values(session.namespaces)) {
+    if (!namespace.events.includes(name)) continue;
+    const account = namespace.accounts.find((value) =>
+      /^eip155:\d+:[^:]+$/.test(value)
+    );
+    if (account) return account.slice(0, account.lastIndexOf(':'));
+  }
+  return undefined;
+};
 
 /** Native lifecycle and public view adapter. The common engine owns every grant. */
 export class NativeConnectionsController {
@@ -450,6 +460,7 @@ export class NativeConnectionsController {
           const connection = this.connections.get(key);
           const selectedSession = connection?.session;
           const grant = engine.get(origin);
+          if (!selectedSession) return;
           const guard = () => {
             if (
               !current() ||
@@ -462,7 +473,6 @@ export class NativeConnectionsController {
           };
           guard();
           const event: DappSessionEvent = prepare();
-          const chainId = `eip155:${host.context().network.chainId}`;
           const message =
             id === 'pali_accountsChanged'
               ? { name: 'accountsChanged', data: event.params }
@@ -470,6 +480,11 @@ export class NativeConnectionsController {
                   name: 'chainChanged',
                   data: (event.params as { chainId: string }).chainId,
                 };
+          // A network change or removed grant cannot expand session permissions.
+          const chainId = grant
+            ? `eip155:${grant.chainId}`
+            : sessionEventChain(selectedSession, message.name);
+          if (!chainId) return;
           guard();
           await transport.emit(session.binding, chainId, message, guard);
         };
@@ -587,6 +602,7 @@ export class NativeConnectionsController {
       )
         failure('CONTEXT_CHANGED');
     };
+    let attemptedPairing: WalletConnectPairing | undefined;
     try {
       await this.ensure();
       guard();
@@ -594,6 +610,7 @@ export class NativeConnectionsController {
       guard();
       const pairing = await this.transport!.pair(uri, guard, (pairing) => {
         guard();
+        attemptedPairing = pairing;
         this.pairing = pairing;
       });
       try {
@@ -603,6 +620,18 @@ export class NativeConnectionsController {
         void pairing.cancel().catch(() => undefined);
         throw error;
       }
+    } catch (error) {
+      if (this.action === action) {
+        if (attemptedPairing) {
+          this.canceledPairings.set(attemptedPairing.topic, attemptedPairing);
+          for (const [id, proposal] of this.proposals)
+            if (proposal.pairingTopic === attemptedPairing.topic)
+              this.proposals.delete(id);
+          if (this.pairing === attemptedPairing) this.pairing = undefined;
+        }
+        if (this.snapshot.status !== 'unavailable') this.status = 'ready';
+      }
+      throw error;
     } finally {
       if (this.action === action) {
         this.action = undefined;

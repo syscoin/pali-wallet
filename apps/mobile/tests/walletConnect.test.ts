@@ -73,6 +73,7 @@ function fixture() {
   let beforeAck: () => Promise<void> = async () => undefined;
   let beforeStorageWrite: () => Promise<void> = async () => undefined;
   let storageTail = Promise.resolve();
+  let parseFailure: Error | undefined;
   const events: WalletConnectTransportEvent[] = [],
     calls: string[] = [];
   const responders: unknown[] = [];
@@ -205,6 +206,7 @@ function fixture() {
       return client;
     },
     parseUri() {
+      if (parseFailure) throw parseFailure;
       return {
         topic: PAIRING,
         symKey: 'd4'.repeat(32),
@@ -273,6 +275,9 @@ function fixture() {
     },
     setBeforeStorageWrite(value: () => Promise<void>) {
       beforeStorageWrite = value;
+    },
+    setParseFailure(value: Error | undefined) {
+      parseFailure = value;
     },
     setPending(id: number, value: unknown) {
       pending.set(id, value);
@@ -470,6 +475,66 @@ test('direct official construction requires explicit protected storage and disab
   assert(f.calls.includes('core-dispose'));
   assert(f.calls.includes('client-dispose'));
 });
+
+test('a chain-change payload uses an authorized session scope without granting its destination chain', async () => {
+  const f = fixture(),
+    transport = await openWalletConnectTransport(f.options);
+  const session = (await transport.sessions())[0]!;
+  const emitted: unknown[] = [];
+  f.client.emit = async (value) => {
+    emitted.push(value);
+  };
+  const event = { name: 'chainChanged', data: '0xa' };
+  await transport.emit(session.binding, 'eip155:1', event, () => undefined);
+  assert.deepEqual(emitted, [{ topic: TOPIC, chainId: 'eip155:1', event }]);
+  await assert.rejects(
+    transport.emit(session.binding, 'eip155:10', event, () => undefined),
+    { message: 'CONNECTION_UNAVAILABLE' }
+  );
+  assert.equal(emitted.length, 1);
+  assert.deepEqual((await transport.sessions())[0]!.namespaces, namespaces);
+  await transport.close();
+});
+
+for (const stage of ['parse', 'SDK'] as const) {
+  test(`a ${stage} pairing failure leaves the transport available for retry`, async () => {
+    const f = fixture(),
+      transport = await openWalletConnectTransport(f.options);
+    const pair = f.client.pair;
+    if (stage === 'parse') f.setParseFailure(new Error('invalid wc URI'));
+    else
+      f.client.pair = async () => {
+        throw new Error('pairing rejected');
+      };
+    const uri =
+      'wc:' + PAIRING + '@2?relay-protocol=irn&symKey=' + 'd4'.repeat(32);
+    await assert.rejects(
+      transport.pair(
+        uri,
+        () => undefined,
+        () => undefined
+      ),
+      { message: 'CONNECTION_UNAVAILABLE' }
+    );
+    assert.equal(
+      f.events.some((event) => event.type === 'unavailable'),
+      false
+    );
+    f.setParseFailure(undefined);
+    f.client.pair = pair;
+    assert.equal(
+      (
+        await transport.pair(
+          uri,
+          () => undefined,
+          () => undefined
+        )
+      ).topic,
+      PAIRING
+    );
+    await transport.close();
+  });
+}
 
 test('proposal approval binds the returned session to the authenticated peer and rejects unsupported methods', async () => {
   const f = fixture(),
