@@ -30,6 +30,7 @@ function fixture() {
   const rows = new Map<string, unknown>();
   const responses: unknown[] = [],
     emissions: unknown[] = [],
+    emissionScopes: string[] = [],
     cancelledTopics: string[] = [];
   let event!: (event: WalletConnectTransportEvent) => void;
   let closed = 0,
@@ -43,6 +44,8 @@ function fixture() {
   let pairWait: Promise<void> = Promise.resolve();
   let disconnectWait: Promise<void> = Promise.resolve();
   let rejectFailure: Error | undefined;
+  let pairFailure: { error: Error; beforeHandle: boolean } | undefined;
+  let selectedChainId = 1;
   let pairingExpiry = Date.now() + 300000;
   const network = {
     kind: 'ethereum',
@@ -94,7 +97,7 @@ function fixture() {
     walletBindingId: 'd4'.repeat(32),
     assertOwner() {},
     context: () => ({
-      network: network as ReturnType<
+      network: { ...network, chainId: selectedChainId } as ReturnType<
         NativeConnectionHost['context']
       >['network'],
       networkId: 'ethereum',
@@ -173,6 +176,8 @@ function fixture() {
         pair: async (uri, guard, onPairing) => {
           guard();
           const wait = pairWait;
+          const failure = pairFailure;
+          if (failure?.beforeHandle) throw failure.error;
           const pairing = {
             topic: uri === 'wc:new' ? 'ef'.repeat(32) : PAIRING,
             get expiresAt() {
@@ -185,6 +190,7 @@ function fixture() {
           };
           onPairing(pairing);
           await wait;
+          if (failure) throw failure.error;
           return pairing;
         },
         approve: async (_proposal, namespaces, guard) => {
@@ -208,9 +214,11 @@ function fixture() {
           guard();
           responses.push({ id, result });
         },
-        emit: async (_binding, _chain, value, guard) => {
+        emit: async (_binding, chain, value, guard) => {
           await emissionWait;
           guard();
+          assert(session.namespaces.eip155!.chains!.includes(chain));
+          emissionScopes.push(chain);
           emissions.push(value);
         },
         sessions: async () => [],
@@ -226,6 +234,7 @@ function fixture() {
     rows,
     responses,
     emissions,
+    emissionScopes,
     session,
     proposal,
     event: (value: WalletConnectTransportEvent) => event(value),
@@ -246,6 +255,9 @@ function fixture() {
     setPairWait(value: Promise<void>) {
       pairWait = value;
     },
+    setPairFailure(value: typeof pairFailure) {
+      pairFailure = value;
+    },
     setDisconnectWait(value: Promise<void>) {
       disconnectWait = value;
     },
@@ -259,6 +271,11 @@ function fixture() {
     closed: () => closed,
     pairCanceled: () => pairCanceled,
     refresh() {
+      snapshot = { ...snapshot, revision: snapshot.revision + 1 };
+      for (const listener of listeners) listener();
+    },
+    selectChain(chainId: number) {
+      selectedChainId = chainId;
       snapshot = { ...snapshot, revision: snapshot.revision + 1 };
       for (const listener of listeners) listener();
     },
@@ -393,6 +410,267 @@ test('ordinary unlock preparation stays local and unchanged custody updates do n
     assert.equal(f.emissions.length, emitted);
     assert.equal(f.opened(), 1);
   } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('network changes use the approved session chain without extending its grant', async () => {
+  const f = fixture();
+  await settle();
+  try {
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    await f.view.approve(
+      3,
+      'hd:60:0',
+      'ethereum',
+      f.view.getSnapshot().revision
+    );
+    await settle();
+    const persisted = JSON.stringify([...f.rows]);
+    f.selectChain(10);
+    await settle();
+    assert.deepEqual(f.emissions.at(-1), { name: 'chainChanged', data: '0xa' });
+    assert.equal(f.emissionScopes.at(-1), 'eip155:1');
+    assert.equal(JSON.stringify([...f.rows]), persisted);
+    assert.deepEqual(f.session.namespaces.eip155!.chains, ['eip155:1']);
+    f.event({
+      type: 'request',
+      request: {
+        id: 10,
+        session: f.session,
+        chainId: 'eip155:1',
+        method: 'eth_chainId',
+        params: [],
+      },
+    });
+    await settle();
+    assert.deepEqual(f.responses.at(-1), {
+      id: 10,
+      result: {
+        error: { code: 4901, message: 'Requested chain is not selected' },
+      },
+    });
+    f.selectChain(1);
+    await settle();
+    assert.deepEqual(f.emissions.at(-1), { name: 'chainChanged', data: '0x1' });
+    f.event({
+      type: 'request',
+      request: {
+        id: 11,
+        session: f.session,
+        chainId: 'eip155:1',
+        method: 'eth_chainId',
+        params: [],
+      },
+    });
+    await settle();
+    assert.deepEqual(f.responses.at(-1), { id: 11, result: { result: '0x1' } });
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('a queued network event cannot publish a superseded chain selection', async () => {
+  const f = fixture();
+  await settle();
+  let release!: () => void;
+  try {
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    await f.view.approve(
+      3,
+      'hd:60:0',
+      'ethereum',
+      f.view.getSnapshot().revision
+    );
+    await settle();
+    const previous = f.emissions.length;
+    f.setEmissionWait(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    f.selectChain(10);
+    await settle();
+    f.selectChain(137);
+    release();
+    await settle();
+    assert.deepEqual(f.emissions.slice(previous), [
+      { name: 'chainChanged', data: '0x89' },
+    ]);
+    assert.equal(f.emissionScopes.at(-1), 'eip155:1');
+  } finally {
+    release?.();
+    await f.controller.dispose();
+  }
+});
+
+test('disconnect after a network switch reports empty accounts on the approved chain', async () => {
+  const f = fixture();
+  await settle();
+  try {
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    await f.view.approve(
+      3,
+      'hd:60:0',
+      'ethereum',
+      f.view.getSnapshot().revision
+    );
+    await settle();
+    f.selectChain(10);
+    await settle();
+    const previous = f.emissions.length;
+    await f.view.disconnect(f.view.getSnapshot().sessions[0]!.id);
+    await settle();
+    assert.deepEqual(f.emissions.slice(previous), [
+      { name: 'accountsChanged', data: [] },
+    ]);
+    assert.equal(f.emissionScopes.at(-1), 'eip155:1');
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+for (const beforeHandle of [true, false]) {
+  test(`failed pairing ${
+    beforeHandle ? 'validation' : 'SDK call'
+  } returns to a retryable state`, async () => {
+    const f = fixture();
+    await settle();
+    try {
+      f.setPairFailure({ error: new Error('rejected pairing'), beforeHandle });
+      await assert.rejects(f.view.pair('wc:invalid'), {
+        message: 'rejected pairing',
+      });
+      assert.equal(f.view.getSnapshot().status, 'ready');
+      assert.equal(f.view.getSnapshot().error, 'CONNECTION_UNAVAILABLE');
+      f.setPairFailure(undefined);
+      await f.view.pair('wc:new');
+      assert.equal(f.view.getSnapshot().status, 'pairing');
+      assert.equal(f.view.getSnapshot().error, null);
+      f.view.cancel();
+      await settle();
+      assert.deepEqual(f.cancelledTopics, ['ef'.repeat(32)]);
+    } finally {
+      await f.controller.dispose();
+    }
+  });
+}
+
+test('a failed cancelled pairing cannot reset a newer pairing', async () => {
+  const f = fixture();
+  await settle();
+  let release!: () => void;
+  try {
+    f.setPairFailure({
+      error: new Error('old SDK failure'),
+      beforeHandle: false,
+    });
+    f.setPairWait(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    const oldPair = f.view.pair('wc:old');
+    const rejected = assert.rejects(oldPair, { message: 'old SDK failure' });
+    await settle();
+    f.view.cancel();
+    f.setPairFailure(undefined);
+    f.setPairWait(Promise.resolve());
+    await f.view.pair('wc:new');
+    release();
+    await rejected;
+    assert.equal(f.view.getSnapshot().status, 'pairing');
+    assert.equal(f.view.getSnapshot().error, null);
+    f.view.cancel();
+    await settle();
+    assert.equal(f.cancelledTopics.at(-1), 'ef'.repeat(32));
+  } finally {
+    release?.();
+    await f.controller.dispose();
+  }
+});
+
+test('a failed SDK pairing cannot reappear as a late proposal while a retry succeeds', async () => {
+  const f = fixture();
+  await settle();
+  let release!: () => void;
+  try {
+    f.setPairFailure({ error: new Error('SDK failure'), beforeHandle: false });
+    f.setPairWait(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    const pairing = f.view.pair('wc:old');
+    const rejected = assert.rejects(pairing, { message: 'SDK failure' });
+    await settle();
+    f.event({ type: 'proposal', proposal: f.proposal });
+    assert.equal(f.view.getSnapshot().proposals.length, 1);
+    release();
+    await rejected;
+    assert.deepEqual(f.view.getSnapshot().proposals, []);
+    f.event({ type: 'proposal', proposal: f.proposal });
+    assert.deepEqual(f.view.getSnapshot().proposals, []);
+    f.setPairFailure(undefined);
+    f.setPairWait(Promise.resolve());
+    await f.view.pair('wc:new');
+    f.event({
+      type: 'proposal',
+      proposal: { ...f.proposal, id: 4, pairingTopic: 'ef'.repeat(32) },
+    });
+    assert.deepEqual(
+      f.view.getSnapshot().proposals.map(({ id }) => id),
+      [4]
+    );
+  } finally {
+    release?.();
+    await f.controller.dispose();
+  }
+});
+
+test('a new URI validation failure does not retire the earlier valid pairing', async () => {
+  const f = fixture();
+  await settle();
+  try {
+    await f.view.pair('wc:old');
+    f.setPairFailure({ error: new Error('parse failure'), beforeHandle: true });
+    await assert.rejects(f.view.pair('wc:invalid'), {
+      message: 'parse failure',
+    });
+    f.event({ type: 'proposal', proposal: f.proposal });
+    assert.equal(f.view.getSnapshot().proposals.length, 1);
+    f.view.cancel();
+    await settle();
+    assert.deepEqual(f.cancelledTopics, [PAIRING]);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('a pairing failure preserves an unavailable transport state', async () => {
+  const f = fixture();
+  await settle();
+  let release!: () => void;
+  try {
+    f.setPairFailure({ error: new Error('SDK failure'), beforeHandle: false });
+    f.setPairWait(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    const pairing = f.view.pair('wc:fixture');
+    const rejected = assert.rejects(pairing, { message: 'SDK failure' });
+    await settle();
+    f.event({ type: 'unavailable' });
+    release();
+    await rejected;
+    assert.equal(f.view.getSnapshot().status, 'unavailable');
+  } finally {
+    release?.();
     await f.controller.dispose();
   }
 });
