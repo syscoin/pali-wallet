@@ -57,10 +57,15 @@ function fixture() {
   const keyring = {
     isUnlocked: jest.fn(() => true),
     unlock: jest.fn(async () => ({ canLogin: true })),
-    lockWallet: jest.fn(async () => { unlockEpoch++; }),
+    lockWallet: jest.fn(async () => {
+      unlockEpoch++;
+    }),
     captureUnlockedSessionGuard: jest.fn(() => {
       const epoch = unlockEpoch;
-      return () => { if (epoch !== unlockEpoch || !keyring.isUnlocked()) throw new Error('retired unlock'); };
+      return () => {
+        if (epoch !== unlockEpoch || !keyring.isUnlocked())
+          throw new Error('retired unlock');
+      };
     }),
   };
   const wallet: any = Object.create(MainController.prototype);

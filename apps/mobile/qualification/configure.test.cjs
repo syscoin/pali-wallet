@@ -154,7 +154,7 @@ test('official SDK verification uses the explicitly selected working directory w
     fs.writeFileSync(file, JSON.stringify({ name, version: '3.9.6' }));
     const invalid = spawnSync(process.execPath, [command], { cwd: root, encoding: 'utf8' });
     assert.notEqual(invalid.status, 0);
-    assert.match(invalid.stderr, /exact package pin/);
+    assert.match(invalid.stderr, /exact manifest version/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

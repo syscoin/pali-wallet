@@ -20,7 +20,7 @@ function readQualificationSdkPin(root) {
 function verifyInstalledQualificationSdk(root, pin) {
   const metadata = readJson(path.join(root, 'node_modules', name, 'package.json'));
   if (metadata.name !== name || metadata.version !== pin.version)
-    throw Error('Installed shared keyring must match the exact package pin');
+    throw Error('Installed shared keyring must match the exact manifest version');
   readWalletConnectSdkIdentity(root);
 }
 

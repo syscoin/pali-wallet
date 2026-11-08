@@ -32,6 +32,7 @@ jest.mock('utils/slhDsa', () => ({
 
 import { webcrypto } from 'crypto';
 
+import { createPrivacyWithdrawalsController } from '../../../wallet/privacyWithdrawals';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -42,7 +43,6 @@ import { PRIVACY_POOLS } from 'utils/privacy/registry';
 import type { IPrivacyWithdrawalsHost } from 'utils/privacy/withdrawTypes';
 
 import MainController from './MainController';
-import { createPrivacyWithdrawalsController } from '../../../wallet/privacyWithdrawals';
 
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 const NOTE_ID = '00000000-0000-4000-8000-000000001000';
@@ -85,10 +85,19 @@ function setup() {
   jest.spyOn(store, 'getState').mockImplementation(() => state);
   const events: string[] = [];
   let unlockEpoch = 0;
-  const keyring = { isUnlocked: jest.fn(() => true), lockWallet: jest.fn(async () => { unlockEpoch++; }), captureUnlockedSessionGuard: jest.fn(() => {
-    const epoch = unlockEpoch;
-    return () => { if (epoch !== unlockEpoch || !keyring.isUnlocked()) throw new Error('retired unlock'); };
-  }) };
+  const keyring = {
+    isUnlocked: jest.fn(() => true),
+    lockWallet: jest.fn(async () => {
+      unlockEpoch++;
+    }),
+    captureUnlockedSessionGuard: jest.fn(() => {
+      const epoch = unlockEpoch;
+      return () => {
+        if (epoch !== unlockEpoch || !keyring.isUnlocked())
+          throw new Error('retired unlock');
+      };
+    }),
+  };
   const wallet: any = Object.create(MainController.prototype);
   const pendingNonce = jest.fn(async () => 7);
   const provider = {
