@@ -5,6 +5,10 @@ import type { IBlacklistCheckResult } from '../../../../source/types/security.ts
 import { parseTokenAmount } from '../../../../source/shared/erc20.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { createNativeSmartOperation } from '../smartAccount/runtime.ts';
+import { createSmartAccountCallsExecutions, normalizeDappCallsRequest } from '../../../../source/shared/dappCalls.ts';
+import { captureSmartAccountCallsIdentity } from '../../../../source/shared/dappCallsStatus.ts';
+import { getSmartAccountLocalEcdsaOwners, type SmartAccountLocalOwner } from '../../../../source/utils/smartAccount/signOperation.ts';
+import type { NativeSmartOperationPorts } from '../smartAccount/runtime.ts';
 import { snapshotSmartAccountDappTransaction } from '../../../../source/shared/smartAccountDappTransaction.ts';
 import { summarizeApproval, decodeApprovalData } from '../../../../source/shared/approval.ts';
 import type { NativeSmartAccountAmount, NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
@@ -1672,7 +1676,7 @@ export function createKeyringRuntimeFactory(
             }
           },
         };
-        const openSmartAccountOperation = async (intent: NativeSmartAccountIntent, assertOwner: () => void): Promise<NativeSmartAccountOperation> => {
+        const openSmartAccountOperation = async (intent: NativeSmartAccountIntent, assertOwner: () => void, submitBatch?: NativeSmartOperationPorts['submitBatch']): Promise<NativeSmartAccountOperation> => {
             if (active || reserved || !catalogueSnapshot || !keyring.isUnlocked() ||
                 !nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks)) throw new KeyringRuntimeError('NOT_READY');
             let snapshot = catalogueSnapshot!, selected = selectedAccount();
@@ -1693,7 +1697,7 @@ export function createKeyringRuntimeFactory(
               { keyring: ring, assertCurrent: check }, network.chainId, account.address);
             check();
             return createNativeSmartOperation({
-              intent, pendingRecords,
+              intent, pendingRecords, ...(submitBatch ? { submitBatch } : {}),
               checkAddress: dependencies.checkSmartAccountAddress ?? (address => blacklistService.checkAddress(address)),
               account: account as IKeyringAccountState & { smartAccount: NonNullable<IKeyringAccountState['smartAccount']> },
               wallet: state, network, rpc, assertCurrent: check,
@@ -1805,6 +1809,60 @@ export function createKeyringRuntimeFactory(
             if (!walletBindingId) throw new KeyringRuntimeError('CANCELLED');
             const assertOwner = connectionOwner(walletBindingId);
             assertOwner();
+            const captureTransaction = (
+              input: Parameters<NativeConnectionHost['prepareTransaction']>[0],
+              assertRequestCurrent: () => void
+            ) => {
+              assertOwner();
+              checkGuard(assertRequestCurrent);
+              const snapshot = catalogueSnapshot,
+                ring = keyring,
+                captured = generation,
+                approval = input.approval;
+              if (!ring.isUnlocked() || !snapshot || active || reserved)
+                throw new KeyringRuntimeError('NOT_READY');
+              const selected = snapshot.accounts.find(
+                (account) => account.id === snapshot.active.accountId
+              );
+              if (
+                !selected ||
+                (selected.type !== 'HDAccount' &&
+                  selected.type !== 'Imported' &&
+                  selected.type !== 'SmartAccount') ||
+                selected.id !== input.accountId ||
+                selected.slip44 !== 60 ||
+                snapshot.active.networkId !== input.networkId
+              )
+                throw new KeyringRuntimeError('INVALID_INPUT');
+              const account = state.accounts[selected.type][selected.index];
+              const network = getNativeNetwork(
+                snapshot.active.networkId,
+                snapshot.networks
+              );
+              const isCurrent = () =>
+                !closed &&
+                generation === captured &&
+                keyring === ring &&
+                ring.isUnlocked() &&
+                catalogueSnapshot === snapshot &&
+                state.activeAccount.id === selected.index &&
+                state.activeAccount.type === selected.type &&
+                state.accounts[selected.type][selected.index] === account &&
+                account?.address === selected.address &&
+                state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
+                state.activeNetwork.chainId === Number(network.chainId) &&
+                state.activeNetwork.url === network.rpcUrl;
+              approval.bindSigner('native-transaction', isCurrent);
+              const check = () => {
+                current(captured);
+                assertOwner();
+                checkGuard(approval.assertCurrent);
+                checkGuard(assertRequestCurrent);
+                if (!isCurrent()) throw new KeyringRuntimeError('CANCELLED');
+              };
+              check();
+              return { snapshot, selected, account, network, approval, check };
+            };
             return Object.freeze({
               repository,
               walletBindingId,
@@ -1813,65 +1871,210 @@ export function createKeyringRuntimeFactory(
                 assertOwner();
                 return generation;
               },
-              async prepareTransaction(input, assertRequestCurrent) {
+              calls: repository.calls,
+              supportsAtomicCalls(accountId) {
                 assertOwner();
-                checkGuard(assertRequestCurrent);
-                const snapshot = catalogueSnapshot,
-                  ring = keyring,
-                  captured = generation,
-                  approval = input.approval;
-                if (!ring.isUnlocked() || !snapshot || active || reserved)
-                  throw new KeyringRuntimeError('NOT_READY');
-                const selected = snapshot.accounts.find(
-                  (account) => account.id === snapshot.active.accountId
+                const record = catalogueSnapshot?.accounts.find(
+                  (entry) => entry.id === accountId
+                );
+                if (!record || record.type !== 'SmartAccount' || record.slip44 !== 60)
+                  return false;
+                const saved = state.accounts.SmartAccount[record.index];
+                const network = catalogueSnapshot!.networks.find(
+                  (entry) => entry.id === catalogueSnapshot!.active.networkId
                 );
                 if (
-                  !selected ||
-                  (selected.type !== 'HDAccount' &&
-                    selected.type !== 'Imported' &&
-                    selected.type !== 'SmartAccount') ||
-                  selected.id !== input.accountId ||
-                  selected.slip44 !== 60 ||
-                  snapshot.active.networkId !== input.networkId
+                  !keyring.isUnlocked() ||
+                  !saved?.smartAccount ||
+                  !network ||
+                  saved.smartAccount.chainId !== Number(network.chainId)
+                )
+                  return false;
+                try {
+                  requireSmartAccountAddressIdentity(saved, Number(network.chainId));
+                  getSmartAccountLocalEcdsaOwners(saved.smartAccount, (address) => {
+                    for (const type of ['HDAccount', 'Imported'] as const) {
+                      const owner = Object.values(state.accounts[type]).find(
+                        (entry) =>
+                          !entry.isSmartAccount &&
+                          !entry.isLedgerWallet &&
+                          !entry.isTrezorWallet &&
+                          entry.address.toLowerCase() === address.toLowerCase()
+                      );
+                      if (owner)
+                        return {
+                          id: owner.id,
+                          type: type as SmartAccountLocalOwner['type'],
+                        };
+                    }
+                    return null;
+                  });
+                  return true;
+                } catch {
+                  return false;
+                }
+              },
+              async readCallsStatus(origin, id, assertRequestCurrent) {
+                const snapshot = catalogueSnapshot;
+                const guard = () => {
+                  assertOwner();
+                  checkGuard(assertRequestCurrent);
+                  if (catalogueSnapshot !== snapshot)
+                    throw new KeyringRuntimeError('CANCELLED');
+                };
+                return repository.calls.resolveCallsStatus(
+                  {
+                    assertCurrent: guard,
+                    forChain(chainId) {
+                      guard();
+                      const network = snapshot?.networks.find(
+                        (entry) => entry.chainId === String(chainId)
+                      );
+                      if (!network) return null;
+                      const rpc = new EvmTransferReadRpc(network, {
+                        fetch: dependencies.connectionFetch ?? walletFetch,
+                      });
+                      return {
+                        async getTransactionReceipt(hash) {
+                          const signal = (contextReadLifetime ??= new AbortController())
+                            .signal;
+                          await rpc.verifyNetwork(signal, guard);
+                          const receipt = await rpc.retirementRead(
+                            'eth_getTransactionReceipt',
+                            [hash],
+                            signal,
+                            guard
+                          );
+                          await rpc.verifyNetwork(signal, guard);
+                          return receipt;
+                        },
+                      };
+                    },
+                  },
+                  origin,
+                  id
+                );
+              },
+              async prepareCalls(input, assertRequestCurrent) {
+                const { selected, network, approval, check } = captureTransaction(
+                  { ...input, transaction: {} },
+                  assertRequestCurrent
+                );
+                const { origin, bundleId, reservationId } = input;
+                if (selected.type !== 'SmartAccount')
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                const calls = normalizeDappCallsRequest(input.calls);
+                if (
+                  calls.from?.toLowerCase() !== selected.address.toLowerCase() ||
+                  BigInt(calls.chainId!) !== BigInt(network.chainId)
                 )
                   throw new KeyringRuntimeError('INVALID_INPUT');
-                const account = state.accounts[selected.type][selected.index];
-                const network = getNativeNetwork(
-                  snapshot.active.networkId,
-                  snapshot.networks
-                );
-                const isCurrent = () =>
-                  !closed &&
-                  generation === captured &&
-                  keyring === ring &&
-                  ring.isUnlocked() &&
-                  catalogueSnapshot === snapshot &&
-                  state.activeAccount.id === selected.index &&
-                  state.activeAccount.type === selected.type &&
-                  state.accounts[selected.type][selected.index] === account &&
-                  account?.address === selected.address &&
-                  state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
-                  state.activeNetwork.chainId === Number(network.chainId) &&
-                  state.activeNetwork.url === network.rpcUrl;
-                approval.bindSigner('native-transaction', isCurrent);
-                const check = () => {
-                  current(captured);
-                  assertOwner();
-                  checkGuard(approval.assertCurrent);
-                  checkGuard(assertRequestCurrent);
-                  if (!isCurrent()) throw new KeyringRuntimeError('CANCELLED');
+                createSmartAccountCallsExecutions(calls.calls);
+                const descriptor = {
+                  atomic: true,
+                  chainId: Number(network.chainId),
+                  smartAccount: true,
                 };
-                check();
+                let previousSubmissionId: string | undefined;
+                const operation = await openSmartAccountOperation(
+                  { kind: 'dapp-batch', calls: calls.calls },
+                  check,
+                  async (prepared, submit) => {
+                    check();
+                    const submissionId = repository.calls.generateWalletBundleId();
+                    await repository.calls.recordSendCallsBundle(origin, bundleId, {
+                      ...descriptor,
+                      reservationId,
+                      previousSubmissionId,
+                      submissionId,
+                      submissionStarted: true,
+                      smartAccountIdentity: captureSmartAccountCallsIdentity(
+                        prepared.userOperation,
+                        Number(network.chainId)
+                      ),
+                      txHashes: [],
+                    });
+                    previousSubmissionId = submissionId;
+                    let entered = false;
+                    try {
+                      check();
+                      entered = true;
+                      const hash = await submit();
+                      await repository.calls.recordSendCallsBundle(origin, bundleId, {
+                        ...descriptor,
+                        reservationId,
+                        submissionId,
+                        submissionCompleted: true,
+                        txHashes: [hash],
+                      });
+                      return hash;
+                    } catch (error) {
+                      const failure = error as {
+                        transactionNotBroadcast?: boolean;
+                        transactionHash?: string;
+                      };
+                      if (
+                        failure.transactionHash &&
+                        /^0x[\da-f]{64}$/i.test(failure.transactionHash)
+                      )
+                        await repository.calls.recordSendCallsBundle(origin, bundleId, {
+                          ...descriptor,
+                          reservationId,
+                          submissionId,
+                          submissionCompleted: true,
+                          txHashes: [failure.transactionHash],
+                        });
+                      else if (!entered || failure.transactionNotBroadcast === true)
+                        await repository.calls.recordSendCallsBundle(origin, bundleId, {
+                          ...descriptor,
+                          reservationId,
+                          submissionId,
+                          submissionNotBroadcast: true,
+                          txHashes: [],
+                        });
+                      throw error;
+                    }
+                  }
+                );
+                try {
+                  const batchApprovals = [];
+                  for (const call of calls.calls) {
+                    const metadata = decodeApprovalData(call.data).isApproval
+                      ? await readNativeApprovalMetadata({
+                          network,
+                          owner: selected.address,
+                          contract: call.to!,
+                          signal: approval.signal,
+                          assertCurrent: check,
+                          fetch: dependencies.connectionFetch ?? walletFetch,
+                        })
+                      : undefined;
+                    check();
+                    batchApprovals.push(summarizeApproval(call.data, call.to!, metadata));
+                  }
+                  return Object.freeze({
+                    operation,
+                    approval: null,
+                    batchApprovals: Object.freeze(batchApprovals),
+                  });
+                } catch (error) {
+                  operation.dispose();
+                  throw error;
+                }
+              },
+              async prepareTransaction(input, assertRequestCurrent) {
+                const { selected, network, approval, check } = captureTransaction(
+                  input,
+                  assertRequestCurrent
+                );
                 const normalized = normalizeDappTransaction(input.transaction);
                 if (
                   normalized.from !== undefined &&
-                  normalized.from.toLowerCase() !==
-                    selected.address.toLowerCase()
+                  normalized.from.toLowerCase() !== selected.address.toLowerCase()
                 )
                   throw new KeyringRuntimeError('INVALID_INPUT');
                 if (selected.type === 'SmartAccount') {
-                  const request =
-                    snapshotSmartAccountDappTransaction(normalized);
+                  const request = snapshotSmartAccountDappTransaction(normalized);
                   const operation = await openSmartAccountOperation(
                     {
                       kind: 'dapp-call',
@@ -1881,9 +2084,7 @@ export function createKeyringRuntimeFactory(
                       ...(request.maxFeePerGas === undefined
                         ? {}
                         : {
-                            maxFeePerGas: BigInt(
-                              request.maxFeePerGas
-                            ).toString(),
+                            maxFeePerGas: BigInt(request.maxFeePerGas).toString(),
                           }),
                       ...(request.maxPriorityFeePerGas === undefined
                         ? {}
@@ -1896,8 +2097,7 @@ export function createKeyringRuntimeFactory(
                     check
                   );
                   try {
-                    const metadata = decodeApprovalData(request.data ?? '0x')
-                      .isApproval
+                    const metadata = decodeApprovalData(request.data ?? '0x').isApproval
                       ? await readNativeApprovalMetadata({
                           network,
                           owner: selected.address,

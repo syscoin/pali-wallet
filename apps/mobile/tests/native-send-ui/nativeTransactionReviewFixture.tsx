@@ -58,6 +58,8 @@ export function NativeTransactionReviewFixture() {
   }, []);
   const unavailable = () => { throw new Error('Outside transaction review fixture'); };
   const controller: NativeConnectionsView = {
+    async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
     async editApprovalAmount(...args) {
       calls.push({ method: 'editApprovalAmount', args });
@@ -71,7 +73,7 @@ export function NativeTransactionReviewFixture() {
         approval: summarizeApproval(edited.data, tokenContract, metadata) });
     },
     getSnapshot: () => ({ revision: review?.revision ?? 0, status: 'ready', accounts: [], selectedAccountId: null,
-      network: null, proposals: [], sessions: [], signingReview: review, error: null }),
+      network: null, proposals: [], sessions: [], signingReview: review, callsStatus: null, error: null }),
     subscribe: unavailable, pair: unavailable, approve: unavailable,
     reject: unavailable, disconnect: unavailable, retry: unavailable, cancel: unavailable,
     async activateRequestAccount(...args) {

@@ -359,7 +359,7 @@ async function officialSdk(): Promise<WalletConnectSdk> {
 export async function openWalletConnectTransport(options: {
   projectId: string;
   metadata: Metadata;
-  repository: NativeConnectionRepository;
+  repository: Pick<NativeConnectionRepository, 'assertHealthy' | 'transport'>;
   supportedMethods: readonly string[];
   supportedEvents: readonly string[];
   assertOwner(): void;

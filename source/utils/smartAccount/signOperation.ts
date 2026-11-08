@@ -8,6 +8,35 @@ import type {
 
 export type SmartAccountLocalOwner = { id: number; type: KeyringAccountType };
 
+/** The capability check and actual signing share the same local-owner selection. */
+export function getSmartAccountLocalEcdsaOwners(
+  metadata: ISmartAccountMetadata,
+  findOwner: (address: string) => SmartAccountLocalOwner | null
+) {
+  const moduleId = metadata.auth?.module || metadata.auth?.scheme;
+  if (moduleId !== 'ecdsa' || !metadata.auth?.data)
+    throw new Error(
+      'This smart account requires an interactive signature for its configured validator.'
+    );
+  const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
+    ['address[]', 'uint64'],
+    metadata.auth.data
+  ) as [string[], { toString(): string }];
+  const owners = decodedOwners.map((owner) => getAddress(owner));
+  const threshold = Math.max(1, Number(decodedThreshold.toString()) || 1);
+  const localOwners = owners
+    .map((address) => ({ address, owner: findOwner(address) }))
+    .filter(
+      (entry): entry is { address: string; owner: SmartAccountLocalOwner } =>
+        entry.owner !== null
+    );
+  if (localOwners.length < threshold)
+    throw new Error(
+      'This smart account requires the configured ECDSA owner keys in this wallet.'
+    );
+  return { owners: localOwners.slice(0, threshold), threshold };
+}
+
 /** Sign the locally computed UserOperation hash through the shared SDK owner signer. */
 export async function signSmartAccountEcdsaOperation({
   metadata,
@@ -27,28 +56,12 @@ export async function signSmartAccountEcdsaOperation({
   ): Promise<string>;
 }): Promise<string> {
   assertSynchronousEvmFeeGuard(assertCurrent);
-  const moduleId = metadata.auth?.module || metadata.auth?.scheme;
-  if (moduleId !== 'ecdsa' || !metadata.auth?.data)
-    throw new Error(
-      'This smart account requires an interactive signature for its configured validator.'
-    );
-  const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
-    ['address[]', 'uint64'],
-    metadata.auth.data
-  ) as [string[], { toString(): string }];
-  const owners = decodedOwners.map((owner) => getAddress(owner));
-  const threshold = Math.max(1, Number(decodedThreshold.toString()) || 1);
-  const localOwners = owners
-    .map((address) => ({ address, owner: findOwner(address) }))
-    .filter((entry) => entry.owner !== null);
-  if (localOwners.length < threshold)
-    throw new Error(
-      'This smart account requires the configured ECDSA owner keys in this wallet.'
-    );
+  const { owners, threshold } = getSmartAccountLocalEcdsaOwners(
+    metadata,
+    findOwner
+  );
   const signatures = await Promise.all(
-    localOwners
-      .slice(0, threshold)
-      .map(({ address, owner }) => signOwner(address, actionHash, owner!))
+    owners.map(({ address, owner }) => signOwner(address, actionHash, owner!))
   );
   assertSynchronousEvmFeeGuard(assertCurrent);
   return threshold === 1

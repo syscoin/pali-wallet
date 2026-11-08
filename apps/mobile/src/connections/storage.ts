@@ -1,4 +1,9 @@
 import type { DappPermissionPort } from '../../../../source/wallet/dappSessions.ts';
+import {
+  assertCallsBundleStore,
+  createCallsBundleRegistry,
+  type CallsBundleStore,
+} from '../../../../source/wallet/dappCallsBundles.ts';
 import type {
   DappGrant,
   DappPermissionFrame,
@@ -53,6 +58,7 @@ type ConnectionRecord = Readonly<{
   walletBindingId: string;
   sessions: readonly SessionRecord[];
   transport: readonly TransportEntry[];
+  bundles?: CallsBundleStore;
 }>;
 
 export class NativeConnectionStorageError extends Error {
@@ -205,12 +211,13 @@ function normalizeTransportValue(value: unknown): unknown {
   return JSON.parse(json);
 }
 function readRecord(value: unknown, walletBindingId: string): ConnectionRecord {
-  const detached = fields(cloneValue(value), [
-    'version',
-    'walletBindingId',
-    'sessions',
-    'transport',
-  ]);
+  const detached = object(cloneValue(value));
+  const required = ['version', 'walletBindingId', 'sessions', 'transport'];
+  if (
+    required.some((key) => !Object.hasOwn(detached, key)) ||
+    Object.keys(detached).some((key) => ![...required, 'bundles'].includes(key))
+  )
+    return invalid();
   if (
     detached.version !== 1 ||
     detached.walletBindingId !== walletBindingId ||
@@ -241,11 +248,15 @@ function readRecord(value: unknown, walletBindingId: string): ConnectionRecord {
     transportKeys.add(row.key);
     return Object.freeze({ key: row.key, value: row.value });
   });
+  if (detached.bundles !== undefined) assertCallsBundleStore(detached.bundles);
   return Object.freeze({
     version: 1,
     walletBindingId,
     sessions: Object.freeze(sessions),
     transport: Object.freeze(transport),
+    ...(detached.bundles === undefined
+      ? {}
+      : { bundles: detached.bundles as CallsBundleStore }),
   });
 }
 
@@ -266,6 +277,7 @@ export interface NativeConnectionTransportStorage {
   removeItem(key: string): Promise<void>;
 }
 export type NativeConnectionRepository = Readonly<{
+  calls: ReturnType<typeof createCallsBundleRegistry>;
   assertHealthy(): void;
   permissions(binding: NativeConnectionBinding): DappPermissionPort;
   /** Trusted host inventory only. Includes public peer identifiers, never protocol secret values. */
@@ -353,6 +365,8 @@ export async function openNativeConnectionRepository({
   let transport = new Map(
     initial.transport.map(({ key, value }) => [key, value])
   );
+  let bundles = initial.bundles ?? {};
+  const bundleReads = new WeakMap<CallsBundleStore, CallsBundleStore>();
   let tail: Promise<unknown> = Promise.resolve();
   let permissionWriter: string | undefined;
   let permissionRevision = 0;
@@ -386,6 +400,7 @@ export async function openNativeConnectionRepository({
     walletBindingId,
     sessions: [...nextSessions.values()],
     transport: [...nextTransport].map(([key, value]) => ({ key, value })),
+    ...(Object.keys(bundles).length ? { bundles } : {}),
   });
   const persist = async (next: ConnectionRecord, guard: () => void) => {
     // Bounds and JSON validation precede storage I/O, including initial creation.
@@ -430,8 +445,42 @@ export async function openNativeConnectionRepository({
     if (next.size > MAX_SESSIONS) return invalid();
     return next;
   };
+  const calls = createCallsBundleRegistry({
+    assertCurrent: check,
+    now: () => Date.now(),
+    randomBytes: (length) => crypto.getRandomValues(new Uint8Array(length)),
+    storage: Object.freeze({
+      read: () =>
+        queued(async () => {
+          const snapshot = cloneValue(bundles);
+          bundleReads.set(snapshot, bundles);
+          return snapshot;
+        }),
+      write: (next: CallsBundleStore, assertCurrent: () => void) =>
+        queued(async () => {
+          const basis = bundleReads.get(next);
+          if (basis !== bundles) return unavailable();
+          const guard = () => {
+            check();
+            const result: unknown = assertCurrent();
+            if (result !== undefined) {
+              void Promise.resolve(result).catch(() => undefined);
+              return unavailable();
+            }
+            if (bundles !== basis) return unavailable();
+          };
+          guard();
+          assertCallsBundleStore(next);
+          const normalized = normalizeTransportValue(next) as CallsBundleStore;
+          await persist({ ...record(), bundles: normalized }, guard);
+          bundles = normalized;
+          bundleReads.delete(next);
+        }),
+    }),
+  });
   return Object.freeze({
     assertHealthy: check,
+    calls,
     permissions(input: NativeConnectionBinding): DappPermissionPort {
       const binding = readBinding(input),
         id = bindingKey(binding);

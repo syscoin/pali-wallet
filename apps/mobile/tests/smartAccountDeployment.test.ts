@@ -1,3 +1,4 @@
+import { createSmartAccountCallsExecutions, normalizeDappCallsRequest } from '../../../source/shared/dappCalls.ts';
 import { buildSmartAccountErc20Transfer } from '../../../source/utils/smartAccount/erc20Transfer.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -297,4 +298,22 @@ for (const cancel of [false, true]) test(`pending Smart preparation remains canc
     assert.equal(preparations, cancel ? 1 : 2);
     if (!cancel) assert.equal(model.getSnapshot().phase, 'authorize');
   } finally { model.dispose(); }
+});
+
+
+for (const change of ['order', 'value', 'data']) test(`Smart batch review refuses changed ${change} before authorization`, async () => {
+  const intent = { kind: 'dapp-batch' as const, calls: normalizeDappCallsRequest({ version: '2.0.0', calls: [
+    { to: address, value: '0x1', data: '0x1234' }, { to: '0x' + '22'.repeat(20), value: '0x2', data: '0x5678' },
+  ] }).calls };
+  const executions = createSmartAccountCallsExecutions(intent.calls).map(value => ({ ...value, nonce: '0' }));
+  if (change === 'order') executions.reverse();
+  if (change === 'value') executions[0]!.value = '0x3';
+  if (change === 'data') executions[0]!.data = '0xabcd';
+  let signed = 0;
+  const model = new NativeSmartAccountOperation({ account: address, intent, network: getNativeNetwork('ethereum'), assertCurrent() {},
+    async prepare() { return { kind: 'authorization', intent, operation: { ...prepared, executions } }; },
+    async sign() { signed++; return '0x'; }, async submit() { throw new Error('No submit'); },
+  });
+  try { await model.prepare(); assert.equal(model.getSnapshot().phase, 'failed'); assert.equal(signed, 0); }
+  finally { model.dispose(); }
 });

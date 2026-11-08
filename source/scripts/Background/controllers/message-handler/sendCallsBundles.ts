@@ -1,5 +1,6 @@
 import {
   createCallsBundleRegistry,
+  assertCallsBundleStore,
   type CallsBundleStore,
 } from '../../../../wallet/dappCallsBundles.ts';
 export type { EoaSendCallsReservation } from '../../../../wallet/dappCallsBundles.ts';
@@ -39,7 +40,13 @@ function ownedRegistry() {
               reject(new Error('Unable to read sendCalls bundle reservations'));
               return;
             }
-            resolve((result?.[STORAGE_KEY] as CallsBundleStore) || {});
+            try {
+              const value = result?.[STORAGE_KEY] || {};
+              assertCallsBundleStore(value);
+              resolve(value);
+            } catch (error) {
+              reject(error);
+            }
           });
         }),
       write: (next, assertCurrent) =>

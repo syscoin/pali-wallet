@@ -1,3 +1,4 @@
+import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
@@ -58,6 +59,7 @@ async function fixture() {
   let gasCredit = 0n;
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void) | undefined;
+  let afterBroadcast: (() => void) | undefined;
   const openStorage = async () => {
     storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
     initialized = true;
@@ -113,7 +115,7 @@ async function fixture() {
               blockHash: '0x' + 'aa'.repeat(32), blockNumber: '0x10' }];
           }
           result = transaction && readReceipts ? { transactionHash: transaction.hash, from: transaction.from, to: transaction.to, status: '0x1',
-            blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32), logs } : null;
+            blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32), gasUsed: '0x186a0', logs } : null;
         }
         else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'aa'.repeat(32), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
         else if (request.method === 'eth_sendRawTransaction') {
@@ -124,6 +126,7 @@ async function fixture() {
           submitted.push(request.params[0]);
           if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) { deployed = true; deployedByBroadcast = true; }
           result = Transaction.from(request.params[0]).hash;
+          afterBroadcast?.();
         }
         else if (request.method === 'eth_call') {
           const to = request.params[0].to.toLowerCase();
@@ -206,6 +209,7 @@ async function fixture() {
     deployed(code = '0x01') { deployed = true; deployedCode = code; },
     interruptAfterReceipt() { interruptAfterReceipt = true; },
     onSmartCodeRead(hook: () => void) { smartCodeRead = hook; },
+    onBroadcast(hook: () => void) { afterBroadcast = hook; },
     substitute() { substituteAddress = true; }, hold(value: () => Promise<void>) { hold = value; },
     async change(request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) {
       await owner.manageAccounts(request, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
@@ -931,4 +935,47 @@ for (const phase of ['inner-sign', 'payer-review']) test(`changed RPC chain refu
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(f.submitted.length, 0);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+
+for (const outcome of ['success', 'revert', 'lock-after-broadcast']) test(`real Smart atomic calls preserve ordered execution and restarted status (${outcome})`, async () => {
+  const f = await fixture();
+  let approval: ReturnType<typeof createDappSigningApproval> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Batch account', password: PASSWORD });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    if (outcome === 'lock-after-broadcast') f.onBroadcast(() => f.owner.lock());
+    const host = await f.runtime.openConnectionHost(), selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
+    assert.equal(host.supportsAtomicCalls(selected.id), true);
+    assert.equal(host.supportsAtomicCalls('hd:60:0'), false);
+    const origin = 'https://batch.example', bundleId = '0x0102', reservationId = 'reserved';
+    const grant = { accountId: selected.index, accountType: selected.type as import('../../../source/types/network.ts').KeyringAccountType, chain: 'ethereum' as import('../../../source/types/network.ts').INetworkType, chainId: 1, host: origin, date: 1 };
+    approval = createDappSigningApproval({ readScope: () => ({ account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub }, grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration() }), subscribe: changed => f.owner.subscribe(() => changed()) });
+    assert.equal(await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, reservationId, selected.address), true);
+    const calls = [{ to: '0x' + '22'.repeat(20), value: '0x9', data: '0x12345678' }, { to: '0x' + '33'.repeat(20), value: '0x0', data: '0x' }];
+    const prepared = await host.prepareCalls({ accountId: selected.id, networkId: 'ethereum', calls: { version: '2.0.0', from: selected.address, chainId: '0x1', atomicRequired: true, calls }, origin, bundleId, reservationId, approval }, () => undefined);
+    operation = prepared.operation; await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 0);
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await sending;
+    assert.equal(operation.getSnapshot().phase, outcome === 'lock-after-broadcast' ? 'failed' : 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    assert.deepEqual((await host.calls.getStoredSendCallsBundle(origin, bundleId))!.txHashes, [Transaction.from(f.submitted[0]!).hash]);
+    const [ops] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[0]!).data);
+    const [mode, encoded] = paliSmartAccountInterface.decodeFunctionData('execute', ops[0].callData);
+    assert.equal(mode.slice(2, 4), '01');
+    const [executions] = coder.decode(['tuple(address target,uint256 value,bytes callData)[]'], encoded);
+    assert.deepEqual([...executions].map(call => ({ to: call.target.toLowerCase(), value: '0x' + call.value.toString(16), data: call.callData })), calls);
+    if (outcome !== 'lock-after-broadcast') assert.equal((await host.readCallsStatus(origin, bundleId, () => undefined)).status, 100);
+    operation.dispose(); approval.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD); f.showReceipts(outcome !== 'revert');
+    const restarted = await f.runtime.openConnectionHost();
+    const status = await restarted.readCallsStatus(origin, bundleId, () => undefined);
+    assert.equal(status.status, outcome !== 'revert' ? 200 : 500);
+    assert.equal(status.receipts?.[0]?.transactionHash, Transaction.from(f.submitted[0]!).hash);
+    assert.equal(await restarted.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, 'other', selected.address), false);
+  } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
 });

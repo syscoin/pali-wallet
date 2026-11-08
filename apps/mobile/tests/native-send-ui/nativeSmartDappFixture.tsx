@@ -128,6 +128,8 @@ export function NativeSmartDappFixture() {
     throw new Error('Outside Smart review fixture');
   };
   const controller: NativeConnectionsView = {
+    async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
+    dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     getSnapshot: () => ({
       revision: latest.current?.revision ?? 0,
       status: 'ready',
@@ -137,6 +139,7 @@ export function NativeSmartDappFixture() {
       proposals: [],
       sessions: [],
       signingReview: latest.current,
+      callsStatus: null,
       error: null,
     }),
     subscribe: unavailable,

@@ -2,6 +2,7 @@ import { DAPP_REQUEST_LIMITS } from '../utils/requestPayloadBudget';
 
 import {
   assertDappCallsAtomicSupport,
+  createSmartAccountCallsExecutions,
   normalizeDappCallsRequest,
 } from './dappCalls';
 
@@ -288,5 +289,22 @@ describe('shared dapp calls request', () => {
     );
     expect(() => assertDappCallsAtomicSupport(atomic, true)).not.toThrow();
     expect(() => assertDappCallsAtomicSupport(sequential, false)).not.toThrow();
+  });
+});
+
+
+describe('shared Smart ordered calls', () => {
+  it('preserves exact ordered execution values for both hosts', () => {
+    const amount = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+    const calls = normalizeDappCallsRequest({ ...request, calls: [
+      { to, value: amount, data: '0xaabb' }, { to: from, value: '0x0', data: '0x' },
+    ] }).calls;
+    expect(createSmartAccountCallsExecutions(calls)).toEqual([
+      { target: to, value: `0x${BigInt(amount).toString(16)}`, data: '0xaabb' }, { target: from, value: '0x0', data: '0x' },
+    ]);
+    expect(Object.isFrozen(createSmartAccountCallsExecutions(calls))).toBe(true);
+  });
+  it.each([[{ data: '0x1234' }], [{ to: 'name.eth' }]])('requires resolved destinations before Smart execution', (calls) => {
+    expect(() => createSmartAccountCallsExecutions(calls as any)).toThrow();
   });
 });

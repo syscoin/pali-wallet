@@ -51,6 +51,7 @@ const quantity = (value: unknown): bigint =>
   typeof value === 'string' && /^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(value)
     ? BigInt(value)
     : invalid();
+export { hash as readEvmRpcHash, quantity as readEvmRpcQuantity };
 const object = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)

@@ -68,7 +68,7 @@ async function fixture(holdKeychain = false) {
         writes++;
       },
     },
-  } satisfies NativeConnectionRepository;
+  } satisfies Omit<NativeConnectionRepository, 'calls'>;
   const sdk: WalletConnectSdk = {
     requestExpirySeconds: SESSION_REQUEST_EXPIRY_BOUNDARIES,
     parseUri,

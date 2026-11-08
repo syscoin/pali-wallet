@@ -53,7 +53,7 @@ import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { RealAppShell, UnavailableActivity, type RealTab } from './RealAppShell';
 import { RealTools } from './RealTools';
-import { NativeConnections } from './NativeConnections';
+import { NativeConnections, NativeCallsStatus } from './NativeConnections';
 import type { NativePairingEntry } from '../connections/pairingLinks';
 import { NativeMessageReviewScreen } from './NativeMessageReview';
 import { NativeTransactionReviewScreen } from './NativeTransactionReview';
@@ -640,6 +640,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       : signingReview.kind === 'transaction'
       ? <NativeTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
       : <NativeMessageReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />;
+  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionView && connectionSnapshot?.callsStatus)
+    return <NativeCallsStatus key={connectionSnapshot.callsStatus.id} view={connectionSnapshot.callsStatus} controller={connectionView} />;
   if (stage === 'connections' && snapshot.phase === 'ready' && connectionView)
     return <NativeConnections controller={connectionView} incomingPairing={incomingPairing} onPairingHandled={onPairingHandled}
       initialScan={scanIntentExpiresAt !== null} onScanStarted={scanStarted} onScanFinished={scanFinished} onBack={() => {
