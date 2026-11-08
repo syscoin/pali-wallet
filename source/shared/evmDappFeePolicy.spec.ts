@@ -15,6 +15,65 @@ const network = {
   maxPriorityFeePerGas: BigInt(1000000000),
 };
 
+test('a fee choice is accepted only when every selected field survives the requote', () => {
+  const transaction = {
+    type: 0,
+    gasLimit: '25200',
+    gasPrice: '9007199254740995',
+  } as PreparedEvmTransaction;
+  expect(
+    evmDappFeeChoiceMatches(transaction, {
+      gasLimit: '25200',
+      gasPrice: '9007199254740995',
+    })
+  ).toBe(true);
+  expect(
+    evmDappFeeChoiceMatches(transaction, {
+      gasLimit: '21000',
+      gasPrice: '9007199254740995',
+    })
+  ).toBe(false);
+  expect(
+    evmDappFeeChoiceMatches(transaction, {
+      gasLimit: '25200',
+      gasPrice: '9007199254740993',
+    })
+  ).toBe(false);
+  const typed = {
+    type: 2,
+    gasLimit: '25200',
+    maxFeePerGas: '9007199254740995',
+    maxPriorityFeePerGas: '0',
+  } as PreparedEvmTransaction;
+  expect(
+    evmDappFeeChoiceMatches(typed, {
+      gasLimit: '25200',
+      maxFeePerGas: '9007199254740995',
+      maxPriorityFeePerGas: '0',
+    })
+  ).toBe(true);
+  expect(
+    evmDappFeeChoiceMatches(typed, {
+      gasLimit: '25200',
+      maxFeePerGas: '9007199254740993',
+      maxPriorityFeePerGas: '0',
+    })
+  ).toBe(false);
+  expect(
+    evmDappFeeChoiceMatches(typed, {
+      gasLimit: '25200',
+      maxFeePerGas: '9007199254740995',
+      maxPriorityFeePerGas: '1',
+    })
+  ).toBe(false);
+  expect(
+    evmDappFeeChoiceMatches(typed, {
+      gasLimit: '25200',
+      gasPrice: '9007199254740995',
+    })
+  ).toBe(false);
+});
+
 test('preserved lower app prices retain their network recommendation', () => {
   expect(
     compareEvmDappFees(
@@ -152,63 +211,4 @@ test('shared legacy fee selection retains the quoted gas when only price differs
       'network'
     )
   ).toEqual({ gasLimit: '70000', gasPrice: '2000000000' });
-});
-
-test('a fee choice is accepted only when every selected field survives the requote', () => {
-  const transaction = {
-    type: 0,
-    gasLimit: '25200',
-    gasPrice: '9007199254740995',
-  } as PreparedEvmTransaction;
-  expect(
-    evmDappFeeChoiceMatches(transaction, {
-      gasLimit: '25200',
-      gasPrice: '9007199254740995',
-    })
-  ).toBe(true);
-  expect(
-    evmDappFeeChoiceMatches(transaction, {
-      gasLimit: '21000',
-      gasPrice: '9007199254740995',
-    })
-  ).toBe(false);
-  expect(
-    evmDappFeeChoiceMatches(transaction, {
-      gasLimit: '25200',
-      gasPrice: '9007199254740993',
-    })
-  ).toBe(false);
-  const typed = {
-    type: 2,
-    gasLimit: '25200',
-    maxFeePerGas: '9007199254740995',
-    maxPriorityFeePerGas: '0',
-  } as PreparedEvmTransaction;
-  expect(
-    evmDappFeeChoiceMatches(typed, {
-      gasLimit: '25200',
-      maxFeePerGas: '9007199254740995',
-      maxPriorityFeePerGas: '0',
-    })
-  ).toBe(true);
-  expect(
-    evmDappFeeChoiceMatches(typed, {
-      gasLimit: '25200',
-      maxFeePerGas: '9007199254740993',
-      maxPriorityFeePerGas: '0',
-    })
-  ).toBe(false);
-  expect(
-    evmDappFeeChoiceMatches(typed, {
-      gasLimit: '25200',
-      maxFeePerGas: '9007199254740995',
-      maxPriorityFeePerGas: '1',
-    })
-  ).toBe(false);
-  expect(
-    evmDappFeeChoiceMatches(typed, {
-      gasLimit: '25200',
-      gasPrice: '9007199254740995',
-    })
-  ).toBe(false);
 });
