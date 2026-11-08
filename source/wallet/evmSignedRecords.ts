@@ -200,6 +200,23 @@ type Entry = EvmSignedRecordSummary &
   Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
 type MinedObservation = Extract<EvmTransactionObservation, { status: 'mined' }>;
 
+function completedNonceGroups(entries: readonly Entry[]): readonly Entry[][] {
+  const groups = new Map<string, Entry[]>();
+  for (const entry of entries) {
+    const key = `${entry.chainId}:${entry.from}:${entry.nonce}`;
+    const group = groups.get(key) ?? [];
+    group.push(entry);
+    groups.set(key, group);
+  }
+  return [...groups.values()].filter(
+    (group) =>
+      group.every((entry) => !isPendingPhase(entry.phase)) &&
+      group.some(
+        (entry) => entry.phase === 'confirmed' || entry.phase === 'reverted'
+      )
+  );
+}
+
 function retainedReplacementLineage(
   sameNonce: readonly Entry[],
   retainedIndex: number
@@ -1438,19 +1455,10 @@ export class EvmSignedRecords {
     };
     const candidates = await this.exclusive(async () => {
       const { bundle } = await this.load(session, id);
-      const groups = new Map<number, Entry[]>();
-      for (const entry of bundle?.entries ?? []) {
-        if (entry.chainId !== chainId || entry.from !== from) continue;
-        const group = groups.get(entry.nonce) ?? [];
-        group.push(entry);
-        groups.set(entry.nonce, group);
-      }
-      return [...groups.values()].filter(
-        (group) =>
-          group.every((entry) => !isPendingPhase(entry.phase)) &&
-          group.some(
-            (entry) => entry.phase === 'confirmed' || entry.phase === 'reverted'
-          )
+      return completedNonceGroups(
+        (bundle?.entries ?? []).filter(
+          (entry) => entry.chainId === chainId && entry.from === from
+        )
       );
     });
     let removed = 0;
@@ -1614,7 +1622,8 @@ export class EvmSignedRecords {
         string,
         Readonly<{ chainId: string; from: string }>
       >();
-      for (const entry of bundle?.entries ?? []) {
+      for (const group of completedNonceGroups(bundle?.entries ?? [])) {
+        const entry = group[0]!;
         const key = floorKey(entry);
         if (!unique.has(key))
           unique.set(key, { chainId: entry.chainId, from: entry.from });
