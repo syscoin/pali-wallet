@@ -218,3 +218,126 @@ test('guarded native-entry sequencing reaches the reviewed SDK through a restric
     await server.close();
   }
 });
+
+test('WalletConnect diagnostics use closed fields and redact arbitrary error text', () => {
+  const { WalletConnectQualificationError, isWalletConnectQualificationDiagnostic } = require('./walletconnect-native.ts');
+  const secret = 'wc:PRIVATE_PAIRING_KEY@2?secret=PRIVATE_URI';
+  const error = Object.assign(new TypeError(secret), { code: secret });
+  const diagnostic = new WalletConnectQualificationError('init', error).diagnostic;
+  assert.deepEqual(diagnostic, { substage: 'init', errorName: 'TypeError', errorCode: 'UNCLASSIFIED' });
+  assert(!JSON.stringify(diagnostic).includes('PRIVATE'));
+  assert(isWalletConnectQualificationDiagnostic(diagnostic));
+  assert.deepEqual(new WalletConnectQualificationError('close', Object.assign(Error(secret), { code: 'CONNECTION_UNAVAILABLE' })).diagnostic,
+    { substage: 'close', errorName: 'Error', errorCode: 'CONNECTION_UNAVAILABLE' });
+  const hostile = new Proxy({}, { getPrototypeOf() { throw Error(secret); }, getOwnPropertyDescriptor() { throw Error(secret); } });
+  assert.deepEqual(new WalletConnectQualificationError('init', hostile).diagnostic,
+    { substage: 'init', errorName: 'UnknownError', errorCode: 'UNCLASSIFIED' });
+  for (const invalid of [
+    { ...diagnostic, substage: secret }, { ...diagnostic, errorName: secret },
+    { ...diagnostic, errorCode: secret }, { ...diagnostic, message: secret },
+    { ...diagnostic, counts: { opened: 1 } },
+    { ...diagnostic, counts: { opened: 0, closed: 0, pending: 0, pendingClosed: 0, frames: -1, invalid: 0 } },
+  ]) assert.equal(isWalletConnectQualificationDiagnostic(invalid), false);
+});
+
+function failingQualification(stage) {
+  const failures = new Set(Array.isArray(stage) ? stage : [stage]);
+  const source = fs.readFileSync(path.join(__dirname, 'walletconnect-native.ts'), 'utf8');
+  const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const module = { exports: {} };
+  const counts = { opened: 0, closed: 0, pending: 0, pendingClosed: 0, frames: 0, invalid: 0 };
+  let statusReads = 0;
+  const targetError = Object.assign(Error('PRIVATE_PAIRING_URI'), { code: 'CONNECTION_UNAVAILABLE' });
+  const load = (name) => {
+    if (name === '@walletconnect/core') return { Core: class {
+      constructor(options) { this.options = options; this.signal = { aborted: false }; this.heartbeat = this.relayer = { events: { eventNames: () => [] } }; }
+    } };
+    if (name === '@walletconnect/sign-client') return { SESSION_REQUEST_EXPIRY_BOUNDARIES: { min: 1, max: 2 }, SignClient: { init: async ({ core }) => ({ core, signal: { aborted: false } }) } };
+    if (name === '@walletconnect/utils') return { parseUri() {} };
+    if (name === './walletconnect-contract.ts') return require(name);
+    if (name === '../src/connections/walletConnect.ts') return { async openWalletConnectTransport(options) {
+      if (failures.has('init')) throw targetError;
+      const sdk = await options.loadSdk();
+      const core = sdk.createCore({});
+      const client = await sdk.initialize({ metadata: { icons: [] } });
+      const pending = core.options.relayUrl.includes('wc-pending');
+      let closed = false;
+      return {
+        pair() {
+          if (failures.has('pair')) return Promise.reject(targetError);
+          if (!pending) { counts.opened++; counts.frames++; return Promise.resolve({}); }
+          counts.pending++;
+          return new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(targetError), { once: true }));
+        },
+        async close() {
+          if (failures.has('close')) throw targetError;
+          core.signal.aborted = client.signal.aborted = true;
+          if (!closed) { closed = true; if (pending) counts.pendingClosed++; else counts.closed++; }
+        },
+      };
+    } };
+    throw Error('Unexpected fixture import');
+  };
+  vm.runInNewContext(compiled, { module, exports: module.exports, require: load, AbortController, setTimeout, clearTimeout });
+  return { run: () => module.exports.qualifyNativeWalletConnect({
+    launch: { port: 12345, token: 'ab'.repeat(16) }, build: {}, candidateIdentity: 'candidate', platform: 'android', phase: 'create', scenario: 'import', sessionId: 'session',
+    async walletFetch() {
+      if (failures.has('request') && ++statusReads === 2) throw targetError;
+      return { ok: true, json: async () => ({ ...counts }) };
+    },
+  }), counts, statusReads: () => statusReads };
+}
+
+test('pair failure remains primary when final transport cleanup also fails', async () => {
+  const fixture = failingQualification(['pair', 'close']);
+  await assert.rejects(fixture.run(), (error) => {
+    assert.equal(error.diagnostic.substage, 'pair');
+    assert.equal(error.diagnostic.errorCode, 'WALLETCONNECT_NATIVE_QUALIFICATION_FAILED');
+    return true;
+  });
+});
+
+for (const stage of ['init', 'pair', 'request', 'close']) {
+  test(`real qualification flow records fixed ${stage} failure without private error text`, async () => {
+    const fixture = failingQualification(stage);
+    await assert.rejects(fixture.run(), (error) => {
+      assert.equal(error.diagnostic.substage, stage);
+      assert(!JSON.stringify(error.diagnostic).includes('PRIVATE'));
+      if (stage === 'request') assert.deepEqual(JSON.parse(JSON.stringify(error.diagnostic.counts)), { ...fixture.counts, pendingClosed: 0 });
+      else assert.equal(error.diagnostic.counts, undefined);
+      assert.equal(fixture.statusReads(), stage === 'request' ? 2 : 0);
+      return true;
+    });
+  });
+}
+
+test('actual entrypoint captures a runtime preparation throw as a redacted init failure', async () => {
+  const { WalletConnectQualificationError } = require('./walletconnect-native.ts');
+  const source = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+  const parsed = ts.createSourceFile('index.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let target;
+  function find(node) {
+    if (ts.isTryStatement(node) && node.catchClause?.block.getText(parsed).includes('walletConnectDiagnostic =')) target = node;
+    ts.forEachChild(node, find);
+  }
+  find(parsed);
+  assert(target);
+  const body = `exports.run = async () => { let connectionEvidence; let walletConnectDiagnostic; try { ${target.getText(parsed)} } catch {} return walletConnectDiagnostic; };`;
+  const compiled = ts.transpileModule(body, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const module = { exports: {} };
+  vm.runInNewContext(compiled, { module, exports: module.exports, WalletConnectQualificationError,
+    nativeCrypto: {}, NativeWebSocket: class {}, launch: {}, build: {}, candidateIdentity: 'candidate',
+    walletFetch() {}, phase: 'create', scenario: 'import', Platform: { OS: 'android' }, Constants: { sessionId: 'session' },
+    withWalletConnectQualificationScope: async (_options, operation) => operation(),
+    qualifyNativeWalletConnect() { assert.fail('runtime preparation must finish first'); },
+    require(name) {
+      if (name === './walletconnect-native.ts') return { WalletConnectQualificationError };
+      assert.equal(name, '../src/platform/walletConnectRuntime.native');
+      return { async prepareWalletConnectRuntime() { throw Object.assign(Error('PRIVATE_PAIRING_KEY'), { code: 'NATIVE_CONNECTION_UNAVAILABLE' }); } };
+    },
+  });
+  const result = await module.exports.run();
+  assert.equal(result.substage, 'init');
+  assert.equal(result.errorCode, 'NATIVE_CONNECTION_UNAVAILABLE');
+  assert(!JSON.stringify(result).includes('PRIVATE'));
+});
