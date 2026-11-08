@@ -12,6 +12,7 @@ import React from 'react';
 
 import { BigNumber, Interface } from 'utils/ethersV6Compat';
 
+import { reviewedDappFeeFixture } from './fixtures/reviewedDappFee';
 import { SendTransaction } from './SendTransaction';
 
 const mockEmitter = jest.fn();
@@ -174,7 +175,14 @@ const prepare = async () => {
 };
 beforeEach(() => {
   jest.clearAllMocks();
-  mockEmitter.mockImplementation(async ([, method]) => {
+  mockEmitter.mockImplementation(async ([, method], args = []) => {
+    if (method === 'getRecommendedEvmNonce') return 0;
+    if (
+      method === 'authorizeDappManualNonce' ||
+      method === 'discardNativeEvmFeeReview'
+    )
+      return true;
+    if (method === 'reviewDappEvmFee') return reviewedDappFeeFixture(args[0]);
     if (method === 'refreshActiveAccountBalances')
       return { nativeBalance: '1' };
     if (method === 'checkAddressBlacklist') return { isBlacklisted: false };

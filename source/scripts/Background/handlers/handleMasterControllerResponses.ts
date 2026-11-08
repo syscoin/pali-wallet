@@ -325,6 +325,7 @@ export const handleMasterControllerResponses = (
                 ? route[1]
                 : undefined;
             const sendsEvm = walletMethod === 'sendAndSaveEthTransaction';
+            const reviewsEvm = walletMethod === 'reviewDappEvmFee';
             const recommendsNonce =
               walletMethod === 'getRecommendedEvmNonce' ||
               walletMethod === 'getRecommendedNonceForBatch';
@@ -335,10 +336,11 @@ export const handleMasterControllerResponses = (
             const recordNonce = quoteApproval?.beginNonceRecommendation(
               params?.[0]
             );
-            const dappApproval = sendsEvm
-              ? captureDappEvmSubmission(sender)
-              : undefined;
-            if (dappApproval?.batch) {
+            const dappApproval =
+              sendsEvm || reviewsEvm
+                ? captureDappEvmSubmission(sender)
+                : undefined;
+            if (sendsEvm && dappApproval?.batch) {
               batchAttempt = true;
               const release = await captureStartedEoaSendCallsAttempt(
                 dappApproval.batch,
@@ -353,8 +355,21 @@ export const handleMasterControllerResponses = (
             }
             if (dappApproval) {
               await dappApproval.checkDocument();
-              nonceClaim = dappApproval.claimNonce(params?.[0]?.nonce);
-            } else if (sendsEvm && isExternalWalletUrl(sender.url))
+              if (sendsEvm) {
+                if (
+                  typeof params?.[4]?.genericReviewId !== 'string' ||
+                  !/^[A-Za-z0-9_-]{1,128}$/.test(params[4].genericReviewId)
+                )
+                  throw Object.assign(
+                    new Error('Reviewed transaction fees are required'),
+                    { transactionNotBroadcast: true }
+                  );
+                nonceClaim = dappApproval.claimNonce(params?.[0]?.nonce);
+              }
+            } else if (
+              reviewsEvm ||
+              (sendsEvm && isExternalWalletUrl(sender.url))
+            )
               throw transactionApprovalExpired();
             const smartMethod =
               walletMethod === 'submitSmartAccountExecution' ||
@@ -385,7 +400,16 @@ export const handleMasterControllerResponses = (
               throw transactionApprovalExpired();
 
             let argumentsForCall = params;
-            if (sendsEvm) {
+            if (reviewsEvm) {
+              if (!dappApproval) throw transactionApprovalExpired();
+              argumentsForCall = [
+                params?.[0],
+                dappApproval.context,
+                dappApproval.reviewNonce(params?.[0]?.nonce),
+                dappApproval.assertCurrent,
+                dappApproval.owner,
+              ];
+            } else if (sendsEvm) {
               argumentsForCall = [
                 params?.[0],
                 params?.[1],
@@ -396,7 +420,9 @@ export const handleMasterControllerResponses = (
                   // Background-only capabilities do not cross the UI boundary.
                   assertCurrentContext: undefined,
                   assertBeforeSign: undefined,
+                  genericDispatchId: undefined,
                   authorizeDapp: dappApproval?.assertCurrent,
+                  dappApprovalOwner: dappApproval?.owner,
                   dappNonceApproval: nonceClaim?.approval,
                   // This callback is injected by the worker, never the renderer.
                   // It sees only the SDK's acknowledged transaction response.

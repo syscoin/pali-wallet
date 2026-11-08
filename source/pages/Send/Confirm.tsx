@@ -1,6 +1,3 @@
-import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
-import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
-import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import React, {
@@ -75,6 +72,9 @@ import {
   type SmartAccountFeeOverrides,
 } from 'utils/smartAccount';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
+import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
+import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
+import { buildSmartAccountNftTransfer } from 'utils/smartAccount/nftTransfer';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 
@@ -494,6 +494,16 @@ export const SendConfirm = () => {
         (!basicTxValues.transactionType ||
           basicTxValues.transactionType === TransactionType.NATIVE_ETH)
     );
+  const isNativeHardwareSend =
+    !isBitcoinBased &&
+    !isSmartAccountSend &&
+    !basicTxValues?.token &&
+    [KeyringAccountType.Ledger, KeyringAccountType.Trezor].includes(
+      activeAccountMeta.type
+    ) &&
+    (!basicTxValues?.transactionType ||
+      basicTxValues.transactionType === TransactionType.NATIVE_ETH);
+  const isOrdinaryNativeSend = isNativeSoftwareSend || isNativeHardwareSend;
   const isFixedNativeSoftwareSend =
     isNativeSoftwareSend && !basicTxValues.isMax;
   const isOrdinaryTokenSend =
@@ -507,7 +517,7 @@ export const SendConfirm = () => {
     ].includes(basicTxValues?.transactionType);
   const exactWalletFeeReview = (() => {
     if (
-      (!isNativeSoftwareSend && !isOrdinaryTokenSend) ||
+      (!isOrdinaryNativeSend && !isOrdinaryTokenSend) ||
       isEIP1559Compatible === undefined
     )
       return;
@@ -542,16 +552,19 @@ export const SendConfirm = () => {
       )
         return;
       assertSupportedEvmFees(fees, !isEIP1559Compatible);
-      const net = isFixedNativeSoftwareSend
-        ? parseUnits(String(basicTxValues.amount), 'ether').toBigInt()
-        : isNativeSoftwareSend
-        ? nativeMaxSendValue(
-            activeAccount.balances.ethereum,
-            BigNumber.from(gasLimit),
-            BigNumber.from(feeCap),
-            BigInt(0)
-          ).toBigInt()
-        : BigInt(0);
+      const net =
+        isOrdinaryNativeSend && !basicTxValues.isMax
+          ? parseUnits(String(basicTxValues.amount), 'ether').toBigInt()
+          : isOrdinaryNativeSend
+          ? nativeMaxSendValue(
+              activeAccount.balances.ethereum,
+              BigNumber.from(gasLimit),
+              BigNumber.from(feeCap),
+              isNativeSoftwareSend
+                ? BigInt(0)
+                : NON_SOFTWARE_MAX_SEND_RESERVE_WEI
+            ).toBigInt()
+          : BigInt(0);
       if (isFixedNativeSoftwareSend && net <= BigInt(0)) return;
       const value = net > BigInt(0) ? net : BigInt(0);
       return {
@@ -642,7 +655,7 @@ export const SendConfirm = () => {
     try {
       if (!isBitcoinBased) {
         if (!feeEstimateReady) return t('send.calculating');
-        if (isNativeSoftwareSend && exactWalletFeeReview)
+        if (isOrdinaryNativeSend && exactWalletFeeReview)
           return exactWalletFeeReview.value > BigInt(0)
             ? formatEther(exactWalletFeeReview.value.toString()).replace(
                 /\.0$/,
@@ -710,7 +723,7 @@ export const SendConfirm = () => {
   ]);
 
   const nativeReviewRequest = (() => {
-    if (!isNativeSoftwareSend || !feeEstimateReady || !exactWalletFeeReview)
+    if (!isOrdinaryNativeSend || !feeEstimateReady || !exactWalletFeeReview)
       return null;
     const { value, gasLimit, fees, maximumFee } = exactWalletFeeReview;
     if (value <= BigInt(0)) return null;
@@ -724,6 +737,7 @@ export const SendConfirm = () => {
       ...fees,
     };
     return {
+      hardware: isNativeHardwareSend,
       params,
       legacy: isEIP1559Compatible === false,
       maximumFee: maximumFee.toString(),
@@ -735,6 +749,7 @@ export const SendConfirm = () => {
   const [nativeFeeApproval, setNativeFeeApproval] = useState<{
     id: string;
     key: string;
+    transaction?: import('@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js').PreparedEvmTransaction;
   } | null>(null);
   const nativeFeeExpiry = useRef<ReturnType<typeof setTimeout>>();
   const retireNativeFeeApproval = () => {
@@ -758,16 +773,23 @@ export const SendConfirm = () => {
         ).catch(() => undefined);
     };
     const fresh = refreshingCustomNativeFee && customFee.isCustom;
-    const action = fresh ? 'refreshNativeEvmFeeReview' : 'reviewNativeEvmFee';
+    const action = request.hardware
+      ? 'reviewWalletEvmFee'
+      : fresh
+      ? 'refreshNativeEvmFeeReview'
+      : 'reviewNativeEvmFee';
     void controllerEmitter(
       ['wallet', action],
-      [request.params, request.legacy, request.maximumFee, request.scope]
+      request.hardware
+        ? [request.params, request.scope]
+        : [request.params, request.legacy, request.maximumFee, request.scope]
     )
       .then((result: any) => {
         if (
           typeof result?.id !== 'string' ||
           !result.id ||
-          result.maximumFee !== request.maximumFee ||
+          (request.hardware ? result.maximumFeeUnits : result.maximumFee) !==
+            request.maximumFee ||
           !Number.isSafeInteger(result.validForMs) ||
           result.validForMs <= 0 ||
           result.validForMs > EVM_FEE_APPROVAL_LIFETIME_MS
@@ -780,7 +802,11 @@ export const SendConfirm = () => {
         }
         const remaining = started + result.validForMs - performance.now();
         if (remaining <= 0) throw new Error('Native fee approval expired');
-        setNativeFeeApproval({ id: result.id, key: request.key });
+        setNativeFeeApproval({
+          id: result.id,
+          key: request.key,
+          ...(request.hardware ? { transaction: result.transaction } : {}),
+        });
         if (fresh) setRefreshingCustomNativeFee(false);
         expiry = setTimeout(() => {
           discard();
@@ -810,7 +836,7 @@ export const SendConfirm = () => {
   }, [nativeReviewKey]);
   const confirmationFeeReady =
     feeEstimateReady &&
-    (!isNativeSoftwareSend ||
+    (!isOrdinaryNativeSend ||
       Boolean(nativeReviewKey && nativeFeeApproval?.key === nativeReviewKey));
   const confirmationFeeReadyRef = useRef(confirmationFeeReady);
   confirmationFeeReadyRef.current = confirmationFeeReady;
@@ -914,8 +940,11 @@ export const SendConfirm = () => {
             ).toString();
           },
           async quote(candidate) {
-            const quote = await quoteExecution(candidate);
-            return { quote, maximumFeeUnits: quote.maximumFeeWei };
+            const candidateQuote = await quoteExecution(candidate);
+            return {
+              quote: candidateQuote,
+              maximumFeeUnits: candidateQuote.maximumFeeWei,
+            };
           },
         });
         execution = { ...maximum.execution };
@@ -1182,7 +1211,7 @@ export const SendConfirm = () => {
       nativeFeeApproval && nativeFeeApproval.key === nativeReviewKey
         ? nativeFeeApproval.id
         : undefined;
-    if (isNativeSoftwareSend && !approvedNativeFeeId) return;
+    if (isOrdinaryNativeSend && !approvedNativeFeeId) return;
     if (tokenReviewInvalid) return;
     if (isSmartAccountSend && !smartAccountQuoteReady) return;
     if (sptReviewError) {
@@ -1481,10 +1510,8 @@ export const SendConfirm = () => {
             'maxPriorityFeePerGas',
           ]) as ITxState;
 
-          let value = parseUnits(String(basicTxValues.amount), 'ether');
           // For MAX sends we must use the same minimum, otherwise MAX value deduction
           // can overshoot once the tx is bumped at send time.
-          let maxSendGasLimit: BigNumber | null = null;
           try {
             // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
             // The amount from basicTxValues might be rounded for display, causing precision issues
@@ -1493,7 +1520,6 @@ export const SendConfirm = () => {
               const gasLimitCandidate = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
-              maxSendGasLimit = gasLimitCandidate;
 
               const feeRate = isEIP1559Compatible
                 ? parseUnits(
@@ -1507,7 +1533,7 @@ export const SendConfirm = () => {
               // authorization to change the recipient's reviewed amount.
               const affordableMax = nativeMaxSendValue(
                 balance,
-                maxSendGasLimit,
+                gasLimitCandidate,
                 feeRate,
                 NON_SOFTWARE_MAX_SEND_RESERVE_WEI
               );
@@ -1523,7 +1549,6 @@ export const SendConfirm = () => {
                 setLoading(false);
                 return;
               }
-              value = approvedNativeMax;
             }
 
             if (isNativeSoftwareSend) {
@@ -1553,72 +1578,33 @@ export const SendConfirm = () => {
               return;
             }
 
-            const isLegacy = isEIP1559Compatible === false;
-            const gasLimit =
-              maxSendGasLimit ||
-              BigNumber.from(
-                validateCustomGasLimit
-                  ? customFee.gasLimit
-                  : fee.gasLimit || basicTxValues.defaultGasLimit || 42000
+            if (isNativeHardwareSend) {
+              const approved = nativeFeeApproval;
+              if (!approved?.transaction || approved.key !== nativeReviewKey)
+                return;
+              retireNativeFeeApproval();
+              await submitEmitter(
+                ['wallet', 'sendAndSaveEthTransaction'],
+                [
+                  approved.transaction,
+                  approved.transaction.type === 0,
+                  undefined,
+                  undefined,
+                  {
+                    hardwareScope: state.walletScope,
+                    genericReviewId: approved.id,
+                  },
+                ],
+                300000
               );
-            const rate = isLegacy
-              ? BigNumber.from(gasPrice)
-              : parseUnits(
-                  safeToFixed(
-                    customFee.isCustom && customFee.maxFeePerGas > 0
-                      ? customFee.maxFeePerGas
-                      : fee.maxFeePerGas
-                  ),
-                  9
-                );
-            const fees = isLegacy
-              ? { gasPrice: rate.toHexString() }
-              : {
-                  maxFeePerGas: rate,
-                  maxPriorityFeePerGas: parseUnits(
-                    safeToFixed(
-                      customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
-                        ? customFee.maxPriorityFeePerGas
-                        : fee.maxPriorityFeePerGas
-                    ),
-                    9
-                  ),
-                };
-            const hardware =
-              activeAccountMeta.type === KeyringAccountType.Ledger ||
-              activeAccountMeta.type === KeyringAccountType.Trezor;
-            await submitEmitter(
-              ['wallet', 'sendAndSaveEthTransaction'],
-              [
-                {
-                  ...restTx,
-                  from: basicTxValues.sender,
-                  to: destinationTo,
-                  data: '0x',
-                  chainId: activeNetwork.chainId,
-                  value: value.toHexString(),
-                  gasLimit: isLegacy ? gasLimit.toHexString() : gasLimit,
-                  ...fees,
-                },
-                isLegacy,
-                undefined,
-                undefined,
-                hardware
-                  ? { hardwareScope: state.walletScope }
-                  : {
-                      nativeReview: {
-                        id: approvedNativeFeeId!,
-                        scope: state.walletScope,
-                      },
-                    },
-              ],
-              hardware ? 300000 : 10000
+              setConfirmed(true);
+              setLoading(false);
+              return;
+            }
+
+            throw new Error(
+              'A current native transaction fee review is required'
             );
-
-            setConfirmed(true);
-            setLoading(false);
-
-            return;
           } catch (error: any) {
             if (isNativeSoftwareSend) {
               retireNativeFeeApproval();

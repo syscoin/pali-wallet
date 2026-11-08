@@ -169,7 +169,13 @@ describe('native approval controller submission lifecycle', () => {
             type: 'CONTROLLER_ACTION',
             data: {
               methods: ['wallet', 'sendAndSaveEthTransaction'],
-              params: [{ nonce: 0 }],
+              params: [
+                { nonce: 0 },
+                false,
+                undefined,
+                undefined,
+                { genericReviewId: 'review-id' },
+              ],
             },
           },
           {
@@ -692,7 +698,10 @@ describe('document-bound dapp nonce dispatch', () => {
           false,
           undefined,
           undefined,
-          { dappNonceApproval: { nonce: 4, source: 'manual' } },
+          {
+            genericReviewId: 'review-id',
+            dappNonceApproval: { nonce: 4, source: 'manual' },
+          },
         ]
       );
       expect(send).toHaveBeenCalledTimes(1);
@@ -702,6 +711,89 @@ describe('document-bound dapp nonce dispatch', () => {
           authorizeDapp: expect.any(Function),
         })
       );
+    } finally {
+      stop();
+    }
+  });
+
+  it.each([undefined, '', 'bad id', 17])(
+    'rejects a missing or malformed fee review ID %s before dispatch',
+    async (genericReviewId) => {
+      const send = jest.fn();
+      const logging = jest.spyOn(console, 'error').mockImplementation();
+      handleMasterControllerResponses({
+        wallet: { sendAndSaveEthTransaction: send },
+      } as any);
+      const add = chrome.runtime.onMessage.addListener as jest.Mock;
+      const listener = add.mock.calls[add.mock.calls.length - 1][0];
+      const stop = watchApprovalSubmission(
+        documentId,
+        jest.fn(),
+        evmReview({ originalNonce: 4 })
+      );
+      try {
+        const result = await invoke(
+          listener,
+          ['wallet', 'sendAndSaveEthTransaction'],
+          [{ nonce: 4 }, false, undefined, undefined, { genericReviewId }]
+        );
+        expect(result).toMatchObject({
+          success: false,
+          error: { transactionNotBroadcast: true },
+        });
+        expect(send).not.toHaveBeenCalled();
+      } finally {
+        stop();
+        logging.mockRestore();
+      }
+    }
+  );
+
+  it('injects the enrolled request owner into fee preparation and ignores renderer authority', async () => {
+    const quote = jest.fn<Promise<{ id: string }>, unknown[]>(async () => ({
+      id: 'review-id',
+    }));
+    const original = evmReview({ originalNonce: 4 });
+    handleMasterControllerResponses({
+      wallet: { reviewDappEvmFee: quote },
+    } as any);
+    const add = chrome.runtime.onMessage.addListener as jest.Mock;
+    const listener = add.mock.calls[add.mock.calls.length - 1][0];
+    const stop = watchApprovalSubmission(documentId, jest.fn(), original);
+    try {
+      const request = { nonce: 4 };
+      await expect(
+        invoke(
+          listener,
+          ['wallet', 'reviewDappEvmFee'],
+          [request, {}, {}, {}, {}]
+        )
+      ).resolves.toEqual({ id: 'review-id' });
+      expect(quote).toHaveBeenCalledTimes(1);
+      expect(quote.mock.calls[0]).toEqual([
+        request,
+        original.context,
+        { nonce: 4, source: 'manual' },
+        expect.any(Function),
+        expect.any(Object),
+      ]);
+      const owner = quote.mock.calls[0][4];
+      await invoke(listener, ['wallet', 'reviewDappEvmFee'], [request]);
+      expect(quote.mock.calls[1][4]).toBe(owner);
+      const logging = jest.spyOn(console, 'error').mockImplementation();
+      try {
+        await expect(
+          invoke(listener, ['wallet', 'reviewDappEvmFee'], [request], {
+            ...sender,
+            documentId: 'other',
+          })
+        ).resolves.toMatchObject({ success: false });
+        expect(quote).toHaveBeenCalledTimes(2);
+      } finally {
+        logging.mockRestore();
+      }
+      stop();
+      expect(quote.mock.calls[0][3]).toThrow('no longer current');
     } finally {
       stop();
     }
@@ -755,7 +847,7 @@ describe('document-bound dapp nonce dispatch', () => {
           false,
           undefined,
           undefined,
-          { sendCallsSubmissionId: 'submission' },
+          { sendCallsSubmissionId: 'submission', genericReviewId: 'review-id' },
         ]
       );
       expect(result).toEqual(expect.objectContaining({ success: false }));
@@ -804,7 +896,10 @@ describe('document-bound dapp nonce dispatch', () => {
         batch: { host: 'test.invalid', id: 'id', reservationId: 'reservation' },
       })
     );
-    const options = { sendCallsSubmissionId: 'submission' };
+    const options = {
+      sendCallsSubmissionId: 'submission',
+      genericReviewId: 'review-id',
+    };
     const submitNonce = (nonce: number) =>
       invoke(
         listener,
@@ -868,7 +963,10 @@ describe('document-bound dapp nonce dispatch', () => {
         batch: { host: 'test.invalid', id: 'id', reservationId: 'reservation' },
       })
     );
-    const options = { sendCallsSubmissionId: 'submission' };
+    const options = {
+      sendCallsSubmissionId: 'submission',
+      genericReviewId: 'review-id',
+    };
     try {
       expect(
         await invoke(
@@ -938,7 +1036,10 @@ describe('document-bound dapp nonce dispatch', () => {
           },
         })
       );
-      const options = { sendCallsSubmissionId: 'submission' };
+      const options = {
+        sendCallsSubmissionId: 'submission',
+        genericReviewId: 'review-id',
+      };
       try {
         await invoke(
           listener,

@@ -200,11 +200,38 @@ export const captureDappEvmSubmission = (
     watch,
     watch.evmSend
   );
+  const reviewNonce = (value: unknown): ExtensionReviewedNonce => {
+    assertCurrent();
+    const nonce = reviewedExtensionNonce(value, 'automatic').nonce;
+    const valid = (entry?: Readonly<{ expires: number; nonce: number }>) =>
+      entry?.nonce === nonce && performance.now() < entry.expires;
+    if (watch.evmSend!.batch) {
+      if (
+        watch.batchActive ||
+        watch.batchUncertain ||
+        (watch.batchNonce === undefined
+          ? !valid(watch.recommendation) ||
+            (watch.batchFloor !== undefined && nonce < watch.batchFloor)
+          : watch.batchNonce !== nonce &&
+            (!valid(watch.recommendation) || nonce < watch.batchNonce))
+      )
+        throw transactionApprovalExpired();
+      return reviewedExtensionNonce(nonce, 'automatic');
+    }
+    if (watch.nonceClaimed) throw transactionApprovalExpired();
+    if (valid(watch.manualNonce) || watch.originalNonce === nonce)
+      return reviewedExtensionNonce(nonce, 'manual');
+    if (!watch.originallyExplicit && valid(watch.recommendation))
+      return reviewedExtensionNonce(nonce, 'automatic');
+    throw transactionApprovalExpired();
+  };
   return {
     batch: watch.evmSend.batch,
+    owner: watch,
     context: watch.evmSend.context,
     assertCurrent,
     checkDocument,
+    reviewNonce,
     beginNonceRecommendation(address: unknown) {
       assertCurrent();
       if (watch.batchActive) throw transactionApprovalExpired();
@@ -241,27 +268,15 @@ export const captureDappEvmSubmission = (
       approval: ExtensionReviewedNonce;
       finish(error?: unknown): void;
     } {
-      assertCurrent();
-      const nonce = reviewedExtensionNonce(value, 'automatic').nonce;
-      const valid = (entry?: Readonly<{ expires: number; nonce: number }>) =>
-        entry?.nonce === nonce && performance.now() < entry.expires;
+      const approval = reviewNonce(value);
+      const nonce = approval.nonce;
       if (watch.evmSend!.batch) {
-        if (
-          watch.batchActive ||
-          watch.batchUncertain ||
-          (watch.batchNonce === undefined
-            ? !valid(watch.recommendation) ||
-              (watch.batchFloor !== undefined && nonce < watch.batchFloor)
-            : watch.batchNonce !== nonce &&
-              (!valid(watch.recommendation) || nonce < watch.batchNonce))
-        )
-          throw transactionApprovalExpired();
         watch.batchActive = true;
         ++watch.nonceGeneration;
         watch.recommendation = undefined;
         let finished = false;
         return {
-          approval: reviewedExtensionNonce(nonce, 'automatic'),
+          approval,
           finish(error?: unknown) {
             if (finished) return;
             finished = true;
@@ -279,19 +294,12 @@ export const captureDappEvmSubmission = (
           },
         };
       }
-      if (watch.nonceClaimed) throw transactionApprovalExpired();
-      let source: ExtensionReviewedNonce['source'];
-      if (valid(watch.manualNonce) || watch.originalNonce === nonce)
-        source = 'manual';
-      else if (!watch.originallyExplicit && valid(watch.recommendation))
-        source = 'automatic';
-      else throw transactionApprovalExpired();
       watch.nonceClaimed = true;
       watch.manualNonce = undefined;
       watch.recommendation = undefined;
       let finished = false;
       return {
-        approval: reviewedExtensionNonce(nonce, source),
+        approval,
         finish(error?: unknown) {
           if (finished) return;
           finished = true;

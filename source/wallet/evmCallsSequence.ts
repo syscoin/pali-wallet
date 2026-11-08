@@ -1,3 +1,8 @@
+import {
+  snapshotPreparedEvmTransaction,
+  type PreparedEvmTransaction,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+
 import { normalizeDappCallsRequest } from '../shared/dappCalls.ts';
 import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from '../utils/evmTransactionContext.ts';
@@ -14,8 +19,9 @@ export type EoaCallsTransaction = Readonly<{
 }>;
 export type EoaCallsFailure = Readonly<{
   cause: unknown;
-  kind: 'destination' | 'submission' | 'persistence';
+  kind: 'destination' | 'review' | 'submission' | 'persistence';
 }>;
+export type EoaCallsReview = Readonly<{ transaction: PreparedEvmTransaction }>;
 export type EoaCallsProgress = Readonly<{
   failure?: EoaCallsFailure;
   hash?: string;
@@ -33,20 +39,19 @@ export type EoaCallsOutcome = EoaCallsCompletion &
     index?: number;
     status: 'finished' | 'retired' | 'unknown';
   }>;
-export type EoaCallsPorts = Readonly<{
-  assertCurrent(): void;
-  begin(): Promise<string>;
-  nonce(): Promise<number>;
-  persistCompletion(value: EoaCallsCompletion): Promise<void>;
-  persistHash(hash: string): Promise<void>;
-  recordNotBroadcast(): Promise<boolean>;
-  resolveAddress(call: DappCall): Promise<string | undefined>;
-  send(
-    transaction: EoaCallsTransaction,
-    submissionId: string
-  ): Promise<unknown>;
-  update(value: EoaCallsProgress): void;
-}>;
+export type EoaCallsPorts<Review extends EoaCallsReview = EoaCallsReview> =
+  Readonly<{
+    assertCurrent(): void;
+    begin(): Promise<string>;
+    nonce(): Promise<number>;
+    persistCompletion(value: EoaCallsCompletion): Promise<void>;
+    persistHash(hash: string): Promise<void>;
+    prepare(transaction: EoaCallsTransaction, index: number): Promise<Review>;
+    recordNotBroadcast(): Promise<boolean>;
+    resolveAddress(call: DappCall): Promise<string | undefined>;
+    send(review: Review, submissionId: string): Promise<unknown>;
+    update(value: EoaCallsProgress): void;
+  }>;
 
 const readHash = (value: unknown): string | undefined =>
   typeof value === 'string' && /^0x[\da-f]{64}$/i.test(value)
@@ -81,13 +86,16 @@ export function createEoaCallsSequence(input: unknown) {
     if (pendingCompletion === pending) pendingCompletion = undefined;
   };
 
-  const run = async (ports: EoaCallsPorts): Promise<EoaCallsOutcome> => {
+  const run = async <Review extends EoaCallsReview>(
+    ports: EoaCallsPorts<Review>
+  ): Promise<EoaCallsOutcome> => {
     for (const name of [
       'assertCurrent',
       'begin',
       'nonce',
       'persistCompletion',
       'persistHash',
+      'prepare',
       'recordNotBroadcast',
       'resolveAddress',
       'send',
@@ -105,6 +113,7 @@ export function createEoaCallsSequence(input: unknown) {
       nonce: ports.nonce.bind(ports),
       persistCompletion: ports.persistCompletion.bind(ports),
       persistHash: ports.persistHash.bind(ports),
+      prepare: ports.prepare.bind(ports),
       recordNotBroadcast: ports.recordNotBroadcast.bind(ports),
       resolveAddress: ports.resolveAddress.bind(ports),
       send: ports.send.bind(ports),
@@ -165,6 +174,21 @@ export function createEoaCallsSequence(input: unknown) {
             nonce,
             ...(to === undefined ? {} : { to }),
           });
+          stage = 'review';
+          const review = await host.prepare(transaction, index);
+          check();
+          const reviewed = snapshotPreparedEvmTransaction(review.transaction);
+          if (
+            reviewed.from.toLowerCase() !== from.toLowerCase() ||
+            reviewed.to?.toLowerCase() !== to?.toLowerCase() ||
+            reviewed.chainId !== String(chainId) ||
+            reviewed.nonce !== String(nonce) ||
+            reviewed.value !== BigInt(call.value).toString() ||
+            reviewed.data !== call.data.toLowerCase()
+          )
+            throw new Error(
+              'The reviewed call does not match the requested transaction'
+            );
           host.update({ index, status: 'sending' });
           stage = 'submission';
           const submissionId = await host.begin();
@@ -173,7 +197,7 @@ export function createEoaCallsSequence(input: unknown) {
             throw new Error('Missing calls submission identity');
           check();
           invoked = true;
-          const response = await host.send(transaction, submissionId);
+          const response = await host.send(review, submissionId);
           const hash = readHash(
             response && typeof response === 'object' && 'hash' in response
               ? response.hash
