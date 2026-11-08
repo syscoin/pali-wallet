@@ -77,6 +77,9 @@ export async function qualifyNativeWalletConnect(options: {
     const repository: NativeConnectionRepository = {
       assertHealthy() {},
       bindings: () => [],
+      async reconcileSessions() {
+        throw Error('Unused qualification reconciliation');
+      },
       permissions() {
         throw Error('Unused qualification permission');
       },

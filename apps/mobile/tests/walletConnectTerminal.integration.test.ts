@@ -37,6 +37,9 @@ async function fixture(holdKeychain = false) {
       throw Error('Unused permission path');
     },
     bindings: () => [],
+    async reconcileSessions() {
+      throw Error('Unused session reconciliation');
+    },
     async retireAccount() {
       throw Error('Unused account removal');
     },

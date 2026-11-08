@@ -173,6 +173,134 @@ async function publish(
   return port;
 }
 
+test('session reconciliation requires the exact peer, topic and origin and preserves protocol data', async () => {
+  const f = await fixture();
+  try {
+    const repository = await openNativeConnectionRepository({
+      storage: f.storage.keyringStorage,
+      walletBindingId: WALLET,
+      assertOwner: current,
+    });
+    const bindings = Array.from({ length: 4 }, (_, index) => ({
+      ...BINDING,
+      topic: index.toString(16).padStart(64, '0'),
+    }));
+    for (const binding of bindings)
+      await publish(repository, binding, {
+        dapps: { [ORIGIN]: { ...GRANT } },
+        pendingOrigins: [],
+      });
+    await repository.transport.setItem('protocol-key', { value: 'preserved' });
+    await repository.reconcileSessions(
+      [
+        bindings[0]!,
+        { ...bindings[1]!, origin: 'https://other.example' },
+        { ...bindings[2]!, peerPublicKey: 'ff'.repeat(32) },
+        { ...bindings[3]!, topic: 'ff'.repeat(32) },
+      ],
+      current
+    );
+    assert.deepEqual(repository.bindings(), [bindings[0]]);
+    await repository.dispose();
+    await f.reopen();
+    const reopened = await openNativeConnectionRepository({
+      storage: f.storage.keyringStorage,
+      walletBindingId: WALLET,
+      assertOwner: current,
+    });
+    assert.deepEqual(reopened.bindings(), [bindings[0]]);
+    assert.deepEqual(await reopened.transport.getItem('protocol-key'), {
+      value: 'preserved',
+    });
+  } finally {
+    await f.close();
+  }
+});
+
+test('retiring orphaned sessions frees the real repository capacity', async () => {
+  const f = await fixture();
+  try {
+    const repository = await openNativeConnectionRepository({
+      storage: f.storage.keyringStorage,
+      walletBindingId: WALLET,
+      assertOwner: current,
+    });
+    const bindings = Array.from({ length: 64 }, (_, index) => ({
+      ...BINDING,
+      topic: index.toString(16).padStart(64, '0'),
+    }));
+    for (const binding of bindings)
+      await publish(repository, binding, {
+        dapps: { [ORIGIN]: { ...GRANT } },
+        pendingOrigins: [],
+      });
+    const next = { ...BINDING, topic: 'ff'.repeat(32) };
+    await assert.rejects(publish(repository, next), {
+      code: 'INVALID_CONNECTION_STATE',
+    });
+    await repository.reconcileSessions([bindings[0]!], current);
+    await publish(repository, next);
+    assert.deepEqual(repository.bindings(), [bindings[0], next]);
+    await repository.dispose();
+    await f.reopen();
+    const reopened = await openNativeConnectionRepository({
+      storage: f.storage.keyringStorage,
+      walletBindingId: WALLET,
+      assertOwner: current,
+    });
+    assert.deepEqual(reopened.bindings(), [bindings[0], next]);
+  } finally {
+    await f.close();
+  }
+});
+
+test('cancellation during reconciliation SQL rolls back every grant and fails closed', async () => {
+  const f = await fixture();
+  const writing = latch();
+  try {
+    const repository = await openNativeConnectionRepository({
+      storage: f.storage.keyringStorage,
+      walletBindingId: WALLET,
+      assertOwner: current,
+    });
+    await publish(repository);
+    await repository.transport.setItem('protocol-key', { value: 'preserved' });
+    let active = true;
+    f.setBefore(async (kind, sql) => {
+      if (kind === 'run' && sql.startsWith('UPDATE keyring_records')) {
+        writing.enter();
+        await writing.gate;
+      }
+    });
+    const update = repository.reconcileSessions([], () => {
+      if (!active) throw new Error('Canceled');
+    });
+    const rejected = assert.rejects(update, {
+      code: 'CONNECTION_STORAGE_UNAVAILABLE',
+    });
+    await writing.reached;
+    active = false;
+    writing.release();
+    await rejected;
+    f.setBefore();
+    assert.throws(() => repository.bindings(), {
+      code: 'CONNECTION_STORAGE_UNAVAILABLE',
+    });
+    const reopened = await openNativeConnectionRepository({
+      storage: f.storage.keyringStorage,
+      walletBindingId: WALLET,
+      assertOwner: current,
+    });
+    assert.deepEqual(reopened.bindings(), [BINDING]);
+    assert.deepEqual(await reopened.transport.getItem('protocol-key'), {
+      value: 'preserved',
+    });
+  } finally {
+    writing.release();
+    await f.close();
+  }
+});
+
 test('one protected record persists detached protocol values and peer-scoped grants across reopen', async () => {
   const f = await fixture();
   try {

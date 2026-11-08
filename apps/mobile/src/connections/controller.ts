@@ -127,6 +127,9 @@ export class NativeConnectionsController {
   private transport: WalletConnectTransport | undefined;
   private opening: Promise<void> | undefined;
   private openingTransport: Promise<void> | undefined;
+  private restored = false;
+  private transportOwner: object | undefined;
+  private transportRetirement: Promise<void> = Promise.resolve();
   private publishedScope: { network: string; accounts: string } | undefined;
   private closing: Promise<void> | undefined;
   private disposed = false;
@@ -139,7 +142,6 @@ export class NativeConnectionsController {
   private activeGrant: Connected | undefined;
   private activeProposalId: number | undefined;
   private readonly canceledPairings = new Map<string, WalletConnectPairing>();
-  private readonly earlyEvents: WalletConnectTransportEvent[] = [];
   private status: 'ready' | 'pairing' | 'approving' | 'unavailable' = 'ready';
   private error: NativeConnectionError | null = null;
   private readonly connections = new Map<string, Connected>();
@@ -182,6 +184,13 @@ export class NativeConnectionsController {
         }),
       editApprovalAmount: (id, revision, amount) =>
         this.perform(() => this.editApprovalAmount(id, revision, amount), { owner: this.requests.get(id) }),
+      retry: () =>
+        this.perform(async () => {
+          if (this.action) return failure('BUSY');
+          if (this.options.source.getSnapshot().phase !== 'ready')
+            return failure('CONTEXT_CHANGED');
+          await this.ensure();
+        }),
       cancel: () => this.cancel(),
     });
     this.unsubscribe = options.source.subscribe(() => {
@@ -224,10 +233,35 @@ export class NativeConnectionsController {
   }
   private unavailable() {
     if (!this.disposed) {
+      this.restored = false;
+      this.actionEpoch++;
+      this.action?.abort();
+      this.action = undefined;
+      this.pairing = undefined;
+      this.activeGrant = undefined;
+      this.activeProposalId = undefined;
+      this.transportOwner = undefined;
+      const transport = this.transport;
+      this.transport = undefined;
+      this.connections.clear();
+      this.proposals.clear();
+      for (const message of [...this.requests.values()])
+        void this.retireRequest(message, false);
+      if (transport)
+        void this.retireTransport(transport).catch(() => undefined);
       this.status = 'unavailable';
       this.error = 'CONNECTION_UNAVAILABLE';
       this.publish();
     }
+  }
+  private retireTransport(transport: WalletConnectTransport): Promise<void> {
+    const closing = Promise.resolve().then(() => transport.close());
+    this.transportRetirement = Promise.all([
+      this.transportRetirement,
+      closing,
+    ]).then(() => undefined);
+    void this.transportRetirement.catch(() => undefined);
+    return closing;
   }
   private requiredMethods(proposal: WalletConnectProposal): string[] {
     return [
@@ -367,17 +401,24 @@ export class NativeConnectionsController {
     }
   }
   private ensure(): Promise<void> {
-    if (this.host && this.repository) return Promise.resolve();
+    if (this.restored) {
+      return Promise.resolve().then(() => this.check());
+    }
     if (this.opening) return this.opening;
     this.opening = (async () => {
       if (this.options.source.getSnapshot().phase !== 'ready')
         return failure('CONTEXT_CHANGED');
-      this.host = await this.options.openHost();
-      this.check();
-      this.repository = this.host.repository;
+      if (!this.host || !this.repository) {
+        this.host = await this.options.openHost();
+        this.check();
+        this.repository = this.host.repository;
+      }
       this.repository.assertHealthy();
       this.publishedScope = this.publicScope();
+      await this.transportRetirement;
       if (this.repository.bindings().length) await this.ensureTransport();
+      this.check();
+      this.restored = true;
       if (!this.action) this.status = 'ready';
       this.error = null;
       this.publish();
@@ -392,26 +433,56 @@ export class NativeConnectionsController {
     this.openingTransport = (async () => {
       if (!this.repository || !this.options.projectId)
         return failure('CONNECTION_UNAVAILABLE');
-      this.transport = await (
-        this.options.openTransport ?? openWalletConnectTransport
-      )({
-        projectId: this.options.projectId,
-        metadata: this.options.metadata,
-        repository: this.repository,
-        supportedMethods: METHODS,
-        supportedEvents: EVENTS,
-        assertOwner: () => this.check(),
-        preparePlatform: this.options.preparePlatform,
-        signal: this.lifetime.signal,
-        onEvent: (event) => {
-          if (this.transport) this.onEvent(event);
-          else this.earlyEvents.push(event);
-        },
-      });
-      this.check();
-      for (const event of this.earlyEvents.splice(0)) this.onEvent(event);
-      for (const session of await this.transport.sessions())
-        this.connection(session);
+      const owner = {};
+      const events: WalletConnectTransportEvent[] = [];
+      this.transportOwner = owner;
+      const guard = () => {
+        this.check();
+        if (this.transportOwner !== owner) return failure('CONTEXT_CHANGED');
+      };
+      let transport: WalletConnectTransport | undefined;
+      try {
+        await this.transportRetirement;
+        guard();
+        transport = await (
+          this.options.openTransport ?? openWalletConnectTransport
+        )({
+          projectId: this.options.projectId,
+          metadata: this.options.metadata,
+          repository: this.repository,
+          supportedMethods: METHODS,
+          supportedEvents: EVENTS,
+          assertOwner: guard,
+          preparePlatform: this.options.preparePlatform,
+          signal: this.lifetime.signal,
+          onEvent: (event) => {
+            if (this.disposed || this.transportOwner !== owner) return;
+            if (this.transport === transport && transport) this.onEvent(event);
+            else events.push(event);
+          },
+        });
+        guard();
+        const sessions = await transport.sessions();
+        guard();
+        await this.repository.reconcileSessions(
+          sessions.map(({ binding }) => binding),
+          guard
+        );
+        guard();
+        this.transport = transport;
+        for (const session of sessions) this.connection(session);
+        for (const event of events) this.onEvent(event);
+        guard();
+      } catch (error) {
+        if (this.transportOwner === owner) {
+          this.transportOwner = undefined;
+          this.transport = undefined;
+          this.connections.clear();
+          this.proposals.clear();
+        }
+        if (transport) await this.retireTransport(transport);
+        throw error;
+      }
     })().finally(() => {
       this.openingTransport = undefined;
     });
@@ -1459,6 +1530,7 @@ export class NativeConnectionsController {
     for (const message of [...this.requests.values()])
       this.retireRequest(message, false);
     this.disposed = true;
+    this.transportOwner = undefined;
     this.lifetime.abort();
     this.action?.abort();
     this.unsubscribe();
@@ -1467,6 +1539,7 @@ export class NativeConnectionsController {
       await this.opening?.catch(() => undefined);
       await this.openingTransport?.catch(() => undefined);
       try {
+        await this.transportRetirement;
         await this.transport?.close();
       } finally {
         this.connections.clear();

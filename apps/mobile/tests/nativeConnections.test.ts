@@ -10,6 +10,7 @@ import type {
 } from '../src/connections/walletConnect.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
+import type { INetwork, KeyringAccountType } from '../../../source/types/network.ts';
 import { openNativeConnectionRepository } from '../src/connections/storage.ts';
 import { captureEvmFeeApproval } from '../../../source/shared/evmFeeApproval.ts';
 import type { NativeSigningReview } from '../src/connections/types.ts';
@@ -32,7 +33,13 @@ const UNKNOWN = Object.freeze({
 const ADDRESS = '0x' + '11'.repeat(20),
   ORIGIN = 'https://reported.example';
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
-function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
+function fixture(options: {
+  secondAccount?: boolean;
+  restoring?: boolean;
+  openFailures?: number;
+  inventoryFailures?: number;
+} = {}) {
+  const { secondAccount = false } = options;
   let snapshot: CustodySnapshot = {
     phase: 'ready',
     revision: 1,
@@ -77,6 +84,11 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
   let pairFailure: { error: Error; beforeHandle: boolean } | undefined;
   let selectedChainId = 1;
   let pairingExpiry = Date.now() + 300000;
+  let openFailures = options.openFailures ?? 0;
+  let inventoryFailures = options.inventoryFailures ?? 0;
+  let closeWait: Promise<void> = Promise.resolve();
+  let closeFailure: Error | undefined;
+  const transportEvents: ((event: WalletConnectTransportEvent) => void)[] = [];
   const network = {
     kind: 'ethereum',
     chainId: 1,
@@ -259,6 +271,30 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
       },
     },
   };
+  let inventory = options.restoring ? [session] : [];
+  const restoredRepository = repository.then(async (value) => {
+    if (options.restoring) {
+      const permissions = value.permissions(session.binding);
+      const frame = {
+        dapps: {
+          [ORIGIN]: {
+            host: ORIGIN,
+            accountId: 0,
+            accountType: 'HDAccount' as KeyringAccountType,
+            chain: 'ethereum' as INetwork['kind'],
+            chainId: 1,
+            date: 1,
+          },
+        },
+        pendingOrigins: [],
+      };
+      await permissions.exclusive(async () => {
+        await permissions.write(frame);
+        permissions.publish(frame);
+      });
+    }
+    return value;
+  });
   const controller = new NativeConnectionsController({
     source: {
       getSnapshot: () => snapshot,
@@ -270,7 +306,7 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
         };
       },
     },
-    openHost: async () => ({ ...host, repository: await repository }),
+    openHost: async () => ({ ...host, repository: await restoredRepository }),
     preparePlatform: async () => undefined,
     checkSite: async () => {
       await siteWait;
@@ -290,7 +326,10 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     },
     openTransport: async (options) => {
       opened++;
+      transportEvents.push(options.onEvent);
       await openWait;
+      if (openFailures-- > 0)
+        throw new Error('Transport temporarily unavailable');
       event = options.onEvent;
       return {
         pair: async (uri, guard, onPairing) => {
@@ -346,9 +385,14 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
           emissionScopes.push(chain);
           emissions.push(value);
         },
-        sessions: async () => [],
+        sessions: async () => {
+          if (inventoryFailures-- > 0) throw new Error('Inventory unavailable');
+          return inventory;
+        },
         close: async () => {
           closed++;
+          await closeWait;
+          if (closeFailure) throw closeFailure;
         },
       };
     },
@@ -393,7 +437,10 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     emissionScopes,
     session,
     proposal,
+    repository: restoredRepository,
     event: (value: WalletConnectTransportEvent) => event(value),
+    eventFrom: (index: number, value: WalletConnectTransportEvent) =>
+      transportEvents[index]!(value),
     opened: () => opened,
     approved: () => approved,
     setOpenWait(value: Promise<void>) {
@@ -416,6 +463,15 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     },
     setDisconnectWait(value: Promise<void>) {
       disconnectWait = value;
+    },
+    setInventory(value: WalletConnectSession[]) {
+      inventory = value;
+    },
+    setCloseWait(value: Promise<void>) {
+      closeWait = value;
+    },
+    setCloseFailure(value: Error) {
+      closeFailure = value;
     },
     cancelledTopics,
     setRejectFailure(value: Error) {
@@ -441,6 +497,15 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
         phase: 'locked',
         revision: snapshot.revision + 1,
         account: null,
+      };
+      for (const listener of listeners) listener();
+    },
+    unlock() {
+      snapshot = {
+        ...snapshot,
+        phase: 'ready',
+        revision: snapshot.revision + 1,
+        account: { network: 'ethereum', address: ADDRESS },
       };
       for (const listener of listeners) listener();
     },
@@ -481,6 +546,109 @@ test('native controller shares a reviewed public account through the common gran
   } finally {
     await f.controller.dispose();
   }
+});
+
+for (const recovery of ['retry', 'unlock'] as const) {
+  test(`saved-session restoration retries after a transport failure through ${recovery}`, async () => {
+    const f = fixture({ restoring: true, openFailures: 1 });
+    try {
+      await settle();
+      assert.equal(f.view.getSnapshot().status, 'unavailable');
+      assert.equal(f.opened(), 1);
+      assert.equal((await f.repository).bindings().length, 1);
+      if (recovery === 'retry') await f.view.retry();
+      else {
+        f.lock();
+        f.unlock();
+        await settle();
+      }
+      assert.equal(f.opened(), 2);
+      assert.equal(f.view.getSnapshot().status, 'ready');
+      assert.equal(f.view.getSnapshot().sessions.length, 1);
+    } finally {
+      await f.controller.dispose();
+    }
+  });
+}
+
+test('a failed session inventory closes its candidate without retiring saved grants', async () => {
+  const f = fixture({ restoring: true, inventoryFailures: 1 });
+  try {
+    await settle();
+    assert.equal(f.view.getSnapshot().status, 'unavailable');
+    assert.equal(f.closed(), 1);
+    const repository = await f.repository;
+    assert.equal(repository.bindings().length, 1);
+    f.setInventory([]);
+    await f.view.retry();
+    assert.equal(f.view.getSnapshot().status, 'ready');
+    assert.equal(f.opened(), 2);
+    assert.deepEqual(repository.bindings(), []);
+    assert.deepEqual(f.view.getSnapshot().sessions, []);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('retry waits for old transport cleanup and ignores its late events', async () => {
+  const f = fixture({ restoring: true });
+  let release!: () => void;
+  try {
+    await settle();
+    f.setCloseWait(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      })
+    );
+    f.event({ type: 'unavailable' });
+    const retry = f.view.retry();
+    await settle();
+    assert.equal(f.opened(), 1);
+    f.eventFrom(0, { type: 'proposal', proposal: f.proposal });
+    assert.deepEqual(f.view.getSnapshot().proposals, []);
+    release();
+    await retry;
+    assert.equal(f.opened(), 2);
+    f.eventFrom(0, { type: 'unavailable' });
+    f.eventFrom(0, { type: 'session-ended', topic: TOPIC });
+    assert.equal(f.view.getSnapshot().status, 'ready');
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+  } finally {
+    release?.();
+    await f.controller.dispose();
+  }
+});
+
+test('retry cannot reopen poisoned storage', async () => {
+  const f = fixture({ restoring: true, openFailures: 1 });
+  try {
+    await settle();
+    const repository = await f.repository;
+    await assert.rejects(
+      repository.transport.setItem('invalid', () => undefined)
+    );
+    await assert.rejects(f.view.retry(), {
+      code: 'CONNECTION_STORAGE_UNAVAILABLE',
+    });
+    f.lock();
+    f.unlock();
+    await settle();
+    assert.equal(f.view.getSnapshot().status, 'unavailable');
+    assert.equal(f.opened(), 1);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('failed transport cleanup prevents a replacement client from opening', async () => {
+  const f = fixture({ restoring: true });
+  await settle();
+  f.setCloseFailure(new Error('Cleanup failed'));
+  f.event({ type: 'unavailable' });
+  await assert.rejects(f.view.retry(), { message: 'Cleanup failed' });
+  assert.equal(f.opened(), 1);
+  assert.equal(f.view.getSnapshot().status, 'unavailable');
+  await assert.rejects(f.controller.dispose(), { message: 'Cleanup failed' });
 });
 
 test('locking cancels disclosure while retaining durable grants and transport lifetime', async () => {
@@ -1984,3 +2152,34 @@ test('actions on an absent old message ID cannot overwrite the next review', asy
     await f.controller.dispose();
   }
 });
+
+for (const method of ['personal_sign', 'eth_sendTransaction'] as const) {
+  test(`an asynchronous connection failure retires a pending ${method} review`, async () => {
+    const f = await connectedFixture();
+    let release!: () => void;
+    try {
+      const params = method === 'personal_sign'
+        ? ['Pending message', ADDRESS]
+        : [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x1' }];
+      const review = await messageRequest(f, method, params);
+      assert.ok(review);
+      f.setResponseWait(new Promise<void>((resolve) => { release = resolve; }));
+      await messageRequest(f, 'eth_accounts', [], 12);
+      assert.equal(f.view.getSnapshot().signingReview?.id, review.id);
+      // The read is already waiting at its transport boundary. Its later
+      // failure reaches unavailable() without another transport event.
+      await assert.rejects((await f.repository).transport.setItem('invalid', () => undefined));
+      release();
+      await settle();
+      assert.equal(f.view.getSnapshot().status, 'unavailable');
+      assert.equal(f.view.getSnapshot().signingReview, null);
+      await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+      assert.equal(f.signatures.length, 0);
+      assert.equal(f.transactions.length, 0);
+      assert.equal(f.responses.length, 0);
+    } finally {
+      release?.();
+      await f.controller.dispose();
+    }
+  });
+}
