@@ -48,10 +48,11 @@ test.beforeAll(async () => {
       const pending=op?{operationId:getGuardianRecoveryOperationId(op),scheduledAt:op.readyAt-60,executableAt:op.readyAt,expiresAt:op.readyAt+1200,status:now>=op.readyAt?'ready':'pending'}:null;
       return{account:ACCOUNT,chainId:57057,moduleAddress:getPaliModuleAddress(57057,'guardian-recovery'),delay:'60',delaySeconds:60,expirationSeconds:1200,exists:true,guardians:[GUARDIAN],guardianCount:'1',threshold:1,policyEpoch:'1',observedBlock:{number:now,hash:'0x'+now.toString(16).padStart(64,'0'),timestamp:now},active:pending,pending,knownOperation:pending};
     };
-    const emitter=async([,method]:string[])=>{
+    const emitter=async([,method]:string[],args?:unknown[])=>{
       if(method==='getWalletSessionGeneration')return 7;
       if(method==='hydrateSmartAccount')return metadata;
       if(method==='getSmartAccountGuardianRecoveryStatus')return readRecovery();
+      if(method==='getSmartAccountGuardianRemovalStatus'&&args?.length===1&&args[0]===1)return{status:'retry-ready',transactions:[],totalPending:0};
       if(method==='getSLHDSASmartAccountSetupStatus')return null;
       return forbidden(method);
     };
