@@ -1874,6 +1874,62 @@ it('requotes a network fee choice using exact base units before a new confirmati
   expect(submitted[4].genericReviewId).toBe('lifetime-fee-2');
 });
 
+it('keeps the adjustment notice when a dapp choice is raised again by the requote', async () => {
+  mockQuery.tx.gasPrice = '1';
+  mockQuery.tx.gasLimit = '4096';
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, args, ...rest) => {
+    const result = await invoke(path, args, ...rest);
+    return path[1] === 'reviewDappEvmFee'
+      ? {
+          ...result,
+          transaction: {
+            ...result.transaction,
+            gasLimit: '25200',
+            gasPrice: '2000000000',
+          },
+          feeComparison: {
+            gasLimit: { requested: '4096', recommended: '25200' },
+            gasPrice: { requested: '1', recommended: '2000000000' },
+            recommendationOnly: false,
+          },
+        }
+      : result;
+  });
+  await prepare();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.useDappFeeRequest' })
+  );
+  await waitFor(() => {
+    const calls = mockEmitter.mock.calls.filter(
+      ([path]) => path[1] === 'reviewDappEvmFee'
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][1][0]).toMatchObject({ gasLimit: '4096', gasPrice: '1' });
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+  });
+  expect(screen.getByText('send.dappFeeRaisedDescription')).toBeDefined();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  const submitted = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  )![1];
+  expect(submitted[0]).toMatchObject({
+    gasLimit: '25200',
+    gasPrice: '2000000000',
+  });
+});
+
 it.each(['manual-edit', 'network-round-trip'] as const)(
   'retires a captured fee choice after %s',
   async (change) => {

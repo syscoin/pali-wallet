@@ -1,4 +1,5 @@
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { getEvmProtocolLimits } from '@sidhujag/sysweb3-network/cjs/evm.js';
 
 export type EvmDappFeeRequest = Readonly<{
@@ -92,6 +93,28 @@ export type EvmDappFeeComparison = Readonly<{
   maxPriorityFeePerGas?: EvmDappFeeAdjustment;
   recommendationOnly: boolean;
 }>;
+
+export type EvmDappFeeChoiceFields = Readonly<
+  { gasLimit: string } & (
+    | { gasPrice: string }
+    | { maxFeePerGas: string; maxPriorityFeePerGas: string }
+  )
+>;
+
+/** A fresh quote may raise requested fields again to satisfy execution bounds. */
+export function evmDappFeeChoiceMatches(
+  transaction: PreparedEvmTransaction,
+  fields: EvmDappFeeChoiceFields
+): boolean {
+  return (
+    transaction.gasLimit === fields.gasLimit &&
+    (transaction.type === 0
+      ? 'gasPrice' in fields && transaction.gasPrice === fields.gasPrice
+      : 'maxFeePerGas' in fields &&
+        transaction.maxFeePerGas === fields.maxFeePerGas &&
+        transaction.maxPriorityFeePerGas === fields.maxPriorityFeePerGas)
+  );
+}
 
 /** Compare the app request with the same network sample used for its quote. */
 export function compareEvmDappFees(

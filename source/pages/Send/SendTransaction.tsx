@@ -70,7 +70,11 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
-import type { EvmDappFeeComparison } from '../../shared/evmDappFeePolicy';
+import {
+  evmDappFeeChoiceMatches,
+  type EvmDappFeeChoiceFields,
+  type EvmDappFeeComparison,
+} from '../../shared/evmDappFeePolicy';
 
 type GenericFeeQuote = Readonly<{
   feeComparison: EvmDappFeeComparison;
@@ -322,12 +326,7 @@ export const SendTransaction = () => {
     gasPrice: 0,
   });
   const [genericFeeChoice, setGenericFeeChoice] = useState<{
-    fields: {
-      gasLimit: string;
-      gasPrice?: string;
-      maxFeePerGas?: string;
-      maxPriorityFeePerGas?: string;
-    };
+    fields: EvmDappFeeChoiceFields;
     requestKey: string;
   }>();
   const [feeSafetyAdjustment, setFeeSafetyAdjustment] =
@@ -1457,7 +1456,12 @@ export const SendTransaction = () => {
             maxFeePerGas: display(comparison.maxFeePerGas, 1e9),
             maxPriorityFeePerGas: display(comparison.maxPriorityFeePerGas, 1e9),
           });
-          setAcceptedDappFeeRequest(Boolean(currentGenericFeeChoice));
+          setAcceptedDappFeeRequest(
+            Boolean(
+              currentGenericFeeChoice &&
+                evmDappFeeChoiceMatches(transaction, currentGenericFeeChoice)
+            )
+          );
           setFeeRecommendationOnly(comparison.recommendationOnly);
           quotedApprovalDataRef.current = txForEstimation.data;
           setHasGasError(false);
