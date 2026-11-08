@@ -54,7 +54,7 @@ export function snapshotHdKeyExportScope(input: HdKeyExportScope, utxos: readonl
       throw new Error('INVALID_INPUT');
     const selected = parseNativeAccountId(value.accountId);
     const utxo = findUtxoNetwork(value.networkId, utxos);
-    if (selected.index !== value.index || selected.slip44 !== (utxo?.slip44 ?? 60) ||
+    if (selected.type === 'SmartAccount' || selected.index !== value.index || selected.slip44 !== (utxo?.slip44 ?? 60) ||
         (utxo ? normalizeUtxoAddress(value.address, utxo) !== value.address
           : normalizePublicAddress(value.address, 'ethereum') !== value.address)) throw new Error('INVALID_INPUT');
     return Object.freeze(value);
@@ -66,7 +66,7 @@ function capture(authority: NativeCustodyAuthority): HdKeyExportScope {
   const catalogue = authority.getCatalogue();
   const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
   const utxo = catalogue && findUtxoNetwork(catalogue.active.networkId, catalogue.utxoNetworks);
-  if (state.phase !== 'ready' || state.backup !== 'confirmed' || !state.account || !catalogue || !selected ||
+  if (selected?.type === 'SmartAccount' || state.phase !== 'ready' || state.backup !== 'confirmed' || !state.account || !catalogue || !selected ||
       selected.type !== parseNativeAccountId(selected.id).type || selected.slip44 !== (utxo?.slip44 ?? 60) ||
       state.account.address !== selected.address ||
       state.account.network !== catalogue.active.networkId) throw new Error('NOT_READY');

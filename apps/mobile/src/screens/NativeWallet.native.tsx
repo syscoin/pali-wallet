@@ -196,7 +196,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   }, []);
   const currentShellScope = () => stage === 'choose' ? readyContext()?.context ?? null : null;
   const utxo = findUtxoNetwork(snapshot.account?.network, catalogue?.utxoNetworks);
-  const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
+  const selectedCatalogueAccount = catalogue?.accounts.find(account => account.id === catalogue.active.accountId);
+  const selectedAccountType = selectedCatalogueAccount?.type;
+  const canSign = !!snapshot.account && selectedAccountType !== 'SmartAccount' && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
   const canSendUtxo = !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
   const canSendSpt = canSendUtxo && !!utxo && supportsSptUtxoChain(utxo.chainId);
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
@@ -751,6 +753,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
     if (shell.tab === 'wallet') content = <NativePortfolio
+    smartAccount={selectedCatalogueAccount?.smartAccount}
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}

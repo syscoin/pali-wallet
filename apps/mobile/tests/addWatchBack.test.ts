@@ -94,7 +94,7 @@ function renderer() {
   };
 }
 
-for (const kind of ['native', 'watch', 'activity'] as const) {
+for (const kind of ['native', 'smart', 'watch', 'activity'] as const) {
   for (const order of ['parent-first', 'child-first'] as const) {
     test(`${kind} real screen and shell consume nested Back before exit (${order})`, async () => {
       const back = backHandler(); const render = renderer();
@@ -130,10 +130,10 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
       };
-      const source = kind === 'native' ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
+      const source = (kind === 'native' || kind === 'smart') ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
         : kind === 'activity' ? load('src/screens/NativeActivity.tsx') + '\nexport { NativeActivityContent };' : load('src/screens/WatchAccountPortfolio.tsx');
       const exports = evaluate(source, dependencies);
-      const leaf = (kind === 'native' ? exports.NativePortfolioContent : kind === 'activity' ? exports.NativeActivityContent : exports.WatchAccountPortfolio) as Component;
+      const leaf = ((kind === 'native' || kind === 'smart') ? exports.NativePortfolioContent : kind === 'activity' ? exports.NativeActivityContent : exports.WatchAccountPortfolio) as Component;
       let exits = 0;
       let shell!: { tab: RealTab; goBack(): void; select(tab: RealTab): void; finishLeave(tab: RealTab): void; navigation: ShellLeafNavigation };
       const parent = render.instance(), child = render.instance();
@@ -147,17 +147,20 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const account = core.createWatchAccount('watch', 'Public account', '0x1111111111111111111111111111111111111111');
       const authority = new core.WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
       authority.unlock(); await authority.refresh();
-      const props = () => kind === 'native' ? {
+      const props = () => (kind === 'native' || kind === 'smart') ? {
         model: { isCurrent: () => true, getNetworkRegistration: () => ({ id: 'ethereum' }), getUtxoNetwork: () => findUtxoNetwork('ethereum') }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
         accountLabel: 'Public account', onExit() { exits++; }, onLock() {}, onViewRecovery() {}, navigation: shell.navigation,
+        ...(kind === 'smart' ? { smartAccount: { chainId: 1, isDeployed: false, managementAddress: '0x2222222222222222222222222222222222222222' }, onSend() { assert.fail('Smart account must not enter EOA send'); } } : {}),
       } : kind === 'activity' ? { controller: { async setView() {} },
         snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },
         accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
       } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
       owner = 'child'; let tree = render.render(child, leaf, props()); render.flush(child);
       if (kind !== 'activity') {
+        if (kind === 'smart') assert.equal(find(tree, (element) => element.props.title === 'Send'), undefined);
         press(get(tree, (element) => element.props.title === 'Receive'));
         tree = render.render(child, leaf, props()); render.flush(child);
+        if (kind === 'smart') assert.equal(get(tree, (element) => element.type === 'QRCode').props.value, account.addresses.ethereum);
       }
       const active = subscriptions.filter((subscription) => !subscription.removed);
       active.forEach((subscription) => subscription.actual.remove());
