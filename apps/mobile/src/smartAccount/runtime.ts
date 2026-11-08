@@ -1,3 +1,4 @@
+import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { readSmartAccountDeploymentState } from '../../../../source/utils/smartAccount/deploymentState.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
 import {
@@ -48,7 +49,8 @@ export type NativeSmartDeploymentPorts = Readonly<{
     payer: SmartAccountGasPayer,
     signal: AbortSignal,
     guard: () => void,
-    metadata: Readonly<Record<string, unknown>>
+    metadata: Readonly<Record<string, unknown>>,
+    funding: EvmFeeFunding
   ): Promise<NativePreparedConnectionTransaction>;
   waitForReceipt(
     hash: string,
@@ -188,7 +190,8 @@ export function createNativeSmartDeployment(
           !target ||
           !options ||
           typeof options.assertBeforeSign !== 'function' ||
-          typeof options.assertCurrentContext !== 'function'
+          typeof options.assertCurrentContext !== 'function' ||
+          !options.feeFunding
         )
           throw new Error('DEPLOYMENT_EXPIRED');
         const payer = getSmartAccountGasPayerCandidates(
@@ -209,15 +212,17 @@ export function createNativeSmartDeployment(
           assertSynchronousEvmFeeGuard(options.assertBeforeSign);
           assertSynchronousEvmFeeGuard(options.assertCurrentContext);
         };
-        const quote = await ports.preparePayer(request, payer, signal, guard, {
-          ...transactionMetadata,
-          smartAccountOperationHash: prepared.actionHash,
-        });
+        const quote = await ports.preparePayer(
+          request, payer, signal, guard,
+          { ...transactionMetadata, smartAccountOperationHash: prepared.actionHash },
+          options.feeFunding
+        );
         guard();
         await reviewPayer(
           {
             transaction: quote.transaction,
             maximumFeeUnits: quote.maximumFeeUnits,
+            coveredFeeUnits: quote.coveredFeeUnits,
             maximumTotalUnits: quote.maximumTotalUnits,
             purpose: transactionMetadata?.smartAccountDeploymentPrefund
               ? 'fund-account'

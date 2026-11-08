@@ -17,7 +17,7 @@ import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFee
 import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
 import { evmCallRequest, evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest.ts';
-import { assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
+import { resolveEvmFeeFunding, getEvmCoveredFee, type EvmFeeFunding, captureNativeEvmFeeCoverage, assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
 import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
@@ -60,6 +60,7 @@ export type EvmDappTransactionRequest = Readonly<{
   maxFeePerGas?: string; maxPriorityFeePerGas?: string; accessList?: EvmAccessList;
 }>;
 export type EvmDappPreparedQuote = Readonly<{
+  coveredFeeUnits: string;
   transaction: PreparedEvmTransaction; balanceUnits: string;
   maximumFeeUnits: string; maximumTotalUnits: string; expiresAtMonotonicMilliseconds: number;
 }>;
@@ -396,7 +397,7 @@ export class EvmTransferReadRpc {
       const approval = captureEvmFeeApproval(transaction, this.network.registrationHash, now + EVM_FEE_APPROVAL_LIFETIME_MS);
       try {
         assertEvmFeeEstimateApproved(approval, { estimatedGas: gasLimit, balance, sampledBlockGasLimit: sampled.gasLimit,
-          ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, now);
+          ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, now, captureNativeEvmFeeCoverage(approval));
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
@@ -561,7 +562,7 @@ export class EvmTransferReadRpc {
         try {
           assertEvmFeeEstimateApproved(approval, { balance: rawBalance,
             estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
-            ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds());
+            ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval));
         } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
         await assertEvmAssetStateCanonical(read, assetState);
       }
@@ -619,7 +620,7 @@ export class EvmTransferReadRpc {
           balance: rawBalance,
           estimatedGas: quantity(rawEstimate), sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }),
-        }, now);
+        }, now, captureNativeEvmFeeCoverage(approval));
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
@@ -674,7 +675,7 @@ export class EvmTransferReadRpc {
       const approval = captureEvmFeeApproval(tx, this.network.registrationHash,
         this.feeQuoteExpiry());
       try { assertEvmFeeEstimateApproved(approval, { estimatedGas: estimate, sampledBlockGasLimit: sampled.gasLimit,
-        ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }), balance }, this.monotonicMilliseconds()); }
+        ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }), balance }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval)); }
       catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
@@ -683,7 +684,7 @@ export class EvmTransferReadRpc {
   }
   /** Generic dapp envelope through the same owned reads, nonce planner and fee policy. */
   prepareDapp(request: EvmDappTransactionRequest, signal: AbortSignal, guard: () => void,
-    automaticNonce: NativeAutomaticNoncePlanner, approved?: EvmDappPreparedQuote): Promise<EvmDappPreparedQuote> {
+    automaticNonce: NativeAutomaticNoncePlanner, approved: EvmDappPreparedQuote | undefined, funding: EvmFeeFunding): Promise<EvmDappPreparedQuote> {
     request = Object.freeze({ ...request,
       ...(request.accessList === undefined ? {} : { accessList: snapshotEvmAccessList(request.accessList) }) });
     return this.operation(signal, guard, async (read) => {
@@ -716,16 +717,17 @@ export class EvmTransferReadRpc {
       const gasLimit = approved?.transaction.gasLimit ?? selectEvmDappGasLimit(estimatedGas,
         request.gasLimit === undefined ? undefined : BigInt(request.gasLimit), BigInt(this.network.chainId), feeGasLimit).toString();
       const transaction = snapshotPreparedEvmTransaction({ ...execution, gasLimit });
-      const now = this.monotonicMilliseconds();
       const expiresAtMonotonicMilliseconds = approved?.expiresAtMonotonicMilliseconds ?? this.feeQuoteExpiry();
       const approval = captureEvmFeeApproval(transaction, this.network.registrationHash, expiresAtMonotonicMilliseconds);
+      const coverage = await resolveEvmFeeFunding(funding, approval, () => read.assertCurrent());
       try {
         assertEvmFeeEstimateApproved(approval, { balance, estimatedGas, sampledBlockGasLimit: feeGasLimit,
-          ...(feeBase === null ? {} : { baseFeePerGas: feeBase }) }, now);
+          ...(feeBase === null ? {} : { baseFeePerGas: feeBase }) }, this.monotonicMilliseconds(), coverage);
       } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
       await this.canonical(read, sampled); await this.checkChain(read); read.assertCurrent();
       return Object.freeze({ transaction, balanceUnits: balance.toString(), maximumFeeUnits: approval.maximumFeeUnits,
-        maximumTotalUnits: approval.maximumTotalUnits, expiresAtMonotonicMilliseconds });
+        maximumTotalUnits: (BigInt(approval.maximumTotalUnits) - getEvmCoveredFee(approval, coverage)).toString(),
+        coveredFeeUnits: getEvmCoveredFee(approval, coverage).toString(), expiresAtMonotonicMilliseconds });
     }, 'endpoint');
   }
 
@@ -740,12 +742,12 @@ export class EvmTransferReadRpc {
       const balance = quantity(await read('eth_getBalance', [transaction.from, 'pending']));
       const observation = { balance, sampledBlockGasLimit: sampled.gasLimit,
         ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) };
-      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: BigInt(transaction.gasLimit) }, now); }
+      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: BigInt(transaction.gasLimit) }, now, captureNativeEvmFeeCoverage(approval)); }
       catch { return rejectRead('REVIEW_REQUIRED'); }
       const cap = BigInt(transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas);
       const price = transaction.type === 0 ? cap : (sampled.baseFee ?? rejectRead('INVALID_RESPONSE')) + BigInt(transaction.maxPriorityFeePerGas);
       const gas = quantity(await read('eth_estimateGas', [evmEstimateRequest(transaction), 'pending']));
-      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: gas }, this.monotonicMilliseconds()); }
+      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: gas }, this.monotonicMilliseconds(), captureNativeEvmFeeCoverage(approval)); }
       catch { return rejectRead('REVIEW_REQUIRED'); }
       await this.canonical(read, sampled); await this.checkChain(read);
       return assembleFeeQuote(transaction, this.network, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, approval.expiresAtMonotonicMilliseconds);

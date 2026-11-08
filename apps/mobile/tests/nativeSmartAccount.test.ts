@@ -1,3 +1,4 @@
+import { getZkSysGasTankAddress } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -18,7 +19,7 @@ import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
-import { paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import { getPaliEntryPointAddress, paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
@@ -41,6 +42,8 @@ async function fixture() {
   const submitted: string[] = [];
   let deployed = false;
   let deployedCode = '0x01';
+  let payerBalance = '0x1000000000000000';
+  let gasCredit = 0n;
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void) | undefined;
   const openStorage = async () => {
@@ -67,7 +70,7 @@ async function fixture() {
           }
         }
         else if (request.method === 'eth_getTransactionCount') result = `0x${submitted.length.toString(16)}`;
-        else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? '0x0' : '0x1000000000000000';
+        else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? '0x0' : payerBalance;
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (request.method === 'eth_estimateGas') result = '0x186a0';
@@ -84,11 +87,13 @@ async function fixture() {
           assert(saved);
           assert.equal(inspectEvmSignedBundle(saved, identity.profileId).transactions, submitted.length + 1);
           submitted.push(request.params[0]);
-          if (submitted.length === 2) deployed = true;
+          if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) deployed = true;
           result = Transaction.from(request.params[0]).hash;
         }
         else if (request.method === 'eth_call') {
-          if (request.params[0].to.toLowerCase() !== PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()) {
+          if (request.params[0].to.toLowerCase() === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
+            result = coder.encode(['uint256'], [gasCredit]);
+          } else if (request.params[0].to.toLowerCase() !== PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()) {
             result = coder.encode(['uint256'], [0]);
           } else {
           const parsed = paliSmartAccountFactoryInterface.parseTransaction({ data: request.params[0].data });
@@ -113,7 +118,7 @@ async function fixture() {
   };
   const factory = createKeyringRuntimeFactory({
     ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
-    connectionFetch: (_url, init) => backend(getNativeNetwork('ethereum'), init),
+    connectionFetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init),
     prepareSmartAccount(network, index, owner, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: (_url, init) => backend(network, init) }).prepareSmartAccount(index, owner, signal, guard);
     },
@@ -129,6 +134,8 @@ async function fixture() {
   await owner.refreshAuthenticatedMetadata();
   return {
     get owner() { return owner; }, get runtime() { return runtime; }, calls, submitted,
+    gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
+    loseGasCredit() { gasCredit = 0n; },
     deployed(code = '0x01') { deployed = true; deployedCode = code; },
     interruptAfterReceipt() { interruptAfterReceipt = true; },
     onSmartCodeRead(hook: () => void) { smartCodeRead = hook; },
@@ -376,4 +383,29 @@ test('restart after the deployment receipt refreshes metadata without another tr
     assert.equal(f.submitted.length, 2);
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === smartId)!.smartAccount!.isDeployed, true);
   } finally { deployment?.dispose(); await f.close(); }
+});
+
+for (const loseCredit of [false, true]) test(`gas-tank deployment with zero payer balance preserves fee coverage (${loseCredit ? 'credit-lost' : 'funded'})`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
+  try {
+    await f.selectNetwork('zksys-testnet');
+    await f.change({ kind: 'create-smart', label: 'Sponsored smart account', password: PASSWORD });
+    f.gasSponsored();
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let attempt = 0; attempt < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const payer = operation.getSnapshot().payerReview;
+    assert(payer, JSON.stringify(operation.getSnapshot()));
+    assert.equal(payer.coveredFeeUnits, payer.maximumFeeUnits);
+    assert.equal(payer.maximumTotalUnits, '0');
+    if (loseCredit) f.loseGasCredit();
+    operation.confirmPayer(payer.id);
+    await sending;
+    assert.equal(operation.getSnapshot().phase, loseCredit ? 'failed' : 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, loseCredit ? 0 : 1);
+  } finally { operation?.dispose(); await f.close(); }
 });

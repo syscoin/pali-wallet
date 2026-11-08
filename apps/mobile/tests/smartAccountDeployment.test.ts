@@ -77,7 +77,7 @@ function fixture() {
           {
             purpose: 'submit-deployment',
             transaction,
-            maximumFeeUnits: '42000',
+            coveredFeeUnits: '0', maximumFeeUnits: '42000',
             maximumTotalUnits: '42000',
           },
           () => {

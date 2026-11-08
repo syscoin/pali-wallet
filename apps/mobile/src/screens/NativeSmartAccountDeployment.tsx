@@ -180,9 +180,9 @@ export function NativeSmartAccountDeploymentScreen({
               </Text>
               <Text style={s.label}>Amount</Text>
               <Text style={s.value}>{amount(payer.transaction.value)}</Text>
-              <Text style={s.label}>Maximum network fee</Text>
+              <Text style={s.label}>{payer.coveredFeeUnits !== '0' ? 'Maximum network fee · gas tank' : 'Maximum network fee'}</Text>
               <Text style={s.value}>{amount(payer.maximumFeeUnits)}</Text>
-              <Text style={s.label}>Maximum total</Text>
+              <Text style={s.label}>{payer.coveredFeeUnits !== '0' ? 'Maximum from paying account' : 'Maximum total'}</Text>
               <Text style={s.value}>{amount(payer.maximumTotalUnits)}</Text>
             </Card>
             <Button
