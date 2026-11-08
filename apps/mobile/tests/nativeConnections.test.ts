@@ -598,6 +598,8 @@ test('network changes use the approved session chain without extending its grant
       type: 'request',
       request: {
         id: 10,
+        expiresAt: Date.now() + 300000,
+        verification: UNKNOWN,
         session: f.session,
         chainId: 'eip155:1',
         method: 'eth_chainId',
@@ -618,6 +620,8 @@ test('network changes use the approved session chain without extending its grant
       type: 'request',
       request: {
         id: 11,
+        expiresAt: Date.now() + 300000,
+        verification: UNKNOWN,
         session: f.session,
         chainId: 'eip155:1',
         method: 'eth_chainId',
