@@ -44,7 +44,8 @@
     "test-all": "yarn lint && yarn i18n:check && yarn test:unit",
     "i18n:check": "node scripts/i18n-analyze.js",
     "analyze": "cross-env NODE_ENV=production webpack --config source/config/webpack.prod.js --profile --json > stats.json && webpack-bundle-analyzer stats.json",
-    "analyze:chrome": "cross-env NODE_ENV=production TARGET_BROWSER=chrome webpack --config source/config/webpack.prod.js --profile --json > stats.json && webpack-bundle-analyzer stats.json"
+    "analyze:chrome": "cross-env NODE_ENV=production TARGET_BROWSER=chrome webpack --config source/config/webpack.prod.js --profile --json > stats.json && webpack-bundle-analyzer stats.json",
+    "postinstall": "node scripts/apply-keyring-ledger.cjs"
   },
   "lint-staged": {
     "*.@(ts|tsx|js|jsx)": "eslint --fix"

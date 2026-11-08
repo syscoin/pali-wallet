@@ -1,0 +1,1596 @@
+{
+  "package": "@sidhujag/sysweb3-keyring",
+  "version": "2.1.7",
+  "sourceCommit": "c68e7f7ca8dd13789a7428a8ec35d3b84a46f2f8",
+  "pullRequest": "https://github.com/sidhujag/sysweb3/pull/95",
+  "files": [
+    {
+      "path": "cjs/hardware-wallet-manager.js",
+      "before": "94b07465a698c6d5bf836ed6cc86035bee2753dbf7b30c8949db71c267e8af43",
+      "after": "da161fcaf605c28b842e89f6de3a3d84f79fe652d2af4150b7105b6106703a37",
+      "edits": [
+        {
+          "offset": 1468,
+          "remove": 56,
+          "insert": ""
+        },
+        {
+          "offset": 1563,
+          "remove": 0,
+          "insert": "cyIpOwpjb25zdCBoYXJkd2FyZV93YWxsZXRfdHlwZXNfMSA9IHJlcXVpcmUoIi4vaGFyZHdhcmUtd2FsbGV0LXR5cGU="
+        },
+        {
+          "offset": 1678,
+          "remove": 554,
+          "insert": ""
+        },
+        {
+          "offset": 3447,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 3560,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 4303,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 4731,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 5425,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 5947,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 6063,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 6316,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 6451,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 7151,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 7276,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 7515,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 7918,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 8459,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 9288,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 10508,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 10662,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 11140,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 11291,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 12148,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 12338,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 14745,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 15174,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 15256,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 15833,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 16749,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 16794,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 16838,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 16890,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 16952,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 17179,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 17592,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18043,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18225,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18307,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18393,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18466,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18520,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18598,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18651,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18704,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 18963,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 19043,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 19113,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 19191,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 19467,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 19709,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 19857,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 19965,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 20451,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 20708,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 21851,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        },
+        {
+          "offset": 22346,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEu"
+        }
+      ]
+    },
+    {
+      "path": "cjs/hardware-wallet-manager.js.map",
+      "before": "ce3788cb683c17fe238a34b7fbe6544c9d1434197d1877418d1a93aa601ab622",
+      "after": "64b6d37ceac2b096da5a3a70246a9c5f2166d8c68a6c1794669d002da7371ca5",
+      "edits": [
+        {
+          "offset": 193,
+          "remove": 0,
+          "insert": "bUVBQStFO0FBQy9FLA=="
+        },
+        {
+          "offset": 215,
+          "remove": 1,
+          "insert": "bUI="
+        },
+        {
+          "offset": 218,
+          "remove": 260,
+          "insert": ""
+        },
+        {
+          "offset": 1235,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 1304,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 1754,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 2126,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 2686,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 3014,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 3138,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 3378,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 3493,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 4031,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 4155,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 4330,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 4635,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 5056,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 5717,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 6379,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 6527,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 6801,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 6916,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 7353,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 7501,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 8948,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 9265,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 9341,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 9806,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 10574,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 10613,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 10647,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 10690,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 10734,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 10921,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 11228,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 11581,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 11756,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 11821,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 11877,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 11931,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 11965,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 12019,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 12053,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 12087,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 12279,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 12352,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 12405,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 12458,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 12647,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 12903,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 13001,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 13097,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 13510,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 13735,
+          "remove": 2,
+          "insert": "MEM="
+        },
+        {
+          "offset": 14656,
+          "remove": 2,
+          "insert": "d0M="
+        },
+        {
+          "offset": 15018,
+          "remove": 2,
+          "insert": "MEM="
+        }
+      ]
+    },
+    {
+      "path": "types/hardware-wallet-manager.d.ts",
+      "before": "de9a89fee6922fafa36c261d91db78f6a9e5414fbc921e84fd83b8523e218e51",
+      "after": "621538ef7559ca13f2314d6b1380119a7d0c4c08125c8c55143bf091071d0768",
+      "edits": [
+        {
+          "offset": 35,
+          "remove": 0,
+          "insert": "cyc7CmltcG9ydCB7IEhhcmR3YXJlV2FsbGV0VHlwZSB9IGZyb20gJy4vaGFyZHdhcmUtd2FsbGV0LXR5cGVzJzsKaW1wb3J0IHR5cGUgeyBIYXJkd2FyZVdhbGxldFN0YXR1cyB9IGZyb20gJy4vaGFyZHdhcmUtd2FsbGV0LXR5cGU="
+        },
+        {
+          "offset": 93,
+          "remove": 244,
+          "insert": ""
+        },
+        {
+          "offset": 460,
+          "remove": 253,
+          "insert": ""
+        }
+      ]
+    },
+    {
+      "path": "cjs/hardware-wallet-types.js",
+      "before": null,
+      "after": "643ffe4a0e42d76c291c13e724c0f342715188df3559e4ac0ff26a20a2ef9223",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "InVzZSBzdHJpY3QiOwpPYmplY3QuZGVmaW5lUHJvcGVydHkoZXhwb3J0cywgIl9fZXNNb2R1bGUiLCB7IHZhbHVlOiB0cnVlIH0pOwpleHBvcnRzLkNvbm5lY3Rpb25TdGF0dXMgPSBleHBvcnRzLkhhcmR3YXJlV2FsbGV0VHlwZSA9IHZvaWQgMDsKdmFyIEhhcmR3YXJlV2FsbGV0VHlwZTsKKGZ1bmN0aW9uIChIYXJkd2FyZVdhbGxldFR5cGUpIHsKICAgIEhhcmR3YXJlV2FsbGV0VHlwZVsiTEVER0VSIl0gPSAibGVkZ2VyIjsKICAgIEhhcmR3YXJlV2FsbGV0VHlwZVsiVFJFWk9SIl0gPSAidHJlem9yIjsKfSkoSGFyZHdhcmVXYWxsZXRUeXBlIHx8IChleHBvcnRzLkhhcmR3YXJlV2FsbGV0VHlwZSA9IEhhcmR3YXJlV2FsbGV0VHlwZSA9IHt9KSk7CnZhciBDb25uZWN0aW9uU3RhdHVzOwooZnVuY3Rpb24gKENvbm5lY3Rpb25TdGF0dXMpIHsKICAgIENvbm5lY3Rpb25TdGF0dXNbIkRJU0NPTk5FQ1RFRCJdID0gImRpc2Nvbm5lY3RlZCI7CiAgICBDb25uZWN0aW9uU3RhdHVzWyJDT05ORUNUSU5HIl0gPSAiY29ubmVjdGluZyI7CiAgICBDb25uZWN0aW9uU3RhdHVzWyJDT05ORUNURUQiXSA9ICJjb25uZWN0ZWQiOwogICAgQ29ubmVjdGlvblN0YXR1c1siRVJST1IiXSA9ICJlcnJvciI7Cn0pKENvbm5lY3Rpb25TdGF0dXMgfHwgKGV4cG9ydHMuQ29ubmVjdGlvblN0YXR1cyA9IENvbm5lY3Rpb25TdGF0dXMgPSB7fSkpOwovLyMgc291cmNlTWFwcGluZ1VSTD1oYXJkd2FyZS13YWxsZXQtdHlwZXMuanMubWFw"
+        }
+      ]
+    },
+    {
+      "path": "cjs/hardware-wallet-types.js.map",
+      "before": null,
+      "after": "a2b6d0ebcd8ab8800b24ec7be0533ce2f8684193bfd0d019aea709e7dd0e79b0",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaGFyZHdhcmUtd2FsbGV0LXR5cGVzLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vc3JjL2hhcmR3YXJlLXdhbGxldC10eXBlcy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7QUFBQSxJQUFZLGtCQUdYO0FBSEQsV0FBWSxrQkFBa0I7SUFDNUIsdUNBQWlCLENBQUE7SUFDakIsdUNBQWlCLENBQUE7QUFDbkIsQ0FBQyxFQUhXLGtCQUFrQixrQ0FBbEIsa0JBQWtCLFFBRzdCO0FBRUQsSUFBWSxnQkFLWDtBQUxELFdBQVksZ0JBQWdCO0lBQzFCLGlEQUE2QixDQUFBO0lBQzdCLDZDQUF5QixDQUFBO0lBQ3pCLDJDQUF1QixDQUFBO0lBQ3ZCLG1DQUFlLENBQUE7QUFDakIsQ0FBQyxFQUxXLGdCQUFnQixnQ0FBaEIsZ0JBQWdCLFFBSzNCIn0="
+        }
+      ]
+    },
+    {
+      "path": "types/hardware-wallet-types.d.ts",
+      "before": null,
+      "after": "657aae87641ce84adca8c8987e93b3404b4f30e42cc31b1a2ac7b9807895399d",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "ZXhwb3J0IGRlY2xhcmUgZW51bSBIYXJkd2FyZVdhbGxldFR5cGUgewogICAgTEVER0VSID0gImxlZGdlciIsCiAgICBUUkVaT1IgPSAidHJlem9yIgp9CmV4cG9ydCBkZWNsYXJlIGVudW0gQ29ubmVjdGlvblN0YXR1cyB7CiAgICBESVNDT05ORUNURUQgPSAiZGlzY29ubmVjdGVkIiwKICAgIENPTk5FQ1RJTkcgPSAiY29ubmVjdGluZyIsCiAgICBDT05ORUNURUQgPSAiY29ubmVjdGVkIiwKICAgIEVSUk9SID0gImVycm9yIgp9CmV4cG9ydCBpbnRlcmZhY2UgSGFyZHdhcmVXYWxsZXRTdGF0dXMgewogICAgdHlwZTogSGFyZHdhcmVXYWxsZXRUeXBlOwogICAgc3RhdHVzOiBDb25uZWN0aW9uU3RhdHVzOwogICAgY29ubmVjdGVkOiBib29sZWFuOwogICAgbGFzdFNlZW4/OiBudW1iZXI7CiAgICBlcnJvcj86IHN0cmluZzsKICAgIGRldmljZUluZm8/OiB7CiAgICAgICAgbW9kZWw/OiBzdHJpbmc7CiAgICAgICAgZmlybXdhcmVWZXJzaW9uPzogc3RyaW5nOwogICAgfTsKfQo="
+        }
+      ]
+    },
+    {
+      "path": "cjs/host-keyring.js",
+      "before": null,
+      "after": "adf30e98df4256288f3c7fad9a9d7d167eed46298d122cb3240369ed83715639",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "InVzZSBzdHJpY3QiOwpPYmplY3QuZGVmaW5lUHJvcGVydHkoZXhwb3J0cywgIl9fZXNNb2R1bGUiLCB7IHZhbHVlOiB0cnVlIH0pOwpleHBvcnRzLmNyZWF0ZUtleXJpbmdIb3N0ID0gZXhwb3J0cy5Ib3N0S2V5cmluZyA9IHZvaWQgMDsKY29uc3Qga2V5cmluZ19jb3JlXzEgPSByZXF1aXJlKCIuL2tleXJpbmctY29yZSIpOwpjb25zdCBrZXlyaW5nX2hvc3RfMSA9IHJlcXVpcmUoIi4va2V5cmluZy1ob3N0Iik7Ci8qKiBTaGFyZWQgd2FsbGV0IGVuZ2luZSB3aXRoIGV4cGxpY2l0IGhvc3QgYXV0aG9yaXR5IGFuZCBoYXJkd2FyZSBjYXBhYmlsaXRpZXMuICovCmNsYXNzIEhvc3RLZXlyaW5nIGV4dGVuZHMga2V5cmluZ19jb3JlXzEuS2V5cmluZ0NvcmUgewogICAgY29uc3RydWN0b3IoaG9zdCwgb3B0aW9ucywgY3JlYXRlSGFyZHdhcmUpIHsKICAgICAgICBpZiAodHlwZW9mIGNyZWF0ZUhhcmR3YXJlICE9PSAnZnVuY3Rpb24nKQogICAgICAgICAgICB0aHJvdyBuZXcgVHlwZUVycm9yKCdLZXlyaW5nIHJlcXVpcmVzIGV4cGxpY2l0IGhhcmR3YXJlIGNhcGFiaWxpdGllcycpOwogICAgICAgIGNvbnN0IHsgYmluZGluZywgcHVibGlzaENvbnRyb2xzIH0gPSAoMCwga2V5cmluZ19ob3N0XzEucHJlcGFyZUtleXJpbmdIb3N0KShob3N0LCBvcHRpb25zKTsKICAgICAgICBjb25zdCBoYXJkd2FyZSA9IGNyZWF0ZUhhcmR3YXJlKCk7CiAgICAgICAgaWYgKCFoYXJkd2FyZSB8fAogICAgICAgICAgICAhKCdsZWRnZXJTaWduZXInIGluIGhhcmR3YXJlKSB8fAogICAgICAgICAgICAhKCd0cmV6b3JTaWduZXInIGluIGhhcmR3YXJlKSkKICAgICAgICAgICAgdGhyb3cgbmV3IFR5cGVFcnJvcignS2V5cmluZyByZXF1aXJlcyBleHBsaWNpdCBoYXJkd2FyZSBjYXBhYmlsaXRpZXMnKTsKICAgICAgICBzdXBlcihiaW5kaW5nLCBoYXJkd2FyZSk7CiAgICAgICAgcHVibGlzaENvbnRyb2xzPy4oKTsKICAgIH0KICAgIC8qKiBEZXJpdmUgcnVudGltZSBzdGF0ZSB1c2luZyB0aGUgc2hhcmVkIHNvZnR3YXJlIGFjY291bnQgaW1wbGVtZW50YXRpb24uICovCiAgICBkZXJpdmVFdm1IZFJ1bnRpbWVBY2NvdW50KHJlcXVlc3QsIG9wdGlvbnMpIHsKICAgICAgICByZXR1cm4gdGhpcy5kZXJpdmVTb2Z0d2FyZUV2bUhkUnVudGltZUFjY291bnQocmVxdWVzdCwgb3B0aW9ucyk7CiAgICB9CiAgICAvKiogU2lnbiB0aGUgcHJlcGFyZWQgc29mdHdhcmUgZW52ZWxvcGU7IHRoZSBob3N0IHJldGFpbnMgaXQgYmVmb3JlIGJyb2FkY2FzdC4gKi8KICAgIHNpZ25QcmVwYXJlZEV2bVRyYW5zYWN0aW9uKHJlcXVlc3QsIG9wdGlvbnMpIHsKICAgICAgICByZXR1cm4gdGhpcy5zaWduUHJlcGFyZWRTb2Z0d2FyZUV2bVRyYW5zYWN0aW9uKHJlcXVlc3QsIG9wdGlvbnMpOwogICAgfQp9CmV4cG9ydHMuSG9zdEtleXJpbmcgPSBIb3N0S2V5cmluZzsKdmFyIGtleXJpbmdfaG9zdF8yID0gcmVxdWlyZSgiLi9rZXlyaW5nLWhvc3QiKTsKT2JqZWN0LmRlZmluZVByb3BlcnR5KGV4cG9ydHMsICJjcmVhdGVLZXlyaW5nSG9zdCIsIHsgZW51bWVyYWJsZTogdHJ1ZSwgZ2V0OiBmdW5jdGlvbiAoKSB7IHJldHVybiBrZXlyaW5nX2hvc3RfMi5jcmVhdGVLZXlyaW5nSG9zdDsgfSB9KTsKLy8jIHNvdXJjZU1hcHBpbmdVUkw9aG9zdC1rZXlyaW5nLmpzLm1hcA=="
+        }
+      ]
+    },
+    {
+      "path": "cjs/host-keyring.js.map",
+      "before": null,
+      "after": "a045a23a9507549233ace6ad28956910efa56d7866b1c486fa34dfc22e1ad3d7",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "eyJ2ZXJzaW9uIjozLCJmaWxlIjoiaG9zdC1rZXlyaW5nLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vc3JjL2hvc3Qta2V5cmluZy50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOzs7QUFBQSxpREFBNkM7QUFDN0MsaURBQW9EO0FBbUJwRCxtRkFBbUY7QUFDbkYsTUFBYSxXQUdYLFNBQVEsMEJBQTZCO0lBQ3JDLFlBQ0UsSUFBaUIsRUFDakIsT0FBdUIsRUFDdkIsY0FBdUQ7UUFFdkQsSUFBSSxPQUFPLGNBQWMsS0FBSyxVQUFVO1lBQ3RDLE1BQU0sSUFBSSxTQUFTLENBQUMsaURBQWlELENBQUMsQ0FBQztRQUN6RSxNQUFNLEVBQUUsT0FBTyxFQUFFLGVBQWUsRUFBRSxHQUFHLElBQUEsaUNBQWtCLEVBQUMsSUFBSSxFQUFFLE9BQU8sQ0FBQyxDQUFDO1FBQ3ZFLE1BQU0sUUFBUSxHQUFHLGNBQWMsRUFBRSxDQUFDO1FBQ2xDLElBQ0UsQ0FBQyxRQUFRO1lBQ1QsQ0FBQyxDQUFDLGNBQWMsSUFBSSxRQUFRLENBQUM7WUFDN0IsQ0FBQyxDQUFDLGNBQWMsSUFBSSxRQUFRLENBQUM7WUFFN0IsTUFBTSxJQUFJLFNBQVMsQ0FBQyxpREFBaUQsQ0FBQyxDQUFDO1FBQ3pFLEtBQUssQ0FBQyxPQUFPLEVBQUUsUUFBUSxDQUFDLENBQUM7UUFDekIsZUFBZSxFQUFFLEVBQUUsQ0FBQztJQUN0QixDQUFDO0lBRUQsNkVBQTZFO0lBQ3RFLHlCQUF5QixDQUM5QixPQUFtQyxFQUNuQyxPQUFtQztRQUVuQyxPQUFPLElBQUksQ0FBQyxpQ0FBaUMsQ0FBQyxPQUFPLEVBQUUsT0FBTyxDQUFDLENBQUM7SUFDbEUsQ0FBQztJQUVELGlGQUFpRjtJQUMxRSwwQkFBMEIsQ0FDL0IsT0FBMEMsRUFDMUMsT0FBa0M7UUFFbEMsT0FBTyxJQUFJLENBQUMsa0NBQWtDLENBQUMsT0FBTyxFQUFFLE9BQU8sQ0FBQyxDQUFDO0lBQ25FLENBQUM7Q0FDRjtBQXRDRCxrQ0FzQ0M7QUFFRCwrQ0FBbUQ7QUFBMUMsaUhBQUEsaUJBQWlCLE9BQUEifQ=="
+        }
+      ]
+    },
+    {
+      "path": "types/host-keyring.d.ts",
+      "before": null,
+      "after": "8272c3c02b142b98bc87c7a53ea016c4b8c4a1735a8484d107d1bc8284b2963d",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "aW1wb3J0IHsgS2V5cmluZ0NvcmUgfSBmcm9tICcuL2tleXJpbmctY29yZSc7CmltcG9ydCB0eXBlIHsgS2V5cmluZ0hhcmR3YXJlLCBLZXlyaW5nTGVkZ2VyU2lnbmVyLCBLZXlyaW5nVHJlem9yU2lnbmVyIH0gZnJvbSAnLi9rZXlyaW5nLWNvcmUnOwppbXBvcnQgdHlwZSB7IEtleXJpbmdIb3N0LCBLZXlyaW5nT3B0aW9ucyB9IGZyb20gJy4va2V5cmluZy1ob3N0JzsKaW1wb3J0IHR5cGUgeyBFbmNyeXB0ZWRFdm1IZFJ1bnRpbWVBY2NvdW50LCBFdm1IZFJ1bnRpbWVBY2NvdW50T3B0aW9ucywgRXZtSGRSdW50aW1lQWNjb3VudFJlcXVlc3QgfSBmcm9tICcuL3NvZnR3YXJlLWhkLWFjY291bnQnOwppbXBvcnQgdHlwZSB7IFByZXBhcmVkRXZtU2lnbmluZ09wdGlvbnMsIFByZXBhcmVkU29mdHdhcmVFdm1TaWduaW5nUmVxdWVzdCwgU2lnbmVkUHJlcGFyZWRFdm1UcmFuc2FjdGlvbiB9IGZyb20gJy4vdHJhbnNhY3Rpb25zL3ByZXBhcmVkLWV2bSc7Ci8qKiBTaGFyZWQgd2FsbGV0IGVuZ2luZSB3aXRoIGV4cGxpY2l0IGhvc3QgYXV0aG9yaXR5IGFuZCBoYXJkd2FyZSBjYXBhYmlsaXRpZXMuICovCmV4cG9ydCBkZWNsYXJlIGNsYXNzIEhvc3RLZXlyaW5nPFRMZWRnZXIgZXh0ZW5kcyBLZXlyaW5nTGVkZ2VyU2lnbmVyIHwgdW5kZWZpbmVkLCBUVHJlem9yIGV4dGVuZHMgS2V5cmluZ1RyZXpvclNpZ25lciB8IHVuZGVmaW5lZD4gZXh0ZW5kcyBLZXlyaW5nQ29yZTxUTGVkZ2VyLCBUVHJlem9yPiB7CiAgICBjb25zdHJ1Y3Rvcihob3N0OiBLZXlyaW5nSG9zdCwgb3B0aW9uczogS2V5cmluZ09wdGlvbnMsIGNyZWF0ZUhhcmR3YXJlOiAoKSA9PiBLZXlyaW5nSGFyZHdhcmU8VExlZGdlciwgVFRyZXpvcj4pOwogICAgLyoqIERlcml2ZSBydW50aW1lIHN0YXRlIHVzaW5nIHRoZSBzaGFyZWQgc29mdHdhcmUgYWNjb3VudCBpbXBsZW1lbnRhdGlvbi4gKi8KICAgIGRlcml2ZUV2bUhkUnVudGltZUFjY291bnQocmVxdWVzdDogRXZtSGRSdW50aW1lQWNjb3VudFJlcXVlc3QsIG9wdGlvbnM6IEV2bUhkUnVudGltZUFjY291bnRPcHRpb25zKTogUHJvbWlzZTxFbmNyeXB0ZWRFdm1IZFJ1bnRpbWVBY2NvdW50PjsKICAgIC8qKiBTaWduIHRoZSBwcmVwYXJlZCBzb2Z0d2FyZSBlbnZlbG9wZTsgdGhlIGhvc3QgcmV0YWlucyBpdCBiZWZvcmUgYnJvYWRjYXN0LiAqLwogICAgc2lnblByZXBhcmVkRXZtVHJhbnNhY3Rpb24ocmVxdWVzdDogUHJlcGFyZWRTb2Z0d2FyZUV2bVNpZ25pbmdSZXF1ZXN0LCBvcHRpb25zOiBQcmVwYXJlZEV2bVNpZ25pbmdPcHRpb25zKTogU2lnbmVkUHJlcGFyZWRFdm1UcmFuc2FjdGlvbjsKfQpleHBvcnQgeyBjcmVhdGVLZXlyaW5nSG9zdCB9IGZyb20gJy4va2V5cmluZy1ob3N0JzsKZXhwb3J0IHR5cGUgeyBLZXlyaW5nSG9zdCwgS2V5cmluZ09wdGlvbnMgfSBmcm9tICcuL2tleXJpbmctaG9zdCc7CmV4cG9ydCB0eXBlIHsgS2V5cmluZ0hhcmR3YXJlLCBLZXlyaW5nTGVkZ2VyU2lnbmVyLCBLZXlyaW5nVHJlem9yU2lnbmVyLCB9IGZyb20gJy4va2V5cmluZy1jb3JlJzsK"
+        }
+      ]
+    },
+    {
+      "path": "cjs/index.js",
+      "before": "9f93159f8e6551ff9482212eda1a68d16ec974633be254bfff1446121da5ca2b",
+      "after": "be8f4e77ff7174d61c58aee65dca869f813acca54c3944d4ef1342d0808d8ba8",
+      "edits": [
+        {
+          "offset": 2210,
+          "remove": 0,
+          "insert": "X19leHBvcnRTdGFyKHJlcXVpcmUoIi4vaGFyZHdhcmUtd2FsbGV0LXR5cGVzIiksIGV4cG9ydHMpOwo="
+        }
+      ]
+    },
+    {
+      "path": "cjs/index.js.map",
+      "before": "98c4e32e775de4f0484c9d5e99e615648fac30cd91c1fe9dd009bf2fe6158894",
+      "after": "5c661f0ebe790593d277556b04aeda1d18bd167845635df11a34e8001a5156d4",
+      "edits": [
+        {
+          "offset": 377,
+          "remove": 0,
+          "insert": "MERBQXdDO0FBQ3hDLA=="
+        }
+      ]
+    },
+    {
+      "path": "types/index.d.ts",
+      "before": "7cf5625efa99e196772d2335c9aa28cb80b86ba47d622616db3114606fc865e5",
+      "after": "18108fc05228c4a92c4078b5034c4197e4d60245aae729d8223a7cd51db5c0b0",
+      "edits": [
+        {
+          "offset": 704,
+          "remove": 0,
+          "insert": "KiBmcm9tICcuL2hhcmR3YXJlLXdhbGxldC10eXBlcyc7CmV4cG9ydCA="
+        }
+      ]
+    },
+    {
+      "path": "types/keyring-core.d.ts",
+      "before": "96dc9d29a2c99cefffb4b9764d2cc0b493b4fe8e3bbfa1d13e3afa74099c7555",
+      "after": "578237f7784f54be861d9f8514d0440d340bae1ee6c1fce25e9c597dc50d6089",
+      "edits": [
+        {
+          "offset": 2851,
+          "remove": 0,
+          "insert": "ZXhwb3J0IA=="
+        },
+        {
+          "offset": 12391,
+          "remove": 11,
+          "insert": ""
+        }
+      ]
+    },
+    {
+      "path": "cjs/keyring-manager.js",
+      "before": "54acb966c994bb97181bf6a4ee74fb9c640908b0e438db30a9d4cb734b6c5e77",
+      "after": "13fb1fb9b69b799f64b0391dccf5f2a64450cbf4114518062265faa0f6ea8570",
+      "edits": [
+        {
+          "offset": 188,
+          "remove": 0,
+          "insert": "aG9zdF8="
+        },
+        {
+          "offset": 195,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 216,
+          "remove": 0,
+          "insert": "aG9zdC0="
+        },
+        {
+          "offset": 223,
+          "remove": 55,
+          "insert": ""
+        },
+        {
+          "offset": 531,
+          "remove": 0,
+          "insert": "aG9zdF8="
+        },
+        {
+          "offset": 539,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 546,
+          "remove": 0,
+          "insert": "SG9zdA=="
+        },
+        {
+          "offset": 553,
+          "remove": 4,
+          "insert": ""
+        },
+        {
+          "offset": 989,
+          "remove": 3,
+          "insert": ""
+        },
+        {
+          "offset": 993,
+          "remove": 13,
+          "insert": "dQ=="
+        },
+        {
+          "offset": 1007,
+          "remove": 10,
+          "insert": "ZQ=="
+        },
+        {
+          "offset": 1018,
+          "remove": 46,
+          "insert": ""
+        },
+        {
+          "offset": 1078,
+          "remove": 0,
+          "insert": "LCAo"
+        },
+        {
+          "offset": 1079,
+          "remove": 1,
+          "insert": "ID0+IHs="
+        },
+        {
+          "offset": 1081,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1197,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1248,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1334,
+          "remove": 1,
+          "insert": "ICAgIHJldA=="
+        },
+        {
+          "offset": 1336,
+          "remove": 2,
+          "insert": ""
+        },
+        {
+          "offset": 1339,
+          "remove": 3,
+          "insert": ""
+        },
+        {
+          "offset": 1343,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 1351,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1389,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1403,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1441,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1540,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1619,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1630,
+          "remove": 0,
+          "insert": "ICAgIA=="
+        },
+        {
+          "offset": 1631,
+          "remove": 1,
+          "insert": ""
+        },
+        {
+          "offset": 1642,
+          "remove": 18,
+          "insert": "fQ=="
+        }
+      ]
+    },
+    {
+      "path": "cjs/keyring-manager.js.map",
+      "before": "c9ea4cd5338916fdb600fbe07657539d15feb277c7103a5c18fede145899ff40",
+      "after": "fcfc67d73c745ba567a300fcd9d59d9b05972d31ef68bda6f18bd69d3c6fa65f",
+      "edits": [
+        {
+          "offset": 156,
+          "remove": 13,
+          "insert": ""
+        },
+        {
+          "offset": 565,
+          "remove": 1,
+          "insert": "Sw=="
+        },
+        {
+          "offset": 568,
+          "remove": 1,
+          "insert": "Sw=="
+        },
+        {
+          "offset": 570,
+          "remove": 36,
+          "insert": ""
+        },
+        {
+          "offset": 607,
+          "remove": 6,
+          "insert": ""
+        },
+        {
+          "offset": 632,
+          "remove": 1,
+          "insert": "RQ=="
+        },
+        {
+          "offset": 635,
+          "remove": 1,
+          "insert": "RQ=="
+        },
+        {
+          "offset": 637,
+          "remove": 1,
+          "insert": "Rw=="
+        },
+        {
+          "offset": 640,
+          "remove": 1,
+          "insert": "RyxFQUFF"
+        },
+        {
+          "offset": 642,
+          "remove": 1,
+          "insert": "WQ=="
+        },
+        {
+          "offset": 645,
+          "remove": 2,
+          "insert": "eEI="
+        },
+        {
+          "offset": 705,
+          "remove": 1,
+          "insert": "WQ=="
+        },
+        {
+          "offset": 747,
+          "remove": 1,
+          "insert": "WQ=="
+        },
+        {
+          "offset": 809,
+          "remove": 1,
+          "insert": "WQ=="
+        },
+        {
+          "offset": 815,
+          "remove": 10,
+          "insert": ""
+        },
+        {
+          "offset": 829,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 835,
+          "remove": 1,
+          "insert": "Z0I="
+        },
+        {
+          "offset": 838,
+          "remove": 1,
+          "insert": "TA=="
+        },
+        {
+          "offset": 845,
+          "remove": 1,
+          "insert": "Z0I="
+        },
+        {
+          "offset": 855,
+          "remove": 1,
+          "insert": "Z0I="
+        },
+        {
+          "offset": 872,
+          "remove": 1,
+          "insert": "bw=="
+        },
+        {
+          "offset": 916,
+          "remove": 1,
+          "insert": "bw=="
+        },
+        {
+          "offset": 960,
+          "remove": 1,
+          "insert": "aUI="
+        },
+        {
+          "offset": 966,
+          "remove": 1,
+          "insert": "YQ=="
+        },
+        {
+          "offset": 970,
+          "remove": 0,
+          "insert": "LENBQUM7UUFDSixDQUFD"
+        },
+        {
+          "offset": 981,
+          "remove": 25,
+          "insert": ""
+        },
+        {
+          "offset": 1009,
+          "remove": 2,
+          "insert": "TA=="
+        }
+      ]
+    },
+    {
+      "path": "types/keyring-manager.d.ts",
+      "before": "8eb822a045c424d444d25d7f1e060b9daa836dbb9b801ad1413bec7e0cca4b7f",
+      "after": "26efc958eabe0672dbb3c8cebd04c69114b9d9802397b0a06825d64bb0cc4612",
+      "edits": [
+        {
+          "offset": 76,
+          "remove": 0,
+          "insert": "SG9zdA=="
+        },
+        {
+          "offset": 83,
+          "remove": 4,
+          "insert": ""
+        },
+        {
+          "offset": 98,
+          "remove": 0,
+          "insert": "aG9zdC0="
+        },
+        {
+          "offset": 105,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 1013,
+          "remove": 0,
+          "insert": "SG9zdA=="
+        },
+        {
+          "offset": 1020,
+          "remove": 4,
+          "insert": ""
+        }
+      ]
+    },
+    {
+      "path": "cjs/ledger-hardware.js",
+      "before": null,
+      "after": "0ea6c5b00109e0cb621915496c9e7826b02b8ff6b65de794ebcd3f5f78c8f835",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "InVzZSBzdHJpY3QiOwpPYmplY3QuZGVmaW5lUHJvcGVydHkoZXhwb3J0cywgIl9fZXNNb2R1bGUiLCB7IHZhbHVlOiB0cnVlIH0pOwpleHBvcnRzLmNyZWF0ZUxlZGdlckhhcmR3YXJlID0gY3JlYXRlTGVkZ2VySGFyZHdhcmU7CmNvbnN0IGxlZGdlcl8xID0gcmVxdWlyZSgiLi9sZWRnZXIiKTsKY29uc3QgaGFyZHdhcmVfcHNidF8xID0gcmVxdWlyZSgiLi90cmFuc2FjdGlvbnMvaGFyZHdhcmUtcHNidCIpOwovKiogVXNlIHRoZSBzYW1lIExlZGdlciBhY2NvdW50IGFuZCB0cmFuc2FjdGlvbiBhZGFwdGVycyBvbiBldmVyeSBob3N0LiAqLwpmdW5jdGlvbiBjcmVhdGVMZWRnZXJIYXJkd2FyZShob3N0KSB7CiAgICBjb25zdCBsZWRnZXJTaWduZXIgPSBuZXcgbGVkZ2VyXzEuTGVkZ2VyS2V5cmluZyh1bmRlZmluZWQsIGhvc3QpOwogICAgcmV0dXJuIHsKICAgICAgICBsZWRnZXJTaWduZXIsCiAgICAgICAgdHJlem9yU2lnbmVyOiB1bmRlZmluZWQsCiAgICAgICAgc3lzY29pbkhhcmR3YXJlU2lnbmVyczogeyBsZWRnZXI6ICgwLCBoYXJkd2FyZV9wc2J0XzEuY3JlYXRlTGVkZ2VyUHNidFNpZ25lcikobGVkZ2VyU2lnbmVyKSB9LAogICAgfTsKfQovLyMgc291cmNlTWFwcGluZ1VSTD1sZWRnZXItaGFyZHdhcmUuanMubWFw"
+        }
+      ]
+    },
+    {
+      "path": "cjs/ledger-hardware.js.map",
+      "before": null,
+      "after": "dc35d8ff49756e7c9659b8a0187c9c58133fc7e86eab4f7d25a35281542ab3bd",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "eyJ2ZXJzaW9uIjozLCJmaWxlIjoibGVkZ2VyLWhhcmR3YXJlLmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vc3JjL2xlZGdlci1oYXJkd2FyZS50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiOztBQU9BLG9EQVNDO0FBaEJELHFDQUF5QztBQUN6QyxnRUFBc0U7QUFLdEUsMEVBQTBFO0FBQzFFLFNBQWdCLG9CQUFvQixDQUNsQyxJQUFnQjtJQUVoQixNQUFNLFlBQVksR0FBRyxJQUFJLHNCQUFhLENBQUMsU0FBUyxFQUFFLElBQUksQ0FBQyxDQUFDO0lBQ3hELE9BQU87UUFDTCxZQUFZO1FBQ1osWUFBWSxFQUFFLFNBQVM7UUFDdkIsc0JBQXNCLEVBQUUsRUFBRSxNQUFNLEVBQUUsSUFBQSxzQ0FBc0IsRUFBQyxZQUFZLENBQUMsRUFBRTtLQUN6RSxDQUFDO0FBQ0osQ0FBQyJ9"
+        }
+      ]
+    },
+    {
+      "path": "types/ledger-hardware.d.ts",
+      "before": null,
+      "after": "bf10e2d716de29573be6754899711071351c8f2f8a95710b864367ecdb480977",
+      "edits": [
+        {
+          "offset": 0,
+          "remove": 0,
+          "insert": "aW1wb3J0IHsgTGVkZ2VyS2V5cmluZyB9IGZyb20gJy4vbGVkZ2VyJzsKaW1wb3J0IHR5cGUgeyBLZXlyaW5nSGFyZHdhcmUgfSBmcm9tICcuL2tleXJpbmctY29yZSc7CmltcG9ydCB0eXBlIHsgTGVkZ2VySG9zdCB9IGZyb20gJy4vbGVkZ2VyL2hvc3QtdHlwZXMnOwovKiogVXNlIHRoZSBzYW1lIExlZGdlciBhY2NvdW50IGFuZCB0cmFuc2FjdGlvbiBhZGFwdGVycyBvbiBldmVyeSBob3N0LiAqLwpleHBvcnQgZGVjbGFyZSBmdW5jdGlvbiBjcmVhdGVMZWRnZXJIYXJkd2FyZShob3N0OiBMZWRnZXJIb3N0KTogS2V5cmluZ0hhcmR3YXJlPExlZGdlcktleXJpbmcsIHVuZGVmaW5lZD47Cg=="
+        }
+      ]
+    },
+    {
+      "path": "cjs/ledger/index.js",
+      "before": "15034b760f62206dd998cf9cc509df417426b811d9c83e9594463bdd6de059df",
+      "after": "444dd7c7aabc1e4eec76d9f1acf2cc3082f005616f53830062df87eeb243de72",
+      "edits": [
+        {
+          "offset": 312,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 318,
+          "remove": 1,
+          "insert": "cw=="
+        },
+        {
+          "offset": 352,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 358,
+          "remove": 1,
+          "insert": "cw=="
+        },
+        {
+          "offset": 12390,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 12396,
+          "remove": 1,
+          "insert": "cw=="
+        },
+        {
+          "offset": 12514,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 12520,
+          "remove": 1,
+          "insert": "cw=="
+        },
+        {
+          "offset": 12585,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 12591,
+          "remove": 1,
+          "insert": "cw=="
+        }
+      ]
+    },
+    {
+      "path": "cjs/ledger/index.js.map",
+      "before": "8f2c36eca9b6eaba944ef9f83ebe080cbe18a235030bdb138df2067ead26cc52",
+      "after": "d27234de66cd21c4a08181d3cd73ee47adc59adc2a15808ab0140af00c96a1de",
+      "edits": [
+        {
+          "offset": 160,
+          "remove": 1,
+          "insert": "bw=="
+        },
+        {
+          "offset": 163,
+          "remove": 3,
+          "insert": "QWdG"
+        },
+        {
+          "offset": 170,
+          "remove": 2,
+          "insert": "aEY="
+        },
+        {
+          "offset": 10347,
+          "remove": 1,
+          "insert": "MA=="
+        },
+        {
+          "offset": 10411,
+          "remove": 1,
+          "insert": "dw=="
+        },
+        {
+          "offset": 10445,
+          "remove": 1,
+          "insert": "dw=="
+        }
+      ]
+    },
+    {
+      "path": "types/ledger/index.d.ts",
+      "before": "e2ad489a1dc0beec66fd0dd3d032bec2635e7b9d1341aaf49f9964db5e00344f",
+      "after": "94d494d262e295c4eec9a93f29dc6779c27290f296b835826fd691d682a8b6a4",
+      "edits": [
+        {
+          "offset": 73,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 79,
+          "remove": 1,
+          "insert": "cw=="
+        }
+      ]
+    },
+    {
+      "path": "cjs/software.js",
+      "before": "ad58b4466795072469b422009f637a819f62ba6bdb67783bff70cfbf40dea949",
+      "after": "ade94095c1be4b47bfba2dcfd66b4b036979de33c453e4f9aedb192164dbf2b4",
+      "edits": [
+        {
+          "offset": 381,
+          "remove": 0,
+          "insert": "aG9zdF8="
+        },
+        {
+          "offset": 388,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 409,
+          "remove": 0,
+          "insert": "aG9zdC0="
+        },
+        {
+          "offset": 416,
+          "remove": 55,
+          "insert": ""
+        },
+        {
+          "offset": 505,
+          "remove": 0,
+          "insert": "aG9zdF8="
+        },
+        {
+          "offset": 513,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 520,
+          "remove": 0,
+          "insert": "SG9zdA=="
+        },
+        {
+          "offset": 527,
+          "remove": 4,
+          "insert": ""
+        },
+        {
+          "offset": 575,
+          "remove": 3,
+          "insert": ""
+        },
+        {
+          "offset": 579,
+          "remove": 13,
+          "insert": "dQ=="
+        },
+        {
+          "offset": 593,
+          "remove": 10,
+          "insert": "ZQ=="
+        },
+        {
+          "offset": 604,
+          "remove": 46,
+          "insert": ""
+        },
+        {
+          "offset": 664,
+          "remove": 24,
+          "insert": ""
+        },
+        {
+          "offset": 690,
+          "remove": 0,
+          "insert": "KCkgPT4gKA=="
+        },
+        {
+          "offset": 776,
+          "remove": 777,
+          "insert": ""
+        },
+        {
+          "offset": 1919,
+          "remove": 1,
+          "insert": "MQ=="
+        },
+        {
+          "offset": 2061,
+          "remove": 1,
+          "insert": "MQ=="
+        }
+      ]
+    },
+    {
+      "path": "cjs/software.js.map",
+      "before": "6be3d9e578a5e547ea773b2dc1f456379e1ba38ceb06c8190df9012bc9a47b25",
+      "after": "9948e3cb16c804baf93a3deae158014bfcfd1c5e0a0666f74d47b2b948451c7d",
+      "edits": [
+        {
+          "offset": 139,
+          "remove": 1,
+          "insert": "SQ=="
+        },
+        {
+          "offset": 142,
+          "remove": 13,
+          "insert": ""
+        },
+        {
+          "offset": 213,
+          "remove": 1,
+          "insert": "Sw=="
+        },
+        {
+          "offset": 216,
+          "remove": 1,
+          "insert": "Sw=="
+        },
+        {
+          "offset": 218,
+          "remove": 36,
+          "insert": ""
+        },
+        {
+          "offset": 255,
+          "remove": 6,
+          "insert": ""
+        },
+        {
+          "offset": 280,
+          "remove": 0,
+          "insert": "RUFBRSxHQUFHLEVBQUUs"
+        },
+        {
+          "offset": 290,
+          "remove": 26,
+          "insert": ""
+        },
+        {
+          "offset": 319,
+          "remove": 1,
+          "insert": "MUI="
+        },
+        {
+          "offset": 372,
+          "remove": 20,
+          "insert": ""
+        },
+        {
+          "offset": 401,
+          "remove": 238,
+          "insert": "Tg=="
+        },
+        {
+          "offset": 939,
+          "remove": 2,
+          "insert": "cEI="
+        },
+        {
+          "offset": 946,
+          "remove": 2,
+          "insert": "b0I="
+        }
+      ]
+    },
+    {
+      "path": "types/software.d.ts",
+      "before": "70b0019b9e41b8fc637cbae6d3bb36a2ddc389a3486add4971837e672c3adeff",
+      "after": "41ffb8ac62cf1df392fdd1b493c7beb8cf375fe29257a43642c668169105845a",
+      "edits": [
+        {
+          "offset": 94,
+          "remove": 0,
+          "insert": "SG9zdA=="
+        },
+        {
+          "offset": 101,
+          "remove": 4,
+          "insert": ""
+        },
+        {
+          "offset": 116,
+          "remove": 0,
+          "insert": "aG9zdC0="
+        },
+        {
+          "offset": 123,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 198,
+          "remove": 274,
+          "insert": ""
+        },
+        {
+          "offset": 517,
+          "remove": 0,
+          "insert": "SG9zdA=="
+        },
+        {
+          "offset": 524,
+          "remove": 4,
+          "insert": ""
+        },
+        {
+          "offset": 612,
+          "remove": 775,
+          "insert": ""
+        }
+      ]
+    },
+    {
+      "path": "cjs/trezor/index.js",
+      "before": "3f829250fcc40909deea9b472f99b5f6f14a861ae24d8b53cd0831746b19df58",
+      "after": "91c561a06708f82689fe5bdb324cfe9cf9a49dc62acfd2a056f4bce8deda95dd",
+      "edits": [
+        {
+          "offset": 2172,
+          "remove": 0,
+          "insert": "aGFyZHdhcmVfd2FsbGV0X3R5cGVzXzEgPSByZXF1aXJlKCIuLi9oYXJkd2FyZS13YWxsZXQtdHlwZXMiKTsKY29uc3Qg"
+        },
+        {
+          "offset": 3874,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 3880,
+          "remove": 1,
+          "insert": "cw=="
+        },
+        {
+          "offset": 4122,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 4128,
+          "remove": 1,
+          "insert": "cw=="
+        },
+        {
+          "offset": 38947,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 38953,
+          "remove": 1,
+          "insert": "cw=="
+        }
+      ]
+    },
+    {
+      "path": "cjs/trezor/index.js.map",
+      "before": "b0f0321a280e7583b1b82e0cfd27189765a625962f422d4257082211ad1aee5f",
+      "after": "948932cc640af99bdf72b4b18c4109a61f79301c70aefc486ecff924223b8ff9",
+      "edits": [
+        {
+          "offset": 277,
+          "remove": 3,
+          "insert": "QW1F"
+        },
+        {
+          "offset": 284,
+          "remove": 1,
+          "insert": "bkUsb0VBQThEO0FB"
+        },
+        {
+          "offset": 286,
+          "remove": 0,
+          "insert": "OUQ="
+        },
+        {
+          "offset": 1840,
+          "remove": 1,
+          "insert": "MA=="
+        },
+        {
+          "offset": 2042,
+          "remove": 1,
+          "insert": "MA=="
+        },
+        {
+          "offset": 27432,
+          "remove": 1,
+          "insert": "MA=="
+        }
+      ]
+    },
+    {
+      "path": "types/trezor/index.d.ts",
+      "before": "173c8574defff8836a7661dfc13112c948e2374c9dde2bebfda7115026947a33",
+      "after": "f81c79d2b28b9954917779576296765fa8330614a8394ca3aaec57b5a12fb46c",
+      "edits": [
+        {
+          "offset": 4360,
+          "remove": 0,
+          "insert": "Y2g="
+        },
+        {
+          "offset": 4361,
+          "remove": 0,
+          "insert": "aW5J"
+        },
+        {
+          "offset": 4362,
+          "remove": 5,
+          "insert": ""
+        },
+        {
+          "offset": 4369,
+          "remove": 2,
+          "insert": "bnVtYmU="
+        },
+        {
+          "offset": 4372,
+          "remove": 3,
+          "insert": ""
+        },
+        {
+          "offset": 4389,
+          "remove": 0,
+          "insert": "bm9u"
+        },
+        {
+          "offset": 4390,
+          "remove": 6,
+          "insert": "ZQ=="
+        },
+        {
+          "offset": 4464,
+          "remove": 5,
+          "insert": "eVBhcml0eQ=="
+        },
+        {
+          "offset": 4491,
+          "remove": 2,
+          "insert": ""
+        },
+        {
+          "offset": 4494,
+          "remove": 0,
+          "insert": "ZGRyZXNzOiBzdA=="
+        },
+        {
+          "offset": 4496,
+          "remove": 4,
+          "insert": ""
+        },
+        {
+          "offset": 4501,
+          "remove": 5,
+          "insert": "Zw=="
+        },
+        {
+          "offset": 6017,
+          "remove": 5,
+          "insert": "dHlw"
+        },
+        {
+          "offset": 6023,
+          "remove": 1,
+          "insert": "cw=="
+        }
+      ]
+    },
+    {
+      "path": "package.json",
+      "before": "454609b0aff50765c3046f5f9fe2673afe5c2ab636f7f2a8d9540811357c9bc4",
+      "after": "e05ca618f391a3a733750fbad9558493ef1e10298acb436ab92178776143abca",
+      "edits": [
+        {
+          "offset": 2477,
+          "remove": 0,
+          "insert": "LAogICAgICAiY2pzL2hvc3Qta2V5cmluZyI6IFsKICAgICAgICAidHlwZXMvaG9zdC1rZXlyaW5nLmQudHMiCiAgICAgIF0sCiAgICAgICJjanMvaG9zdC1rZXlyaW5nLmpzIjogWwogICAgICAgICJ0eXBlcy9ob3N0LWtleXJpbmcuZC50cyIKICAgICAgXSwKICAgICAgImNqcy9sZWRnZXItaGFyZHdhcmUiOiBbCiAgICAgICAgInR5cGVzL2xlZGdlci1oYXJkd2FyZS5kLnRzIgogICAgICBdLAogICAgICAiY2pzL2xlZGdlci1oYXJkd2FyZS5qcyI6IFsKICAgICAgICAidHlwZXMvbGVkZ2VyLWhhcmR3YXJlLmQudHMiCiAgICAgIF0sCiAgICAgICJjanMvaGFyZHdhcmUtd2FsbGV0LXR5cGVzIjogWwogICAgICAgICJ0eXBlcy9oYXJkd2FyZS13YWxsZXQtdHlwZXMuZC50cyIKICAgICAgXSwKICAgICAgImNqcy9oYXJkd2FyZS13YWxsZXQtdHlwZXMuanMiOiBbCiAgICAgICAgInR5cGVzL2hhcmR3YXJlLXdhbGxldC10eXBlcy5kLnRzIgogICAgICBd"
+        },
+        {
+          "offset": 3523,
+          "remove": 0,
+          "insert": "Cg=="
+        }
+      ]
+    }
+  ]
+}

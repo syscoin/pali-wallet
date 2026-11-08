@@ -33,7 +33,7 @@ import {
 } from '../ui';
 
 type Form = {
-  accountType?: 'HDAccount' | 'Imported' | 'SmartAccount';
+  accountType?: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger';
   kind: 'create' | 'create-smart' | 'rename' | 'remove';
   id?: string;
   index?: number;
@@ -68,12 +68,14 @@ export function NativeAccounts({
   controller,
   onBack,
   onImport,
+  onLedger,
   networkLabel = 'EVM',
 }: {
   controller: NativeAccountView;
   networkLabel?: string;
   onBack(): void;
   onImport?(): void;
+  onLedger?(): void;
 }) {
   const [form, setForm] = useState<Form | null>(null);
   const [name, setName] = useState('');
@@ -252,6 +254,7 @@ export function NativeAccounts({
               />
               {controller.supportsSmartAccounts?.() && <Button title="Create smart account" variant="secondary"
                 onPress={() => open({ kind: 'create-smart', label: '' })} />}
+              {onLedger && <Button title="Connect Ledger" variant="secondary" onPress={onLedger} />}
               {onImport && (
                 <Button
                   title="Import private key"
@@ -292,7 +295,8 @@ export function NativeAccounts({
                 </View>
                 <Text style={s.kind}>
                   {account.type === 'Imported' ? 'Imported key · Separate backup'
-                    : account.type === 'SmartAccount' ? 'Smart account · ECDSA owner' : 'Recovery phrase account'}
+                    : account.type === 'SmartAccount' ? 'Smart account · ECDSA owner'
+                    : account.type === 'Ledger' ? 'Ledger hardware wallet' : 'Recovery phrase account'}
                 </Text>
                 <Text selectable style={s.address}>
                   {account.address}
@@ -405,7 +409,8 @@ export function NativeAccounts({
                   <Notice
                     title="Your funds stay at this address"
                     body={
-                      form.accountType === 'SmartAccount' ? 'Removing this local record does not move funds or change its on-chain owners. Keep the account address and wallet backup.'
+                      form.accountType === 'Ledger' ? 'Removing this local account keeps its keys on your Ledger. Connect the same Ledger to add it again.'
+                        : form.accountType === 'SmartAccount' ? 'Removing this local record does not move funds or change its on-chain owners. Keep the account address and wallet backup.'
                         : form.accountType === 'Imported'
                         ? 'Removing this account removes its saved key from this wallet. Your recovery phrase cannot restore it. Keep the original key backed up separately. This does not move funds or cancel transactions.'
                         : 'Removing this account removes its local record. Add account reuses the next available recovery-phrase account. This does not move funds or cancel transactions.'

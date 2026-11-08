@@ -45,7 +45,7 @@ const KeyringAccountType =
 export const WALLET_CATALOGUE_KEY = ACCOUNT_RECORD_KEY;
 export type NativeCatalogueAccount = Readonly<{
   id: string;
-  type: 'HDAccount' | 'Imported' | 'SmartAccount';
+  type: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger';
   smartAccount?: Readonly<{ chainId: number; isDeployed: boolean; managementAddress: string }>;
   index: number;
   slip44: number;
@@ -83,6 +83,7 @@ export type NativeAccountRecord = Readonly<{
 }>;
 export type CatalogueMutation =
   | Readonly<{ kind: 'create'; account: IKeyringAccountState }>
+  | Readonly<{ kind: 'import-ledger'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'create-smart'; account: IKeyringAccountState }>
   | Readonly<{
       kind: 'import';
@@ -260,7 +261,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     assertCompleteHDAccountData(group.accounts.HDAccount);
     for (const [type, accounts] of Object.entries(group.accounts)) {
       if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts) ||
-          (utxo && type !== 'HDAccount' && type !== 'Imported' && Object.keys(accounts).length))
+          (utxo && type !== 'HDAccount' && type !== 'Imported' && type !== 'Ledger' && Object.keys(accounts).length))
         return invalid();
       for (const [id, account] of Object.entries(accounts)) {
         if (
@@ -284,6 +285,10 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
             account.isSmartAccount)
         )
           return invalid();
+        if (type === 'Ledger') {
+          if (!account.isLedgerWallet || account.isImported || account.isTrezorWallet || account.isSmartAccount || account.xprv !== '') return invalid();
+          if (network.kind === 'ethereum') publicIdentity({ address: account.address, publicKey: `0x${account.xpub.replace(/^0x/, '')}` });
+        }
         if (type === 'SmartAccount') {
           if (network.kind !== 'ethereum' || !account.isSmartAccount || account.isImported || account.isLedgerWallet || account.isTrezorWallet || account.xprv !== '' ||
               !Number.isSafeInteger(account.smartAccount?.chainId) || account.smartAccount!.chainId < 1)
@@ -300,7 +305,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
           if (normalizeUtxoAddress(account.address, utxo) !== account.address)
             return invalid();
           const bip84 = /^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub);
-          if (type === 'HDAccount' && !bip84)
+          if ((type === 'HDAccount' || type === 'Ledger') && !bip84)
             return invalid();
           if (type === 'Imported' &&
               ((account.xpub !== account.address &&
@@ -374,7 +379,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
 }
 function publicAccounts(group: RecoveryAccountGroup, chainId?: number): NativeCatalogueAccount[] {
   const slip44 = group.activeNetwork.slip44;
-  const accounts: NativeCatalogueAccount[] = (['HDAccount', 'Imported'] as const).flatMap((type) =>
+  const accounts: NativeCatalogueAccount[] = (['HDAccount', 'Imported', 'Ledger'] as const).flatMap((type) =>
     Object.values(group.accounts[type]).map((account) => Object.freeze({
       id: nativeAccountId(type, account.id, slip44), type, index: account.id, slip44,
       address: account.address, label: account.label,
@@ -555,10 +560,10 @@ export class NativeWalletCatalogue {
         networks = [...next.networks],
         recovery = [...next.recovery],
         groups = [...next.groups];
-      if (mutation.kind === 'create' || mutation.kind === 'create-smart' || mutation.kind === 'import') {
+      if (mutation.kind === 'create' || mutation.kind === 'create-smart' || mutation.kind === 'import' || mutation.kind === 'import-ledger') {
         const type =
           mutation.kind === 'create' ? KeyringAccountType.HDAccount
-            : mutation.kind === 'create-smart' ? KeyringAccountType.SmartAccount : KeyringAccountType.Imported;
+            : mutation.kind === 'create-smart' ? KeyringAccountType.SmartAccount : mutation.kind === 'import-ledger' ? KeyringAccountType.Ledger : KeyringAccountType.Imported;
         if (type === KeyringAccountType.SmartAccount && (group.activeNetwork.kind !== 'ethereum' || mutation.account.smartAccount?.chainId !== Number(getNativeNetwork(active.networkId, catalogueEvmNetworks(next)).chainId))) return invalid();
         assertAccountCreationAvailable(
           group.accounts,

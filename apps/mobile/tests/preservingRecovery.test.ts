@@ -1,3 +1,4 @@
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -47,7 +48,7 @@ const sourceWallet = HDNodeWallet.fromPhrase(
   undefined,
   "m/44'/60'/0'/0/0"
 );
-const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+const sdk = await loadNativeKeyringSdk();
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
@@ -85,7 +86,7 @@ async function fixture(
   let failurePause: ReturnType<typeof latch> | undefined;
   let closeFailure = false;
   let runtime!: KeyringRuntime;
-  const liveKeyrings: InstanceType<typeof sdk.SoftwareKeyring>[] = [];
+  const liveKeyrings: InstanceType<typeof sdk.HostKeyring>[] = [];
   let store!: SqliteWalletStorage;
   const open = async (): Promise<OpenWalletStorage> => {
     assert.equal(leased, false, 'old authority must release its database lease'); leased = true; opens++;
@@ -112,15 +113,15 @@ async function fixture(
     utxoFetch,
     loadSdk: async () => {
       const module = await (loadRuntimeSdk?.() ?? sdk);
-      class ObservedKeyring extends module.SoftwareKeyring {
+      class ObservedKeyring extends module.HostKeyring {
         constructor(
-          ...options: ConstructorParameters<typeof module.SoftwareKeyring>
+          ...options: ConstructorParameters<typeof module.HostKeyring>
         ) {
           super(...options);
           liveKeyrings.push(this);
         }
       }
-      return { ...module, SoftwareKeyring: ObservedKeyring };
+      return { ...module, HostKeyring: ObservedKeyring };
     },
   });
   const newOwner = async () => {
@@ -656,14 +657,14 @@ test('a live imported account missing its recovery envelope still blocks preserv
 
 test('recovery waits for a locked old owner to drain an already running real SDK unlock', async () => {
   const pause = latch(); let hold = false;
-  class DelayedUnlock extends sdk.SoftwareKeyring {
+  class DelayedUnlock extends sdk.HostKeyring {
     async unlock(password: string) {
       const result = await super.unlock(password);
       if (hold) { pause.enter(); await pause.gate; }
       return result;
     }
   }
-  const f = await fixture(async () => ({ ...sdk, SoftwareKeyring: DelayedUnlock }));
+  const f = await fixture(async () => ({ ...sdk, HostKeyring: DelayedUnlock }));
   f.owner.lock(); hold = true;
   const oldUnlock = f.owner.unlock(OLD).catch((error) => error);
   await pause.reached; f.owner.lock(); const recovery = f.coordinator();
@@ -981,15 +982,15 @@ test('the first in-flight recovery retains its original pair across retirement a
 test('original-pair capture drains runtime work outside authority pending before releasing its lease', async () => {
   const pause = latch();
   let hold = false;
-  class DelayedPhrase extends sdk.SoftwareKeyring {
-    constructor(...args: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class DelayedPhrase extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...args); const read = this.getSeed.bind(this);
       this.getSeed = async (password) => { const phrase = await read(password); if (hold) { pause.enter(); await pause.gate; } return phrase; };
     }
   }
   const f = await fixture(async () => ({
     ...sdk,
-    SoftwareKeyring: DelayedPhrase,
+    HostKeyring: DelayedPhrase,
   }));
   const original = await f.store.getWalletFingerprint();
   hold = true;
@@ -1471,8 +1472,8 @@ test('UTXO custody balance sends the selected account key only after verified Bl
 
 test('UTXO custody lock revokes the sole staged owner before a held derivation returns', async () => {
   const hold = latch();
-  class HeldKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class HeldKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
       const createFirstAccount = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
@@ -1485,7 +1486,7 @@ test('UTXO custody lock revokes the sole staged owner before a held derivation r
       };
     }
   }
-  const f = await fixture(async () => ({ ...sdk, SoftwareKeyring: HeldKeyring }));
+  const f = await fixture(async () => ({ ...sdk, HostKeyring: HeldKeyring }));
   try {
     const before = await accountRecord(f);
     const pending = selectNetwork(f, 'bitcoin');

@@ -5,6 +5,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'apps/mobile/**'
+      - 'scripts/apply-keyring-ledger.cjs'
+      - 'scripts/keyring-ledger-2.1.7.json'
       - 'source/shared/**'
       - 'source/wallet/**'
       - 'source/constants/trustedApps.json'
@@ -85,6 +87,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-keyring-ledger.cjs
       - name: Reject moderate and higher dependency advisories
         run: npm audit --audit-level=moderate
       - run: npm run lint
@@ -129,6 +132,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-keyring-ledger.cjs
       - name: Build preview
         if: matrix.suite == 'preview'
         run: npm run build:web
