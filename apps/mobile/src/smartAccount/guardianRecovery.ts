@@ -287,6 +287,7 @@ export class NativeGuardianRecoveryController {
         phase: 'complete',
         metadataRefresh: 'complete',
         canAbandon: false,
+        error: null,
       });
       this.dispose();
     } catch (error) {
