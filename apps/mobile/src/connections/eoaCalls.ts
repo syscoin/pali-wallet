@@ -1,6 +1,7 @@
 import {
   createEoaCallsSequence,
   type EoaCallsProgress,
+  type EoaCallsStopped,
 } from '../../../../source/wallet/evmCallsSequence.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
 import type { EvmDappFeeChoiceFields } from '../../../../source/shared/evmDappFeePolicy.ts';
@@ -37,6 +38,7 @@ export function createNativeEoaCalls(
     assertCurrent(): void;
     onBroadcast(hash: string): void;
     prepare(transaction: unknown): Promise<NativePreparedConnectionTransaction>;
+    persistStopped(submissionId: string, value: EoaCallsStopped): Promise<void>;
   }>
 ) {
   const sequence = createEoaCallsSequence(input.calls);
@@ -202,6 +204,7 @@ export function createNativeEoaCalls(
             throw Object.assign(new Error('CALL_SUBMISSION_FAILED'), {
               cause,
               transactionNotBroadcast: dispatchHash === undefined,
+              ...(dispatchHash ? { signedTransactionHash: dispatchHash } : {}),
             });
           }
         },
@@ -213,6 +216,8 @@ export function createNativeEoaCalls(
             txHashes: [hash],
           });
         },
+        persistStopped: (value) =>
+          input.persistStopped(previousSubmissionId!, value),
         async persistCompletion(value) {
           await write({
             ...descriptor,

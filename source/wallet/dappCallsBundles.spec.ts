@@ -198,6 +198,9 @@ it('resolves receipts through the bundle chain and rejects a retired query', asy
       if (!current) throw new Error('Retired query');
     },
     forChain: jest.fn((chain: number) => ({
+      async getBlockHash() {
+        return hash;
+      },
       async getTransactionReceipt(tx: string) {
         expect(chain).toBe(1);
         expect(tx).toBe(hash);

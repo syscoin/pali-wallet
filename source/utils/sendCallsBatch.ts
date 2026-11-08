@@ -29,6 +29,7 @@ export interface ISendCallsBatchDescriptor {
   // send, even when an earlier call in the batch already has a mined hash.
   submissionCompleted?: boolean;
   submissionStarted?: boolean;
+  stoppedTransactionHash?: string;
   txHashes: string[];
 }
 

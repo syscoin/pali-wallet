@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { Wallet } from 'ethers/wallet';
+import { Transaction } from 'ethers/transaction';
 import {
   createCallsBundleRegistry,
   type CallsBundleStore,
@@ -8,11 +10,10 @@ import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/tr
 import { createNativeEoaCalls } from '../src/connections/eoaCalls.ts';
 import type { NativePreparedConnectionTransaction } from '../src/connections/transactionRuntime.ts';
 
-const from = '0x' + '11'.repeat(20),
+const wallet = new Wallet('0x' + '01'.repeat(32));
+const from = wallet.address,
   first = '0x' + '22'.repeat(20),
   second = '0x' + '33'.repeat(20);
-const hash = (nonce: string) =>
-  '0x' + Number(nonce).toString(16).padStart(64, '0');
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function fixture({ lifetime = 60_000 } = {}) {
   let saved: CallsBundleStore = {},
@@ -25,6 +26,8 @@ async function fixture({ lifetime = 60_000 } = {}) {
   let failBefore = false,
     failAfter = false;
   const claimed = new Set<string>();
+  const retained = new Map<string, { rawTransaction: string; hash: string }>();
+  const hash = (nonce: string) => retained.get(nonce)!.hash;
   const quoteRequests: Record<string, unknown>[] = [];
   const quotes: string[] = [],
     sent: string[] = [],
@@ -64,6 +67,15 @@ async function fixture({ lifetime = 60_000 } = {}) {
     onBroadcast: (value) => {
       dispatched.push(value);
     },
+    persistStopped: (submissionId, attempt) =>
+      registry.recordStoppedEoaAttempt(
+        origin,
+        id,
+        reservationId,
+        submissionId,
+        attempt,
+        async () => retained.get(attempt.transaction.nonce)?.rawTransaction
+      ),
     calls: {
       version: '2.0.0',
       atomicRequired: false,
@@ -75,7 +87,14 @@ async function fixture({ lifetime = 60_000 } = {}) {
       ],
     },
     async prepare(input): Promise<NativePreparedConnectionTransaction> {
-      const request = input as { nonce?: number; to: string; value: string; gasLimit?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string };
+      const request = input as {
+        nonce?: number;
+        to: string;
+        value: string;
+        gasLimit?: string;
+        maxFeePerGas?: string;
+        maxPriorityFeePerGas?: string;
+      };
       quoteRequests.push({ ...request });
       quotes.push(request.to);
       await quoteWait;
@@ -112,7 +131,24 @@ async function fixture({ lifetime = 60_000 } = {}) {
             failBefore
           )
             throw new Error('PREFLIGHT');
-          const value = hash(transaction.nonce);
+          const raw = Transaction.from({
+            ...transaction,
+            from: undefined,
+            nonce: Number(transaction.nonce),
+            accessList:
+              transaction.type === 2
+                ? transaction.accessList.map((entry) => ({
+                    address: entry.address,
+                    storageKeys: [...entry.storageKeys],
+                  }))
+                : undefined,
+          });
+          raw.signature = wallet.signingKey.sign(raw.unsignedHash);
+          const value = raw.hash!;
+          retained.set(transaction.nonce, {
+            rawTransaction: raw.serialized,
+            hash: value,
+          });
           onBroadcast(value);
           if (failAfter) throw new Error('RESPONSE_LOST');
           claimed.add(transaction.nonce);
@@ -132,6 +168,7 @@ async function fixture({ lifetime = 60_000 } = {}) {
     registry,
     origin,
     id,
+    hash,
     saved: () => saved[origin]?.[id],
     lock: () => {
       current = false;
@@ -260,10 +297,63 @@ test('wire admission followed by lost response stays unknown and keeps its attem
   await f.operation.approve(f.operation.getSnapshot().revision);
   assert.equal(f.operation.getSnapshot().phase, 'unknown');
   assert.equal(f.saved()?.submissionStarted, true);
-  assert.deepEqual(f.saved()?.txHashes, [hash('0')]);
+  assert.deepEqual(f.saved()?.txHashes, [f.hash('0')]);
   assert.deepEqual(f.sent, []);
   await assert.rejects(f.operation.start(), /REVIEW_REQUIRED/);
 });
+
+for (const lostAt of [0, 1]) {
+  for (const receiptStatus of [0, 1]) {
+    test(`stopped call ${
+      lostAt + 1
+    } resolves its lost acknowledgement from receipt ${receiptStatus}`, async () => {
+      const f = await fixture();
+      await f.operation.start();
+      if (lostAt === 1)
+        await f.operation.approve(f.operation.getSnapshot().revision);
+      f.failAfter();
+      await f.operation.approve(f.operation.getSnapshot().revision);
+      assert.equal(f.operation.getSnapshot().phase, 'unknown');
+      const status = await f.registry.resolveCallsStatus(
+        {
+          assertCurrent() {},
+          forChain: () => ({
+            async getBlockHash() {
+              return '0x' + 'ab'.repeat(32);
+            },
+            async getTransactionReceipt(transactionHash) {
+              return {
+                hash: transactionHash,
+                status:
+                  transactionHash === f.hash(String(lostAt))
+                    ? receiptStatus
+                    : 1,
+                blockHash: '0x' + 'ab'.repeat(32),
+                blockNumber: 7,
+                gasUsed: 21000n,
+                logs: [],
+              };
+            },
+          }),
+        },
+        f.origin,
+        f.id
+      );
+      assert.equal(
+        status.status,
+        receiptStatus === 0
+          ? lostAt === 0
+            ? 500
+            : 600
+          : lostAt === 0
+          ? 600
+          : 200
+      );
+      assert.equal(status.receipts?.length, lostAt + 1);
+      await assert.rejects(f.operation.start(), /REVIEW_REQUIRED/);
+    });
+  }
+}
 
 test('closing the second review retains the successful prefix as a partial completion', async () => {
   const f = await fixture();
@@ -272,7 +362,7 @@ test('closing the second review retains the successful prefix as a partial compl
   f.operation.dispose();
   await tick();
   await tick();
-  assert.deepEqual(f.saved()?.txHashes, [hash('0')]);
+  assert.deepEqual(f.saved()?.txHashes, [f.hash('0')]);
   assert.equal(f.saved()?.failed, true);
   assert.equal(f.saved()?.submissionCompleted, true);
   assert.deepEqual(f.sent, [first]);

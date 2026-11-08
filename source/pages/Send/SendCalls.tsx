@@ -1065,6 +1065,18 @@ export const SendCalls = () => {
             false
           ),
         persistHash: recordBroadcastHash,
+        persistStopped: async (attempt) => {
+          await controllerEmitter(
+            ['wallet', 'recordStoppedEoaCalls'],
+            [
+              host,
+              callsData.bundleId,
+              callsData.reservationId,
+              lastStartedSubmissionRef.current,
+              attempt,
+            ]
+          );
+        },
         recordNotBroadcast: markSubmissionNotBroadcast,
         persistCompletion: (value) =>
           recordCompletedSubmission(value.failed, [...value.hashes]),

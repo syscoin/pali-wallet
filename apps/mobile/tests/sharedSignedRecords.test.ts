@@ -597,3 +597,289 @@ test('Smart activity is a bounded authenticated projection and preserves the out
   assert.equal((await f.store.readSmartAccountActivityExact(session, '7654321', address, inputs[0]!.hash))?.entry.from, signer.address.toLowerCase());
   assert.equal(await f.store.readExact(session, '7654321', address, inputs[0]!.hash), null);
 });
+
+test('stopped EOA batch receipts reconcile after both authenticated stores reopen', async () => {
+  const { createCallsBundleRegistry, readRetainedEoaCall } = await import(
+    '../../../source/wallet/dappCallsBundles.ts'
+  );
+  const { snapshotPreparedEvmTransaction } = await import(
+    '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js'
+  );
+  const input = await signed();
+  const f = fixture();
+  await f.store.append(f.session(), input);
+  await f.store.updatePhase(
+    f.session(),
+    input.chainId,
+    input.from,
+    input.hash,
+    'attempted'
+  );
+  const tx = Transaction.from(input.rawTransaction);
+  const transaction = snapshotPreparedEvmTransaction({
+    from: input.from,
+    to: tx.to,
+    chainId: tx.chainId.toString(),
+    nonce: String(tx.nonce),
+    value: tx.value.toString(),
+    data: tx.data,
+    gasLimit: tx.gasLimit.toString(),
+    type: 2,
+    accessList: [],
+    maxFeePerGas: tx.maxFeePerGas!.toString(),
+    maxPriorityFeePerGas: tx.maxPriorityFeePerGas!.toString(),
+  });
+  let data: import('../../../source/wallet/dappCallsBundles.ts').CallsBundleStore =
+    {};
+  const ports = {
+    assertCurrent() {},
+    now: () => 1000,
+    randomBytes: (length: number) => new Uint8Array(length),
+    storage: {
+      async read() {
+        return structuredClone(data);
+      },
+      async write(next: typeof data, check: () => void) {
+        check();
+        data = structuredClone(next);
+      },
+    },
+  };
+  const origin = 'https://app.example',
+    id = '0x01',
+    reservationId = 'reserved',
+    submissionId = 'attempt';
+  const descriptor = {
+    atomic: false,
+    smartAccount: false,
+    chainId: Number(input.chainId),
+  };
+  const registry = createCallsBundleRegistry(ports);
+  await registry.reserveSendCallsBundle(
+    origin,
+    id,
+    descriptor,
+    reservationId,
+    input.from
+  );
+  await registry.recordSendCallsBundle(origin, id, {
+    ...descriptor,
+    reservationId,
+    submissionId,
+    submissionStarted: true,
+    txHashes: [],
+  });
+  await registry.recordSendCallsBundle(origin, id, {
+    ...descriptor,
+    reservationId,
+    submissionId,
+    txHashes: [input.hash],
+  });
+  const blockHash = '0x' + 'ab'.repeat(32);
+  const receipt = {
+    hash: input.hash,
+    status: 1,
+    blockHash,
+    blockNumber: 7,
+    gasUsed: 42000n,
+    logs: [],
+  };
+  let blockReads = 0;
+  assert.equal(
+    (
+      await registry.resolveCallsStatus(
+        {
+          assertCurrent() {},
+          forChain: () => ({
+            async getTransactionReceipt() {
+              return receipt;
+            },
+            async getBlockHash() {
+              blockReads++;
+              return blockHash;
+            },
+          }),
+        },
+        origin,
+        id
+      )
+    ).status,
+    100
+  );
+  assert.equal(
+    blockReads,
+    0,
+    'an active sequence cannot resolve from its receipts'
+  );
+  const attempt = { transaction, failed: false };
+  const reopened = new EvmSignedRecords(f.port);
+  await assert.rejects(
+    registry.recordStoppedEoaAttempt(
+      origin,
+      id,
+      reservationId,
+      'foreign',
+      attempt,
+      () => readRetainedEoaCall(reopened, f.session(), attempt)
+    ),
+    /changed/
+  );
+  const altered = { ...attempt, transaction: { ...transaction, value: '999' } };
+  await registry.recordStoppedEoaAttempt(
+    origin,
+    id,
+    reservationId,
+    submissionId,
+    altered,
+    () => readRetainedEoaCall(reopened, f.session(), altered)
+  );
+  assert.equal(data[origin]![id]!.stoppedTransactionHash, undefined);
+  await assert.rejects(
+    registry.recordStoppedEoaAttempt(
+      origin,
+      id,
+      reservationId,
+      submissionId,
+      { ...attempt, hash: '0x' + 'ff'.repeat(32) },
+      async () => input.rawTransaction
+    ),
+    /changed/
+  );
+  await registry.recordStoppedEoaAttempt(
+    origin,
+    id,
+    reservationId,
+    submissionId,
+    attempt,
+    () => readRetainedEoaCall(reopened, f.session(), attempt)
+  );
+  assert.equal(data[origin]![id]!.stoppedTransactionHash, input.hash);
+  assert.equal(data[origin]![id]!.submissionCompleted, false);
+  const resumed = createCallsBundleRegistry(ports);
+  for (const status of [0, 1]) {
+    const result = await resumed.resolveCallsStatus(
+      {
+        assertCurrent() {},
+        forChain: () => ({
+          async getTransactionReceipt() {
+            return {
+              hash: input.hash,
+              status,
+              blockHash,
+              blockNumber: 7,
+              gasUsed: 42000n,
+              logs: [],
+            };
+          },
+          async getBlockHash() {
+            return blockHash;
+          },
+        }),
+      },
+      origin,
+      id
+    );
+    assert.equal(result.status, status ? 200 : 500);
+  }
+  assert.equal(
+    await resumed.reserveSendCallsBundle(
+      origin,
+      id,
+      descriptor,
+      'replacement',
+      input.from
+    ),
+    false
+  );
+  assert.throws(
+    () =>
+      registry.recordSendCallsBundle(origin, id, {
+        ...descriptor,
+        reservationId,
+        submissionId,
+        txHashes: [],
+        ...{ stoppedTransactionHash: input.hash },
+      }),
+    /authenticated/
+  );
+  assert.throws(
+    () =>
+      registry.reserveSendCallsBundle(
+        origin,
+        '0x02',
+        { ...descriptor, ...{ stoppedTransactionHash: input.hash } },
+        reservationId,
+        input.from
+      ),
+    /authenticated/
+  );
+  for (const receipt of [
+    null,
+    { hash: input.hash, status: 1 },
+    {
+      hash: input.hash,
+      status: 1,
+      blockHash,
+      blockNumber: 7,
+      gasUsed: 42000n,
+      logs: [],
+    },
+  ]) {
+    const result = await resumed.resolveCallsStatus(
+      {
+        assertCurrent() {},
+        forChain: () => ({
+          async getTransactionReceipt() {
+            return receipt;
+          },
+          async getBlockHash() {
+            return '0x' + 'cd'.repeat(32);
+          },
+        }),
+      },
+      origin,
+      id
+    );
+    assert.equal(result.status, 100);
+  }
+  for (const blockResult of [null, 'invalid', new Error('unavailable')]) {
+    const result = await resumed.resolveCallsStatus(
+      {
+        assertCurrent() {},
+        forChain: () => ({
+          async getTransactionReceipt() {
+            return receipt;
+          },
+          async getBlockHash() {
+            if (blockResult instanceof Error) throw blockResult;
+            return blockResult;
+          },
+        }),
+      },
+      origin,
+      id
+    );
+    assert.equal(result.status, 100);
+  }
+  const result = await resumed.resolveCallsStatus(
+    {
+      assertCurrent() {},
+      forChain: () => ({
+        async getTransactionReceipt() {
+          return receipt;
+        },
+        async getBlockHash() {
+          delete data[origin]![id]!.stoppedTransactionHash;
+          return blockHash;
+        },
+      }),
+    },
+    origin,
+    id
+  );
+  assert.equal(
+    result.status,
+    100,
+    'a stale stopped snapshot cannot complete a now-active sequence'
+  );
+});

@@ -32,6 +32,11 @@ export type EoaCallsCompletion = Readonly<{
   failed: boolean;
   hashes: readonly string[];
 }>;
+export type EoaCallsStopped = Readonly<{
+  failed: boolean;
+  hash?: string;
+  transaction: PreparedEvmTransaction;
+}>;
 export type EoaCallsOutcome = EoaCallsCompletion &
   Readonly<{
     failure?: EoaCallsFailure;
@@ -46,6 +51,7 @@ export type EoaCallsPorts<Review extends EoaCallsReview = EoaCallsReview> =
     nonce(): Promise<number>;
     persistCompletion(value: EoaCallsCompletion): Promise<void>;
     persistHash(hash: string): Promise<void>;
+    persistStopped(value: EoaCallsStopped): Promise<void>;
     prepare(transaction: EoaCallsTransaction, index: number): Promise<Review>;
     recordNotBroadcast(): Promise<boolean>;
     resolveAddress(call: DappCall): Promise<string | undefined>;
@@ -95,6 +101,7 @@ export function createEoaCallsSequence(input: unknown) {
       'nonce',
       'persistCompletion',
       'persistHash',
+      'persistStopped',
       'prepare',
       'recordNotBroadcast',
       'resolveAddress',
@@ -113,6 +120,7 @@ export function createEoaCallsSequence(input: unknown) {
       nonce: ports.nonce.bind(ports),
       persistCompletion: ports.persistCompletion.bind(ports),
       persistHash: ports.persistHash.bind(ports),
+      persistStopped: ports.persistStopped.bind(ports),
       prepare: ports.prepare.bind(ports),
       recordNotBroadcast: ports.recordNotBroadcast.bind(ports),
       resolveAddress: ports.resolveAddress.bind(ports),
@@ -150,6 +158,7 @@ export function createEoaCallsSequence(input: unknown) {
           throw new Error('Invalid next nonce');
         let invoked = false,
           begun = false;
+        let reviewedAttempt: PreparedEvmTransaction | undefined;
         let stage: EoaCallsFailure['kind'] = 'destination';
         host.update({ index, status: 'signing' });
         try {
@@ -178,6 +187,7 @@ export function createEoaCallsSequence(input: unknown) {
           const review = await host.prepare(transaction, index);
           check();
           const reviewed = snapshotPreparedEvmTransaction(review.transaction);
+          reviewedAttempt = reviewed;
           if (
             reviewed.from.toLowerCase() !== from.toLowerCase() ||
             reviewed.to?.toLowerCase() !== to?.toLowerCase() ||
@@ -226,6 +236,12 @@ export function createEoaCallsSequence(input: unknown) {
               unknown = true;
               const failure = { kind: 'persistence' as const, cause: error };
               host.update({ index, status: 'unknown', hash, failure });
+              if (reviewedAttempt)
+                await host.persistStopped({
+                  failed: index !== request.calls.length - 1,
+                  hash,
+                  transaction: reviewedAttempt,
+                });
               return {
                 ...completion(true, hashes),
                 status: 'unknown',
@@ -267,7 +283,23 @@ export function createEoaCallsSequence(input: unknown) {
             failure,
             ...(knownHash ? { hash: knownHash } : {}),
           });
-          if (unknown)
+          if (unknown) {
+            const attemptedHash =
+              knownHash ??
+              readHash(
+                cause &&
+                  typeof cause === 'object' &&
+                  'signedTransactionHash' in cause
+                  ? cause.signedTransactionHash
+                  : undefined
+              );
+            if (reviewedAttempt) {
+              await host.persistStopped({
+                failed: index !== request.calls.length - 1,
+                hash: attemptedHash,
+                transaction: reviewedAttempt,
+              });
+            }
             return {
               ...completion(true, hashes),
               status: 'unknown',
@@ -275,6 +307,7 @@ export function createEoaCallsSequence(input: unknown) {
               hash: knownHash,
               failure,
             };
+          }
           if (!isCurrent())
             return { ...completion(true, hashes), status: 'retired' };
           break;

@@ -1,15 +1,28 @@
+import {
+  serializePreparedEvmTransaction,
+  snapshotPreparedEvmTransaction,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import {
   assertSmartAccountCallsIdentity,
   getSmartAccountCallsOutcome,
   normalizeDappCallsReceipt,
 } from '../shared/dappCallsStatus.ts';
+import { readEvmRpcHash } from '../shared/evmTransactionObservation.ts';
 import cleanErrorStack from '../utils/cleanErrorStack.ts';
 import {
   CALLS_STATUS_PENDING,
   computeCallsStatusCode,
   type ISendCallsBatchDescriptor,
 } from '../utils/sendCallsBatch.ts';
+
+import type { EoaCallsStopped } from './evmCallsSequence.ts';
+import type {
+  EvmSignedRecords,
+  EvmSignedRecordSession,
+} from './evmSignedRecords.ts';
 
 const MAX_BUNDLES_PER_HOST = 50;
 const BUNDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -103,6 +116,16 @@ export function assertCallsBundleStore(
         )
           throw new Error('Invalid calls bundle identity');
       }
+      if (
+        entry.stoppedTransactionHash !== undefined &&
+        (typeof entry.stoppedTransactionHash !== 'string' ||
+          !/^0x[\da-f]{64}$/i.test(entry.stoppedTransactionHash) ||
+          entry.smartAccount ||
+          entry.atomic ||
+          !entry.submissionStarted ||
+          !entry.txHashes.includes(entry.stoppedTransactionHash))
+      )
+        throw new Error('Invalid stopped calls attempt');
     }
   }
 }
@@ -120,6 +143,7 @@ export type CallsBundlePorts = Readonly<{
 export type CallsStatusRpc = Readonly<{
   assertCurrent(): void;
   forChain(chainId: number): Readonly<{
+    getBlockHash(blockNumber: string): Promise<string | null>;
     getTransactionReceipt(hash: string): Promise<any>;
   }> | null;
 }>;
@@ -228,6 +252,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       smartAccountIdentity: bundle.smartAccountIdentity,
       submissionCompleted: bundle.submissionCompleted,
       submissionStarted: bundle.submissionStarted,
+      stoppedTransactionHash: bundle.stoppedTransactionHash,
       txHashes: bundle.txHashes,
     };
   };
@@ -265,10 +290,15 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
   const reserveSendCallsBundle = (
     host: string,
     id: string,
-    input: Omit<ISendCallsBatchDescriptor, 'txHashes' | 'smartAccountIdentity'>,
+    input: Omit<
+      ISendCallsBatchDescriptor,
+      'txHashes' | 'smartAccountIdentity' | 'stoppedTransactionHash'
+    >,
     reservationId: string,
     sender: string
   ): Promise<boolean> => {
+    if (Object.hasOwn(input, 'stoppedTransactionHash'))
+      throw new Error('Stopped calls require an authenticated journal record');
     const descriptor = { ...input };
     return withStoreLock(async () => {
       if (typeof sender !== 'string' || !/^0x[0-9a-f]{40}$/i.test(sender))
@@ -307,7 +337,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
   const recordSendCallsBundle = (
     host: string,
     id: string,
-    input: ISendCallsBatchDescriptor & {
+    input: Omit<ISendCallsBatchDescriptor, 'stoppedTransactionHash'> & {
       previousSubmissionId?: string;
       reservationId: string;
       submissionId?: string;
@@ -315,6 +345,8 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       submissionStarted?: boolean;
     }
   ): Promise<void> => {
+    if (Object.hasOwn(input, 'stoppedTransactionHash'))
+      throw new Error('Stopped calls require an authenticated journal record');
     const descriptor = {
       ...input,
       txHashes: [...input.txHashes],
@@ -369,6 +401,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
             submissionId: descriptor.submissionId,
             submissionStarted: true,
             submissionCompleted: false,
+            stoppedTransactionHash: undefined,
           };
         } else
           hostBundles[id] = {
@@ -394,9 +427,11 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
           ...descriptor,
           smartAccountIdentity: existing.smartAccountIdentity,
           sender: existing.sender,
-          failed: existing.submissionCompleted
-            ? existing.failed
-            : descriptor.failed,
+          failed:
+            existing.submissionCompleted || existing.stoppedTransactionHash
+              ? existing.failed
+              : descriptor.failed,
+          stoppedTransactionHash: existing.stoppedTransactionHash,
           createdAt: existing?.createdAt ?? timestamp,
           pending: false,
           submissionCompleted:
@@ -446,6 +481,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       bundle?.reservationId === reservationId &&
       bundle.chainId === chainId &&
       bundle.submissionId === submissionId &&
+      !bundle.stoppedTransactionHash &&
       !bundle.smartAccount &&
       !bundle.atomic &&
       bundle.submissionStarted === true &&
@@ -465,6 +501,60 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
     const error = new Error('Unknown bundle id');
     (error as any).code = 5730;
     return cleanErrorStack(error);
+  };
+
+  /** A stopped sequence may resolve its exact retained attempt without resending. */
+  const recordStoppedEoaAttempt = (
+    host: string,
+    id: string,
+    reservationId: string,
+    submissionId: string,
+    input: EoaCallsStopped,
+    readSignedTransaction: () => Promise<string | undefined>
+  ): Promise<void> => {
+    const transaction = snapshotPreparedEvmTransaction(input.transaction);
+    const { failed, hash } = input;
+    if (
+      typeof failed !== 'boolean' ||
+      typeof readSignedTransaction !== 'function' ||
+      (hash !== undefined && !/^0x[\da-f]{64}$/i.test(hash))
+    )
+      throw new Error('Invalid stopped calls attempt');
+    return withStoreLock(async () => {
+      const storeData = await readBundleStore();
+      const bundle = storeData[host]?.[id];
+      if (
+        !bundle ||
+        bundle.smartAccount ||
+        bundle.atomic ||
+        bundle.reservationId !== reservationId ||
+        bundle.submissionId !== submissionId ||
+        !bundle.submissionStarted ||
+        bundle.submissionCompleted ||
+        transaction.chainId !== String(bundle.chainId) ||
+        transaction.from.toLowerCase() !== bundle.sender?.toLowerCase()
+      )
+        throw new Error('Stopped calls attempt changed');
+      const rawTransaction = await readSignedTransaction();
+      check();
+      if (!rawTransaction) return;
+      const signed = assertSignedEvmTransactionMatches(
+        rawTransaction,
+        serializePreparedEvmTransaction(transaction),
+        transaction.from
+      );
+      if (!signed.hash)
+        throw new Error('Stopped calls signed transaction is unsigned');
+      if (hash && signed.hash.toLowerCase() !== hash.toLowerCase())
+        throw new Error('Stopped calls signed transaction changed');
+      storeData[host]![id] = {
+        ...bundle,
+        failed,
+        stoppedTransactionHash: signed.hash,
+        txHashes: Array.from(new Set([...bundle.txHashes, signed.hash])),
+      };
+      await writeBundleStore(storeData);
+    });
   };
 
   // Resolves an id to its batch descriptor from the per-host registry: only
@@ -548,7 +638,12 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
           .getTransactionReceipt(hash)
           .catch(() => null);
         checkQuery();
-        return normalizeDappCallsReceipt(receipt, hash);
+        try {
+          return normalizeDappCallsReceipt(receipt, hash);
+        } catch (error) {
+          if (descriptor.stoppedTransactionHash) return null;
+          throw error;
+        }
       })
     );
     checkQuery();
@@ -564,8 +659,41 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
         )
       : undefined;
 
+    const stopped =
+      !!descriptor.stoppedTransactionHash &&
+      descriptor.txHashes.includes(descriptor.stoppedTransactionHash);
+    let canonicalStopped = stopped && receipts.every(Boolean);
+    if (canonicalStopped) {
+      for (const receipt of receipts) {
+        try {
+          const blockHash = await provider.getBlockHash(receipt!.blockNumber);
+          checkQuery();
+          if (readEvmRpcHash(blockHash) !== receipt!.blockHash)
+            canonicalStopped = false;
+        } catch {
+          checkQuery();
+          canonicalStopped = false;
+        }
+      }
+      const current = await getStoredSendCallsBundle(host, id);
+      checkQuery();
+      canonicalStopped =
+        canonicalStopped &&
+        !!current &&
+        current.stoppedTransactionHash === descriptor.stoppedTransactionHash &&
+        current.submissionStarted === descriptor.submissionStarted &&
+        current.submissionCompleted === descriptor.submissionCompleted &&
+        current.failed === descriptor.failed &&
+        current.txHashes.length === descriptor.txHashes.length &&
+        current.txHashes.every(
+          (hash, index) => hash === descriptor.txHashes[index]
+        );
+    }
+
     const status =
-      descriptor.submissionStarted && !descriptor.submissionCompleted
+      descriptor.submissionStarted &&
+      !descriptor.submissionCompleted &&
+      !canonicalStopped
         ? CALLS_STATUS_PENDING
         : computeCallsStatusCode({
             atomic: descriptor.atomic,
@@ -610,7 +738,50 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
     recordSendCallsBundle,
     releaseSendCallsBundleReservation,
     captureStartedEoaSendCallsAttempt,
+    recordStoppedEoaAttempt,
     resolveSendCallsBundleDescriptor,
     resolveCallsStatus,
   });
+}
+
+/** Read only a journal entry matching the stopped call's complete reviewed envelope. */
+export async function readRetainedEoaCall(
+  records: EvmSignedRecords,
+  session: EvmSignedRecordSession,
+  input: EoaCallsStopped
+): Promise<string | undefined> {
+  const transaction = snapshotPreparedEvmTransaction(input.transaction);
+  const hash = input.hash;
+  const expected = serializePreparedEvmTransaction(transaction);
+  const entries = await records.listSender(
+    session,
+    transaction.chainId,
+    transaction.from
+  );
+  const candidates = entries.filter(
+    (entry) =>
+      entry.operation === 'send' &&
+      entry.nonce === Number(transaction.nonce) &&
+      (hash === undefined || entry.hash.toLowerCase() === hash.toLowerCase())
+  );
+  for (const candidate of candidates) {
+    const retained = await records.readExact(
+      session,
+      transaction.chainId,
+      transaction.from,
+      candidate.hash
+    );
+    if (!retained) continue;
+    try {
+      assertSignedEvmTransactionMatches(
+        retained.rawTransaction,
+        expected,
+        transaction.from
+      );
+      return retained.rawTransaction;
+    } catch {
+      // A replacement or another reviewed envelope cannot settle this call.
+    }
+  }
+  return undefined;
 }

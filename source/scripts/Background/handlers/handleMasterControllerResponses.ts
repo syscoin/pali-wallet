@@ -325,6 +325,7 @@ export const handleMasterControllerResponses = (
                 ? route[1]
                 : undefined;
             const sendsEvm = walletMethod === 'sendAndSaveEthTransaction';
+            const stopsEoaCalls = walletMethod === 'recordStoppedEoaCalls';
             const reviewsEvm = walletMethod === 'reviewDappEvmFee';
             const recommendsNonce =
               walletMethod === 'getRecommendedEvmNonce' ||
@@ -337,7 +338,7 @@ export const handleMasterControllerResponses = (
               params?.[0]
             );
             const dappApproval =
-              sendsEvm || reviewsEvm
+              sendsEvm || reviewsEvm || stopsEoaCalls
                 ? captureDappEvmSubmission(sender)
                 : undefined;
             if (sendsEvm && dappApproval?.batch) {
@@ -368,6 +369,7 @@ export const handleMasterControllerResponses = (
               }
             } else if (
               reviewsEvm ||
+              stopsEoaCalls ||
               (sendsEvm && isExternalWalletUrl(sender.url))
             )
               throw transactionApprovalExpired();
@@ -400,7 +402,21 @@ export const handleMasterControllerResponses = (
               throw transactionApprovalExpired();
 
             let argumentsForCall = params;
-            if (reviewsEvm) {
+            if (stopsEoaCalls) {
+              const batch = dappApproval?.batch;
+              if (
+                !batch ||
+                params?.[0] !== batch.host ||
+                params?.[1] !== batch.id ||
+                params?.[2] !== batch.reservationId
+              )
+                throw transactionApprovalExpired();
+              await dappApproval.checkDocument();
+              argumentsForCall = [
+                ...params.slice(0, 5),
+                dappApproval.assertCurrent,
+              ];
+            } else if (reviewsEvm) {
               if (!dappApproval) throw transactionApprovalExpired();
               argumentsForCall = [
                 params?.[0],

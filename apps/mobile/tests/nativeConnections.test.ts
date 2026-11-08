@@ -193,7 +193,16 @@ function fixture(
         forChain(chainId) {
           callsStatusChains.push(chainId);
           const receipts = callsStatusReceipts.get(chainId);
-          return receipts ? { async getTransactionReceipt(hash) { return receipts.get(hash) ?? null; } } : null;
+          return receipts
+            ? {
+                async getTransactionReceipt(hash) {
+                  return receipts.get(hash) ?? null;
+                },
+                async getBlockHash() {
+                  return '0x' + 'ab'.repeat(32);
+                },
+              }
+            : null;
         },
       }, origin, id);
     },
@@ -207,6 +216,7 @@ function fixture(
       input.approval.assertCurrent();
       return options.smart ? '0x' + '33'.repeat(20) + '12'.repeat(65) : '0x' + '12'.repeat(65);
     },
+    async recordStoppedEoaCalls() {},
     async prepareTransaction(input, check) {
       check();
       await preparationWait;
