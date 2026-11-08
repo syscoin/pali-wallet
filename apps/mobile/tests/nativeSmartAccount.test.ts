@@ -52,6 +52,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const calls: string[] = [];
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
   const submitted: string[] = [];
+  const spendabilityReads = { native: 0, deposit: 0 };
   let deployed = false;
   let deployedCode = '0x01';
   let readReceipts = true;
@@ -81,6 +82,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const backend = async (network: NativeNetworkRegistration, init: RequestInit) => {
         const request = JSON.parse(String(init.body));
         calls.push(request.method);
+        if (request.method === 'eth_getBalance' && request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase()) spendabilityReads.native++;
+        if (request.method === 'eth_call' && request.params[0].to.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && request.params[0].data.startsWith(paliEntryPointInterface.getFunction('balanceOf')!.selector)) spendabilityReads.deposit++;
         const guardianModule = getConfiguredAuthenticatorAddress(Number(network.chainId), 'guardian-recovery').toLowerCase();
         if (guardian && (request.method === 'eth_getBlockByNumber' && ['latest', '0x20'].includes(request.params[0]) || request.method === 'eth_getStorageAt' ||
             request.method === 'eth_getCode' && request.params[0].toLowerCase() === guardianModule && request.params[1] === '0x20' ||
@@ -235,7 +238,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   await owner.refreshAuthenticatedMetadata();
   return {
-    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures,
+    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures, spendabilityReads,
     guardianStatus(mode: Parameters<ReturnType<typeof createGuardianRecoveryFixture>['select']>[0] = 'healthy') {
       const address = runtime.catalogue.getSnapshot()!.accounts.find(account => account.type === 'SmartAccount')!.address;
       guardian = createGuardianRecoveryFixture(address);
@@ -251,6 +254,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     wrongChain() { wrongChain = true; },
     advanceSmartNonce() { externalSmartNonce++; },
     fundedSmart() { smartBalance = '0x1000000000000000'; },
+    smartBalance(value: bigint) { smartBalance = '0x' + value.toString(16); },
     holdReceipts() { readReceipts = false; },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
     reorg() { readReceipts = false; nonceReset = true; },
@@ -668,6 +672,7 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     if (alreadyDeployed) f.deployed();
     const recipient = '0x2222222222222222222222222222222222222222';
     operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
+    const initialReads = { ...f.spendabilityReads };
     await operation.prepare();
     const ready = operation.getSnapshot();
     assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
@@ -697,6 +702,38 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal('0x' + execution.slice(2, 42), recipient);
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 9n);
     assert.equal(f.calls.includes('eth_getTransactionReceipt'), false);
+    // Four explicit spendability boundaries. Counterfactual sends also keep
+    // the existing deployment-prefund check, even when no topup is needed.
+    const expectedReads = alreadyDeployed ? 4 : 5;
+    assert.equal(f.spendabilityReads.native - initialReads.native, expectedReads);
+    assert.equal(f.spendabilityReads.deposit - initialReads.deposit, expectedReads);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const boundary of ['before-authentication', 'during-signing', 'payer-review']) test(`Smart native spendability rejects balance loss ${boundary}`, async () => {
+  const f = await fixture({}, true);
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Spendability sender', password: PASSWORD });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    if (boundary === 'before-authentication') f.smartBalance(8n);
+    if (boundary === 'during-signing') f.onSignature(() => { f.smartBalance(8n); });
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    if (boundary === 'payer-review') {
+      for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+        await new Promise(resolve => setTimeout(resolve, 5));
+      const review = operation.getSnapshot().payerReview;
+      assert(review, JSON.stringify(operation.getSnapshot()));
+      f.smartBalance(8n);
+      operation.confirmPayer(review.id);
+    }
+    await sending;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.signatures.length, boundary === 'before-authentication' ? 0 : 1);
+    assert.equal(f.submitted.length, 0);
   } finally { operation?.dispose(); await f.close(); }
 });
 

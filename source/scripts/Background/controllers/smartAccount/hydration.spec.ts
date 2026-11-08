@@ -38,8 +38,12 @@ import {
   buildSmartAccountUserOperation,
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
+  encodeERC7579Executions,
 } from 'utils/smartAccount';
-import { paliEntryPointInterface } from 'utils/smartAccount/contracts';
+import {
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from 'utils/smartAccount/contracts';
 import { createSmartAccountPendingState } from 'utils/smartAccount/pendingState';
 
 import SmartAccountController from './index';
@@ -208,7 +212,15 @@ describe('SmartAccountController smart account execution fees', () => {
         callGasLimit: 1,
         verificationGasLimit: 1,
       }),
-      callData: '0x',
+      callData: (() => {
+        const execution = encodeERC7579Executions([
+          { target: ACCOUNT_ADDRESS, value: '0', data: '0x' },
+        ]);
+        return paliSmartAccountInterface.encodeFunctionData('execute', [
+          execution.mode,
+          execution.executionCalldata,
+        ]);
+      })(),
       gasFees: encodeSmartAccountGasFees({
         maxFeePerGas: 1,
         maxPriorityFeePerGas: 0,

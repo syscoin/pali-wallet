@@ -20,6 +20,7 @@ import {
   getSmartAccountValidatorProfile,
   type SmartAccountUserOpGasEstimate,
 } from './gas.ts';
+import { assertSmartAccountNativeSpendability } from './nativeSpendability.ts';
 import type { SmartAccountPendingState } from './pendingState.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type {
@@ -231,6 +232,12 @@ export async function prepareSmartAccountOperation({
     sender: account.address,
   });
   await pending.assertNonce(userOperation);
+  await assertSmartAccountNativeSpendability({
+    provider,
+    chainId,
+    userOperation,
+    assertCurrent,
+  });
   const actionHash = getSmartAccountUserOpHash(userOperation, chainId);
   assertSynchronousEvmFeeGuard(assertCurrent);
   const orderedExecutions = prepared.executions.map((execution) => ({

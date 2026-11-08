@@ -171,6 +171,7 @@ describe('smart-account execution approval context', () => {
     };
     (store.getState as jest.Mock).mockImplementation(() => state);
     (Contract as unknown as jest.Mock).mockImplementation((_address, abi) => ({
+      balanceOf: jest.fn().mockResolvedValue(0),
       getNonce: jest.fn().mockResolvedValue('0'),
       interface: Interface.from(abi),
     }));
@@ -227,6 +228,32 @@ describe('smart-account execution approval context', () => {
     controller.getWalletGasPayerCandidates = jest.fn(() => []);
     controller.getWalletGasPayerAccount = jest.fn().mockResolvedValue(payer);
     controller.getLocalNativeExecutionRecipients = jest.fn(() => []);
+  });
+
+  it('rechecks native value and prefund before extension authenticator entry', async () => {
+    let balance = BigInt('1000000000000000000');
+    const originalSend = provider.send.getMockImplementation();
+    provider.send.mockImplementation(async (method, params) => {
+      if (method === 'eth_getBalance') return '0x' + balance.toString(16);
+      if (
+        method === 'eth_call' &&
+        params[0].data.startsWith(
+          paliEntryPointInterface.getFunction('balanceOf')!.selector
+        )
+      )
+        return paliEntryPointInterface.encodeFunctionResult('balanceOf', [0]);
+      return originalSend(method, params);
+    });
+    const prepared = await controller.prepareSmartAccountExecutions(
+      [{ target: TARGET, value: '123', data: '0x' }],
+      7,
+      { expectedContext }
+    );
+    balance = BigInt(122);
+    await expect(
+      controller.assertSmartAccountPreparedNonce(prepared.executionContextId)
+    ).rejects.toThrow('Insufficient funds');
+    expect(send).not.toHaveBeenCalled();
   });
 
   it.each(['account', 'address', 'chain', 'RPC', 'slip44', 'session'])(

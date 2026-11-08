@@ -3,19 +3,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AbiCoder, Interface } from 'ethers/abi';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
-import { encodeEcdsaValidatorInitData, getPaliSmartAccountDescriptor , getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
+import { encodeEcdsaValidatorInitData, getPaliSmartAccountDescriptor , getConfiguredAuthenticatorAddress, getSmartAccountUserOpRequiredPrefund, encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
 import { derivePaliSmartAccountDeployment } from '../../../source/utils/smartAccount/counterfactual.ts';
-import { getPaliSmartAccountFactoryAddress, PALI_SMART_ACCOUNT_VERSION } from '../../../source/utils/smartAccount/contracts.ts';
+import { getPaliSmartAccountFactoryAddress, PALI_SMART_ACCOUNT_VERSION, paliSmartAccountInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { prepareSmartAccountOperation } from '../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountGasPayerCandidates, ensureSmartAccountDeploymentPrefund } from '../../../source/utils/smartAccount/payerPolicy.ts';
 import { signSmartAccountEcdsaOperation } from '../../../source/utils/smartAccount/signOperation.ts';
 import { submitSmartAccountOperation } from '../../../source/utils/smartAccount/submitOperation.ts';
+import { assertSmartAccountNativeSpendability } from '../../../source/utils/smartAccount/nativeSpendability.ts';
 import type { IKeyringAccountState, KeyringAccountType } from '../../../source/types/network.ts';
 
 const owner = '0x1111111111111111111111111111111111111111';
 const payer = { id: 0, type: 'HDAccount' as KeyringAccountType, address: owner };
 const chainId = 1;
 function fixture() {
+  const funds = { balance: BigInt(0), deposit: BigInt(0), failEstimate: false, balanceReads: 0, depositReads: 0 };
   const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
   const descriptor = getPaliSmartAccountDescriptor({ accountIndex: 0, chainId, factoryAddress, accountVersion: PALI_SMART_ACCOUNT_VERSION,
     anchor: `pali:eip155:${chainId}:${owner}:smart-account-v1` });
@@ -30,9 +32,11 @@ function fixture() {
     send: async (method: string, params: any[]) => {
       if (method === 'eth_chainId') return '0x1';
       if (method === 'eth_getCode') return '0x';
-      if (method === 'eth_getBalance') return '0x0';
+      if (method === 'eth_getBalance') { funds.balanceReads++; return '0x' + funds.balance.toString(16); }
+      if (method === 'eth_estimateGas' && funds.failEstimate) throw new Error('execution reverted');
       if (method === 'eth_call') {
-        const parsed = new Interface(['function getNonce(address,uint192) view returns(uint256)']).parseTransaction({ data: params[0].data });
+        const parsed = new Interface(['function getNonce(address,uint192) view returns(uint256)', 'function balanceOf(address) view returns(uint256)']).parseTransaction({ data: params[0].data });
+        if (parsed?.name === 'balanceOf') { funds.depositReads++; return AbiCoder.defaultAbiCoder().encode(['uint256'], [funds.deposit]); }
         return AbiCoder.defaultAbiCoder().encode(['uint256'], [parsed ? BigInt(parsed.args[1]) << BigInt(64) : BigInt(0)]);
       }
       return '0x186a0';
@@ -44,8 +48,150 @@ function fixture() {
     estimateGas: async () => BigNumber.from(100000),
   };
   const pending = createSmartAccountPendingState(rawProvider, { profileId: '0x' + '11'.repeat(32), read: async () => [] }, chainId, account.address, () => undefined);
-  return { account, metadata, deployment, provider: pending.provider, pending };
+  return { account, metadata, deployment, provider: pending.provider, pending, funds };
 }
+
+const nativeRecipient = '0x2222222222222222222222222222222222222222';
+async function prepareNative(f: ReturnType<typeof fixture>, value: string, assertCurrent = () => {}) {
+  return prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+    executions: [{ target: nativeRecipient, value, data: '0x' }], knownDeployed: true, provider: f.provider, pending: f.pending,
+    async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent });
+}
+
+function nativeSubmitHost(f: ReturnType<typeof fixture>, prepared: Awaited<ReturnType<typeof prepareNative>>, send: (...args: any[]) => Promise<any>) {
+  return {
+    chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
+    getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
+    getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
+    getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [], assertGasTankCoversTransaction: async () => BigNumber.from(100000),
+    ensureDeploymentPrefund: async () => { throw new Error('Unexpected deployment prefund'); },
+    sendTransaction: send, invalidateMetadata() {},
+  };
+}
+
+test('shared preparation rejects excess native value despite a failed execution estimate, with exact units', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt('9007199254740992');
+  f.funds.deposit = BigInt('1000000000000000000');
+  f.funds.failEstimate = true;
+  await assert.rejects(prepareNative(f, '9007199254740993'), /Insufficient funds for smart account amount and fee/);
+});
+
+test('an EntryPoint deposit covers prefund but cannot be sent as native value', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(123);
+  f.funds.deposit = BigInt(10000000);
+  const prepared = await prepareNative(f, '123');
+  assert.equal(prepared.execution!.value, '123');
+  assert(getSmartAccountUserOpRequiredPrefund(prepared.userOperation).lte(f.funds.deposit));
+  await assert.rejects(prepareNative(f, '124'), /Insufficient funds/);
+});
+
+test('shared preparation reserves only the prefund shortfall after the EntryPoint deposit', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(10000000);
+  const first = await prepareNative(f, '123');
+  const prefund = getSmartAccountUserOpRequiredPrefund(first.userOperation).toBigInt();
+  f.funds.deposit = prefund - BigInt(10);
+  f.funds.balance = BigInt(132);
+  await assert.rejects(prepareNative(f, '123'), /Insufficient funds/);
+  f.funds.balance = BigInt(133);
+  await prepareNative(f, '123');
+});
+
+test('shared submission rechecks Smart balance after authenticator signing and ignores forged execution metadata', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(10000000);
+  const prepared = await prepareNative(f, '123');
+  f.funds.balance = BigInt(122);
+  let sends = 0;
+  await assert.rejects(submitSmartAccountOperation({ ...prepared, executions: [], accountId: 0, executionContextId: 'fixture', signature: '0x1234' },
+    nativeSubmitHost(f, prepared, async () => { sends++; throw new Error('Unexpected send'); }), () => {}),
+    (error: any) => error.transactionNotBroadcast === true);
+  assert.equal(sends, 0);
+});
+
+test('ordinary native submission succeeds and rechecks balance at the payer authorization boundary', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(10000000);
+  const prepared = await prepareNative(f, '123');
+  assert.equal(f.funds.balanceReads, 1);
+  assert.equal(f.funds.depositReads, 1);
+  let sends = 0;
+  const host = nativeSubmitHost(f, prepared, async (...args) => {
+    await args[4].assertPendingState();
+    sends++;
+    return { hash: '0x' + 'ab'.repeat(32), async wait() {} };
+  });
+  const params = { ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' };
+  const response = await submitSmartAccountOperation(params, host, () => {});
+  // One pair during preparation, one at submission entry, and one after the
+  // separate payer authorization. Synchronous context guards do no RPC work.
+  assert.equal(f.funds.balanceReads, 3);
+  assert.equal(f.funds.depositReads, 3);
+  assert.match(response.hash, /^0x[0-9a-f]{64}$/);
+  assert.equal(sends, 1);
+  host.sendTransaction = async (...args) => {
+    f.funds.balance = BigInt(122);
+    await args[4].assertPendingState();
+    sends++;
+    return response;
+  };
+  await assert.rejects(submitSmartAccountOperation(params, host, () => {}));
+  assert.equal(sends, 1);
+});
+
+test('cancelled native authorization cannot submit', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(10000000);
+  let current = true;
+  const prepared = await prepareNative(f, '123');
+  let sends = 0;
+  current = false;
+  await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' },
+    nativeSubmitHost(f, prepared, async () => { sends++; throw new Error('Unexpected send'); }), () => { assert(current, 'cancelled'); }), /cancelled/);
+  assert.equal(sends, 0);
+});
+
+test('cancellation while a balance read is outstanding cannot release a spendability approval', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(10000000);
+  const prepared = await prepareNative(f, '123');
+  let current = true;
+  let release!: (value: bigint) => void;
+  const balance = new Promise<bigint>((resolve) => { release = resolve; });
+  const approval = assertSmartAccountNativeSpendability({ chainId, userOperation: { ...prepared.userOperation, gasFees: '0x' + '00'.repeat(32) },
+    provider: { getBalance: () => balance }, assertCurrent() { assert(current, 'cancelled'); } });
+  current = false;
+  release(BigInt(10000000));
+  await assert.rejects(approval, /cancelled/);
+});
+
+test('zero-fee gas-tank operations need only the transferred native amount', async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(10000000);
+  const prepared = await prepareNative(f, '123');
+  await assertSmartAccountNativeSpendability({ chainId, userOperation: { ...prepared.userOperation, gasFees: '0x' + '00'.repeat(32) },
+    provider: { getBalance: async () => BigInt(123) }, assertCurrent() {} });
+});
+
+for (const kind of ['self', 'contract-refund']) test(`ordered ${kind} batch retains execution-aware affordability preflight`, async () => {
+  const f = fixture();
+  f.funds.balance = BigInt(10000000);
+  const prepared = await prepareNative(f, '123');
+  // With balance 100 and no prefund, two self calls can reuse the same 100;
+  // a contract may likewise return the first call's funds before the next call.
+  const executions = encodeERC7579Executions([
+    { target: kind === 'self' ? f.account.address : nativeRecipient, value: '100', data: kind === 'self' ? '0x' : '0x12345678' },
+    { target: kind === 'self' ? f.account.address : owner, value: '100', data: '0x' },
+  ]);
+  const userOperation = { ...prepared.userOperation, gasFees: '0x' + '00'.repeat(32),
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [executions.mode, executions.executionCalldata]) };
+  let reads = 0;
+  await assertSmartAccountNativeSpendability({ chainId, userOperation,
+    provider: { getBalance: async () => { reads++; return BigInt(100); } }, assertCurrent() {} });
+  assert.equal(reads, 0, 'batch affordability remains with the existing execution preflight');
+});
 
 test('portable shared preparation uses the canonical deployment and local UserOperation hash', async () => {
   const f = fixture();

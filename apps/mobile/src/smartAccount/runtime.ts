@@ -12,6 +12,7 @@ import type { SmartAccountActivityIdentity } from '../../../../source/wallet/sma
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
+import { assertSmartAccountNativeSpendability } from '../../../../source/utils/smartAccount/nativeSpendability.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
@@ -382,6 +383,12 @@ export function createNativeSmartOperation(
       if (intent.kind === 'guardian-policy')
         await ports.assertGuardianPolicy!(policySignal, assertCurrent);
       await pending.assertNonce(prepared.userOperation);
+      await assertSmartAccountNativeSpendability({
+        provider: pending.provider,
+        chainId,
+        userOperation: prepared.userOperation,
+        assertCurrent,
+      });
       return signSmartAccountEcdsaOperation({
         metadata,
         actionHash: prepared.actionHash,
