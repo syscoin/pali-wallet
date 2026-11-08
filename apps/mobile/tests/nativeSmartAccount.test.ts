@@ -1,3 +1,4 @@
+import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 import { getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import assert from 'node:assert/strict';
@@ -656,4 +657,59 @@ for (const sponsored of [false, true]) test(`Smart native MAX uses the shared re
     assert.equal(BigInt('0x' + execution.slice(42, 106)), expected);
     assert.equal(ready.maximumPrefundUnits === '0', sponsored);
   } finally { operation?.dispose(); await f.close(); }
+});
+
+
+test('Smart ERC20 send preserves 255-decimal base units through approval, signing and Activity', async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Token sender', password: PASSWORD });
+    const metadata = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 255, name: 'Exact token', symbol: 'EXACT' };
+    const registry = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(registry.revision, metadata, () => undefined);
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    const recipient = '0x2222222222222222222222222222222222222222';
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'erc20', contractAddress: metadata.contractAddress,
+      amount: '0.' + '0'.repeat(254) + '9' }, () => undefined);
+    await operation.prepare();
+    const ready = operation.getSnapshot();
+    assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+    assert.equal(ready.intent.kind, 'erc20-transfer');
+    if (ready.intent.kind !== 'erc20-transfer') assert.fail('Not an ERC20 review');
+    assert.equal(ready.intent.amountUnits, '9');
+    assert.deepEqual(ready.intent.token, metadata);
+    assert.equal(f.submitted.length, 0);
+    const sending = operation.authorize(ready.revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+    await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const [ops] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[0]!).data);
+    const [, payload] = paliSmartAccountInterface.decodeFunctionData('execute', ops[0].callData);
+    assert.equal('0x' + payload.slice(2, 42), metadata.contractAddress);
+    assert.equal(BigInt('0x' + payload.slice(42, 106)), 0n);
+    assert.deepEqual(decodeErc20Transfer('0x' + payload.slice(106)), { recipient, amountUnits: '9' });
+    operation.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    const activity = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(activity.locals[0]!.amountUnits, '9');
+    assert.deepEqual(activity.locals[0]!.token, metadata);
+    assert.equal(activity.locals[0]!.recipient, recipient);
+    f.showReceipts();
+    const observed = await f.runtime.activity!.observeLocal!(activity.locals[0]!, () => undefined, new AbortController().signal);
+    assert.equal(observed.status === 'mined' && observed.outcome, 'confirmed');
+    const saved = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.deepEqual(saved.saved.archived[0]!.token, metadata);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('Smart ERC20 send requires the selected account owned token catalogue', async () => {
+  const f = await fixture();
+  try {
+    await f.change({ kind: 'create-smart', label: 'Token sender', password: PASSWORD });
+    await assert.rejects(f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
+      kind: 'erc20', contractAddress: '0x5555555555555555555555555555555555555555', amount: '1',
+    }, () => undefined), { code: 'NOT_READY' });
+    assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
 });

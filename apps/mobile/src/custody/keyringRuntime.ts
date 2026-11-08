@@ -1,6 +1,7 @@
 import { NATIVE_EVM_FEE_FUNDING, type EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
+import { parseTokenAmount } from '../../../../source/shared/erc20.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { createNativeSmartOperation } from '../smartAccount/runtime.ts';
 import type { NativeSmartAccountAmount, NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
@@ -1736,8 +1737,23 @@ export function createKeyringRuntimeFactory(
               if (amount.kind === 'maximum') intent = Object.freeze({ kind: 'native-max', recipient: target });
               else if (amount.kind === 'exact') intent = Object.freeze({ kind: 'native-transfer', recipient: target,
                 amountUnits: parseDecimalAmount(amount.amount, 18).toString() });
-              else throw new KeyringRuntimeError('INVALID_INPUT');
-            } catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
+              else if (amount.kind === 'erc20') {
+                const contract = normalizeErc20Address(amount.contractAddress);
+                const request = Object.freeze({ amount: amount.amount, target, contract });
+                const captured = generation, snapshot = catalogueSnapshot;
+                const check = () => { current(captured); checkGuard(assertOwner); if (catalogueSnapshot !== snapshot) throw new KeyringRuntimeError('CANCELLED'); };
+                const token = await tokenOperation(check, async (scope, guard) => {
+                  const inventory = await tokens.load(scope, guard);
+                  guard();
+                  const saved = inventory.items.find(item => item.contractAddress === request.contract);
+                  if (!saved) throw new KeyringRuntimeError('NOT_READY');
+                  return saved;
+                });
+                check();
+                intent = Object.freeze({ kind: 'erc20-transfer', token, recipient: request.target,
+                  amountUnits: parseTokenAmount(request.amount, token.decimals) });
+              } else throw new KeyringRuntimeError('INVALID_INPUT');
+            } catch (error) { if (error instanceof KeyringRuntimeError) throw error; throw new KeyringRuntimeError('INVALID_INPUT'); }
             return openSmartAccountOperation(intent, assertOwner);
           },
           async openConnectionHost(): Promise<NativeConnectionHost> {
@@ -2302,6 +2318,7 @@ export function createKeyringRuntimeFactory(
                   registrationHash: scope.network.registrationHash, chainId, hash,
                   nonce: transfer.entry.nonce, createdAt: transfer.entry.createdAt,
                   recipient: transfer.recipient, amountUnits: transfer.amountUnits, maximumFeeUnits: transfer.maximumAccountCharge,
+                  ...(transfer.token ? { token: transfer.token } : {}),
                   smartAccount: { payer: normalizePublicAddress(transfer.entry.from, scope.network.id), operationHash: transfer.operationHash, operationNonce: transfer.operationNonce },
                 } : saved?.archived.find(item => item.hash === hash);
                 if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');

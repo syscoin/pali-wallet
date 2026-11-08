@@ -1,3 +1,4 @@
+import { buildSmartAccountErc20Transfer } from '../../../source/utils/smartAccount/erc20Transfer.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
@@ -249,3 +250,23 @@ for (const event of ['cancel', 'expiry'] as const)
       model.dispose();
     }
   });
+
+
+test('native MAX cannot authorize a self-consistent ERC20 operation returned by its host', async () => {
+  const recipient = '0x2222222222222222222222222222222222222222';
+  const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 18, name: 'Token', symbol: 'TKN' };
+  const execution = { ...buildSmartAccountErc20Transfer(token.contractAddress, recipient, '1'), nonce: '0' };
+  let signed = 0;
+  const model = new NativeSmartAccountOperation({
+    account: address, network: getNativeNetwork('ethereum'), intent: { kind: 'native-max', recipient }, assertCurrent() {},
+    async prepare() { return { kind: 'authorization', intent: { kind: 'erc20-transfer', token, recipient, amountUnits: '1' },
+      operation: { ...prepared, execution, executions: [execution] } }; },
+    async sign() { signed++; return '0x'; }, async submit() { return hash; },
+  });
+  try {
+    await model.prepare();
+    assert.equal(model.getSnapshot().phase, 'failed');
+    await model.authorize(model.getSnapshot().revision);
+    assert.equal(signed, 0);
+  } finally { model.dispose(); }
+});

@@ -1,3 +1,4 @@
+import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
@@ -113,7 +114,18 @@ export function createNativeSmartOperation(
       );
       if (intent.kind !== 'deploy') {
         await assertSmartAccountTargetsAllowed(
-          getBlacklistTargetsForEvmCall({ to: intent.recipient, data: '0x' }),
+          getBlacklistTargetsForEvmCall(
+            intent.kind === 'erc20-transfer'
+              ? {
+                  to: intent.token.contractAddress,
+                  data: buildSmartAccountErc20Transfer(
+                    intent.token.contractAddress,
+                    intent.recipient,
+                    intent.amountUnits
+                  ).data,
+                }
+              : { to: intent.recipient, data: '0x' }
+          ),
           ports.checkAddress,
           assertCurrent
         );
@@ -222,6 +234,16 @@ export function createNativeSmartOperation(
       issued = await prepare(
         intent.kind === 'deploy'
           ? [{ target: account.address, data: '0x', value: '0x0' }]
+          : intent.kind === 'erc20-transfer'
+          ? [
+              {
+                ...buildSmartAccountErc20Transfer(
+                  intent.token.contractAddress,
+                  intent.recipient,
+                  intent.amountUnits
+                ),
+              },
+            ]
           : [
               {
                 target: intent.recipient,
@@ -305,6 +327,9 @@ export function createNativeSmartOperation(
           guard,
           {
             ...transactionMetadata,
+            ...(intent.kind === 'erc20-transfer'
+              ? { smartAccountToken: intent.token }
+              : {}),
             smartAccountOperationHash: prepared.actionHash,
           },
           options.feeFunding

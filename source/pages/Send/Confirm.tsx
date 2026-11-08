@@ -1,3 +1,4 @@
+import { buildSmartAccountErc20Transfer } from 'utils/smartAccount/erc20Transfer';
 import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
@@ -81,7 +82,7 @@ import {
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
-import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
+import { getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
 import { parseWalletErc20SendAmount } from './erc20SendAmount';
@@ -858,11 +859,13 @@ export const SendConfirm = () => {
         execution.target = basicTxValues.token.contractAddress;
         if (transactionType === TransactionType.ERC20) {
           if (!reviewedErc20Units) throw new Error('ERC20 review required');
-          const abi = new Interface(await getErc20Abi());
-          execution.data = abi.encodeFunctionData('transfer', [
-            target,
-            reviewedErc20Units,
-          ]);
+          execution = {
+            ...buildSmartAccountErc20Transfer(
+              basicTxValues.token.contractAddress,
+              target,
+              reviewedErc20Units
+            ),
+          };
         } else {
           const tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
           const abi = new Interface(

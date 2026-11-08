@@ -1,3 +1,5 @@
+import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
+import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { getPaliEntryPointAddress } from '../../../../source/utils/smartAccount/contracts.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
@@ -13,11 +15,18 @@ export type NativeSmartAccountResolvedIntent =
       kind: 'native-transfer';
       recipient: string;
       amountUnits: string;
+    }>
+  | Readonly<{
+      kind: 'erc20-transfer';
+      token: Erc20Metadata;
+      recipient: string;
+      amountUnits: string;
     }>;
 
 export type NativeSmartAccountAmount =
   | Readonly<{ kind: 'exact'; amount: string }>
-  | Readonly<{ kind: 'maximum' }>;
+  | Readonly<{ kind: 'maximum' }>
+  | Readonly<{ kind: 'erc20'; contractAddress: string; amount: string }>;
 export type NativeSmartAccountIntent =
   | NativeSmartAccountResolvedIntent
   | Readonly<{ kind: 'native-max'; recipient: string }>;
@@ -196,18 +205,36 @@ export class NativeSmartAccountOperation {
       }
       const prepared = result.operation;
       const intent = result.intent;
-      if (intent.kind === 'native-transfer') {
+      if (intent.kind !== 'deploy') {
         const requested = this.host.intent;
+        const expected =
+          intent.kind === 'erc20-transfer'
+            ? buildSmartAccountErc20Transfer(
+                intent.token.contractAddress,
+                intent.recipient,
+                intent.amountUnits
+              )
+            : {
+                target: intent.recipient,
+                value: intent.amountUnits,
+                data: '0x',
+              };
         const execution = prepared.executions?.[0];
         if (
           requested.kind === 'deploy' ||
           requested.recipient !== intent.recipient ||
-          (requested.kind === 'native-transfer' &&
-            requested.amountUnits !== intent.amountUnits) ||
+          (requested.kind === 'native-max' &&
+            intent.kind !== 'native-transfer') ||
+          (requested.kind !== 'native-max' &&
+            (requested.kind !== intent.kind ||
+              requested.amountUnits !== intent.amountUnits)) ||
+          (requested.kind === 'erc20-transfer' &&
+            intent.kind === 'erc20-transfer' &&
+            requested.token !== intent.token) ||
           prepared.executions.length !== 1 ||
-          execution?.target.toLowerCase() !== intent.recipient.toLowerCase() ||
-          execution.data !== '0x' ||
-          BigInt(execution.value) !== BigInt(intent.amountUnits)
+          execution?.target.toLowerCase() !== expected.target.toLowerCase() ||
+          execution.data !== expected.data ||
+          BigInt(execution.value) !== BigInt(expected.value)
         )
           throw new Error('Smart transfer review changed');
       } else if (this.host.intent.kind !== 'deploy')

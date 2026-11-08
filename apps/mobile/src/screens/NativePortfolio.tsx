@@ -202,7 +202,7 @@ function NativePortfolioContent({ model, snapshot, smartAccount, onDeploySmartAc
         {faucetCard}
         </>}
         {tokenView && !utxo && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
-          onSend={!smartAccount && account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
+          onSend={(!smartAccount || smartAccount.localEcdsa) && account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onSendCollectible={!smartAccount && account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) onSendCollectible(collectible); } : undefined}
           onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
         {!tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}

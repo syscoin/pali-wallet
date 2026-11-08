@@ -70,6 +70,7 @@ export function createNativeSignedRecordView(
     chainId: network.chainId, hash: transfer.entry.hash, nonce: transfer.entry.nonce,
     createdAt: transfer.entry.createdAt, recipient: transfer.recipient, amountUnits: transfer.amountUnits,
     maximumFeeUnits: transfer.maximumAccountCharge,
+    ...(transfer.token ? { token: transfer.token } : {}),
     // The outer transaction's terminal status does not establish the UserOperation outcome.
     phase: 'submitted', inspectionOnly: true,
     smartAccount: Object.freeze({ payer: transfer.entry.from, operationHash: transfer.operationHash, operationNonce: transfer.operationNonce }),

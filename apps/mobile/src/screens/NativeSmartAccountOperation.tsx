@@ -1,3 +1,7 @@
+import {
+  formatTokenUnits,
+  type Erc20Metadata,
+} from '../../../../source/shared/erc20';
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -76,18 +80,21 @@ export function NativeSmartAccountOperationScreen({
   );
   const [details, setDetails] = useState(false);
   const network = getNativeSendContext(state.network);
-  const amount = (units: string) => {
-    const value = formatBaseUnits(units, network.decimals);
+  const amount = (units: string, token?: Erc20Metadata) => {
+    const value = token
+      ? formatTokenUnits(units, token.decimals)
+      : formatBaseUnits(units, network.decimals);
+    const symbol = token?.symbol ?? network.symbol;
     return (
       <View
         style={s.amount}
         accessible
-        accessibilityLabel={`${value} ${network.symbol}`}
+        accessibilityLabel={`${value} ${symbol}`}
       >
         <Text selectable style={[s.value, value.length > 18 && s.preciseValue]}>
           {value}
         </Text>
-        <Text style={s.unit}>{network.symbol}</Text>
+        <Text style={s.unit}>{symbol}</Text>
       </View>
     );
   };
@@ -126,6 +133,17 @@ export function NativeSmartAccountOperationScreen({
         </Card>
         {transfer && (
           <Card style={s.card}>
+            {transfer.kind === 'erc20-transfer' && (
+              <>
+                <Text style={s.label}>
+                  {transfer.token.name} · {transfer.token.symbol}
+                </Text>
+                <Text selectable style={s.address}>
+                  {transfer.token.contractAddress}
+                </Text>
+                <Text style={s.label}>Decimals {transfer.token.decimals}</Text>
+              </>
+            )}
             <Text style={s.label}>To</Text>
             <Text selectable style={s.address}>
               {transfer.recipient}
@@ -134,7 +152,10 @@ export function NativeSmartAccountOperationScreen({
             {transfer.kind === 'native-max' ? (
               <Text style={s.label}>Calculating maximum…</Text>
             ) : (
-              amount(transfer.amountUnits)
+              amount(
+                transfer.amountUnits,
+                transfer.kind === 'erc20-transfer' ? transfer.token : undefined
+              )
             )}
           </Card>
         )}
