@@ -81,6 +81,7 @@ function screen(name: string, props: Record<string, unknown>) {
       WatchGuardianRecovery: 'WatchGuardianRecovery',
     },
     './NativeConnections': { NativeConnections: 'NativeConnections' },
+    './NativeGuardianPolicy': { NativeGuardianPolicy: 'NativeGuardianPolicy' },
   };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const source = readFileSync(
@@ -176,6 +177,7 @@ for (const available of [false, true])
 test('actual status screen reports absent policy and a closed pane discards its late read', async () => {
   let resolve!: (value: unknown) => void;
   let signal!: AbortSignal;
+  let closes = 0;
   const tools = screen('RealTools', {
     accountLabel: 'Smart account',
     networkLabel: 'Ethereum',
@@ -183,6 +185,7 @@ test('actual status screen reports absent policy and a closed pane discards its 
     navigation,
     onAccounts() {},
     onBack() {},
+    onGuardianClose() { closes++; },
     guardianRecovery: {
       scope: '1:smart:ethereum',
       address: '0x' + '11'.repeat(20),
@@ -201,6 +204,7 @@ test('actual status screen reports absent policy and a closed pane discards its 
   assert.match(text(status.render()), /Checking recovery status/);
   child.props.onBack();
   assert.equal(signal.aborted, true);
+  assert.equal(closes, 1);
   resolve({ status: 'no-compatible-policy' });
   await new Promise<void>((done) => setImmediate(done));
   assert.doesNotMatch(text(status.render()), /no smart account code/);

@@ -21,9 +21,12 @@ import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
-import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
-import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
+import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
+import { createGuardianRecoveryFixture } from './native-watch-ui/guardianRecoveryFixture.ts';
+import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
+import { importedKeyIdentity } from '../src/custody/importedAccounts.ts';
 import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -37,7 +40,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-async function fixture() {
+async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-smart-account-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   let initialized = false, substituteAddress = false, hold: (() => Promise<void>) | undefined;
@@ -60,14 +63,24 @@ async function fixture() {
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void) | undefined;
   let afterBroadcast: (() => void) | undefined;
+  let guardian: ReturnType<typeof createGuardianRecoveryFixture> | undefined;
+  let externalOwner = false;
   const openStorage = async () => {
-    storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
+    storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, !initialized);
     initialized = true;
     return storage;
   };
   const backend = async (network: NativeNetworkRegistration, init: RequestInit) => {
         const request = JSON.parse(String(init.body));
         calls.push(request.method);
+        const guardianModule = getConfiguredAuthenticatorAddress(Number(network.chainId), 'guardian-recovery').toLowerCase();
+        if (guardian && (request.method === 'eth_getBlockByNumber' && ['latest', '0x20'].includes(request.params[0]) || request.method === 'eth_getStorageAt' ||
+            request.method === 'eth_getCode' && request.params[0].toLowerCase() === guardianModule && request.params[1] === '0x20' ||
+            request.method === 'eth_call' && (request.params[0].to.toLowerCase() === guardianModule ||
+              request.params[1] === '0x20' && request.params[0].data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)))) {
+          const response = await guardian.fetch(network.rpcUrl, init);
+          assert(response); return response;
+        }
         let result: unknown;
         if (request.method === 'eth_chainId') result = wrongChain ? '0x2' : `0x${BigInt(network.chainId).toString(16)}`;
         else if (request.method === 'eth_getCode') {
@@ -141,7 +154,7 @@ async function fixture() {
             result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa')]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
             const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [[ownerAddress]]);
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [[externalOwner ? '0x' + '66'.repeat(20) : ownerAddress]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('threshold')!.selector)) {
             result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [1]);
           } else if (to === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector)) {
@@ -195,7 +208,15 @@ async function fixture() {
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   await owner.refreshAuthenticatedMetadata();
   return {
-    get owner() { return owner; }, get runtime() { return runtime; }, calls, submitted,
+    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted,
+    guardianStatus(mode: Parameters<ReturnType<typeof createGuardianRecoveryFixture>['select']>[0] = 'healthy') {
+      const address = runtime.catalogue.getSnapshot()!.accounts.find(account => account.type === 'SmartAccount')!.address;
+      guardian = createGuardianRecoveryFixture(address);
+      guardian.select(mode, GUARDIAN_FIXTURE_RUNTIME);
+      deployed = true;
+      return guardian;
+    },
+    externalOwner() { externalOwner = true; },
     gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
     loseGasCredit() { gasCredit = 0n; },
     wrongChain() { wrongChain = true; },
@@ -206,7 +227,7 @@ async function fixture() {
     reorg() { readReceipts = false; nonceReset = true; },
     blockRecipient() { blockedRecipient = true; },
     undeployed() { deployed = false; },
-    deployed(code = '0x01') { deployed = true; deployedCode = code; },
+    deployed(code = '0x01') { deployed = true; deployedCode = code; guardian = undefined; },
     interruptAfterReceipt() { interruptAfterReceipt = true; },
     onSmartCodeRead(hook: () => void) { smartCodeRead = hook; },
     onBroadcast(hook: () => void) { afterBroadcast = hook; },
@@ -234,6 +255,10 @@ async function fixture() {
       await owner.unlock(password);
     },
     async reopen() { await owner.dispose(); owner = await open(); },
+    async reopenQuarantined() {
+      await owner.dispose().catch(error => { assert.equal(error.code, 'CLEANUP_FAILED'); });
+      owner = await open();
+    },
     async removeCompletedJournalBytes() {
       await owner.dispose();
       const retired = nodeConnection(file);
@@ -978,4 +1003,328 @@ for (const outcome of ['success', 'revert', 'lock-after-broadcast']) test(`real 
     assert.equal(status.receipts?.[0]?.transactionHash, Transaction.from(f.submitted[0]!).hash);
     assert.equal(await restarted.calls.reserveSendCallsBundle(origin, bundleId, { atomic: true, smartAccount: true, chainId: 1 }, 'other', selected.address), false);
   } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
+});
+
+const savedSmartAccount = (record: unknown) => (record as any).groups.find((group: any) => group.key === '60').accounts.SmartAccount[0];
+
+test('owned Smart metadata refresh commits shared observations and survives authenticated cold reopen', async () => {
+  const f = await fixture();
+  try {
+    const privateKey = '0x' + '02'.repeat(32);
+    await f.owner.importAccount({ privateKey, label: 'Independent imported key', expectedAddress: importedKeyIdentity(privateKey, 0).address },
+      PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.change({ kind: 'create-smart', label: 'Guardian account', password: PASSWORD });
+    const before = (await f.inspectRecovery()).record;
+    const accountBefore = savedSmartAccount(before);
+    f.guardianStatus();
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const after = (await f.inspectRecovery()).record;
+    const accountAfter = savedSmartAccount(after);
+    assert.deepEqual((after as any).recovery, (before as any).recovery);
+    assert.equal((after as any).recovery.length, 1);
+    assert.deepEqual((after as any).groups[0].accounts.Imported, (before as any).groups[0].accounts.Imported);
+    assert.deepEqual({ ...accountAfter, smartAccount: undefined }, { ...accountBefore, smartAccount: undefined });
+    assert.equal(accountAfter.smartAccount.isDeployed, true);
+    const policy = accountAfter.smartAccount.installedModules.find((module: any) => module.id === 'guardian-recovery');
+    assert.deepEqual(policy.config.guardians, ['0x' + '55'.repeat(20)]);
+    assert.equal(policy.config.threshold, 1);
+    const immutable = (metadata: Record<string, unknown>) => Object.fromEntries(Object.entries(metadata).filter(([key]) => !['auth', 'availableModules', 'isDeployed', 'installedModules'].includes(key)));
+    assert.deepEqual(immutable(accountAfter.smartAccount), immutable(accountBefore.smartAccount));
+    assert.equal(f.submitted.length, 0);
+    await f.reopen();
+    await f.owner.unlock(PASSWORD);
+    assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record), accountAfter);
+    f.guardianStatus('no-policy');
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.installedModules.some((module: any) => module.id === 'guardian-recovery'), false);
+  } finally { await f.close(); }
+});
+
+for (const mode of ['unsupported', 'unavailable'] as const) test(`a ${mode} guardian read preserves metadata and the unlocked wallet`, async () => {
+  const f = await fixture();
+  try {
+    await f.change({ kind: 'create-smart', label: 'Read failure', password: PASSWORD });
+    const before = (await f.inspectRecovery()).record;
+    f.guardianStatus(mode);
+    await assert.rejects(f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined));
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+    assert.deepEqual((await f.inspectRecovery()).record, before);
+    assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+for (const change of ['signal', 'owner', 'lock', 'account', 'network', 'account-cycle', 'network-cycle'] as const) test(`Smart metadata read cannot publish after ${change} changes`, async () => {
+  const f = await fixture();
+  let guardian: ReturnType<typeof f.guardianStatus> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Revoked read', password: PASSWORD });
+    const before = savedSmartAccount((await f.inspectRecovery()).record);
+    guardian = f.guardianStatus('hold');
+    const signal = new AbortController();
+    let current = true;
+    const work = f.runtime.refreshSmartAccountMetadata(signal.signal, () => { if (!current) throw Error('CANCELLED'); });
+    const refused = assert.rejects(work);
+    for (let index = 0; guardian.methods().length === 0 && index < 200; index++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(guardian.methods().length > 0);
+    if (change === 'signal') signal.abort();
+    if (change === 'owner') current = false;
+    if (change === 'lock') f.owner.lock();
+    if (change === 'account' || change === 'account-cycle') await f.change({ kind: 'select', id: 'hd:60:0' });
+    if (change === 'account-cycle') await f.change({ kind: 'select', id: 'smart:60:0' });
+    if (change === 'network' || change === 'network-cycle') await f.selectNetwork('syscoin-nevm');
+    if (change === 'network-cycle') {
+      await f.selectNetwork('ethereum');
+      await f.change({ kind: 'select', id: 'smart:60:0' });
+    }
+    guardian.release();
+    await refused;
+    if (change !== 'lock') assert.equal(f.owner.getSnapshot().phase, 'ready');
+    if (change === 'lock') await f.owner.unlock(PASSWORD);
+    assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record), before);
+    assert.equal(f.submitted.length, 0);
+  } finally { guardian?.release(); await f.close(); }
+});
+
+for (const point of ['before-commit', 'lost-ack'] as const) test(`Smart metadata ${point} uses existing quarantine and authenticated reopen`, async () => {
+  let armed = false;
+  const fail: SqlHook = (kind, sql) => {
+    if (armed && kind === 'exec' && sql === 'COMMIT') { armed = false; throw Error('simulated metadata write interruption'); }
+  };
+  const f = await fixture(point === 'before-commit' ? { before: fail } : { after: fail });
+  try {
+    await f.change({ kind: 'create-smart', label: 'Interrupted metadata', password: PASSWORD });
+    const before = savedSmartAccount((await f.inspectRecovery()).record);
+    f.guardianStatus(); armed = true;
+    await assert.rejects(f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined));
+    assert.equal(f.owner.getCatalogue(), null);
+    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    const after = savedSmartAccount((await f.inspectRecovery()).record);
+    assert.deepEqual({ ...after, smartAccount: undefined }, { ...before, smartAccount: undefined });
+    assert.equal(after.smartAccount.installedModules?.some((module: any) => module.id === 'guardian-recovery') ?? false, point === 'lost-ack');
+  } finally { await f.close(); }
+});
+
+test('metadata CAS refuses immutable edits and non-Smart or stale selections', async () => {
+  const f = await fixture();
+  try {
+    await f.change({ kind: 'create-smart', label: 'Immutable identity', password: PASSWORD });
+    const record = (await f.inspectRecovery()).record as any;
+    const account = savedSmartAccount(record);
+    const root = (await f.storage.recovery.readIdentity())!.root!;
+    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    const before = await catalogue.reconcile({ walletFingerprint: record.walletFingerprint, address: root.address, publicKey: root.publicKey }, () => undefined);
+    const metadata = { auth: account.smartAccount.auth, availableModules: account.smartAccount.availableModules,
+      installedModules: account.smartAccount.installedModules, isDeployed: true };
+    for (const field of ['descriptor', 'deploymentAuth', 'deploymentSalt', 'factoryAddress', 'chainId', 'contractVersion', 'customModules', 'deploymentGasPayer']) {
+      await assert.rejects(catalogue.mutate(before.revision, { kind: 'refresh-smart-metadata', id: before.active.accountId,
+        metadata: { ...metadata, [field]: 'rewrite' } }, () => undefined));
+      assert.deepEqual((await f.inspectRecovery()).record, record);
+    }
+    for (const id of ['hd:60:0', 'smart:60:1']) await assert.rejects(catalogue.mutate(before.revision, { kind: 'refresh-smart-metadata', id, metadata }, () => undefined));
+    await assert.rejects(catalogue.mutate(before.revision - 1, { kind: 'refresh-smart-metadata', id: before.active.accountId, metadata }, () => undefined));
+    assert.deepEqual((await f.inspectRecovery()).record, record);
+  } finally { await f.close(); }
+});
+
+test('cancellation while metadata SQL is held cannot commit or publish the new policy', async () => {
+  let armed = false, entered!: () => void, release!: () => void;
+  const reached = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const f = await fixture({ after: async (kind, sql) => {
+    if (armed && kind === 'run' && sql.startsWith('UPDATE keyring_records')) { armed = false; entered(); await held; }
+  } });
+  try {
+    await f.change({ kind: 'create-smart', label: 'Cancelled metadata commit', password: PASSWORD });
+    const before = savedSmartAccount((await f.inspectRecovery()).record);
+    const snapshot = f.owner.getCatalogue();
+    f.guardianStatus(); armed = true;
+    const signal = new AbortController();
+    const work = f.runtime.refreshSmartAccountMetadata(signal.signal, () => undefined);
+    const rejected = assert.rejects(work);
+    await reached;
+    assert.equal(f.owner.getCatalogue(), snapshot);
+    signal.abort(); release();
+    await rejected;
+    assert.equal(f.owner.getCatalogue(), null);
+    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record), before);
+  } finally { release(); await f.close(); }
+});
+
+test('observing an external ECDSA owner cannot grant native signing authority', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Externally controlled account', password: PASSWORD });
+    f.guardianStatus(); f.externalOwner();
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const metadata = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
+    assert.deepEqual(metadata.installedModules.find((module: any) => module.id === 'ecdsa').config.owners, ['0x' + '66'.repeat(20)]);
+    f.deployed();
+    f.fundedSmart();
+    operation = await f.runtime.openSmartAccountSend('0x' + '44'.repeat(20), { kind: 'exact', amount: '0.001' }, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const existing of [false, true]) test(`guardian policy ${existing ? 'update' : 'install'} uses the shared operation and commits verified metadata`, async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Guardian policy', password: PASSWORD });
+    f.fundedSmart(); f.guardianStatus(existing ? 'installed' : 'no-policy');
+    const guardian = '0x' + '77'.repeat(20), delaySeconds = 259200;
+    f.onBroadcast(() => {
+      if (Transaction.from(f.submitted.at(-1)!).to !== getPaliEntryPointAddress(1)) return;
+      f.guardianStatus('installed').configure(guardian, delaySeconds);
+    });
+    assert.equal(f.runtime.canManageGuardianPolicy(), true);
+    operation = await f.runtime.openGuardianPolicy({ guardian, delaySeconds, acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize', operation.getSnapshot().error ?? '');
+    const intent = operation.getSnapshot().intent;
+    assert.equal(intent.kind, 'guardian-policy');
+    if (intent.kind === 'guardian-policy') assert.equal(intent.command.kind, existing ? 'update' : 'install');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+    await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', operation.getSnapshot().error ?? '');
+    assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.submitted.length, 1);
+    const policy = savedSmartAccount((await f.inspectRecovery()).record).smartAccount.installedModules.find((module: any) => module.id === 'guardian-recovery');
+    assert.deepEqual(policy.config.guardians, [guardian]);
+    assert.equal(policy.config.delaySeconds, delaySeconds);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.installedModules.find((module: any) => module.id === 'guardian-recovery'), policy);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const mode of ['unavailable', 'stale'] as const) test(`guardian policy preserves the confirmed transaction when metadata is ${mode} and only re-reads on retry`, async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Guardian metadata retry', password: PASSWORD });
+    f.fundedSmart(); f.guardianStatus('no-policy');
+    const guardian = '0x' + '77'.repeat(20), delaySeconds = 259200;
+    f.onBroadcast(() => { if (Transaction.from(f.submitted.at(-1)!).to === getPaliEntryPointAddress(1)) f.guardianStatus(mode === 'unavailable' ? 'unavailable' : 'installed'); });
+    operation = await f.runtime.openGuardianPolicy({ guardian, delaySeconds, acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(operation.getSnapshot().metadataRefresh, 'failed');
+    const hash = operation.getSnapshot().transactionHash;
+    assert.equal(f.submitted.length, 1);
+    f.guardianStatus('installed').configure(guardian, delaySeconds);
+    await operation.retryMetadata();
+    assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(operation.getSnapshot().transactionHash, hash);
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(f.submitted.length, 1);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('guardian policy requires the current pending recovery acknowledgement and rechecks it after fee consent', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Guardian pending change', password: PASSWORD });
+    f.fundedSmart(); f.guardianStatus();
+    const draft = { guardian: '0x' + '77'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
+    await assert.rejects(f.runtime.openGuardianPolicy(draft, new AbortController().signal, () => undefined), /GUARDIAN_POLICY_CONFIRMATION_REQUIRED/);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+    f.guardianStatus('installed');
+    operation = await f.runtime.openGuardianPolicy(draft, new AbortController().signal, () => undefined);
+    await operation.prepare();
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    f.guardianStatus();
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await sending;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('guardian policy binds an acknowledged pending recovery and refuses a changed epoch before signing', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Bound guardian policy', password: PASSWORD });
+    f.fundedSmart();
+    const fixture = f.guardianStatus();
+    const observation = await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert(observation?.pending);
+    operation = await f.runtime.openGuardianPolicy({ guardian: '0x' + '77'.repeat(20), delaySeconds: 259200,
+      acknowledgedPendingOperationId: observation.pending.operationId }, new AbortController().signal, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    fixture.configure('0x' + '88'.repeat(20), 604800);
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('an unsuccessful UserOperation cannot report a completed guardian policy from its successful outer receipt', async () => {
+  const f = await fixture();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Reverted guardian policy', password: PASSWORD });
+    f.fundedSmart(); f.guardianStatus('no-policy'); f.showReceipts(false);
+    operation = await f.runtime.openGuardianPolicy({ guardian: '0x' + '77'.repeat(20), delaySeconds: 259200,
+      acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined);
+    await operation.prepare();
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await sending;
+    assert.equal(f.submitted.length, 1);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().metadataRefresh, undefined);
+    assert(operation.getSnapshot().transactionHash);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const acknowledged of [false, true]) test(`guardian policy snapshots the draft before asynchronous reads (acknowledged ${acknowledged})`, async () => {
+  const f = await fixture();
+  let held: ReturnType<typeof f.guardianStatus> | undefined;
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Immutable guardian draft', password: PASSWORD });
+    f.guardianStatus();
+    const observation = await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert(observation?.pending);
+    held = f.guardianStatus('hold');
+    const draft = { guardian: '0x' + '77'.repeat(20), delaySeconds: 259200,
+      acknowledgedPendingOperationId: acknowledged ? observation.pending.operationId : null };
+    const pending = f.runtime.openGuardianPolicy(draft, new AbortController().signal, () => undefined);
+    const refused = acknowledged ? null : assert.rejects(pending, /GUARDIAN_POLICY_CONFIRMATION_REQUIRED/);
+    for (let i = 0; held.methods().length === 0 && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(held.methods().length);
+    draft.guardian = '0x' + '88'.repeat(20);
+    draft.delaySeconds = 604800;
+    draft.acknowledgedPendingOperationId = observation.pending.operationId;
+    held.select('healthy', GUARDIAN_FIXTURE_RUNTIME);
+    if (refused) await refused;
+    else {
+      operation = await pending;
+      const intent = operation.getSnapshot().intent;
+      assert.equal(intent.kind, 'guardian-policy');
+      if (intent.kind === 'guardian-policy') {
+        assert.equal(intent.command.guardian, '0x' + '77'.repeat(20));
+        assert.equal(intent.command.delaySeconds, 259200);
+      }
+    }
+    assert.equal(f.submitted.length, 0);
+  } finally { held?.release(); operation?.dispose(); await f.close(); }
 });

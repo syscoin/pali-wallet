@@ -13,6 +13,7 @@ import type {
 } from '../smartAccount/operation';
 import { TransactionDetails } from './NativeTransactionReview';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
+import { guardianDelayLabel } from './guardianPolicyLabels';
 
 export function NativeSmartAccountOperationRoute({
   open,
@@ -92,6 +93,7 @@ export function NativeSmartAccountOperationScreen({
       onBack={onBack}
       authorize={() => void controller.authorize(state.revision)}
       confirmPayer={(id) => controller.confirmPayer(id)}
+      retryMetadata={() => void controller.retryMetadata()}
     />
   );
 }
@@ -102,6 +104,7 @@ export function NativeSmartAccountOperationContent({
   onBack,
   authorize,
   confirmPayer,
+  retryMetadata,
   before,
   disabled = false,
 }: {
@@ -109,6 +112,7 @@ export function NativeSmartAccountOperationContent({
   onBack(): void;
   authorize(): void;
   confirmPayer(id: number): void;
+  retryMetadata?(): void;
   before?: React.ReactNode;
   disabled?: boolean;
 }) {
@@ -134,8 +138,12 @@ export function NativeSmartAccountOperationContent({
   };
   const payer = state.payerReview;
   const batch = state.intent.kind === 'dapp-batch' ? state.intent : null;
+  const guardian =
+    state.intent.kind === 'guardian-policy' ? state.intent.command : null;
   const transfer =
-    state.intent.kind !== 'deploy' && state.intent.kind !== 'dapp-batch'
+    state.intent.kind !== 'deploy' &&
+    state.intent.kind !== 'dapp-batch' &&
+    state.intent.kind !== 'guardian-policy'
       ? state.intent
       : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
@@ -147,7 +155,9 @@ export function NativeSmartAccountOperationContent({
         <Header
           title={
             state.phase === 'authorize'
-              ? batch
+              ? guardian
+                ? 'Review guardian policy'
+                : batch
                 ? 'Review calls'
                 : transfer
                 ? transfer.kind === 'dapp-call'
@@ -156,6 +166,8 @@ export function NativeSmartAccountOperationContent({
                 : 'Authorize deployment'
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
+              : guardian
+              ? 'Guardian policy'
               : batch
               ? 'Send calls'
               : transfer
@@ -172,6 +184,24 @@ export function NativeSmartAccountOperationContent({
           </Text>
           <Text style={s.label}>Chain ID {state.network.chainId}</Text>
         </Card>
+        {guardian && (
+          <Card style={s.card}>
+            <Text style={s.label}>
+              {guardian.kind === 'install' ? 'Set guardian' : 'Update guardian'}
+            </Text>
+            <Text selectable style={s.address}>
+              {guardian.guardian}
+            </Text>
+            <Text style={s.label}>Guardian threshold · 1</Text>
+            <Text style={s.label}>
+              Recovery delay · {guardianDelayLabel(guardian.delaySeconds)}
+            </Text>
+            <Text style={s.label}>
+              Recovery request expires after ·{' '}
+              {guardianDelayLabel(guardian.delaySeconds * 2)}
+            </Text>
+          </Card>
+        )}
         {batch &&
           batch.calls.map((call, index) => (
             <Card key={index} style={s.card}>
@@ -253,7 +283,9 @@ export function NativeSmartAccountOperationContent({
           <>
             <Notice
               title={
-                batch
+                guardian
+                  ? 'Authorize this guardian policy'
+                  : batch
                   ? 'Authorize these calls'
                   : transfer
                   ? transfer.kind === 'dapp-call'
@@ -262,7 +294,9 @@ export function NativeSmartAccountOperationContent({
                   : 'Create this account on the network'
               }
               body={
-                batch
+                guardian
+                  ? 'Authorize the guardian and recovery delay shown above. The following review confirms the paying account and submission fee.'
+                  : batch
                   ? 'Authorize the ordered calls together. The following review confirms the paying account and submission fee.'
                   : transfer
                   ? transfer.kind === 'dapp-call'
@@ -314,7 +348,9 @@ export function NativeSmartAccountOperationContent({
             </Card>
             <Button
               title={
-                batch
+                guardian
+                  ? 'Authorize policy'
+                  : batch
                   ? 'Authorize calls'
                   : transfer?.kind === 'dapp-call'
                   ? 'Authorize transaction'
@@ -333,6 +369,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Fund the account charge'
+                  : guardian
+                  ? 'Submit the authorized guardian policy'
                   : batch
                   ? 'Submit the authorized calls'
                   : transfer
@@ -344,6 +382,8 @@ export function NativeSmartAccountOperationContent({
               body={
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
+                  : guardian
+                  ? 'This transaction submits the guardian policy you authorized.'
                   : batch
                   ? 'This transaction submits the calls you authorized.'
                   : transfer
@@ -377,6 +417,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
+                  : guardian
+                  ? 'Confirm policy'
                   : batch
                   ? 'Confirm calls'
                   : transfer
@@ -398,6 +440,8 @@ export function NativeSmartAccountOperationContent({
                 ? state.error
                 : state.phase === 'waiting'
                 ? 'Waiting for the network…'
+                : guardian
+                ? 'Preparing guardian policy…'
                 : batch
                 ? 'Preparing calls…'
                 : transfer
@@ -409,7 +453,9 @@ export function NativeSmartAccountOperationContent({
         {state.phase === 'complete' && (
           <Notice
             title={
-              batch
+              guardian
+                ? 'Guardian policy updated'
+                : batch
                 ? 'Calls submitted'
                 : transfer?.kind === 'dapp-call'
                 ? 'Transaction submitted'
@@ -418,7 +464,9 @@ export function NativeSmartAccountOperationContent({
                 : 'Smart account deployed'
             }
             body={
-              batch
+              guardian
+                ? 'The network confirmed this guardian policy transaction.'
+                : batch
                 ? 'The connected app can check this call bundle’s status.'
                 : transfer
                 ? 'Follow this transaction in Activity.'
@@ -426,10 +474,33 @@ export function NativeSmartAccountOperationContent({
             }
           />
         )}
+        {guardian &&
+          state.phase === 'complete' &&
+          state.metadataRefresh === 'refreshing' && (
+            <Text>Refreshing account status…</Text>
+          )}
+        {guardian &&
+          state.phase === 'complete' &&
+          state.metadataRefresh === 'failed' && (
+            <>
+              <Notice
+                title="Account status unavailable"
+                body="The policy transaction is confirmed. Refresh the saved account status to see the updated policy."
+                tone="amber"
+              />
+              <Button
+                title="Refresh account status"
+                disabled={disabled || !retryMetadata}
+                onPress={() => retryMetadata?.()}
+              />
+            </>
+          )}
         {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
-              batch
+              guardian
+                ? 'Check guardian policy status'
+                : batch
                 ? 'Check calls status'
                 : transfer
                 ? 'Check transfer status'

@@ -15,6 +15,9 @@ import {
   GUARDIAN_FIXTURE_ACCOUNT,
 } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
+import { NativeSmartAccountOperation, type PreparedSmartAccountOperation } from '../src/smartAccount/operation.ts';
+import { buildGuardianPolicyExecutions } from '../../../source/utils/smartAccount/guardianPolicy.ts';
+import { encodeSmartAccountGasLimits, encodeSmartAccountGasFees } from '../../../source/utils/smartAccount/account.ts';
 
 async function fixture(smart = true) {
   const rpc = createGuardianRecoveryFixture();
@@ -40,7 +43,8 @@ async function fixture(smart = true) {
     ],
   };
   const listeners = new Set<() => void>();
-  const runtime = { catalogue: { getSnapshot: () => catalogue } };
+  let runtime: any = { catalogue: { getSnapshot: () => catalogue } };
+  let locks = 0;
   class Authority {
     private readonly factory: { open(): Promise<unknown> };
     constructor(factory: { open(): Promise<unknown> }) {
@@ -53,7 +57,11 @@ async function fixture(smart = true) {
       return snapshot;
     }
     getCatalogue() {
-      return catalogue;
+      return snapshot.phase === 'ready' ? runtime.catalogue.getSnapshot() : null;
+    }
+    lock() {
+      locks++;
+      snapshot = { ...snapshot, phase: 'locked', revision: snapshot.revision + 1, account: null };
     }
     subscribe(listener: () => void) {
       listeners.add(listener);
@@ -155,6 +163,38 @@ async function fixture(smart = true) {
     rpc,
     read,
     listeners,
+    snapshot: () => snapshot,
+    locks: () => locks,
+    async deferredPolicyFailure(failure: 'rpc' | 'storage' | 'stale' | 'old-runtime') {
+      runtime.openGuardianPolicy = async (_draft: unknown, _signal: AbortSignal, guard: () => void) => {
+        const command = { kind: 'install' as const, accountAddress: GUARDIAN_FIXTURE_ACCOUNT,
+          chainId: 1, guardian: '0x' + '22'.repeat(20), delaySeconds: 259200 };
+        const intent = { kind: 'guardian-policy' as const, command };
+        const prepared = { actionHash: '0x' + 'aa'.repeat(32), executions: buildGuardianPolicyExecutions(command),
+          userOperation: { nonce: '0', initCode: '0x', callData: '0x',
+            accountGasLimits: encodeSmartAccountGasLimits({ callGasLimit: 1, verificationGasLimit: 1 }),
+            gasFees: encodeSmartAccountGasFees({ maxFeePerGas: 2, maxPriorityFeePerGas: 1 }), preVerificationGas: '1', paymasterAndData: '0x' },
+        } as PreparedSmartAccountOperation;
+        return new NativeSmartAccountOperation({ intent, account: GUARDIAN_FIXTURE_ACCOUNT, network, assertCurrent: guard,
+          async prepare() { return { kind: 'authorization', intent, operation: prepared }; },
+          async sign() { return '0xsigned'; },
+          async submit(_operation, _signature, _lifetime, check, _review, acknowledge) { check(); acknowledge(prepared.actionHash); return prepared.actionHash; },
+          async refreshMetadata() {
+            if (failure === 'storage') catalogue = null;
+            if (failure === 'stale') snapshot = { ...snapshot, revision: snapshot.revision + 1 };
+            if (failure === 'old-runtime') {
+              const replacement = catalogue;
+              runtime = { catalogue: { getSnapshot: () => replacement } };
+              await controllers.authority.initialize();
+              catalogue = null;
+            }
+            throw Error('metadata unavailable');
+          },
+        });
+      };
+      return controllers.openGuardianPolicy({ guardian: '0x' + '22'.repeat(20), delaySeconds: 259200,
+        acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined);
+    },
     change(kind: string) {
       snapshot = {
         ...snapshot,
@@ -213,3 +253,17 @@ for (const kind of [
     assert.equal(f.listeners.size, 0);
     f.rpc.release();
   });
+
+for (const failure of ['rpc', 'storage', 'stale', 'old-runtime'] as const) test(`deferred policy ${failure} failure preserves ACK and only quarantines the current storage owner`, async () => {
+  const f = await fixture();
+  const operation = await f.deferredPolicyFailure(failure);
+  try {
+    await operation.prepare();
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(operation.getSnapshot().transactionHash, '0x' + 'aa'.repeat(32));
+    assert.equal(operation.getSnapshot().metadataRefresh, 'failed');
+    assert.equal(f.snapshot().phase, failure === 'storage' ? 'locked' : 'ready');
+    assert.equal(f.locks(), failure === 'storage' ? 1 : 0);
+  } finally { operation.dispose(); }
+});

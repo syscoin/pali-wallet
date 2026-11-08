@@ -3,10 +3,12 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeGuardianRecoveryStatus } from '../custody/evmTransferReadRpc';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
+import { NativeGuardianPolicy, type NativeGuardianPolicyTool } from './NativeGuardianPolicy';
 
 export type WatchGuardianRecoveryTool = {
   scope: string;
   address: string;
+  manage?: NativeGuardianPolicyTool;
   read(signal: AbortSignal, assertCurrent: () => void): Promise<NativeGuardianRecoveryStatus>;
 };
 
@@ -22,9 +24,10 @@ const OPERATION_LABELS = {
   unknown: 'Recovery status unavailable',
 } as const;
 
-export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, onBack }:
+export function WatchGuardianRecovery({ address, networkLabel, read, manage, lifetime, onBack }:
   Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; onBack(): void }) {
   const [state, setState] = useState<State>({ status: 'idle' });
+  const [editing, setEditing] = useState(false);
   const owner = useRef<AbortController | null>(null);
   const cancel = () => { owner.current?.abort(); owner.current = null; };
   useLayoutEffect(() => {
@@ -59,6 +62,11 @@ export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, o
       : operation ? OPERATION_LABELS[operation.status] : 'No recovery scheduled'
     : null;
 
+  if (editing && manage && observation) {
+    return <NativeGuardianPolicy address={address} networkLabel={networkLabel}
+      observation={observation} manage={manage} lifetime={lifetime} onBack={onBack} />;
+  }
+
   return <SafeAreaView edges={['top']} style={styles.container}><Screen>
     <Header title="Guardian recovery" subtitle={networkLabel} onBack={onBack} />
     <Text style={styles.body}>Check the on-chain recovery status for this account.</Text>
@@ -78,6 +86,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, o
         Checked at block {observation.observedBlock.number.toLocaleString()}
       </Text>}
     </Card>}
+    {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing(true)} />}
     <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} onPress={() => { void check(); }} disabled={state.status === 'loading'} />
   </Screen></SafeAreaView>;
 }

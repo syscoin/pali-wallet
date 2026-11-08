@@ -9,6 +9,8 @@ import type { SavedCollectible } from '../portfolio/tokenRegistry.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { getPaliEntryPointAddress } from '../../../../source/utils/smartAccount/contracts.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { buildGuardianPolicyExecutions, type GuardianPolicyCommand } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import {
@@ -19,6 +21,7 @@ import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/s
 
 export type NativeSmartAccountResolvedIntent =
   | Readonly<{ kind: 'deploy' }>
+  | Readonly<{ kind: 'guardian-policy'; command: Exclude<GuardianPolicyCommand, { kind: 'remove' }> }>
   | Readonly<{ kind: 'dapp-batch'; calls: readonly DappCall[] }>
   | Readonly<{
       kind: 'native-transfer';
@@ -54,6 +57,12 @@ export type NativeSmartAccountAmount =
 export type NativeSmartAccountIntent =
   | NativeSmartAccountResolvedIntent
   | Readonly<{ kind: 'native-max'; recipient: string }>;
+
+export type NativeGuardianPolicyDraft = Readonly<{
+  guardian: string;
+  delaySeconds: number;
+  acknowledgedPendingOperationId: string | null;
+}>;
 
 export type PreparedSmartAccountOperation = Awaited<
   ReturnType<typeof prepareSmartAccountOperation>
@@ -97,6 +106,7 @@ export type NativeSmartAccountOperationSnapshot = Readonly<{
   }> | null;
   payerReview: SmartAccountPayerReview | null;
   transactionHash: string | null;
+  metadataRefresh?: 'refreshing' | 'failed' | 'complete';
   error: string | null;
 }>;
 export type NativeSmartAccountOperationHost = Readonly<{
@@ -104,6 +114,7 @@ export type NativeSmartAccountOperationHost = Readonly<{
   intent: NativeSmartAccountIntent;
   network: NativeNetworkRegistration;
   assertCurrent(): void;
+  refreshMetadata?(signal: AbortSignal, assertCurrent: () => void): Promise<void>;
   prepare(
     signal: AbortSignal,
     assertCurrent: () => void
@@ -150,6 +161,8 @@ export class NativeSmartAccountOperation {
     now = () => performance.now()
   ) {
     this.host = host;
+    if (host.intent.kind === 'guardian-policy' && typeof host.refreshMetadata !== 'function')
+      throw new Error('Guardian policy metadata reconciliation is required');
     this.now = now;
     this.deadline = now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
     this.snapshot = Object.freeze({
@@ -256,7 +269,16 @@ export class NativeSmartAccountOperation {
       }
       const prepared = result.operation;
       const intent = result.intent;
-      if (intent.kind === 'dapp-batch') {
+      if (intent.kind === 'guardian-policy') {
+        if (this.host.intent.kind !== 'guardian-policy' || this.host.intent.command !== intent.command)
+          throw new Error('SMART_OPERATION_EXPIRED');
+        const expected = buildGuardianPolicyExecutions(intent.command);
+        if (expected.length !== prepared.executions.length || expected.some((execution, index) => {
+          const actual = prepared.executions[index];
+          return !actual || actual.target.toLowerCase() !== execution.target.toLowerCase() ||
+            actual.data !== execution.data || BigInt(actual.value) !== BigInt(execution.value);
+        })) throw new Error('Guardian policy review changed');
+      } else if (intent.kind === 'dapp-batch') {
         const requested = this.host.intent;
         if (requested.kind !== 'dapp-batch' || requested.calls !== intent.calls)
           throw new Error('SMART_OPERATION_EXPIRED');
@@ -276,7 +298,7 @@ export class NativeSmartAccountOperation {
           throw new Error('SMART_OPERATION_EXPIRED');
       } else if (intent.kind !== 'deploy') {
         const requested = this.host.intent;
-        if (requested.kind === 'dapp-batch')
+        if (requested.kind === 'dapp-batch' || requested.kind === 'guardian-policy')
           throw new Error('SMART_OPERATION_EXPIRED');
         const expected =
           intent.kind === 'nft-transfer'
@@ -391,6 +413,7 @@ export class NativeSmartAccountOperation {
         phase: 'complete',
         payerReview: null,
       });
+      if (this.host.intent.kind === 'guardian-policy') await this.retryMetadata();
     } catch (error) {
       if (
         isSmartAccountPendingStateError(error) &&
@@ -408,6 +431,27 @@ export class NativeSmartAccountOperation {
         });
         await this.prepare();
       } else this.fail();
+    }
+  }
+  async retryMetadata(): Promise<void> {
+    if (this.disposed || this.lifetime.signal.aborted || this.snapshot.phase !== 'complete' ||
+        this.host.intent.kind !== 'guardian-policy' || this.snapshot.metadataRefresh === 'refreshing' ||
+        this.snapshot.metadataRefresh === 'complete') return;
+    const check = () => {
+      if (this.disposed || this.lifetime.signal.aborted) throw new Error('SMART_OPERATION_EXPIRED');
+      assertSynchronousEvmFeeGuard(this.host.assertCurrent);
+    };
+    this.publish({ metadataRefresh: 'refreshing' });
+    try {
+      check();
+      await this.host.refreshMetadata!(this.lifetime.signal, check);
+      check();
+      this.publish({ metadataRefresh: 'complete' });
+    } catch {
+      if (!this.disposed) {
+        try { assertSynchronousEvmFeeGuard(this.host.assertCurrent); } catch { /* The owner handles storage quarantine. */ }
+        this.publish({ metadataRefresh: 'failed' });
+      }
     }
   }
   private reviewPayer(

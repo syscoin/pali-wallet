@@ -45,6 +45,7 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
   let exits = 0;
   let shellTab = 'wallet';
   let guardianReads = 0;
+  let guardianOpens = 0;
   let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
     : {
@@ -203,6 +204,8 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
     openSmartAccountDeployment() {
       throw new Error('Route mocked in parent navigation test');
     },
+    canManageGuardianPolicy: () => smartAccount,
+    openGuardianPolicy: async (_draft: unknown, _signal: AbortSignal, check: () => void) => { check(); guardianOpens++; return { dispose() {} }; },
     readGuardianRecovery: async (_signal: AbortSignal, check: () => void) => { check(); guardianReads++; return { status: 'no-compatible-policy' }; },
     balanceReader: {},
     transfers: {},
@@ -356,7 +359,9 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
   return {
     render,
     showTools() { shellTab = 'tools'; },
+    showWallet() { shellTab = 'wallet'; },
     guardianReads: () => guardianReads,
+    guardianOpens: () => guardianOpens,
     hardwareBack() {
       assert(hardwareBack);
       return hardwareBack();
@@ -373,6 +378,10 @@ function harness(ready = false, smartAccount = false, withPairing = true) {
       };
     },
     ready: () => change('ready'),
+    readyAtRevision(revision: number) {
+      snapshot = { ...snapshot, phase: 'ready', revision, account: { address: '0x' + '11'.repeat(20), network: 'ethereum' } };
+      for (const listener of authorityListeners) listener(snapshot);
+    },
     selectionCalls: () => selectionCalls,
     consume() {
       incoming = null;
@@ -591,9 +600,15 @@ test('controlled Smart accounts expose the existing guardian-status tool through
   assert.equal(tools.props.guardianRecovery.address, '0x' + '11'.repeat(20));
   await tools.props.guardianRecovery.read(new AbortController().signal, () => undefined);
   assert.equal(f.guardianReads(), 1);
+  assert.equal(tools.props.guardianRecovery.manage.chainId, 1);
+  const draft = { guardian: '0x' + '55'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
+  await tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined);
+  assert.equal(f.guardianOpens(), 1);
   f.ready();
   await assert.rejects(tools.props.guardianRecovery.read(new AbortController().signal, () => undefined), /CANCELLED/);
   assert.equal(f.guardianReads(), 1);
+  await assert.rejects(tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined), /CANCELLED/);
+  assert.equal(f.guardianOpens(), 1);
   f.dispose();
 });
 
@@ -614,4 +629,38 @@ test('a closed or backgrounded controlled Smart tool cannot use its captured rea
     assert.equal(f.guardianReads(), 0);
     f.dispose();
   }
+});
+
+
+test('guardian pane identity changes after owner retirement even when the restored account revision matches', async () => {
+  const f = await mounted(true, true);
+  try {
+    f.showTools();
+    const previous = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
+    f.background();
+    f.foreground();
+    await settle(); await settle();
+    f.readyAtRevision(1);
+    const current = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
+    assert.notEqual(current.scope, previous.scope);
+    await assert.rejects(previous.read(new AbortController().signal, () => undefined), /CANCELLED/);
+    await current.read(new AbortController().signal, () => undefined);
+  } finally { f.dispose(); }
+});
+
+
+test('closing a guardian operation refreshes the visible Smart account without an authority event', async () => {
+  const f = await mounted(true, true);
+  try {
+    const original = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(original.props.smartAccount.isDeployed, false);
+    f.showTools();
+    const tools = find(f.render(), node => node.type === 'RealTools')!;
+    f.completeDeployment();
+    tools.props.onGuardianClose();
+    f.showWallet();
+    const refreshed = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(refreshed.props.smartAccount.isDeployed, true);
+    assert.equal(refreshed.props.onDeploySmartAccount, undefined);
+  } finally { f.dispose(); }
 });
