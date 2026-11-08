@@ -77,7 +77,7 @@ Native onboarding offers wallet creation, phrase restoration and watch-only acco
 
 The native build uses Pali Mobile's public [WalletConnect project ID](https://dashboard.walletconnect.com/). Set `EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID` at build time to select another project. This public client identifier is separate from the Chrome Web Store extension ID.
 
-The current native connection slice supports pasted pairing links, explicit account/network consent, saved sessions, revocation and public account/network requests. Message and transaction signing remain separate implementation work. Transport credentials use the existing protected database, and recovery preserves the connection record. Removing an account atomically retires its grants while preserving unrelated connections.
+The native connection implementation supports pasted links, QR and deep-link entry, explicit account/network consent, saved sessions, revocation, public reads, and software-account message and transaction reviews through shared policy. Remaining dapp methods and native transport qualification are tracked in the parity matrix. Transport credentials use the existing protected database, and recovery preserves the connection record. Removing an account atomically retires its grants while preserving unrelated connections.
 
 ## Shared code and dependencies
 
@@ -89,12 +89,14 @@ The [mobile lockfile](package-lock.json) pins the official npm releases below wi
 
 | Dependency                   | Version |
 | ---------------------------- | ------- |
-| `@sidhujag/sysweb3-keyring`  | 2.1.6   |
+| `@sidhujag/sysweb3-keyring`  | 2.1.7   |
 | `@sidhujag/sysweb3-network`  | 2.0.0   |
 | `syscoinjs-lib`              | 2.0.0   |
 | `syscointx-js`               | 2.0.0   |
 | `react-native-quick-crypto`  | 1.1.9   |
 | `react-native-nitro-modules` | 0.37.2  |
+
+The reviewed Keyring patch adds the shared native-host and hardware-handoff changes pending an official release containing them. Its exact source and manifest hashes are recorded in `package.json`; the [shared-core audit](docs/shared-core-audit.md) tracks adoption.
 
 QuickCrypto uses its native scheduler. Crypto, Buffer and stream adapters support the native dependency graph. Unsupported Node transports fail closed. The lockfile also pins the reviewed tooling overrides, including `glob` 14.0.3 and `minimatch` 11.0.4.
 
