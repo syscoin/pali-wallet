@@ -1,3 +1,4 @@
+import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
 import * as passwordPolicy from '../src/custody/password.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -239,17 +240,33 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
-async function walletFeedbackFixture() {
+async function walletFeedbackFixture(deviceUnlock = false, empty = false) {
   const root = setup();
   let state: { phase: string; revision: number; presence: string; backup: string; account: null; error: string | null } =
-    { phase: 'locked', revision: 1, presence: 'existing', backup: 'confirmed', account: null, error: null };
+    { phase: empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: null, error: null };
   let observer: (snapshot: typeof state) => void = () => {};
   let nextError: string | null = null;
+  let releasePrompt!: () => void;
+  let locks = 0;
+  const enrollments: { enabled: boolean; password: string }[] = [];
+  const authentication = new DeviceUnlockPrompt({
+    state: () => root.native.AppState.currentState,
+    subscribe(listener) { const subscription = root.native.AppState.addEventListener('change', listener); return () => subscription.remove(); },
+  });
   const publish = (patch: Partial<typeof state>) => { state = { ...state, ...patch }; observer(state); };
   const controllers = {
+    ...(deviceUnlock ? { authentication } : {}),
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
-      lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; },
+      async getDeviceUnlockStatus() { return { available: true, enabled: !empty }; },
+      async create() { publish({ phase: 'backup-required', presence: 'existing', backup: 'unconfirmed' }); },
+      async setDeviceUnlock(enabled: boolean, password: string, check: () => void) { check(); enrollments.push({ enabled, password }); },
+      async unlockWithDevice(check: () => void) {
+        check(); publish({ phase: 'authenticating', error: null });
+        await authentication.run(() => new Promise<void>(resolve => { releasePrompt = resolve; }));
+        check(); publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
+      },
+      lock() { if (deviceUnlock) { locks++; publish({ phase: 'locked' }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
@@ -291,8 +308,62 @@ async function walletFeedbackFixture() {
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, dispose: root.dispose };
+  return { render, unlock, publish, dispose: root.dispose, emit: root.emit, releasePrompt: () => releasePrompt(), enrollments, get locks() { return locks; } };
 }
+
+test('password setup makes biometric enrollment an explicit optional choice', async () => {
+  for (const enable of [false, true]) {
+    const f = await walletFeedbackFixture(true, true);
+    try {
+      press(button(f.render(), 'Create a wallet'));
+      let tree = f.render();
+      const choice = all(tree).find(node => node.props.accessibilityLabel === 'Use biometric unlock'); assert(choice);
+      assert.equal(choice.props.value, false);
+      if (enable) (choice.props.onValueChange as (value: boolean) => void)(true);
+      for (const label of ['New password', 'Confirm password']) {
+        const input = all(tree).find(node => node.props.label === label); assert(input);
+        (input.props.onChange as (value: string) => void)('Public fixture password 1!');
+      }
+      tree = f.render(); press(button(tree, 'Create wallet'));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.deepEqual(f.enrollments, enable ? [{ enabled: true, password: 'Public fixture password 1!' }] : []);
+    } finally { f.dispose(); }
+  }
+});
+
+test('native wallet keeps password fallback and admits only its active biometric prompt interruption', async () => {
+  const f = await walletFeedbackFixture(true);
+  try {
+    let tree = f.render();
+    assert(button(tree, 'Unlock wallet'));
+    press(button(tree, 'Unlock with biometrics'));
+    await new Promise(resolve => setImmediate(resolve));
+    f.emit('change', 'inactive'); f.render();
+    assert.equal(f.locks, 0);
+    f.releasePrompt(); await new Promise(resolve => setImmediate(resolve));
+    assert.match(text(f.render()), /Unlocking your wallet/);
+    f.emit('change', 'active'); await new Promise(resolve => setImmediate(resolve));
+    tree = f.render();
+    assert.ok(all(tree).some(node => node.props.label === 'Confirm your password'));
+    f.emit('blur'); f.render();
+    assert.equal(f.locks, 1);
+  } finally { f.dispose(); }
+});
+
+test('native wallet background revokes a pending biometric prompt', async () => {
+  const f = await walletFeedbackFixture(true);
+  try {
+    press(button(f.render(), 'Unlock with biometrics'));
+    await new Promise(resolve => setImmediate(resolve));
+    f.emit('change', 'background'); f.render();
+    assert.equal(f.locks, 1);
+    f.emit('change', 'active'); f.releasePrompt();
+    await new Promise(resolve => setImmediate(resolve));
+    const tree = f.render();
+    assert(button(tree, 'Unlock wallet'));
+    assert.equal(all(tree).some(node => node.props.label === 'Confirm your password'), false);
+  } finally { f.dispose(); }
+});
 
 for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`wallet fallback renders one alert for duplicate ${code}, preserves distinct failures and clears on retry`, async () => {
   const f = await walletFeedbackFixture();

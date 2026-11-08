@@ -32,7 +32,8 @@ export type CustodyErrorCode =
   | 'ACCOUNT_LIMIT'
   | 'ACCOUNT_NOT_REMOVABLE'
   | 'PENDING_TRANSFER'
-  | 'DUPLICATE_ACCOUNT';
+  | 'DUPLICATE_ACCOUNT'
+  | 'DEVICE_UNLOCK_UNAVAILABLE';
 
 /** Explicit host errors; untyped SDK errors must never supply UI classifications. */
 export class CustodyRuntimeError extends Error {
@@ -61,6 +62,12 @@ export interface CustodyRuntime {
   readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
   readonly security?: { reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void> };
+  readonly deviceUnlock?: {
+    status(): Promise<Readonly<{ available: boolean; enabled: boolean }>>;
+    enroll(password: string, assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
+    disable(password: string, assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
+    unlock(assertCurrent: () => void): Promise<Readonly<{ authenticated: boolean }>>;
+  };
   readonly session: {
     createWallet(password: string): Promise<void>;
     importWallet(phrase: string, password: string): Promise<void>;

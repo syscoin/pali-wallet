@@ -29,7 +29,7 @@
       [
         "expo-secure-store",
         {
-          "faceIDPermission": false
+          "faceIDPermission": "Allow Pali to unlock your wallet with Face ID."
         }
       ],
       "./plugins/withMobileSafety.cjs",

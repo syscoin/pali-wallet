@@ -5,6 +5,7 @@ import { colors, Text } from '../ui';
 /** Static, typed feedback survives the account screen being revoked/unmounted. */
 export function NativeCustodyFeedback({ error }: { error: CustodyErrorCode }) {
   const messages: Partial<Record<CustodyErrorCode, string>> = {
+    DEVICE_UNLOCK_UNAVAILABLE: 'Biometric unlock was not completed. Use your password to unlock.',
     INVALID_CREDENTIAL: 'That password is incorrect. Unlock your wallet to try again.',
     AUTH_THROTTLED: 'Too many incorrect passwords. Wait a few minutes before trying again.',
     INVALID_INPUT: 'The account change is no longer available. Unlock your wallet and try again.',
