@@ -5,7 +5,9 @@
   "main": "index.ts",
   "scripts": {
     "start": "EXPO_NO_TELEMETRY=1 expo start",
+    "preios": "node ../../scripts/prepare-native-private-prover.cjs --app",
     "ios": "EXPO_NO_TELEMETRY=1 expo run:ios",
+    "preandroid": "node ../../scripts/prepare-native-private-prover.cjs --app",
     "android": "EXPO_NO_TELEMETRY=1 expo run:android",
     "web": "EXPO_NO_TELEMETRY=1 expo start --web",
     "build:web": "EXPO_NO_TELEMETRY=1 expo export --platform web",

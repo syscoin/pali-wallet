@@ -74,3 +74,50 @@ test('private proof workflow remains opt-in, exclusive and within existing owned
   assert.equal(workflow.jobs.android.steps.filter(step => step.name === 'Start isolated API 35 emulator').length, 1);
   assert.equal(workflow.jobs.android.steps.find(step => step.name === 'Stop isolated emulator').if, 'always()');
 });
+
+test('ordinary native build hooks package pinned assets without a qualification flag', async () => {
+  const mobile = JSON.parse(fs.readFileSync(path.join(root, 'apps/mobile/package.json'), 'utf8'));
+  for (const platform of ['ios', 'android'])
+    assert.equal(mobile.scripts[`pre${platform}`], 'node ../../scripts/prepare-native-private-prover.cjs --app');
+  const key = Buffer.from('abc');
+  const hash = crypto.createHash('sha256').update(key).digest('hex');
+  for (const status of [0, 1]) {
+    const output = { exports: {} };
+    let directory;
+    let verified = 0;
+    const load = name => {
+      if (name === '../source/utils/privacy/proverArtifacts.ts') return {
+        PRIVACY_PROVING_KEY_URL: 'https://fixed.invalid/pinned-key',
+        PRIVACY_PROVING_KEY_BYTES: 3,
+        PRIVACY_PROVING_KEY_SHA256: hash,
+      };
+      if (name === './apply-keyring-ledger.cjs') return { verifyKeyringLedgerPatch() { verified++; } };
+      if (name === 'node:child_process') return { spawnSync(executable, args, options) {
+        assert.equal(executable, process.execPath);
+        assert.equal(path.basename(args[0]), 'build-native-private-prover.cjs');
+        directory = path.dirname(args[1]);
+        assert(fs.readFileSync(args[1]).equals(key));
+        assert.equal(JSON.parse(fs.readFileSync(args[1] + '.json')).sha256, hash);
+        assert.equal(options.timeout, 120000);
+        return { status };
+      } };
+      return require(name);
+    };
+    runInNewContext(fs.readFileSync(path.join(root, 'scripts/prepare-native-private-prover.cjs'), 'utf8'), {
+      require: load, module: output, Buffer, AbortSignal, __dirname: path.join(root, 'scripts'),
+      process: { argv: [process.execPath, 'prepare-native-private-prover.cjs', '--app'], env: {}, execPath: process.execPath },
+      fetch: async () => {
+        let sent = false;
+        return { ok: true, body: { getReader: () => ({
+          read: async () => sent ? { done: true } : (sent = true, { done: false, value: Buffer.from(key) }),
+          cancel: async () => undefined,
+        }) } };
+      },
+    });
+    if (status === 0) await output.exports.main();
+    else await assert.rejects(output.exports.main(), /PACKAGING_FAILED/);
+    assert.equal(verified, 1);
+    assert(directory);
+    assert.equal(fs.existsSync(directory), false);
+  }
+});
