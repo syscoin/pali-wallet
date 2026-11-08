@@ -18,6 +18,11 @@ import {
   getEffectiveApprovalData,
 } from '../../shared/approval';
 import { parseErc20Decimals } from '../../shared/erc20';
+import {
+  evmDappFeeChoiceMatches,
+  type EvmDappFeeChoiceFields,
+  type EvmDappFeeComparison,
+} from '../../shared/evmDappFeePolicy';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -70,11 +75,6 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
-import {
-  evmDappFeeChoiceMatches,
-  type EvmDappFeeChoiceFields,
-  type EvmDappFeeComparison,
-} from '../../shared/evmDappFeePolicy';
 
 type GenericFeeQuote = Readonly<{
   feeComparison: EvmDappFeeComparison;
@@ -491,7 +491,6 @@ export const SendTransaction = () => {
             }),
       },
     });
-    setAcceptedDappFeeRequest(true);
   };
 
   const handleUseDappFeeRequest = () => {
