@@ -111,5 +111,6 @@ export function createWalletRemovalFixture(
     cancel: flow.cancel.bind(flow),
     dispose: flow.dispose.bind(flow),
     hasVerifiedRemoval: flow.hasVerifiedRemoval.bind(flow),
+    requiresControllerReopen: flow.requiresControllerReopen.bind(flow),
   };
 }

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { assertSupportedEvmFees } from '../../shared/dappTransaction.ts';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -22,7 +23,6 @@ import {
 import { convertBigNumberToString, isMaxUint256 } from 'utils/bigNumberUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { formatMethodName } from 'utils/commonMethodSignatures';
-import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { handleTransactionError } from 'utils/errorHandling';
 import { parseUnits, formatEther } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
