@@ -8953,70 +8953,59 @@ class MainController {
       }
       assertAuthority();
       const { accounts, activeAccount } = store.getState().vault;
-      const shouldUseTargetAccount =
-        targetAccount &&
-        (targetAccount.id !== activeAccount.id ||
-          targetAccount.type !== activeAccount.type);
-      const targetAccountExists = targetAccount
-        ? accounts[targetAccount.type]?.[targetAccount.id]
-        : undefined;
-      if (targetAccount && !targetAccountExists) {
-        throw new Error(
-          `Target account ${targetAccount.type}:${targetAccount.id} was not found`
-        );
-      }
-
-      // sendFormattedTransaction signs with the active keyring account. When a
-      // background flow pays from a local account while a smart account is active,
-      // override only the keyring's state getter for the signing call. Do not
-      // dispatch setActiveAccount here; that briefly changes the visible UI.
+      const selectedAccount = accounts[activeAccount.type]?.[activeAccount.id];
+      const target = targetAccount ?? activeAccount;
+      const targetAccountExists = accounts[target.type]?.[target.id];
+      if (!selectedAccount || !targetAccountExists)
+        throw new Error('EVM signing account is unavailable');
+      const selectedIdentity = {
+        id: activeAccount.id,
+        type: activeAccount.type,
+        expectedAddress: selectedAccount.address,
+      };
+      const targetIdentity = {
+        id: target.id,
+        type: target.type,
+        expectedAddress: targetAccountExists.address,
+      };
       const keyring = this.getActiveKeyring();
-
-      try {
-        if (shouldUseTargetAccount) {
-          keyring.setVaultStateGetter(() => ({
-            ...store.getState().vault,
-            activeAccount: targetAccount,
-          }));
-        }
-        // No asynchronous work may intervene between this check and the
-        // keyring's synchronous capture of the account and network.
-        const assertBeforeSign = () => {
-          assertAuthority();
-          assertSynchronous(saveOptions?.assertBeforeSign);
-        };
-        assertBeforeSign();
-        submissionStarted = true;
-        const ethereum = controller.wallet.ethereumTransaction;
-        const sending = nativeTransaction
-          ? ethereum.sendFormattedTransaction(nativeTransaction, isLegacy, {
+      // No asynchronous work may intervene between this check and the
+      // keyring's synchronous capture of the account and network.
+      const assertBeforeSign = () => {
+        assertAuthority();
+        assertSynchronous(saveOptions?.assertBeforeSign);
+      };
+      assertBeforeSign();
+      submissionStarted = true;
+      const ethereum = keyring.ethereumTransaction;
+      const sending = nativeTransaction
+        ? ethereum.sendFormattedTransaction(nativeTransaction, isLegacy, {
+            assertCurrent: assertBeforeSign,
+            selectedAccount: selectedIdentity,
+            targetAccount: targetIdentity,
+            mode: 'reviewed-native',
+            walletNonce,
+          })
+        : ethereum.sendFormattedTransaction(
+            expectedContext
+              ? {
+                  ...params,
+                  chainId: expectedContext.chainId,
+                  from: expectedContext.account.address,
+                }
+              : walletNonce
+              ? { ...params, nonce: walletNonce.nonce }
+              : params,
+            isLegacy,
+            {
               assertCurrent: assertBeforeSign,
-              mode: 'reviewed-native',
-              walletNonce,
-            })
-          : ethereum.sendFormattedTransaction(
-              expectedContext
-                ? {
-                    ...params,
-                    chainId: expectedContext.chainId,
-                    from: expectedContext.account.address,
-                  }
-                : walletNonce
-                ? { ...params, nonce: walletNonce.nonce }
-                : params,
-              isLegacy,
-              {
-                assertCurrent: assertBeforeSign,
-                mode: 'specialized',
-                ...(walletNonce && { walletNonce }),
-              }
-            );
-        txResponse = (await sending) as unknown as IEvmTransactionResponse;
-      } finally {
-        if (shouldUseTargetAccount) {
-          keyring.setVaultStateGetter(readKeyringVaultState);
-        }
-      }
+              selectedAccount: selectedIdentity,
+              targetAccount: targetIdentity,
+              mode: 'specialized',
+              ...(walletNonce && { walletNonce }),
+            }
+          );
+      txResponse = (await sending) as unknown as IEvmTransactionResponse;
 
       // Preserve a deployment's acknowledged hash independently of whichever
       // wallet/network the UI selects while the broadcast is in flight.
@@ -9120,28 +9109,24 @@ class MainController {
       );
     }
 
-    const shouldUseTargetAccount =
-      targetAccount.id !== activeAccount.id ||
-      targetAccount.type !== activeAccount.type;
+    const selected = accounts[activeAccount.type]?.[activeAccount.id];
+    if (!selected) throw new Error('Selected account is unavailable');
     const keyring = this.getActiveKeyring();
-    try {
-      if (shouldUseTargetAccount) {
-        keyring.setVaultStateGetter(() => ({
-          ...store.getState().vault,
-          activeAccount: targetAccount,
-        }));
-      }
-
-      assertContext();
-      const signature =
-        await getController().wallet.ethereumTransaction.ethSign(params);
-      assertContext();
-      return signature;
-    } finally {
-      if (shouldUseTargetAccount) {
-        keyring.setVaultStateGetter(readKeyringVaultState);
-      }
-    }
+    const signature = await keyring.ethereumTransaction.ethSign(params, {
+      selectedAccount: {
+        id: activeAccount.id,
+        type: activeAccount.type,
+        expectedAddress: selected.address,
+      },
+      targetAccount: {
+        id: targetAccount.id,
+        type: targetAccount.type,
+        expectedAddress: targetAccountExists.address,
+      },
+      assertCurrent: assertContext,
+    });
+    assertContext();
+    return signature;
   }
 
   public getWalletSessionGeneration(): number {

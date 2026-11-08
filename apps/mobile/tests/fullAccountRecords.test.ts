@@ -219,7 +219,7 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
         maxFeePerGas: '2',
         maxPriorityFeePerGas: '1',
       },
-      () => undefined
+      { assertCurrent: () => undefined, signal: new AbortController().signal }
     );
     assert.equal(Transaction.from(signed.rawTransaction).from, second.address);
     assert.equal(
@@ -248,7 +248,7 @@ test('an actual SDK HD4096 record survives nonactive cold loading, selection and
     assert(f.authority.getCatalogue()!.accounts.some((row) => row.id === 'hd:60:4096'));
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
     await f.execute({kind: 'select', id: 'hd:60:4096'});
-    const signed = await f.runtime.transfers!.sign({type: 2, accessList: [], from: account.address, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1'}, () => undefined);
+    const signed = await f.runtime.transfers!.sign({type: 2, accessList: [], from: account.address, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1'}, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(Transaction.from(signed.rawTransaction).from, account.address);
     const current = f.authority.getCatalogue()!;
     const secret = await f.runtime.keyExport!.readSelected({ authorityRevision: f.authority.getSnapshot().revision, catalogueRevision: current.revision,

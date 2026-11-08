@@ -284,7 +284,7 @@ export function createNativeWalletControllers() {
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
       async transition() { throw Error('Fixture does not submit signatures'); } }; },
     assertUnlocked(guard) { guard(); },
-    async sign(_transaction, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
+    async sign(_transaction, authority) { audit.signs++; events.push('sign:start'); await signGate(); authority.assertCurrent(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
   const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fixtureFetch }) });
   latestTransfers = transfers;

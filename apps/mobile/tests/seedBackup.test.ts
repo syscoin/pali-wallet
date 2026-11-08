@@ -19,7 +19,7 @@ async function fixture() {
   let fingerprint = 'wallet-one';
   let confirms = 0;
   const runtime: KeyringRuntime = {
-    ledger: { async scan() { throw new Error('Hardware is outside this fixture'); } },
+    ledger: { isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
     catalogue: { getSnapshot: () => null },
     async openConnectionHost() { throw new Error('Connections are outside this fixture'); },
     async resetActivity() { throw new Error('Activity is outside this fixture'); },

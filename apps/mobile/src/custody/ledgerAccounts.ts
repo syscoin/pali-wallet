@@ -23,24 +23,38 @@ export type NativeLedgerSnapshot = Readonly<{
 }>;
 
 /** Public account-import controls. Device handles cannot sign or export keys. */
-export interface NativeLedgerView {
+interface NativeLedgerViewBase {
   getSnapshot(): NativeLedgerSnapshot;
   subscribe(listener: () => void): () => void;
   start(): Promise<void>;
   select(id: string): Promise<void>;
-  importAccount(label: string): Promise<void>;
   close(): Promise<void>;
 }
+export interface NativeLedgerImportView extends NativeLedgerViewBase {
+  readonly purpose: 'import';
+  importAccount(label: string): Promise<void>;
+}
+export interface NativeLedgerConnectionView extends NativeLedgerViewBase {
+  readonly purpose: 'connect';
+  isConnected(): boolean;
+  finishConnection(): Promise<void>;
+}
+export type NativeLedgerView =
+  | NativeLedgerImportView
+  | NativeLedgerConnectionView;
 
 /** Private picker capability. Raw device handles remain with the runtime. */
 export interface NativeLedgerRuntime {
+  isConnected(): boolean;
   scan(
+    request: Readonly<{ purpose: 'import' | 'connect' }>,
     signal: AbortSignal,
     assertCurrent: () => void,
     onDevices: (devices: readonly NativeLedgerDevice[]) => void,
     onError: (error: unknown) => void
   ): Promise<{
     select(id: string): Promise<Readonly<{ name: string; address: string }>>;
+    handoff(): void;
     close(): Promise<void>;
   }>;
 }
@@ -73,7 +87,7 @@ const empty = (): NativeLedgerSnapshot =>
     error: null,
   });
 
-export class NativeLedgerAccounts implements NativeLedgerView {
+export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
   private snapshot = empty();
   private disposed = false;
   private session: Session | undefined;
@@ -83,10 +97,13 @@ export class NativeLedgerAccounts implements NativeLedgerView {
 
   private readonly authority: LedgerAuthority;
   private readonly runtime: () => NativeLedgerRuntime | undefined;
+  readonly purpose: Purpose;
   constructor(
     authority: LedgerAuthority,
-    runtime: () => NativeLedgerRuntime | undefined
+    runtime: () => NativeLedgerRuntime | undefined,
+    purpose: Purpose
   ) {
+    this.purpose = purpose;
     this.authority = authority;
     this.runtime = runtime;
     this.unsubscribe = authority.subscribe((value) => {
@@ -103,6 +120,10 @@ export class NativeLedgerAccounts implements NativeLedgerView {
   }
 
   getSnapshot = () => this.snapshot;
+  isConnected = () =>
+    !this.disposed &&
+    this.purpose === 'connect' &&
+    this.runtime()?.isConnected() === true;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
@@ -169,10 +190,17 @@ export class NativeLedgerAccounts implements NativeLedgerView {
       phase: 'scanning',
       networkId,
       networkLabel: network?.name ?? 'Selected network',
+      address:
+        this.purpose === 'connect'
+          ? catalogue.accounts.find(
+              (account) => account.id === catalogue.active.accountId
+            )?.address ?? null
+          : null,
     });
     try {
       session.opening = Promise.resolve().then(() =>
         runtime.scan(
+          { purpose: this.purpose },
           session.controller.signal,
           () => this.check(session),
           (devices) => {
@@ -223,8 +251,23 @@ export class NativeLedgerAccounts implements NativeLedgerView {
       throw error;
     }
   }
+  async finishConnection() {
+    this.assertActive();
+    const session = this.session;
+    if (
+      this.purpose !== 'connect' ||
+      !session?.scan ||
+      this.snapshot.phase !== 'connected'
+    )
+      throw new Error('NOT_READY');
+    this.check(session);
+    session.scan.handoff();
+    await this.close();
+    if (!this.isConnected()) throw new Error('CANCELLED');
+  }
   async importAccount(label: string) {
     this.assertActive();
+    if (this.purpose !== 'import') throw new Error('NOT_READY');
     const session = this.session;
     if (!session || this.snapshot.phase !== 'connected')
       throw new Error('NOT_READY');

@@ -13,11 +13,12 @@ const deferred = <T>() => {
   });
   return { promise, resolve };
 };
-function fixture() {
+function fixture(purpose: 'import' | 'connect' = 'import') {
   let state = { phase: 'ready', revision: 1 };
   const catalogue = {
     revision: 2,
-    active: { networkId: 'ethereum' },
+    active: { networkId: 'ethereum', accountId: 'ledger:60:0' },
+    accounts: [{ id: 'ledger:60:0', address: '0x' + '11'.repeat(20) }],
     networks: [{ id: 'ethereum', name: 'Ethereum' }],
     utxoNetworks: [],
   };
@@ -36,7 +37,8 @@ function fixture() {
   let scanError: ((error: unknown) => void) | undefined;
   let signal: AbortSignal | undefined;
   let cancelled = false,
-    failSelect = false;
+    failSelect = false,
+    connected = false;
   const authority = {
     getSnapshot: () => state,
     getCatalogue: () => catalogue,
@@ -56,7 +58,10 @@ function fixture() {
     },
   } as unknown as NativeCustodyAuthority;
   const runtime: NativeLedgerRuntime = {
-    async scan(ownerSignal, check, onDevices, onError) {
+    isConnected: () => connected,
+    async scan(request, ownerSignal, check, onDevices, onError) {
+      assert.equal(request.purpose, purpose);
+      let handedOff = false;
       scanCount++;
       scanError = onError;
       signal = ownerSignal;
@@ -72,14 +77,20 @@ function fixture() {
           if (failSelect) throw Error('Device disconnected');
           return { name: 'Ledger', address: '0x' + '11'.repeat(20) };
         },
+        handoff() {
+          check();
+          handedOff = true;
+          connected = true;
+        },
         async close() {
+          if (!handedOff) connected = false;
           closeCount++;
           await closeWait;
         },
       };
     },
   };
-  const view = new NativeLedgerAccounts(authority, () => runtime);
+  const view = new NativeLedgerAccounts(authority, () => runtime, purpose);
   return {
     view,
     publish,
@@ -307,4 +318,40 @@ test('terminal disposal retires a restart waiting for previous native cleanup', 
   await disposed;
   await assert.rejects(restarting, /CANCELLED/);
   assert.equal(f.scanCount, 1);
+});
+
+test('connection requires explicit finish and does not import an account', async () => {
+  const f = fixture('connect');
+  await f.view.start();
+  assert.equal(f.view.getSnapshot().address, '0x' + '11'.repeat(20));
+  assert.equal(f.view.isConnected(), false);
+  await assert.rejects(f.view.importAccount('Unexpected'), /NOT_READY/);
+  await assert.rejects(f.view.finishConnection(), /NOT_READY/);
+  await f.view.select('1:0');
+  assert.equal(f.view.isConnected(), false);
+  await f.view.finishConnection();
+  assert.equal(f.view.getSnapshot().phase, 'idle');
+  assert.equal(f.view.isConnected(), true);
+  assert.equal(f.imports, 0);
+  await f.view.dispose();
+});
+
+test('closing an unfinished connection never transfers its device', async () => {
+  const f = fixture('connect');
+  await f.view.start();
+  await f.view.select('1:0');
+  await f.view.close();
+  assert.equal(f.view.isConnected(), false);
+  await assert.rejects(f.view.finishConnection(), /NOT_READY/);
+  await f.view.dispose();
+});
+
+test('a scope change invalidates a selected connection before finish', async () => {
+  const f = fixture('connect');
+  await f.view.start();
+  await f.view.select('1:0');
+  f.publish('locked');
+  await assert.rejects(f.view.finishConnection(), /NOT_READY/);
+  assert.equal(f.view.isConnected(), false);
+  await f.view.dispose();
 });

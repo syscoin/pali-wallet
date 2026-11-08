@@ -100,7 +100,7 @@ export interface NativeTransferRuntime {
     rawTransaction: string,
     hash: string,
     assertCurrent: () => void,
-    broadcast: EvmSignedBroadcast<string>,
+    transport: Readonly<{ broadcast: EvmSignedBroadcast<string>; verifyChain(): Promise<void> }>,
     intent: NativeAssetTransferIntent | undefined,
     approved: EvmUnsignedTransfer,
     replacement?: NativeReplacementApproval,
@@ -108,7 +108,7 @@ export interface NativeTransferRuntime {
   ): Promise<void>;
   sign(
     transaction: EvmUnsignedTransfer,
-    assertCurrent: () => void,
+    authority: Readonly<{ assertCurrent(): void; signal: AbortSignal }>,
     intent?: NativeAssetTransferIntent,
     replacement?: NativeReplacementApproval
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
@@ -988,7 +988,7 @@ export class NativeTransfers {
         const signed = await this.runSecretOperation(() =>
           runtime.sign(
             approved.transaction!,
-            guard,
+            { assertCurrent: guard, signal },
             intent,
             replacement
           )
@@ -1029,7 +1029,8 @@ export class NativeTransfers {
           rawTransaction,
           transactionHash,
           guard,
-          ({ rawTransaction: approvedBytes, admit }) => {
+          { verifyChain: () => rpc.verifyChain(signal, guard),
+          broadcast: ({ rawTransaction: approvedBytes, admit }) => {
             if (collectible) {
               if (!freshCollectible) throw new NativeTransferError('EXPIRED');
               return rpc.broadcast(approvedBytes, transactionHash, signal, {
@@ -1057,7 +1058,7 @@ export class NativeTransfers {
               assertDispatchAdmission: assertDispatchAdmission!,
               admit: atDispatch,
             });
-          },
+          } },
           intent,
           approved.transaction!,
           approved.replacement,

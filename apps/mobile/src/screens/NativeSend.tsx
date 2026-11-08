@@ -1,3 +1,5 @@
+import { NativeLedgerConnectionModal } from './NativeLedger';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import React, {
   useCallback,
@@ -164,8 +166,10 @@ export function NativeSend({
   savedHash,
   replacement,
   recipientPicker,
+  ledgerConnection,
 }: {
   controller: NativeTransferView;
+  ledgerConnection?: NativeLedgerConnectionView;
   onBack(): void;
   accountLabel?: string;
   token?: Erc20Metadata;
@@ -179,6 +183,12 @@ export function NativeSend({
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
     () => controller.getSnapshot()
+  );
+  const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
+  const ledgerReady = useSyncExternalStore(
+    (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
+    () => ledgerConnection?.isConnected() ?? true,
+    () => false,
   );
   const draftCollectible = savedHash || token ? undefined : collectible;
   const initialAmount = draftCollectible?.tokenStandard === 'ERC-1155' ? '1' : '';
@@ -370,7 +380,7 @@ export function NativeSend({
     if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
   }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
   const submit = () => {
-    if (!review || busy) return;
+    if (!review || busy || !review.retry && ledgerConnection && !ledgerConnection.isConnected()) return;
     Keyboard.dismiss();
     void run(() => controller.confirm(review.id));
   };
@@ -568,9 +578,13 @@ export function NativeSend({
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
               </Text>}
+              {ledgerConnection && !review.retry && !ledgerReady && <Button
+                title="Connect Ledger" disabled={busy}
+                onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
+              />}
               <Button
                 title={reviewCancellation ? 'Submit cancellation' : review.replacement ? 'Submit Speed Up' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
-                disabled={busy}
+                disabled={busy || !review.retry && !ledgerReady}
                 onPress={submit}
                 testID="native-send-confirm"
               />
@@ -804,6 +818,11 @@ export function NativeSend({
           </Text>
         </Screen>
       </KeyboardAvoidingView>
+      {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
+        controller={ledgerPicker}
+        onClose={() => setLedgerPicker(null)}
+        onFinished={() => setLedgerPicker(null)}
+      />}
       <Modal
         visible={promptMatches(snapshot)}
         transparent

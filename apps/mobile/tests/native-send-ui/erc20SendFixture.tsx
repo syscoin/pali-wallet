@@ -179,7 +179,8 @@ const runtime: NativeTransferRuntime = {
     guard();
     unlockChecks++;
   },
-  async sign(transaction: EvmUnsignedTransfer, guard, intent) {
+  async sign(transaction: EvmUnsignedTransfer, authority, intent) {
+    const guard = authority.assertCurrent;
     guard();
     assertTransferIntentEnvelope(transaction, intent);
     const rawTransaction = await wallet.signTransaction({

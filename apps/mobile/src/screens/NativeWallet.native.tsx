@@ -39,7 +39,7 @@ import { createNativeNetworkView, type NativeNetworkView } from '../custody/netw
 import { getNativeNetwork, getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
 import { NativeLedger } from './NativeLedger';
-import type { NativeLedgerView } from '../custody/ledgerAccounts';
+import type { NativeLedgerConnectionView, NativeLedgerImportView } from '../custody/ledgerAccounts';
 import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
 import { UtxoActivityScreen } from './UtxoActivityScreen';
@@ -121,7 +121,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [recoveryOutcome, setRecoveryOutcome] = useState<RecoveryOutcome | null>(savedRecoveryOutcome);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
   const [balanceReader, setBalanceReader] = useState<Controllers['balanceReader'] | null>(null);
-  const [ledgerView, setLedgerView] = useState<NativeLedgerView | null>(null);
+  const [ledgerView, setLedgerView] = useState<NativeLedgerImportView | null>(null);
+  const [ledgerConnection, setLedgerConnection] = useState<NativeLedgerConnectionView | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
   const [connectionView, setConnectionView] = useState<Controllers['connections'] | null>(null);
   const [connectionSnapshot, setConnectionSnapshot] = useState<NativeConnectionsSnapshot | null>(null);
@@ -201,8 +202,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const utxo = findUtxoNetwork(snapshot.account?.network, catalogue?.utxoNetworks);
   const selectedCatalogueAccount = catalogue?.accounts.find(account => account.id === catalogue.active.accountId);
   const selectedAccountType = selectedCatalogueAccount?.type;
-  const canSign = !!snapshot.account && (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported') && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
-  const canSendUtxo = (selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported') && !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
+  const hasSigningAccount = selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection;
+  const canSign = !!snapshot.account && hasSigningAccount && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
+  const canSendUtxo = hasSigningAccount && !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
   const canSendSpt = canSendUtxo && !!utxo && supportsSptUtxoChain(utxo.chainId);
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
@@ -308,7 +310,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' ? 'choose' : current);
     }
     setCanRemoveWallet(false);
-    setPublicSource(null); setBalanceReader(null); setAccountView(null); setLedgerView(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -334,7 +336,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }
       if (nextCatalogue) selectedNative.current?.(nextCatalogue.active.accountId);
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
-      setLedgerView(local.ledger);
+      setLedgerView(local.ledger); setLedgerConnection(local.ledgerConnection);
       const removal = removalRef.current;
       if (removal?.local === local && removal.phase === 'reviewing' && state !== removal.authority) {
         local.removal.cancel(); removalRef.current = null; setRemovalScope(null); setStage('choose');
@@ -604,7 +606,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase))
-    return <NativeLedger controller={ledgerView} onBack={() => setStage('manage-hd')} onImported={() => {
+    return <NativeLedger controller={ledgerView} onBack={() => setStage('manage-hd')} onFinished={() => {
       rootOrigin.current = null; setStage('choose');
     }} />;
   if (stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
@@ -748,6 +750,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
   else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
+    ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
     recipientPicker={sendDraft?.recipientPicker}
     token={sendTarget.kind === 'token' ? sendTarget.token : undefined}
@@ -757,6 +760,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt) && utxo && canSendUtxo && openUtxoSend)
     return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend}
+      ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
       asset={sendTarget.kind === 'spt' ? SYSX_SEND_ASSET : undefined} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');

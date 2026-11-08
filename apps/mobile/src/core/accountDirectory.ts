@@ -6,7 +6,7 @@ import type { PublicAccount } from './types.ts';
 export type AccountSelection = Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger'; id: string } | { kind: 'watch'; id: string }>;
 type PublicIdentity = Readonly<{ identity: string; name: string; address: string }>;
 export type AccountEntry = PublicIdentity & (
-  | Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger'; selection: Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger'; id: string }>; capabilities: Readonly<{ receive: true; signing: 'native-unlock-required' | 'unavailable'; recovery: 'native-unlock-required' }> }>
+  | Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger'; selection: Readonly<{ kind: 'hd' | 'imported' | 'smart' | 'ledger'; id: string }>; capabilities: Readonly<{ receive: true; signing: 'native-unlock-required' | 'hardware-connection-required' | 'unavailable'; recovery: 'native-unlock-required' }> }>
   | Readonly<{ kind: 'watch'; selection: Readonly<{ kind: 'watch'; id: string }>; capabilities: Readonly<{ receive: true; signing: 'unavailable'; recovery: 'unavailable' }> }>
 );
 export function accountIdentity(selection: AccountSelection): string {
@@ -17,7 +17,7 @@ export function projectAccounts(catalogue: NativeWalletCatalogueSnapshot | null,
     ...(catalogue?.accounts ?? []).map((account): AccountEntry => Object.freeze({
       kind: nativeAccountSelection(account.id).kind, identity: accountIdentity(nativeAccountSelection(account.id)), selection: nativeAccountSelection(account.id),
       name: account.label, address: account.address,
-      capabilities: Object.freeze({ receive: true, signing: ['HDAccount', 'Imported'].includes(account.type) && account.slip44 === 60 ? 'native-unlock-required' : 'unavailable', recovery: 'native-unlock-required' }),
+      capabilities: Object.freeze({ receive: true, signing: account.type === 'Ledger' ? 'hardware-connection-required' : ['HDAccount', 'Imported'].includes(account.type) && account.slip44 === 60 ? 'native-unlock-required' : 'unavailable', recovery: 'native-unlock-required' }),
     })),
     ...accounts.map((account): AccountEntry => Object.freeze({
       kind: 'watch', identity: accountIdentity({ kind: 'watch', id: account.id }), selection: Object.freeze({ kind: 'watch', id: account.id }),

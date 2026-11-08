@@ -157,7 +157,19 @@ describe('smart-account owner signing intent', () => {
           ecdsa: {
             localOwners: [{ address: owner.address, id: 0, type: ownerType }],
             signActionHash: ({ actionHash }) =>
-              signer.ethSign([owner.address, actionHash]),
+              signer.ethSign([owner.address, actionHash], {
+                selectedAccount: {
+                  id: 0,
+                  type: ownerType,
+                  expectedAddress: owner.address,
+                },
+                targetAccount: {
+                  id: 0,
+                  type: ownerType,
+                  expectedAddress: owner.address,
+                },
+                assertCurrent: () => undefined,
+              }),
           },
         },
         smartAccount: metadata as any,

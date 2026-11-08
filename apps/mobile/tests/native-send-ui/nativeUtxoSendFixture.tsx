@@ -1,4 +1,5 @@
 import React from 'react';
+import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 
 import { parseDecimalAmount } from '../../src/core/amounts';
 import { getUtxoNetwork } from '../../src/core/utxoNetworks';
@@ -10,6 +11,10 @@ import type { NativeUtxoSend } from '../../src/custody/utxoSend';
 const network = getUtxoNetwork('bitcoin');
 const recipient = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 const txid = 'a'.repeat(64);
+const ledgerConnection = new URLSearchParams(window.location.search).has('ledger-send') ? createLedgerConnectionFixture(recipient) : undefined;
+let confirmations = 0, opens = 0, expired = false;
+window.__nativeUtxoLedgerFixture = { confirmations: () => confirmations, opens: () => opens, expire: () => { expired = true; } };
+declare global { interface Window { __nativeUtxoLedgerFixture: { confirmations(): number; opens(): number; expire(): void; }; } }
 const request = {
   feeSatoshis: '452',
   outputs: [
@@ -19,6 +24,7 @@ const request = {
 };
 
 async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
+  opens++;
   const options = new URLSearchParams(window.location.search);
   const expireAfterSave = options.has('saved-before-expiry');
   let saved = !expireAfterSave;
@@ -58,6 +64,8 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
     },
     async confirm() {
       assertCurrent();
+      if (expired) throw new CustodyRuntimeError('CANCELLED');
+          confirmations++;
       saved = true;
       if (expireAfterSave) throw new CustodyRuntimeError('CANCELLED');
       seen = true;
@@ -69,6 +77,7 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
 export function NativeUtxoSendFixture() {
   return (
     <NativeUtxoSendScreen
+      ledgerConnection={ledgerConnection}
       accountLabel="Account 1"
       network={network}
       open={open}
