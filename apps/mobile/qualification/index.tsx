@@ -401,10 +401,12 @@ function QualificationApp() {
               'software-sdk-load',
               // Capture only this first dependency evaluation, before any SDK
               // instance, wallet phrase or session can exist. No retry on failure.
-              // eslint-disable-next-line @typescript-eslint/no-require-imports
               () => ({
+                // eslint-disable-next-line @typescript-eslint/no-require-imports -- Capture synchronous native module loading.
                 ...require('@sidhujag/sysweb3-keyring/cjs/software.js'),
+                // eslint-disable-next-line @typescript-eslint/no-require-imports -- Capture synchronous native module loading.
                 HostKeyring: require('@sidhujag/sysweb3-keyring/cjs/host-keyring.js').HostKeyring,
+                // eslint-disable-next-line @typescript-eslint/no-require-imports -- Capture synchronous native module loading.
                 createLedgerHardware: require('@sidhujag/sysweb3-keyring/cjs/ledger-hardware.js').createLedgerHardware,
               }) as import('../src/custody/keyringSdk.ts').NativeKeyringSdk,
               async (text) => {
