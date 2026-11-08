@@ -457,9 +457,10 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           fixture.evmAddresses[0].toLowerCase()
         );
         expect(signed.to?.toLowerCase()).toBe(POOL_ADDRESS);
-        expect(signed.maxFeePerGas).toBe(BigInt(3000000000));
         expect(signed.maxPriorityFeePerGas).toBe(BigInt(1000000000));
         if (decoded?.name === 'deposit') {
+          // Shared fee discovery: 2.5 times the 1-gwei base fee plus a 1-gwei tip.
+          expect(signed.maxFeePerGas).toBe(BigInt(3500000000));
           expect(depositNote).not.toBe('');
           expect(signed.nonce).toBe(7);
           expect(signed.value).toBe(parseEther('1'));
@@ -488,6 +489,7 @@ test('privacy pool preparation verifies local note imports and preserves a good 
           };
         } else {
           expect(decoded?.name).toBe('withdraw');
+          expect(signed.maxFeePerGas).toBe(BigInt(3000000000));
           expect(withdrawalReviewed).toBe(true);
           expect(depositBroadcastAttempts).toBe(1);
           expect(signed.nonce).toBe(8);
@@ -1078,10 +1080,10 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         await expect(detail(en.privacy.deposit.pool)).toHaveText(POOL_ADDRESS);
         await expect(detail(en.privacy.deposit.amount)).toHaveText('1 ETH');
         await expect(detail(en.privacy.deposit.networkFee)).toHaveText(
-          '0.00036 ETH'
+          '0.00042 ETH'
         );
         await expect(detail(en.privacy.deposit.total)).toHaveText(
-          '1.00036 ETH'
+          '1.00042 ETH'
         );
         const confirm = deposit.getByRole('button', {
           name: en.privacy.deposit.confirm,

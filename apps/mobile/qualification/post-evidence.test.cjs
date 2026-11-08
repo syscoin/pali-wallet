@@ -34,3 +34,25 @@ test('map content mismatch, duplicates and unrecognized project paths cannot be 
     const map = fixture(); change(map); assert.throws(() => assertPostMappedSources(map, expected));
   }
 });
+test('native module map paths retain exact contents and project path restrictions', () => {
+  const modules = ['pali-walletconnect-socket/index.ts', 'pali-walletconnect-socket/socket.ts',
+    'pali-private-prover/index.ts', 'pali-private-prover/runner.ts'];
+  const mapped = () => {
+    const map = fixture();
+    for (const module of modules) {
+      map.sources.push(`/modules/${module}`);
+      map.sourcesContent.push(`exact apps/mobile/modules/${module}`);
+    }
+    return map;
+  };
+  assert.equal(assertPostMappedSources(mapped(), expected), POST_REQUIRED_MAPPED_SOURCES.length + modules.length);
+  const index = POST_REQUIRED_MAPPED_SOURCES.length;
+  for (const change of [map => { map.sourcesContent[index] += 'changed'; },
+    map => { map.sources[index + 1] = map.sources[index]; },
+    map => { map.sources[index] = '/modules/../secret'; },
+    map => { map.sources[index] = '/modules-other/index.ts'; },
+    map => { map.sourcesContent[index] = null; }]) {
+    const map = mapped(); change(map);
+    assert.throws(() => assertPostMappedSources(map, expected));
+  }
+});
