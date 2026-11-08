@@ -4,6 +4,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { createSecurityTestFixture } from './idleComponentFixture.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
@@ -55,7 +56,8 @@ async function fixture(existing = true) {
     async readState() { counts.stateReads++; return stored; },
     async close() { counts.closes++; },
   } as unknown as OpenWalletStorage;
-  const runtime: CustodyRuntime = {
+  const runtime: CustodyRuntime & { trezor: { subscribe(): () => void } } = {
+    trezor: { subscribe: () => () => undefined },
     storage: {
       readState: () => storage.readState(), close: () => storage.close(),
       async retireForRecovery() { counts.retirements++; return BINDING; },
@@ -85,6 +87,16 @@ async function fixture(existing = true) {
       },
     },
     '../connections/controller.ts': { NativeConnectionsController: PassiveController },
+    '../hardware/trezorTransport.native': {
+      createNativeTrezorSessions: (options: { randomBytes(length: number): Uint8Array }) => createTrezorSessions({
+        ...options,
+        loadClient: async () => assert.fail('unexpected Trezor SDK load in native factory fixture'),
+        openURL: async () => assert.fail('unexpected Trezor handoff in native factory fixture'),
+      }),
+    },
+    '../crypto/sentryPublicKey.native': {
+      createNativeSentryPublicKeyDeriver: () => () => assert.fail('unexpected Sentry derivation in native factory fixture'),
+    },
     '../custody/ledgerAccounts.ts': { NativeLedgerAccounts: PassiveController },
     '../custody/authority.ts': { NativeCustodyAuthority, CustodyOperationError },
     '../custody/utxoActivity.ts': { createNativeUtxoActivity: () => ({}) },

@@ -345,17 +345,19 @@ test('guardian recovery observes external requests without a local intent and fa
     await wallet.step(
       'retire an in-flight observation after a real account switch',
       async () => {
+        const refresh = page.getByRole('button', {
+          name: en.settings.smartAccountGuardianRefreshStatus,
+          exact: true,
+        });
+        // The previous status stays visible while its refresh finishes. Drain
+        // that read before arming the next read's controlled storage hold.
+        await expect(refresh).toBeEnabled();
         // The delayed reply contains a genuinely pending request, not the
         // expired result from the previous step, so stale UI would be visible.
         fixture.state.scheduledAt = fixture.state.timestamp - 100;
         fixture.state.blockNumber++;
         const held = fixture.holdStorage();
-        await page
-          .getByRole('button', {
-            name: en.settings.smartAccountGuardianRefreshStatus,
-            exact: true,
-          })
-          .click();
+        await refresh.click();
         await held;
         const { hd } = await publicSelection(page);
         // The policy header has no account chooser. Return through ordinary

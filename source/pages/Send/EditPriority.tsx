@@ -666,7 +666,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     <div className="relative">
                       <Input
                         id={`${fieldId}-priority`}
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         placeholder={`${t('send.maxPriorityFee')} (GWEI)`}
                         className="w-full"
                         value={
@@ -738,7 +739,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                     <div className="relative">
                       <Input
                         id={`${fieldId}-maxFee`}
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         placeholder={`${t('send.maxFee')} (GWEI)`}
                         className="w-full"
                         value={
@@ -796,7 +798,8 @@ export const EditPriorityModal = (props: IEditPriorityModalProps) => {
                   <div className="relative">
                     <Input
                       id={`${fieldId}-gasPrice`}
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
                       placeholder={`${t('send.gasPrice')} (GWEI)`}
                       className="w-full"
                       value={

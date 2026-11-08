@@ -449,7 +449,10 @@ beforeEach(async () => {
     ts.ScriptTarget.Latest,
     true
   );
-  const klass = ast.statements.find(ts.isClassDeclaration)!;
+  const klass = ast.statements.find(
+    (item): item is ts.ClassDeclaration =>
+      ts.isClassDeclaration(item) && item.name?.text === 'MainController'
+  )!;
   for (const name of ['setActiveNetworkLogic', 'handleNetworkChangeError']) {
     const declaration = klass.members.find(
       (member) =>

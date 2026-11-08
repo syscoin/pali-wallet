@@ -180,7 +180,10 @@ beforeEach(() => {
     true,
     ts.ScriptKind.TS
   );
-  const cls = parsed.statements.find(ts.isClassDeclaration)!;
+  const cls = parsed.statements.find(
+    (item): item is ts.ClassDeclaration =>
+      ts.isClassDeclaration(item) && item.name?.text === 'MainController'
+  )!;
   for (const name of ['setActiveNetworkLogic', 'handleNetworkChangeError']) {
     const member = cls.members.find(
       (m) => ts.isPropertyDeclaration(m) && m.name?.getText(parsed) === name
