@@ -306,7 +306,9 @@ export async function prepareUtxoSignedBinding(
     !/^0x[0-9a-f]{64}$/.test(scope.profileId) ||
     !Number.isSafeInteger(scope.account.id) ||
     scope.account.id < 0 ||
-    (scope.account.type !== 'HDAccount' && scope.account.type !== 'Imported' && scope.account.type !== 'Ledger') ||
+    (scope.account.type !== 'HDAccount' &&
+      scope.account.type !== 'Imported' &&
+      scope.account.type !== 'Ledger') ||
     !scope.account.address ||
     !scope.account.xpub ||
     scope.network.kind !== 'syscoin' ||

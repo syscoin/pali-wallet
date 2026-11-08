@@ -70,8 +70,16 @@ describe.each(['Ledger', 'Trezor'] as const)(
       sdk.sendFormattedTransaction(params(legacy), legacy, {
         assertCurrent: () => undefined,
         mode: 'specialized',
-        selectedAccount: { id: state.activeAccountId, type: state.activeAccountType, expectedAddress: wallet.address },
-        targetAccount: { id: state.activeAccountId, type: state.activeAccountType, expectedAddress: wallet.address },
+        selectedAccount: {
+          id: state.activeAccountId,
+          type: state.activeAccountType,
+          expectedAddress: wallet.address,
+        },
+        targetAccount: {
+          id: state.activeAccountId,
+          type: state.activeAccountType,
+          expectedAddress: wallet.address,
+        },
       });
     const finishDelay = async () => {
       // Advance only the installed Trezor adapter's documented popup interval.
@@ -467,9 +475,19 @@ describe.each(['Ledger', 'Trezor'] as const)(
       const sending = sdk.sendFormattedTransaction(
         { ...params(), data, gasLimit: '200000' },
         false,
-        { assertCurrent: () => undefined, mode: 'specialized',
-          selectedAccount: { id: state.activeAccountId, type: state.activeAccountType, expectedAddress: wallet.address },
-          targetAccount: { id: state.activeAccountId, type: state.activeAccountType, expectedAddress: wallet.address },
+        {
+          assertCurrent: () => undefined,
+          mode: 'specialized',
+          selectedAccount: {
+            id: state.activeAccountId,
+            type: state.activeAccountType,
+            expectedAddress: wallet.address,
+          },
+          targetAccount: {
+            id: state.activeAccountId,
+            type: state.activeAccountType,
+            expectedAddress: wallet.address,
+          },
         }
       );
       await finishDelay();

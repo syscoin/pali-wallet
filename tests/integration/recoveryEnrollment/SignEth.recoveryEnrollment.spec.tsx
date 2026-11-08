@@ -131,7 +131,11 @@ const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
   if (!Array.isArray(request))
     throw new Error('Expected a bound software signing request');
   const signature = await sdk.ethSign(request, {
-    selectedAccount: { id: 0, type: 'HDAccount', expectedAddress: owner.address },
+    selectedAccount: {
+      id: 0,
+      type: 'HDAccount',
+      expectedAddress: owner.address,
+    },
     targetAccount: { id: 0, type: 'HDAccount', expectedAddress: owner.address },
     assertCurrent: () => mockApproval.assertCurrent(),
   });
