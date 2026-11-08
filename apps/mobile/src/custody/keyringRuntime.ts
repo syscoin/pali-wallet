@@ -1223,17 +1223,6 @@ export function createKeyringRuntimeFactory(
                 assertOwner();
                 return generation;
               },
-              async activateMessageAccount(accountId, assertRequestCurrent) {
-                assertOwner();
-                checkGuard(assertRequestCurrent);
-                if (!keyring.isUnlocked() || !catalogueSnapshot)
-                  throw new KeyringRuntimeError('NOT_READY');
-                const selection = accounts.reserve(
-                  { kind: 'select', id: accountId },
-                  catalogueSnapshot.revision
-                );
-                await selection.execute(assertRequestCurrent);
-              },
               signMessage(input) {
                 assertOwner();
                 const approval = input.approval;

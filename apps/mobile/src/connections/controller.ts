@@ -71,11 +71,13 @@ type PendingMessage = {
   timer: ReturnType<typeof setTimeout>;
   busy: boolean;
   switching: boolean;
+  switchRevision?: number;
   dispatched: boolean;
 };
 const MESSAGE_REVIEW_LIFETIME_MS = 5 * 60_000;
 type Options = {
   source: Source;
+  activateAccount(accountId: string, expectedRevision: number, assertCurrent: () => void): Promise<void>;
   openHost(): Promise<NativeConnectionHost>;
   preparePlatform(): Promise<void>;
   checkSite(origin: string): Promise<Readonly<{ isBlacklisted: boolean }>>;
@@ -848,13 +850,16 @@ export class NativeConnectionsController {
     }
   }
   private messageConnectionCurrent(message: PendingMessage): boolean {
+    const snapshot = this.options.source.getSnapshot();
+    const currentPhase = snapshot.phase === 'ready' ||
+      (message.switching && snapshot.phase === 'authenticating' && snapshot.revision === message.switchRevision);
     const context = this.host?.context();
     const account = context?.accounts.find(
       (entry) => entry.id === message.accountId
     );
     return (
       !this.disposed &&
-      this.options.source.getSnapshot().phase === 'ready' &&
+      currentPhase &&
       context?.networkId === message.networkId &&
       JSON.stringify(context.network) === message.networkFingerprint &&
       account?.address === message.review.address &&
@@ -1242,15 +1247,18 @@ export class NativeConnectionsController {
       )
         failure('CONTEXT_CHANGED');
     };
+    const expectedRevision = this.options.source.getSnapshot().revision;
+    message.switchRevision = expectedRevision + 1;
     message.switching = true;
     message.busy = true;
     message.approval?.dispose();
     this.publish();
     try {
-      await this.host!.activateMessageAccount(message.accountId, guard);
+      await this.options.activateAccount(message.accountId, expectedRevision, guard);
       guard();
       message.approval = this.captureMessageApproval(message);
       message.switching = false;
+      message.switchRevision = undefined;
       message.busy = false;
       this.publish();
     } catch (error) {
