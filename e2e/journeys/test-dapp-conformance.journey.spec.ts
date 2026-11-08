@@ -1676,7 +1676,12 @@ test('official test dapp: isolated standard provider conformance', async () => {
             const popup = await popupFor(wallet.context, page, id);
             if (chooseDappFee) {
               await expect(
-                popup.getByText('Below estimate', { exact: true })
+                popup.getByText(
+                  fee.type === '0x2'
+                    ? enTranslations.send.dappFeeRaisedTitle
+                    : enTranslations.send.feeBelowEstimateTitle,
+                  { exact: true }
+                )
               ).toBeVisible();
               await popup
                 .getByRole('button', {
@@ -1722,6 +1727,11 @@ test('official test dapp: isolated standard provider conformance', async () => {
             );
             expect(transaction.chainId).toBe(LOCAL_CHAINS[0].hexId);
             expect(transaction.type).toBe(fee.type);
+            if (chooseDappFee && fee.type === '0x2') {
+              // The exact typed estimate is 21001, so the original 21000 gas
+              // request must still receive the shared 20% gas-limit buffer.
+              expect(BigInt(transaction.gas)).toBe(BigInt(25202));
+            }
             if ('gasPrice' in fee)
               expect(BigInt(transaction.gasPrice)).toBe(BigInt(fee.gasPrice));
             else {
