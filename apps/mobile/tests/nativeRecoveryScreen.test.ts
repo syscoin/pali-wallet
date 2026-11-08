@@ -10,6 +10,7 @@ import { createIdleComponentFixture } from './idleComponentFixture.ts';
 import { findUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
+import * as networkContext from '../src/custody/networkContext.ts';
 
 type Element = { type: unknown; props: Record<string, unknown>; children: unknown[] };
 type Cell = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
@@ -197,6 +198,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
     connections: { getSnapshot: () => ({ messageReview: null }), subscribe: () => () => {} },
+    removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {}, async readRecoveryInventory() { return inventory; },
   };
@@ -255,6 +257,7 @@ async function walletFeedbackFixture() {
       } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
     connections: { getSnapshot: () => ({ messageReview: null }), subscribe: () => () => {} },
+    removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
   };
@@ -310,4 +313,120 @@ for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`wall
   assert.ok(all(tree).findIndex((node) => node.type === 'NativeCustodyFeedback') < all(tree).findIndex((node) => node.props.label === 'Password'));
   assert.equal(all(tree).filter((node) => node.props.accessibilityRole === 'alert').length, 0);
   f.dispose();
+});
+
+for (const exit of ['back', 'background', 'working-lock'] as const) test(`prepared removal ${exit} replaces the actual wallet parent only after connection drain`, async () => {
+  const root = setup();
+  const events: string[] = [];
+  const address = `0x${'11'.repeat(20)}`;
+  const catalogue = { revision: 1, active: { accountId: 'hd:60:0', networkId: 'ethereum' },
+    accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, address, label: 'Account 1' }],
+    networks: networkContext.NATIVE_NETWORKS, utxoNetworks: [] };
+  let finishDrain!: () => void;
+  const drain = new Promise<void>((resolve) => { finishDrain = resolve; });
+  let finishConfirmation!: () => void;
+  const confirmation = new Promise<void>((resolve) => { finishConfirmation = resolve; });
+  const bundles: ReturnType<typeof createBundle>[] = [];
+  const shell = { tab: 'wallet', immersive: false, navigation: {}, select(tab: string) { this.tab = tab; },
+    goBack() {}, restoreRoot() {}, finishLeave() {} };
+  function createBundle(id: number) {
+    let prepared = false, connectionClosed = false;
+    let state = { phase: 'locked', revision: 1, presence: 'existing', backup: 'confirmed',
+      account: null as { address: string; network: string } | null, error: null };
+    const listeners = new Set<(snapshot: typeof state) => void>();
+    const publish = (phase: string) => {
+      state = { ...state, phase, revision: state.revision + 1,
+        account: phase === 'ready' ? { address, network: 'ethereum' } : null };
+      for (const listener of listeners) listener(state);
+    };
+    const connections = { id, async pair() { assert.equal(connectionClosed, false); },
+      getSnapshot: () => ({ status: 'ready', messageReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} };
+    const bundle = {
+      connections,
+      markPrepared() { prepared = true; },
+      authority: { getSnapshot: () => state, getCatalogue: () => catalogue, supportsAccountManagement: () => false,
+        async initialize() {}, subscribe(listener: (snapshot: typeof state) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+        async unlock() { publish('ready'); }, lock() { publish('locked'); }, async dispose() { events.push(`storage:${id}`); publish('disposed'); } },
+      removal: { requiresControllerReopen: () => prepared, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false,
+        async confirm() { await confirmation; return 'wallet-records-unchanged'; } },
+      accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
+      keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
+      disposeTokens() {}, disposeTransfers() {},
+      async disposeConnections() { connectionClosed = true; events.push(`connections:${id}`); if (id === 1) await drain; },
+    };
+    return bundle;
+  }
+  const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
+  const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
+  const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
+  Object.assign(dependencies, {
+    '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
+    react: root.hook, 'react-native': root.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '../ui': { ...root.ui, Header: 'Header', PaliMark: 'PaliMark' },
+    '../platform/nativeFactory': { createNativeWalletControllers: () => {
+      const bundle = createBundle(bundles.length + 1); bundles.push(bundle); return bundle;
+    }, createNativeRecoveryCoordinator: () => { throw Error('unused'); } },
+    '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
+    '../core/utxoNetworks': { findUtxoNetwork }, '../custody/password': passwordPolicy,
+    '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
+    '../custody/networkContext': networkContext,
+    '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: [{ id: 'ethereum', name: 'Ethereum' }] },
+    './NativePortfolio': { NativePortfolio: 'NativePortfolio' }, './NativeSecurity': { NativeSecurity: 'NativeSecurity' },
+    './NativeWalletRemoval': { NativeWalletRemovalScreen: 'NativeWalletRemovalScreen' },
+    './RealAppShell': { RealAppShell: 'RealAppShell' }, './RealTools': { RealTools: 'RealTools' },
+    '../custody/networkView': { createNativeNetworkView: () => ({}) },
+    './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore }, './useRealShell': { useRealShell: () => shell },
+  });
+  const Root = evaluate(source, dependencies).NativeWalletScreen as (props: object) => Element;
+  const props = { onExit() {}, onWalletRemoved() { assert.fail('Cancellation must preserve the wallet'); } };
+  const render = () => root.renderOwner(Root, props);
+  const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+  const unlock = async () => {
+    let tree = render();
+    const input = all(tree).find((node) => node.props.label === 'Password');
+    assert(input);
+    (input.props.onChange as (value: string) => void)('public test password');
+    tree = render(); press(button(tree, 'Unlock wallet')); await tick();
+    return render();
+  };
+  try {
+    render(); await tick();
+    let tree = await unlock();
+    const portfolio = all(tree).find((node) => node.type === 'NativePortfolio'); assert(portfolio);
+    (portfolio.props.onSecurity as () => void)();
+    tree = render(); assert.equal(tree.type, 'NativeSecurity');
+    (tree.props.onRemoveWallet as () => void)();
+    const removal = render(); assert.equal(removal.type, 'NativeWalletRemovalScreen');
+    bundles[0]!.markPrepared();
+    if (exit === 'working-lock') {
+      const confirming = (removal.props.confirm as (ticket: unknown, check: () => void) => Promise<string>)({}, () => undefined);
+      root.emit('change', 'background'); render(); await tick();
+      assert.deepEqual(events, []);
+      finishConfirmation(); assert.equal(await confirming, 'unchanged'); render();
+      assert.deepEqual(events, []);
+      root.emit('change', 'active'); render();
+      await (removal.props.onContinue as (outcome: string) => Promise<void>)('unchanged');
+    } else if (exit === 'back') (removal.props.onBack as () => void)();
+    else root.emit('change', 'background');
+    render(); await tick();
+    assert.deepEqual(events, ['connections:1']);
+    assert.equal(bundles.length, 1);
+    finishDrain(); await tick();
+    if (exit === 'background') {
+      assert.equal(bundles.length, 1);
+      root.emit('change', 'active'); await tick();
+    }
+    assert.equal(bundles.length, 2);
+    assert.deepEqual(events.slice(0, 2), ['connections:1', 'storage:1']);
+    tree = render(); assert(button(tree, 'Unlock wallet'));
+    await unlock();
+    shell.tab = 'tools'; tree = render();
+    const tools = all(tree).find((node) => node.type === 'RealTools'); assert(tools);
+    assert.equal(tools.props.connections, bundles[1]!.connections);
+    await bundles[1]!.connections.pair();
+    (removal.props.onBack as () => void)(); render(); await tick();
+    assert.equal(bundles.length, 2);
+  } finally {
+    finishConfirmation(); finishDrain(); root.dispose(); await tick();
+  }
 });
