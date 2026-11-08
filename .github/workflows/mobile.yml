@@ -4,6 +4,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - 'scripts/apply-walletconnect-terminal.cjs'
+      - 'scripts/walletconnect-terminal.json'
       - 'apps/mobile/**'
       - 'source/shared/**'
       - 'source/wallet/**'
@@ -85,6 +87,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-walletconnect-terminal.cjs
       - name: Reject moderate and higher dependency advisories
         run: npm audit --audit-level=moderate
       - run: npm run lint
@@ -129,6 +132,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-walletconnect-terminal.cjs
       - name: Build preview
         if: matrix.suite == 'preview'
         run: npm run build:web

@@ -6,6 +6,7 @@ const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const { assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
 const { assertPostReport, postDiagnosticCase } = require('./post-contract.ts');
+const { assertWalletConnectAudit, assertWalletConnectReport } = require('./walletconnect-contract.ts');
 const { assertPostAudit, partialPostAudit } = require('./post-server.cjs');
 const { isAmbiguousCommandFailure } = require('./command-runner.cjs');
 const { ROUTES, HELD_ROUTES } = require('./http-server.cjs');
@@ -41,7 +42,7 @@ function partialAudit(value, token, port) {
   return { counts: { ...value.counts }, invalid: value.invalid, closed: { ...value.closed } };
 }
 
-async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork }) {
+async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork, walletConnectIdentity }) {
   if (!['ios', 'android'].includes(platform) || !/^[0-9a-f]{40}$/.test(sourceRevision || ''))
     throw Error('HTTP_FIXTURE_SOURCE_REQUIRED');
   const lockfileSha256 = createHash('sha256').update(readFileSync(path.join(__dirname, '../package-lock.json'))).digest('hex');
@@ -149,6 +150,16 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       const postReport = JSON.parse(postText);
       assertPostReport(postReport, active);
       if (postReport.sessionId !== sessionId) throw Error('POST_FIXTURE_SESSION_MISMATCH');
+      let walletConnect;
+      if (walletConnectIdentity) {
+        const text = read(`pali-native-walletconnect-${active.token}.json`);
+        if (typeof text !== 'string' || Buffer.byteLength(text) > 4096) throw Error('WALLETCONNECT_NATIVE_REPORT_INVALID');
+        const report = JSON.parse(text);
+        assertWalletConnectReport(report, { ...active, sessionId, candidateIdentity: walletConnectIdentity });
+        const audit = await rpc('inspectWalletConnect', active.token);
+        assertWalletConnectAudit(audit);
+        walletConnect = { report, audit };
+      }
       failedCase = 'host-verification';
       const snapshot = await rpc('snapshotAll', active.token);
       if (!snapshot || Object.keys(snapshot).sort().join(',') !== 'get,post') throw Error('HTTP_FIXTURE_AUDIT_FAILED');
@@ -156,7 +167,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       finalPostAudit = snapshot.post;
       assertAudit(audit, active.token, port);
       assertPostAudit(finalPostAudit, active.token, port);
-      records.push({ nativeHttpQualified: true, report, audit,
+      records.push({ nativeHttpQualified: true, report, audit, ...(walletConnect ? { walletConnect } : {}),
         post: { nativePostQualified: true, report: postReport, audit: finalPostAudit } });
       active = undefined;
       return records.at(-1);

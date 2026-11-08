@@ -1,4 +1,5 @@
 const http = require('node:http');
+const { walletConnectFixture, emptyWalletConnectAudit } = require('./walletconnect-server.cjs');
 const { Buffer } = require('node:buffer');
 const { timingSafeEqual } = require('node:crypto');
 const { QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE, PUBLIC_SNAPSHOT_FIXTURE_PATH,
@@ -23,6 +24,10 @@ async function createHttpFixture() {
         typeof request.url !== 'string' || request.url.length > 256) {
       if (active) active.invalid++;
       response.writeHead(400); response.end(); return;
+    }
+    if (request.method === 'GET' && request.url === `/${active.token}/wc-status?q=exact`) {
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify(active.walletConnect)); return;
     }
     // The production downloader appends a fixed path, so this public fixture
     // is tied to the active launch's dedicated port instead of a URL token.
@@ -127,6 +132,7 @@ async function createHttpFixture() {
     }
     ok();
   });
+  const walletConnect = walletConnectFixture(server, () => active);
   server.maxHeadersCount = 24;
   server.maxConnections = 12;
   server.headersTimeout = 5000;
@@ -139,7 +145,7 @@ async function createHttpFixture() {
     begin(token) {
       if (active || typeof token !== 'string' || !/^[0-9a-f]{32}$/.test(token)) throw Error('HTTP_FIXTURE_BEGIN_INVALID');
       active = { token, counts: Object.fromEntries(ROUTES.map((route) => [route, 0])), invalid: 0,
-        closed: Object.fromEntries(HELD_ROUTES.map((route) => [route, false])), waiters: new Set(), post: createPostState(token, port) };
+        closed: Object.fromEntries(HELD_ROUTES.map((route) => [route, false])), waiters: new Set(), walletConnect: emptyWalletConnectAudit(), post: createPostState(token, port) };
     },
     inspect(token) {
       if (!active || !equal(token, active.token)) throw Error('HTTP_FIXTURE_TOKEN_INVALID');
@@ -150,6 +156,7 @@ async function createHttpFixture() {
       active = undefined;
       return result;
     },
+    inspectWalletConnect(token) { this.inspect(token); return walletConnect.inspect(); },
     inspectAll(token) { const get = this.inspect(token); return { get, post: postSnapshot(active.post) }; },
     snapshotAll(token) { const result = this.inspectAll(token); active = undefined; return result; },
     async close() { for (const socket of sockets) socket.destroy(); await new Promise((resolve) => server.close(resolve)); },
@@ -170,7 +177,7 @@ if (require.main === module) {
       try {
         if (!message || !Number.isSafeInteger(message.id)) throw Error('HTTP_FIXTURE_MESSAGE_INVALID');
         if (message.kind === 'begin') { fixture.begin(message.token); process.send({ id: message.id, ok: true }); }
-        else if (['snapshot', 'inspect', 'snapshotAll', 'inspectAll'].includes(message.kind)) process.send({ id: message.id, ok: true, value: fixture[message.kind](message.token) });
+        else if (['snapshot', 'inspect', 'snapshotAll', 'inspectAll', 'inspectWalletConnect'].includes(message.kind)) process.send({ id: message.id, ok: true, value: fixture[message.kind](message.token) });
         else if (message.kind === 'close') void stop();
         else throw Error('HTTP_FIXTURE_MESSAGE_INVALID');
       } catch { process.send({ id: message?.id, ok: false }); }

@@ -10,6 +10,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - 'scripts/apply-walletconnect-terminal.cjs'
+      - 'scripts/walletconnect-terminal.json'
       - 'apps/mobile/src/**'
       - 'apps/mobile/modules/**'
       - 'apps/mobile/qualification/**'
@@ -109,6 +111,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-walletconnect-terminal.cjs
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - run: xcodebuild -version
       - name: Run Swift public snapshot loopback
@@ -200,6 +203,7 @@ jobs:
           echo "$PALI_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           echo "$PALI_SDK_ROOT/emulator" >> "$GITHUB_PATH"
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-walletconnect-terminal.cjs
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - name: Install pinned native toolchain
         run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'

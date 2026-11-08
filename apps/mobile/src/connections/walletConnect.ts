@@ -72,15 +72,15 @@ export type WalletConnectResponse = Readonly<
 >;
 
 interface CoreClient {
+  dispose(): Promise<void>;
   storage: NativeConnectionRepository['transport'];
   pairing: {
     pairings: { getAll(): unknown[] };
     disconnect(input: { topic: string }): Promise<void>;
   };
-  relayer: { transportClose(): Promise<void> };
-  heartbeat: { stop(): void | Promise<void> };
 }
 interface SignClient {
+  dispose(): Promise<void>;
   core: CoreClient;
   session: { get(topic: string): unknown; getAll(): unknown[] };
   proposal: { get(id: number): unknown; getAll(): unknown[] };
@@ -115,7 +115,7 @@ interface SignClient {
     event: { name: string; data: unknown };
   }): Promise<void>;
 }
-/** The production loader uses only official Core/SignClient entry points. */
+/** The loader requires the reviewed public Core/SignClient disposal contract. */
 export type WalletConnectSdk = Readonly<{
   requestExpirySeconds: Readonly<{ min: number; max: number }>;
   createCore(input: {
@@ -372,6 +372,8 @@ export async function openWalletConnectTransport(options: {
   let closed = false,
     closePromise: Promise<void> | undefined;
   let core: CoreClient | undefined, client: SignClient | undefined;
+  let creating: Promise<CoreClient> | undefined;
+  let initializing: Promise<SignClient> | undefined;
   let eventTail: Promise<void> = Promise.resolve();
   let abort!: () => void;
   const aborted = new Promise<never>((_resolve, reject) => {
@@ -450,10 +452,17 @@ export async function openWalletConnectTransport(options: {
     dispatchedRequests.clear();
     // Retirement is local and must also complete offline. Per-session remote
     // disconnect remains an explicit command, never a prerequisite to erasure.
-    if (core) {
-      await attempt(() => core!.relayer.transportClose());
-      await attempt(() => core!.heartbeat.stop());
-    }
+    // Core disposal aborts in-flight initialization and drains admitted storage
+    // and transport work. A late client still owns its terminal cleanup.
+    const created = core ?? (await creating?.catch(() => undefined));
+    await Promise.all([
+      attempt(() => created?.dispose()),
+      attempt(async () => {
+        const initialized =
+          client ?? (await initializing?.catch(() => undefined));
+        await initialized?.dispose();
+      }),
+    ]);
     await attempt(async () => {
       await repository.transport.getKeys();
       repository.assertHealthy();
@@ -461,9 +470,16 @@ export async function openWalletConnectTransport(options: {
     if (failures.length) fail();
   };
   const close = () => {
+    if (closePromise) return closePromise;
+    let resolve!: () => void, reject!: (error: unknown) => void;
+    closePromise = new Promise<void>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    });
     closed = true;
+    abort();
     options.signal.removeEventListener('abort', onAbort);
-    closePromise ??= cleanup();
+    void cleanup().then(resolve, reject);
     return closePromise;
   };
   const onAbort = () => {
@@ -726,26 +742,30 @@ export async function openWalletConnectTransport(options: {
       requestExpirySeconds.max < requestExpirySeconds.min
     )
       return fail();
-    core = sdk.createCore({
-      projectId: options.projectId,
-      storage: protocolStorage,
-      telemetryEnabled: false,
-      logger: 'silent',
+    creating = Promise.resolve().then(() => {
+      guard();
+      const value = sdk.createCore({
+        projectId: options.projectId,
+        storage: protocolStorage,
+        telemetryEnabled: false,
+        logger: 'silent',
+      });
+      if (typeof value.dispose !== 'function') return fail();
+      return value;
     });
+    core = await owned(creating);
+    guard();
     if (core.storage !== protocolStorage) return fail();
-    const initializing = sdk.initialize({
-      core,
-      metadata: ownMetadata,
-      logger: 'silent',
+    initializing = Promise.resolve().then(() => {
+      guard();
+      return sdk.initialize({
+        core: core!,
+        metadata: ownMetadata,
+        logger: 'silent',
+      });
     });
-    // The SDK has no cancellation API for initialization. If its awaited
-    // startup finishes after local retirement, stop resources it just started.
-    const retireLateInitialization = () => {
-      if (closed || options.signal.aborted)
-        void cleanup().catch(() => undefined);
-    };
-    void initializing.then(retireLateInitialization, retireLateInitialization);
     client = await owned(initializing);
+    if (typeof client.dispose !== 'function') return fail();
     if (client.core !== core || client.core.storage !== protocolStorage)
       return fail();
     await barrier();

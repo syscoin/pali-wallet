@@ -342,6 +342,20 @@ function QualificationApp() {
               sessionId: Constants.sessionId, networkCalls: () => networkCalls });
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
             await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            const candidateIdentity = Constants.expoConfig?.extra?.paliWalletConnectIdentity;
+            if (candidateIdentity !== undefined) {
+              if (typeof candidateIdentity !== 'string') throw Error('WALLETCONNECT_NATIVE_BUILD_INVALID');
+              stage = 'native WalletConnect lifecycle';
+              const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
+              await prepareWalletConnectRuntime();
+              const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
+              const connectionEvidence = await qualifyNativeWalletConnect({ launch: parameters.http, build,
+                candidateIdentity, walletFetch, phase: parameters.phase, scenario: parameters.scenario,
+                platform: Platform.OS as 'ios' | 'android', sessionId: Constants.sessionId });
+              const connectionDestination = `${FileSystem.documentDirectory}pali-native-walletconnect-${parameters.http.token}.json`;
+              await FileSystem.writeAsStringAsync(`${connectionDestination}.tmp`, JSON.stringify(connectionEvidence));
+              await FileSystem.moveAsync({ from: `${connectionDestination}.tmp`, to: connectionDestination });
+            }
             stage = 'native POST transport';
             const postDestination = `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json`;
             const postEvidence = await qualifyNativePost({ launch: parameters.http, build, walletFetch,

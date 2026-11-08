@@ -465,3 +465,15 @@ Strict report fields contain only the imported account identity, three chain IDs
 For an official SDK, configuration matches the installed package name and version to the exact manifest pin. A local Speed Up review archive must also match its manifest path, npm lock version and SHA-512 integrity. Configuration compares the installed package files byte for byte with the archive and adds its SHA-256 to the SDK identity embedded in the fixture. The loaded SDK must match the embedded package version, and the host validates the reported identity against the current checkout.
 
 The local iOS runner selects the newest available standard iOS runtime and an installed iPhone device type. PALI_IOS_SIMULATOR_RUNTIME and PALI_IOS_SIMULATOR_DEVICE_TYPE can select exact installed identities; an unavailable explicit selection fails instead of falling back. The hosted workflow intentionally pins iOS26.5, while a local27.2 run binds its refusal report to27.2. Simulator refusal still proves no custody. All Node qualification commands use the existing shared-source dependency resolver so the mobile-only npm installation is authoritative.
+
+### Reviewed WalletConnect lifecycle candidate
+
+The temporary WalletConnect patch uses the public disposal APIs from Core PR 7391 at `9a6890ed312e22696246d1c971674816158bc289` and Utils PR 283 at `7e48b0453db3f3c7f2d417ef3823fc5c218f21bf`. The installed package versions remain 2.26.0 and the corresponding JSON-RPC versions. The candidate identity includes both source revisions and the artifact-manifest hash. Remove the patch when adopting the official releases containing these changes.
+
+The artifacts were rebuilt with TypeScript 5.9.3, Rollup 4.60.1 and rollup-plugin-esbuild 6.2.1 from the Core build toolchain. The Utils build used a Node 26 configuration wrapper for its JSON import and plugin default export, and disabled its removed `suppressImplicitAnyIndexErrors` compiler option. The reviewed runtime sources were unchanged by those build adjustments. Each original package archive was checked against its npm lock integrity before calculating the replacement hashes.
+
+`npm ci --ignore-scripts` must be followed by `node ../../scripts/apply-walletconnect-terminal.cjs` from `apps/mobile`. The patch checks every affected file against its original npm bytes or its reviewed replacement before writing. It covers the CJS, ESM and declaration entry points used by Pali. It excludes CDN UMD bundles.
+
+The existing native HTTP qualification lane also writes a separate `pali-native-walletconnect-<token>.json` sidecar for this candidate. It exercises an actual loopback WebSocket through the production adapter, closes an established connection, cancels an unfinished handshake, and checks that both public SDK owners are retired. The host independently checks socket closure and a quiet interval. The sidecar is required and matched to the build, launch, session and candidate identity before the host accepts that lane.
+
+Node protocol tests exercise the same fixture and adapter. Android and iOS execution of this added lane remains a release gate until evidence is recorded against the exact candidate head.

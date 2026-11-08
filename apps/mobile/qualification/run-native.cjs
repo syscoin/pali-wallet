@@ -192,7 +192,7 @@ async function ios() {
   const reports = [];
   if (httpEnabled) {
     const { startHttpCompanion } = require('./http-companion.cjs');
-    httpCompanion = await startHttpCompanion({ platform, sourceRevision: process.env.GITHUB_SHA, run });
+    httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
   for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
@@ -479,7 +479,7 @@ async function android() {
   }
   if (httpEnabled) {
     const { startHttpCompanion } = require('./http-companion.cjs');
-    httpCompanion = await startHttpCompanion({ platform, sourceRevision: process.env.GITHUB_SHA, run });
+    httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
   const reports = [];
   for (const scenario of ['import', 'generate']) {

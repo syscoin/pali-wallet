@@ -132,19 +132,15 @@ function fixture() {
         calls.push('pairing-disconnect');
       },
     },
-    relayer: {
-      async transportClose() {
-        calls.push('transport-close');
-      },
-    },
-    heartbeat: {
-      stop() {
-        calls.push('heartbeat-stop');
-      },
+    async dispose() {
+      calls.push('core-dispose');
     },
   };
   const client: Awaited<ReturnType<WalletConnectSdk['initialize']>> = {
     core,
+    async dispose() {
+      calls.push('client-dispose');
+    },
     session: {
       get: (topic) => sessions.get(topic),
       getAll: () => [...sessions.values()],
@@ -471,7 +467,8 @@ test('direct official construction requires explicit protected storage and disab
   await transport.close();
   assert.equal(f.calls.includes('session-disconnect'), false);
   assert.equal(f.calls.includes('pairing-disconnect'), false);
-  assert.equal(f.calls.at(-1), 'heartbeat-stop');
+  assert(f.calls.includes('core-dispose'));
+  assert(f.calls.includes('client-dispose'));
 });
 
 test('proposal approval binds the returned session to the authenticated peer and rejects unsupported methods', async () => {
@@ -734,8 +731,8 @@ test('SDK initialization cannot conceal a failed protected write', async () => {
   await assert.rejects(openWalletConnectTransport(f.options), {
     message: 'CONNECTION_UNAVAILABLE',
   });
-  assert.equal(f.calls.includes('transport-close'), true);
-  assert.equal(f.calls.includes('heartbeat-stop'), true);
+  assert.equal(f.calls.includes('core-dispose'), true);
+  assert.equal(f.calls.includes('client-dispose'), true);
 });
 
 test('local closing suppresses queued callbacks and never waits for remote disconnect acknowledgements', async () => {
@@ -758,8 +755,8 @@ test('local closing suppresses queued callbacks and never waits for remote disco
     false
   );
   assert.equal(f.calls.includes('pairing-disconnect'), false);
-  assert.equal(f.calls.includes('transport-close'), true);
-  assert.equal(f.calls.includes('heartbeat-stop'), true);
+  assert.equal(f.calls.includes('core-dispose'), true);
+  assert.equal(f.calls.includes('client-dispose'), true);
 });
 
 test('a valid request without params is delivered and can receive its bound response', async () => {
@@ -873,8 +870,8 @@ test('a fatal storage failure automatically retires listeners and network resour
   await settle();
   await settle();
   assert(f.events.some((event) => event.type === 'unavailable'));
-  assert(f.calls.includes('transport-close'));
-  assert(f.calls.includes('heartbeat-stop'));
+  assert(f.calls.includes('core-dispose'));
+  assert(f.calls.includes('client-dispose'));
   assert.equal(
     f.events.some((event) => event.type === 'request'),
     false
@@ -884,29 +881,89 @@ test('a fatal storage failure automatically retires listeners and network resour
   });
 });
 
-test('owner retirement releases local initialization without waiting for a pending SDK startup', async () => {
+test('owner retirement drains pending SDK initialization and disposes its late client', async () => {
   const f = fixture(),
     held = deferred();
   f.setInitialize(async () => {
     await held.promise;
-    f.calls.push('late-heartbeat-start');
   });
+  let finished = false;
   const opening = openWalletConnectTransport(f.options);
+  const rejected = assert
+    .rejects(opening, { message: 'CONNECTION_UNAVAILABLE' })
+    .then(() => {
+      finished = true;
+    });
   await settle();
   f.abort();
-  await assert.rejects(opening, { message: 'CONNECTION_UNAVAILABLE' });
-  assert(f.calls.includes('transport-close'));
-  assert(f.calls.includes('heartbeat-stop'));
-  held.release();
   await settle();
-  assert(
-    f.calls.lastIndexOf('transport-close') >
-      f.calls.indexOf('late-heartbeat-start')
-  );
-  assert(
-    f.calls.lastIndexOf('heartbeat-stop') >
-      f.calls.indexOf('late-heartbeat-start')
-  );
+  assert(f.calls.includes('core-dispose'));
+  assert.equal(finished, false);
+  held.release();
+  await rejected;
+  assert(f.calls.indexOf('client-dispose') > f.calls.indexOf('client'));
+  assert.deepEqual(f.events, []);
+});
+
+test('close joins both public terminal disposals and preserves cleanup failure', async () => {
+  const f = fixture(),
+    coreClosed = deferred(),
+    clientClosed = deferred();
+  f.core.dispose = async () => {
+    f.calls.push('core-dispose');
+    await coreClosed.promise;
+    throw Error('private cleanup failure');
+  };
+  f.client.dispose = async () => {
+    f.calls.push('client-dispose');
+    await clientClosed.promise;
+  };
+  const transport = await openWalletConnectTransport(f.options);
+  let finished = false;
+  const closing = transport.close();
+  assert.equal(transport.close(), closing);
+  const rejected = assert
+    .rejects(closing, { message: 'CONNECTION_UNAVAILABLE' })
+    .then(() => {
+      finished = true;
+    });
+  await settle();
+  assert(f.calls.includes('core-dispose'));
+  assert(f.calls.includes('client-dispose'));
+  coreClosed.release();
+  await settle();
+  assert.equal(finished, false);
+  clientClosed.release();
+  await rejected;
+  assert.equal(finished, true);
+});
+
+test('retirement during Core construction disposes the unpublished Core', async () => {
+  const f = fixture();
+  const sdk = await f.options.loadSdk();
+  const create = sdk.createCore;
+  f.options.loadSdk = async () => ({
+    ...sdk,
+    createCore: (input) => {
+      const core = create(input);
+      f.abort();
+      return core;
+    },
+  });
+  await assert.rejects(openWalletConnectTransport(f.options), {
+    message: 'CONNECTION_UNAVAILABLE',
+  });
+  assert(f.calls.includes('core-dispose'));
+  assert.equal(f.calls.includes('client'), false);
+});
+
+test('the terminal contract is required before accepting a client', async () => {
+  const f = fixture();
+  f.client.dispose = undefined as never;
+  await assert.rejects(openWalletConnectTransport(f.options), {
+    message: 'CONNECTION_UNAVAILABLE',
+  });
+  assert(f.calls.includes('core-dispose'));
   assert.deepEqual(f.events, []);
 });
 

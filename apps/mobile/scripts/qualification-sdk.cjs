@@ -20,6 +20,21 @@ function verifyInstalledQualificationSdk(root, pin) {
   const metadata = readJson(path.join(root, 'node_modules', name, 'package.json'));
   if (metadata.name !== name || metadata.version !== pin.version)
     throw Error('Installed shared keyring must match the exact manifest version');
+  readWalletConnectSdkIdentity(root);
 }
 
-module.exports = { readQualificationSdkPin, verifyInstalledQualificationSdk };
+function readWalletConnectSdkIdentity(root) {
+  const pkg = readJson(path.join(root, 'package.json'));
+  if (pkg.paliWalletConnectPatch === undefined) {
+    if (pkg.scripts?.postinstall?.includes('apply-walletconnect-terminal'))
+      throw Error('WalletConnect candidate requires qualification provenance');
+    return undefined;
+  }
+  const { identity, verifyWalletConnectTerminalPatch } = require(path.resolve(root, '../../scripts/apply-walletconnect-terminal.cjs'));
+  if (pkg.paliWalletConnectPatch !== identity)
+    throw Error('WalletConnect candidate provenance mismatch');
+  verifyWalletConnectTerminalPatch(root);
+  return identity;
+}
+
+module.exports = { readQualificationSdkPin, verifyInstalledQualificationSdk, readWalletConnectSdkIdentity };
