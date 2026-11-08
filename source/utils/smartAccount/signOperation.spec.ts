@@ -14,7 +14,11 @@ const owner = (address: string) => ({
   type: 'HDAccount' as KeyringAccountType,
 });
 const metadata = {
-  auth: { module: 'ecdsa', data: encodeEcdsaValidatorInitData(addresses, 2) },
+  auth: {
+    module: 'ecdsa',
+    validator: '0x' + '44'.repeat(20),
+    data: encodeEcdsaValidatorInitData(addresses, 2),
+  },
 } as ISmartAccountMetadata;
 
 it('uses the same threshold and ordered local owners for capability and signing', async () => {

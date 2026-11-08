@@ -1,33 +1,42 @@
-import {
-  getP256WebAuthnExternalSignatureMetadata,
-  signP256WebAuthnActionHash,
-} from '../passkey/authenticator';
+import { signP256WebAuthnActionHash } from '../passkey/authenticator';
 import type {
   ISmartAccountMetadata,
   KeyringAccountType,
   SmartAccountValidatorModule,
 } from 'types/network';
-import { BigNumber, defaultAbiCoder } from 'utils/ethersV6Compat';
+import { BigNumber } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
-import { hexDataSlice, isHexString } from 'utils/ethersV6Compat';
+import { hexDataSlice } from 'utils/ethersV6Compat';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
   IEvmTransactionContext,
 } from 'utils/evmTransactionContext';
-import { SLH_DSA_SIGNATURE_HEX_LENGTH } from 'utils/slhDsa/constants';
 
 import { getSmartAccountUserOpRequiredPrefund } from './account';
+import {
+  signSmartAccountActionHash as dispatchSmartAccountActionHash,
+  type SmartAccountAuthenticatorPorts,
+  type SmartAccountAuthenticatorSigningCallback,
+  type SmartAccountLocalOwner,
+  type SmartAccountLocalEcdsaSigner,
+  type SmartAccountSLHDSASigner,
+} from './authenticatorDispatch';
 import {
   ERC7579_MODULE_TYPE_VALIDATOR,
   getPaliModuleAddress,
   paliSmartAccountInterface,
 } from './contracts';
-import { isPaliSignableValidator } from './custom';
-import {
-  getInstalledValidatorModule,
-  getInstalledValidatorModuleByAddress,
-} from './modules';
 import type { SmartAccountAuthenticatorSignature } from './signature';
+
+export {
+  SmartAccountExternalSignatureRequired,
+  getSmartAccountExternalSignatureRequest,
+  type SmartAccountAuthenticatorSigningCallback,
+  type SmartAccountLocalOwner,
+  type SmartAccountLocalEcdsaSigner,
+  type SmartAccountSLHDSASigner,
+  type SmartAccountAuthenticatorSignature,
+} from './authenticatorDispatch';
 
 type ControllerEmitter = (
   methods: string[],
@@ -56,10 +65,6 @@ export const SMART_ACCOUNT_FEE_QUOTE_CHANGED =
 export const isSmartAccountFeeQuoteChanged = (error: unknown): boolean =>
   (error as any)?.message === SMART_ACCOUNT_FEE_QUOTE_CHANGED &&
   (error as any)?.transactionNotBroadcast === true;
-
-export type SmartAccountAuthenticatorSigningCallback = (
-  authenticator: SmartAccountValidatorModule['id']
-) => void;
 
 const stableStringify = (value: unknown): string => {
   if (Array.isArray(value)) {
@@ -488,29 +493,6 @@ export const prepareSmartAccountFeeQuote = async ({
   };
 };
 
-export type { SmartAccountAuthenticatorSignature } from './signature';
-
-export type SmartAccountExternalSignatureRequest = {
-  actionHash: string;
-  authenticator: SmartAccountValidatorModule['id'];
-  message: string;
-  metadata?: Record<string, unknown>;
-  validator: string;
-};
-
-export type SmartAccountLocalOwner = {
-  address: string;
-  id: number;
-  type: string;
-};
-
-export type SmartAccountLocalEcdsaSigner = (params: {
-  actionHash: string;
-  executionContextId?: string;
-  owner: SmartAccountLocalOwner;
-  validator: string;
-}) => Promise<string>;
-
 export type SmartAccountAuthenticatorRuntimeContexts = Partial<
   Record<SmartAccountValidatorModule['id'], unknown>
 >;
@@ -523,17 +505,6 @@ type EcdsaAuthenticatorRuntimeContext = {
 type P256WebAuthnAuthenticatorRuntimeContext = {
   onBackupStatus?: (backupStatus: unknown) => Promise<void> | void;
 };
-
-export type SmartAccountSLHDSASigner = (params: {
-  accountId?: number;
-  actionHash: string;
-  allowReservedSignature?: boolean;
-  executionContextId?: string;
-  keyId: string;
-  parameterSet: 'SLH-DSA-SHA2-128-24';
-  pkRoot: string;
-  pkSeed: string;
-}) => Promise<string>;
 
 type SLHDSAAuthenticatorRuntimeContext = {
   signActionHash?: SmartAccountSLHDSASigner;
@@ -608,16 +579,6 @@ const isSmartAccountSignatureError = (error: unknown) => {
     message.includes('41413234207369676e6174757265206572726f72')
   );
 };
-
-export class SmartAccountExternalSignatureRequired extends Error {
-  public readonly request: SmartAccountExternalSignatureRequest;
-
-  constructor(request: SmartAccountExternalSignatureRequest) {
-    super(request.message);
-    this.name = 'SmartAccountExternalSignatureRequired';
-    this.request = request;
-  }
-}
 
 export const getSmartAccountLocalOwnerContexts = ({
   accounts,
@@ -696,401 +657,57 @@ export const getSmartAccountLocalOwnerContexts = ({
   };
 };
 
-export type SmartAccountAuthenticatorContext<
-  T extends SmartAccountValidatorModule
-> = {
-  accountId?: number;
-  actionHash: string;
-  allowReservedSLHDSASignature?: boolean;
-  authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
-  executionContextId?: string;
-  onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
-  onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
-  runtimeContext?: unknown;
-  smartAccount: ISmartAccountMetadata;
-  validator: T;
-};
-
-export interface SmartAccountAuthenticatorDriver<
-  T extends SmartAccountValidatorModule = SmartAccountValidatorModule
-> {
-  createExternalSignatureRequest: (
-    context: SmartAccountAuthenticatorContext<T>
-  ) => SmartAccountExternalSignatureRequest;
-  id: T['id'];
-  signActionHash: (
-    context: SmartAccountAuthenticatorContext<T> & {
-      assertBeforeAuthentication(): Promise<void>;
-    }
-  ) => Promise<SmartAccountAuthenticatorSignature>;
-}
-
-const getCurrentValidatorModule = (
-  smartAccount: ISmartAccountMetadata
-): SmartAccountValidatorModule => {
-  const moduleId = smartAccount.auth?.module || smartAccount.auth?.scheme;
-  const validator =
-    smartAccount.installedModules?.find(
-      (module): module is SmartAccountValidatorModule =>
-        module.type === 'validator' &&
-        module.address.toLowerCase() ===
-          smartAccount.auth?.validator?.toLowerCase()
-    ) ||
-    (moduleId && moduleId !== 'composite'
-      ? getInstalledValidatorModule(smartAccount, moduleId)
-      : undefined);
-
-  if (!validator) {
-    throw new Error('Smart account has no active validator module metadata');
-  }
-
-  return validator;
-};
-
-const externalSignatureRequest = (
-  context: SmartAccountAuthenticatorContext<SmartAccountValidatorModule>,
-  message: string,
-  metadata?: Record<string, unknown>
-): SmartAccountExternalSignatureRequest => ({
-  actionHash: context.actionHash,
-  authenticator: context.validator.id,
-  message,
-  metadata,
-  validator: context.validator.address,
-});
-
-const p256WebAuthnDriver: SmartAccountAuthenticatorDriver<
-  Extract<SmartAccountValidatorModule, { id: 'p256-webauthn' }>
-> = {
-  createExternalSignatureRequest: (context) =>
-    externalSignatureRequest(
-      context,
-      'Open this wallet on a device with the configured passkey and approve the request.',
-      getP256WebAuthnExternalSignatureMetadata(context.validator.config)
-    ),
-  id: 'p256-webauthn',
-  signActionHash: async ({ actionHash, runtimeContext, validator }) => {
-    const signature = await signP256WebAuthnActionHash({
-      actionHash,
-      credentialId: validator.config.credentialId || undefined,
-      expectedCredentialIdHash: validator.config.credentialIdHash,
-      expectedPublicKey: validator.config.publicKey,
-    });
-    const p256Context = runtimeContext as
-      | P256WebAuthnAuthenticatorRuntimeContext
-      | undefined;
-    if (signature.backupStatus) {
-      await p256Context?.onBackupStatus?.(signature.backupStatus);
-    }
-
-    return {
-      proof: signature.proof,
-      signature: signature.signature,
-    };
-  },
-};
-
-const ecdsaDriver: SmartAccountAuthenticatorDriver<
-  Extract<SmartAccountValidatorModule, { id: 'ecdsa' }>
-> = {
-  createExternalSignatureRequest: (context) =>
-    externalSignatureRequest(
-      context,
-      'Sign this smart account action hash with one of the configured ECDSA owners, then submit the signature.',
-      {
-        actionHash: context.actionHash,
-        owners: context.validator.config.owners,
-        threshold: context.validator.config.threshold,
-      }
-    ),
-  id: 'ecdsa',
-  signActionHash: async (context) => {
-    const runtimeContext = context.runtimeContext as
-      | EcdsaAuthenticatorRuntimeContext
-      | undefined;
-    const localOwners = (runtimeContext?.localOwners || []).filter((owner) =>
-      context.validator.config.owners.some(
-        (configuredOwner) =>
-          configuredOwner.toLowerCase() === owner.address.toLowerCase()
-      )
-    );
-    const threshold = context.validator.config.threshold;
-
-    if (runtimeContext?.signActionHash && localOwners.length >= threshold) {
-      const signatures = await Promise.all(
-        localOwners.slice(0, threshold).map((owner) =>
-          runtimeContext.signActionHash({
-            actionHash: context.actionHash,
-            ...(context.executionContextId
-              ? { executionContextId: context.executionContextId }
-              : {}),
-            owner,
-            validator: context.validator.address,
-          })
-        )
-      );
-
-      return {
-        proof:
-          threshold === 1
-            ? signatures[0]
-            : defaultAbiCoder.encode(['bytes[]'], [signatures]),
-        signature:
-          threshold === 1
-            ? signatures[0]
-            : defaultAbiCoder.encode(['bytes[]'], [signatures]),
-      };
-    }
-
-    throw new SmartAccountExternalSignatureRequired(
-      ecdsaDriver.createExternalSignatureRequest(context)
-    );
-  },
-};
-
-const slhDsaDriver: SmartAccountAuthenticatorDriver<
-  Extract<SmartAccountValidatorModule, { id: 'slh-dsa' }>
-> = {
-  createExternalSignatureRequest: (context) =>
-    externalSignatureRequest(
-      context,
-      'Sign this smart account action hash with the configured SLH-DSA key, then submit the signature.',
-      {
-        actionHash: context.actionHash,
-        keyId: context.validator.config.keyId,
-        parameterSet: context.validator.config.parameterSet,
-        pkRoot: context.validator.config.pkRoot,
-        pkSeed: context.validator.config.pkSeed,
-      }
-    ),
-  id: 'slh-dsa',
-  signActionHash: async ({
-    accountId,
-    allowReservedSLHDSASignature,
-    actionHash,
-    executionContextId,
-    runtimeContext,
-    validator,
-  }) => {
-    const slhDsaContext = runtimeContext as
-      | SLHDSAAuthenticatorRuntimeContext
-      | undefined;
-    const signature = slhDsaContext?.signMessageActionHash
-      ? await slhDsaContext.signMessageActionHash(
-          validator.config.keyId,
-          validator.address
-        )
-      : await slhDsaContext?.signActionHash?.({
-          accountId,
-          actionHash,
-          ...(executionContextId ? { executionContextId } : {}),
-          allowReservedSignature: allowReservedSLHDSASignature,
-          keyId: validator.config.keyId,
-          parameterSet: validator.config.parameterSet,
-          pkRoot: validator.config.pkRoot,
-          pkSeed: validator.config.pkSeed,
-        });
-
-    if (!signature) {
-      throw new SmartAccountExternalSignatureRequired(
-        slhDsaDriver.createExternalSignatureRequest({
-          actionHash,
-          smartAccount: {} as never,
-          validator,
-        })
-      );
-    }
-    if (
-      !isHexString(signature) ||
-      signature.length !== SLH_DSA_SIGNATURE_HEX_LENGTH
-    ) {
-      throw new Error('SLH-DSA signer returned an invalid signature');
-    }
-
-    return {
-      proof: signature,
-      signature,
-    };
-  },
-};
-
-const compositeDriver: SmartAccountAuthenticatorDriver<
-  Extract<SmartAccountValidatorModule, { id: 'composite' }>
-> = {
-  createExternalSignatureRequest: (context) =>
-    externalSignatureRequest(
-      context,
-      'Collect enough child authenticator approvals for this composite policy, then submit the aggregate proof.',
-      {
-        actionHash: context.actionHash,
-        childValidators: context.validator.config.childValidators,
-        threshold: context.validator.config.threshold,
-      }
-    ),
-  id: 'composite',
-  signActionHash: async (context) => {
-    if (!isPaliSignableValidator(context.validator, context.smartAccount)) {
-      throw new SmartAccountExternalSignatureRequired(
-        compositeDriver.createExternalSignatureRequest(context)
-      );
-    }
-    // Composite v1 forwards one action hash to each child. Its bytes[] must
-    // retain configured contract order, including empty external/unused slots;
-    // child signatures do not carry the outer validator-address prefix.
-    const signatures = context.validator.config.childValidators.map(() => '0x');
-    let approvals = 0;
-    for (const [
-      index,
-      childAddress,
-    ] of context.validator.config.childValidators.entries()) {
-      const child = getInstalledValidatorModuleByAddress(
-        context.smartAccount,
-        childAddress
-      )!;
-      if (child.id === 'custom') continue;
-      const driver = getAuthenticatorDriver(child);
-      await context.assertBeforeAuthentication();
-      context.onAuthenticatorSigningStarted?.(child.id);
-      try {
-        const signature = await driver.signActionHash({
-          ...context,
-          runtimeContext: context.authenticatorContexts?.[child.id],
-          validator: child,
-        });
-        signatures[index] = signature.signature;
-        if (++approvals >= context.validator.config.threshold) {
-          const aggregate = defaultAbiCoder.encode(['bytes[]'], [signatures]);
-          return { proof: aggregate, signature: aggregate };
-        }
-      } catch (error) {
-        // Only explicit absence of a local signer is skippable. Rejection,
-        // stale context, storage and cryptographic errors must reach the user.
-        if (!(error instanceof SmartAccountExternalSignatureRequired))
-          throw error;
-      } finally {
-        context.onAuthenticatorSigningResolved?.(child.id);
-      }
-    }
-    throw new SmartAccountExternalSignatureRequired(
-      compositeDriver.createExternalSignatureRequest(context)
-    );
-  },
-};
-
-// Generic arm for bring-your-own validators: Pali cannot produce these
-// signatures natively, so every action routes through the external-signature
-// flow with full context (module address, label, init data).
-const customDriver: SmartAccountAuthenticatorDriver<
-  Extract<SmartAccountValidatorModule, { id: 'custom' }>
-> = {
-  createExternalSignatureRequest: (context) =>
-    externalSignatureRequest(
-      context,
-      `Sign this smart account action hash with the external "${context.validator.config.name}" validator, then submit the signature.`,
-      {
-        actionHash: context.actionHash,
-        moduleAddress: context.validator.address,
-        moduleName: context.validator.config.name,
-        moduleType: context.validator.config.moduleType,
-      }
-    ),
-  id: 'custom',
-  signActionHash: async (context) => {
-    throw new SmartAccountExternalSignatureRequired(
-      customDriver.createExternalSignatureRequest(context)
-    );
-  },
-};
-
-const authenticatorDrivers = [
-  p256WebAuthnDriver,
-  ecdsaDriver,
-  slhDsaDriver,
-  compositeDriver,
-  customDriver,
-] as const;
-
-const getAuthenticatorDriver = <T extends SmartAccountValidatorModule>(
-  validator: T
-): SmartAccountAuthenticatorDriver<T> => {
-  const driver = authenticatorDrivers.find(
-    (candidate) => candidate.id === validator.id
-  );
-
-  if (!driver) {
-    throw new SmartAccountExternalSignatureRequired({
-      actionHash: '',
-      authenticator: validator.id,
-      message: `No wallet signer is available for smart account authenticator ${validator.id}`,
-      validator: validator.address,
-    });
-  }
-
-  return driver as SmartAccountAuthenticatorDriver<T>;
-};
-
-export const getSmartAccountExternalSignatureRequest = (params: {
-  accountId?: number;
-  actionHash: string;
-  authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
-  smartAccount: ISmartAccountMetadata;
-}): SmartAccountExternalSignatureRequest => {
-  const validator = getCurrentValidatorModule(params.smartAccount);
-  const driver = getAuthenticatorDriver(validator);
-  return driver.createExternalSignatureRequest({
-    accountId: params.accountId,
-    actionHash: params.actionHash,
-    runtimeContext: params.authenticatorContexts?.[validator.id],
-    smartAccount: params.smartAccount,
-    validator,
-  });
-};
-
 // Gas abstraction is intentionally not an authenticator. Authenticators prove
 // authorization for the account action; how that action is paid for is decided
 // by the chain (e.g. zkSYS gas is native via the bootloader gas tank).
 export type SmartAccountGasPolicy = { type: 'self-funded' };
 
-export const signSmartAccountActionHash = async (params: {
-  accountId?: number;
-  actionHash: string;
-  allowReservedSLHDSASignature?: boolean;
-  assertBeforeAuthentication(): Promise<void>;
-  authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
-  executionContextId?: string;
-  onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
-  onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
-  smartAccount: ISmartAccountMetadata;
-}): Promise<SmartAccountAuthenticatorSignature> => {
-  params = Object.freeze({ ...params });
-  const validator = getCurrentValidatorModule(params.smartAccount);
-  const driver = getAuthenticatorDriver(validator);
-
-  await params.assertBeforeAuthentication();
-  params.onAuthenticatorSigningStarted?.(validator.id);
-  const signature = await driver
-    .signActionHash({
-      assertBeforeAuthentication: params.assertBeforeAuthentication,
-      accountId: params.accountId,
-      actionHash: params.actionHash,
-      authenticatorContexts: params.authenticatorContexts,
-      executionContextId: params.executionContextId,
-      onAuthenticatorSigningResolved: params.onAuthenticatorSigningResolved,
-      onAuthenticatorSigningStarted: params.onAuthenticatorSigningStarted,
-      allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,
-      runtimeContext: params.authenticatorContexts?.[validator.id],
-      smartAccount: params.smartAccount,
-      validator,
-    })
-    .finally(() => {
-      params.onAuthenticatorSigningResolved?.(validator.id);
-    });
-
+function extensionAuthenticatorPorts(
+  contexts?: SmartAccountAuthenticatorRuntimeContexts
+): SmartAccountAuthenticatorPorts {
+  const ecdsa = contexts?.ecdsa as EcdsaAuthenticatorRuntimeContext | undefined;
+  const passkey = contexts?.['p256-webauthn'] as
+    | P256WebAuthnAuthenticatorRuntimeContext
+    | undefined;
+  const slh = contexts?.['slh-dsa'] as
+    | SLHDSAAuthenticatorRuntimeContext
+    | undefined;
   return {
-    ...signature,
-    validator: getAddress(validator.address),
+    ecdsa: ecdsa?.signActionHash
+      ? {
+          localOwners: ecdsa.localOwners ?? [],
+          signActionHash: ecdsa.signActionHash,
+        }
+      : null,
+    p256WebAuthn: {
+      async signActionHash(request) {
+        const result = await signP256WebAuthnActionHash(request);
+        if (result.backupStatus)
+          await passkey?.onBackupStatus?.(result.backupStatus);
+        return { proof: result.proof, signature: result.signature };
+      },
+    },
+    slhDsa: slh
+      ? {
+          signActionHash: slh.signActionHash ?? null,
+          signMessageActionHash: slh.signMessageActionHash ?? null,
+        }
+      : null,
   };
-};
+}
+
+export const signSmartAccountActionHash = (
+  params: Omit<
+    Parameters<typeof dispatchSmartAccountActionHash>[0],
+    'ports'
+  > & {
+    authenticatorContexts?: SmartAccountAuthenticatorRuntimeContexts;
+  }
+): Promise<SmartAccountAuthenticatorSignature> =>
+  dispatchSmartAccountActionHash({
+    ...params,
+    ports: extensionAuthenticatorPorts(params.authenticatorContexts),
+  });
 
 export { encodeSmartAccountAuthenticatorSignature } from './signature';
 

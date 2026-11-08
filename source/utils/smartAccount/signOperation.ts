@@ -1,6 +1,7 @@
 import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
 import { defaultAbiCoder, getAddress } from '../ethersV6Compat.ts';
 
+import { signSmartAccountWithValidator } from './authenticatorDispatch.ts';
 import type {
   ISmartAccountMetadata,
   KeyringAccountType,
@@ -34,7 +35,11 @@ export function getSmartAccountLocalEcdsaOwners(
     throw new Error(
       'This smart account requires the configured ECDSA owner keys in this wallet.'
     );
-  return { owners: localOwners.slice(0, threshold), threshold };
+  return {
+    owners: localOwners.slice(0, threshold),
+    configuredOwners: owners,
+    threshold,
+  };
 }
 
 /** Sign the locally computed UserOperation hash through the shared SDK owner signer. */
@@ -56,15 +61,44 @@ export async function signSmartAccountEcdsaOperation({
   ): Promise<string>;
 }): Promise<string> {
   assertSynchronousEvmFeeGuard(assertCurrent);
-  const { owners, threshold } = getSmartAccountLocalEcdsaOwners(
-    metadata,
-    findOwner
-  );
-  const signatures = await Promise.all(
-    owners.map(({ address, owner }) => signOwner(address, actionHash, owner!))
-  );
+  const { owners, configuredOwners, threshold } =
+    getSmartAccountLocalEcdsaOwners(metadata, findOwner);
+  const result = await signSmartAccountWithValidator({
+    smartAccount: metadata,
+    actionHash,
+    validator: {
+      id: 'ecdsa',
+      type: 'validator',
+      address: getAddress(metadata.auth!.validator),
+      data: metadata.auth!.data,
+      config: { owners: configuredOwners, threshold },
+    },
+    async assertBeforeAuthentication() {
+      assertSynchronousEvmFeeGuard(assertCurrent);
+    },
+    ports: {
+      ecdsa: {
+        localOwners: owners.map(({ address, owner }) => ({
+          address,
+          id: owner.id,
+          type: owner.type,
+        })),
+        signActionHash({ actionHash: digest, owner: requested }) {
+          const entry = owners.find(
+            ({ address, owner }) =>
+              address === requested.address &&
+              owner.id === requested.id &&
+              owner.type === requested.type
+          );
+          if (!entry) throw new Error('Smart account signer changed');
+          assertSynchronousEvmFeeGuard(assertCurrent);
+          return signOwner(entry.address, digest, entry.owner);
+        },
+      },
+      p256WebAuthn: null,
+      slhDsa: null,
+    },
+  });
   assertSynchronousEvmFeeGuard(assertCurrent);
-  return threshold === 1
-    ? signatures[0]!
-    : defaultAbiCoder.encode(['bytes[]'], [signatures]);
+  return result.signature;
 }
