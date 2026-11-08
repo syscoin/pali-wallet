@@ -95,6 +95,7 @@ const receipt = {
   identifier: 'com.paliwallet.qualification',
   qualificationEntry: 'qualification/index.tsx',
   keyringVersion: sdk.version,
+  ...(sdk.quickCryptoIdentity ? { quickCryptoIdentity: sdk.quickCryptoIdentity } : {}),
   ...(walletConnectIdentity ? { walletConnectIdentity } : {}),
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),

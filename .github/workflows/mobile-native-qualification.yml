@@ -16,6 +16,8 @@ on:
     paths:
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
+      - 'scripts/apply-quickcrypto-sentry.cjs'
+      - 'scripts/quickcrypto-sentry.json'
       - 'apps/mobile/src/**'
       - 'apps/mobile/modules/**'
       - 'apps/mobile/qualification/**'
@@ -129,7 +131,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: npm run postinstall
       - run: node scripts/qualification-sdk.cjs
       - name: Package pinned local proof assets
         if: env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION == '1'
@@ -234,7 +236,7 @@ jobs:
           echo "$PALI_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           echo "$PALI_SDK_ROOT/emulator" >> "$GITHUB_PATH"
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: npm run postinstall
       - run: node scripts/qualification-sdk.cjs
       - name: Package pinned local proof assets
         if: env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION == '1'

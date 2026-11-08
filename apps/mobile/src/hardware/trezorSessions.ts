@@ -116,9 +116,11 @@ export function createTrezorSessions(
               );
               if (failure?.status === 'rejected') throw failure.reason;
             }));
-          const retire = handoff.retireInvocation(tokens.invocation, drain);
-          // Expiry may have already cleared the public job. The private worker
-          // must still be destroyed even when there is no transcript to retain.
+          // Expiry/cancellation has already retired the public invocation. Wait
+          // for its cleanup instead of treating its absence as a drain failure.
+          const retire = handoff.getSnapshot()?.job === tokens.job
+            ? handoff.retireInvocation(tokens.invocation, drain)
+            : handoff.cancel(tokens.job);
           retirement = Promise.allSettled([retire, drain()]).then((results) => {
             const failure = results.find(
               (result) => result.status === 'rejected'

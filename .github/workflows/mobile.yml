@@ -6,6 +6,8 @@ on:
     paths:
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
+      - 'scripts/apply-quickcrypto-sentry.cjs'
+      - 'scripts/quickcrypto-sentry.json'
       - 'apps/mobile/**'
       - 'source/shared/**'
       - 'source/scripts/privacyProver/**'
@@ -98,7 +100,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: npm run postinstall
       - run: node scripts/qualification-sdk.cjs
       - name: Reject moderate and higher dependency advisories
         run: npm audit --audit-level=moderate
@@ -144,7 +146,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: npm run postinstall
       - run: node scripts/qualification-sdk.cjs
       - name: Build preview
         if: matrix.suite == 'preview'

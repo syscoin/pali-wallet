@@ -1,4 +1,5 @@
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
+import { createNativeSentryPublicKeyDeriver } from '../crypto/sentryPublicKey.native';
 import { createNativeTrezorSessions } from '../hardware/trezorTransport.native';
 import type { NativeTrezorSessions } from '../hardware/trezorSessions';
 import type { NativeTrezorView, NativeTrezorSnapshot } from '../custody/trezorAccounts';
@@ -61,6 +62,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
   return createKeyringRuntimeFactory({
     assertActive,
     deviceUnlock,
+    deriveSentryPublicKey: createNativeSentryPublicKeyDeriver(),
     trezorSessions,
     async createLedgerTransport(owner) {
       const { createNativeLedgerTransport } = await import('../hardware/ledgerTransport.native');

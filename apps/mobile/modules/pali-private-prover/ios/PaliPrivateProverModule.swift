@@ -362,7 +362,6 @@ public final class PaliPrivateProverModule: Module {
     OnAppEntersForeground { ProofAdmission.resume() }
     OnDestroy { ProofAdmission.background() }
     Class("Host", PaliProofHost.self) {
-      Events("progress")
       Function("close") { (host: PaliProofHost) in host.close() }
       AsyncFunction("run") { (host: PaliProofHost, id: String, input: String, promise: Promise) in
         host.run(id: id, input: input, promise: promise)

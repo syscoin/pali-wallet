@@ -285,6 +285,8 @@ test('the actual report parser preserves producer storage evidence and rejects u
   assert.equal(fixture.validate(JSON.stringify(passed), 'create', 'import').status, 'passed');
   const unqualifiedSdk = { ...passed, sdkVersion: `${expectedQualificationSdkVersion}-unqualified` };
   assert.throws(() => fixture.validate(JSON.stringify(unqualifiedSdk), 'create', 'import'), /Native qualification failed/);
+  const stockCrypto = { ...passed, sdkVersion: expectedQualificationSdkVersion.split('.quickcrypto.')[0] };
+  assert.throws(() => fixture.validate(JSON.stringify(stockCrypto), 'create', 'import'), /Native qualification failed/);
   const failed = createStorageQualificationDiagnostic();
   failed.observe('sqlcipher-journal-readback');
   failed.capture(new WalletStorageError('STORAGE_UNAVAILABLE'));

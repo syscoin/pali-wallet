@@ -14,14 +14,38 @@ function readQualificationSdkPin(root) {
   const version = pkg.dependencies[name];
   if (typeof version !== 'string' || !exactVersion.test(version))
     throw Error('Expected an exact shared keyring pin');
-  return { version, identity: version };
+  const quickCryptoIdentity = readQuickCryptoSentryIdentity(root);
+  // Keep the published Keyring version separate from the native candidate.
+  // Existing app reports and host acceptance already compare this identity.
+  return {
+    version,
+    identity: quickCryptoIdentity ? `${version}.${quickCryptoIdentity}` : version,
+    ...(quickCryptoIdentity ? { quickCryptoIdentity } : {}),
+  };
 }
 
 function verifyInstalledQualificationSdk(root, pin) {
   const metadata = readJson(path.join(root, 'node_modules', name, 'package.json'));
   if (metadata.name !== name || metadata.version !== pin.version)
     throw Error('Installed shared keyring must match the exact manifest version');
+  if (readQualificationSdkPin(root).identity !== pin.identity)
+    throw Error('Native qualification candidate identity mismatch');
   readWalletConnectSdkIdentity(root);
+}
+
+function readQuickCryptoSentryIdentity(root) {
+  const pkg = readJson(path.join(root, 'package.json'));
+  if (pkg.paliQuickCryptoSentryPatch === undefined) {
+    if (pkg.scripts?.postinstall?.includes('apply-quickcrypto-sentry'))
+      throw Error('QuickCrypto candidate requires qualification provenance');
+    return undefined;
+  }
+  const { identity, verifyQuickCryptoSentryPatch } = require(path.resolve(root, '../../scripts/apply-quickcrypto-sentry.cjs'));
+  if (pkg.dependencies?.['react-native-quick-crypto'] !== '1.1.9' ||
+      pkg.paliQuickCryptoSentryPatch !== identity)
+    throw Error('QuickCrypto candidate provenance mismatch');
+  verifyQuickCryptoSentryPatch(root);
+  return identity;
 }
 
 function readWalletConnectSdkIdentity(root) {

@@ -1,4 +1,4 @@
-import { isAllowedSentryKeyRoleScheme } from '../../../source/wallet/sentryKeyVault.ts';
+import { createSentryClassicalExecutor } from '../src/crypto/sentryClassicalExecutor.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
 
 export const SENTRY_CLASSICAL_CHECK =
@@ -31,24 +31,7 @@ export async function qualifyNativeSentryClassical(
   const { deriveSentryClassicalPublicKey } = await import(
     '@sidhujag/sysweb3-sentry/classical-public-key'
   );
-  const derive: DeriveSentryPublicKey = async (role, scheme, secret, owner) => {
-    if (owner.aborted) throw new Error('CANCELLED');
-    if (
-      scheme === 'slh-dsa-shake-128s' ||
-      !isAllowedSentryKeyRoleScheme(role, scheme)
-    )
-      throw new Error('SENTRY_CLASSICAL_VALIDATION_FAILED');
-    // The shared leaf copies the view during this call, before its first await.
-    try {
-      const publicKey = await deriveSentryClassicalPublicKey(scheme, secret);
-      if (owner.aborted) throw new Error('CANCELLED');
-      return Buffer.from(publicKey).toString('hex');
-    } catch {
-      throw new Error(
-        owner.aborted ? 'CANCELLED' : 'SENTRY_CLASSICAL_VALIDATION_FAILED'
-      );
-    }
-  };
+  const derive = createSentryClassicalExecutor(deriveSentryClassicalPublicKey);
 
   for (const { role, scheme, scalar, publicKey } of vectors) {
     const check = async () => {
