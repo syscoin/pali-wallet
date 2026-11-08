@@ -240,7 +240,11 @@ const ImportPhrase: React.FC = () => {
             {t('import.importAttention')}
           </span>
           <span className="text-brand-gray200 font-normal">
-            {t('import.importingYourAccount')}
+            {t(
+              isRecovery
+                ? 'settings.recoveryIntro'
+                : 'import.importingYourAccount'
+            )}
           </span>
         </div>
 
