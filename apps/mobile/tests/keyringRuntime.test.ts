@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { NativeConnectionsController } from '../src/connections/controller.ts';
+import type { WalletConnectTransportEvent, WalletConnectSession, WalletConnectResponse } from '../src/connections/walletConnect.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { WalletStorageError } from '../src/storage/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
@@ -633,7 +635,7 @@ test('message signing requires an explicit account switch and a new approval aft
     await assert.rejects(host.signMessage(old), /INVALID_INPUT/);
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
     const generation = host.sessionGeneration();
-    await host.activateMessageAccount('hd:60:0', () => undefined);
+    await f.authority.selectConnectionAccount('hd:60:0', f.authority.getSnapshot().revision, () => undefined);
     assert(host.sessionGeneration() > generation);
     assert.throws(old.approval.assertCurrent);
     assert.throws(() => host.signMessage(old), { code: 4001 });
@@ -2408,4 +2410,91 @@ test('two real submissions remain in local Activity after offline cold reopen', 
     assert.equal(after.locals.length,2);
     assert(!JSON.stringify(after).includes(network.broadcasts[0]!));
   } finally {transfers.dispose();await reopened?.dispose();await f.authority.dispose().catch(()=>undefined);f.disk.restoreNetwork();}
+});
+
+
+for (const outcome of ['sign', 'reject', 'lock'] as const) test(`connection account selection publishes real authority context before ${outcome}`, async () => {
+  const f = await readyAccounts();
+  let controller: NativeConnectionsController | undefined;
+  let unsubscribe: () => void = () => undefined;
+  try {
+    await f.execute({ kind: 'create', label: 'Other account', password: PASSWORD });
+    const previous = f.authority.getSnapshot().account!.address;
+    assert.notEqual(previous, ADDRESS);
+    const host = await f.runtime.openConnectionHost();
+    const { origin } = await grantConnection(host, 0, 'e');
+    const session: WalletConnectSession = {
+      binding: { origin, peerPublicKey: 'e'.repeat(64), topic: 'e'.repeat(64) },
+      metadata: { name: 'Authorized app', description: '', url: origin, icons: [] },
+      expiry: Math.floor(Date.now() / 1000) + 3600,
+      namespaces: { eip155: { accounts: [`eip155:1:${ADDRESS}`], chains: ['eip155:1'], methods: ['personal_sign'], events: [] } },
+    };
+    let event!: (value: WalletConnectTransportEvent) => void;
+    const responses: WalletConnectResponse[] = [];
+    controller = new NativeConnectionsController({
+      source: f.authority,
+      activateAccount: (id, revision, guard) => f.authority.selectConnectionAccount(id, revision, guard),
+      openHost: async () => host,
+      preparePlatform: async () => undefined,
+      projectId: 'public-authority-fixture',
+      metadata: { name: 'Pali', description: '', url: 'https://paliwallet.com', icons: [] },
+      checkSite: async () => ({ isBlacklisted: false }),
+      checkAddress: async () => ({ isBlacklisted: false, severity: 'low' }),
+      async openTransport(options) {
+        event = options.onEvent;
+        return {
+          async sessions() { return [session]; },
+          async pair() { throw Error('Unexpected pair'); },
+          async approve() { throw Error('Unexpected approval'); },
+          async reject() {}, async disconnect() {}, async close() {},
+          async emit(_binding, _chain, _value, guard) { guard(); },
+          async respond(_binding, _id, value, guard, onDispatch) { guard(); onDispatch(); responses.push(value); },
+        };
+      },
+    });
+    for (let i = 0; i < 20 && !controller.view.getSnapshot().sessions.length; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    event({ type: 'request', request: { id: 42, expiresAt: Date.now() + 60000, session, chainId: 'eip155:1', method: 'personal_sign', params: ['Hello', ADDRESS], verification: { validation: 'VALID', isScam: false } } });
+    for (let i = 0; i < 20 && controller.view.getSnapshot().messageReview?.busy !== false; i++) await new Promise<void>(resolve => setImmediate(resolve));
+    const review = controller.view.getSnapshot().messageReview;
+    assert(review?.needsAccountSwitch);
+    const published: string[] = [];
+    unsubscribe = f.authority.subscribe(snapshot => {
+      if (snapshot.account) published.push(snapshot.account.address);
+      if (outcome === 'lock' && snapshot.phase === 'authenticating') f.authority.lock();
+    });
+    const switching = controller.view.activateMessageAccount(review.id, review.revision);
+    if (outcome === 'lock') {
+      await assert.rejects(switching);
+      assert.equal(controller.view.getSnapshot().messageReview, null);
+      assert.equal(f.authority.getSnapshot().account, null);
+      assert.equal(f.authority.getSnapshot().phase, 'locked');
+      unsubscribe();
+      await f.authority.unlock(PASSWORD);
+      assert.equal(f.authority.getSnapshot().account!.address, previous);
+      assert.equal(responses.some(response => 'result' in response), false);
+      return;
+    }
+    await switching;
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal(f.authority.getSnapshot().account!.address, ADDRESS);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
+    assert.equal(host.context().activeAccountId, 'hd:60:0');
+    assert.equal(published.at(-1), ADDRESS);
+    const switched = controller.view.getSnapshot().messageReview;
+    assert(switched && !switched.needsAccountSwitch);
+    if (outcome === 'sign') {
+      await controller.view.approveMessage(switched.id, switched.revision, false);
+      const reply = responses.find(response => 'result' in response);
+      assert(reply && 'result' in reply);
+      assert.equal(recoverPersonalSignature({ data: '0x48656c6c6f', signature: String(reply.result) }).toLowerCase(), ADDRESS.toLowerCase());
+    } else await controller.view.rejectMessage(switched.id);
+    assert.equal(controller.view.getSnapshot().messageReview, null);
+    assert.equal(f.authority.getSnapshot().account!.address, ADDRESS);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:0');
+  } finally {
+    unsubscribe();
+    await controller?.dispose();
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
 });

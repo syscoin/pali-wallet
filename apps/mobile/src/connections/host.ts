@@ -26,10 +26,6 @@ export type NativeConnectionHost = Readonly<{
   /** Stable wallet/runtime lifetime, deliberately independent of lock state. */
   assertOwner(): void;
   sessionGeneration(): number;
-  activateMessageAccount(
-    accountId: string,
-    assertCurrent: () => void
-  ): Promise<void>;
   signMessage(input: NativeConnectionMessageSigning): Promise<string>;
   context(): Readonly<{
     network: INetwork;
