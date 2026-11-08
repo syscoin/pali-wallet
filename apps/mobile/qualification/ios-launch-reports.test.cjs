@@ -169,8 +169,15 @@ async function actualRunner({ created = report(), writeFailure = false, readFail
         else if (args[1] === 'launch' && !reportFailure) return { status: null, signal: 'SIGTERM', error: Object.assign(Error('launch timeout'), { code: 'ETIMEDOUT' }) };
         return { status: 0, stdout };
       } };
-      if (name === './http-companion.cjs') return { async startHttpCompanion({ platform, sourceRevision }) {
+      if (name === '../scripts/qualification-sdk.cjs') return {
+        readWalletConnectSdkIdentity(root) {
+          assert.equal(root, path.dirname(path.dirname(require.resolve('./run-native.cjs'))));
+          return 'fixture-walletconnect-identity';
+        },
+      };
+      if (name === './http-companion.cjs') return { async startHttpCompanion({ platform, sourceRevision, walletConnectIdentity }) {
         assert.equal(http, true, 'the fixture must never start a real HTTP companion');
+        assert.equal(walletConnectIdentity, 'fixture-walletconnect-identity');
         events.push(['http-start', platform, sourceRevision]);
         return {
           async begin(phase, scenario) {
@@ -207,6 +214,7 @@ async function actualRunner({ created = report(), writeFailure = false, readFail
       }
       return require(name);
     }, process, console: { log() {}, error() {} }, setTimeout,
+    __dirname: path.dirname(require.resolve('./run-native.cjs')),
   });
   return { events, writes, process, launchError, validationError, reportedError, reportReads: files.reads, closedReports: files.closed };
 }
