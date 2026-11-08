@@ -316,3 +316,16 @@ test('a disconnect observer reentering disposal joins the reserved cleanup', asy
   await outer;
   assert.deepEqual(f.events, ['disconnect', 'dmk-close', 'native-close']);
 });
+
+test('a synchronous SDK disconnect failure settles disposal after native cleanup', async () => {
+  const f = fixture();
+  f.setDisconnect(() => {
+    f.events.push('disconnect');
+    throw new Error('Synchronous disconnect failure');
+  });
+  const disposal = f.transport.dispose();
+  assert.equal(f.transport.host.getStatus().connected, false);
+  await assert.rejects(disposal, /Synchronous disconnect failure/);
+  assert.deepEqual(f.events, ['disconnect', 'dmk-close', 'native-close']);
+  assert.equal(f.transport.dispose(), disposal);
+});

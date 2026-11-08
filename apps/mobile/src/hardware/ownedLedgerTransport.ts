@@ -123,8 +123,9 @@ export function ownLedgerTransport(
       unsubscribe();
     }
     owner.signal.removeEventListener('abort', onAbort);
-    // Revoke the semantic session immediately, before native teardown awaits.
-    const disconnect = sharedHost.disconnect();
+    // The wrapper is already revoked. Capture synchronous SDK failures so
+    // native cleanup still drains and the reserved disposal promise settles.
+    const disconnect = Promise.resolve().then(() => sharedHost.disconnect());
     const cleanup = (async () => {
       const results = await Promise.allSettled([
         disconnect,
