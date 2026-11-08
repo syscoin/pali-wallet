@@ -136,7 +136,8 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
   // All remaining mutable state is confined to the main looper.
   private var view: WebView? = null
   private var resources: ProofResources? = null
-  private var ports: Array<WebMessagePort>? = null
+  // The peer endpoint belongs to JavaScript after postWebMessage transfers it.
+  private var nativePort: WebMessagePort? = null
   private var id = ""
   private var origin = ""
   private var input: String? = null
@@ -213,16 +214,24 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
         if (retiring && url == "about:blank") {
           documentRetired = true; finishRetirement(); return
         }
-        if (revoked.get() || url != "$origin/index.html" || ports != null) return
-        val channel = view.createWebMessageChannel()
-        ports = channel
-        channel[0].setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
-          override fun onMessage(port: WebMessagePort, message: WebMessage) {
-            if (ports?.get(0) !== port || this@PaliProofHost.view !== view) return
-            receive(message.data ?: "")
-          }
-        }, main)
-        view.postWebMessage(WebMessage(id, arrayOf(channel[1])), Uri.parse(origin))
+        if (revoked.get() || url != "$origin/index.html" || nativePort != null) return
+        var peer: WebMessagePort? = null
+        try {
+          val channel = view.createWebMessageChannel()
+          nativePort = channel[0]
+          peer = channel[1]
+          channel[0].setWebMessageCallback(object : WebMessagePort.WebMessageCallback() {
+            override fun onMessage(port: WebMessagePort, message: WebMessage) {
+              if (nativePort !== port || this@PaliProofHost.view !== view) return
+              receive(message.data ?: "")
+            }
+          }, main)
+          view.postWebMessage(WebMessage(id, arrayOf(channel[1])), Uri.parse(origin))
+        } catch (_: Exception) {
+          // A failed handshake may leave the peer untransferred.
+          try { peer?.close() } catch (_: Exception) { /* Already transferred. */ }
+          fail()
+        }
       }
       override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) { fail() }
       override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) { fail() }
@@ -252,7 +261,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
           submitted = true
           val request = JSONObject().put("id", id).put("type", "start").put("input", checkNotNull(input))
           input = null
-          checkNotNull(ports)[0].postMessage(WebMessage(request.toString()))
+          checkNotNull(nativePort).postMessage(WebMessage(request.toString()))
         }
         type == "progress" && keys == basic + "progress" && submitted -> emit("progress", json)
         submitted && ((type == "success" && keys == basic + "result") || (type == "error" && keys == basic)) -> {
@@ -307,13 +316,13 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
           readsDrained = true
           finishRetirement()
         }
-        ports?.forEach { it.close() }; ports = null
+        nativePort?.close(); nativePort = null
         if (!contentProcessTerminated) {
           document.stopLoading(); document.loadUrl("about:blank")
         }
         finishRetirement()
       } else {
-        checkNotNull(ports)[0].postMessage(WebMessage(JSONObject().put("id", id).put("type", "cancel").toString()))
+        checkNotNull(nativePort).postMessage(WebMessage(JSONObject().put("id", id).put("type", "cancel").toString()))
       }
     } catch (_: Exception) { finish(false) }
   }
@@ -329,7 +338,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
     pending?.reject(ProofException()); pending = null; input = null
     resources?.cancel(); resources = null
     var retired = clean
-    ports?.forEach { try { it.close() } catch (_: Exception) { retired = false } }; ports = null
+    try { nativePort?.close() } catch (_: Exception) { retired = false }; nativePort = null
     try { view?.stopLoading(); view?.removeAllViews(); view?.destroy() } catch (_: Exception) { retired = false }
     view = null
     finished = retired
