@@ -428,6 +428,9 @@ test('pending Unlock excludes recovery until the genuine failure is delivered', 
         ).toBeVisible();
         await page.locator('#confirm-import-btn').click();
         await expect(page).toHaveURL(/#\/import$/);
+        await page
+          .getByText(en.settings.recoveryIntro, { exact: true })
+          .scrollIntoViewIfNeeded();
         await expect(
           page.getByText(en.settings.recoveryIntro, { exact: true })
         ).toBeVisible();
