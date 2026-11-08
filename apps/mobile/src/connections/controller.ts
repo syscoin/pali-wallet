@@ -199,6 +199,8 @@ export class NativeConnectionsController {
   }
   private unavailable() {
     if (!this.disposed) {
+      for (const message of [...this.messages.values()])
+        void this.retireMessage(message, false);
       this.status = 'unavailable';
       this.error = 'CONNECTION_UNAVAILABLE';
       this.publish();

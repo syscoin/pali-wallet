@@ -1500,3 +1500,25 @@ test('actions on an absent old message ID cannot overwrite the next review', asy
     await f.controller.dispose();
   }
 });
+
+for (const method of ['personal_sign', 'eth_signTypedData_v4'] as const) {
+  test(`an unavailable transport retires a pending ${method} review`, async () => {
+    const f = await connectedFixture();
+    try {
+      const params = method === 'personal_sign'
+        ? ['Pending message', ADDRESS]
+        : [ADDRESS, typedMessage];
+      const review = await messageRequest(f, method, params);
+      assert.ok(review);
+      f.event({ type: 'unavailable' });
+      await settle();
+      assert.equal(f.view.getSnapshot().status, 'unavailable');
+      assert.equal(f.view.getSnapshot().messageReview, null);
+      await assert.rejects(f.view.approveMessage(review.id, review.revision, false));
+      assert.equal(f.signatures.length, 0);
+      assert.equal(f.responses.length, 0);
+    } finally {
+      await f.controller.dispose();
+    }
+  });
+}
