@@ -2642,16 +2642,21 @@ test('actions on an absent old message ID cannot overwrite the next review', asy
   }
 });
 
-for (const method of ['personal_sign', 'eth_sendTransaction'] as const) {
+for (const method of ['personal_sign', 'eth_signTypedData_v4', 'eth_sendTransaction'] as const) {
   test(`an asynchronous connection failure retires a pending ${method} review`, async () => {
     const f = await connectedFixture();
     let release!: () => void;
     try {
       const params = method === 'personal_sign'
         ? ['Pending message', ADDRESS]
-        : [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x1' }];
+        : method === 'eth_signTypedData_v4'
+          ? [ADDRESS, typedMessage]
+          : [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x1' }];
       const review = await messageRequest(f, method, params);
       assert.ok(review);
+      assert.equal(review.method, method);
+      assert.equal(review.error, null);
+      assert.equal(review.busy, false);
       f.setResponseWait(new Promise<void>((resolve) => { release = resolve; }));
       await messageRequest(f, 'eth_accounts', [], 12);
       assert.equal(f.view.getSnapshot().signingReview?.id, review.id);
