@@ -224,6 +224,26 @@ describe('smart-account signing and outer broadcast context', () => {
     expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['resolved Promise', () => Promise.resolve()],
+    ['rejected Promise', () => Promise.reject(new Error('Retired approval'))],
+    ['nonvoid result', () => true],
+  ])(
+    'rejects a %s approval guard before invoking the SDK',
+    async (_name, guard) => {
+      await expect(
+        wallet.signSmartAccountActionDigestInternal(
+          [OWNER_ADDRESS, ACTION_HASH],
+          owner,
+          EXECUTION_CONTEXT_ID,
+          guard
+        )
+      ).rejects.toThrow('EVM fee approval guard must be synchronous');
+      expect(sign).not.toHaveBeenCalled();
+      expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
+    }
+  );
+
   it('preserves the locally derived guardian recovery signing path without an execution token', async () => {
     await expect(
       wallet.signSmartAccountActionDigestInternal(
@@ -279,8 +299,11 @@ describe('smart-account signing and outer broadcast context', () => {
   it('checks the smart context again after preparing the separate outer payer', async () => {
     send.mockImplementationOnce(async (_transaction, _legacy, options) => {
       currentState.vault.activeNetwork.url = 'rpc-b';
-      try { options.assertCurrent(); }
-      catch (error) { throw Object.assign(error, { transactionNotBroadcast: true }); }
+      try {
+        options.assertCurrent();
+      } catch (error) {
+        throw Object.assign(error, { transactionNotBroadcast: true });
+      }
       return response;
     });
     await expect(
