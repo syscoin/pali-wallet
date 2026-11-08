@@ -1,7 +1,8 @@
 const { Buffer } = require('node:buffer');
 const { constants } = require('node:fs');
 const path = require('node:path');
-const { decodeNativeReport } = require('./report-validation.cjs');
+const { decodeNativeReport, expectedQuickCryptoIdentity } = require('./report-validation.cjs');
+const { CHECKS, completedCryptoChecks } = require('./simulator-contract.cjs');
 
 const INPUT_LIMIT = 100000;
 const OUTPUT_LIMIT = 8192;
@@ -24,6 +25,11 @@ function summarizeReport(text, filePhase, scenario) {
     reportedPhase: report.phase, reportedScenario: report.scenario, completedCheckCount: report.checks.length,
     ...(report.status === 'failed' ? { failedStage: STAGES.has(report.failedStage) ? report.failedStage : 'unrecognized' } : {}),
     ...(report.cryptoDiagnostic ? { cryptoDiagnostic: report.cryptoDiagnostic } : {}),
+    ...(completedCryptoChecks(report.checks) && typeof expectedQuickCryptoIdentity === 'string' &&
+      report.quickCryptoIdentity === expectedQuickCryptoIdentity ? {
+        completedCryptoChecks: report.checks.slice(0, CHECKS.length).map(({ name, durationMs }) => ({ name, durationMs })),
+        quickCryptoIdentity: expectedQuickCryptoIdentity,
+      } : {}),
     ...(report.walletConnectDiagnostic ? { walletConnectDiagnostic: report.walletConnectDiagnostic } : {}),
     storageDiagnostic: report.storageDiagnostic };
 }

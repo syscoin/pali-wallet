@@ -112,8 +112,9 @@ test('missing, nonregular, malformed, mismatched and oversized reports remain di
   assert.equal(directory.evidence.reports[1].availability, 'unavailable'); assert.equal(directory.reads.length, 0);
 });
 
-test('failed WalletConnect stage and bounded assertion survive iOS diagnostic projection', () => {
-  const diagnostic = { substage: 'close', errorName: 'Error', errorCode: 'WALLETCONNECT_NATIVE_DISPOSAL_SIGNAL' };
+test('failed WalletConnect initialization and bounded SDK rejection survive iOS diagnostic projection', () => {
+  const diagnostic = { substage: 'init', errorName: 'WalletConnectTransportError', errorCode: 'CONNECTION_UNAVAILABLE',
+    initialization: { stage: 'client-init', errorName: 'TypeError', errorCode: 'UNCLASSIFIED' } };
   const created = report({ failedStage: 'native WalletConnect lifecycle', walletConnectDiagnostic: diagnostic });
   const result = collect({ [filename('create')]: JSON.stringify(created) });
   assert.deepEqual(result.evidence.reports[1], {
@@ -126,10 +127,44 @@ test('failed WalletConnect stage and bounded assertion survive iOS diagnostic pr
     { ...diagnostic, errorCode: SECRET },
     { ...diagnostic, message: SECRET },
     { ...diagnostic, topic: SECRET },
+    { ...diagnostic, initialization: { ...diagnostic.initialization, stage: SECRET } },
+    { ...diagnostic, initialization: { ...diagnostic.initialization, errorCode: SECRET } },
+    { ...diagnostic, initialization: { ...diagnostic.initialization, message: SECRET } },
   ]) {
     const rejected = collect({ [filename('create')]: JSON.stringify({ ...created, walletConnectDiagnostic: invalid }) });
     assert.equal(rejected.evidence.reports[1].availability, 'invalid');
     assert(!rejected.text.includes(SECRET));
+  }
+});
+
+test('iOS failure projection retains exact completed crypto checks only with the expected candidate identity', () => {
+  assert.equal(typeof expectedQuickCryptoIdentity, 'string');
+  const checks = CHECKS.map((name, index) => ({ name, durationMs: index === 0 ? 300000 : index }));
+  const created = report({ failedStage: 'native WalletConnect lifecycle', checks,
+    quickCryptoIdentity: expectedQuickCryptoIdentity,
+    walletConnectDiagnostic: { substage: 'init', errorName: 'WalletConnectTransportError', errorCode: 'CONNECTION_UNAVAILABLE' },
+    cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'opaque-key-owner-and-disposal' } });
+  const result = collect({ [filename('create')]: JSON.stringify({ ...created,
+    checks: [...checks, { name: SECRET, durationMs: 1 }] }) });
+  assert.deepEqual(result.evidence.reports[1].completedCryptoChecks, checks);
+  assert.equal(result.evidence.reports[1].quickCryptoIdentity, expectedQuickCryptoIdentity);
+  assert(!result.text.includes(SECRET));
+  for (const changes of [
+    { quickCryptoIdentity: SECRET }, { quickCryptoIdentity: undefined },
+    { checks: checks.slice(0, -1) }, { checks: [...checks].reverse() },
+    { checks: checks.map((check, index) => index === 0 ? { ...check, name: SECRET } : check) },
+  ]) {
+    const omitted = collect({ [filename('create')]: JSON.stringify({ ...created, ...changes }) });
+    assert.equal(omitted.evidence.reports[1].availability, 'available');
+    assert.equal(omitted.evidence.reports[1].completedCryptoChecks, undefined);
+    assert.equal(omitted.evidence.reports[1].quickCryptoIdentity, undefined);
+    assert(!omitted.text.includes(SECRET));
+  }
+  for (const durationMs of [-1, 300001, null, Infinity]) {
+    const rejected = collect({ [filename('create')]: JSON.stringify({ ...created,
+      checks: checks.map((check, index) => index === 0 ? { ...check, durationMs } : check) }) });
+    assert.equal(rejected.evidence.reports[1].availability, 'invalid');
+    assert.equal(rejected.evidence.reports[1].completedCryptoChecks, undefined);
   }
 });
 
@@ -304,8 +339,11 @@ test('actual runner keeps a rejected HTTP-stage report diagnostic-only after a s
 });
 
 test('actual runner preserves WalletConnect diagnostics without accepting them as simulator refusal', async () => {
-  const diagnostic = { substage: 'pair', errorName: 'Error', errorCode: 'WALLETCONNECT_NATIVE_ABORT_ACCEPTED' };
-  const created = report({ failedStage: 'native WalletConnect lifecycle', walletConnectDiagnostic: diagnostic });
+  const diagnostic = { substage: 'init', errorName: 'WalletConnectTransportError', errorCode: 'CONNECTION_UNAVAILABLE',
+    initialization: { stage: 'core-create', errorName: 'ReferenceError', errorCode: 'UNCLASSIFIED' } };
+  const checks = CHECKS.map((name, index) => ({ name, durationMs: index }));
+  const created = report({ failedStage: 'native WalletConnect lifecycle', walletConnectDiagnostic: diagnostic,
+    checks, quickCryptoIdentity: expectedQuickCryptoIdentity });
   const result = await actualRunner({ created, reportFailure: true });
   assert.equal(result.process.exitCode, 1);
   assert.equal(result.reportedError, result.validationError);
@@ -313,6 +351,8 @@ test('actual runner preserves WalletConnect diagnostics without accepting them a
   assert.equal(evidence.diagnosticOnly, true);
   assert.equal(evidence.reports[1].failedStage, 'native WalletConnect lifecycle');
   assert.deepEqual(evidence.reports[1].walletConnectDiagnostic, diagnostic);
+  assert.deepEqual(evidence.reports[1].completedCryptoChecks, checks);
+  assert.equal(evidence.reports[1].quickCryptoIdentity, expectedQuickCryptoIdentity);
   assert(result.events.some((args) => args[1] === 'delete' && args[2] === DEVICE));
 });
 
