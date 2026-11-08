@@ -542,14 +542,14 @@ for (const back of ['Android', 'screen'] as const)
   });
 
 
-test('Smart native and ERC20 sends use the owned operation route while NFT actions remain gated', async () => {
+test('Smart native, ERC20 and NFT sends use the owned operation route', async () => {
   const f = await mounted(true, true);
   try {
     const portfolio = find(f.render(), node => node.type === 'NativePortfolio');
     assert(portfolio);
     assert.equal(typeof portfolio.props.onSend, 'function');
     assert.equal(typeof portfolio.props.onSendToken, 'function');
-    assert.equal(portfolio.props.onSendCollectible, undefined);
+    assert.equal(typeof portfolio.props.onSendCollectible, 'function');
     portfolio.props.onSend();
     const route = f.render();
     assert.equal(route.type, 'NativeSmartAccountSend');
@@ -561,6 +561,14 @@ test('Smart native and ERC20 sends use the owned operation route while NFT actio
     const tokenRoute = f.render();
     assert.equal(tokenRoute.type, 'NativeSmartAccountSend');
     assert.equal(tokenRoute.props.token, token);
+    assert.equal(f.hardwareBack(), true);
+    const afterToken = find(f.render(), node => node.type === 'NativePortfolio');
+    assert(afterToken);
+    const collectible = { contractAddress: '0x6666666666666666666666666666666666666666', tokenStandard: 'ERC-721' };
+    afterToken.props.onSendCollectible(collectible);
+    const nftRoute = f.render();
+    assert.equal(nftRoute.type, 'NativeSmartAccountSend');
+    assert.equal(nftRoute.props.collectible, collectible);
     assert.equal(f.hardwareBack(), true);
     assert(find(f.render(), node => node.type === 'NativePortfolio'));
     assert.equal(f.exits(), 0);

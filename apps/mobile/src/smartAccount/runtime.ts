@@ -1,3 +1,4 @@
+import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
@@ -115,7 +116,12 @@ export function createNativeSmartOperation(
       if (intent.kind !== 'deploy') {
         await assertSmartAccountTargetsAllowed(
           getBlacklistTargetsForEvmCall(
-            intent.kind === 'erc20-transfer'
+            intent.kind === 'nft-transfer'
+              ? {
+                  to: intent.contractAddress,
+                  data: buildSmartAccountNftTransfer(intent).data,
+                }
+              : intent.kind === 'erc20-transfer'
               ? {
                   to: intent.token.contractAddress,
                   data: buildSmartAccountErc20Transfer(
@@ -234,6 +240,8 @@ export function createNativeSmartOperation(
       issued = await prepare(
         intent.kind === 'deploy'
           ? [{ target: account.address, data: '0x', value: '0x0' }]
+          : intent.kind === 'nft-transfer'
+          ? [{ ...buildSmartAccountNftTransfer(intent) }]
           : intent.kind === 'erc20-transfer'
           ? [
               {
@@ -329,6 +337,8 @@ export function createNativeSmartOperation(
             ...transactionMetadata,
             ...(intent.kind === 'erc20-transfer'
               ? { smartAccountToken: intent.token }
+              : intent.kind === 'nft-transfer'
+              ? { smartAccountNftStandard: intent.tokenStandard }
               : {}),
             smartAccountOperationHash: prepared.actionHash,
           },

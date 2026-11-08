@@ -1,4 +1,6 @@
-import { formatTokenUnits, type Erc20Metadata } from '../../../source/shared/erc20.ts';
+import { normalizeNftTokenId } from '../../../source/utils/nftTokenId.ts';
+import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
+import { parseErc20Units, formatTokenUnits, type Erc20Metadata } from '../../../source/shared/erc20.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -31,7 +33,7 @@ const code = ts.transpileModule(source, {
     esModuleInterop: true,
   },
 }).outputText;
-function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata) {
+function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, collectible?: SavedCollectible) {
   const cells: any[] = [],
     cleanups: (() => void)[] = [];
   let index = 0;
@@ -100,7 +102,8 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata) 
       },
     },
     '../core/amounts': { formatBaseUnits },
-    '../../../../source/shared/erc20': { formatTokenUnits },
+    '../../../../source/shared/erc20': { formatTokenUnits, parseErc20Units },
+    '../../../../source/utils/nftTokenId': { normalizeNftTokenId },
     './NativeSend': {
       NativeSendInput: 'Input',
       nativeTransferFailure: (error: Error) =>
@@ -138,7 +141,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata) 
       accountLabel: 'Smart account',
       source: {},
       reader: {},
-      token, tokenView: token ? { subscribe: () => () => {}, connect: () => () => {},
+      token, collectible, tokenView: token ? { subscribe: () => () => {}, connect: () => () => {},
         getSnapshot: () => ({ items: [{ metadata: token, status: 'available', units: '100' }] }) } : undefined,
       onBack() {},
     }) as Element;
@@ -277,5 +280,36 @@ test('Smart token form presents the selected contract and routes exact decimal i
     assert.equal(request.kind, 'erc20');
     assert.equal(request.contractAddress, token.contractAddress);
     assert.equal(request.amount, amount);
+  } finally { f.close(); }
+});
+
+
+for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`Smart ${standard} form binds saved item and exact quantity`, async () => {
+  const contractAddress = '0x6666666666666666666666666666666666666666';
+  const collectible: SavedCollectible = standard === 'ERC-721' ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId: '7' };
+  let sent: any;
+  const f = fixture(async (_recipient, request) => { sent = request; return { dispose() {} }; }, undefined, collectible);
+  try {
+    f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
+    if (standard === 'ERC-721') f.edit('Token ID', '7');
+    else f.edit('Quantity', '9007199254740993');
+    f.press(); await tick();
+    assert.equal(sent.kind, 'nft');
+    assert.equal(sent.collectible, collectible);
+    assert.equal(sent.tokenId, '7');
+    assert.equal(sent.amountUnits, standard === 'ERC-721' ? '1' : '9007199254740993');
+  } finally { f.close(); }
+});
+
+
+test('invalid NFT identifiers stay in the form with a specific field message', async () => {
+  let calls = 0;
+  const f = fixture(async () => { calls++; return { dispose() {} }; }, undefined,
+    { contractAddress: '0x6666666666666666666666666666666666666666', tokenStandard: 'ERC-721' });
+  try {
+    f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
+    f.edit('Token ID', '-1'); f.press(); await tick();
+    assert.equal(calls, 0);
+    assert.equal(all(f.render()).find(node => node.type === 'Notice')!.props.body, 'Enter a valid token ID.');
   } finally { f.close(); }
 });

@@ -148,8 +148,26 @@ export function NativeSmartAccountOperationScreen({
             <Text selectable style={s.address}>
               {transfer.recipient}
             </Text>
-            <Text style={s.label}>Amount</Text>
-            {transfer.kind === 'native-max' ? (
+            {transfer.kind === 'nft-transfer' && (
+              <>
+                <Text style={s.label}>{transfer.tokenStandard}</Text>
+                <Text selectable style={s.address}>
+                  {transfer.contractAddress}
+                </Text>
+                <Text style={s.label}>Token ID</Text>
+                <Text selectable style={s.address}>
+                  {transfer.tokenId}
+                </Text>
+              </>
+            )}
+            <Text style={s.label}>
+              {transfer.kind === 'nft-transfer' ? 'Quantity' : 'Amount'}
+            </Text>
+            {transfer.kind === 'nft-transfer' ? (
+              <Text selectable style={s.value}>
+                {transfer.amountUnits}
+              </Text>
+            ) : transfer.kind === 'native-max' ? (
               <Text style={s.label}>Calculating maximum…</Text>
             ) : (
               amount(
