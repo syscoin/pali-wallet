@@ -188,15 +188,3 @@ export const encodePaliErc7739TypedDataSignature = (
     toBeHex(descriptionBytes.length, 2),
   ]);
 };
-
-/** Sign untrusted dapp typed data only after applying the ERC-7739 transform. */
-export const signPaliErc7739TypedDataV4 = async (params: {
-  accountAddress: string;
-  chainId: number;
-  signActionHash: (actionHash: string) => Promise<string>;
-  typedData: PaliErc7739TypedData;
-}): Promise<string> => {
-  const request = buildPaliErc7739TypedDataRequest(params);
-  const moduleSignature = await params.signActionHash(request.actionHash);
-  return encodePaliErc7739TypedDataSignature(moduleSignature, request);
-};
