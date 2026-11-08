@@ -74,6 +74,7 @@ export class NativeWalletRemoval {
   private disposed = false;
   private verified = false;
   private unresolved = false;
+  private producersRetired = false;
   private readonly unsubscribe: () => void;
   private readonly dependencies: Dependencies;
 
@@ -149,7 +150,12 @@ export class NativeWalletRemoval {
       return this.own(Promise.resolve().then(async () => {
         try {
           check();
-          const { snapshot: before, assertCurrent: assertRuntime } = await authorize(password, check, this.dependencies.beforeSnapshot);
+          const { snapshot: before, assertCurrent: assertRuntime } = await authorize(password, check, async (assertCurrent) => {
+            checkGuard(assertCurrent);
+            check();
+            this.producersRetired = true;
+            await this.dependencies.beforeSnapshot(assertCurrent);
+          });
           check();
           const installation = before.metadata.find((entry) => entry.key === 'installation')?.value;
           if (before.state.presence !== 'existing' || !before.identity || !installation || !/^[0-9a-f]{32}$/.test(installation))
@@ -233,6 +239,8 @@ export class NativeWalletRemoval {
   }
 
   hasVerifiedRemoval(): boolean { return this.verified; }
+
+  requiresControllerReopen(): boolean { return this.producersRetired; }
 
   cancel(): void { this.generation++; this.clearTicket(); }
 

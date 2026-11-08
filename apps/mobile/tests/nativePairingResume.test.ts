@@ -188,6 +188,7 @@ function harness(ready = false) {
     },
     keyExport: { cancel() {} },
     backup: { cancel() {}, onClear: () => () => {} },
+    removal: { requiresControllerReopen: () => false },
     balanceReader: {},
     transfers: {},
     tokens: {},

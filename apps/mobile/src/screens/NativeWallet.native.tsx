@@ -364,6 +364,23 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       throw new Error('REOPEN_REQUIRED');
     }
   }, [attach]);
+  useLayoutEffect(() => {
+    const local = controllers.current;
+    if (removalRef.current || (stage === 'remove-wallet' && snapshot.phase !== 'locked') || !local?.removal.requiresControllerReopen()) return;
+    const token = screenToken.current;
+    const generation = ++epoch.current;
+    // Preparation stopped asynchronous producers before sealing the removal
+    // snapshot. An abandoned attempt needs a fresh bundle, not its closed view.
+    const draining = nativeLifecycle.release(token);
+    clearOwnerView(); clearSecrets(); setSnapshot(INITIAL); setProtectedScreen(false); setStage('choose');
+    void draining.then(async () => {
+      if (mounted.current && epoch.current === generation && screenToken.current === token &&
+          AppState.currentState === 'active' && !controllers.current) await install();
+    }).catch(() => {
+      if (mounted.current && epoch.current === generation)
+        setError('Secure wallet storage is unavailable. Close and reopen Pali to try again.');
+    });
+  }, [stage, snapshot.phase, snapshot.revision, clearOwnerView, clearSecrets, install]);
   useEffect(() => {
     const lifecycleEpoch = epoch, ownedToken = screenToken.current;
     mounted.current = true;
