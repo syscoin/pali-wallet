@@ -46,6 +46,7 @@ function fixture(
     noDispatch?: boolean;
     vendorError?: Error;
     realClient?: boolean;
+    now?: () => number;
   } = {}
 ) {
   let loads = 0,
@@ -57,7 +58,7 @@ function fixture(
   const order: string[] = [];
   const clients: NativeTrezorClient[] = [];
   const sessions = createTrezorSessions({
-    now: () => 1000,
+    now: config.now ?? (() => 1000),
     randomBytes: (length) => new Uint8Array(length).fill(++randomness),
     async loadClient() {
       loads++;
@@ -525,20 +526,48 @@ test('retiring after cancellation still destroys the private SDK worker exactly 
     session = f.start();
   await session.cancel();
   let count = 0;
-  await assert.rejects(
-    session.retire(async () => {
-      count++;
-    }),
-    /CANCELLED/
-  );
-  await assert.rejects(
-    session.retire(async () => {
-      count++;
-    }),
-    /CANCELLED/
-  );
+  await session.retire(async () => { count++; });
+  await session.retire(async () => { count++; });
   assert.equal(count, 1);
+  await f.start().cancel();
   await f.sessions.dispose();
+});
+
+test('expiry retires the old SDK once and permits a new Trezor job after draining', async () => {
+  let now = 1000;
+  const f = fixture({ now: () => now }), session = f.start();
+  await session.host.init(guard);
+  now = 91_000;
+  assert.equal(f.sessions.getSnapshot(), null);
+  const sdk = deferred();
+  let count = 0, settled = false;
+  const retirement = session.retire(async () => { count++; await sdk.promise; });
+  void retirement.then(() => { settled = true; });
+  await tick();
+  assert.equal(settled, false);
+  sdk.resolve();
+  await retirement;
+  await session.retire(async () => { count++; });
+  assert.equal(count, 1);
+  now = 1000;
+  await f.start().cancel();
+  await f.sessions.dispose();
+});
+
+test('expiry does not hide actual transport cleanup failure', async () => {
+  let now = 1000;
+  const f = fixture({ now: () => now, cleanupError: new Error('expired cleanup failed') });
+  const session = f.start();
+  await session.host.init(guard);
+  const request = assert.rejects(session.host.ethereumGetAddress(guard, addressRequest));
+  await tick();
+  now = 91_000;
+  let count = 0;
+  await assert.rejects(session.retire(async () => { count++; }), /expired cleanup failed/);
+  await request;
+  assert.equal(count, 1);
+  assert.throws(() => f.start(), /BUSY/);
+  await assert.rejects(f.sessions.dispose(), /expired cleanup failed/);
 });
 
 test('callback router owns one subscription and ignores delivery after disposal', async () => {
