@@ -1,4 +1,10 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from '@playwright/test';
 import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -128,7 +134,10 @@ async function switchOther(
     .toBe(true);
 }
 
-test('faucet feedback and eligibility follow a network switch in another normal wallet document', async ({}, info) => {
+async function runFaucetScope(
+  viewport: { height: number; width: number },
+  info: TestInfo
+) {
   test.setTimeout(120_000);
   expect(info.config.workers).toBe(1);
   expect(process.env.PALI_TEST_DAPP_REVISION).toMatch(/^[a-f0-9]{40}$/);
@@ -173,7 +182,7 @@ test('faucet feedback and eligibility follow a network switch in another normal 
       password: 'FaucetScopeSyntheticOnly!2026',
       rpcUrl: server.url,
     });
-    wallet = await PaliWallet.launch('faucet-request-scope', {
+    wallet = await PaliWallet.launch(`faucet-request-scope-${viewport.width}`, {
       offlineHttpProxy: server.url,
       viewport: { width: 400, height: 620 },
     });
@@ -615,192 +624,183 @@ test('faucet feedback and eligibility follow a network switch in another normal 
       await expect(copied).toHaveCount(0);
       await expect(copy).toHaveText(CURRENT_HASH);
     };
-    for (const viewport of [
-      { width: 400, height: 620 },
-      { width: 320, height: 360 },
-    ]) {
-      await page.setViewportSize(viewport);
-      await wallet.step(
-        `faucet copy: native Tab and Enter waits for accepted completion at ${viewport.width}x${viewport.height}`,
-        async (capture) => {
-          await expect(copy).toHaveAttribute('type', 'button');
-          await expect(copy).toHaveText(CURRENT_HASH);
-          await tabTo(page, copy);
-          await capture(page);
-          const targetBox = await exposed(page, copy);
-          const cardBox = await exposed(page, copy.locator('..'));
-          const glyphLayout = await copy.evaluate((element) => {
-            const own = element.getBoundingClientRect();
-            let left = Math.max(0, own.left),
-              top = Math.max(0, own.top);
-            let right = Math.min(innerWidth, own.right),
-              bottom = Math.min(innerHeight, own.bottom);
+    await page.setViewportSize(viewport);
+    await wallet.step(
+      `faucet copy: native Tab and Enter waits for accepted completion at ${viewport.width}x${viewport.height}`,
+      async (capture) => {
+        await expect(copy).toHaveAttribute('type', 'button');
+        await expect(copy).toHaveText(CURRENT_HASH);
+        await tabTo(page, copy);
+        await capture(page);
+        const targetBox = await exposed(page, copy);
+        const cardBox = await exposed(page, copy.locator('..'));
+        const glyphLayout = await copy.evaluate((element) => {
+          const own = element.getBoundingClientRect();
+          let left = Math.max(0, own.left),
+            top = Math.max(0, own.top);
+          let right = Math.min(innerWidth, own.right),
+            bottom = Math.min(innerHeight, own.bottom);
+          for (
+            let parent = element.parentElement;
+            parent;
+            parent = parent.parentElement
+          ) {
+            const style = getComputedStyle(parent),
+              box = parent.getBoundingClientRect();
+            if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
+              left = Math.max(left, box.left + parent.clientLeft);
+              right = Math.min(
+                right,
+                box.left + parent.clientLeft + parent.clientWidth
+              );
+            }
+            if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
+              top = Math.max(top, box.top + parent.clientTop);
+              bottom = Math.min(
+                bottom,
+                box.top + parent.clientTop + parent.clientHeight
+              );
+            }
+          }
+          const nodes = document.createTreeWalker(
+            element,
+            NodeFilter.SHOW_TEXT
+          );
+          const glyphs = [];
+          while (nodes.nextNode()) {
+            const text = nodes.currentNode;
             for (
-              let parent = element.parentElement;
-              parent;
-              parent = parent.parentElement
+              let offset = 0;
+              offset < (text.textContent || '').length;
+              offset++
             ) {
-              const style = getComputedStyle(parent),
-                box = parent.getBoundingClientRect();
-              if (/auto|scroll|hidden|clip/.test(style.overflowX)) {
-                left = Math.max(left, box.left + parent.clientLeft);
-                right = Math.min(
-                  right,
-                  box.left + parent.clientLeft + parent.clientWidth
+              const range = document.createRange();
+              range.setStart(text, offset);
+              range.setEnd(text, offset + 1);
+              for (const rect of Array.from(range.getClientRects())) {
+                const hit = document.elementFromPoint(
+                  rect.x + rect.width / 2,
+                  rect.y + rect.height / 2
                 );
-              }
-              if (/auto|scroll|hidden|clip/.test(style.overflowY)) {
-                top = Math.max(top, box.top + parent.clientTop);
-                bottom = Math.min(
-                  bottom,
-                  box.top + parent.clientTop + parent.clientHeight
-                );
+                glyphs.push({
+                  x: rect.x,
+                  y: rect.y,
+                  width: rect.width,
+                  height: rect.height,
+                  visible:
+                    rect.width > 0 &&
+                    rect.height > 0 &&
+                    rect.left >= left - 0.5 &&
+                    rect.right <= right + 0.5 &&
+                    rect.top >= top - 0.5 &&
+                    rect.bottom <= bottom + 0.5 &&
+                    !!hit &&
+                    (hit === element || element.contains(hit)),
+                });
               }
             }
-            const nodes = document.createTreeWalker(
-              element,
-              NodeFilter.SHOW_TEXT
-            );
-            const glyphs = [];
-            while (nodes.nextNode()) {
-              const text = nodes.currentNode;
-              for (
-                let offset = 0;
-                offset < (text.textContent || '').length;
-                offset++
-              ) {
-                const range = document.createRange();
-                range.setStart(text, offset);
-                range.setEnd(text, offset + 1);
-                for (const rect of Array.from(range.getClientRects())) {
-                  const hit = document.elementFromPoint(
-                    rect.x + rect.width / 2,
-                    rect.y + rect.height / 2
-                  );
-                  glyphs.push({
-                    x: rect.x,
-                    y: rect.y,
-                    width: rect.width,
-                    height: rect.height,
-                    visible:
-                      rect.width > 0 &&
-                      rect.height > 0 &&
-                      rect.left >= left - 0.5 &&
-                      rect.right <= right + 0.5 &&
-                      rect.top >= top - 0.5 &&
-                      rect.bottom <= bottom + 0.5 &&
-                      !!hit &&
-                      (hit === element || element.contains(hit)),
-                  });
-                }
-              }
-            }
-            return {
-              text: element.textContent,
-              clip: { left, top, right, bottom },
-              glyphs,
-              lines: new Set(glyphs.map((glyph) => Math.round(glyph.y))).size,
-            };
-          });
-          expect(glyphLayout.text).toBe(CURRENT_HASH);
-          expect(glyphLayout.glyphs).toHaveLength(CURRENT_HASH.length);
-          expect(glyphLayout.glyphs.every((glyph) => glyph.visible)).toBe(true);
-          expect(glyphLayout.lines).toBeGreaterThan(1);
-          await info.attach(`faucet-full-hash-glyphs-${viewport.width}`, {
-            body: JSON.stringify(glyphLayout, null, 2),
-            contentType: 'application/json',
-          });
-          await capture(page);
-          const before = (await clipboard()).writes.length;
-          await page.evaluate(() =>
-            (window as any).__faucetCopy.hold('accept')
-          );
-          await page.keyboard.press('Enter');
-          await expect
-            .poll(async () => {
-              const current = await clipboard();
-              return {
-                held: current.held,
-                count: current.writes.length,
-                last: current.writes.at(-1),
-              };
-            })
-            .toEqual({
-              held: true,
-              count: before + 1,
-              last: {
-                text: CURRENT_HASH,
-                nativeCompleted: true,
-                settled: false,
-                failed: false,
-              },
-            });
-          await expect(copied).toHaveCount(0);
-          await expect(copyFailure).toHaveCount(0);
-          await page.evaluate(() => (window as any).__faucetCopy.release());
-          await waitForCopied();
-          observations[`copy-enter-${viewport.width}`] = {
-            viewport,
-            targetBox,
-            cardBox,
-            clipboard: await clipboard(),
+          }
+          return {
+            text: element.textContent,
+            clip: { left, top, right, bottom },
+            glyphs,
+            lines: new Set(glyphs.map((glyph) => Math.round(glyph.y))).size,
           };
-        }
-      );
-      await wallet.step(
-        `faucet copy: native Space and pointer retain exact-hash copying at ${viewport.width}x${viewport.height}`,
-        async (capture) => {
-          let before = (await clipboard()).writes.length;
-          await tabTo(page, copy);
-          await exposed(page, copy);
-          await page.keyboard.press('Space');
-          await waitForCopied();
-          expect((await clipboard()).writes).toHaveLength(before + 1);
-          before += 1;
-          await copy.scrollIntoViewIfNeeded();
-          await exposed(page, copy);
-          await copy.click();
-          await waitForCopied();
-          expect((await clipboard()).writes).toHaveLength(before + 1);
-          await capture(page);
-        }
-      );
-      await wallet.step(
-        `faucet copy: pending refusal has no success and remains retryable at ${viewport.width}x${viewport.height}`,
-        async (capture) => {
-          await page.evaluate(() =>
-            (window as any).__faucetCopy.hold('refuse')
-          );
-          await tabTo(page, copy);
-          await exposed(page, copy);
-          await page.keyboard.press('Enter');
-          await expect.poll(clipboard).toMatchObject({ held: true });
-          expect((await clipboard()).writes.at(-1)).toEqual({
-            text: CURRENT_HASH,
-            nativeCompleted: false,
-            settled: false,
-            failed: false,
+        });
+        expect(glyphLayout.text).toBe(CURRENT_HASH);
+        expect(glyphLayout.glyphs).toHaveLength(CURRENT_HASH.length);
+        expect(glyphLayout.glyphs.every((glyph) => glyph.visible)).toBe(true);
+        expect(glyphLayout.lines).toBeGreaterThan(1);
+        await info.attach(`faucet-full-hash-glyphs-${viewport.width}`, {
+          body: JSON.stringify(glyphLayout, null, 2),
+          contentType: 'application/json',
+        });
+        await capture(page);
+        const before = (await clipboard()).writes.length;
+        await page.evaluate(() => (window as any).__faucetCopy.hold('accept'));
+        await page.keyboard.press('Enter');
+        await expect
+          .poll(async () => {
+            const current = await clipboard();
+            return {
+              held: current.held,
+              count: current.writes.length,
+              last: current.writes.at(-1),
+            };
+          })
+          .toEqual({
+            held: true,
+            count: before + 1,
+            last: {
+              text: CURRENT_HASH,
+              nativeCompleted: true,
+              settled: false,
+              failed: false,
+            },
           });
-          await expect(copied).toHaveCount(0);
-          await page.evaluate(() => (window as any).__faucetCopy.release());
-          await expect(copyFailure).toBeVisible();
-          await expect(copied).toHaveCount(0);
-          await expect(copy).toBeEnabled();
-          await capture(page);
-          observations[`copy-refusal-${viewport.width}`] = await clipboard();
-          await expect(copyFailure).toBeHidden();
-          await tabTo(page, copy);
-          await page.keyboard.press('Space');
-          await waitForCopied();
-          expect((await clipboard()).writes.at(-1)).toEqual({
-            text: CURRENT_HASH,
-            nativeCompleted: true,
-            settled: true,
-            failed: false,
-          });
-        }
-      );
-    }
+        await expect(copied).toHaveCount(0);
+        await expect(copyFailure).toHaveCount(0);
+        await page.evaluate(() => (window as any).__faucetCopy.release());
+        await waitForCopied();
+        observations[`copy-enter-${viewport.width}`] = {
+          viewport,
+          targetBox,
+          cardBox,
+          clipboard: await clipboard(),
+        };
+      }
+    );
+    await wallet.step(
+      `faucet copy: native Space and pointer retain exact-hash copying at ${viewport.width}x${viewport.height}`,
+      async (capture) => {
+        let before = (await clipboard()).writes.length;
+        await tabTo(page, copy);
+        await exposed(page, copy);
+        await page.keyboard.press('Space');
+        await waitForCopied();
+        expect((await clipboard()).writes).toHaveLength(before + 1);
+        before += 1;
+        await copy.scrollIntoViewIfNeeded();
+        await exposed(page, copy);
+        await copy.click();
+        await waitForCopied();
+        expect((await clipboard()).writes).toHaveLength(before + 1);
+        await capture(page);
+      }
+    );
+    await wallet.step(
+      `faucet copy: pending refusal has no success and remains retryable at ${viewport.width}x${viewport.height}`,
+      async (capture) => {
+        await page.evaluate(() => (window as any).__faucetCopy.hold('refuse'));
+        await tabTo(page, copy);
+        await exposed(page, copy);
+        await page.keyboard.press('Enter');
+        await expect.poll(clipboard).toMatchObject({ held: true });
+        expect((await clipboard()).writes.at(-1)).toEqual({
+          text: CURRENT_HASH,
+          nativeCompleted: false,
+          settled: false,
+          failed: false,
+        });
+        await expect(copied).toHaveCount(0);
+        await page.evaluate(() => (window as any).__faucetCopy.release());
+        await expect(copyFailure).toBeVisible();
+        await expect(copied).toHaveCount(0);
+        await expect(copy).toBeEnabled();
+        await capture(page);
+        observations[`copy-refusal-${viewport.width}`] = await clipboard();
+        await expect(copyFailure).toBeHidden();
+        await tabTo(page, copy);
+        await page.keyboard.press('Space');
+        await waitForCopied();
+        expect((await clipboard()).writes.at(-1)).toEqual({
+          text: CURRENT_HASH,
+          nativeCompleted: true,
+          settled: true,
+          failed: false,
+        });
+      }
+    );
     await wallet.step(
       'faucet copy: main Close still returns Home and a fresh failed claim shows only error feedback',
       async (capture) => {
@@ -808,26 +808,24 @@ test('faucet feedback and eligibility follow a network switch in another normal 
         expect(observations.clipboard).toEqual({
           held: false,
           writes: [
-            ...Array.from({ length: 2 }, () => [
-              ...Array.from({ length: 3 }, () => ({
-                text: CURRENT_HASH,
-                nativeCompleted: true,
-                settled: true,
-                failed: false,
-              })),
-              {
-                text: CURRENT_HASH,
-                nativeCompleted: false,
-                settled: true,
-                failed: true,
-              },
-              {
-                text: CURRENT_HASH,
-                nativeCompleted: true,
-                settled: true,
-                failed: false,
-              },
-            ]).flat(),
+            ...Array.from({ length: 3 }, () => ({
+              text: CURRENT_HASH,
+              nativeCompleted: true,
+              settled: true,
+              failed: false,
+            })),
+            {
+              text: CURRENT_HASH,
+              nativeCompleted: false,
+              settled: true,
+              failed: true,
+            },
+            {
+              text: CURRENT_HASH,
+              nativeCompleted: true,
+              settled: true,
+              failed: false,
+            },
           ],
         });
         const mainClose = page
@@ -984,4 +982,15 @@ test('faucet feedback and eligibility follow a network switch in another normal 
       }
     }
   }
-});
+}
+
+// Each viewport owns a fresh document and clipboard feedback state. Captures
+// finish CSS animations, so a hidden toast alone cannot delimit its dedup window.
+for (const viewport of [
+  { width: 400, height: 620 },
+  { width: 320, height: 360 },
+]) {
+  test(`faucet feedback and eligibility follow a network switch in another normal wallet document at ${viewport.width}x${viewport.height}`, async ({}, info) => {
+    await runFaucetScope(viewport, info);
+  });
+}
