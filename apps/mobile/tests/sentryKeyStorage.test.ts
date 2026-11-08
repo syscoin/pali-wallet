@@ -73,6 +73,8 @@ test('Sentry management rejects asynchronous and nonvoid owner guards before any
       run: async (operation) => operation(),
       vaultHost: { crypto: () => webcrypto as unknown as Crypto, read: unavailable, write: unavailable },
       vaultId: 'ab'.repeat(32),
+      readSettings: unavailable,
+      writeSettings: unavailable,
     }), { code: 'CANCELLED' });
     await Promise.resolve();
     assert.equal(calls, 0);

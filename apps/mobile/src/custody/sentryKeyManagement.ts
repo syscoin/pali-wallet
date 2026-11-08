@@ -16,6 +16,8 @@ import {
   type SentryKeySummary,
 } from '../../../../source/wallet/sentryKeyVault.ts';
 import { isNativePasswordInput } from './password.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import { normalizeSentryServiceSettings, readSentryServiceSettings, type SentryServiceSettings } from '../../../../source/shared/sentrySettings.ts';
 
 type Role = SentryAuthorityKey['role'];
 type PublicKey = Readonly<SentryKeySummary>;
@@ -91,6 +93,8 @@ type Ports = Readonly<{
   run<T>(operation: () => Promise<T>): Promise<T>;
   vaultHost: ISentryKeyVaultHost;
   vaultId: string;
+  readSettings(): Promise<unknown>;
+  writeSettings(settings: SentryServiceSettings, assertCurrent: () => void): Promise<void>;
 }>;
 
 /** One foreground-owned local key review. No operation/signing or secret-return port. */
@@ -254,7 +258,37 @@ export function createNativeSentryKeyManagement(ports: Ports) {
     }
   }
 
+  function checkSettings(assertCurrent: () => void) {
+    check();
+    try { assertSynchronousEvmFeeGuard(assertCurrent); }
+    catch { throw changed(); }
+    check();
+  }
+
   return Object.freeze({
+    getSettings(assertCurrent: () => void) {
+      checkSettings(assertCurrent);
+      return ports.run(async () => {
+        checkSettings(assertCurrent);
+        const saved = await ports.readSettings();
+        checkSettings(assertCurrent);
+        return readSentryServiceSettings(saved, network);
+      });
+    },
+    saveSettings(input: SentryServiceSettings, password: string, assertRequestCurrent: () => void) {
+      const settings = normalizeSentryServiceSettings(input);
+      const assertCurrent = () => checkSettings(assertRequestCurrent);
+      assertCurrent();
+      return ports.run(async () => {
+        assertCurrent();
+        if (!isNativePasswordInput(password)) throw invalid();
+        await ports.authenticate(password, assertCurrent);
+        assertCurrent();
+        await ports.writeSettings(settings, assertCurrent);
+        assertCurrent();
+        return settings;
+      });
+    },
     list() {
       return ports.run(() => inventory());
     },

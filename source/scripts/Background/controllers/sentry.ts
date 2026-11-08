@@ -2,6 +2,11 @@ import isEqual from 'lodash/isEqual';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { readSentryNode } from '../../../shared/sentryNodeLookup';
+import {
+  normalizeSentryServiceSettings,
+  readSentryServiceSettings,
+  sentrySettingsStorageKey,
+} from '../../../shared/sentrySettings';
 import { AsyncMutex } from 'utils/asyncMutex';
 import {
   captureSentryCollateralAdmission,
@@ -23,12 +28,7 @@ import {
   removeSentryKey,
   saveSentryKeys,
 } from 'utils/sentry/keyStore';
-import {
-  getSentryNetwork,
-  normalizeSentryServiceUrl,
-  SENTRY_NETWORKS,
-  validateSentryFeeLimit,
-} from 'utils/sentry/network';
+import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import { withSentryPersistence } from 'utils/sentry/persistence';
 import type {
   SentryApproval,
@@ -188,15 +188,12 @@ export class SentryController {
     const network = getSentryNetwork(scope.network);
     const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
     this.assertCurrent(scope);
-    const saved = await chromeStorage.getItem(
-      `sentry-settings-v1:${vaultId}:${network}`
-    );
+    const key = sentrySettingsStorageKey(vaultId, network);
+    const saved = (await chromeStorage.getItems([key]))[key];
     this.assertCurrent(scope);
-    const serviceUrl = saved?.serviceUrl
-      ? normalizeSentryServiceUrl(saved.serviceUrl)
-      : SENTRY_NETWORKS[network].defaultServiceUrl;
-    const maxFeeSatoshis = validateSentryFeeLimit(
-      saved?.maxFeeSatoshis || '100000'
+    const { serviceUrl, maxFeeSatoshis } = readSentryServiceSettings(
+      saved,
+      network
     );
     const keys = await listSentryKeys(vaultId, network);
     this.assertCurrent(scope);
@@ -394,8 +391,10 @@ export class SentryController {
     const scope = this.host.captureScope();
     return this.mutex.runExclusive(async () => {
       this.assertCurrent(scope);
-      const serviceUrl = normalizeSentryServiceUrl(params.serviceUrl);
-      const maxFeeSatoshis = validateSentryFeeLimit(params.maxFeeSatoshis);
+      const settings = normalizeSentryServiceSettings({
+        serviceUrl: params.serviceUrl,
+        maxFeeSatoshis: params.maxFeeSatoshis,
+      });
       await this.host.getSeed(params.password);
       this.assertCurrent(scope);
       const network = getSentryNetwork(scope.network);
@@ -404,16 +403,16 @@ export class SentryController {
       await withSentryPersistence(
         () => this.assertCurrent(scope),
         () =>
-          chromeStorage.setItem(`sentry-settings-v1:${vaultId}:${network}`, {
-            serviceUrl,
-            maxFeeSatoshis,
-          })
+          chromeStorage.setItem(
+            sentrySettingsStorageKey(vaultId, network),
+            settings
+          )
       );
       this.assertCurrent(scope);
       this.approvals.clear();
       this.feeAuthorizations.clear();
       this.votes.clear();
-      return { serviceUrl, maxFeeSatoshis };
+      return settings;
     });
   }
 

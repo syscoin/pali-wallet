@@ -1,3 +1,4 @@
+import { normalizeSentryServiceSettings, parseSentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
 import { NATIVE_CONNECTION_STORAGE_KEY, inspectNativeConnectionRecord } from '../connections/storage.ts';
 import { decodeConnectionRecord } from '../storage/connectionRecordKey.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
@@ -34,6 +35,10 @@ const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0,
 /** Canonical native record domains. Runtime and recovery share this admission check. */
 export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records']): void {
   for (const { key, value } of records) {
+    if (parseSentrySettingsStorageKey(key)) {
+      normalizeSentryServiceSettings(decodeStorageValue(value));
+      continue;
+    }
     const sentryNetwork = sentrySlotNetwork(key);
     if (sentryNetwork) {
       readSentrySlot(value, sentryNetwork);

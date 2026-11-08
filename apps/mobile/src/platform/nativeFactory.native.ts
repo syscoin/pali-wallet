@@ -277,6 +277,7 @@ export function createNativeWalletControllers() {
         ...manager,
         confirmImport: (...args) => observeFailure(() => manager.confirmImport(...args)),
         confirmRemoval: (...args) => observeFailure(() => manager.confirmRemoval(...args)),
+        saveSettings: (...args) => observeFailure(() => manager.saveSettings(...args)),
       });
     },
   });
