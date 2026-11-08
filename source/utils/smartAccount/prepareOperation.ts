@@ -14,6 +14,7 @@ import {
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountInterface,
 } from './contracts.ts';
+import { smartAccountDeploymentStateFromCode } from './deploymentState.ts';
 import {
   estimateSmartAccountUserOpGas,
   getSmartAccountValidatorProfile,
@@ -136,13 +137,14 @@ export async function prepareSmartAccountOperation({
   assertSynchronousEvmFeeGuard(assertCurrent);
   const prepared = smartAccount.encodeExecutions(executions);
   const entryPointAddress = getPaliEntryPointAddress(chainId);
-  const code = knownDeployed
-    ? 'cached-deployed'
-    : await provider.getCode(account.address);
+  const code = knownDeployed ? null : await provider.getCode(account.address);
   assertSynchronousEvmFeeGuard(assertCurrent);
-  const deployment =
-    code === '0x' ? requireSmartAccountAddressIdentity(account, chainId) : null;
-  if (code !== '0x' && !knownDeployed) {
+  const deployed =
+    knownDeployed || smartAccountDeploymentStateFromCode(code) === 'deployed';
+  const deployment = deployed
+    ? null
+    : requireSmartAccountAddressIdentity(account, chainId);
+  if (deployed && !knownDeployed) {
     const contract = new Contract(
       account.address,
       paliSmartAccountInterface,
@@ -176,7 +178,7 @@ export async function prepareSmartAccountOperation({
     callData,
     childValidatorCount: validatorProfile.childValidatorCount,
     entryPointAddress,
-    isDeployed: code !== '0x',
+    isDeployed: deployed,
     sender: account.address,
     slhDsaChildCount: validatorProfile.slhDsaChildCount,
     validatorKind: validatorProfile.validatorKind,
