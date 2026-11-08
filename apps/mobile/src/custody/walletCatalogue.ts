@@ -381,13 +381,13 @@ function publicAccounts(group: RecoveryAccountGroup, chainId?: number): NativeCa
       ...(group.activeNetwork.kind === 'syscoin' && type === 'Imported' && account.xpub !== account.address ? { utxoExtended: true as const } : {}),
     }))
   );
-  if (chainId !== undefined) for (const account of Object.values(group.accounts.SmartAccount)) {
+  for (const account of Object.values(group.accounts.SmartAccount)) {
     const metadata = account.smartAccount!;
-    if (metadata.chainId !== chainId) continue;
+    if (chainId !== undefined && metadata.chainId !== chainId) continue;
     const managementAddress = /^pali:eip155:\d+:(0x[0-9a-f]{40}):smart-account-v1$/.exec(metadata.descriptor!.anchor)![1]!;
     accounts.push(Object.freeze({ id: nativeAccountId('SmartAccount', account.id), type: 'SmartAccount', index: account.id,
       slip44: 60, address: account.address, label: account.label,
-      smartAccount: Object.freeze({ chainId, isDeployed: metadata.isDeployed === true, managementAddress }),
+      smartAccount: Object.freeze({ chainId: metadata.chainId, isDeployed: metadata.isDeployed === true, managementAddress }),
     }));
   }
   return accounts;
@@ -443,7 +443,7 @@ export function inspectRecoveryCatalogue(value: unknown, binding: string) {
     first = group.accounts.HDAccount[0]!;
   return Object.freeze({
     root: publicIdentity({ address: first.address, publicKey: first.xpub }),
-    accounts: Object.freeze(record.groups.flatMap(publicAccounts)),
+    accounts: Object.freeze(record.groups.flatMap((group) => publicAccounts(group))),
     importedProfiles: Object.freeze(
       record.recovery.map((entry) => entry.envelope.profileId)
     ),

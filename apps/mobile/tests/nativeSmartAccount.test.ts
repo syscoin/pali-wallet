@@ -11,6 +11,8 @@ import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
+import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
+import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
@@ -30,14 +32,15 @@ async function fixture() {
   const file = path.join(directory, 'wallet.sqlite');
   let initialized = false, substituteAddress = false, hold: (() => Promise<void>) | undefined;
   let runtime!: KeyringRuntime;
+  let storage!: SqliteWalletStorage;
   const calls: string[] = [];
+  const openStorage = async () => {
+    storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
+    initialized = true;
+    return storage;
+  };
   const factory = createKeyringRuntimeFactory({
-    ensureCryptoReady: async () => undefined, readEvmRetirement: null,
-    async openStorage() {
-      const storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
-      initialized = true;
-      return storage;
-    },
+    ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
     prepareSmartAccount(network, index, owner, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: async (_url, init) => {
         const request = JSON.parse(String(init.body));
@@ -84,6 +87,22 @@ async function fixture() {
     },
     async selectNetwork(id: string) {
       await owner.selectNetwork(id, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    },
+    async inspectRecovery() {
+      const binding = (await storage.recovery.readIdentity())!.walletBindingId;
+      const record = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+      return { record, accounts: inspectRecoveryCatalogue(record, binding).accounts };
+    },
+    async resetPassword(password: string) {
+      owner.lock();
+      const recovery = new NativeRecoveryCoordinator({ owner, async retireControllers() {},
+        ensureCryptoReady: async () => undefined, openStorage });
+      try {
+        const proof = await recovery.prepare(PHRASE, password, () => undefined);
+        assert.equal(await recovery.commit(proof), 'committed-locked');
+      } finally { await recovery.dispose(); }
+      owner = await open();
+      await owner.unlock(password);
     },
     async reopen() { await owner.dispose(); owner = await open(); },
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
@@ -164,4 +183,27 @@ test('lock while the owned factory read is pending prevents creation', async () 
     await f.owner.unlock(PASSWORD);
     assert.equal(f.owner.getCatalogue()!.accounts.length, 1);
   } finally { finish(); await f.close(); }
+});
+
+
+test('recovery lists smart accounts on every saved chain and preserves their metadata through password reset', async () => {
+  const f = await fixture();
+  try {
+    await f.change({ kind: 'create-smart', label: 'Ethereum savings', password: PASSWORD });
+    await f.selectNetwork('syscoin-nevm');
+    await f.change({ kind: 'create-smart', label: 'NEVM savings', password: PASSWORD });
+    const before = await f.inspectRecovery();
+    const smart = before.accounts.filter(account => account.type === 'SmartAccount');
+    assert.deepEqual(smart.map(account => account.smartAccount!.chainId).sort((a, b) => a - b), [1, 57]);
+    const smartRecords = (before.record as any).groups[0].accounts.SmartAccount;
+    await f.resetPassword('Public replacement smart account password 2!');
+    const after = await f.inspectRecovery();
+    assert.deepEqual(after.accounts.filter(account => account.type === 'SmartAccount'), smart);
+    assert.deepEqual((after.record as any).groups[0].accounts.SmartAccount, smartRecords);
+    assert.equal(f.owner.getCatalogue()!.active.accountId, 'smart:60:1');
+    assert.equal(f.owner.getSnapshot().account!.address, smart.find(account => account.id === 'smart:60:1')!.address);
+    await f.selectNetwork('ethereum');
+    await f.change({ kind: 'select', id: 'smart:60:0' });
+    assert.equal(f.owner.getSnapshot().account!.address, smart.find(account => account.id === 'smart:60:0')!.address);
+  } finally { await f.close(); }
 });
