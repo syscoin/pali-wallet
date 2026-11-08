@@ -7,10 +7,12 @@ import {
   normalizeDappCallsRequest,
 } from '../../../../source/shared/dappCalls.ts';
 import type { SmartAccountPendingRecords } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { SmartAccountActivityIdentity } from '../../../../source/wallet/smartAccountActivity.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
+import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
@@ -81,9 +83,12 @@ export type NativeSmartOperationPorts = Readonly<{
     hash: string,
     transaction: NativePreparedConnectionTransaction['transaction'],
     signal: AbortSignal,
-    guard: () => void
+    guard: () => void,
+    operation: SmartAccountActivityIdentity | undefined
   ): Promise<unknown>;
   markDeployed(guard: () => void): Promise<void>;
+  refreshMetadata(signal: AbortSignal, guard: () => void): Promise<void>;
+  assertGuardianPolicy?(signal: AbortSignal, guard: () => void): Promise<void>;
   submitBatch?(
     prepared: PreparedSmartAccountOperation,
     submit: () => Promise<string>
@@ -108,10 +113,13 @@ export function createNativeSmartOperation(
       : Object.freeze({ ...ports.intent });
   if (intent.kind === 'dapp-batch' && typeof ports.submitBatch !== 'function')
     throw new Error('Smart batch submission boundary is required');
+  if (intent.kind === 'guardian-policy' && typeof ports.assertGuardianPolicy !== 'function')
+    throw new Error('Guardian policy ownership is required');
   const chainId = Number(ports.network.chainId);
   let issued: PreparedSmartAccountOperation | undefined;
   let pending: SmartAccountPendingState;
   const contextId = 'native-smart-account-operation';
+  let policySignal: AbortSignal;
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   const ownerFor = (address: string) => {
     for (const type of ['HDAccount', 'Imported'] as const) {
@@ -132,7 +140,9 @@ export function createNativeSmartOperation(
     intent,
     network: ports.network,
     assertCurrent: check,
+    refreshMetadata: ports.refreshMetadata,
     async prepare(signal, assertCurrent) {
+      policySignal = signal;
       const rawProvider = createNativeSmartAccountProvider(
         ports.network,
         ports.rpc,
@@ -155,7 +165,7 @@ export function createNativeSmartOperation(
             ports.checkAddress,
             assertCurrent
           );
-      } else if (intent.kind !== 'deploy') {
+      } else if (intent.kind !== 'deploy' && intent.kind !== 'guardian-policy') {
         await assertSmartAccountTargetsAllowed(
           getBlacklistTargetsForEvmCall(
             intent.kind === 'nft-transfer'
@@ -298,7 +308,9 @@ export function createNativeSmartOperation(
         };
       }
       issued = await prepare(
-        intent.kind === 'dapp-batch'
+        intent.kind === 'guardian-policy'
+          ? buildGuardianPolicyExecutions(intent.command)
+          : intent.kind === 'dapp-batch'
           ? [...createSmartAccountCallsExecutions(intent.calls)]
           : intent.kind === 'deploy'
           ? [{ target: account.address, data: '0x', value: '0x0' }]
@@ -327,6 +339,7 @@ export function createNativeSmartOperation(
     },
     async sign(prepared, assertCurrent) {
       if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
+      if (intent.kind === 'guardian-policy') await ports.assertGuardianPolicy!(policySignal, assertCurrent);
       await pending.assertNonce(prepared.userOperation);
       return signSmartAccountEcdsaOperation({
         metadata,
@@ -420,6 +433,7 @@ export function createNativeSmartOperation(
         if (transactionMetadata?.smartAccountExecution === true)
           await options.assertPendingState();
         else await pending.assertNonce(prepared.userOperation);
+        if (intent.kind === 'guardian-policy') await ports.assertGuardianPolicy!(signal, guard);
         guard();
         let acknowledged: Promise<void> = Promise.resolve();
         const hash = await quote.submit(guard, (hash) => {
@@ -432,7 +446,10 @@ export function createNativeSmartOperation(
         return {
           hash,
           wait: () =>
-            ports.waitForReceipt(hash, quote.transaction, signal, guard),
+            ports.waitForReceipt(hash, quote.transaction, signal, guard,
+              transactionMetadata?.smartAccountExecution === true
+                ? { operationHash: prepared.actionHash, operationNonce: prepared.userOperation.nonce, payer: quote.transaction.from }
+                : undefined),
         };
       };
       const submit = async () => {
@@ -442,7 +459,7 @@ export function createNativeSmartOperation(
             accountId: account.id,
             executionContextId: contextId,
             signature,
-            waitForConfirmation: intent.kind === 'deploy',
+            waitForConfirmation: intent.kind === 'deploy' || intent.kind === 'guardian-policy',
           },
           {
             chainId,

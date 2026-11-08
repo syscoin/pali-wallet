@@ -13,6 +13,14 @@ import {
   PaliRecoveryTarget,
 } from './account';
 
+export {
+  getGuardianRecoveryDelayOptions,
+  isGuardianRecoveryDelayAllowed,
+  SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
+  SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_EXPIRATION_SECONDS,
+  SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
+} from './guardianPolicy';
+
 const PALI_GUARDIAN_RECOVERY_SCHEDULE_TYPEHASH = hashText(
   'PaliGuardianRecoverySchedule(uint256 chainId,address account,address module,uint256 policyEpoch,bytes32 salt,bytes32 mode,bytes32 executionCalldataHash)'
 );
@@ -61,25 +69,6 @@ export const getGuardianRecoveryDigestContext = (
   }
   return { policyEpoch: context.policyEpoch };
 };
-
-export const SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS =
-  3 * 24 * 60 * 60;
-export const SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_EXPIRATION_SECONDS =
-  7 * 24 * 60 * 60;
-export const SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD = 1;
-
-// A short wait is useful on known testnets only. Unknown/custom networks get
-// the production choices; an editable network name or URL is not evidence that
-// a chain is a testnet. This is Pali's setup policy, not a contract minimum.
-export const getGuardianRecoveryDelayOptions = (chainId: number): number[] =>
-  [5700, 57057, 57000, 11155111].includes(chainId)
-    ? [600, 259200, 604800]
-    : [259200, 604800];
-
-export const isGuardianRecoveryDelayAllowed = (
-  chainId: number,
-  delaySeconds: number
-): boolean => getGuardianRecoveryDelayOptions(chainId).includes(delaySeconds);
 
 export const encodeSmartAccountGuardianRecoveryInitData =
   encodeGuardianRecoveryInitData;

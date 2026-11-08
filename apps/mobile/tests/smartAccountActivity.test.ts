@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Wallet, Transaction } from 'ethers';
+import { getAddress, Wallet, Transaction } from 'ethers';
 import {
   encodeErc20Transfer,
   type Erc20Metadata,
@@ -12,6 +12,7 @@ import {
 } from '../../../source/wallet/smartAccountActivity.ts';
 import {
   getPaliEntryPointAddress,
+  getPaliModuleAddress,
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from '../../../source/utils/smartAccount/contracts.ts';
@@ -239,5 +240,186 @@ test('nonce identities include authenticated handleOps from any payer and execut
     const entry = { ...original.entry, metadata: undefined, from: owner.address, hash: tx.hash!, rawTransaction: bytes };
     assert.deepEqual(decodeRetainedSmartAccountOperations(entry).map(value => [value.payer, value.operationNonce]), [[owner.address, '7'], [owner.address, '8']]);
     assert.equal(decodeRetainedSmartAccountOperations({ ...entry, from: recipient }).length, 0);
+  }
+});
+
+
+async function guardianRemovalEntry(
+  createCall: (
+    removalData: string,
+    singleCall: (data: string, target?: string, value?: bigint) => string
+  ) => string,
+  owner = payer,
+  mixOtherOperation = false
+) {
+  const original = await signed();
+  const raw = paliEntryPointInterface.decodeFunctionData(
+    'handleOps',
+    Transaction.from(original.entry.rawTransaction).data
+  )[0][0];
+  const singleCall = (data: string, target = account, value = 0n) =>
+    paliSmartAccountInterface.encodeFunctionData('execute', [
+      ERC7579_MODE_SINGLE_DEFAULT,
+      target + value.toString(16).padStart(64, '0') + data.slice(2),
+    ]);
+  const removalData = paliSmartAccountInterface.encodeFunctionData(
+    'uninstallModule',
+    [2, getPaliModuleAddress(1, 'guardian-recovery'), '0x']
+  );
+  const operation = {
+    sender: raw.sender,
+    nonce: raw.nonce,
+    initCode: raw.initCode,
+    callData: createCall(removalData, singleCall),
+    accountGasLimits: raw.accountGasLimits,
+    preVerificationGas: raw.preVerificationGas,
+    gasFees: raw.gasFees,
+    paymasterAndData: raw.paymasterAndData,
+    signature: raw.signature,
+  };
+  const operations = mixOtherOperation
+    ? [
+        { ...operation, nonce: 6, callData: singleCall('0x', recipient, 9n) },
+        operation,
+      ]
+    : [operation];
+  const rawTransaction = await owner.signTransaction({
+    type: 0,
+    chainId: 1,
+    nonce: 0,
+    to: getPaliEntryPointAddress(1),
+    value: 0,
+    gasLimit: 300000,
+    gasPrice: 2,
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      operations,
+      owner.address,
+    ]),
+  });
+  return {
+    ...original.entry,
+    from: owner.address,
+    rawTransaction,
+    hash: Transaction.from(rawTransaction).hash!,
+    metadata: undefined,
+  };
+}
+
+test('guardian removal projection preserves authenticated identities across payers and mixed operations', async () => {
+  const secondPayer = new Wallet('0x' + '55'.repeat(32));
+  for (const owner of [payer, secondPayer]) {
+    const entry = await guardianRemovalEntry(
+      (data, single) => single(data),
+      owner,
+      true
+    );
+    const operations = decodeRetainedSmartAccountOperations(entry);
+    assert.equal(operations.length, 2);
+    assert.equal(operations[0]!.guardianRemoval, undefined);
+    const removal = operations[1]!;
+    assert.deepEqual(removal.guardianRemoval, {
+      moduleAddress: getAddress(getPaliModuleAddress(1, 'guardian-recovery')),
+    });
+    assert.equal(removal.account, account);
+    assert.equal(removal.payer, owner.address);
+    assert.equal(removal.hash, entry.hash);
+    assert.equal(removal.operationNonce, '7');
+    assert(Object.isFrozen(removal.guardianRemoval));
+    assert.equal('callData' in removal, false);
+    assert.equal('signature' in removal, false);
+    assert.equal(
+      decodeRetainedSmartAccountOperations({ ...entry, hash: blockHash })
+        .length,
+      0
+    );
+    assert.equal(
+      decodeRetainedSmartAccountOperations({ ...entry, chainId: '2' }).length,
+      0
+    );
+    assert.equal(
+      decodeRetainedSmartAccountOperations({ ...entry, from: recipient })
+        .length,
+      0
+    );
+  }
+});
+
+for (const scenario of [
+  'wrong-target',
+  'nonzero-value',
+  'wrong-module',
+  'validator-type',
+  'nonempty-deinit',
+  'trailing-uninstall',
+  'trailing-execute',
+  'other-mode',
+] as const)
+  test(`guardian removal requires exact canonical execution (${scenario})`, async () => {
+    const entry = await guardianRemovalEntry((data, single) => {
+      if (scenario === 'wrong-target') return single(data, recipient);
+      if (scenario === 'nonzero-value') return single(data, account, 1n);
+      if (scenario === 'wrong-module')
+        return single(
+          paliSmartAccountInterface.encodeFunctionData('uninstallModule', [
+            2,
+            recipient,
+            '0x',
+          ])
+        );
+      if (scenario === 'validator-type')
+        return single(
+          paliSmartAccountInterface.encodeFunctionData('uninstallModule', [
+            1,
+            getPaliModuleAddress(1, 'guardian-recovery'),
+            '0x',
+          ])
+        );
+      if (scenario === 'nonempty-deinit')
+        return single(
+          paliSmartAccountInterface.encodeFunctionData('uninstallModule', [
+            2,
+            getPaliModuleAddress(1, 'guardian-recovery'),
+            '0x00',
+          ])
+        );
+      if (scenario === 'trailing-uninstall') return single(data + '00');
+      if (scenario === 'trailing-execute') return single(data) + '00';
+      return paliSmartAccountInterface.encodeFunctionData('execute', [
+        '0x' + '01' + '00'.repeat(31),
+        account + '0'.repeat(64) + data.slice(2),
+      ]);
+    });
+    const projected = decodeRetainedSmartAccountOperations({
+      ...entry,
+      metadata: { guardianRemoval: true },
+    });
+    assert.equal(projected.length, 1);
+    assert.equal(projected[0]!.guardianRemoval, undefined);
+  });
+
+test('guardian removal cannot bypass the authenticated outer value or canonical envelope', async () => {
+  const entry = await guardianRemovalEntry((data, single) => single(data));
+  const original = Transaction.from(entry.rawTransaction);
+  for (const change of [
+    { value: 1, data: original.data },
+    { value: 0, data: original.data + '00' },
+  ]) {
+    const rawTransaction = await payer.signTransaction({
+      type: 0,
+      chainId: 1,
+      nonce: original.nonce,
+      to: original.to,
+      gasLimit: original.gasLimit,
+      gasPrice: original.gasPrice,
+      ...change,
+    });
+    assert.deepEqual(
+      decodeRetainedSmartAccountOperations({
+        ...entry,
+        rawTransaction,
+        hash: Transaction.from(rawTransaction).hash!,
+      }),
+      []
+    );
   }
 });

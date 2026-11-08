@@ -36,6 +36,7 @@ import type {
 import type {
   INetworkType,
   IKeyringAccountState,
+  ISmartAccountMetadata,
   KeyringAccountType as SharedAccountType,
 } from '../../../../source/types/network.ts';
 import { KeyringAccountType as SdkAccountType } from '@sidhujag/sysweb3-keyring/cjs/software.js';
@@ -87,6 +88,8 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'import-ledger'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'create-smart'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'mark-smart-deployed'; id: string }>
+  | Readonly<{ kind: 'refresh-smart-metadata'; id: string; metadata: Pick<ISmartAccountMetadata,
+    'auth' | 'availableModules' | 'isDeployed' | 'installedModules'> }>
   | Readonly<{
       kind: 'import';
       account: IKeyringAccountState;
@@ -681,11 +684,18 @@ export class NativeWalletCatalogue {
             group as { activeAccount: typeof group.activeAccount },
             { id: selected.index, type: selected.type as SharedAccountType }
           );
-        } else if (mutation.kind === 'mark-smart-deployed') {
+        } else if (mutation.kind === 'mark-smart-deployed' || mutation.kind === 'refresh-smart-metadata') {
           if (selected.type !== 'SmartAccount' || mutation.id !== next.active.accountId ||
               group.activeNetwork.kind !== 'ethereum' || !account.smartAccount ||
               account.smartAccount.chainId !== Number(getNativeNetwork(next.active.networkId, catalogueEvmNetworks(next)).chainId)) return invalid();
-          group.accounts.SmartAccount[selected.index] = { ...account, smartAccount: { ...account.smartAccount, isDeployed: true } };
+          if (mutation.kind === 'refresh-smart-metadata' && (typeof mutation.metadata.isDeployed !== 'boolean' ||
+              Object.keys(mutation.metadata).some(key => !['auth', 'availableModules', 'isDeployed', 'installedModules'].includes(key)))) return invalid();
+          const metadata = mutation.kind === 'mark-smart-deployed'
+            ? { ...account.smartAccount, isDeployed: true }
+            : { ...account.smartAccount, auth: mutation.metadata.auth, availableModules: mutation.metadata.availableModules,
+              isDeployed: mutation.metadata.isDeployed, installedModules: mutation.metadata.installedModules };
+          requireSmartAccountAddressIdentity({ ...account, smartAccount: metadata }, account.smartAccount.chainId);
+          group.accounts.SmartAccount[selected.index] = { ...account, smartAccount: metadata };
         } else if (mutation.kind === 'rename')
           setAccountRecordLabel(
             group.accounts,

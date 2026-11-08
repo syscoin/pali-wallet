@@ -5513,6 +5513,10 @@ class MainController {
     return this.smartAccount.getSmartAccountGuardianRecoveryStatus(params);
   }
 
+  public async getSmartAccountGuardianRemovalStatus(accountId: number) {
+    return this.smartAccount.getSmartAccountGuardianRemovalStatus(accountId);
+  }
+
   public async prepareSmartAccountGuardianPolicyUpdate(params: {
     recoveryDelay: number;
     threshold?: number;

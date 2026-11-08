@@ -37,13 +37,16 @@ const code = ts.transpileModule(
   }
 ).outputText;
 
-function harness(ready = false, smartAccount = false) {
+function harness(ready = false, smartAccount = false, withPairing = true) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
   let hardwareBack: (() => boolean) | undefined;
   let exits = 0;
-  let incoming: NativePairingEntry | null = smartAccount
+  let shellTab = 'wallet';
+  let guardianReads = 0;
+  let guardianOpens = 0;
+  let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
     : {
         id: 'pairing-1',
@@ -201,6 +204,10 @@ function harness(ready = false, smartAccount = false) {
     openSmartAccountDeployment() {
       throw new Error('Route mocked in parent navigation test');
     },
+    canManageGuardianPolicy: () => smartAccount,
+    inspectGuardianRemoval: async (_signal: AbortSignal, check: () => void) => { check(); return { status: 'retry-ready', transactions: [], totalPending: 0 }; },
+    openGuardianPolicy: async (_draft: unknown, _signal: AbortSignal, check: () => void) => { check(); guardianOpens++; return { dispose() {} }; },
+    readGuardianRecovery: async (_signal: AbortSignal, check: () => void) => { check(); guardianReads++; return { status: 'no-compatible-policy' }; },
     balanceReader: {},
     transfers: {},
     tokens: {},
@@ -277,6 +284,7 @@ function harness(ready = false, smartAccount = false) {
     },
     '../core/utxoNetworks': utxoNetworks,
     '../custody/networkContext': networks,
+    '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: networks.NATIVE_NETWORKS.map(network => ({ id: network.id, name: network.name })) },
     '../platform/security': {
       custodyIdle: { begin() {}, stop() {} },
       securityPreferences: { getSnapshot: () => ({ status: 'ready' }) },
@@ -292,7 +300,7 @@ function harness(ready = false, smartAccount = false) {
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
     './useRealShell': {
       useRealShell: () => ({
-        tab: 'wallet',
+        tab: shellTab,
         immersive: false,
         navigation: {},
         restoreRoot() {},
@@ -312,6 +320,7 @@ function harness(ready = false, smartAccount = false) {
       NativeTransactionReviewScreen: 'NativeTransactionReviewScreen',
     },
     './NativeSend': { NativeSend: 'NativeSend' },
+    './RealTools': { RealTools: 'RealTools' },
   });
   const module = {
     exports: {} as { NativeWalletScreen(props: object): Element },
@@ -350,6 +359,10 @@ function harness(ready = false, smartAccount = false) {
   };
   return {
     render,
+    showTools() { shellTab = 'tools'; },
+    showWallet() { shellTab = 'wallet'; },
+    guardianReads: () => guardianReads,
+    guardianOpens: () => guardianOpens,
     hardwareBack() {
       assert(hardwareBack);
       return hardwareBack();
@@ -366,6 +379,10 @@ function harness(ready = false, smartAccount = false) {
       };
     },
     ready: () => change('ready'),
+    readyAtRevision(revision: number) {
+      snapshot = { ...snapshot, phase: 'ready', revision, account: { address: '0x' + '11'.repeat(20), network: 'ethereum' } };
+      for (const listener of authorityListeners) listener(snapshot);
+    },
     selectionCalls: () => selectionCalls,
     consume() {
       incoming = null;
@@ -407,8 +424,8 @@ function find(
     : node.children.flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false, smartAccount = false) {
-  const f = harness(ready, smartAccount);
+async function mounted(ready = false, smartAccount = false, withPairing = true) {
+  const f = harness(ready, smartAccount, withPairing);
   f.render();
   await settle();
   f.render();
@@ -572,5 +589,79 @@ test('Smart native, ERC20 and NFT sends use the owned operation route', async ()
     assert.equal(f.hardwareBack(), true);
     assert(find(f.render(), node => node.type === 'NativePortfolio'));
     assert.equal(f.exits(), 0);
+  } finally { f.dispose(); }
+});
+
+
+test('controlled Smart accounts expose the existing guardian-status tool through the actual wallet Tools branch', async () => {
+  const f = await mounted(true, true);
+  f.showTools();
+  const tools = find(f.render(), (node) => node.type === 'RealTools');
+  assert.ok(tools?.props.guardianRecovery);
+  assert.equal(tools.props.guardianRecovery.address, '0x' + '11'.repeat(20));
+  await tools.props.guardianRecovery.read(new AbortController().signal, () => undefined);
+  assert.equal(f.guardianReads(), 1);
+  assert.equal(tools.props.guardianRecovery.manage.chainId, 1);
+  const draft = { action: 'set', guardian: '0x' + '55'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
+  await tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined);
+  assert.equal(f.guardianOpens(), 1);
+  f.ready();
+  await assert.rejects(tools.props.guardianRecovery.read(new AbortController().signal, () => undefined), /CANCELLED/);
+  assert.equal(f.guardianReads(), 1);
+  await assert.rejects(tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined), /CANCELLED/);
+  assert.equal(f.guardianOpens(), 1);
+  f.dispose();
+});
+
+test('ordinary controlled EOAs do not gain a guardian-status entry', async () => {
+  const f = await mounted(true, false, false);
+  f.showTools();
+  const tools = find(f.render(), (node) => node.type === 'RealTools');
+  assert.ok(tools); assert.equal(tools.props.guardianRecovery, undefined);
+  assert.equal(f.guardianReads(), 0); f.dispose();
+});
+
+test('a closed or backgrounded controlled Smart tool cannot use its captured read capability', async () => {
+  for (const retire of ['background', 'dispose'] as const) {
+    const f = await mounted(true, true); f.showTools();
+    const tools = find(f.render(), (node) => node.type === 'RealTools')!;
+    if (retire === 'background') f.background(); else f.dispose();
+    await assert.rejects(tools.props.guardianRecovery.read(new AbortController().signal, () => undefined), /CANCELLED/);
+    assert.equal(f.guardianReads(), 0);
+    f.dispose();
+  }
+});
+
+
+test('guardian pane identity changes after owner retirement even when the restored account revision matches', async () => {
+  const f = await mounted(true, true);
+  try {
+    f.showTools();
+    const previous = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
+    f.background();
+    f.foreground();
+    await settle(); await settle();
+    f.readyAtRevision(1);
+    const current = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
+    assert.notEqual(current.scope, previous.scope);
+    await assert.rejects(previous.read(new AbortController().signal, () => undefined), /CANCELLED/);
+    await current.read(new AbortController().signal, () => undefined);
+  } finally { f.dispose(); }
+});
+
+
+test('closing a guardian operation refreshes the visible Smart account without an authority event', async () => {
+  const f = await mounted(true, true);
+  try {
+    const original = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(original.props.smartAccount.isDeployed, false);
+    f.showTools();
+    const tools = find(f.render(), node => node.type === 'RealTools')!;
+    f.completeDeployment();
+    tools.props.onGuardianClose();
+    f.showWallet();
+    const refreshed = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(refreshed.props.smartAccount.isDeployed, true);
+    assert.equal(refreshed.props.onDeploySmartAccount, undefined);
   } finally { f.dispose(); }
 });

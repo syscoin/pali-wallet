@@ -3,10 +3,12 @@ import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeGuardianRecoveryStatus } from '../custody/evmTransferReadRpc';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
+import { NativeGuardianPolicy, type NativeGuardianPolicyTool } from './NativeGuardianPolicy';
 
 export type WatchGuardianRecoveryTool = {
   scope: string;
   address: string;
+  manage?: NativeGuardianPolicyTool;
   read(signal: AbortSignal, assertCurrent: () => void): Promise<NativeGuardianRecoveryStatus>;
 };
 
@@ -22,9 +24,10 @@ const OPERATION_LABELS = {
   unknown: 'Recovery status unavailable',
 } as const;
 
-export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, onBack }:
+export function WatchGuardianRecovery({ address, networkLabel, read, manage, lifetime, onBack }:
   Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; onBack(): void }) {
   const [state, setState] = useState<State>({ status: 'idle' });
+  const [editing, setEditing] = useState<'set' | 'remove' | null>(null);
   const owner = useRef<AbortController | null>(null);
   const cancel = () => { owner.current?.abort(); owner.current = null; };
   useLayoutEffect(() => {
@@ -59,9 +62,14 @@ export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, o
       : operation ? OPERATION_LABELS[operation.status] : 'No recovery scheduled'
     : null;
 
+  if (editing && manage && observation) {
+    return <NativeGuardianPolicy key={editing} action={editing} address={address} networkLabel={networkLabel}
+      observation={observation} manage={manage} lifetime={lifetime} onBack={onBack} />;
+  }
+
   return <SafeAreaView edges={['top']} style={styles.container}><Screen>
     <Header title="Guardian recovery" subtitle={networkLabel} onBack={onBack} />
-    <Text style={styles.body}>Check the on-chain recovery status for this watch address.</Text>
+    <Text style={styles.body}>Check the on-chain recovery status for this account.</Text>
     <Card style={styles.card}><Text selectable style={styles.address}>{address}</Text></Card>
     {message && <Card style={styles.card}>
       <Text accessibilityLiveRegion="polite" style={styles.status}>{message}</Text>
@@ -78,6 +86,8 @@ export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, o
         Checked at block {observation.observedBlock.number.toLocaleString()}
       </Text>}
     </Card>}
+    {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing('set')} />}
+    {manage && observation?.exists && <Button title="Remove guardian" variant="quiet" onPress={() => setEditing('remove')} />}
     <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} onPress={() => { void check(); }} disabled={state.status === 'loading'} />
   </Screen></SafeAreaView>;
 }

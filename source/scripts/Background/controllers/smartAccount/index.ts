@@ -3,6 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeApproval';
 import {
+  guardianPolicyObservationIdentity,
+  inspectGuardianRemovals,
+  type GuardianRemovalInspection,
+} from '../../../../wallet/guardianRemoval';
+import {
   IEvmTransactionResponse,
   ISysTransaction,
 } from '../transactions/types';
@@ -45,7 +50,6 @@ import {
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
   encodeEcdsaValidatorInitData,
-  encodeGuardianRecoveryInitData,
   CustomValidatorPreflightResult,
   getConfiguredAuthenticatorAddress,
   preflightCustomValidatorInstall,
@@ -80,6 +84,7 @@ import {
   hasUsableSmartAccountAuthMetadata,
   readSmartAccountValidatorMetadata,
 } from 'utils/smartAccount/executionMetadata';
+import { projectGuardianPolicyModule } from 'utils/smartAccount/guardianPolicy';
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 import {
@@ -1925,27 +1930,100 @@ class SmartAccountController {
     }
     const current = this.guardianObservations.get(key);
     if (current) return current.promise;
-    const moduleAddress = getConfiguredAuthenticatorAddress(
-      context.chainId,
-      'guardian-recovery'
-    );
     const entry = {
       context,
       promise: null as ReturnType<typeof readGuardianRecoveryObservation>,
     };
-    entry.promise = readGuardianRecoveryObservation({
+    entry.promise = this.readFreshGuardianRecoveryStatus(
+      context,
       account,
-      chainId: context.chainId,
-      moduleAddress,
       knownOperationId,
-      provider: guardianStatusProvider(context.provider),
-      assertCurrent: () => this.assertInfrastructureContext(context),
-    }).finally(() => {
+      () => this.assertInfrastructureContext(context)
+    ).finally(() => {
       if (this.guardianObservations.get(key) === entry)
         this.guardianObservations.delete(key);
     });
     this.guardianObservations.set(key, entry);
     return entry.promise;
+  }
+
+  private readFreshGuardianRecoveryStatus(
+    context: ReturnType<SmartAccountController['infrastructureContext']>,
+    account: string,
+    knownOperationId: string | undefined,
+    assertCurrent: () => void
+  ) {
+    return readGuardianRecoveryObservation({
+      account,
+      chainId: context.chainId,
+      moduleAddress: getConfiguredAuthenticatorAddress(
+        context.chainId,
+        'guardian-recovery'
+      ),
+      knownOperationId,
+      provider: guardianStatusProvider(context.provider),
+      assertCurrent,
+    });
+  }
+
+  public async getSmartAccountGuardianRemovalStatus(
+    accountId: number
+  ): Promise<GuardianRemovalInspection> {
+    const context = this.infrastructureContext();
+    const target = this.getSmartAccountById(accountId);
+    if (
+      target.account.id !== accountId ||
+      target.metadata.chainId !== context.chainId
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const generation = this.deps.getWalletStateGeneration();
+    const check = () => {
+      this.assertInfrastructureContext(context);
+      if (
+        generation !== this.deps.getWalletStateGeneration() ||
+        !this.sameSmartAccountTarget(
+          this.getSmartAccountById(accountId),
+          target
+        )
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    const observation = await this.getSmartAccountGuardianRecoveryStatus({
+      account: target.account.address,
+    });
+    check();
+    if (!observation.exists)
+      return { status: 'removed', transactions: [], totalPending: 0 };
+    const records = await this.deps.captureSmartAccountPendingRecords(
+      context.chainId,
+      target.account.address,
+      check
+    );
+    check();
+    const inspected = await inspectGuardianRemovals({
+      account: target.account.address,
+      chainId: context.chainId,
+      moduleAddress: observation.moduleAddress,
+      records,
+      read: (method, params) => context.provider.send(method, [...params]),
+      assertCurrent: check,
+    });
+    if (inspected.status === 'retry-ready') {
+      const latest = await this.readFreshGuardianRecoveryStatus(
+        context,
+        target.account.address,
+        undefined,
+        check
+      );
+      check();
+      if (
+        guardianPolicyObservationIdentity(latest) !==
+        guardianPolicyObservationIdentity(observation)
+      )
+        throw new Error('GUARDIAN_POLICY_CHANGED');
+    }
+    return inspected;
   }
 
   public async prepareSmartAccountGuardianPolicyUpdate(params: unknown) {
@@ -2731,23 +2809,7 @@ class SmartAccountController {
       chainId
     );
     if (guardianStatus) {
-      installedModules.push({
-        address: getAddress(guardianStatus.moduleAddress),
-        config: {
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        },
-        data: encodeGuardianRecoveryInitData({
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        }),
-        id: 'guardian-recovery',
-        type: 'executor',
-      });
+      installedModules.push(projectGuardianPolicyModule(guardianStatus));
     }
 
     assertCurrent();

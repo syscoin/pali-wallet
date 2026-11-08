@@ -8,9 +8,9 @@ import type { NativePairingEntry } from '../connections/pairingLinks';
 import type { NativeConnectionsView } from '../connections/types';
 import { NativeConnections } from './NativeConnections';
 
-export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, onNetworks, onPrivateNotes, onSentryKeys, onBack, navigation, guardianRecovery, connections, incomingPairing, onPairingHandled, initialScan, onScanStarted, onScanFinished }: {
+export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, onNetworks, onPrivateNotes, onSentryKeys, onBack, navigation, guardianRecovery, onGuardianClose, connections, incomingPairing, onPairingHandled, initialScan, onScanStarted, onScanFinished }: {
   accountLabel: string; networkLabel: string; watchOnly: boolean; onAccounts(): void; onNetworks?: () => void; onPrivateNotes?: () => void; onSentryKeys?: () => void; onBack(): void;
-  navigation: ShellLeafNavigation; guardianRecovery?: WatchGuardianRecoveryTool;
+  navigation: ShellLeafNavigation; guardianRecovery?: WatchGuardianRecoveryTool; onGuardianClose?(): void;
   connections?: NativeConnectionsView;
   incomingPairing?: NativePairingEntry | null; onPairingHandled?(id: string): void;
   initialScan?: boolean; onScanStarted?(): void; onScanFinished?(): void;
@@ -20,7 +20,7 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
   const guardian = pane?.kind === 'guardian' && pane.scope === guardianRecovery?.scope ? pane : undefined;
   const connectedApps = pane?.kind === 'connections' && !!connections;
   const immersive = lookup || !!guardian || connectedApps;
-  const closePane = useCallback(() => { if (pane?.kind === 'guardian') pane.lifetime.abort(); if (pane?.kind === 'connections') onScanFinished?.(); setPane(null); }, [pane, onScanFinished]);
+  const closePane = useCallback(() => { if (pane?.kind === 'guardian') { pane.lifetime.abort(); onGuardianClose?.(); } if (pane?.kind === 'connections') onScanFinished?.(); setPane(null); }, [pane, onScanFinished, onGuardianClose]);
   useLayoutEffect(() => navigation.registerBack(() => {
     if (immersive) closePane(); else onBack();
     return true;
@@ -33,7 +33,7 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
   if (connectedApps && connections) return <NativeConnections controller={connections} incomingPairing={incomingPairing} onPairingHandled={onPairingHandled}
     initialScan={initialScan} onScanStarted={onScanStarted} onScanFinished={onScanFinished} onBack={closePane} />;
   if (guardian && guardianRecovery) return <WatchGuardianRecovery key={guardian.scope} address={guardianRecovery.address}
-    networkLabel={networkLabel} onBack={closePane} lifetime={guardian.lifetime.signal} read={guardianRecovery.read} />;
+    networkLabel={networkLabel} onBack={closePane} lifetime={guardian.lifetime.signal} read={guardianRecovery.read} manage={guardianRecovery.manage} />;
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen>
     <Header title="Tools" subtitle={`${accountLabel} · ${networkLabel}`} onBack={onBack} />
     <Card><Row title="Accounts" subtitle={watchOnly ? 'Manage public watch addresses' : 'Manage wallet and watch accounts'} icon="wallet" onPress={onAccounts} />

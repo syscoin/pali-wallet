@@ -1,8 +1,8 @@
-import { paliEntryPointInterface, getPaliEntryPointAddress } from '../../../source/utils/smartAccount/contracts.ts';
+import { paliSmartAccountInterface, getPaliModuleAddress, paliEntryPointInterface, getPaliEntryPointAddress } from '../../../source/utils/smartAccount/contracts.ts';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import test from 'node:test';
-import { Wallet, Transaction } from 'ethers';
+import { getAddress, Wallet, Transaction } from 'ethers';
 import {
   captureEvmSubmission,
   evmSubmissionFailure,
@@ -15,6 +15,7 @@ import {
   consumeSignedEvmCapacityRefusal,
   type EvmSignedRecordStorage,
 } from '../../../source/wallet/evmSignedRecords.ts';
+import { ERC7579_MODE_SINGLE_DEFAULT } from '../../../source/utils/smartAccount/account.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
 
 Object.defineProperty(globalThis, 'crypto', {
@@ -1145,6 +1146,76 @@ test('Smart nonce projection caches one owned snapshot and invalidates on writes
   f.replace(undefined);
   assert.equal((await reader.read(false)).length, 2);
   assert.equal((await reader.read(true)).length, 0);
+  f.revoke();
+  await assert.rejects(reader.read(false), /revoked/);
+});
+
+
+test('the existing owned Smart projection retains removal identity through phase updates, reopen and fresh storage reads', async () => {
+  const f = fixture(),
+    session = f.session();
+  const smart = '0x1111111111111111111111111111111111111111';
+  const moduleAddress = getAddress(
+    getPaliModuleAddress(1, 'guardian-recovery')
+  );
+  const removal = paliSmartAccountInterface.encodeFunctionData(
+    'uninstallModule',
+    [2, moduleAddress, '0x']
+  );
+  const callData = paliSmartAccountInterface.encodeFunctionData('execute', [
+    ERC7579_MODE_SINGLE_DEFAULT,
+    smart + '0'.repeat(64) + removal.slice(2),
+  ]);
+  const operation = {
+    sender: smart,
+    nonce: 7,
+    initCode: '0x',
+    callData,
+    accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01',
+    preVerificationGas: 1,
+    gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03',
+    paymasterAndData: '0x',
+    signature: '0x1234',
+  };
+  const original = await signed(0, signer, '1');
+  const rawTransaction = await signer.signTransaction({
+    chainId: 1,
+    nonce: 0,
+    type: 0,
+    to: getPaliEntryPointAddress(1),
+    gasLimit: 500000,
+    gasPrice: 2,
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      [operation],
+      signer.address,
+    ]),
+  });
+  const hash = Transaction.from(rawTransaction).hash!;
+  await f.records.append(session, {
+    ...original,
+    type: 0,
+    rawTransaction,
+    hash,
+  });
+  const reader = await f.records.captureSmartAccountPendingRecords(
+    session,
+    '1',
+    smart
+  );
+  const first = await reader.read(false);
+  assert.deepEqual(first[0]!.guardianRemoval, { moduleAddress });
+  assert.strictEqual(await reader.read(false), first);
+  await f.records.updatePhase(session, '1', signer.address, hash, 'confirmed');
+  const updated = await reader.read(false);
+  assert.notStrictEqual(updated, first);
+  assert.deepEqual(updated[0]!.guardianRemoval, { moduleAddress });
+  const reopened = await new EvmSignedRecords(
+    f.port
+  ).captureSmartAccountPendingRecords(session, '1', smart);
+  assert.deepEqual(await reopened.read(true), updated);
+  f.replace(undefined);
+  assert.strictEqual(await reader.read(false), updated);
+  assert.deepEqual(await reader.read(true), []);
   f.revoke();
   await assert.rejects(reader.read(false), /revoked/);
 });

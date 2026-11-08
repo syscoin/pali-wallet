@@ -21,7 +21,9 @@ import {
   type SmartAccountPackedUserOperation,
 } from '../utils/smartAccount/account.ts';
 import {
+  ERC7579_MODULE_TYPE_EXECUTOR,
   getPaliEntryPointAddress,
+  getPaliModuleAddress,
   paliEntryPointInterface,
   paliSmartAccountInterface,
 } from '../utils/smartAccount/contracts.ts';
@@ -31,6 +33,10 @@ import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHa
 import type { EvmRetainedSignedRecord } from './evmSignedRecords.ts';
 
 const tokenPolicy = createErc20Policy(getAddress);
+const executeSelector =
+  paliSmartAccountInterface.getFunction('execute')!.selector;
+const uninstallSelector =
+  paliSmartAccountInterface.getFunction('uninstallModule')!.selector;
 
 export type SmartAccountActivityIdentity = Readonly<{
   operationHash: string;
@@ -74,12 +80,60 @@ export function isSmartAccountActivityCandidate(
 export type RetainedSmartAccountOperation = Readonly<{
   account: string;
   chainId: string;
+  guardianRemoval?: Readonly<{ moduleAddress: string }>;
   hash: string;
   operationHash: string;
   operationNonce: string;
   payer: string;
   payerNonce: number;
 }>;
+
+function guardianRemoval(
+  operation: SmartAccountPackedUserOperation,
+  chainId: number
+): RetainedSmartAccountOperation['guardianRemoval'] {
+  if (operation.callData.slice(0, 10).toLowerCase() !== executeSelector)
+    return undefined;
+  try {
+    const [mode, calldata] = paliSmartAccountInterface.decodeFunctionData(
+      'execute',
+      operation.callData
+    );
+    if (
+      mode !== ERC7579_MODE_SINGLE_DEFAULT ||
+      typeof calldata !== 'string' ||
+      calldata.length < 106 ||
+      paliSmartAccountInterface
+        .encodeFunctionData('execute', [mode, calldata])
+        .toLowerCase() !== operation.callData.toLowerCase() ||
+      getAddress('0x' + calldata.slice(2, 42)) !== operation.sender ||
+      BigInt('0x' + calldata.slice(42, 106)) !== BigInt(0)
+    )
+      return undefined;
+    const data = '0x' + calldata.slice(106);
+    if (data.slice(0, 10).toLowerCase() !== uninstallSelector) return undefined;
+    const decoded = paliSmartAccountInterface.decodeFunctionData(
+      'uninstallModule',
+      data
+    );
+    const [moduleType, address, deInitData] = decoded;
+    const moduleAddress = getAddress(address);
+    if (
+      BigInt(moduleType.toString()) !== BigInt(ERC7579_MODULE_TYPE_EXECUTOR) ||
+      moduleAddress !==
+        getAddress(getPaliModuleAddress(chainId, 'guardian-recovery')) ||
+      deInitData !== '0x' ||
+      paliSmartAccountInterface
+        .encodeFunctionData('uninstallModule', decoded)
+        .toLowerCase() !== data.toLowerCase()
+    )
+      return undefined;
+    return Object.freeze({ moduleAddress });
+  } catch {
+    // Preserve the nonce identity when its execution has a different purpose.
+    return undefined;
+  }
+}
 
 /** Authenticate the outer envelope independently of the inner execution mode. */
 export function decodeRetainedSmartAccountOperations(
@@ -123,6 +177,7 @@ export function decodeRetainedSmartAccountOperations(
           paymasterAndData: raw.paymasterAndData,
           signature: raw.signature,
         };
+        const removal = guardianRemoval(operation, chainId);
         return Object.freeze({
           chainId: entry.chainId,
           payer: entry.from,
@@ -131,6 +186,7 @@ export function decodeRetainedSmartAccountOperations(
           account: operation.sender,
           operationNonce: operation.nonce,
           operationHash: getSmartAccountUserOpHash(operation, chainId),
+          ...(removal ? { guardianRemoval: removal } : {}),
         });
       })
     );

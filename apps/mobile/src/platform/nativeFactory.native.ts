@@ -216,6 +216,10 @@ export function createNativeWalletControllers() {
       const current = authority.getSnapshot();
       if (selected !== runtime || current.phase !== 'ready' || current.revision !== initial.revision)
         throw new CustodyOperationError('CANCELLED');
+      if (current === initial && !catalogue.getSnapshot()) {
+        authority.lock();
+        throw new CustodyOperationError('CANCELLED');
+      }
       return assertOwner();
     };
     async function observeFailure<T>(action: () => Promise<T>): Promise<T> {
@@ -242,6 +246,43 @@ export function createNativeWalletControllers() {
       });
     },
   });
+  const readGuardianRecovery = async (signal: AbortSignal, assertOwner: () => void) => {
+    const { assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const snapshot = authority.getSnapshot();
+    const catalogue = authority.getCatalogue();
+    const account = catalogue?.accounts.find(entry => entry.id === catalogue.active.accountId);
+    const network = catalogue?.networks.find(entry => entry.id === snapshot.account?.network);
+    if (
+      !network || !account || account.type !== 'SmartAccount' ||
+      account.smartAccount?.chainId !== Number(network.chainId) ||
+      catalogue?.active.networkId !== network.id ||
+      account.address.toLowerCase() !== snapshot.account?.address.toLowerCase()
+    ) throw new CustodyOperationError('NOT_READY');
+    const owner = new AbortController();
+    const abort = () => owner.abort();
+    const check = () => {
+      assertActive();
+      assertCurrent();
+      if (signal.aborted || owner.signal.aborted || authority.getCatalogue() !== catalogue)
+        throw new CustodyOperationError('CANCELLED');
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    const unsubscribe = authority.subscribe(() => {
+      try { check(); } catch { abort(); }
+    });
+    try {
+      check();
+      const result = await observeFailure(() =>
+        new EvmTransferReadRpc(network, { fetch: walletFetch })
+          .readGuardianRecoveryStatus(account.address, owner.signal, check));
+      check();
+      return result;
+    } finally {
+      signal.removeEventListener('abort', abort);
+      unsubscribe();
+      owner.abort();
+    }
+  };
   const resetActivity = async (assertOwner: () => void): Promise<void> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     await observeFailure(() => selected.resetActivity(assertCurrent, () => {
@@ -271,6 +312,14 @@ export function createNativeWalletControllers() {
   const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void) => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent));
+  };
+  const openGuardianPolicy = async (draft: Parameters<KeyringRuntime['openGuardianPolicy']>[0], signal: AbortSignal, assertOwner: () => void) => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    return observeFailure(() => selected.openGuardianPolicy(draft, signal, assertCurrent));
+  };
+  const inspectGuardianRemoval = async (signal: AbortSignal, assertOwner: () => void) => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    return observeFailure(() => selected.inspectGuardianRemoval(signal, assertCurrent));
   };
   const openUtxoSend = async (assertOwner: () => void): Promise<NativeUtxoSend> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
@@ -335,6 +384,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentryKeys, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentryKeys, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
