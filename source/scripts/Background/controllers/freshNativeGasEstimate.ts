@@ -12,6 +12,7 @@ import {
   assertSynchronousEvmFeeGuard,
   bufferEvmFeeEstimate,
   captureEvmFeeApproval,
+  captureNativeEvmFeeCoverage,
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
 import { BigNumber } from '../../../utils/ethersV6Compat';
@@ -217,7 +218,8 @@ export async function recheckReviewedNativeEvmTransfer(
   assertEvmFeeEstimateApproved(
     review.approval,
     { ...observation, estimatedGas: BigInt(tx.gasLimit) },
-    Math.floor(performance.now())
+    Math.floor(performance.now()),
+    captureNativeEvmFeeCoverage(review.approval)
   );
   const request = { ...tx, nonce: nonce.toString() };
   const estimate = parseEvmFeeQuantity(
@@ -227,7 +229,8 @@ export async function recheckReviewedNativeEvmTransfer(
   assertEvmFeeEstimateApproved(
     review.approval,
     { ...observation, estimatedGas: estimate },
-    Math.floor(performance.now())
+    Math.floor(performance.now()),
+    captureNativeEvmFeeCoverage(review.approval)
   );
   const canonical = await read('eth_getBlockByNumber', [
     canonicalBlock.number,

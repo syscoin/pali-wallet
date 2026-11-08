@@ -1,3 +1,4 @@
+import { NATIVE_EVM_FEE_FUNDING, type EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
@@ -570,7 +571,7 @@ export function createKeyringRuntimeFactory(
           });
         }
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
-          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined) {
+          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding) {
           check();
           if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
           const signerType = selected.type, ring = keyring;
@@ -584,7 +585,7 @@ export function createKeyringRuntimeFactory(
           const planner = createNativeAutomaticNoncePlanner(signedRecords, { keyring: ring, assertCurrent: check },
             network.chainId, selected.address, network.rpcUrl);
           return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
-            network, rpc, signal, planner, assertCurrent: check,
+            network, rpc, signal, planner, funding, assertCurrent: check,
             readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
               network, owner: selected.address, contract, signal, assertCurrent, fetch,
             }),
@@ -1681,7 +1682,7 @@ export function createKeyringRuntimeFactory(
                   return signature;
                 });
               },
-              preparePayer(request, payer, signal, assertCurrent, metadata) {
+              preparePayer(request, payer, signal, assertCurrent, metadata, funding) {
                 check(); checkGuard(assertCurrent);
                 const owned = snapshot.accounts.find(candidate => candidate.index === payer.id && candidate.type === payer.type);
                 if (!owned || owned.address.toLowerCase() !== payer.address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
@@ -1691,7 +1692,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata);
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding);
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
@@ -1783,7 +1784,7 @@ export function createKeyringRuntimeFactory(
                 const normalized = normalizeDappTransaction(input.transaction);
                 if (normalized.from !== undefined && normalized.from.toLowerCase() !== selected.address.toLowerCase())
                   throw new KeyringRuntimeError('INVALID_INPUT');
-                return prepareOwnedEvmTransaction(normalized, selected, selected, approval.signal, check, undefined);
+                return prepareOwnedEvmTransaction(normalized, selected, selected, approval.signal, check, undefined, NATIVE_EVM_FEE_FUNDING);
               },
               signMessage(input) {
                 assertOwner();

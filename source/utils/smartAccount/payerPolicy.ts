@@ -1,11 +1,19 @@
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import {
+  NATIVE_EVM_FEE_FUNDING,
+  createOwnedEvmFeeFunding,
+  type EvmFeeFunding,
+  assertSynchronousEvmFeeGuard,
+} from '../../shared/evmFeeApproval.ts';
 import { BigNumber, Contract, getAddress } from '../ethersV6Compat.ts';
 
 import {
   getSmartAccountUserOpRequiredPrefund,
   type SmartAccountPackedUserOperation,
 } from './account.ts';
-import { PALI_ENTRYPOINT_V09_ABI } from './contracts.ts';
+import {
+  getPaliEntryPointAddress,
+  PALI_ENTRYPOINT_V09_ABI,
+} from './contracts.ts';
 import { getZkSysGasTankAddress } from './deploymentMetadata.ts';
 import type { SmartAccountUserOpGasEstimate } from './gas.ts';
 import {
@@ -77,7 +85,12 @@ export async function assertSmartAccountGasTankCredit(
     gasPayerAddress: string;
     gasPrice?: string;
     maxFeePerGas?: string;
-    transaction: { data?: string; to: string; value?: string };
+    transaction: {
+      data?: string;
+      gasLimit?: string;
+      to: string;
+      value?: string;
+    };
   }
 ): Promise<BigNumber> {
   const tankAddress = getZkSysGasTankAddress(chainId);
@@ -102,13 +115,82 @@ export async function assertSmartAccountGasTankCredit(
   const resolvedMaxFeePerGas = BigNumber.from(
     maxFeePerGas || feeData?.maxFeePerGas || feeData?.gasPrice || 0
   );
-  const requiredCredit = estimatedGasLimit
-    .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
-    .mul(resolvedMaxFeePerGas);
+  const buffered = estimatedGasLimit.add(
+    SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER
+  );
+  const approvedLimit =
+    transaction.gasLimit === undefined
+      ? buffered
+      : BigNumber.from(transaction.gasLimit);
+  const requiredCredit = (
+    approvedLimit.gt(buffered) ? approvedLimit : buffered
+  ).mul(resolvedMaxFeePerGas);
   if (credit.lt(requiredCredit)) {
     throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
   }
   return estimatedGasLimit;
+}
+
+/** A private gas-only capability for this exact reviewed handleOps operation. */
+export function createSmartAccountGasTankFunding(
+  provider: any,
+  expected: {
+    chainId: number;
+    data: string;
+    payer: string;
+    to: string;
+    value: string;
+  },
+  assertOwner: () => void
+): EvmFeeFunding {
+  const bound = Object.freeze({
+    ...expected,
+    payer: getAddress(expected.payer),
+    to: getAddress(expected.to),
+  });
+  if (
+    bound.to !== getPaliEntryPointAddress(bound.chainId) ||
+    !BigNumber.from(bound.value).isZero()
+  )
+    throw new Error('Invalid sponsored Smart account transaction');
+  let reviewed: string | undefined;
+  return createOwnedEvmFeeFunding(async (approval, assertCurrent) => {
+    const check = () => {
+      assertSynchronousEvmFeeGuard(assertOwner);
+      assertSynchronousEvmFeeGuard(assertCurrent);
+    };
+    check();
+    const transaction = approval.transaction;
+    if (
+      transaction.chainId !== String(bound.chainId) ||
+      transaction.from !== bound.payer ||
+      transaction.to !== bound.to ||
+      transaction.data !== bound.data ||
+      transaction.value !== '0'
+    )
+      throw new Error('Sponsored transaction changed');
+    const identity = JSON.stringify(transaction);
+    if (reviewed !== undefined && reviewed !== identity)
+      throw new Error('Sponsored transaction changed');
+    reviewed = identity;
+    await assertSmartAccountGasTankCredit(provider, {
+      chainId: bound.chainId,
+      gasPayerAddress: bound.payer,
+      maxFeePerGas:
+        transaction.type === 2
+          ? transaction.maxFeePerGas
+          : transaction.gasPrice,
+      ...(transaction.type === 2 ? {} : { gasPrice: transaction.gasPrice }),
+      transaction: {
+        data: transaction.data,
+        to: bound.to,
+        value: '0',
+        gasLimit: transaction.gasLimit,
+      },
+    });
+    check();
+    return BigInt(approval.maximumFeeUnits);
+  });
 }
 
 export async function ensureSmartAccountDeploymentPrefund<
@@ -167,6 +249,7 @@ export async function ensureSmartAccountDeploymentPrefund<
       smartAccountDeploymentPrefund: true,
     },
     {
+      feeFunding: NATIVE_EVM_FEE_FUNDING,
       assertBeforeSign: options.assertBeforeSign,
       assertCurrentContext: options.assertCurrentContext,
       clearNavigation: false,

@@ -221,9 +221,9 @@ export function NativeSmartAccountOperationScreen({
               </Text>
               <Text style={s.label}>Amount</Text>
               {amount(payer.transaction.value)}
-              <Text style={s.label}>Maximum network fee</Text>
+              <Text style={s.label}>{payer.coveredFeeUnits !== '0' ? 'Maximum network fee · gas tank' : 'Maximum network fee'}</Text>
               {amount(payer.maximumFeeUnits)}
-              <Text style={s.label}>Maximum total</Text>
+              <Text style={s.label}>{payer.coveredFeeUnits !== '0' ? 'Maximum from paying account' : 'Maximum total'}</Text>
               {amount(payer.maximumTotalUnits)}
             </Card>
             <Button

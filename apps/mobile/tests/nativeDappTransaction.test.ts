@@ -1,3 +1,4 @@
+import { createOwnedEvmFeeFunding, type EvmFeeFunding, NATIVE_EVM_FEE_FUNDING } from '../../../source/shared/evmFeeApproval.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Wallet } from 'ethers/wallet';
@@ -12,7 +13,7 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 const wallet = new Wallet(`0x${'11'.repeat(32)}`);
 const recipient = `0x${'22'.repeat(20)}`;
 const network = getNativeNetwork('ethereum');
-function fixture() {
+function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance = '0x100000000000000') {
   let current = true, now = 1, estimate = 21_000, estimates = 0, signs = 0, broadcasts = 0;
   let signingHook = () => {};
   const nonceOverrides: (number | undefined)[] = [];
@@ -29,7 +30,7 @@ function fixture() {
     let result: unknown;
     if (method === 'eth_chainId') result = '0x1';
     else if (method === 'eth_getTransactionCount') result = '0x0';
-    else if (method === 'eth_getBalance') result = '0x100000000000000';
+    else if (method === 'eth_getBalance') result = nativeBalance;
     else if (method === 'eth_getBlockByNumber') result = { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
     else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
     else if (method === 'eth_estimateGas') { estimates++; result = `0x${estimate.toString(16)}`; }
@@ -40,7 +41,7 @@ function fixture() {
   const rpc = new EvmTransferReadRpc(network, { fetch: fetcher, monotonicMilliseconds: () => now });
   const sender = new NativeTransferRpc({ registration: network, fetch: fetcher });
   const prepare = (input: unknown) => prepareNativeConnectionTransaction(input, {
-    network, rpc, planner, signal: lifetime.signal, assertCurrent: guard, now: () => now,
+    funding, network, rpc, planner, signal: lifetime.signal, assertCurrent: guard, now: () => now,
     async sign(transaction, assertCurrent) {
       assertCurrent(); signs++; signingHook(); assertCurrent();
       const rawTransaction = await wallet.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));
@@ -113,4 +114,34 @@ test('invalid generic envelopes fail before RPC', async () => {
     const f = fixture();
     await assert.rejects(f.prepare(input)); assert.equal(f.calls.length, 0);
   }
+});
+
+
+for (const lose of ['never', 'before-confirm', 'during-sign'] as const) test(`verified fee funding is rechecked through dispatch (${lose})`, async () => {
+  let credit = true, checks = 0;
+  const funding = createOwnedEvmFeeFunding(async approval => {
+    checks++;
+    if (!credit) throw new Error('credit unavailable');
+    return BigInt(approval.maximumFeeUnits);
+  });
+  const f = fixture(funding, '0x0');
+  const review = await f.prepare({ from: wallet.address, to: recipient, value: '0x0', data: '0x1234' });
+  assert.equal(review.maximumTotalUnits, '0');
+  assert.equal(review.coveredFeeUnits, review.maximumFeeUnits);
+  if (lose === 'before-confirm') credit = false;
+  if (lose === 'during-sign') f.onSign(() => { credit = false; });
+  if (lose === 'never') {
+    await review.submit(f.guard, () => undefined);
+    assert.equal(f.signs, 1); assert.equal(f.broadcasts, 1); assert.equal(checks, 3);
+  } else {
+    await assert.rejects(review.submit(f.guard, () => undefined), { code: 'UNAVAILABLE' });
+    assert.equal(f.broadcasts, 0);
+    assert.equal(f.signs, lose === 'during-sign' ? 1 : 0);
+  }
+});
+
+test('fee funding cannot cover transferred native value or be forged', async () => {
+  const funding = createOwnedEvmFeeFunding(async approval => BigInt(approval.maximumFeeUnits));
+  await assert.rejects(fixture(funding, '0x0').prepare({ from: wallet.address, to: recipient, value: '0x1', data: '0x' }));
+  await assert.rejects(fixture({ kind: 'verified-credit' }, '0x0').prepare({ from: wallet.address, to: recipient, value: '0x0', data: '0x' }));
 });

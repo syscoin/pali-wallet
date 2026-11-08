@@ -1,3 +1,4 @@
+import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
@@ -59,7 +60,8 @@ export type NativeSmartOperationPorts = Readonly<{
     payer: SmartAccountGasPayer,
     signal: AbortSignal,
     guard: () => void,
-    metadata: Readonly<Record<string, unknown>>
+    metadata: Readonly<Record<string, unknown>>,
+    funding: EvmFeeFunding
   ): Promise<NativePreparedConnectionTransaction>;
   waitForReceipt(
     hash: string,
@@ -238,7 +240,7 @@ export function createNativeSmartOperation(
           !target ||
           !options ||
           typeof options.assertBeforeSign !== 'function' ||
-          typeof options.assertCurrentContext !== 'function'
+          typeof options.assertCurrentContext !== 'function' || !options.feeFunding
         )
           throw new Error('SMART_OPERATION_EXPIRED');
         const payer = getSmartAccountGasPayerCandidates(
@@ -262,12 +264,13 @@ export function createNativeSmartOperation(
         const quote = await ports.preparePayer(request, payer, signal, guard, {
           ...transactionMetadata,
           smartAccountOperationHash: prepared.actionHash,
-        });
+        }, options.feeFunding);
         guard();
         await reviewPayer(
           {
             transaction: quote.transaction,
             maximumFeeUnits: quote.maximumFeeUnits,
+            coveredFeeUnits: quote.coveredFeeUnits,
             maximumTotalUnits: quote.maximumTotalUnits,
             purpose: transactionMetadata?.smartAccountDeploymentPrefund
               ? 'fund-account'

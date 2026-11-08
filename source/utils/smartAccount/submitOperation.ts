@@ -1,4 +1,7 @@
-import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+import {
+  NATIVE_EVM_FEE_FUNDING,
+  assertSynchronousEvmFeeGuard,
+} from '../../shared/evmFeeApproval.ts';
 import {
   BigNumber,
   Contract,
@@ -23,6 +26,7 @@ import {
   hasNativeGasFailure,
   hasSmartAccountSignatureFailure,
 } from './operationErrors.ts';
+import { createSmartAccountGasTankFunding } from './payerPolicy.ts';
 import {
   getExplicitSmartAccountGasPrice,
   type SmartAccountGasPayer,
@@ -347,6 +351,19 @@ export async function submitSmartAccountOperation<
         ],
       },
       {
+        feeFunding: usesZkSysGasTank
+          ? createSmartAccountGasTankFunding(
+              host.provider,
+              {
+                chainId: active.metadata.chainId,
+                payer: gasPayer.address,
+                to: entryPointAddress,
+                data: callData,
+                value: '0',
+              },
+              assertCurrent
+            )
+          : NATIVE_EVM_FEE_FUNDING,
         assertBeforeSign: assertCurrent,
         assertCurrentContext: assertContext,
         clearNavigation: true,

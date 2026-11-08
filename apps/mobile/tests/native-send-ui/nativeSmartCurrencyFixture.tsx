@@ -89,7 +89,7 @@ function open(recipient: string, amount: string, assertCurrent: () => void) {
           await review(
             {
               purpose: 'submit-operation',
-              maximumFeeUnits: '420000000000000',
+              coveredFeeUnits: '0', maximumFeeUnits: '420000000000000',
               maximumTotalUnits: '420000000000000',
               transaction: {
                 from: payer,

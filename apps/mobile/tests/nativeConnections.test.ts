@@ -162,6 +162,7 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
       return {
         transaction,
         maximumFeeUnits: fee.maximumFeeUnits,
+        coveredFeeUnits: '0',
         maximumTotalUnits: fee.maximumTotalUnits,
         expiresAtMonotonicMilliseconds: fee.expiresAtMonotonicMilliseconds,
         approval: transaction.to ? summarizeApproval(transaction.data, transaction.to, approvalMetadata) : null,
