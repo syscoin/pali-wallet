@@ -133,6 +133,10 @@ const prepare = async (
     1: payload,
   };
   const view = render(<EthSign />);
+  // Finish the component's initial loading delay independently of CI timing.
+  await act(async () => {
+    jest.advanceTimersByTime(100);
+  });
   await screen.findByRole('button', { name: 'buttons.confirm' });
   return view;
 };
@@ -144,6 +148,7 @@ const checkedAddresses = () =>
 
 beforeEach(() => {
   jest.clearAllMocks();
+  jest.useFakeTimers();
   mockFlagged = true;
   // No signer or network call is allowed. The advisory response is synthetic
   // and independent of the valid payload's field names and values.
@@ -165,6 +170,8 @@ afterEach(() => {
     )
   ).toBe(true);
   cleanup();
+  jest.clearAllTimers();
+  jest.useRealTimers();
 });
 
 it('keeps the known Permit spender high-risk advisory', async () => {
