@@ -54,6 +54,7 @@ import { NativeWalletCatalogue, WalletCatalogueError,
   catalogueUtxoNetworks,
   createNativeAccountRecord,
   recoveryVerificationRecords,
+  sentryRootPublicIdentity,
   WALLET_CATALOGUE_KEY,
 } from './walletCatalogue.ts';
 import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from './networkContext.ts';
@@ -85,6 +86,9 @@ import { createNativeNoteImport, type NativeNoteImportRuntime } from './noteImpo
 import type { createNativePrivacyPoolSync } from '../privacy/nativePrivacyPoolSync.ts';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import type { NativeUtxoSend } from './utxoSend.ts';
+import { SENTRY_NETWORKS, type SentryNetwork } from '../../../../source/shared/sentryNetworks.ts';
+import { deriveSentryVaultId } from '../../../../source/wallet/sentryKeyVault.ts';
+import type { DeriveSentryPublicKey, NativeSentryKeyManagement } from './sentryKeyManagement.ts';
 
 type SoftwareSdk = NativeKeyringSdk;
 type IndexedKeyring = InstanceType<SoftwareSdk['HostKeyring']> & {
@@ -114,6 +118,8 @@ export type KeyringRuntimeDependencies = Readonly<{
   readUtxoAccount?: (network: UtxoNetwork, xpub: string, signal: AbortSignal, guard: () => void) => Promise<UtxoBalance>;
   utxoFetch?: typeof globalThis.fetch;
   prepareSmartAccount?: (network: NativeNetworkRegistration, accountIndex: number, managementAddress: string, signal: AbortSignal, guard: () => void) => Promise<{ address: string; metadata: NonNullable<IKeyringAccountState['smartAccount']> }>;
+  /** Only a separately qualified host can install the Sentry derivation executor. */
+  deriveSentryPublicKey?: DeriveSentryPublicKey;
   observeActivity?: (network: NativeNetworkRegistration, expected: EvmObservationRequest, signal: AbortSignal, guard: () => void) => Promise<EvmTransactionObservation>;
 }>;
 
@@ -183,6 +189,8 @@ export interface KeyringRuntime extends CustodyRuntime {
   /** Native transfer host only; never exposed directly to a screen. */
   readonly transfers?: NativeTransferRuntime;
   openUtxoSend?(assertCurrent: () => void): Promise<NativeUtxoSend>;
+  /** Internal Sentry review and encrypted storage only. */
+  openSentryKeyManagement?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryKeyManagement>;
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
@@ -311,15 +319,21 @@ export function createKeyringRuntimeFactory(
         let pendingBalance: AbortController | null = null;
         let pendingRegistration: AbortController | null = null;
         let utxoSend: NativeUtxoSend | undefined;
+        let sentryKeys: NativeSentryKeyManagement | undefined;
+        const retireSentryKeys = () => {
+          sentryKeys?.dispose();
+          sentryKeys = undefined;
+        };
         type NoteRuntime = ReturnType<typeof import('./noteBackupRuntime.ts').createNativeNoteBackupRuntime>;
         let noteBackups: NoteRuntime | undefined;
-        let noteStorageFault: 'unreported' | 'reopen' | undefined;
-        const requireNoteReopen = () => { noteStorageFault ??= 'unreported'; };
-        const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || activityHistory.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || noteStorageFault === 'reopen';
+        let privateDomainStorageFault: 'unreported' | 'reopen' | undefined;
+        const requirePrivateDomainReopen = () => { privateDomainStorageFault ??= 'unreported'; };
+        const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || activityHistory.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || privateDomainStorageFault === 'reopen';
         const revokeGeneration = () => {
           const next = ++generation;
           void retireLedger()?.catch(() => undefined);
           retireContextReadLifetime();
+          retireSentryKeys();
           noteBackups?.invalidate();
           pendingBalance?.abort();
           pendingRegistration?.abort();
@@ -366,6 +380,7 @@ export function createKeyringRuntimeFactory(
           catalogueSnapshot = null;
           authenticatedPair = null; verifiedIdentity = null;
           retireContextReadLifetime();
+          retireSentryKeys();
           noteBackups?.invalidate();
           pendingBalance?.abort();
           pendingRegistration?.abort();
@@ -503,7 +518,7 @@ export function createKeyringRuntimeFactory(
           catalogueSnapshot = next;
           connectionNetworkId = next.active.networkId;
           connectionNetwork = Object.freeze({ ...state.activeNetwork });
-          if (changed) retireContextReadLifetime();
+          if (changed) { retireContextReadLifetime(); retireSentryKeys(); }
         };
         // Transfer only inside an admitted mutation. No await separates the
         // ownership move from publishing the private instance used by lock().
@@ -842,18 +857,18 @@ export function createKeyringRuntimeFactory(
           repository.assertHealthy();
           return repository;
         };
-        const assertNoteAvailable = () => {
+        const assertPrivateDomainAvailable = () => {
           current(generation);
           if (active || reserved || pendingSubmissions.size) throw new KeyringRuntimeError('BUSY');
         };
-        const runNote = async <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
-          assertNoteAvailable();
+        const runPrivateDomain = async <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
+          assertPrivateDomainAvailable();
           const captured = generation;
           let resolve!: (result: Promise<T>) => void, reject!: (error: unknown) => void;
           const task = new Promise<T>((accept, refuse) => { resolve = accept; reject = refuse; }).finally(async () => {
-            if (noteStorageFault === 'unreported') {
+            if (privateDomainStorageFault === 'unreported') {
               // Let the service classify an ambiguous receipt before revoking its session.
-              noteStorageFault = 'reopen';
+              privateDomainStorageFault = 'reopen';
               try { await lock(); } catch { /* The owner remains quarantined. */ }
             }
             if (active === task) active = null;
@@ -864,7 +879,7 @@ export function createKeyringRuntimeFactory(
           try { resolve(operation(captured)); } catch (error) { reject(error); }
           return task;
         };
-        const noteSession = (captured: number, assertOwner: () => void): IPrivateVaultSession => {
+        const privateDomainSession = (captured: number, assertOwner: () => void): IPrivateVaultSession => {
           const ring = keyring, identity = verifiedIdentity, revision = catalogueSnapshot?.revision;
           const assertCurrent = () => {
             current(captured); checkGuard(assertOwner); current(captured);
@@ -890,12 +905,111 @@ export function createKeyringRuntimeFactory(
             return authenticated;
           } catch (error) {
             if (request.generation !== generation && owner.isUnlocked()) await owner.lockWallet();
-            if (error instanceof WalletStorageError && error.code === 'STORAGE_REOPEN_REQUIRED') requireNoteReopen();
+            if (error instanceof WalletStorageError && error.code === 'STORAGE_REOPEN_REQUIRED') requirePrivateDomainReopen();
             throw error;
           }
         };
-        const openNotes = <T>(assertOwner: () => void, bind: (notes: NoteRuntime, session: IPrivateVaultSession) => T | Promise<T>) => runNote(async (captured): Promise<T> => {
-          const session = noteSession(captured, assertOwner);
+        const openSentryKeyManagement: NonNullable<
+          KeyringRuntime['openSentryKeyManagement']
+        > = (lifetime, assertOwner) =>
+          runPrivateDomain(async (captured) => {
+            const derivePublicKey = dependencies.deriveSentryPublicKey;
+            if (
+              !storage.sentryKeys ||
+              typeof derivePublicKey !== 'function' ||
+              typeof assertOwner !== 'function' ||
+              typeof lifetime?.aborted !== 'boolean' ||
+              typeof lifetime.addEventListener !== 'function' ||
+              typeof lifetime.removeEventListener !== 'function'
+            )
+              throw new KeyringRuntimeError('NOT_READY');
+            const session = privateDomainSession(captured, () => {
+              if (lifetime.aborted) throw new KeyringRuntimeError('CANCELLED');
+              checkGuard(assertOwner);
+            });
+            const identity = verifiedIdentity!;
+            const selected = catalogueSnapshot!;
+            const registration = findUtxoNetwork(
+              selected.active.networkId,
+              selected.utxoNetworks
+            );
+            const network = (Object.keys(SENTRY_NETWORKS) as SentryNetwork[]).find(
+              (name) =>
+                registration?.chainId === SENTRY_NETWORKS[name].chainId &&
+                registration.genesisHash === SENTRY_NETWORKS[name].genesisHash
+            );
+            if (!network) throw new KeyringRuntimeError('NOT_READY');
+            const root = sentryRootPublicIdentity(catalogue.privateRecords, network);
+            const { createNativeSentryKeyManagement, NativeSentryKeysError } =
+              await import('./sentryKeyManagement.ts');
+            session.assertCurrent();
+            const crypto = globalThis.crypto;
+            const vaultId = await deriveSentryVaultId(
+              root,
+              async (bytes) =>
+                new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))
+            );
+            session.assertCurrent();
+            const owned = storage.sentryKeys.bind(
+              {
+                network,
+                vaultId,
+                profileId: identity.root!.profileId,
+                walletBindingId: identity.walletBindingId,
+                pairFingerprint: identity.pairFingerprint,
+              },
+              session.assertCurrent
+            );
+            retireSentryKeys();
+            sentryKeys = createNativeSentryKeyManagement({
+              assertCurrent: session.assertCurrent,
+              async authenticate(password, assertCurrent) {
+                const authenticated = await authenticateVerifiedOwner(password, {
+                  ...session,
+                  assertCurrent,
+                });
+                assertCurrent();
+                if (!authenticated) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              },
+              derivePublicKey,
+              lifetime,
+              network,
+              async readSeed(password, assertCurrent) {
+                assertCurrent();
+                const phrase = await keyring.getSeed(password);
+                assertCurrent();
+                if (typeof phrase !== 'string' || !keyring.isSeedValid(phrase))
+                  throw new KeyringRuntimeError('OPERATION_FAILED');
+                return phrase;
+              },
+              run: (operation) =>
+                runPrivateDomain(async () => {
+                  try {
+                    return await operation();
+                  } catch (error) {
+                    if (
+                      error instanceof NativeSentryKeysError ||
+                      error instanceof KeyringRuntimeError
+                    )
+                      throw error;
+                    if (error instanceof WalletStorageError) {
+                      if (error.code === 'STORAGE_REOPEN_REQUIRED')
+                        requirePrivateDomainReopen();
+                      if (error.code === 'AUTH_THROTTLED')
+                        throw new KeyringRuntimeError(error.code);
+                      if (error.code === 'STORAGE_CHANGED')
+                        throw new KeyringRuntimeError('CANCELLED');
+                    }
+                    throw new KeyringRuntimeError('OPERATION_FAILED');
+                  }
+                }),
+              vaultHost: { ...owned, crypto: () => crypto },
+              vaultId,
+            });
+            return sentryKeys;
+          });
+        const openNotes = <T>(assertOwner: () => void, bind: (notes: NoteRuntime, session: IPrivateVaultSession) => T | Promise<T>) => runPrivateDomain(async (captured): Promise<T> => {
+          const session = privateDomainSession(captured, assertOwner);
           if (!noteBackups) {
             const notes = storage.notes;
             if (!notes || !storage.recovery) throw new KeyringRuntimeError('NOT_READY');
@@ -903,9 +1017,9 @@ export function createKeyringRuntimeFactory(
             session.assertCurrent();
             noteBackups = createNativeNoteBackupRuntime({
               notes,
-              assertAvailable: assertNoteAvailable,
-              run: runNote,
-              requireReopen: requireNoteReopen,
+              assertAvailable: assertPrivateDomainAvailable,
+              run: runPrivateDomain,
+              requireReopen: requirePrivateDomainReopen,
               async binding() {
                 const walletBindingId = await dataBinding(generation);
                 const profileId = verifiedIdentity?.root?.profileId;
@@ -951,11 +1065,11 @@ export function createKeyringRuntimeFactory(
               importNote: (note, readNote, assertCurrent) => notes.importNote(session, note, readNote, assertCurrent),
             });
           });
-        const authorizeWalletRemoval: NonNullable<KeyringRuntime['authorizeWalletRemoval']> = (password, assertOwner, beforeSnapshot) => runNote(async (captured) => {
+        const authorizeWalletRemoval: NonNullable<KeyringRuntime['authorizeWalletRemoval']> = (password, assertOwner, beforeSnapshot) => runPrivateDomain(async (captured) => {
           if (typeof beforeSnapshot !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
           const recovery = storage.recovery;
           if (!recovery || !storage.removal) throw new KeyringRuntimeError('NOT_READY');
-          const session = noteSession(captured, assertOwner);
+          const session = privateDomainSession(captured, assertOwner);
           const identity = verifiedIdentity;
           if (!(await authenticateVerifiedOwner(password, session))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
           session.assertCurrent();
@@ -2124,6 +2238,8 @@ export function createKeyringRuntimeFactory(
           },
           ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory,
             ...(dependencies.openPrivacyPool ? { openNoteImport } : {}) } : {}),
+          ...(storage.sentryKeys && typeof dependencies.deriveSentryPublicKey === 'function'
+            ? { openSentryKeyManagement } : {}),
           ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
           accounts,
           security: {

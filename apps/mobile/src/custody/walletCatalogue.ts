@@ -39,6 +39,7 @@ import type {
   KeyringAccountType as SharedAccountType,
 } from '../../../../source/types/network.ts';
 import { KeyringAccountType as SdkAccountType } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { SENTRY_NETWORKS, type SentryNetwork } from '../../../../source/shared/sentryNetworks.ts';
 const KeyringAccountType =
   SdkAccountType as unknown as typeof import('../../../../source/types/network.ts').KeyringAccountType;
 
@@ -442,6 +443,21 @@ export function recoveryVerificationRecords(
   binding: string
 ): NativeAccountRecord {
   return decode(value, binding);
+}
+
+/** A Sentry bucket belongs to the seeded account-zero xpub for this pinned chain. */
+export function sentryRootPublicIdentity(
+  record: NativeAccountRecord,
+  network: SentryNetwork
+): string {
+  const pin = SENTRY_NETWORKS[network];
+  const registration = UTXO_NETWORKS.find(({ chainId, genesisHash }) =>
+    chainId === pin.chainId && genesisHash === pin.genesisHash
+  );
+  if (!registration) return invalid();
+  const root = catalogueAccountGroup(record, registration.id)?.accounts.HDAccount[0];
+  if (!root?.xpub) return invalid();
+  return root.xpub;
 }
 export function inspectRecoveryCatalogue(value: unknown, binding: string) {
   const record = decode(value, binding),

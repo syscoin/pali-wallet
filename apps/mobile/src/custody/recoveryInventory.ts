@@ -4,6 +4,7 @@ import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
 import { inspectNoteDomain } from '../storage/noteDomain.ts';
 import { decodeStorageValue, STORAGE_LIMITS } from '../storage/json.ts';
 import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../storage/types.ts';
+import { readSentrySlot, sentrySlotNetwork } from '../storage/sentryKeyDomain.ts';
 import { ACTIVITY_STORAGE_KEY, inspectRecoveryHistory } from '../activity/historyStore.ts';
 import { NATIVE_TOKEN_REGISTRY_KEY, inspectRecoveryTokens } from '../portfolio/tokenRegistry.ts';
 import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
@@ -33,6 +34,11 @@ const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0,
 /** Canonical native record domains. Runtime and recovery share this admission check. */
 export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records']): void {
   for (const { key, value } of records) {
+    const sentryNetwork = sentrySlotNetwork(key);
+    if (sentryNetwork) {
+      readSentrySlot(value, sentryNetwork);
+      continue;
+    }
     if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY, UTXO_SIGNED_RECORD_KEY, NATIVE_CONNECTION_STORAGE_KEY].includes(key))
       throw new Error('NATIVE_STORAGE_UNSUPPORTED_RECORD');
     if (key === 'utf8Error') {
@@ -49,7 +55,8 @@ export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['reco
 export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): RecoveryInventory {
   const backup = snapshot.state.backup;
   try {
-    if (snapshot.records.length > STORAGE_LIMITS.records) throw new Error();
+    if (snapshot.records.length > STORAGE_LIMITS.records + 2 ||
+        snapshot.records.filter(({ key }) => !sentrySlotNetwork(key)).length > STORAGE_LIMITS.records) throw new Error();
     const records = new Map(snapshot.records.map(({ key, value }) => [key, value]));
     if (records.size !== snapshot.records.length) throw new Error();
     try { assertNativeRecordDomains(snapshot.records); }
@@ -101,6 +108,8 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
       } else if (key === UTXO_SIGNED_RECORD_KEY) {
         if (!root) throw new Error();
         counts.retainedSignedTransactions += inspectUtxoSignedBundle(value, root.profileId).entries.length;
+      } else if (sentrySlotNetwork(key) && !root) {
+        throw new Error();
       }
     }
     return result('needs-matching-phrase-verification', null, backup, counts, snapshot.notes.length > 0);
