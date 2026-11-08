@@ -8,6 +8,7 @@ import {
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import {
   NativePortfolioController,
+  type NativePortfolioAccount,
   type PublicCustodySource,
 } from '../portfolio/nativePortfolio';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
@@ -32,6 +33,7 @@ import type {
 } from '../smartAccount/operation';
 import type { NativeSendContext } from '../custody/networkContext';
 import { NativeSendInput, nativeTransferFailure } from './NativeSend';
+import { NativeTokenMaximum } from './NativeTokenMaximum';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 import { Button, colors, Header, Notice, Screen, styles, Text } from '../ui';
 
@@ -44,6 +46,7 @@ export function NativeSmartAccountSend({
   accountLabel,
   source,
   reader,
+  account,
   token,
   tokenView,
   collectible,
@@ -58,6 +61,7 @@ export function NativeSmartAccountSend({
   accountLabel: string;
   source: PublicCustodySource;
   reader: BalanceReader;
+  account: NativePortfolioAccount;
   token?: Erc20Metadata;
   collectible?: SavedCollectible;
   tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
@@ -270,6 +274,20 @@ export function NativeSmartAccountSend({
                 keyboardType="decimal-pad"
               />
             </>
+          )}
+          {token && !collectible && (
+            <NativeTokenMaximum
+              owner={account}
+              token={token}
+              snapshot={inventory}
+              view={tokenView}
+              selected={maximum}
+              disabled={busy}
+              onSelect={(value) => {
+                setMaximum(true);
+                setAmount(value);
+              }}
+            />
           )}
           {!token && !collectible && (
             <Button

@@ -829,9 +829,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountOperationRoute
     open={openSmartDeployment} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'token' || sendTarget?.kind === 'collectible') && canSendSmart && openSmartSend && snapshot.account && publicSource && balanceReader)
-    return <NativeSmartAccountSend source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
+    return <NativeSmartAccountSend account={{ ...snapshot.account, revision: snapshot.revision }} source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
+    account={{ ...snapshot.account, revision: snapshot.revision }}
     ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
+    tokenView={tokenView ?? undefined}
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
     recipientPicker={sendDraft?.recipientPicker}
     token={sendTarget.kind === 'token' ? sendTarget.token : undefined}

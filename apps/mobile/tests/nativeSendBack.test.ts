@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup() {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }) {
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -26,6 +26,8 @@ function setup() {
     ...Object.fromEntries(['ActivityIndicator','KeyboardAvoidingView','Modal','ScrollView','View'].map(name=>[name,name]))};
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
+    './NativeLedger': { NativeLedgerConnectionModal: 'NativeLedgerConnectionModal' },
+    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum' },
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
     '../core/amounts':{formatBaseUnits:()=>''},
@@ -39,10 +41,11 @@ function setup() {
   const module={exports:{} as Record<string,any>};
   runInNewContext(code,{module,exports:module.exports,Error,URL,Keyboard:native.Keyboard,require(name:string){assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
   let snapshot: any={phase:'submitting',review:null,hash:null,message:null,intent:null,collectible:undefined};
-  const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;}};
+  const prepared: unknown[] = [];
+  const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;},async prepareToken(...args: unknown[]) { prepared.push(args); }};
   const context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,account:{address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1},onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  return {render,prepared,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
 }
 function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all)];}
 function one(tree:Element,type:string,predicate:(e:Element)=>boolean=()=>true) {const matches=all(tree).filter(e=>e.type===type&&predicate(e));assert.equal(matches.length,1);return matches[0]!;}
@@ -76,4 +79,16 @@ test('a later submission with a distinct review cannot resurrect the earlier war
  const staleLeave=button(tree,'Leave');f.setSnapshot({...f.snapshot,phase:'pending',review:null,hash:'0xsynthetic'});tree=f.render();assert.equal(modal(tree).props.visible,false);
  f.setSnapshot({...f.snapshot,phase:'submitting',review:Object.freeze({...first}),hash:null});tree=f.render();assert.equal(modal(tree).props.visible,false);
  staleLeave.props.onPress();assert.deepEqual(f.counts(),{backs:0,cancels:0});headerBack(tree);tree=f.render();assert.equal(modal(tree).props.visible,true);f.dispose();
+});
+
+for (const edit of [false, true]) test(`ordinary token MAX uses exact existing prepareToken${edit ? ' after edit' : ''}`, async () => {
+ const token={contractAddress:'0x2222222222222222222222222222222222222222',decimals:255,name:'Token',symbol:'T'};
+ const f=setup(token);f.setSnapshot({phase:'idle',review:null,hash:null,message:null,intent:null});
+ let tree=f.render();const max=one(tree,'TokenMaximum');
+ max.props.onSelect('0.'+'0'.repeat(254)+'1');tree=f.render();assert(one(tree,'TokenMaximum').props.selected);
+ const amount=all(tree).find(node=>node.props.label==='Amount in T')!;
+ assert.equal(amount.props.value,'0.'+'0'.repeat(254)+'1');
+ if(edit){amount.props.onChange('0.'+'0'.repeat(254)+'2');tree=f.render();assert.equal(one(tree,'TokenMaximum').props.selected,false);}
+ one(tree,'Screen').props.footer.props.onPress();await Promise.resolve();
+ assert.equal((f.prepared[0] as unknown[])[2],'0.'+'0'.repeat(254)+(edit?'2':'1'));f.dispose();
 });

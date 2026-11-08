@@ -33,7 +33,7 @@ const token = query.has('token')
       contractAddress: '0x5555555555555555555555555555555555555555',
       name: 'Example token',
       symbol: 'TOK',
-      decimals: 6,
+      decimals: query.has('max-token-dust') ? 255 : 6,
     }
   : undefined;
 const collectible: SavedCollectible | undefined =
@@ -50,14 +50,14 @@ const collectible: SavedCollectible | undefined =
       }
     : undefined;
 const tokenSnapshot: NativeTokenSnapshot = {
-  account: null,
+  account: { address: account, network: network.id, revision: 1 },
   status: 'ready',
   items: token
     ? [
         {
           metadata: token,
           status: 'available',
-          units: '100000000',
+          units: query.has('max-token-dust') ? '1' : '100000000',
           updatedAt: 0,
         },
       ]
@@ -259,6 +259,7 @@ export function NativeSmartCurrencyFixture() {
     <Text>Smart transfer closed</Text>
   ) : (
     <NativeSmartAccountSend
+      account={{ address: account, network: network.id, revision: 1 }}
       open={open}
       token={token}
       collectible={collectible}

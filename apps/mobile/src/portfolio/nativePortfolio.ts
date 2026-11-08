@@ -41,7 +41,7 @@ type Request = {
   generation: number;
 };
 
-function sameAccount(
+export function sameNativePortfolioAccount(
   left: NativePortfolioAccount | null,
   right: NativePortfolioAccount | null
 ): boolean {
@@ -129,7 +129,7 @@ export class NativePortfolioController {
 
   private synchronize(notify: boolean): boolean {
     const account = this.connection ? this.readAccount() : null;
-    const changed = !sameAccount(this.state.account, account);
+    const changed = !sameNativePortfolioAccount(this.state.account, account);
     if (changed) {
       this.cancel();
       this.replace(snapshot(account, account ? 'unknown' : 'unavailable'), notify);
@@ -157,7 +157,7 @@ export class NativePortfolioController {
 
   isCurrent = (account: NativePortfolioAccount | null): boolean => {
     this.synchronize(false);
-    return Boolean(this.connection && account && sameAccount(this.state.account, account));
+    return Boolean(this.connection && account && sameNativePortfolioAccount(this.state.account, account));
   };
 
   private sourceChanged(connection: Connection): void {
@@ -210,7 +210,7 @@ export class NativePortfolioController {
     this.synchronize(true);
     return this.connection === request.connection &&
       this.pending === request && this.generation === request.generation &&
-      !request.controller.signal.aborted && sameAccount(this.state.account, request.account);
+      !request.controller.signal.aborted && sameNativePortfolioAccount(this.state.account, request.account);
   }
 
   refresh = async (): Promise<void> => {

@@ -421,6 +421,7 @@ function Fixture() {
         )
       ) : (
         <NativeSend
+          account={{ address: sender, network: sendContext.networkId, revision: 1 }}
           savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
           ledgerConnection={ledgerConnection}

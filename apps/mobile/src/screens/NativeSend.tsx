@@ -1,3 +1,6 @@
+import type { NativePortfolioAccount } from '../portfolio/nativePortfolio';
+import { NativeTokenMaximum } from './NativeTokenMaximum';
+import type { NativeTokenView } from '../portfolio/nativeTokens';
 import { NativeLedgerConnectionModal } from './NativeLedger';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
@@ -156,11 +159,16 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
   );
 }
 
+const emptyTokenSubscribe = () => () => undefined;
+const emptyTokenSnapshot = () => null;
+
 export function NativeSend({
   controller,
   onBack,
   accountLabel = 'Account 1',
+  account,
   token,
+  tokenView,
   collectible,
   context,
   savedHash,
@@ -172,7 +180,9 @@ export function NativeSend({
   ledgerConnection?: NativeLedgerConnectionView;
   onBack(): void;
   accountLabel?: string;
+  account: NativePortfolioAccount;
   token?: Erc20Metadata;
+  tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
   collectible?: SavedCollectible;
   context: NativeSendContext;
   savedHash?: string;
@@ -184,6 +194,16 @@ export function NativeSend({
     () => controller.getSnapshot(),
     () => controller.getSnapshot()
   );
+  const tokenSnapshot = useSyncExternalStore(
+    tokenView?.subscribe ?? emptyTokenSubscribe,
+    tokenView?.getSnapshot ?? emptyTokenSnapshot,
+    tokenView?.getSnapshot ?? emptyTokenSnapshot
+  );
+  useLayoutEffect(
+    () => token ? tokenView?.connect() : undefined,
+    [token, tokenView]
+  );
+  const [maximum, setMaximum] = useState(false);
   const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
   const ledgerReady = useSyncExternalStore(
     (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
@@ -768,7 +788,21 @@ export function NativeSend({
                 <>
                   {token && tokenIdentity(token)}
                   <NativeSendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
-                    onChange={setAmount} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
+                    onChange={(value) => { setMaximum(false); setAmount(value); }} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
+                  {token && (
+                    <NativeTokenMaximum
+                      owner={account}
+                      token={token}
+                      snapshot={tokenSnapshot}
+                      view={tokenView}
+                      selected={maximum}
+                      disabled={busy}
+                      onSelect={(value) => {
+                        setMaximum(true);
+                        setAmount(value);
+                      }}
+                    />
+                  )}
                 </>
               )}
               <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
