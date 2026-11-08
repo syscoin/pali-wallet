@@ -13,11 +13,13 @@ export function ApprovalReview({
   revision,
   disabled,
   edit,
+  onEditingChange,
 }: {
   summary: ApprovalSummary;
   revision: number;
   disabled: boolean;
   edit(value: string): Promise<void>;
+  onEditingChange(editing: boolean): void;
 }) {
   const [editor, setEditor] = useState<{
     revision: number;
@@ -133,15 +135,16 @@ export function ApprovalReview({
           title="Edit spending limit"
           variant="quiet"
           disabled={disabled}
-          onPress={() =>
+          onPress={() => {
+            onEditingChange(true);
             setEditor({
               revision,
               value: formatApprovalTokenAmount(
                 summary.amountUnits!,
                 token.decimals
               ),
-            })
-          }
+            });
+          }}
         />
       )}
       {editing && token && (
@@ -169,7 +172,7 @@ export function ApprovalReview({
             title="Keep current limit"
             variant="quiet"
             disabled={disabled}
-            onPress={() => setEditor(null)}
+            onPress={() => { onEditingChange(false); setEditor(null); }}
           />
         </View>
       )}
