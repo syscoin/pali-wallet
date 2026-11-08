@@ -530,6 +530,10 @@ test.describe('visual baselines', () => {
           name: 'Deploy',
           exact: true,
         });
+        const clear = page.getByRole('button', {
+          name: 'Clear activity and nonce data',
+          exact: true,
+        });
         if (ready) {
           await expect(deploy).toHaveCount(0);
           await expect(page.getByText(/setup item\(s\) missing/)).toHaveCount(
@@ -542,7 +546,7 @@ test.describe('visual baselines', () => {
           await expect(deploy).toBeEnabled();
         }
         // A text locator can pass even when a button is white-on-white.
-        for (const action of [checkStatus, ...(ready ? [] : [deploy])]) {
+        for (const action of [checkStatus, clear, ...(ready ? [] : [deploy])]) {
           const contrast = await action.evaluate((button) => {
             const style = getComputedStyle(button);
             const luminance = (color: string) => {
@@ -582,14 +586,37 @@ test.describe('visual baselines', () => {
           const autolockRow = page
             .locator('#autolock .ant-form-item')
             .filter({ has: autolock });
+          await expect(page.locator('.advanced-settings-footer')).toHaveCSS(
+            'position',
+            'static'
+          );
+          await clear.scrollIntoViewIfNeeded();
+          await expect(clear).toBeInViewport({ ratio: 1 });
           await save.scrollIntoViewIfNeeded();
           await expect(save).toBeInViewport({ ratio: 1 });
+          await expect(clear).toBeInViewport({ ratio: 1 });
           await expect(autolockRow).toBeInViewport({ ratio: 1 });
           const saveBox = await save.boundingBox();
+          const clearBox = await clear.boundingBox();
           const autolockBox = await autolockRow.boundingBox();
-          expect(saveBox!.y).toBeGreaterThanOrEqual(
+          expect(clearBox!.y).toBeGreaterThanOrEqual(
             autolockBox!.y + autolockBox!.height
           );
+          expect(saveBox!.y).toBeGreaterThanOrEqual(
+            clearBox!.y + clearBox!.height
+          );
+          for (const action of [clear, save]) {
+            expect(
+              await action.evaluate((button) => {
+                const bounds = button.getBoundingClientRect();
+                const hit = document.elementFromPoint(
+                  bounds.x + bounds.width / 2,
+                  bounds.y + bounds.height / 2
+                );
+                return hit !== null && button.contains(hit);
+              })
+            ).toBe(true);
+          }
         }
         await settle(1500, page);
         await expect(page).toHaveURL(/#\/settings\/advanced$/);

@@ -395,6 +395,7 @@ const Advanced = () => {
             <Button
               type="button"
               variant="neutral"
+              className="text-brand-royalblue"
               fullWidth
               disabled={loading || clearing}
               onClick={() => {
@@ -420,6 +421,8 @@ const Advanced = () => {
         )}
 
         <PageActionFooter
+          className="advanced-settings-footer"
+          includeInFlow
           error={saveError ? t('settings.preferencesSaveFailed') : undefined}
         >
           <Button

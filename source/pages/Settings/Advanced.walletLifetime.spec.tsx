@@ -13,12 +13,14 @@ import {
 import React from 'react';
 import { Provider } from 'react-redux';
 
+import * as toastFooter from 'hooks/useToastFooter';
 import MainController from 'scripts/Background/controllers/MainController';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store, { persistMainStateStrict } from 'state/store';
 import { rehydrate as rehydrateVault } from 'state/vault';
 import { setActiveSlip44, setAdvancedSettings } from 'state/vaultGlobal';
 import { AsyncMutex } from 'utils/asyncMutex';
+import { SYSCOIN_NEVM_TESTNET_NETWORK_5700 } from 'utils/constants';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { chromeStorage } from 'utils/storageAPI';
 
@@ -74,8 +76,13 @@ jest.mock('./SmartAccountInfrastructure', () => ({
 jest.mock('components/index', () => ({
   PageActionFooter: jest.requireActual('components/PageActionFooter')
     .PageActionFooter,
-  Button: ({ children, loading, disabled, onClick, type }: any) => (
-    <button type={type} onClick={onClick} disabled={disabled || loading}>
+  Button: ({ children, loading, disabled, onClick, type, className }: any) => (
+    <button
+      type={type}
+      className={className}
+      onClick={onClick}
+      disabled={disabled || loading}
+    >
       {children}
     </button>
   ),
@@ -204,6 +211,42 @@ describe('advanced Save ownership across wallet reset', () => {
     jest.useRealTimers();
     jest.restoreAllMocks();
     walletPersistenceGate.blocked = false;
+  });
+
+  it('keeps the EVM recovery action before an explicitly in-flow Save footer', () => {
+    const previous = store.getState().vault;
+    const footerHook = jest.spyOn(toastFooter, 'useToastFooter');
+    store.dispatch(
+      rehydrateVault({
+        ...previous,
+        activeChain: SYSCOIN_NEVM_TESTNET_NETWORK_5700.kind,
+        activeNetwork: SYSCOIN_NEVM_TESTNET_NETWORK_5700,
+        isBitcoinBased: false,
+      })
+    );
+    try {
+      render(
+        <Provider store={store}>
+          <Advanced />
+        </Provider>
+      );
+      const clear = screen.getByRole('button', {
+        name: 'settings.clearActivityAndNonce',
+      });
+      const save = screen.getByRole('button', { name: 'buttons.save' });
+      const footer = save.closest('[data-page-action-footer]');
+      expect(clear.classList.contains('text-brand-royalblue')).toBe(true);
+      expect(footer?.classList.contains('advanced-settings-footer')).toBe(true);
+      expect(footerHook).toHaveBeenCalledWith({ includeInFlow: true });
+      expect(
+        clear.compareDocumentPosition(save) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).not.toBe(0);
+      expect(screen.getByLabelText('settings.enableAutolock')).toBeTruthy();
+      expect(mockEmitter).not.toHaveBeenCalled();
+    } finally {
+      cleanup();
+      store.dispatch(rehydrateVault(previous));
+    }
   });
 
   const submitDraft = () => {
