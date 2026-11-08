@@ -1,4 +1,4 @@
-import { authorizePrivateDepositReplay } from '../../../source/wallet/privateDepositReplay.ts';
+import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet, Transaction, sha256 } from 'ethers';
@@ -84,7 +84,7 @@ async function fixture() {
     new EvmSignedReplay(
       reopened,
       () => ({
-        authorizeReplay: (entry) => authorize ? authorize(entry) : authorizePrivateDepositReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }),
+        authorizeReplay: (entry) => authorize ? authorize(entry) : authorizePrivateNoteReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),
         recordSession: session,
         context,
         assertCurrent: session.assertCurrent,

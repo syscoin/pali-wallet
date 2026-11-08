@@ -334,6 +334,8 @@ function WithdrawalFlow({
         !['submitted', 'unknown'].includes(raw.phase) ||
         (raw.transactionHash !== undefined &&
           !HASH.test(raw.transactionHash)) ||
+        (raw.signedTransactionHash !== undefined &&
+          !HASH.test(raw.signedTransactionHash)) ||
         (raw.jobId !== undefined &&
           (mode !== 'relayed' ||
             typeof raw.jobId !== 'string' ||
@@ -347,6 +349,9 @@ function WithdrawalFlow({
         phase: raw.phase,
         ...(raw.transactionHash
           ? { transactionHash: raw.transactionHash }
+          : {}),
+        ...(raw.signedTransactionHash
+          ? { signedTransactionHash: raw.signedTransactionHash }
           : {}),
         ...(raw.jobId ? { jobId: raw.jobId } : {}),
       });
@@ -661,10 +666,12 @@ function WithdrawalFlow({
               }`
             )}
           </p>
-          {result.transactionHash && (
+          {(result.transactionHash || result.signedTransactionHash) && (
             <div className="text-xs">
               <p>{t('privacy.deposit.txHash')}</p>
-              <p className="break-all">{result.transactionHash}</p>
+              <p className="break-all">
+                {result.transactionHash || result.signedTransactionHash}
+              </p>
             </div>
           )}
           {result.jobId && (

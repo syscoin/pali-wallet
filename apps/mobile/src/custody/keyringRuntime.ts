@@ -1,4 +1,6 @@
-import { authorizePrivateDepositReplay } from '../../../../source/wallet/privateDepositReplay.ts';
+import type { IPrivacyWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
+import type { IPrivacyDepositAttempt } from '../../../../source/utils/privacy/transactionTypes.ts';
+import { authorizePrivateNoteReplay } from '../../../../source/wallet/privateNoteReplay.ts';
 import { Contract } from '../../../../source/utils/ethersV6Compat.ts';
 import { hexlify } from 'ethers/utils';
 import {
@@ -933,6 +935,19 @@ export function createKeyringRuntimeFactory(
           };
           assertCurrent();
           return Object.freeze({ generation: captured, keyring: ring, assertCurrent });
+        };
+        const noteAcknowledgementSession = (captured: number): IPrivateVaultSession => {
+          const wallet = noteWalletSession(captured), ring = keyring, identity = verifiedIdentity;
+          const assertUnlocked = ring.captureUnlockedSessionGuard();
+          const assertCurrent = () => {
+            current(generation);
+            checkGuard(assertUnlocked);
+            if (!identity?.root || keyring !== ring || verifiedIdentity !== identity ||
+                authenticatedPair !== identity.pairFingerprint || !ring.isUnlocked())
+              throw new KeyringRuntimeError('CANCELLED');
+          };
+          assertCurrent();
+          return Object.freeze({ ...wallet, assertCurrent });
         };
         const noteSession = (captured: number, assertOwner: () => void): IPrivateVaultSession => {
           const wallet = noteWalletSession(captured), revision = catalogueSnapshot?.revision;
@@ -3688,14 +3703,12 @@ export function createKeyringRuntimeFactory(
                 if (live !== selected || currentNetwork.chainId !== network.chainId || currentNetwork.rpcUrl !== network.rpcUrl)
                   throw new KeyringRuntimeError('CANCELLED');
               };
-              const replay = new EvmSignedReplay(signedRecords, () => ({
-                context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport,
-                authorizeReplay: (entry) => authorizePrivateDepositReplay(entry, check, async (attempt) => {
+              const authorizePrivate = async (attempt: IPrivacyDepositAttempt | Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>, kind: 'deposit' | 'withdrawal') => {
                   // Prepare initializes the existing note runtime. Confirmation reuses it
                   // inside this owned replay operation, without public note admission.
                   if (!noteBackups) await openNotes(check, () => undefined);
                   check();
-                  const lease = await noteBackups!.authorizeDepositReplay(noteWalletSession(captured), attempt);
+                  const lease = await (kind === 'deposit' ? noteBackups!.authorizeDepositReplay(noteAcknowledgementSession(captured), attempt as IPrivacyDepositAttempt) : noteBackups!.authorizeWithdrawalReplay(noteAcknowledgementSession(captured), attempt as Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>));
                   check();
                   return Object.freeze({
                     assertCurrent: lease.assertCurrent,
@@ -3710,7 +3723,10 @@ export function createKeyringRuntimeFactory(
                       }
                     },
                   });
-                }),
+              };
+              const replay = new EvmSignedReplay(signedRecords, () => ({
+                context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport,
+                authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, check, (attempt) => authorizePrivate(attempt, 'deposit'), (attempt) => authorizePrivate(attempt, 'withdrawal')),
               }), options.now, options.randomBytes);
               return { prepare: replay.prepare.bind(replay), cancel: replay.cancel.bind(replay), list: replay.list.bind(replay), confirm(id) {
                 const work = replay.confirm(id);

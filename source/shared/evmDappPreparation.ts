@@ -1,4 +1,6 @@
+import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import {
+  readEvmOwnData,
   snapshotEvmAccessList,
   snapshotPreparedEvmTransaction,
   type EvmAccessList,
@@ -63,6 +65,10 @@ export type EvmDappBlock = Readonly<{
   number: string;
 }>;
 
+export type EvmGasPolicy =
+  | Readonly<{ kind: 'estimate' }>
+  | Readonly<{ gasLimit: string; kind: 'fixed' }>;
+
 type NonceSample = Readonly<{ nonce: bigint; state: 'latest' | 'pending' }>;
 type FeeData = Readonly<{
   baseFeePerGas?: bigint;
@@ -78,6 +84,7 @@ export type EvmDappPreparationPorts<Sample extends NonceSample> = Readonly<{
   chainId: string;
   fees(block: EvmDappBlock): Promise<FeeData>;
   funding: EvmFeeFunding;
+  gasPolicy: EvmGasPolicy;
   nonce(block: EvmDappBlock, requested: number | undefined): Promise<Sample>;
   now(): number;
   read(
@@ -114,8 +121,26 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
   ports: EvmDappPreparationPorts<Sample>,
   approved?: EvmDappPreparedQuote
 ): Promise<EvmDappPreparedQuote> {
+  const suppliedPolicy = ports.gasPolicy;
+  const kind =
+    suppliedPolicy &&
+    Object.getOwnPropertyDescriptor(suppliedPolicy, 'kind')?.value;
+  if (kind !== 'estimate' && kind !== 'fixed')
+    throw new EvmDappReviewRequiredError();
+  const policy = readEvmOwnData(
+    suppliedPolicy,
+    kind === 'fixed' ? ['kind', 'gasLimit'] : ['kind']
+  );
+  let gasPolicy: EvmGasPolicy;
+  if (kind === 'fixed') {
+    const gas = parseEvmFeeQuantity(policy.gasLimit, 'fixed gas limit');
+    if (gas <= BigInt(0) || gas.toString() !== policy.gasLimit)
+      throw new EvmDappReviewRequiredError();
+    gasPolicy = Object.freeze({ kind, gasLimit: gas.toString() });
+  } else gasPolicy = Object.freeze({ kind });
   ports = Object.freeze({
     ...ports,
+    gasPolicy,
     assertCurrent: ports.assertCurrent.bind(ports),
     balance: ports.balance.bind(ports),
     fees: ports.fees.bind(ports),
@@ -201,21 +226,33 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
     nonce: sample.nonce.toString(),
     ...selectedFees,
   };
-  const estimateRequest = approved
-    ? evmEstimateRequest(execution)
-    : evmCallRequest({ ...execution, accessList: request.accessList });
-  const estimatedGas = readEvmRpcQuantity(
-    await ports.read('eth_estimateGas', [estimateRequest, sample.state])
-  );
-  check();
-  const gasLimit =
-    approved?.transaction.gasLimit ??
-    selectEvmDappGasLimit(
-      estimatedGas,
-      request.gasLimit === undefined ? undefined : BigInt(request.gasLimit),
-      BigInt(ports.chainId),
-      feeGasLimit
-    ).toString();
+  let executionGas: bigint;
+  let gasLimit: string;
+  if (ports.gasPolicy.kind === 'fixed') {
+    executionGas = BigInt(ports.gasPolicy.gasLimit);
+    gasLimit = executionGas.toString();
+    if (
+      request.gasLimit !== gasLimit ||
+      (approved && approved.transaction.gasLimit !== gasLimit)
+    )
+      throw new EvmDappReviewRequiredError();
+  } else {
+    const estimateRequest = approved
+      ? evmEstimateRequest(execution)
+      : evmCallRequest({ ...execution, accessList: request.accessList });
+    executionGas = readEvmRpcQuantity(
+      await ports.read('eth_estimateGas', [estimateRequest, sample.state])
+    );
+    check();
+    gasLimit =
+      approved?.transaction.gasLimit ??
+      selectEvmDappGasLimit(
+        executionGas,
+        request.gasLimit === undefined ? undefined : BigInt(request.gasLimit),
+        BigInt(ports.chainId),
+        feeGasLimit
+      ).toString();
+  }
   const transaction = snapshotPreparedEvmTransaction({
     ...execution,
     gasLimit,
@@ -231,7 +268,7 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
       approval,
       {
         balance,
-        estimatedGas,
+        estimatedGas: executionGas,
         sampledBlockGasLimit: feeGasLimit,
         ...(feeBase === null ? {} : { baseFeePerGas: feeBase }),
       },

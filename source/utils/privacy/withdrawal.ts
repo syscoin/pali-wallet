@@ -1,15 +1,17 @@
 import { getAddress } from 'ethers/address';
 
-import { validateSnapshot } from './client';
-import { hashPair, TREE_DEPTH, ZERO_VALUE } from './merkle';
-import { identifyClassicNote } from './note';
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
+
+import { hashPair, TREE_DEPTH, ZERO_VALUE } from './merkle.ts';
+import { identifyClassicNote } from './note.ts';
 import type {
   IPrivacyProofInput,
   IPrivacyProofOptions,
   IPrivacyProofResult,
-} from './proverTypes';
-import { getPrivacyPool } from './registry';
-import type { PrivacySnapshot } from './types';
+} from './proverTypes.ts';
+import { getPrivacyPool } from './registry.ts';
+import { validateSnapshot } from './snapshotValidation.ts';
+import type { PrivacySnapshot } from './types.ts';
 
 export interface IPrivacyWithdrawalRequest {
   fee: string;
@@ -19,7 +21,8 @@ export interface IPrivacyWithdrawalRequest {
   relayer: string;
   snapshot: PrivacySnapshot;
 }
-export interface IPrivacyWithdrawalOptions extends IPrivacyProofOptions {
+export interface IPrivacyWithdrawalPreparationOptions
+  extends IPrivacyProofOptions {
   /** Must check the ORIGINAL object against the live, anchored tree and freshness. Local only. */
   assertSnapshotCurrent: (snapshot: PrivacySnapshot) => void;
   /** Public cached path, independently checked against the anchored root before use. */
@@ -29,12 +32,16 @@ export interface IPrivacyWithdrawalOptions extends IPrivacyProofOptions {
     leafIndex: number
   ) => Promise<{ pathElements: string[]; pathIndices: number[] }>;
   onPathProgress?: (completed: number, total: number) => void;
-  runProof?: (
+  yieldControl?: () => Promise<void>;
+}
+export interface IPrivacyWithdrawalOptions
+  extends IPrivacyWithdrawalPreparationOptions {
+  runProof: (
     input: IPrivacyProofInput,
     options: IPrivacyProofOptions
   ) => Promise<IPrivacyProofResult>;
-  yieldControl?: () => Promise<void>;
 }
+
 const knownErrors = new Set([
   'privacy_note_invalid',
   'privacy_note_not_found',
@@ -60,14 +67,13 @@ const sanitize = (error: unknown) =>
       : 'privacy_withdrawal_invalid'
   );
 
-function guard(snapshot: PrivacySnapshot, options: IPrivacyWithdrawalOptions) {
+function guard(
+  snapshot: PrivacySnapshot,
+  options: IPrivacyWithdrawalPreparationOptions
+) {
   if (options.signal?.aborted) throw new Error('privacy_proof_cancelled');
   try {
-    const result: unknown = options.assertCurrent();
-    if (result !== undefined) {
-      if (result instanceof Promise) void result.catch(() => undefined);
-      throw new Error();
-    }
+    assertSynchronousEvmFeeGuard(options.assertCurrent);
   } catch (error) {
     if (
       error instanceof Error &&
@@ -77,11 +83,7 @@ function guard(snapshot: PrivacySnapshot, options: IPrivacyWithdrawalOptions) {
     throw new Error('privacy_vault_session_changed');
   }
   try {
-    const result: unknown = options.assertSnapshotCurrent(snapshot);
-    if (result !== undefined) {
-      if (result instanceof Promise) void result.catch(() => undefined);
-      throw new Error();
-    }
+    assertSynchronousEvmFeeGuard(() => options.assertSnapshotCurrent(snapshot));
   } catch {
     throw new Error('privacy_verification_pending');
   }
@@ -136,7 +138,7 @@ function withdrawalFields(request: IPrivacyWithdrawalRequest, amount: string) {
 /** Background-only preparation. All pool data is supplied locally; this never fetches. */
 export async function preparePrivacyWithdrawal(
   request: IPrivacyWithdrawalRequest,
-  options: IPrivacyWithdrawalOptions
+  options: IPrivacyWithdrawalPreparationOptions
 ): Promise<IPrivacyProofInput> {
   const original = request.snapshot;
   try {
@@ -284,6 +286,8 @@ export async function provePrivacyWithdrawal(
   request: IPrivacyWithdrawalRequest,
   options: IPrivacyWithdrawalOptions
 ): Promise<IPrivacyProofResult> {
+  if (typeof options?.runProof !== 'function') throw invalid();
+  const prove = options.runProof;
   const original = request.snapshot;
   const input = await preparePrivacyWithdrawal(request, options);
   const block = original.asOfBlockNumber,
@@ -301,11 +305,6 @@ export async function provePrivacyWithdrawal(
       throw new Error('privacy_note_spent');
   };
   try {
-    check();
-    const prove =
-      options.runProof ||
-      (await import(/* webpackChunkName: "privacy-prover" */ './prover'))
-        .runPrivacyProof;
     check();
     const result = await prove(input, {
       assertCurrent: check,

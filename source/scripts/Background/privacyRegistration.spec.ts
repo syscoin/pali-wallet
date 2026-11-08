@@ -28,7 +28,7 @@ describe('privacy module evaluation', () => {
     // is called; the normal worker registration only needs these definitions.
     jest.isolateModules(() => {
       require('../../wallet/privacyTransactions');
-      require('./controllers/privacyWithdrawals');
+      require('../../wallet/privacyWithdrawals');
       require('utils/privacy/relayers');
       require('utils/privacy/withdrawal');
       require('utils/privacy/prover');

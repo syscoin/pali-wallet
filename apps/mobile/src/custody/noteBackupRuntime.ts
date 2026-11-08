@@ -1,3 +1,4 @@
+import type { IPrivacyWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
 import type { IPrivacyDepositAttempt } from '../../../../source/utils/privacy/transactionTypes.ts';
 import { identifyClassicNote } from '../../../../source/utils/privacy/note.ts';
 import type { IPrivacyNoteReader, IPrivateVaultCapacity, IPrivateVaultController } from '../../../../source/utils/privacy/privateVaultTypes.ts';
@@ -136,6 +137,9 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   return {
     authorizeDepositReplay(session: IPrivateVaultSession, attempt: IPrivacyDepositAttempt) {
       return vault.authorizeDepositReplay(attempt, session);
+    },
+    authorizeWithdrawalReplay(session: IPrivateVaultSession, attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>) {
+      return vault.authorizeWithdrawalReplay(attempt, session);
     },
     invalidate() { resumeInventory?.(); invalidate?.(); },
     dispose() { resumeInventory?.(); service.dispose(); },

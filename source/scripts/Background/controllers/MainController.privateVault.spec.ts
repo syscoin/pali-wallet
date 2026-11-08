@@ -53,10 +53,15 @@ const deferred = () => {
 };
 
 function fixture() {
+  let unlockEpoch = 0;
   const keyring = {
     isUnlocked: jest.fn(() => true),
     unlock: jest.fn(async () => ({ canLogin: true })),
-    lockWallet: jest.fn(async () => undefined),
+    lockWallet: jest.fn(async () => { unlockEpoch++; }),
+    captureUnlockedSessionGuard: jest.fn(() => {
+      const epoch = unlockEpoch;
+      return () => { if (epoch !== unlockEpoch || !keyring.isUnlocked()) throw new Error('retired unlock'); };
+    }),
   };
   const wallet: any = Object.create(MainController.prototype);
   Object.assign(wallet, {
@@ -743,6 +748,7 @@ it('journals an acknowledged deposit against the original profile after account 
   f.wallet.sendAndSaveEthTransaction.mockImplementationOnce(
     async (_tx, _legacy, _target, _metadata, options) => {
       f.state.vault.activeAccount.id = 1;
+      f.wallet.walletSessionGeneration++;
       await options.onBroadcast({ hash: DEPOSIT_HASH });
       throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
         transactionHash: DEPOSIT_HASH,
@@ -764,6 +770,7 @@ it('retains unknown deposit state if the original session locks before hash jour
   f.wallet.sendAndSaveEthTransaction.mockImplementationOnce(
     async (_tx, _legacy, _target, _metadata, options) => {
       f.wallet.walletSessionGeneration++;
+      await f.keyring.lockWallet();
       await options.onBroadcast({ hash: DEPOSIT_HASH });
       return { hash: DEPOSIT_HASH };
     }

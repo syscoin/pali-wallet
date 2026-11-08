@@ -1084,9 +1084,9 @@ export class EvmSignedRecords {
       tracked &&
       original.operation === 'speed-up' &&
       tracked.metadata &&
-      Object.hasOwn(tracked.metadata, 'privateDeposit')
+      (Object.hasOwn(tracked.metadata, 'privateDeposit') || Object.hasOwn(tracked.metadata, 'privateWithdrawal'))
     )
-      throw new Error('EVM_PRIVATE_DEPOSIT_REPLACEMENT_UNAVAILABLE');
+      throw new Error('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
     if (tracked && !matchesNonce(tracked, original))
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
     if (sameNonce.some((entry) => entry.operation === 'cancel')) {
@@ -1329,7 +1329,7 @@ export class EvmSignedRecords {
       if (
         operation === 'speed-up' &&
         original.metadata &&
-        Object.hasOwn(original.metadata, 'privateDeposit')
+        (Object.hasOwn(original.metadata, 'privateDeposit') || Object.hasOwn(original.metadata, 'privateWithdrawal'))
       )
         return null;
       const base = Transaction.from(original.rawTransaction);

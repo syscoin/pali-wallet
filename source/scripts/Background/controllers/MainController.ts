@@ -111,7 +111,7 @@ import {
   importAccountWithRecovery,
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
-import { authorizePrivateDepositReplay } from '../../../wallet/privateDepositReplay.ts';
+import { authorizePrivateNoteReplay } from '../../../wallet/privateNoteReplay.ts';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
 import {
   createOwnedUtxoBlockbookRead,
@@ -430,7 +430,7 @@ import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import {
   bindGenericEvmFeeDispatch,
-  bindPrivateDepositFeeAttempt,
+  bindPrivateNoteFeeAttempt,
   captureGenericEvmFeeSdkEntryState,
   markGenericEvmFeeSdkEntered,
   captureGenericEvmFeeDispatch,
@@ -552,16 +552,19 @@ const utxoReviewsByWallet = new WeakMap<
     }
 >();
 
-class PrivateDepositSubmissionError extends Error {
+class PrivateSubmissionError extends Error {
   readonly failure: Readonly<{
     signedTransactionHash?: string;
     transactionNotBroadcast: boolean;
   }>;
-  constructor(failure: {
-    signedTransactionHash?: string;
-    transactionNotBroadcast: boolean;
-  }) {
-    super('privacy_deposit_submission_failed');
+  constructor(
+    failure: {
+      signedTransactionHash?: string;
+      transactionNotBroadcast: boolean;
+    },
+    cause?: unknown
+  ) {
+    super(cause instanceof Error ? cause.message : 'privacy_submission_failed');
     this.failure = Object.freeze({ ...failure });
   }
 }
@@ -642,11 +645,16 @@ class MainController {
   >();
   private privacyDepositSessions = new WeakMap<
     () => void,
-    { provider: CustomJsonRpcProvider; session: IPrivateVaultSession }
+    {
+      acknowledgementSession: IPrivateVaultSession;
+      provider: CustomJsonRpcProvider;
+      session: IPrivateVaultSession;
+    }
   >();
   private privacyDepositContexts = new WeakMap<
     IEvmTransactionContext,
     {
+      acknowledgementSession: IPrivateVaultSession;
       assertCurrent: () => void;
       provider: CustomJsonRpcProvider;
       session: IPrivateVaultSession;
@@ -1371,15 +1379,31 @@ class MainController {
           assertCurrent,
           recordSession: { keyring, assertCurrent },
           authorizeReplay: (entry) =>
-            authorizePrivateDepositReplay(
+            authorizePrivateNoteReplay(
               entry,
               assertCurrent,
               async (attempt) => {
-                const privateSession = this.capturePrivateVaultSession();
+                const privateSession =
+                  this.capturePrivateVaultAcknowledgementSession(
+                    this.capturePrivateVaultSession()
+                  );
                 assertCurrent();
                 const privateVault = await this.getPrivateVaultController();
                 assertCurrent();
                 return privateVault.authorizeDepositReplay(
+                  attempt,
+                  privateSession
+                );
+              },
+              async (attempt) => {
+                const privateSession =
+                  this.capturePrivateVaultAcknowledgementSession(
+                    this.capturePrivateVaultSession()
+                  );
+                assertCurrent();
+                const privateVault = await this.getPrivateVaultController();
+                assertCurrent();
+                return privateVault.authorizeWithdrawalReplay(
                   attempt,
                   privateSession
                 );
@@ -2957,6 +2981,32 @@ class MainController {
     };
   }
 
+  private capturePrivateVaultAcknowledgementSession(
+    session: IPrivateVaultSession
+  ): IPrivateVaultSession {
+    session.assertCurrent();
+    const keyring = this.getActiveKeyring();
+    if (session.keyring !== keyring)
+      throw new Error('privacy_vault_session_changed');
+    const assertUnlocked = keyring.captureUnlockedSessionGuard();
+    const walletGeneration = this.walletStateGeneration;
+    const assertCurrent = () => {
+      assertSynchronousEvmFeeGuard(assertUnlocked);
+      if (
+        this.getWalletSetupStatus() ||
+        walletGeneration !== this.walletStateGeneration ||
+        keyring !== this.getActiveKeyring()
+      )
+        throw new Error('privacy_vault_session_changed');
+    };
+    assertCurrent();
+    return Object.freeze({
+      generation: session.generation,
+      keyring,
+      assertCurrent,
+    });
+  }
+
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
     this.postSwitchHistorySave = undefined;
@@ -3433,6 +3483,8 @@ class MainController {
         throw new Error('privacy_deposit_context_changed');
     };
     this.privacyDepositSessions.set(assertCurrent, {
+      acknowledgementSession:
+        this.capturePrivateVaultAcknowledgementSession(privateSession),
       session: privateSession,
       provider,
     });
@@ -3459,14 +3511,14 @@ class MainController {
     const reviewed = (context: IEvmTransactionContext) => {
       const result = reviews.get(context);
       if (!result)
-        throw new PrivateDepositSubmissionError({
+        throw new PrivateSubmissionError({
           transactionNotBroadcast: true,
         });
       return result;
     };
     return {
       classifySubmissionFailure: (error) =>
-        error instanceof PrivateDepositSubmissionError
+        error instanceof PrivateSubmissionError
           ? error.failure
           : { transactionNotBroadcast: false },
       captureContext: () => this.capturePrivacyDepositContext(true),
@@ -3542,11 +3594,11 @@ class MainController {
         reviewed(attempt.context);
         const vault = await this.getPrivateVaultController();
         saved.assertCurrent();
-        bindPrivateDepositFeeAttempt(
+        bindPrivateNoteFeeAttempt(
           this,
           reviewed(attempt.context).token.id,
           attempt.context,
-          attempt
+          { kind: 'deposit', attempt }
         );
         let assertRestoreCurrent: (() => void) | undefined;
         await vault.reserveDepositAttempt(
@@ -3565,17 +3617,24 @@ class MainController {
       },
       recordBroadcast: async (attempt, hash) => {
         const saved = original(attempt);
-        saved.session.assertCurrent();
+        saved.acknowledgementSession.assertCurrent();
         const vault = await this.getPrivateVaultController();
-        saved.session.assertCurrent();
-        await vault.recordDepositBroadcast(attempt, hash, saved.session);
+        saved.acknowledgementSession.assertCurrent();
+        await vault.recordDepositBroadcast(
+          attempt,
+          hash,
+          saved.acknowledgementSession
+        );
       },
       recordNotBroadcast: async (attempt) => {
         const saved = original(attempt);
-        saved.session.assertCurrent();
+        saved.acknowledgementSession.assertCurrent();
         const vault = await this.getPrivateVaultController();
-        saved.session.assertCurrent();
-        await vault.clearUnbroadcastDepositAttempt(attempt, saved.session);
+        saved.acknowledgementSession.assertCurrent();
+        await vault.clearUnbroadcastDepositAttempt(
+          attempt,
+          saved.acknowledgementSession
+        );
       },
       sendTransaction: (
         transaction,
@@ -3617,7 +3676,7 @@ class MainController {
           )
             throw new Error('privacy_deposit_quote_changed');
         } catch (error) {
-          throw new PrivateDepositSubmissionError({
+          throw new PrivateSubmissionError({
             transactionNotBroadcast: true,
           });
         }
@@ -3705,9 +3764,14 @@ class MainController {
         context: attempt.context,
       });
     };
+    const reviews = new WeakMap<
+      IEvmTransactionContext,
+      Awaited<ReturnType<MainController['prepareGenericEvmFeeReview']>>
+    >();
     const sessions = new WeakMap<
       IEvmTransactionContext,
       {
+        acknowledgementSession: IPrivateVaultSession;
         assertCurrent: () => void;
         provider: CustomJsonRpcProvider;
         session: IPrivateVaultSession;
@@ -3716,6 +3780,7 @@ class MainController {
     const capturedSessions = new WeakMap<
       () => void,
       {
+        acknowledgementSession: IPrivateVaultSession;
         assertCurrent: () => void;
         provider: CustomJsonRpcProvider;
         session: IPrivateVaultSession;
@@ -3742,6 +3807,25 @@ class MainController {
       return result;
     };
     return {
+      classifySubmissionFailure: (error) =>
+        error instanceof PrivateSubmissionError
+          ? error.failure
+          : { transactionNotBroadcast: false },
+      prove: async (request, options) => {
+        const [{ provePrivacyWithdrawal }, { runPrivacyProof }] =
+          await Promise.all([
+            import(
+              /* webpackChunkName: "privacy-withdrawal" */ 'utils/privacy/withdrawal'
+            ),
+            import(
+              /* webpackChunkName: "privacy-prover" */ 'utils/privacy/prover'
+            ),
+          ]);
+        return provePrivacyWithdrawal(request, {
+          ...options,
+          runProof: runPrivacyProof,
+        });
+      },
       relayers,
       captureSession: (requireSigner = false) => {
         const captured = this.capturePrivacyDepositContext(requireSigner);
@@ -3809,14 +3893,18 @@ class MainController {
         )
           throw new Error('privacy_withdrawal_context_changed');
         const fees = await read(session, () => provider.getFeeData());
-        // Bypass AbstractProvider's short read cache: a just-submitted deposit
-        // may have advanced the pending nonce since the preceding UI action.
-        const nonce = await read(session, () =>
-          provider.send('eth_getTransactionCount', [
-            session.context.account.address,
-            'pending',
-          ])
+        const owned = this.captureFreshEvmRead(getWalletNavigationScope());
+        const check = () => {
+          session.assertCurrent();
+          owned.assertCurrent();
+        };
+        const plan = await this.inspectOrdinaryEvmNonce(
+          owned,
+          session.context.account.address,
+          { assertCurrent: check }
         );
+        check();
+        const nonce = plan.nonce;
         const balance = await read(session, () =>
           provider.getBalance(session.context.account.address)
         );
@@ -3841,33 +3929,24 @@ class MainController {
         const saved = binding(attempt.context);
         saved.assertCurrent();
         if (attempt.mode === 'direct') {
-          const session = {
-            context: attempt.context,
-            assertCurrent: saved.assertCurrent,
-          };
-          const nonce = privacyFeeQuantity(
-            await read(session, () =>
-              saved.provider.send('eth_getTransactionCount', [
-                attempt.context.account.address,
-                'pending',
-              ])
-            )
+          const walletNonce = reviewedExtensionNonce(
+            Number(privacyFeeQuantity(attempt.transaction.nonce)),
+            'automatic'
           );
-          const balance = privacyFeeQuantity(
-            await read(session, () =>
-              saved.provider.getBalance(attempt.context.account.address)
-            )
+          const prepared = await this.prepareGenericEvmFeeReview(
+            attempt.transaction,
+            attempt.context,
+            walletNonce,
+            saved.assertCurrent,
+            { assertCurrentContext: saved.assertCurrent },
+            { kind: 'private-withdrawal', request: saved }
           );
-          if (nonce !== privacyFeeQuantity(attempt.transaction.nonce))
-            throw new Error('privacy_withdrawal_quote_changed');
-          const maxFee = privacyFeeQuantity(
-            attempt.transaction.gasPrice ?? attempt.transaction.maxFeePerGas
-          );
-          if (
-            balance <
-            privacyFeeQuantity(attempt.transaction.gasLimit) * maxFee
-          )
-            throw new Error('privacy_withdrawal_insufficient_funds');
+          saved.assertCurrent();
+          bindPrivateNoteFeeAttempt(this, prepared.token.id, attempt.context, {
+            kind: 'withdrawal',
+            attempt,
+          });
+          reviews.set(attempt.context, prepared);
         }
         const vault = await this.getPrivateVaultController();
         saved.assertCurrent();
@@ -3882,7 +3961,6 @@ class MainController {
                 walletStateGeneration,
               })
           );
-          saved.assertCurrent();
           const identity = reservationIdentity.get(attempt);
           if (!identity) throw new Error('privacy_vault_unavailable');
           return () => {
@@ -3897,39 +3975,37 @@ class MainController {
       },
       recordSubmission: async (attempt, acknowledgement) => {
         const saved = binding(attempt.context);
-        saved.session.assertCurrent();
+        saved.acknowledgementSession.assertCurrent();
         const vault = await this.getPrivateVaultController();
-        saved.session.assertCurrent();
+        saved.acknowledgementSession.assertCurrent();
         await vault.recordWithdrawalSubmission(
           attempt,
           acknowledgement,
-          saved.session
+          saved.acknowledgementSession
         );
       },
       recordNotBroadcast: async (attempt) => {
         const saved = binding(attempt.context);
-        saved.session.assertCurrent();
+        saved.acknowledgementSession.assertCurrent();
         const vault = await this.getPrivateVaultController();
-        saved.session.assertCurrent();
-        await vault.clearUnbroadcastWithdrawalAttempt(attempt, saved.session);
+        saved.acknowledgementSession.assertCurrent();
+        await vault.clearUnbroadcastWithdrawalAttempt(
+          attempt,
+          saved.acknowledgementSession
+        );
       },
-      sendTransaction: (transaction, session, onBroadcast, assertBeforeSign) =>
-        this.sendAndSaveEthTransaction(
-          transaction,
-          transaction.gasPrice !== undefined,
-          {
-            id: session.context.account.id,
-            type: session.context.account.type,
-          },
-          undefined,
-          {
-            expectedContext: session.context,
-            assertCurrentContext: session.assertCurrent,
-            assertBeforeSign,
-            clearNavigation: false,
-            onBroadcast,
-          }
-        ),
+      sendTransaction: async (
+        _transaction,
+        session,
+        onBroadcast,
+        assertBeforeSign
+      ) => {
+        const prepared = reviews.get(session.context);
+        if (!prepared)
+          throw new PrivateSubmissionError({ transactionNotBroadcast: true });
+        reviews.delete(session.context);
+        return prepared.submit(assertBeforeSign, onBroadcast);
+      },
     };
   }
 
@@ -3937,7 +4013,7 @@ class MainController {
     if (!this.privacyWithdrawalsController) {
       this.privacyWithdrawalsController = Promise.all([
         import(
-          /* webpackChunkName: "privacy-withdrawals" */ './privacyWithdrawals'
+          /* webpackChunkName: "privacy-withdrawals" */ '../../../wallet/privacyWithdrawals'
         ),
         import(
           /* webpackChunkName: "privacy-relayers" */ 'utils/privacy/relayers'
@@ -9970,6 +10046,10 @@ class MainController {
               chainId: String(context.chainId),
               scope: JSON.stringify(expected),
               funding: NATIVE_EVM_FEE_FUNDING,
+              gasPolicy:
+                feeAuthority.kind === 'private-withdrawal'
+                  ? { kind: 'fixed', gasLimit: '650000' }
+                  : { kind: 'estimate' },
               assertCurrent,
               now: () => Math.floor(performance.now()),
               read: (method, values) => provider.send(method, [...values]),
@@ -10117,11 +10197,14 @@ class MainController {
         } catch (error) {
           const failure = evmSubmissionFailure(error);
           const signedTransactionHash = failure?.signedTransactionHash;
-          throw new PrivateDepositSubmissionError({
-            transactionNotBroadcast:
-              !sdkEntered() || failure?.transactionNotBroadcast === true,
-            ...(signedTransactionHash ? { signedTransactionHash } : {}),
-          });
+          throw new PrivateSubmissionError(
+            {
+              transactionNotBroadcast:
+                !sdkEntered() || failure?.transactionNotBroadcast === true,
+              ...(signedTransactionHash ? { signedTransactionHash } : {}),
+            },
+            error
+          );
         } finally {
           consumed?.close();
         }

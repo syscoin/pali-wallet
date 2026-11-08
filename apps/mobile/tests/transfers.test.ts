@@ -1,4 +1,4 @@
-import { authorizePrivateDepositReplay } from '../../../source/wallet/privateDepositReplay.ts';
+import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -101,7 +101,7 @@ function fixture() {
       return { rawTransaction: retained.original.rawTransaction, binding: retained.binding, rates: retained.rates };
     },
     replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
-      return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateDepositReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
+      return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
         context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
     },
     submit: submitFixtureEvmTransaction(signedRecords),

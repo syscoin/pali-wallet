@@ -64,7 +64,7 @@ void import(
   /* webpackChunkName: "privacy-transactions" */ '../../wallet/privacyTransactions'
 ).catch(() => undefined);
 void import(
-  /* webpackChunkName: "privacy-withdrawals" */ './controllers/privacyWithdrawals'
+  /* webpackChunkName: "privacy-withdrawals" */ '../../wallet/privacyWithdrawals'
 ).catch(() => undefined);
 void import(
   /* webpackChunkName: "privacy-relayers" */ 'utils/privacy/relayers'

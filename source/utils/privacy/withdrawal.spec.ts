@@ -237,10 +237,13 @@ it('permits an explicit positive fee to a nonzero relayer below the denomination
   );
   expect(input.fee).toBe('1');
 });
-it('lazily invokes the local prover and clears its caller-owned secret fields afterwards', async () => {
+it('invokes the explicit local prover and clears its caller-owned secret fields afterwards', async () => {
   const proof = jest.mocked(runPrivacyProof);
   proof.mockImplementationOnce(async (input) => resultFor(input));
-  const result = await provePrivacyWithdrawal(request(), guards());
+  const result = await provePrivacyWithdrawal(request(), {
+    ...guards(),
+    runProof: runPrivacyProof,
+  });
   expect(result.proof).toHaveLength(514);
   const input = proof.mock.calls[0][0];
   expect(input.secret).toBe('');
@@ -430,4 +433,15 @@ it('refuses path-read errors and never substitutes an older supplied path', asyn
     preparePrivacyWithdrawal(r, { ...guards(), getPath, cachedPath: expected })
   ).rejects.toThrow('privacy_withdrawal_snapshot_invalid');
   expect(getPath).toHaveBeenCalledTimes(1);
+});
+
+it('requires an explicit prover before preparing secret inputs', async () => {
+  const assertion = jest.fn();
+  await expect(
+    provePrivacyWithdrawal(request(), {
+      ...guards(),
+      assertCurrent: assertion,
+    } as never)
+  ).rejects.toThrow('privacy_withdrawal_invalid');
+  expect(assertion).not.toHaveBeenCalled();
 });

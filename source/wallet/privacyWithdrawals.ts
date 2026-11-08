@@ -1,30 +1,32 @@
 import { getAddress, Interface, parseEther } from 'ethers';
 
-import { identifyClassicNote } from 'utils/privacy/note';
-import { getPrivacyPool } from 'utils/privacy/registry';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
+import { identifyClassicNote } from '../utils/privacy/note.ts';
+import { getPrivacyPool } from '../utils/privacy/registry.ts';
 import {
   quotePrivacyRelayerFee,
   validatePrivacyRelayerEndpoint,
-} from 'utils/privacy/relayers';
+} from '../utils/privacy/relayers.ts';
+import { readPrivacyRelayerJob } from '../utils/privacy/relayJobs.ts';
+
 import type {
   IPrivacyRelayerDirectory,
   IPrivacyRelayerSelection,
-} from 'utils/privacy/relayers';
-import { readPrivacyRelayerJob } from 'utils/privacy/relayJobs';
-import type { IPrivacyDepositFees } from 'utils/privacy/transactionTypes';
-import type { IPrivacySnapshotAccess } from 'utils/privacy/trustedSnapshot';
+} from '../utils/privacy/relayers.ts';
+import type { IPrivacyDepositFees } from '../utils/privacy/transactionTypes.ts';
+import type { IPrivacySnapshotAccess } from '../utils/privacy/trustedSnapshot.ts';
 import type {
   IPrivacyWithdrawalAttempt,
   IPrivacyWithdrawalSession,
   IPrivacyWithdrawalAcknowledgement,
-} from 'utils/privacy/withdrawalTransactionTypes';
+} from '../utils/privacy/withdrawalTransactionTypes.ts';
 import type {
   IPrivacyWithdrawalsHost,
   IPrivacyWithdrawalsController,
   IPrivacyWithdrawalReview,
   IPrivacyWithdrawalSubmission,
   IPrivacyWithdrawalStatus,
-} from 'utils/privacy/withdrawTypes';
+} from '../utils/privacy/withdrawTypes.ts';
 
 export const PRIVACY_WITHDRAWAL_GAS = '650000';
 export const PRIVACY_WITHDRAWAL_INTENT_TTL_MS = 60000;
@@ -153,7 +155,7 @@ function capture(
 ): IPrivacyWithdrawalSession {
   const session = host.captureSession(requireSigner),
     context = session.context;
-  session.assertCurrent();
+  assertSynchronousEvmFeeGuard(session.assertCurrent);
   if (
     !context ||
     context.chainId !== 1 ||
@@ -201,6 +203,13 @@ export function createPrivacyWithdrawalsController(
     randomId?: () => string;
   } = {}
 ): IPrivacyWithdrawalsController {
+  if (
+    typeof host?.prove !== 'function' ||
+    typeof host.classifySubmissionFailure !== 'function' ||
+    typeof host.recordNotBroadcast !== 'function'
+  )
+    throw fail('privacy_withdrawal_host_invalid');
+  const relayPreflightFailures = new WeakSet<object>();
   const now = options.now || Date.now,
     randomId = options.randomId || (() => crypto.randomUUID());
   const intents = new Map<string, IIntent>(),
@@ -219,25 +228,25 @@ export function createPrivacyWithdrawalsController(
     if (closed || intent.abort.signal.aborted)
       throw fail('privacy_withdrawal_cancelled');
     try {
-      if (intent.session.assertCurrent() !== undefined) throw new Error();
+      assertSynchronousEvmFeeGuard(intent.session.assertCurrent);
     } catch {
       throw fail('privacy_withdrawal_context_changed');
     }
     if (intent.lease) {
-      const result: unknown = intent.lease.assertSnapshotCurrent(
-        intent.lease.snapshot
-      );
-      if (result !== undefined) {
-        if (result instanceof Promise) void result.catch(() => undefined);
+      try {
+        assertSynchronousEvmFeeGuard(() =>
+          intent.lease!.assertSnapshotCurrent(intent.lease!.snapshot)
+        );
+      } catch {
         throw fail('privacy_verification_pending');
       }
     }
     if (intent.selection) {
-      const result: unknown = host.relayers.assertSelectionCurrent(
-        intent.selection
-      );
-      if (result !== undefined) {
-        if (result instanceof Promise) void result.catch(() => undefined);
+      try {
+        assertSynchronousEvmFeeGuard(() =>
+          host.relayers.assertSelectionCurrent(intent.selection!)
+        );
+      } catch {
         throw fail('privacy_relayer_stale');
       }
     }
@@ -274,7 +283,9 @@ export function createPrivacyWithdrawalsController(
       try {
         assertBeforeSubmit();
       } catch (error) {
-        throw sanitize(error);
+        const rejected = sanitize(error);
+        relayPreflightFailures.add(rejected);
+        throw rejected;
       }
       const response = await (options.fetcher || fetch)(
         `${validatePrivacyRelayerEndpoint(
@@ -380,11 +391,7 @@ export function createPrivacyWithdrawalsController(
         const session = capture(host);
         const assertCurrent = () => {
           if (closed) throw fail('privacy_withdrawal_cancelled');
-          const value: unknown = session.assertCurrent();
-          if (value !== undefined) {
-            if (value instanceof Promise) void value.catch(() => undefined);
-            throw fail('privacy_withdrawal_context_changed');
-          }
+          assertSynchronousEvmFeeGuard(session.assertCurrent);
         };
         assertCurrent();
         const stored = await host.getWithdrawalAttempt(noteId, session);
@@ -588,13 +595,7 @@ export function createPrivacyWithdrawalsController(
                   maximum = BigInt(quote.networkFeeWei);
                   relayer = intent.selection.rewardAccount;
                 }
-                const prove =
-                  host.prove ||
-                  (
-                    await import(
-                      /* webpackChunkName: "privacy-withdrawal" */ 'utils/privacy/withdrawal'
-                    )
-                  ).provePrivacyWithdrawal;
+                const prove = host.prove;
                 current(intent);
                 const proof = await prove(
                   {
@@ -846,7 +847,7 @@ export function createPrivacyWithdrawalsController(
           current(intent);
           if (typeof assertReservedCurrent !== 'function')
             throw fail('privacy_withdrawal_context_changed');
-          assertReservedCurrent();
+          assertSynchronousEvmFeeGuard(assertReservedCurrent);
           if (now() >= intent.expiresAt!)
             throw fail('privacy_withdrawal_intent_expired');
         };
@@ -868,19 +869,6 @@ export function createPrivacyWithdrawalsController(
           ...acknowledgement,
         };
       } catch (error) {
-        const knownHash = (error as { transactionHash?: unknown })
-          ?.transactionHash;
-        if (
-          !acknowledgement &&
-          typeof knownHash === 'string' &&
-          HASH.test(knownHash)
-        ) {
-          try {
-            await record({ transactionHash: knownHash.toLowerCase() });
-          } catch {
-            /* Preserve the durable unknown reservation if saving fails. */
-          }
-        }
         if (saved && !conflict)
           return {
             intentId: id,
@@ -888,12 +876,30 @@ export function createPrivacyWithdrawalsController(
             phase: 'submitted',
             ...acknowledgement,
           };
+        const failure = !entered
+          ? { transactionNotBroadcast: true }
+          : attempt.mode === 'direct'
+          ? host.classifySubmissionFailure(error)
+          : {
+              transactionNotBroadcast: relayPreflightFailures.has(
+                error as object
+              ),
+            };
         if (
-          !entered ||
-          ((error as any)?.transactionNotBroadcast === true && !acknowledgement)
+          !failure ||
+          typeof failure.transactionNotBroadcast !== 'boolean' ||
+          (failure.signedTransactionHash !== undefined &&
+            (typeof failure.signedTransactionHash !== 'string' ||
+              !HASH.test(failure.signedTransactionHash)))
+        )
+          throw fail('privacy_withdrawal_host_invalid');
+        if (
+          failure.transactionNotBroadcast &&
+          !failure.signedTransactionHash &&
+          !acknowledgement
         ) {
           if (reserved)
-            await host.recordNotBroadcast?.(attempt).catch(() => undefined);
+            await host.recordNotBroadcast(attempt).catch(() => undefined);
           throw sanitize(error);
         }
         const result: IPrivacyWithdrawalSubmission = {
@@ -901,6 +907,12 @@ export function createPrivacyWithdrawalsController(
           noteId: attempt.noteId,
           phase: 'unknown',
           ...acknowledgement,
+          ...(failure.signedTransactionHash
+            ? {
+                signedTransactionHash:
+                  failure.signedTransactionHash.toLowerCase(),
+              }
+            : {}),
         };
         return result;
       } finally {

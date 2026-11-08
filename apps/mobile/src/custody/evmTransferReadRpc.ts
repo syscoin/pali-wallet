@@ -690,6 +690,7 @@ export class EvmTransferReadRpc {
           chainId: this.network.chainId,
           scope: this.network.registrationHash,
           funding,
+          gasPolicy: { kind: 'estimate' },
           assertCurrent: read.assertCurrent,
           read,
           now: this.monotonicMilliseconds,

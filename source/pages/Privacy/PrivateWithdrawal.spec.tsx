@@ -747,3 +747,32 @@ it.each(['empty', 'failed'] as const)(
     }
   }
 );
+
+it('shows a retained signed hash as an unknown withdrawal without another submission', async () => {
+  const original = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, ...rest) =>
+    path[1] === 'submitWithdrawal'
+      ? Promise.resolve({
+          intentId: INTENT_ID,
+          noteId: NOTE_ID,
+          phase: 'unknown',
+          signedTransactionHash: HASH,
+        })
+      : original(path, ...rest)
+  );
+  mount();
+  await prepare();
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.withdrawal.confirm })
+  );
+  expect(await screen.findByText(HASH)).toBeVisible();
+  expect(
+    screen.getByRole('heading', { name: en.privacy.withdrawal.unknown })
+  ).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.withdrawal.confirm })
+  ).toBeNull();
+  expect(
+    mockEmitter.mock.calls.filter(([path]) => path[1] === 'submitWithdrawal')
+  ).toHaveLength(1);
+});

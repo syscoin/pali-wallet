@@ -1,6 +1,7 @@
 import {
   prepareEvmDappQuote,
   type EvmDappBlock,
+  type EvmGasPolicy,
   type EvmDappTransactionRequest,
 } from './evmDappPreparation';
 import { prepareEvmDappReview } from './evmDappReview';
@@ -25,6 +26,7 @@ function fixture(legacy = false) {
   const ports = {
     chainId: '1',
     scope: 'owned-network-registration',
+    gasPolicy: { kind: 'estimate' } as EvmGasPolicy,
     funding: NATIVE_EVM_FEE_FUNDING,
     assertCurrent: check,
     now: () => now,
@@ -101,6 +103,7 @@ function fixture(legacy = false) {
   return {
     review,
     prepare,
+    ports,
     requests,
     sign,
     submit,
@@ -221,4 +224,102 @@ describe('shared generic per-call fee review', () => {
     });
     expect(f.sign).not.toHaveBeenCalled();
   });
+});
+
+describe('internal fixed-gas fee approval', () => {
+  test('keeps the exact qualified budget through refresh without disclosing calldata to estimation', async () => {
+    const f = fixture();
+    f.ports.gasPolicy = { kind: 'fixed', gasLimit: '650000' };
+    const request = {
+      from,
+      to,
+      data: '0x1234',
+      value: '0',
+      gasLimit: '650000',
+    };
+    const first = await prepareEvmDappQuote(request, f.ports);
+    const refreshed = await prepareEvmDappQuote(request, f.ports, first);
+    expect(first.transaction.gasLimit).toBe('650000');
+    expect(refreshed.transaction).toEqual(first.transaction);
+    expect(
+      f.requests.every(({ method }) => method === 'eth_getBlockByNumber')
+    ).toBe(true);
+  });
+
+  test.each(['21000', undefined])(
+    'refuses a request outside its fixed budget (%s)',
+    async (gasLimit) => {
+      const f = fixture();
+      f.ports.gasPolicy = { kind: 'fixed', gasLimit: '650000' };
+      await expect(
+        prepareEvmDappQuote(
+          { from, to, data: '0x1234', value: '0', gasLimit },
+          f.ports
+        )
+      ).rejects.toThrow('REVIEW_REQUIRED');
+      expect(
+        f.requests.some(({ method }) => method === 'eth_estimateGas')
+      ).toBe(false);
+    }
+  );
+
+  test('retains fee, block-limit and owner checks for fixed gas', async () => {
+    const f = fixture();
+    f.ports.gasPolicy = { kind: 'fixed', gasLimit: '650000' };
+    const request = {
+      from,
+      to,
+      data: '0x1234',
+      value: '0',
+      gasLimit: '650000',
+    };
+    const quote = await prepareEvmDappQuote(request, f.ports);
+    f.retire();
+    await expect(prepareEvmDappQuote(request, f.ports, quote)).rejects.toThrow(
+      'retired'
+    );
+  });
+});
+
+test('captures fixed gas policy before an awaited chain read', async () => {
+  const f = fixture();
+  const policy = { kind: 'fixed' as const, gasLimit: '650000' };
+  f.ports.gasPolicy = policy;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.ports.verifyChain = async () => {
+    await held;
+  };
+  const pending = prepareEvmDappQuote(
+    { from, to, data: '0x1234', value: '0', gasLimit: '650000' },
+    f.ports
+  );
+  policy.gasLimit = '21000';
+  (policy as { kind: string }).kind = 'estimate';
+  release();
+  const quote = await pending;
+  expect(quote.transaction.gasLimit).toBe('650000');
+  expect(f.requests.some(({ method }) => method === 'eth_estimateGas')).toBe(
+    false
+  );
+});
+
+test.each([
+  undefined,
+  { kind: 'other' },
+  { kind: 'fixed', gasLimit: '0' },
+  { kind: 'fixed', gasLimit: '01' },
+  { kind: 'fixed', gasLimit: '0x9eb10' },
+])('refuses an invalid gas policy before RPC (%j)', async (policy) => {
+  const f = fixture();
+  f.ports.gasPolicy = policy as EvmGasPolicy;
+  await expect(
+    prepareEvmDappQuote(
+      { from, to, data: '0x1234', value: '0', gasLimit: '650000' },
+      f.ports
+    )
+  ).rejects.toThrow();
+  expect(f.requests).toEqual([]);
 });

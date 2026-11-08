@@ -57,7 +57,7 @@ export interface IPrivacyDepositReview {
   valueWei: string;
 }
 
-export interface IPrivacyDepositFailure {
+export interface IPrivacySubmissionFailure {
   signedTransactionHash?: string;
   transactionNotBroadcast: boolean;
 }
@@ -76,7 +76,9 @@ export interface IPrivacyTransactionsHost {
   /** Capture the active account/network/session; assertCurrent must fence ABA changes. */
   captureContext: () => IPrivacyDepositSession;
   /** Interpret only host-owned stage evidence; provider error fields are untrusted. */
-  classifySubmissionFailure(error: unknown): Readonly<IPrivacyDepositFailure>;
+  classifySubmissionFailure(
+    error: unknown
+  ): Readonly<IPrivacySubmissionFailure>;
   /** Read-only gas/fee/nonce/balance preflight against the captured provider. Never sign. */
   prepareFees: (
     transaction: Readonly<IPrivacyDepositCall>,

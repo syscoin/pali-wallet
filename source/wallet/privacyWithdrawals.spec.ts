@@ -110,7 +110,15 @@ function setup() {
     version: '5.0.1',
     observedAt: clock,
   } as IPrivacyRelayerSelection;
+  const failures = new WeakMap<
+    object,
+    { signedTransactionHash?: string; transactionNotBroadcast: boolean }
+  >();
   const host: IPrivacyWithdrawalsHost = {
+    classifySubmissionFailure: jest.fn(
+      (error) =>
+        failures.get(error as object) ?? { transactionNotBroadcast: false }
+    ),
     captureSession: jest.fn(() => {
       const captured = generation;
       return {
@@ -192,6 +200,13 @@ function setup() {
   });
   return {
     host,
+    failBeforeBroadcast(error: Error, signedTransactionHash?: string) {
+      failures.set(error, {
+        transactionNotBroadcast: true,
+        ...(signedTransactionHash ? { signedTransactionHash } : {}),
+      });
+      return error;
+    },
     controller,
     fetcher,
     events,
@@ -623,9 +638,7 @@ it.each(['healthy', 'context', 'snapshot', 'expiry'] as const)(
             assertBeforeSign();
           } catch (error) {
             // Match MainController/the SDK's pre-broadcast error boundary.
-            throw Object.assign(error as Error, {
-              transactionNotBroadcast: true,
-            });
+            throw run.failBeforeBroadcast(error as Error);
           }
           sign();
           await onBroadcast({ hash: HASH });
@@ -893,11 +906,11 @@ it('no send occurs if durable reservation fails and sender failure only clears p
   expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
   const second = setup();
   const next = await second.controller.prepareWithdrawal(direct());
-  jest.mocked(second.host.sendTransaction).mockRejectedValueOnce(
-    Object.assign(new Error('send rejected'), {
-      transactionNotBroadcast: true,
-    })
-  );
+  jest
+    .mocked(second.host.sendTransaction)
+    .mockRejectedValueOnce(
+      second.failBeforeBroadcast(new Error('send rejected'))
+    );
   await expect(
     second.controller.submitWithdrawal(next.intentId)
   ).rejects.toThrow('privacy_withdrawal_failed');
@@ -1091,22 +1104,20 @@ it('status read session invalidation prevents network or late response exposure'
   expect(other.host.recordJobStatus).not.toHaveBeenCalled();
 });
 
-it('persists a known broadcast hash carried by a post-broadcast sender error', async () => {
+it('never treats provider error fields as an acknowledgement or owned prebroadcast evidence', async () => {
   jest.useFakeTimers();
   const run = setup();
   const review = await run.controller.prepareWithdrawal(direct());
   jest.mocked(run.host.sendTransaction).mockRejectedValueOnce(
     Object.assign(new Error('post-broadcast processing failed'), {
       transactionHash: HASH,
+      transactionNotBroadcast: true,
     })
   );
   expect(await run.controller.submitWithdrawal(review.intentId)).toMatchObject({
-    phase: 'submitted',
-    transactionHash: HASH,
+    phase: 'unknown',
   });
-  expect(run.host.recordSubmission).toHaveBeenCalledWith(expect.any(Object), {
-    transactionHash: HASH,
-  });
+  expect(run.host.recordSubmission).not.toHaveBeenCalled();
   expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
 });
 
@@ -1369,3 +1380,92 @@ it('checks the reservation fence immediately before relay POST and retains known
   expect(run.fetcher).not.toHaveBeenCalled();
   expect(run.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
 });
+
+it('retains a signed but unbroadcast withdrawal and exposes only its recovery hash', async () => {
+  const run = setup();
+  const review = await run.controller.prepareWithdrawal(direct());
+  jest
+    .mocked(run.host.sendTransaction)
+    .mockRejectedValueOnce(
+      run.failBeforeBroadcast(new Error('preflight refused'), HASH)
+    );
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).resolves.toMatchObject({
+    phase: 'unknown',
+    signedTransactionHash: HASH,
+  });
+  expect(run.host.recordNotBroadcast).not.toHaveBeenCalled();
+  expect(run.host.recordSubmission).not.toHaveBeenCalled();
+  run.controller.close();
+});
+
+it('does not classify failures after a durable acknowledgement', async () => {
+  const run = setup();
+  const review = await run.controller.prepareWithdrawal(direct());
+  jest.mocked(run.host.classifySubmissionFailure).mockImplementation(() => {
+    throw new Error('classifier must not run');
+  });
+  jest
+    .mocked(run.host.sendTransaction)
+    .mockImplementationOnce(async (_tx, _session, acknowledged) => {
+      await acknowledged({ hash: HASH });
+      throw new Error('later error');
+    });
+  await expect(
+    run.controller.submitWithdrawal(review.intentId)
+  ).resolves.toMatchObject({ phase: 'submitted', transactionHash: HASH });
+  expect(run.host.classifySubmissionFailure).not.toHaveBeenCalled();
+  run.controller.close();
+});
+
+it.each(['prove', 'recordNotBroadcast', 'classifySubmissionFailure'] as const)(
+  'requires the %s host port',
+  (port) => {
+    const run = setup();
+    expect(() =>
+      createPrivacyWithdrawalsController({
+        ...run.host,
+        [port]: undefined,
+      } as unknown as IPrivacyWithdrawalsHost)
+    ).toThrow('privacy_withdrawal_host_invalid');
+    run.controller.close();
+  }
+);
+
+it.each(['async', 'value'] as const)(
+  'refuses a %s session guard before custody access',
+  async (kind) => {
+    const run = setup();
+    jest.mocked(run.host.captureSession).mockReturnValueOnce({
+      context: run.context,
+      assertCurrent: (kind === 'async'
+        ? async () => undefined
+        : () => 1) as () => void,
+    });
+    await expect(run.controller.prepareWithdrawal(direct())).rejects.toThrow(
+      /^privacy_/
+    );
+    expect(run.host.withNote).not.toHaveBeenCalled();
+    run.controller.close();
+  }
+);
+
+it.each(['async', 'value'] as const)(
+  'refuses a %s reservation guard before submission',
+  async (kind) => {
+    const run = setup();
+    const review = await run.controller.prepareWithdrawal(direct());
+    jest
+      .mocked(run.host.beforeSubmission)
+      .mockResolvedValueOnce(
+        (kind === 'async' ? async () => undefined : () => 1) as () => void
+      );
+    await expect(
+      run.controller.submitWithdrawal(review.intentId)
+    ).rejects.toThrow(/^privacy_/);
+    expect(run.host.sendTransaction).not.toHaveBeenCalled();
+    expect(run.host.recordNotBroadcast).toHaveBeenCalledTimes(1);
+    run.controller.close();
+  }
+);

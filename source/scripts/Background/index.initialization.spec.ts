@@ -97,7 +97,7 @@ describe('background initialization ownership', () => {
       privacyRegistrations.push('transactions');
       return { createPrivacyTransactionsController: startPrivacyOperation };
     });
-    jest.doMock('./controllers/privacyWithdrawals', () => {
+    jest.doMock('../../wallet/privacyWithdrawals', () => {
       privacyRegistrations.push('withdrawals');
       return { createPrivacyWithdrawalsController: startPrivacyOperation };
     });

@@ -11,15 +11,17 @@ import { AsyncMutex } from '../utils/asyncMutex';
 import { privateDepositUnsignedBytes } from '../utils/privacy/depositMetadata';
 import { identifyClassicNote } from '../utils/privacy/note';
 import { getPrivacyPool } from '../utils/privacy/registry';
+import { privateWithdrawalUnsignedBytes } from '../utils/privacy/withdrawalMetadata';
 
 import {
   EvmSignedRecords,
   createEvmSignedRecordLifecycle,
 } from './evmSignedRecords';
 import { EvmSignedReplay } from './evmSignedReplay';
-import { authorizePrivateDepositReplay } from './privateDepositReplay';
+import { authorizePrivateNoteReplay } from './privateNoteReplay';
 import { createPrivateVaultController } from './privateVault';
 import type { IPrivacyDepositAttempt } from '../utils/privacy/transactionTypes';
+import type { IPrivacyWithdrawalAttempt } from '../utils/privacy/withdrawalTransactionTypes';
 
 jest.unmock('syscoinjs-lib');
 jest.mock('@trezor/connect-webextension', () => ({}));
@@ -37,7 +39,11 @@ afterAll(() => {
     Object.defineProperty(globalThis, 'crypto', originalCrypto);
 });
 
-async function fixture(tagged = true, retained = true) {
+async function fixture(
+  tagged = true,
+  retained = true,
+  kind: 'deposit' | 'withdrawal' = 'deposit'
+) {
   const keyring: any = Object.create(KeyringManager.prototype);
   keyring.sessionPassword = { isCleared: () => false };
   keyring.sessionMnemonic = { isCleared: () => false };
@@ -73,9 +79,10 @@ async function fixture(tagged = true, retained = true) {
       },
     },
   };
+  let noteStatus: 'not-found' | 'verified' = 'not-found';
   const host = {
     captureSession: session,
-    readNote: async () => ({ phase: 'not-found' as const }),
+    readNote: async () => ({ phase: noteStatus }),
     authenticate: async (
       _password: string,
       scope: ReturnType<typeof session>,
@@ -119,9 +126,53 @@ async function fixture(tagged = true, retained = true) {
       maxPriorityFeePerGas: '1',
     },
   };
-  await vault().reserveDepositAttempt(attempt, session());
+  let direct: Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }> = {
+    ...attempt,
+    mode: 'direct',
+    proof: '0x' + 'ab'.repeat(256),
+    root: '0x' + '01'.repeat(32),
+    nullifierHash: identifyClassicNote(NOTE).nullifierHash,
+    recipient: signer.address,
+    relayer: '0x' + '00'.repeat(20),
+    fee: '0',
+    refund: '0',
+    transaction: {
+      ...attempt.transaction,
+      gasLimit: '650000',
+      value: '0',
+      data: '',
+    },
+  };
+  direct = {
+    ...direct,
+    transaction: {
+      ...direct.transaction,
+      data: new Interface([
+        'function withdraw(bytes,bytes32,bytes32,address,address,uint256,uint256) payable',
+      ]).encodeFunctionData('withdraw', [
+        direct.proof,
+        direct.root,
+        direct.nullifierHash,
+        direct.recipient,
+        direct.relayer,
+        direct.fee,
+        direct.refund,
+      ]),
+    },
+  };
+  const privateAttempt = kind === 'deposit' ? attempt : direct;
+  if (kind === 'deposit')
+    await vault().reserveDepositAttempt(attempt, session());
+  else {
+    noteStatus = 'verified';
+    await vault().reserveWithdrawalAttempt(direct, session());
+  }
   const raw = await signer.signTransaction(
-    Transaction.from(privateDepositUnsignedBytes(attempt))
+    Transaction.from(
+      kind === 'deposit'
+        ? privateDepositUnsignedBytes(attempt)
+        : privateWithdrawalUnsignedBytes(direct)
+    )
   );
   const tx = Transaction.from(raw);
   const storage = {
@@ -164,7 +215,11 @@ async function fixture(tagged = true, retained = true) {
         nonce: 0,
         type: 2,
       },
-      tagged ? { privateDeposit: attempt } : undefined
+      tagged
+        ? kind === 'deposit'
+          ? { privateDeposit: attempt }
+          : { privateWithdrawal: direct }
+        : undefined
     );
   }
   const sent: string[] = [];
@@ -182,7 +237,10 @@ async function fixture(tagged = true, retained = true) {
       input: IPrivacyDepositAttempt
     ) => {
       await beforeAuthorize();
-      const lease = await vault().authorizeDepositReplay(input, scope);
+      const lease =
+        kind === 'deposit'
+          ? await vault().authorizeDepositReplay(input, scope)
+          : await vault().authorizeWithdrawalReplay(direct, scope);
       return {
         ...lease,
         async onAcknowledged(hash: string) {
@@ -205,8 +263,11 @@ async function fixture(tagged = true, retained = true) {
         recordSession: scope,
         assertCurrent: assertView,
         authorizeReplay: (entry) =>
-          authorizePrivateDepositReplay(entry, assertView, (input) =>
-            privateAuthorizations(scope, input)
+          authorizePrivateNoteReplay(
+            entry,
+            assertView,
+            (input) => privateAuthorizations(scope, input),
+            () => privateAuthorizations(scope, privateAttempt)
           ),
         observe: async () =>
           terminal
@@ -230,7 +291,7 @@ async function fixture(tagged = true, retained = true) {
     );
   };
   return {
-    attempt,
+    attempt: privateAttempt,
     acknowledged,
     retireView() {
       viewCurrent = false;
@@ -369,72 +430,82 @@ it('binds private metadata under the records admission queue', async () => {
   expect(admit).not.toHaveBeenCalled();
 });
 
-it('refuses tagged private speed-up and preserves the reservation after an explicit cancel ACK', async () => {
-  const f = await fixture();
-  const records = f.records();
-  await expect(
-    records.readReplacement(
-      f.session(),
-      '1',
-      signer.address,
-      f.tx.hash!,
-      'speed-up'
-    )
-  ).resolves.toBeNull();
-  await expect(
-    records.captureVerifiedReplacement(f.session(), {
+it.each(['deposit', 'withdrawal'] as const)(
+  'refuses tagged private %s speed-up and preserves its reservation after an explicit cancel ACK',
+  async (kind) => {
+    const f = await fixture(true, true, kind);
+    const records = f.records();
+    await expect(
+      records.readReplacement(
+        f.session(),
+        '1',
+        signer.address,
+        f.tx.hash!,
+        'speed-up'
+      )
+    ).resolves.toBeNull();
+    await expect(
+      records.captureVerifiedReplacement(f.session(), {
+        chainId: '1',
+        from: signer.address,
+        nonce: 0,
+        originalHash: f.tx.hash!,
+        operation: 'speed-up',
+      })
+    ).rejects.toThrow('EVM_PRIVATE_NOTE_REPLACEMENT_UNAVAILABLE');
+    const binding = await records.captureVerifiedReplacement(f.session(), {
       chainId: '1',
       from: signer.address,
       nonce: 0,
       originalHash: f.tx.hash!,
-      operation: 'speed-up',
-    })
-  ).rejects.toThrow('EVM_PRIVATE_DEPOSIT_REPLACEMENT_UNAVAILABLE');
-  const binding = await records.captureVerifiedReplacement(f.session(), {
-    chainId: '1',
-    from: signer.address,
-    nonce: 0,
-    originalHash: f.tx.hash!,
-    operation: 'cancel',
-  });
-  const rawTransaction = await signer.signTransaction({
-    chainId: 1,
-    nonce: 0,
-    to: signer.address,
-    value: 0,
-    data: '0x',
-    type: 2,
-    gasLimit: 42000,
-    maxFeePerGas: 4,
-    maxPriorityFeePerGas: 2,
-  });
-  const tx = Transaction.from(rawTransaction);
-  await records.append(
-    f.session(),
-    {
-      context: { ...f.context, operation: 'cancel', originalHash: f.tx.hash! },
-      rawTransaction,
-      hash: tx.hash!,
-      from: signer.address,
-      chainId: '1',
+      operation: 'cancel',
+    });
+    const rawTransaction = await signer.signTransaction({
+      chainId: 1,
       nonce: 0,
+      to: signer.address,
+      value: 0,
+      data: '0x',
       type: 2,
-    },
-    undefined,
-    binding
-  );
-  const replay = f.replay();
-  const prepared = await replay.prepare(tx.hash!);
-  if (prepared.status !== 'review') throw Error('Expected cancellation review');
-  await expect(replay.confirm(prepared.review.id)).resolves.toEqual({
-    status: 'submitted',
-    hash: tx.hash,
-  });
-  expect(
-    await f.vault().getDepositAttempt(f.attempt.noteId, f.session())
-  ).toMatchObject({ phase: 'unknown' });
-  expect(f.privateAuthorizations).not.toHaveBeenCalled();
-});
+      gasLimit: 42000,
+      maxFeePerGas: 4,
+      maxPriorityFeePerGas: 2,
+    });
+    const tx = Transaction.from(rawTransaction);
+    await records.append(
+      f.session(),
+      {
+        context: {
+          ...f.context,
+          operation: 'cancel',
+          originalHash: f.tx.hash!,
+        },
+        rawTransaction,
+        hash: tx.hash!,
+        from: signer.address,
+        chainId: '1',
+        nonce: 0,
+        type: 2,
+      },
+      undefined,
+      binding
+    );
+    const replay = f.replay();
+    const prepared = await replay.prepare(tx.hash!);
+    if (prepared.status !== 'review')
+      throw Error('Expected cancellation review');
+    await expect(replay.confirm(prepared.review.id)).resolves.toEqual({
+      status: 'submitted',
+      hash: tx.hash,
+    });
+    expect(
+      await (kind === 'deposit'
+        ? f.vault().getDepositAttempt(f.attempt.noteId, f.session())
+        : f.vault().getWithdrawalAttempt(f.attempt.noteId, f.session()))
+    ).toMatchObject({ phase: 'unknown' });
+    expect(f.privateAuthorizations).not.toHaveBeenCalled();
+  }
+);
 
 it('reconciles a confirmed private ACK on explicit status inspection after restart', async () => {
   const f = await fixture();
@@ -544,4 +615,66 @@ it('journals an exact replay ACK even if the visible account changes while the P
   expect(
     await f.vault().getDepositAttempt(f.attempt.noteId, f.session())
   ).toMatchObject({ phase: 'submitted', transactionHash: f.tx.hash });
+});
+
+it('replays a cold-reopened withdrawal with its original proof and records only its real acknowledgement', async () => {
+  const f = await fixture(true, true, 'withdrawal');
+  f.restart();
+  const replay = f.replay();
+  const ready = await replay.prepare(f.tx.hash!);
+  if (ready.status !== 'review') throw new Error('Expected withdrawal review');
+  await expect(replay.confirm(ready.review.id)).resolves.toEqual({
+    status: 'submitted',
+    hash: f.tx.hash,
+  });
+  expect(f.sent).toEqual([f.raw]);
+  await expect(
+    f.vault().getWithdrawalAttempt(f.attempt.noteId, f.session())
+  ).resolves.toMatchObject({ phase: 'submitted', transactionHash: f.tx.hash });
+});
+
+it('refuses withdrawal replay after a restored-note fence and keeps the signed bytes', async () => {
+  const f = await fixture(true, true, 'withdrawal');
+  const replay = f.replay();
+  const ready = await replay.prepare(f.tx.hash!);
+  if (ready.status !== 'review') throw new Error('Expected withdrawal review');
+  const entries = [
+    { note: NOTE, createdAt: 1000, reconciliationRequired: true as const },
+  ];
+  const vault = f.vault();
+  const plan = await vault.prepareRestore(entries, f.session());
+  await vault.commitRestore(plan, entries, 'password', f.session());
+  await expect(replay.confirm(ready.review.id)).rejects.toThrow();
+  expect(f.sent).toEqual([]);
+  expect(
+    await f.records().readExact(f.session(), '1', signer.address, f.tx.hash!)
+  ).not.toBeNull();
+});
+
+it('leaves an ordinary external withdrawal on the ordinary replay path', async () => {
+  const f = await fixture(false, true, 'withdrawal');
+  const replay = f.replay();
+  const ready = await replay.prepare(f.tx.hash!);
+  if (ready.status !== 'review') throw new Error('Expected ordinary review');
+  await replay.confirm(ready.review.id);
+  expect(f.sent).toEqual([f.raw]);
+  expect(f.privateAuthorizations).not.toHaveBeenCalled();
+});
+
+it('rejects a mixed private marker before invoking either vault authorizer', async () => {
+  const f = await fixture(true, true, 'withdrawal');
+  const entry = await f
+    .records()
+    .readExact(f.session(), '1', signer.address, f.tx.hash!);
+  if (!entry) throw new Error('Missing retained record');
+  const authorize = jest.fn();
+  await expect(
+    authorizePrivateNoteReplay(
+      { ...entry, metadata: { ...entry.metadata, privateDeposit: f.attempt } },
+      () => undefined,
+      authorize,
+      authorize
+    )
+  ).rejects.toThrow('EVM_PRIVATE_NOTE_METADATA_INVALID');
+  expect(authorize).not.toHaveBeenCalled();
 });

@@ -1,8 +1,8 @@
 import { AbiCoder, keccak256 } from 'ethers';
 
-import { getPrivacyPool } from './registry';
-import { validatePrivacyRelayerEndpoint } from './relayers';
-import type { PrivacyPoolId } from './types';
+import { getPrivacyPool } from './registry.ts';
+import { validatePrivacyRelayerEndpoint } from './relayers.ts';
+import type { PrivacyPoolId } from './types.ts';
 
 export type PrivacyRelayerJobState =
   | 'QUEUED'

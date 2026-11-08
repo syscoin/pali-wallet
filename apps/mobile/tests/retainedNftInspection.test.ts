@@ -1,4 +1,4 @@
-import { authorizePrivateDepositReplay } from '../../../source/wallet/privateDepositReplay.ts';
+import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Interface } from 'ethers/abi';
@@ -120,7 +120,7 @@ test('both detail adapters inspect authenticated NFT records without stored meta
     });
   }
   const replay = new EvmSignedReplay(records, () => ({
-    authorizeReplay: (entry) => authorizePrivateDepositReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }),
+    authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),
     recordSession: session,
     context,
     assertCurrent: session.assertCurrent,
@@ -235,7 +235,7 @@ test('retained replay review projects only exact signed collectible semantics un
   }
   const posted: string[] = [];
   const replay = new EvmSignedReplay(records, () => ({
-    authorizeReplay: (entry) => authorizePrivateDepositReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }),
+    authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),
     recordSession: session,
     context,
     assertCurrent: session.assertCurrent,

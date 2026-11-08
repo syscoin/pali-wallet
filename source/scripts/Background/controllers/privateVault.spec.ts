@@ -2074,7 +2074,7 @@ it.each([
   'healthy pre-sign cancellation',
 ] as const)('reservation review: %s', async (scenario) => {
   const { createPrivacyWithdrawalsController } = await import(
-    './privacyWithdrawals'
+    '../../../wallet/privacyWithdrawals'
   );
   const f = fixture();
   const saved = await f.controller.importNote(NOTE);
@@ -2093,6 +2093,7 @@ it.each([
   );
   const snapshot: any = { root };
   const host: any = {
+    classifySubmissionFailure: () => ({ transactionNotBroadcast: false }),
     captureSession: () => captured,
     withNote: (id, _session, use) =>
       f.controller.withWithdrawalNote(id, originalSession, use),

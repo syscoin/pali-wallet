@@ -1,7 +1,7 @@
 import { ensNormalize, namehash, parseEther } from 'ethers';
 
-import { getPrivacyPool, PRIVACY_POOLS } from './registry';
-import type { PrivacyPoolId } from './types';
+import { getPrivacyPool, PRIVACY_POOLS } from './registry.ts';
+import type { PrivacyPoolId } from './types.ts';
 
 export const PRIVACY_RELAYER_DIRECTORY_URL =
   'https://sysnode.info/api/privacy/v1/relayers';

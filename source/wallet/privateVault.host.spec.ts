@@ -19,6 +19,7 @@ import type {
   IPrivateVaultSession,
 } from './privateVault';
 import type { IPrivacyDepositAttempt } from '../utils/privacy/transactionTypes';
+import type { IPrivacyWithdrawalAttempt } from '../utils/privacy/withdrawalTransactionTypes';
 
 jest.unmock('syscoinjs-lib');
 jest.mock('@trezor/connect-webextension', () => ({}));
@@ -1005,3 +1006,313 @@ test.each(['waiting', 'verified'] as const)(
     ).resolves.toEqual({ result: 'sent' });
   }
 );
+
+function withdrawalReplayAttempt(
+  noteId: string,
+  generation: number
+): Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }> {
+  const deposit = replayAttempt(noteId, generation);
+  const proof = `0x${'ab'.repeat(256)}`;
+  const root = `0x${'01'.repeat(32)}`;
+  const nullifierHash = identifyClassicNote(NOTE).nullifierHash;
+  const recipient = `0x${'22'.repeat(20)}`;
+  const relayer = `0x${'00'.repeat(20)}`;
+  return {
+    intentId: deposit.intentId,
+    noteId,
+    poolId: deposit.poolId,
+    createdAt: deposit.createdAt,
+    expiresAt: deposit.expiresAt,
+    context: deposit.context,
+    mode: 'direct',
+    proof,
+    root,
+    nullifierHash,
+    recipient,
+    relayer,
+    fee: '0',
+    refund: '0',
+    transaction: {
+      ...deposit.transaction,
+      value: '0',
+      data: new Interface([
+        'function withdraw(bytes,bytes32,bytes32,address,address,uint256,uint256)',
+      ]).encodeFunctionData('withdraw', [
+        proof,
+        root,
+        nullifierHash,
+        recipient,
+        relayer,
+        0,
+        0,
+      ]),
+      gasLimit: '650000',
+    },
+  };
+}
+
+async function withdrawalReplayFixture() {
+  const f = fixture();
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  const note = await vault.importNote(NOTE);
+  const session = f.host.captureSession();
+  const attempt = withdrawalReplayAttempt(note.id, session.generation);
+  await vault.reserveWithdrawalAttempt(attempt, session);
+  return { ...f, vault, note, session, attempt };
+}
+
+test('a new withdrawal from an explicitly reviewed restored note remains retryable', async () => {
+  const f = fixture();
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  const session = f.host.captureSession();
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const plan = await vault.prepareRestore(entries, session);
+  await vault.commitRestore(plan, entries, 'synthetic-password', session);
+  const note = (await vault.getNotes()).notes[0];
+  await vault.reviewRestoredNote(note.id, 'synthetic-password');
+  const attempt = withdrawalReplayAttempt(note.id, session.generation);
+  await vault.reserveWithdrawalAttempt(attempt, session);
+  const lease = await vault.authorizeWithdrawalReplay(attempt, session);
+  await expect(
+    lease.withAdmission(async () => ({ result: 'sent' }))
+  ).resolves.toEqual({ result: 'sent' });
+  await lease.onAcknowledged(HASH);
+  expect(await vault.getWithdrawalAttempt(note.id, session)).toMatchObject({
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+});
+
+test('withdrawal replay retains the original journal across a cold session and expired review', async () => {
+  const f = await withdrawalReplayFixture();
+  const before = await f.vault.getWithdrawalAttempt(f.note.id, f.session);
+  f.cycleSession();
+  f.setNow(100000);
+  const session = f.host.captureSession();
+  const reopened = core.createPrivateVaultController(f.host, f.dependencies);
+  const lease = await reopened.authorizeWithdrawalReplay(f.attempt, session);
+  await expect(
+    lease.withAdmission(async () => ({ result: 'sent' }))
+  ).resolves.toEqual({ result: 'sent' });
+  await lease.onAcknowledged(HASH);
+  expect(await reopened.getWithdrawalAttempt(f.note.id, session)).toEqual({
+    ...before,
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+});
+
+test('withdrawal replay snapshots proof and transaction before its first await', async () => {
+  const f = await withdrawalReplayFixture();
+  const before = await f.vault.getWithdrawalAttempt(f.note.id, f.session);
+  const gate = deferred<void>();
+  const original = f.keyring.getPrivateRecordProfileId.bind(f.keyring);
+  jest
+    .spyOn(f.keyring, 'getPrivateRecordProfileId')
+    .mockImplementationOnce(async () => {
+      await gate.promise;
+      return original();
+    });
+  const input = { ...f.attempt };
+  const pending = f.vault.authorizeWithdrawalReplay(input, f.session);
+  input.proof = `0x${'cd'.repeat(256)}`;
+  input.transaction = { ...input.transaction, nonce: '8' };
+  gate.resolve();
+  const lease = await pending;
+  await lease.onAcknowledged(HASH);
+  expect(await f.vault.getWithdrawalAttempt(f.note.id, f.session)).toEqual({
+    ...before,
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+});
+
+test('withdrawal replay rejects accessors and asynchronous guards before private I/O', async () => {
+  const f = await withdrawalReplayFixture();
+  const getter = jest.fn(() => f.attempt.proof);
+  const input = Object.defineProperty({ ...f.attempt }, 'proof', {
+    enumerable: true,
+    get: getter,
+  });
+  f.storage.getItem.mockClear();
+  await expect(
+    f.vault.authorizeWithdrawalReplay(input, f.session)
+  ).rejects.toThrow();
+  expect(getter).not.toHaveBeenCalled();
+  expect(f.storage.getItem).not.toHaveBeenCalled();
+  const session = { ...f.session, assertCurrent: async () => undefined };
+  await expect(
+    f.vault.authorizeWithdrawalReplay(f.attempt, session)
+  ).rejects.toThrow('privacy_vault_session_changed');
+  expect(f.storage.getItem).not.toHaveBeenCalled();
+});
+
+test('withdrawal replay rejects a cleared or different current attempt without dispatch', async () => {
+  const f = await withdrawalReplayFixture();
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  await expect(
+    f.vault.authorizeWithdrawalReplay(
+      { ...f.attempt, intentId: RECORD_ID },
+      f.session
+    )
+  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+  const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
+  await f.vault.clearUnbroadcastWithdrawalAttempt(f.attempt, f.session);
+  await expect(lease.withAdmission(admit)).rejects.toThrow(
+    'privacy_withdrawal_attempt_invalid'
+  );
+  await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
+    'privacy_withdrawal_attempt_invalid'
+  );
+  expect(admit).not.toHaveBeenCalled();
+});
+
+test('withdrawal replay cannot reactivate recovered or retired attempts', async () => {
+  const f = await withdrawalReplayFixture();
+  await f.vault.recordWithdrawalSubmission(
+    f.attempt,
+    { transactionHash: HASH },
+    f.session
+  );
+  const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
+  f.host.prepareWithdrawalRecovery = async () => ({
+    receipt: { root: f.attempt.root, blockHash: HASH, blockNumber: '123' },
+    revalidate: async () => undefined,
+  });
+  await f.vault.recoverFailedWithdrawal(f.note.id, 'synthetic-password');
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  await expect(lease.withAdmission(admit)).rejects.toThrow(
+    'privacy_withdrawal_attempt_invalid'
+  );
+  await expect(
+    f.vault.authorizeWithdrawalReplay(f.attempt, f.session)
+  ).rejects.toThrow('privacy_withdrawal_attempt_invalid');
+  const next = {
+    ...f.attempt,
+    intentId: RECORD_ID,
+    transaction: { ...f.attempt.transaction, nonce: '8' },
+  };
+  await f.vault.reserveWithdrawalAttempt(next, f.session);
+  await expect(lease.withAdmission(admit)).rejects.toThrow(
+    'privacy_withdrawal_attempt_invalid'
+  );
+  await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
+    'privacy_withdrawal_attempt_invalid'
+  );
+  expect(
+    (await f.vault.getWithdrawalAttempt(f.note.id, f.session))?.retired
+  ).toHaveLength(1);
+  expect(admit).not.toHaveBeenCalled();
+});
+
+test('withdrawal replay holds admission ownership, releases it before ACK, and retains late ACK after restore', async () => {
+  const f = await withdrawalReplayFixture();
+  const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const plan = await f.vault.prepareRestore(entries, f.session);
+  const entered = deferred<void>(),
+    release = deferred<void>(),
+    ack = deferred<string>();
+  const pending = lease.withAdmission(async () => {
+    entered.resolve();
+    await release.promise;
+    return { result: ack.promise };
+  });
+  await entered.promise;
+  let restored = false;
+  const restoring = f.vault
+    .commitRestore(plan, entries, 'synthetic-password', f.session)
+    .then(() => {
+      restored = true;
+    });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(restored).toBe(false);
+  release.resolve();
+  const admitted = await pending;
+  await restoring;
+  expect(restored).toBe(true);
+  expect(lease.assertCurrent).toThrow('privacy_note_restore_required');
+  await expect(
+    lease.withAdmission(async () => ({ result: 'never' }))
+  ).rejects.toThrow('privacy_note_restore_required');
+  await expect(
+    f.vault.authorizeWithdrawalReplay(f.attempt, f.session)
+  ).rejects.toThrow('privacy_note_restore_required');
+  ack.resolve(HASH);
+  await expect(admitted!.result).resolves.toBe(HASH);
+  await lease.onAcknowledged(HASH);
+  expect(
+    await f.vault.getWithdrawalAttempt(f.note.id, f.session)
+  ).toMatchObject({ phase: 'submitted', transactionHash: HASH });
+  expect((await f.vault.getNotes()).notes[0].restoration).toBe(
+    'withdrawal-pending'
+  );
+});
+
+test.each(['waiting', 'not-found', 'verified'] as const)(
+  'withdrawal replay allows existing %s local state without a new verification gate',
+  async (phase) => {
+    const f = await withdrawalReplayFixture();
+    jest.mocked(f.host.readNote).mockResolvedValue({ phase });
+    const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
+    await expect(
+      lease.withAdmission(async () => ({ result: 'sent' }))
+    ).resolves.toEqual({ result: 'sent' });
+  }
+);
+
+test('withdrawal replay refuses a positively spent note before dispatch', async () => {
+  const f = await withdrawalReplayFixture();
+  const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
+  jest.mocked(f.host.readNote).mockResolvedValue({ phase: 'spent' });
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  await expect(lease.withAdmission(admit)).rejects.toThrow(
+    'privacy_note_spent'
+  );
+  await expect(
+    f.vault.authorizeWithdrawalReplay(f.attempt, f.session)
+  ).rejects.toThrow('privacy_note_spent');
+  expect(admit).not.toHaveBeenCalled();
+});
+
+test('withdrawal replay rechecks session ownership after waiting for the vault mutex', async () => {
+  const f = await withdrawalReplayFixture();
+  const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
+  const entered = deferred<void>(),
+    release = deferred<void>();
+  const held = f.dependencies.mutex.runExclusive(async () => {
+    entered.resolve();
+    await release.promise;
+  });
+  await entered.promise;
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  const pending = lease.withAdmission(admit);
+  f.cycleSession();
+  release.resolve();
+  await held;
+  await expect(pending).rejects.toThrow('privacy_vault_session_changed');
+  await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(admit).not.toHaveBeenCalled();
+});
+
+test('withdrawal replay binds admission and ACK to the original wallet profile', async () => {
+  const f = await withdrawalReplayFixture();
+  const lease = await f.vault.authorizeWithdrawalReplay(f.attempt, f.session);
+  jest
+    .spyOn(f.keyring, 'getPrivateRecordProfileId')
+    .mockResolvedValue(`0x${'ff'.repeat(32)}`);
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  await expect(lease.withAdmission(admit)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(admit).not.toHaveBeenCalled();
+});

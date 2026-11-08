@@ -7,6 +7,7 @@ import { Wallet } from 'ethers/wallet';
 
 import {
   bindGenericEvmFeeDispatch,
+  bindPrivateNoteFeeAttempt,
   captureGenericEvmFeeDispatch,
   captureGenericEvmFeeSdkEntryState,
   markGenericEvmFeeSdkEntered,
@@ -40,7 +41,9 @@ const context = {
 } as IEvmTransactionContext;
 const nonce = { nonce: 0, source: 'automatic' as const };
 
-function fixture(kind: 'dapp' | 'private-deposit' = 'dapp') {
+function fixture(
+  kind: 'dapp' | 'private-deposit' | 'private-withdrawal' = 'dapp'
+) {
   const owner = {},
     request = {};
   let live = true;
@@ -187,19 +190,22 @@ it('rechecks the held owner before and after final dispatch refresh', async () =
   );
 });
 
-it('requires the exact private deposit owner and rejects public dapp substitution', () => {
-  const f = fixture('private-deposit');
-  expect(() =>
-    f.consume(context, { kind: 'private-deposit', request: {} })
-  ).toThrow('request changed');
-  expect(() =>
-    f.consume(context, { kind: 'dapp', request: f.request })
-  ).toThrow('request changed');
-  expect(f.consume().review.transaction).toBe(transaction);
-  expect(JSON.stringify(f.token)).not.toContain('private-deposit');
-  expect(f.token).not.toHaveProperty('request');
-  expect(f.token).not.toHaveProperty('submit');
-});
+it.each(['private-deposit', 'private-withdrawal'] as const)(
+  'requires the exact %s owner and rejects public dapp substitution',
+  (kind) => {
+    const f = fixture(kind);
+    expect(() => f.consume(context, { kind, request: {} })).toThrow(
+      'request changed'
+    );
+    expect(() =>
+      f.consume(context, { kind: 'dapp', request: f.request })
+    ).toThrow('request changed');
+    expect(f.consume().review.transaction).toBe(transaction);
+    expect(JSON.stringify(f.token)).not.toContain(kind);
+    expect(f.token).not.toHaveProperty('request');
+    expect(f.token).not.toHaveProperty('submit');
+  }
+);
 
 it('retains private pre-SDK stage evidence after a review is removed', () => {
   const f = fixture();
@@ -223,3 +229,23 @@ it('records actual SDK entry independently of later review removal', () => {
   held.close();
   expect(entered()).toBe(true);
 });
+
+it.each(['unknown', 'accessor'] as const)(
+  'rejects %s private-attempt kinds before consuming the review',
+  (variant) => {
+    const f = fixture('private-withdrawal');
+    const getter = jest.fn(() => 'withdrawal');
+    const input =
+      variant === 'unknown'
+        ? { kind: 'other', attempt: {} }
+        : Object.defineProperty({ attempt: {} }, 'kind', {
+            get: getter,
+            enumerable: true,
+          });
+    expect(() =>
+      bindPrivateNoteFeeAttempt(f.owner, f.token.id, context, input as never)
+    ).toThrow();
+    expect(getter).not.toHaveBeenCalled();
+    expect(f.consume()).toBeDefined();
+  }
+);
