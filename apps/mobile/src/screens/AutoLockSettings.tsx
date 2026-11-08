@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy';
 import type { IdleMode, SecurityPreferenceSnapshot } from '../core/securityPreferences';
 import { securityPreferences } from '../platform/security';
@@ -29,11 +30,17 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     catch { if (owned.mounted && owned.generation === generation) setFeedback('The setting could not be verified. Reopen security settings before saving again.'); }
     finally { owned.pending = false; if (owned.mounted && owned.generation === generation) setBusy(false); }
   };
-  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
+  return <SafeAreaView edges={['top', 'bottom']} style={styles.screen}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}><Screen>
     <Header title="Auto-lock" subtitle={mode === 'custody' ? 'Native wallet' : 'Watch accounts'} onBack={back} />
     <Text style={styles.muted}>{mode === 'custody' ? 'Lock wallet' : 'Hide watch accounts'} after foreground inactivity. Current: {current === 0 ? 'Off while open' : `${current ?? '—'} minutes`}.</Text>
     <Notice title="Background locking stays on" body="Pali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock." />
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{[5, 15, 30, 60, 120, 0].map(n => <Button key={n} title={n === 0 ? 'Off while open' : `${n} minutes`} variant={draft === String(n) ? 'primary' : 'secondary'} disabled={busy} onPress={() => change(String(n))} />)}</View>
+    <View style={presetStyles.group}>{[5, 15, 30, 60, 120, 0].map(n => {
+      const selected = draft === String(n);
+      return <Button key={n} title={n === 0 ? 'Off while open' : `${n} minutes`}
+        variant={selected ? 'primary' : 'secondary'}
+        style={[presetStyles.button, selected && presetStyles.selected]}
+        disabled={busy} onPress={() => change(String(n))} />;
+    })}</View>
     <Text>Custom minutes (5–120, or 0 for Off)</Text><IdleTextInput accessibilityLabel="Auto-lock minutes" value={draft} onChangeText={change} keyboardType="number-pad" maxLength={3} editable={!busy} style={{ borderWidth: 1, borderColor: colors.border, color: colors.text, borderRadius: 12, padding: 16 }} />
     {minutes === null && <Text accessibilityRole="alert">Enter 0 or a whole number from 5 to 120.</Text>}
     {minutes === 0 && <><Notice title="Off while the app is open" body="This session can remain visible indefinitely without interaction. Background locking and password confirmations still apply." tone="amber" /><Button title={confirmed ? 'Off consequence acknowledged' : 'I understand the Off setting'} variant="secondary" disabled={busy} onPress={() => setConfirmed(true)} /></>}
@@ -41,5 +48,11 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     <Button title={busy ? 'Saving auto-lock…' : 'Save auto-lock'} disabled={busy || minutes === null || minutes === current || minutes === 0 && !confirmed || mode === 'custody' && weakening && !password} onPress={() => void submit()} />
     <Button title="Cancel" variant="secondary" onPress={back} />
     {!!feedback && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
-  </Screen></KeyboardAvoidingView>;
+  </Screen></KeyboardAvoidingView></SafeAreaView>;
 }
+
+const presetStyles = StyleSheet.create({
+  group: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  button: { flexBasis: '45%', flexGrow: 1, borderWidth: 1 },
+  selected: { borderColor: colors.pink },
+});

@@ -34,6 +34,7 @@
         }
       ],
       "./plugins/withMobileSafety.cjs",
+      "./plugins/withAndroidTextMetrics.cjs",
       [
         "expo-sqlite",
         {

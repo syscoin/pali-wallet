@@ -261,6 +261,20 @@ it.each(['ordinary import', 'recovery'])(
             : 'titles.importWallet',
       })
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        kind === 'recovery'
+          ? 'settings.recoveryIntro'
+          : 'import.importingYourAccount'
+      )
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(
+        kind === 'recovery'
+          ? 'import.importingYourAccount'
+          : 'settings.recoveryIntro'
+      )
+    ).toBeNull();
     await act(async () => {
       await mockValidator(undefined, phrase);
     });

@@ -887,7 +887,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
   // The MAX button already handles the calculation properly
 
   return (
-    <div className="w-full md:max-w-sm">
+    <div className="w-full pb-20 md:max-w-sm md:pb-0">
       <div className="flex flex-col items-center justify-center">
         <Tooltip content={t('home.viewOnExplorer')}>
           <button
@@ -961,7 +961,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         }}
         onFinish={nextStep}
         autoComplete="off"
-        className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full pb-20 md:pb-0"
+        className="flex flex-col gap-2 items-center justify-center mt-6 text-center w-full"
         onValuesChange={handleFormValuesChange}
       >
         <div className="sender-custom-input">
