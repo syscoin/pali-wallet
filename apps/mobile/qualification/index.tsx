@@ -55,6 +55,7 @@ type LaunchParameters = {
   physical?: never;
   http?: HttpLaunch;
   publicPool?: PublicPoolLaunch;
+  privateProof?: Readonly<{ token: string }>;
 } | PhysicalLaunch;
 const expect = (value: unknown) => {
   if (!value) throw Error('QUALIFICATION_ASSERTION_FAILED');
@@ -109,6 +110,7 @@ function QualificationApp() {
   const [status, setStatus] = useState('Waiting for qualification command');
   useEffect(() => {
     let started = false;
+    let privateProofLifetime: AbortController | undefined;
     const run = async () => {
       if (started) return;
       started = true;
@@ -160,6 +162,46 @@ function QualificationApp() {
           forbiddenTransport as unknown as typeof XMLHttpRequest;
         globalThis.WebSocket =
           forbiddenTransport as unknown as typeof WebSocket;
+        const privateProofConfiguration = Constants.expoConfig?.extra?.paliPrivateProofQualification;
+        if (privateProofConfiguration !== undefined || (!parameters.physical && parameters.privateProof)) {
+          if (parameters.physical || parameters.http || parameters.publicPool || !parameters.privateProof ||
+              parameters.phase !== 'create' || parameters.scenario !== 'import' || publicPoolConfiguration !== undefined ||
+              !['ios', 'android'].includes(Platform.OS) || !FileSystem.documentDirectory)
+            throw Error('PRIVATE_PROOF_QUALIFICATION_BUILD_INVALID');
+          const build = httpBuild(privateProofConfiguration);
+          const token = parameters.privateProof.token;
+          const installedVersion = require('@sidhujag/sysweb3-keyring/package.json').version;
+          const { paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+          expect(typeof installedVersion === 'string' && installedVersion === paliQualificationSdkVersion &&
+            typeof paliQualificationSdkIdentity === 'string');
+          const destination = `${FileSystem.documentDirectory}pali-native-private-proof-${token}.json`;
+          expect(!(await FileSystem.getInfoAsync(destination)).exists && !(await FileSystem.getInfoAsync(`${destination}.tmp`)).exists);
+          stage = 'private proof host';
+          const owner = new AbortController();
+          privateProofLifetime = owner;
+          const appState = AppState.addEventListener('change', (state) => { if (state !== 'active') owner.abort(); });
+          const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => owner.abort()) : undefined;
+          const assertCurrent = () => {
+            if (owner.signal.aborted || AppState.currentState !== 'active') throw Error('PRIVATE_PROOF_QUALIFICATION_INACTIVE');
+          };
+          try {
+            assertCurrent();
+            await ensureNativeCryptoReady();
+            const { qualifyNativePrivateProof } = await import('./native-private-proof.ts');
+            const result = await qualifyNativePrivateProof({ assertCurrent, signal: owner.signal });
+            assertCurrent();
+            expect(networkCalls === 0);
+            await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify({
+              ...build, token, sdkVersion: paliQualificationSdkIdentity, sdkPackageVersion: installedVersion,
+              kind: 'native-private-proof', status: 'passed', platform: Platform.OS, sessionId: Constants.sessionId,
+              jsNetworkCalls: networkCalls, nativeNetworkObservation: 'unmeasured', result,
+            }));
+            assertCurrent();
+            await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            setStatus('Native public proof vector passed');
+          } finally { owner.abort(); appState.remove(); blur?.remove(); }
+          return;
+        }
         if (parameters.phase === 'reset') {
           // Deliberate host-requested cleanup in this fixed fixture's private
           // Keychain group. The production entry never imports this module.
@@ -693,6 +735,7 @@ function QualificationApp() {
       }
     };
     void run();
+    return () => privateProofLifetime?.abort();
   }, []);
   return (
     <View

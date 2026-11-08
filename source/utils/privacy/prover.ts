@@ -1,6 +1,12 @@
 import { ensureOffscreenDocument } from 'utils/slhDsa/offscreenClient';
 
 import { privacyPublicSignals, validatePrivacyProofInput } from './proverCore';
+import {
+  isPrivacyVerificationPending,
+  privacyProofAbortError,
+  privacyProofCancelled,
+  privacyProofGuardError,
+} from './proverErrors';
 import type {
   IPrivacyProofInput,
   IPrivacyProofOptions,
@@ -17,13 +23,6 @@ let waitingPort:
     }
   | undefined;
 let active: { abort: AbortController; id: string } | undefined;
-const cancelled = () => new Error('privacy_proof_cancelled');
-const pending = (error: unknown) =>
-  error instanceof Error && error.message === 'privacy_verification_pending';
-const abortError = (signal: AbortSignal) =>
-  pending(signal.reason)
-    ? new Error('privacy_verification_pending')
-    : cancelled();
 
 const isTrustedHost = (sender?: chrome.runtime.MessageSender) =>
   sender?.id === chrome.runtime.id &&
@@ -84,7 +83,7 @@ function connect(
       cleanup();
       resolve(port);
     };
-    const abort = () => fail(abortError(signal));
+    const abort = () => fail(privacyProofAbortError(signal.reason));
     const requestConnect = () => {
       if (waitingPort !== waiter || signal.aborted || connectSent) return;
       connectSent = true;
@@ -160,22 +159,23 @@ export async function runPrivacyProof(
   };
   const job = { id: crypto.randomUUID(), abort: new AbortController() };
   active = job;
-  const externalAbort = () => job.abort.abort();
+  const externalAbort = () => job.abort.abort(options.signal?.reason);
   options.signal?.addEventListener('abort', externalAbort, { once: true });
   const timeout = setTimeout(externalAbort, 120000);
   const guard = setInterval(() => {
     try {
       options.assertCurrent();
     } catch (error) {
-      job.abort.abort(pending(error) ? error : undefined);
+      job.abort.abort(isPrivacyVerificationPending(error) ? error : undefined);
     }
   }, 250);
   let port: chrome.runtime.Port | undefined;
   try {
-    if (options.signal?.aborted) job.abort.abort();
+    if (options.signal?.aborted) job.abort.abort(options.signal.reason);
     port = await connect(job.abort.signal, job.id);
     options.assertCurrent();
-    if (job.abort.signal.aborted) throw cancelled();
+    if (job.abort.signal.aborted)
+      throw privacyProofAbortError(job.abort.signal.reason);
     const result = await new Promise<IPrivacyProofResult>((resolve, reject) => {
       let settled = false;
       const finish = (error?: Error, value?: IPrivacyProofResult) => {
@@ -187,22 +187,19 @@ export async function runPrivacyProof(
         if (error) reject(error);
         else resolve(value!);
       };
-      const onAbort = () => finish(abortError(job.abort.signal));
+      const onAbort = () =>
+        finish(privacyProofAbortError(job.abort.signal.reason));
       const onDisconnect = () => finish(new Error('privacy_proof_unavailable'));
       const onMessage = (message: any) => {
         if (message?.id !== job.id || settled) return;
         try {
           options.assertCurrent();
         } catch (error) {
-          finish(
-            pending(error)
-              ? new Error('privacy_verification_pending')
-              : new Error('privacy_proof_failed')
-          );
+          finish(privacyProofGuardError(error));
           return;
         }
         try {
-          if (job.abort.signal.aborted) throw cancelled();
+          if (job.abort.signal.aborted) throw privacyProofCancelled();
           if (message.type === 'progress') {
             const progress = message.progress as IPrivacyProofProgress;
             if (

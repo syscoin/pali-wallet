@@ -94,3 +94,43 @@ test('qualification refuses local archives and requires a published exact SDK ve
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('private proof build mode binds immutable source and lock metadata without baking a launch token', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-private-proof-config-'));
+  try {
+    fs.mkdirSync(path.join(root, 'scripts'));
+    const sdk = path.join(root, 'node_modules/@sidhujag/sysweb3-keyring');
+    fs.mkdirSync(sdk, { recursive: true });
+    fs.writeFileSync(path.join(sdk, 'package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '3.9.7' }));
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs'])
+      fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
+    const pkg = { main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': '3.9.7' } };
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(pkg));
+    fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
+    fs.writeFileSync(path.join(root, 'index.ts'), 'PUBLIC fixture entry\n');
+    fs.writeFileSync(path.join(root, 'app.json'), JSON.stringify({ expo: {
+      ios: { bundleIdentifier: 'com.paliwallet.mobile' },
+      android: { package: 'com.paliwallet.mobile', allowBackup: false }, updates: { enabled: false },
+    } }));
+    const env = { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION: '1', GITHUB_SHA: 'a'.repeat(40) };
+    const run = (overrides = {}) => spawnSync(process.execPath, [path.join(root, 'scripts/configure-native-qualification.cjs')], { env: { ...env, ...overrides } });
+    for (const overrides of [{ GITHUB_SHA: '' }, { PALI_NATIVE_HTTP_QUALIFICATION: '1' },
+      { PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: '1' }, { PALI_PHYSICAL_QUALIFICATION: 'import' }]) {
+      assert.notEqual(run(overrides).status, 0);
+      assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'package.json'))), pkg);
+    }
+    assert.equal(run().status, 0);
+    const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'))).expo;
+    const build = app.extra.paliPrivateProofQualification;
+    assert.deepEqual(build, { version: 1, sourceRevision: 'a'.repeat(40),
+      lockfileSha256: require('node:crypto').createHash('sha256').update('{}').digest('hex') });
+    assert.equal(app.extra.paliQualificationSdkVersion, '3.9.7');
+    assert.equal(app.extra.paliQualificationSdkIdentity, '3.9.7');
+    assert.equal(app.extra.paliHttpQualification, undefined);
+    assert.equal(app.extra.paliPublicPoolQualification, undefined);
+    assert.equal(build.token, undefined);
+    assert.equal(app.android.allowBackup, false);
+    assert.equal(app.updates.enabled, false);
+    assert.equal(fs.readFileSync(path.join(root, 'index.ts'), 'utf8'), 'PUBLIC fixture entry\n');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

@@ -1,0 +1,14 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'org.syscoin.pali'
+version = '0.1.0'
+android {
+  namespace 'org.syscoin.pali.prover'
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+  }
+  sourceSets.main.assets.srcDirs = ['../generated']
+}

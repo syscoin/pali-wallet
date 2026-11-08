@@ -39,10 +39,25 @@ not a runtime download. GPL notices and original headers are retained; see
 `LICENSES.md` and `COPYING`. These notices do not resolve distribution-license
 compatibility for the surrounding application.
 
-The only remote artifact is the 14,522,256-byte public proving key. Its fixed
+For the extension, the only remote artifact is the 14,522,256-byte public proving key. Its fixed
 URL, exact length and SHA-256 are in `utils/privacy/proverArtifacts.ts`. Every
 cached key is hashed again before use; cache writes contain only public bytes.
 No downloaded JSON, JS, WASM or circuit wiring is executed.
+
+The isolated native host instead uses the required `bundled` policy. Package it
+with `node scripts/build-native-private-prover.cjs /path/to/tornadoProvingKey.bin`.
+This command verifies the same artifact pins and bundles the same workers into
+ignored native resources. It performs no download. Native resource handlers
+serve only hash-verified manifest entries and reject all other requests.
+
+Native proof execution remains unqualified and ordinary app activation is
+unwired. The opt-in qualification entry calls the real adapter with the public
+synthetic vector. Device qualification must establish worker/WASM support,
+offline network behavior, peak memory, repeated jobs, cancellation and hung
+content-process handling. A page acknowledges calls to terminate its three
+workers and close their ports, then the native host awaits document retirement.
+These acknowledgements do not establish OS process termination or RAM erasure.
+A missing retirement acknowledgement disables further jobs for the app process.
 
 ## Integration
 
