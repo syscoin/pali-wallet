@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
 import test from 'node:test';
 
-const state: any = { created: 0, destroyed: 0, checks: 0, requests: 0 };
+const state: any = { created: 0, destroyed: 0, checks: 0, requests: 0, retired: 0 };
 (globalThis as any).__paliLedgerFactory = state;
 const source = new URL(
   '../src/hardware/ledgerTransport.native.ts',
@@ -67,6 +67,7 @@ test('native construction uses official adapters, defers permission and retires 
   state.dmk = { stopDiscovering: async () => undefined, close() {} };
   state.host = {
     disconnect: async () => undefined,
+    retire: async () => { state.retired++; return () => undefined; },
     subscribeStatus: () => () => {},
     evm: {},
     utxo: {},
@@ -92,6 +93,7 @@ test('native construction uses official adapters, defers permission and retires 
     });
   const checking = state.permissions.checkRequiredPermissions();
   await transport.dispose();
+  assert.equal(state.retired, 1);
   release(true);
   await assert.rejects(checking, /cancel/i);
   await assert.rejects(
