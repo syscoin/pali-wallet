@@ -332,6 +332,25 @@ test('terminal disposal retires a restart waiting for previous native cleanup', 
   assert.equal(f.scanCount, 1);
 });
 
+test('Back cancels a restart queued behind earlier cleanup before it has a session', async () => {
+  const f = fixture(),
+    wait = deferred<void>();
+  await f.view.start();
+  f.closeWait(wait.promise);
+  const earlierClose = f.view.close();
+  const restarting = f.view.start();
+  const rejected = assert.rejects(restarting, /CANCELLED/);
+  const back = f.view.close();
+  assert.equal(f.scanCount, 1);
+  wait.resolve();
+  await Promise.all([earlierClose, back, rejected]);
+  assert.equal(f.scanCount, 1);
+  assert.equal(f.view.getSnapshot().phase, 'idle');
+  await f.view.start();
+  assert.equal(f.scanCount, 2);
+  await f.view.dispose();
+});
+
 test('connection requires explicit finish and does not import an account', async () => {
   const f = fixture('connect');
   await f.view.start();

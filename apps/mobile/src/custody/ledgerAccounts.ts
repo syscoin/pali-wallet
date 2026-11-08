@@ -93,6 +93,7 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
   private disposed = false;
   private session: Session | undefined;
   private closing: Promise<void> = Promise.resolve();
+  private scanEpoch = 0;
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private observedRuntime: NativeLedgerRuntime | undefined;
@@ -184,8 +185,10 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
   async start() {
     this.assertActive();
     if (this.session) throw new Error('BUSY');
+    const epoch = this.scanEpoch;
     await this.closing;
     this.assertActive();
+    if (epoch !== this.scanEpoch) throw new Error('CANCELLED');
     if (this.session) throw new Error('BUSY');
     const snapshot = this.authority.getSnapshot(),
       catalogue = this.authority.getCatalogue(),
@@ -308,6 +311,7 @@ export class NativeLedgerAccounts<Purpose extends 'import' | 'connect'> {
     }
   }
   close(): Promise<void> {
+    this.scanEpoch++;
     const session = this.session;
     if (!session) return this.closing;
     const previous = this.closing;
