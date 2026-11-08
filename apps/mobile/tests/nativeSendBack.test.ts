@@ -26,6 +26,7 @@ function setup() {
     ...Object.fromEntries(['ActivityIndicator','KeyboardAvoidingView','Modal','ScrollView','View'].map(name=>[name,name]))};
   const ui={...Object.fromEntries(['Button','Card','Coin','Header','Notice','Screen','Text'].map(name=>[name,name])),colors:{},styles:{}};
   const deps: Record<string,unknown> = {
+    './NativeLedger': { NativeLedgerConnectionModal: 'NativeLedgerConnectionModal' },
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
     '../core/amounts':{formatBaseUnits:()=>''},
