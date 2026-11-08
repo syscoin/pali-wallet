@@ -160,6 +160,7 @@ test('completed recovery preserves acknowledgement and retries only metadata', a
     f.failReconciliation(null);
     await f.controller.retryMetadata();
     assert.equal(f.controller.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.controller.getSnapshot().error, null);
     assert.equal(f.controller.getSnapshot().transactionHash, hash);
     assert.equal(f.counts().preparations, 0);
     assert.equal(f.counts().submissions, 0);
@@ -211,6 +212,30 @@ test('a proven submission refusal preserves the saved recovery route without a s
     await f.controller.review();
     assert.equal(f.counts().submissions, 1);
     assert.equal(f.counts().preparations, 1);
+  } finally {
+    f.controller.dispose();
+  }
+});
+
+test('executed recovery with unreconciled metadata can clear only local tracking', async () => {
+  const f = fixture();
+  try {
+    f.set({
+      terminal: 'executed',
+      action: null,
+      transactionHash: hash,
+      canAbandon: true,
+    });
+    f.failReconciliation(new Error('Recovery metadata has not caught up'));
+    await f.controller.refresh();
+    assert.equal(f.controller.getSnapshot().phase, 'complete');
+    assert.equal(f.controller.getSnapshot().metadataRefresh, 'failed');
+    assert.equal(f.controller.getSnapshot().canAbandon, true);
+    await f.controller.abandon();
+    assert.equal(f.controller.getSnapshot().phase, 'cleared');
+    assert.equal(f.counts().preparations, 0);
+    assert.equal(f.counts().submissions, 0);
+    assert.equal(f.counts().reconciliations, 1);
   } finally {
     f.controller.dispose();
   }

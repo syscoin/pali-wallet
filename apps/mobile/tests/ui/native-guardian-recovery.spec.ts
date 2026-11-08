@@ -296,3 +296,73 @@ test('a different pending recovery does not appear as this intent or offer autho
     )
   ).toBe(false);
 });
+
+test('executed recovery with later owner changes can clear only local tracking', async ({
+  page,
+}, info) => {
+  await page.goto('/?guardian-recovery&resume&executed-owner-change');
+  await expect(
+    page.getByText(
+      'The recovery executed on-chain. This wallet has not adopted the observed account metadata. Refresh it or clear local recovery tracking.',
+      { exact: true }
+    )
+  ).toBeVisible();
+  await expect(
+    page.getByText('Replacement owner in saved recovery', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText('Replacement owner active', { exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByText(
+      'Recovery is unavailable. Check its current status before trying again.',
+      { exact: true }
+    )
+  ).toHaveCount(0);
+  await page
+    .getByText(
+      'The recovery executed on-chain. This wallet has not adopted the observed account metadata. Refresh it or clear local recovery tracking.',
+      { exact: true }
+    )
+    .scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: info.outputPath('executed-recovery-metadata-unadopted-320.png'),
+  });
+  await page
+    .getByRole('button', { name: 'Clear local recovery tracking', exact: true })
+    .click();
+  await expect(
+    page.getByRole('button', { name: 'Clear saved intent', exact: true })
+  ).toBeDisabled();
+  await page
+    .getByRole('checkbox', {
+      name: 'I understand that network recovery is not canceled',
+      exact: true,
+    })
+    .click();
+  await visibleAction(
+    page.getByRole('button', { name: 'Clear saved intent', exact: true })
+  );
+  await page.screenshot({
+    path: info.outputPath('executed-recovery-local-clear-320.png'),
+  });
+  await page
+    .getByRole('button', { name: 'Clear saved intent', exact: true })
+    .click();
+  await expect(
+    page.getByText('Recovery tracking cleared', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Refresh account metadata', exact: true })
+  ).toHaveCount(0);
+  const recorded = await events(page);
+  expect(recorded).toContain('abandon');
+  expect(
+    recorded.some(
+      (value) => value.startsWith('review:') || value.startsWith('submit:')
+    )
+  ).toBe(false);
+  await expect(
+    page.getByText('Replacement owner active', { exact: true })
+  ).toHaveCount(0);
+});
