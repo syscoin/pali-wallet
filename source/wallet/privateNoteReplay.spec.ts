@@ -11,7 +11,10 @@ import { AsyncMutex } from '../utils/asyncMutex';
 import { privateDepositUnsignedBytes } from '../utils/privacy/depositMetadata';
 import { identifyClassicNote } from '../utils/privacy/note';
 import { getPrivacyPool } from '../utils/privacy/registry';
-import { privateWithdrawalUnsignedBytes } from '../utils/privacy/withdrawalMetadata';
+import {
+  capturePrivateWithdrawalAttempt,
+  privateWithdrawalUnsignedBytes,
+} from '../utils/privacy/withdrawalMetadata';
 
 import {
   EvmSignedRecords,
@@ -218,7 +221,7 @@ async function fixture(
       tagged
         ? kind === 'deposit'
           ? { privateDeposit: attempt }
-          : { privateWithdrawal: direct }
+          : { privateWithdrawal: capturePrivateWithdrawalAttempt(direct) }
         : undefined
     );
   }
@@ -677,4 +680,18 @@ it('rejects a mixed private marker before invoking either vault authorizer', asy
     )
   ).rejects.toThrow('EVM_PRIVATE_NOTE_METADATA_INVALID');
   expect(authorize).not.toHaveBeenCalled();
+});
+
+it('retains captured withdrawal metadata through encrypted storage and cold replay', async () => {
+  const f = await fixture(true, true, 'withdrawal');
+  f.restart();
+  const replay = f.replay();
+  const prepared = await replay.prepare(f.tx.hash!);
+  expect(prepared.status).toBe('review');
+  if (prepared.status !== 'review') throw Error('Expected replay review');
+  expect(await replay.confirm(prepared.review.id)).toEqual({
+    status: 'submitted',
+    hash: f.tx.hash,
+  });
+  expect(f.sent).toEqual([f.raw]);
 });

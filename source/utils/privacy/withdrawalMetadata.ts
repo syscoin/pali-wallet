@@ -33,10 +33,10 @@ function uint(value: unknown, positive = false): bigint {
     value.length > 80 ||
     !/^(?:0|[1-9][0-9]*|0x(?:0|[1-9a-f][0-9a-f]*))$/.test(value)
   )
-    throw new Error('privacy_deposit_attempt_invalid');
+    return invalid();
   const parsed = BigInt(value);
   if (parsed > UINT256_MAX || (positive && parsed === BigInt(0)))
-    throw new Error('privacy_deposit_attempt_invalid');
+    return invalid();
   return parsed;
 }
 
@@ -328,8 +328,8 @@ export function capturePrivateWithdrawalAttempt(
     invalid();
   const attempt = {
     ...input,
-    context: { ...context, account },
-    transaction,
+    context: { ...context, account: { ...account } },
+    transaction: { ...transaction },
   } as unknown as Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>;
   createPrivateWithdrawalJournal(attempt, input.noteId as string, {
     poolId: getPrivacyPool(input.poolId as string).id,
