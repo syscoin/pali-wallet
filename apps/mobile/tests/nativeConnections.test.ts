@@ -920,6 +920,30 @@ test('editing an ERC20 allowance creates a new exact review before signing', asy
   } finally { await f.controller.dispose(); }
 });
 
+test('queued requests retain the foreground prepared identity until an allowance edit replaces it', async () => {
+  const f = await connectedFixture();
+  const contract = '0x' + '22'.repeat(20), abi = new Interface(['function approve(address,uint256)']);
+  f.setApprovalMetadata({ standard: 'ERC-20', token: { contractAddress: contract, name: 'Example', symbol: 'TOK', decimals: 6 } });
+  try {
+    const first = await messageRequest(f, 'eth_sendTransaction', [{ to: contract, data: abi.encodeFunctionData('approve', [ADDRESS, 7]) }]);
+    assert.ok(first?.kind === 'transaction');
+    const queued = await messageRequest(f, 'personal_sign', ['Queued request', ADDRESS], 11);
+    assert.ok(queued?.kind === 'transaction');
+    assert.equal(queued.id, first.id);
+    assert.notEqual(queued.revision, first.revision);
+    assert.strictEqual(queued.transaction, first.transaction);
+    assert.strictEqual(queued.approval, first.approval);
+    await f.view.editApprovalAmount(queued.id, queued.revision, '1.5');
+    const updated = f.view.getSnapshot().signingReview;
+    assert.ok(updated?.kind === 'transaction');
+    assert.equal(updated.id, first.id);
+    assert.notStrictEqual(updated.transaction, first.transaction);
+    assert.notStrictEqual(updated.approval, first.approval);
+    assert.equal(updated.approval?.amountUnits, '1500000');
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
 test('unverified token approvals cannot be edited', async () => {
   const f = await connectedFixture();
   const abi = new Interface(['function approve(address,uint256)']);

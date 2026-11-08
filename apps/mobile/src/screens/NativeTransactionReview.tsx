@@ -47,15 +47,15 @@ export function NativeTransactionReviewScreen({ review, controller }: {
 }) {
   const [acceptedRevision, setAcceptedRevision] = useState<number | null>(null);
   const [detailsRevision, setDetailsRevision] = useState<number | null>(null);
-  const [approvalDraft, setApprovalDraft] = useState<{ id: string; revision: number } | null>(null);
+  const [approvalDraft, setApprovalDraft] = useState<{ id: string; transaction: NativeTransactionReview['transaction'] } | null>(null);
   const approvalDraftRef = useRef(approvalDraft);
-  const editingApproval = approvalDraft?.id === review.id && approvalDraft.revision === review.revision;
+  const editingApproval = approvalDraft?.id === review.id && approvalDraft.transaction === review.transaction;
   const setApprovalEditing = (editing: boolean) => {
     const current = controller.getSnapshot().signingReview;
-    if (current?.kind !== 'transaction' || current.id !== review.id || current.revision !== review.revision) return;
+    if (current?.kind !== 'transaction' || current.id !== review.id || current.transaction !== review.transaction) return;
     const previous = approvalDraftRef.current;
-    if (!editing && (previous?.id !== review.id || previous.revision !== review.revision)) return;
-    const next = editing ? { id: review.id, revision: review.revision } : null;
+    if (!editing && (previous?.id !== review.id || previous.transaction !== review.transaction)) return;
+    const next = editing ? { id: review.id, transaction: review.transaction } : null;
     approvalDraftRef.current = next;
     setApprovalDraft(next);
   };
@@ -74,7 +74,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
   const transaction = review.transaction;
   const prepared = transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
   const approve = () => {
-    if (approvalDraftRef.current?.id === review.id && approvalDraftRef.current.revision === review.revision) return;
+    if (approvalDraftRef.current?.id === review.id && approvalDraftRef.current.transaction === review.transaction) return;
     const action = review.needsAccountSwitch
       ? controller.activateRequestAccount(review.id, review.revision)
       : controller.approveRequest(review.id, review.revision, acknowledged);
@@ -95,7 +95,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
       <Text selectable style={s.address}>{review.address}</Text>
       <Text style={s.muted}>{review.networkLabel} · Chain ID {review.chainId}</Text>
     </Card>
-    {review.approval && <ApprovalReview summary={review.approval} revision={review.revision}
+    {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
       onEditingChange={setApprovalEditing}
       disabled={review.busy || submitted || review.needsAccountSwitch || review.error !== null}
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
