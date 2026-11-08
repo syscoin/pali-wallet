@@ -1,6 +1,7 @@
 // validateEOAAddress removed - validation should be done through background service
 import { ethErrors } from 'helpers/errors';
 
+import { normalizeDappTransaction } from '../../shared/dappTransaction.ts';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
@@ -13,7 +14,6 @@ import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { normalizeDappTransaction } from 'utils/dappTransaction';
 import { getAddress } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import {

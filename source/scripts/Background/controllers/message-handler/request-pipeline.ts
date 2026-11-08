@@ -12,10 +12,7 @@ import type { IDAppAccountSelectionContext } from 'types/controllers';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { assertDappRequestWorkBudget } from 'utils/dappRequestWorkBudget';
-import {
-  getBlacklistTargetsForEvmCallWithContractType,
-  IEvmCallBlacklistTarget,
-} from 'utils/evmCallBlacklist';
+import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 import { getPersonalSignParams } from 'utils/personalSignReview';
 import { blacklistService } from 'utils/security/blacklistService';
@@ -35,6 +32,7 @@ import {
   NetworkEnforcement,
   MethodRoute,
 } from './types';
+import type { IEvmCallBlacklistTarget } from '../../../../shared/evmCallBlacklist.ts';
 
 // Type for the request executor function
 export type RequestExecutor = (

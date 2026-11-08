@@ -1,10 +1,17 @@
-import { ethErrors } from 'helpers/errors';
+import {
+  EthereumProviderErrorHandler,
+  EthereumRpcErrorHandler,
+} from '../helpers/errors/errorClassesHandlers.ts';
+import { errorCodes } from '../helpers/errors/errorConstants.ts';
 
 const ADDRESS = /^0x[\da-f]{40}$/i;
 const BYTES = /^0x(?:[\da-f]{2})*$/i;
 const MAX_UINT256 = (BigInt(1) << BigInt(256)) - BigInt(1);
 const invalid = (field: string) => {
-  throw ethErrors.rpc.invalidParams(`Invalid transaction ${field}`);
+  throw new EthereumRpcErrorHandler(
+    errorCodes.rpc.invalidParams,
+    `Invalid transaction ${field}`
+  );
 };
 
 // Paired with the qualified keyring zero-tip implementation: zero priority is
@@ -30,7 +37,8 @@ export const assertSupportedEvmFees = (
       ? undefined
       : feeQuantity(tx.maxPriorityFeePerGas, 'priority fee');
   if (maximum === BigInt(0))
-    throw ethErrors.provider.unsupportedMethod(
+    throw new EthereumProviderErrorHandler(
+      errorCodes.provider.unsupportedMethod,
       'A positive EIP-1559 maximum fee is required.'
     );
   if (maximum !== undefined && priority !== undefined && priority > maximum)
@@ -113,7 +121,8 @@ export const normalizeDappTransaction = (input: unknown) => {
     quantities.type !== BigInt(0) &&
     quantities.type !== BigInt(2)
   )
-    throw ethErrors.provider.unsupportedMethod(
+    throw new EthereumProviderErrorHandler(
+      errorCodes.provider.unsupportedMethod,
       'Pali supports legacy and EIP-1559 transactions (types 0 and 2).'
     );
   assertSupportedEvmFees(tx, quantities.type === BigInt(0));
@@ -124,7 +133,8 @@ export const normalizeDappTransaction = (input: unknown) => {
     'maxFeePerBlobGas',
   ])
     if (tx[field] !== undefined)
-      throw ethErrors.provider.unsupportedMethod(
+      throw new EthereumProviderErrorHandler(
+        errorCodes.provider.unsupportedMethod,
         `Transaction ${field} is not supported`
       );
   if (
