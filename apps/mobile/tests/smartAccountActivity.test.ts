@@ -7,6 +7,7 @@ import {
 } from '../../../source/shared/erc20.ts';
 import {
   decodeRetainedSmartAccountTransfer,
+  decodeRetainedSmartAccountOperations,
   observeSmartAccountActivity,
 } from '../../../source/wallet/smartAccountActivity.ts';
 import {
@@ -220,4 +221,23 @@ test('Smart ERC20 Activity binds display metadata to the authenticated inner tok
     ),
     null
   );
+});
+
+
+test('nonce identities include authenticated handleOps from any payer and execution mode without metadata', async () => {
+  const original = await signed();
+  const outer = Transaction.from(original.entry.rawTransaction);
+  const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', outer.data);
+  const raw = operations[0];
+  const op = { sender: raw.sender, nonce: raw.nonce, initCode: raw.initCode, callData: '0x12345678', accountGasLimits: raw.accountGasLimits,
+    preVerificationGas: raw.preVerificationGas, gasFees: raw.gasFees, paymasterAndData: raw.paymasterAndData, signature: raw.signature };
+  const secondPayer = new Wallet('0x' + '55'.repeat(32));
+  for (const owner of [payer, secondPayer]) {
+    const bytes = await owner.signTransaction({ chainId: 1, nonce: 0, to: getPaliEntryPointAddress(1), gasLimit: 500000, gasPrice: 2,
+      data: paliEntryPointInterface.encodeFunctionData('handleOps', [[op, { ...op, nonce: 8 }], owner.address]) });
+    const tx = Transaction.from(bytes);
+    const entry = { ...original.entry, metadata: undefined, from: owner.address, hash: tx.hash!, rawTransaction: bytes };
+    assert.deepEqual(decodeRetainedSmartAccountOperations(entry).map(value => [value.payer, value.operationNonce]), [[owner.address, '7'], [owner.address, '8']]);
+    assert.equal(decodeRetainedSmartAccountOperations({ ...entry, from: recipient }).length, 0);
+  }
 });

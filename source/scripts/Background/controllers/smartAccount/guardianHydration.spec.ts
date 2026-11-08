@@ -45,6 +45,10 @@ describe('guardian policy metadata hydration', () => {
       web3Provider: { getCode: jest.fn().mockResolvedValue('0x01') },
     };
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
     } as any);
     controller.getGuardianRecoveryStatusForAccount = jest.fn();

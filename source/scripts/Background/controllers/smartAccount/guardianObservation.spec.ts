@@ -43,6 +43,10 @@ test.each(['account', 'chain', 'url', 'family', 'session', 'provider'])(
         release = resolve;
       });
     const controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => session,
     } as any);
@@ -78,6 +82,10 @@ test('passes only the explicit read-only target and optional known operation int
   mockWait = async () => undefined;
   const transaction = { web3Provider: {} };
   const controller = new SmartAccountController({
+    captureSmartAccountPendingRecords: async () => ({
+      profileId: '0x' + '11'.repeat(32),
+      read: async () => [],
+    }),
     getEthereumTransaction: () => transaction,
     getWalletSessionGeneration: () => 1,
   } as any);
@@ -117,6 +125,10 @@ test('coalesces identical pending reads, normalizes IDs and does not cache compl
     });
   const transaction = { web3Provider: {} };
   const controller = new SmartAccountController({
+    captureSmartAccountPendingRecords: async () => ({
+      profileId: '0x' + '11'.repeat(32),
+      read: async () => [],
+    }),
     getEthereumTransaction: () => transaction,
     getWalletSessionGeneration: () => 1,
   } as any);
@@ -159,6 +171,10 @@ test('retired read cleanup cannot remove the replacement session pending read', 
   let session = 1;
   const transaction = { web3Provider: {} };
   const controller = new SmartAccountController({
+    captureSmartAccountPendingRecords: async () => ({
+      profileId: '0x' + '11'.repeat(32),
+      read: async () => [],
+    }),
     getEthereumTransaction: () => transaction,
     getWalletSessionGeneration: () => session,
   } as any);

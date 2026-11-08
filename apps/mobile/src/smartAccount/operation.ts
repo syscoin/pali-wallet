@@ -1,3 +1,4 @@
+import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import type { SavedCollectible } from '../portfolio/tokenRegistry.ts';
@@ -212,7 +213,34 @@ export class NativeSmartAccountOperation {
     this.preparing = true;
     try {
       this.check();
-      const result = await this.host.prepare(this.lifetime.signal, this.check);
+      let result;
+      for (;;) {
+        try {
+          result = await this.host.prepare(this.lifetime.signal, this.check);
+          break;
+        } catch (error) {
+          if (!isSmartAccountPendingStateError(error)) throw error;
+          this.check();
+          this.publish({
+            error:
+              'Waiting for the network to include the earlier pending operation.',
+          });
+          await new Promise<void>((resolve, reject) => {
+            const stop = () => {
+              clearTimeout(timer);
+              reject(new Error('SMART_OPERATION_EXPIRED'));
+            };
+            const timer = setTimeout(() => {
+              this.lifetime.signal.removeEventListener('abort', stop);
+              resolve();
+            }, 2000);
+            this.lifetime.signal.addEventListener('abort', stop, {
+              once: true,
+            });
+            if (this.lifetime.signal.aborted) stop();
+          });
+        }
+      }
       this.check();
       if (result.kind === 'already-deployed') {
         if (this.host.intent.kind !== 'deploy')
@@ -277,6 +305,7 @@ export class NativeSmartAccountOperation {
       this.prepared = prepared;
       this.publish({
         phase: 'authorize',
+        error: null,
         intent: Object.freeze({ ...result.intent }),
         maximumPrefundUnits: getSmartAccountUserOpRequiredPrefund(
           prepared.userOperation
@@ -337,8 +366,23 @@ export class NativeSmartAccountOperation {
         phase: 'complete',
         payerReview: null,
       });
-    } catch {
-      this.fail();
+    } catch (error) {
+      if (
+        isSmartAccountPendingStateError(error) &&
+        (error as { transactionNotBroadcast?: boolean })
+          .transactionNotBroadcast !== false &&
+        !this.snapshot.transactionHash &&
+        !this.lifetime.signal.aborted
+      ) {
+        this.prepared = null;
+        this.signingStarted = false;
+        this.publish({
+          phase: 'preparing',
+          authorization: null,
+          payerReview: null,
+        });
+        await this.prepare();
+      } else this.fail();
     }
   }
   private reviewPayer(

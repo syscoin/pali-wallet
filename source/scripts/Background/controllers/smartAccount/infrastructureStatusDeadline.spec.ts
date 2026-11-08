@@ -93,6 +93,10 @@ describe('infrastructure status aggregate deadline', () => {
     };
     const transaction = { web3Provider: provider };
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
     } as any);
   });

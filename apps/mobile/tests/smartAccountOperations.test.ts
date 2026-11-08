@@ -1,6 +1,7 @@
+import { createSmartAccountPendingState } from '../../../source/utils/smartAccount/pendingState.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { AbiCoder } from 'ethers/abi';
+import { AbiCoder, Interface } from 'ethers/abi';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { encodeEcdsaValidatorInitData, getPaliSmartAccountDescriptor , getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import { derivePaliSmartAccountDeployment } from '../../../source/utils/smartAccount/counterfactual.ts';
@@ -24,24 +25,36 @@ function fixture() {
     descriptor, factoryAddress, deploymentAuth: { data: auth.data, validator: auth.validator }, auth };
   const account = { id: 0, address: deployment.address, xpub: deployment.address, xprv: '', label: 'Fixture', isSmartAccount: true,
     isImported: false, isLedgerWallet: false, isTrezorWallet: false, balances: { syscoin: 0, ethereum: 0 }, smartAccount: metadata } as IKeyringAccountState;
-  const provider = {
+  const rawProvider = {
+    async verifyConfiguredChainId() { assert.equal(await rawProvider.send('eth_chainId', []), '0x1'); },
+    send: async (method: string, params: any[]) => {
+      if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getCode') return '0x';
+      if (method === 'eth_getBalance') return '0x0';
+      if (method === 'eth_call') {
+        const parsed = new Interface(['function getNonce(address,uint192) view returns(uint256)']).parseTransaction({ data: params[0].data });
+        return AbiCoder.defaultAbiCoder().encode(['uint256'], [parsed ? BigInt(parsed.args[1]) << BigInt(64) : BigInt(0)]);
+      }
+      return '0x186a0';
+    },
     getCode: async () => '0x',
     call: async () => AbiCoder.defaultAbiCoder().encode(['uint256'], [0]),
     getFeeData: async () => ({ maxFeePerGas: BigNumber.from(2), maxPriorityFeePerGas: BigNumber.from(1), gasPrice: BigNumber.from(2), lastBaseFeePerGas: BigNumber.from(1) }),
     getBalance: async () => BigNumber.from(0),
     estimateGas: async () => BigNumber.from(100000),
   };
-  return { account, metadata, deployment, provider };
+  const pending = createSmartAccountPendingState(rawProvider, { profileId: '0x' + '11'.repeat(32), read: async () => [] }, chainId, account.address, () => undefined);
+  return { account, metadata, deployment, provider: pending.provider, pending };
 }
 
 test('portable shared preparation uses the canonical deployment and local UserOperation hash', async () => {
   const f = fixture();
   const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
-    executions: [{ target: f.account.address, value: '0x0', data: '0x' }], knownDeployed: false, provider: f.provider,
+    executions: [{ target: f.account.address, value: '0x0', data: '0x' }], knownDeployed: false, provider: f.provider, pending: f.pending,
     async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
   assert.equal(prepared.userOperation.sender, f.account.address);
   assert.equal(prepared.userOperation.initCode.toLowerCase(), (f.deployment.factory + f.deployment.factoryData.slice(2)).toLowerCase());
-  assert.equal(prepared.userOperation.nonce, '0');
+  assert.equal(BigInt(prepared.userOperation.nonce) & ((BigInt(1) << BigInt(64)) - BigInt(1)), BigInt(0));
   assert.equal(prepared.gasPayer.address, owner);
   assert.match(prepared.actionHash, /^0x[0-9a-f]{64}$/i);
   assert.equal(prepared.execution!.target, f.account.address);
@@ -64,7 +77,7 @@ test('shared payer policy keeps preferred and selected identities distinct from 
 test('portable deployment preserves prefund acknowledgement if handleOps submission fails', async () => {
   const f = fixture();
   const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
-    executions: [{ target: f.account.address, value: '0x0', data: '0x' }], knownDeployed: false, provider: f.provider,
+    executions: [{ target: f.account.address, value: '0x0', data: '0x' }], knownDeployed: false, provider: f.provider, pending: f.pending,
     async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
   const sends: unknown[] = [];
   const send = async (...args: any[]) => {
@@ -74,7 +87,7 @@ test('portable deployment preserves prefund acknowledgement if handleOps submiss
     return { hash: '0x' + 'ab'.repeat(32), async wait() {} };
   };
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, {
-    chainId, provider: f.provider, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
+    chainId, provider: f.provider, pending: f.pending, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
     getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
     getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
     getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [], assertGasTankCoversTransaction: async () => BigNumber.from(100000),
@@ -97,7 +110,7 @@ test('shared submission refuses omitted or asynchronous approval guards before h
 test('shared submission requires the exact issued account and operation before any payer work', async () => {
   const f = fixture();
   const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
-    executions: [{ target: f.account.address, value: '0x0', data: '0x' }], knownDeployed: false, provider: f.provider,
+    executions: [{ target: f.account.address, value: '0x0', data: '0x' }], knownDeployed: false, provider: f.provider, pending: f.pending,
     async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
   const params = { ...prepared, accountId: 0, executionContextId: 'issued', signature: '0x1234' };
   const contexts = [undefined, { accountId: 1, userOperation: prepared.userOperation },
@@ -105,6 +118,7 @@ test('shared submission requires the exact issued account and operation before a
   for (const context of contexts) {
     let payerRead = false;
     const host = {
+      pending: f.pending,
       assertSmartAccountExecutionContext(id: string) { assert.equal(id, 'issued'); },
       getExecutionContext() { return context; },
       getSmartAccountById() { payerRead = true; throw new Error('account accessed'); },

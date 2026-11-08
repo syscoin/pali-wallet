@@ -124,6 +124,7 @@ describe('normal local composite approvals', () => {
       // Real production dispatcher and child drivers; only cryptographic I/O
       // is synthetic. No signature, RPC, chain or browser capability is used.
       const result = await signSmartAccountActionHash({
+        assertBeforeAuthentication: async () => undefined,
         accountId: 7,
         actionHash: ACTION_HASH,
         authenticatorContexts: {
@@ -165,6 +166,7 @@ describe('normal local composite approvals', () => {
     const events: string[] = [];
     const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
     const result = await signSmartAccountActionHash({
+      assertBeforeAuthentication: async () => undefined,
       accountId: 7,
       actionHash: ACTION_HASH,
       authenticatorContexts: { ecdsa: localEcdsaContext(signEcdsa) },
@@ -197,6 +199,7 @@ describe('normal local composite approvals', () => {
 
   it('pads an unavailable ECDSA approval instead of misaligning a later passkey', async () => {
     const result = await signSmartAccountActionHash({
+      assertBeforeAuthentication: async () => undefined,
       actionHash: ACTION_HASH,
       smartAccount: metadata(1),
     });
@@ -215,6 +218,7 @@ describe('normal local composite approvals', () => {
     const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
     await expect(
       signSmartAccountActionHash({
+        assertBeforeAuthentication: async () => undefined,
         actionHash: ACTION_HASH,
         authenticatorContexts: { ecdsa: localEcdsaContext(signEcdsa) },
         smartAccount,
@@ -233,6 +237,7 @@ describe('normal local composite approvals', () => {
     });
     compositeModule(smartAccount).config.childValidators = [CUSTOM, ECDSA];
     const result = await signSmartAccountActionHash({
+      assertBeforeAuthentication: async () => undefined,
       actionHash: ACTION_HASH,
       authenticatorContexts: { ecdsa: localEcdsaContext() },
       smartAccount,
@@ -260,6 +265,7 @@ describe('normal local composite approvals', () => {
     compositeModule(smartAccount).config.childValidators = [ECDSA, SLH];
     const signSlh = jest.fn().mockResolvedValue(SLH_SIGNATURE);
     const result = await signSmartAccountActionHash({
+      assertBeforeAuthentication: async () => undefined,
       accountId: 7,
       actionHash: ACTION_HASH,
       executionContextId: 'composite-context',
@@ -300,6 +306,7 @@ describe('normal local composite approvals', () => {
       const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
       await expect(
         signSmartAccountActionHash({
+          assertBeforeAuthentication: async () => undefined,
           actionHash: ACTION_HASH,
           authenticatorContexts: { ecdsa: localEcdsaContext(signEcdsa) },
           smartAccount,
@@ -329,7 +336,11 @@ describe('composite submission and SLH reserve policy', () => {
           smartAccount,
           userOperation: { sender: ACCOUNT },
         };
-      if (method === 'assertSmartAccountExecutionContext') return;
+      if (
+        method === 'assertSmartAccountExecutionContext' ||
+        method === 'assertSmartAccountPreparedNonce'
+      )
+        return;
       if (method === 'submitSmartAccountExecution') return payload[0];
       throw new Error(`Unexpected method ${method}`);
     });
@@ -473,6 +484,7 @@ describe('composite submission and SLH reserve policy', () => {
     const failure = new Error(message);
     await expect(
       signSmartAccountActionHash({
+        assertBeforeAuthentication: async () => undefined,
         actionHash: ACTION_HASH,
         smartAccount,
         authenticatorContexts: {
@@ -483,4 +495,51 @@ describe('composite submission and SLH reserve policy', () => {
     ).rejects.toBe(failure);
     expect(signEcdsa).not.toHaveBeenCalled();
   });
+});
+
+it.each(['slh-dsa', 'p256-webauthn'] as const)(
+  'refuses stale %s authorization before cryptographic work',
+  async (kind) => {
+    const smartAccount = kind === 'slh-dsa' ? slhComposite() : metadata(1);
+    const validator = smartAccount.installedModules!.find(
+      (module) => module.id === kind
+    )!;
+    smartAccount.auth = {
+      data: '0x',
+      module: kind,
+      validator: validator.address,
+    };
+    const signSlh = jest.fn();
+    jest.mocked(signP256WebAuthnActionHash).mockClear();
+    await expect(
+      signSmartAccountActionHash({
+        actionHash: ACTION_HASH,
+        smartAccount,
+        assertBeforeAuthentication: async () => {
+          throw new Error('nonce changed');
+        },
+        authenticatorContexts: { 'slh-dsa': { signActionHash: signSlh } },
+      })
+    ).rejects.toThrow('nonce changed');
+    expect(signSlh).not.toHaveBeenCalled();
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+  }
+);
+
+it('rechecks the prepared operation before every composite child', async () => {
+  const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
+  jest.mocked(signP256WebAuthnActionHash).mockClear();
+  let checks = 0;
+  await expect(
+    signSmartAccountActionHash({
+      actionHash: ACTION_HASH,
+      smartAccount: metadata(2),
+      assertBeforeAuthentication: async () => {
+        if (++checks === 3) throw new Error('nonce changed');
+      },
+      authenticatorContexts: { ecdsa: localEcdsaContext(signEcdsa) },
+    })
+  ).rejects.toThrow('nonce changed');
+  expect(signEcdsa).toHaveBeenCalledTimes(1);
+  expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
 });

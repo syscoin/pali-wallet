@@ -103,6 +103,10 @@ import {
   ensureSmartAccountDeploymentPrefund,
 } from 'utils/smartAccount/payerPolicy';
 import {
+  createSmartAccountPendingState,
+  type SmartAccountPendingState,
+} from 'utils/smartAccount/pendingState';
+import {
   getExplicitSmartAccountGasPrice,
   prepareSmartAccountOperation,
   requireSmartAccountAuthenticator,
@@ -123,9 +127,15 @@ import {
   writeInfrastructureJournal,
   clearInfrastructureJournal,
 } from './infrastructureJournal';
+import type { SmartAccountPendingRecords } from '../../../../wallet/evmSignedRecords';
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
 export interface ISmartAccountControllerDependencies {
+  captureSmartAccountPendingRecords(
+    chainId: number,
+    address: string,
+    assertCurrent: () => void
+  ): Promise<SmartAccountPendingRecords>;
   getEthereumTransaction: () => any;
   getLatestUpdateForCurrentAccount: (
     isPolling?: boolean,
@@ -148,6 +158,7 @@ export interface ISmartAccountControllerDependencies {
     saveOptions?: {
       assertBeforeSign: () => void;
       assertCurrentContext?: () => void;
+      assertPendingState?: () => Promise<void>;
       clearNavigation?: boolean;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
@@ -247,6 +258,7 @@ class SmartAccountController {
       actionHash: string;
       expiresAt: number;
       gasPrice?: string;
+      pending?: SmartAccountPendingState;
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
       userOperation?: SmartAccountPackedUserOperation;
     }
@@ -414,6 +426,18 @@ class SmartAccountController {
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
       });
+    }
+  }
+
+  public async assertSmartAccountPreparedNonce(
+    executionContextId: string
+  ): Promise<void> {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    if (context.userOperation) {
+      if (!context.pending) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      await context.pending.assertNonce(context.userOperation);
+      this.assertSmartAccountExecutionContext(executionContextId);
     }
   }
 
@@ -1541,7 +1565,7 @@ class SmartAccountController {
       verificationGasLimit: 0,
     };
     const hasZkSysGasTankGas = primaryGasPayer
-      ? await this.canUseZkSysGasTankForSmartAccountTx({
+      ? await this.canUseZkSysGasTankForSmartAccountTx(provider, {
           chainId: active.metadata.chainId,
           gasEstimate: statusGasEstimate,
           gasPayerAddress: primaryGasPayer.address,
@@ -1624,10 +1648,23 @@ class SmartAccountController {
       throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
         transactionNotBroadcast: true,
       });
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
+    const rawProvider = this.ethereumTransaction?.web3Provider;
+    if (!rawProvider) {
       throw new Error(PROVIDER_UNAVAILABLE_ERROR);
     }
+    const pendingRecords = await this.deps.captureSmartAccountPendingRecords(
+      snapshot.chainId,
+      active.account.address,
+      assertContext
+    );
+    const pending = createSmartAccountPendingState(
+      rawProvider,
+      pendingRecords,
+      snapshot.chainId,
+      active.account.address,
+      assertContext
+    );
+    const provider = pending.provider;
     const useDeployedCachedMetadata =
       useCachedMetadata &&
       active.metadata.isDeployed &&
@@ -1643,13 +1680,14 @@ class SmartAccountController {
       feeOverrides,
       knownDeployed: useDeployedCachedMetadata,
       provider,
+      pending,
       assertCurrent: assertContext,
       selectGasPayer: async (gasEstimate, maxFeePerGas) => {
         const primaryGasPayer = this.getWalletGasPayerCandidates(
           active.metadata.deploymentGasPayer
         )[0];
         const useGasTank = primaryGasPayer
-          ? await this.canUseZkSysGasTankForSmartAccountTx({
+          ? await this.canUseZkSysGasTankForSmartAccountTx(provider, {
               chainId: active.metadata.chainId,
               gasEstimate,
               gasPayerAddress: primaryGasPayer.address,
@@ -1664,6 +1702,7 @@ class SmartAccountController {
               type: primaryGasPayer.type,
             }
           : await this.getWalletGasPayerAccount(
+              provider,
               active.metadata.deploymentGasPayer
             );
         assertContext();
@@ -1684,6 +1723,7 @@ class SmartAccountController {
       gasPrice: legacyGasPrice,
       snapshot,
       userOperation: Object.freeze({ ...userOperation }),
+      pending,
     });
     return { ...prepared, accountId: active.account.id, executionContextId };
   }
@@ -1720,11 +1760,19 @@ class SmartAccountController {
         assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();
+    const pending = this.executionContexts.get(
+      params.executionContextId
+    )?.pending;
+    if (!pending)
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
     return submitSmartAccountOperation(
       params,
       {
         chainId: store.getState().vault.activeNetwork.chainId,
-        provider: this.ethereumTransaction?.web3Provider,
+        provider: pending.provider,
+        pending,
         assertExpectedExecutionContext: (context, id) =>
           this.assertExpectedExecutionContext(context, id),
         assertSmartAccountExecutionContext: (id) =>
@@ -1737,13 +1785,18 @@ class SmartAccountController {
         },
         getSmartAccountById: (id) => this.getSmartAccountById(id),
         getWalletGasPayerAccount: (preferred, transaction, options) =>
-          this.getWalletGasPayerAccount(preferred, transaction, options),
+          this.getWalletGasPayerAccount(
+            pending.provider,
+            preferred,
+            transaction,
+            options
+          ),
         getLocalNativeExecutionRecipients: (executions) =>
           this.getLocalNativeExecutionRecipients(executions),
         assertGasTankCoversTransaction: (request) =>
-          this.assertZkSysGasTankCoversTransaction(request),
+          this.assertZkSysGasTankCoversTransaction(request, pending.provider),
         ensureDeploymentPrefund: (...args) =>
-          this.ensureSmartAccountDeploymentPrefund(...args),
+          this.ensureSmartAccountDeploymentPrefund(...args, pending.provider),
         sendTransaction: (...args) =>
           this.deps.sendAndSaveEthTransaction(...args),
         invalidateMetadata: (address) =>
@@ -1753,29 +1806,29 @@ class SmartAccountController {
     );
   }
 
-  private async canUseZkSysGasTankForSmartAccountTx(params: {
-    chainId: number;
-    gasEstimate: SmartAccountUserOpGasEstimate;
-    gasPayerAddress: string;
-    maxFeePerGas: BigNumber;
-  }) {
-    return canUseSmartAccountGasTank(
-      this.ethereumTransaction?.web3Provider,
-      params
-    );
+  private async canUseZkSysGasTankForSmartAccountTx(
+    provider: any,
+    params: {
+      chainId: number;
+      gasEstimate: SmartAccountUserOpGasEstimate;
+      gasPayerAddress: string;
+      maxFeePerGas: BigNumber;
+    }
+  ) {
+    return canUseSmartAccountGasTank(provider, params);
   }
 
-  private async assertZkSysGasTankCoversTransaction(params: {
-    chainId: number;
-    gasPayerAddress: string;
-    gasPrice?: string;
-    maxFeePerGas?: string;
-    transaction: { data?: string; to: string; value?: string };
-  }) {
-    return assertSmartAccountGasTankCredit(
-      this.ethereumTransaction?.web3Provider,
-      params
-    );
+  private async assertZkSysGasTankCoversTransaction(
+    params: {
+      chainId: number;
+      gasPayerAddress: string;
+      gasPrice?: string;
+      maxFeePerGas?: string;
+      transaction: { data?: string; to: string; value?: string };
+    },
+    provider: any
+  ) {
+    return assertSmartAccountGasTankCredit(provider, params);
   }
 
   /**
@@ -1796,10 +1849,11 @@ class SmartAccountController {
       assertCurrentContext: () => void;
       onAcknowledged: () => void;
       onSubmissionAttempt: () => void;
-    }
+    },
+    provider: any
   ): Promise<void> {
     return ensureSmartAccountDeploymentPrefund(
-      this.ethereumTransaction?.web3Provider,
+      provider,
       (...args) => this.deps.sendAndSaveEthTransaction(...args),
       accountAddress,
       userOperation,
@@ -2067,11 +2121,15 @@ class SmartAccountController {
         ]
       );
     try {
-      const gasPayer = await this.getWalletGasPayerAccount(params.gasPayer, {
-        data: recoveryCallData,
-        to: recoveryModule,
-        value: '0x0',
-      });
+      const gasPayer = await this.getWalletGasPayerAccount(
+        this.ethereumTransaction?.web3Provider,
+        params.gasPayer,
+        {
+          data: recoveryCallData,
+          to: recoveryModule,
+          value: '0x0',
+        }
+      );
       assertCurrent();
       const response = await this.deps.sendAndSaveEthTransaction(
         { data: recoveryCallData, to: recoveryModule, value: '0x0' },
@@ -2136,11 +2194,15 @@ class SmartAccountController {
       'executeRecovery',
       [account, params.salt, params.mode, params.executionCalldata]
     );
-    const gasPayer = await this.getWalletGasPayerAccount(undefined, {
-      data: callData,
-      to: recoveryModule,
-      value: '0x0',
-    });
+    const gasPayer = await this.getWalletGasPayerAccount(
+      this.ethereumTransaction?.web3Provider,
+      undefined,
+      {
+        data: callData,
+        to: recoveryModule,
+        value: '0x0',
+      }
+    );
     assertCurrent();
 
     try {
@@ -2419,6 +2481,8 @@ class SmartAccountController {
       if (assertApprovalCurrent !== undefined)
         assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
+    assertCurrent();
+    await this.assertSmartAccountPreparedNonce(executionContextId);
     assertCurrent();
     return signSmartAccountEcdsaOperation({
       metadata,
@@ -2856,6 +2920,7 @@ class SmartAccountController {
   }
 
   private async getWalletGasPayerAccount(
+    provider: any,
     preferred?: {
       address: string;
       id: number;
@@ -2874,7 +2939,7 @@ class SmartAccountController {
   }> {
     return selectSmartAccountGasPayer(
       store.getState().vault,
-      this.ethereumTransaction?.web3Provider,
+      provider,
       preferred,
       transaction,
       options

@@ -164,6 +164,10 @@ beforeEach(async () => {
     },
   };
   wallet.smartAccount = new SmartAccountController({
+    captureSmartAccountPendingRecords: async () => ({
+      profileId: '0x' + '11'.repeat(32),
+      read: async () => [],
+    }),
     getWalletSessionGeneration: () => wallet.walletSessionGeneration,
     getWalletStateGeneration: () => wallet.walletStateGeneration,
     getEthereumTransaction: () => transaction,

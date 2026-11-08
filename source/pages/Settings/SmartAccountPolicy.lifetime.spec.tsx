@@ -888,7 +888,10 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           return slow === 'prepare'
             ? pending.promise
             : Promise.resolve(prepared(params[0]));
-        if (path[1] === 'assertSmartAccountExecutionContext')
+        if (
+          path[1] === 'assertSmartAccountExecutionContext' ||
+          path[1] === 'assertSmartAccountPreparedNonce'
+        )
           return mockGeneration === 7
             ? Promise.resolve()
             : Promise.reject(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'));

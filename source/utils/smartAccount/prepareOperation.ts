@@ -12,7 +12,6 @@ import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
 import {
   getPaliEntryPointAddress,
   getPaliSmartAccountFactoryAddress,
-  PALI_ENTRYPOINT_V09_ABI,
   paliSmartAccountInterface,
 } from './contracts.ts';
 import {
@@ -20,6 +19,7 @@ import {
   getSmartAccountValidatorProfile,
   type SmartAccountUserOpGasEstimate,
 } from './gas.ts';
+import type { SmartAccountPendingState } from './pendingState.ts';
 import { getSmartAccountUserOpHash } from './userOperationHash.ts';
 import type {
   IKeyringAccountState,
@@ -91,6 +91,7 @@ export async function prepareSmartAccountOperation({
   feeOverrides = {},
   knownDeployed,
   provider,
+  pending,
   selectGasPayer,
   assertCurrent,
 }: {
@@ -102,6 +103,7 @@ export async function prepareSmartAccountOperation({
   executions: Array<{ data?: string; target: string; value: string }>;
   feeOverrides?: SmartAccountFeeOverrides;
   knownDeployed: boolean;
+  pending: SmartAccountPendingState;
   provider: any;
   selectGasPayer(
     gasEstimate: SmartAccountUserOpGasEstimate,
@@ -109,6 +111,7 @@ export async function prepareSmartAccountOperation({
   ): Promise<{ gasPayer: SmartAccountGasPayer; useGasTank: boolean }>;
 }) {
   assertSynchronousEvmFeeGuard(assertCurrent);
+  await pending.verify();
   feeOverrides = { ...feeOverrides };
   executions = executions.map((execution) => ({ ...execution }));
   const metadata = account.smartAccount;
@@ -133,11 +136,6 @@ export async function prepareSmartAccountOperation({
   assertSynchronousEvmFeeGuard(assertCurrent);
   const prepared = smartAccount.encodeExecutions(executions);
   const entryPointAddress = getPaliEntryPointAddress(chainId);
-  const entryPoint = new Contract(
-    entryPointAddress,
-    PALI_ENTRYPOINT_V09_ABI,
-    provider
-  );
   const code = knownDeployed
     ? 'cached-deployed'
     : await provider.getCode(account.address);
@@ -156,9 +154,7 @@ export async function prepareSmartAccountOperation({
       );
     assertSynchronousEvmFeeGuard(assertCurrent);
   }
-  const nonce = (
-    await entryPoint.getNonce(account.address, smartAccount.getNonceKey())
-  ).toString();
+  const nonce = await pending.readNonce(BigInt(smartAccount.getNonceKey()));
   assertSynchronousEvmFeeGuard(assertCurrent);
   const callData = smartAccount.encodeCalls(executions);
   const feeData = await provider.getFeeData();
@@ -232,6 +228,7 @@ export async function prepareSmartAccountOperation({
     preVerificationGas: String(gasEstimate.preVerificationGas),
     sender: account.address,
   });
+  await pending.assertNonce(userOperation);
   const actionHash = getSmartAccountUserOpHash(userOperation, chainId);
   assertSynchronousEvmFeeGuard(assertCurrent);
   const orderedExecutions = prepared.executions.map((execution) => ({
