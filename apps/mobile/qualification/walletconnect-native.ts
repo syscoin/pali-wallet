@@ -300,7 +300,10 @@ export async function qualifyNativeWalletConnect(options: {
         );
         const outcome = pairing.then(
           () => true,
-          () => false
+          (error) => {
+            if (!pending) throw error;
+            return false;
+          }
         );
         if (pending) {
           const started = Date.now();

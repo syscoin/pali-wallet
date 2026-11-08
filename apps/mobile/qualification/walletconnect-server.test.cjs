@@ -240,14 +240,13 @@ test('WalletConnect diagnostics use closed fields and redact arbitrary error tex
   ]) assert.equal(isWalletConnectQualificationDiagnostic(invalid), false);
 });
 
-function failingQualification(stage) {
+function failingQualification(stage, targetError = Object.assign(Error('PRIVATE_PAIRING_URI'), { code: 'CONNECTION_UNAVAILABLE' })) {
   const failures = new Set(Array.isArray(stage) ? stage : [stage]);
   const source = fs.readFileSync(path.join(__dirname, 'walletconnect-native.ts'), 'utf8');
   const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   const module = { exports: {} };
   const counts = { opened: 0, closed: 0, pending: 0, pendingClosed: 0, frames: 0, invalid: 0 };
   let statusReads = 0;
-  const targetError = Object.assign(Error('PRIVATE_PAIRING_URI'), { code: 'CONNECTION_UNAVAILABLE' });
   const load = (name) => {
     if (name === '@walletconnect/core') return { Core: class {
       constructor(options) { this.options = options; this.signal = { aborted: false }; this.heartbeat = this.relayer = { events: { eventNames: () => [] } }; }
@@ -292,7 +291,19 @@ test('pair failure remains primary when final transport cleanup also fails', asy
   const fixture = failingQualification(['pair', 'close']);
   await assert.rejects(fixture.run(), (error) => {
     assert.equal(error.diagnostic.substage, 'pair');
-    assert.equal(error.diagnostic.errorCode, 'WALLETCONNECT_NATIVE_QUALIFICATION_FAILED');
+    assert.equal(error.diagnostic.errorCode, 'CONNECTION_UNAVAILABLE');
+    return true;
+  });
+});
+
+test('non-cancelled pairing retains the allowlisted transport rejection diagnostic', async () => {
+  const { WalletConnectTransportError } = require('../src/connections/walletConnect.ts');
+  const fixture = failingQualification('pair', new WalletConnectTransportError());
+  await assert.rejects(fixture.run(), (error) => {
+    assert.deepEqual(JSON.parse(JSON.stringify(error.diagnostic)), {
+      substage: 'pair', errorName: 'WalletConnectTransportError', errorCode: 'CONNECTION_UNAVAILABLE',
+    });
+    assert.equal(fixture.statusReads(), 0);
     return true;
   });
 });
