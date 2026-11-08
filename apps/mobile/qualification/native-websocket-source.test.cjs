@@ -42,12 +42,14 @@ test('native record precedes network entry and pending cancellation uses cancel'
   const module = read(
     'modules/pali-walletconnect-socket/android/src/main/java/org/syscoin/pali/websocket/PaliWalletConnectSocketModule.kt'
   );
+  assert.match(module, /private val socketRegistry = SocketRegistry\(\)/);
+  assert.doesNotMatch(module, /private val registry\b/);
   assert(
-    module.indexOf('registry.create(id)') <
+    module.indexOf('socketRegistry.create(id)') <
       module.indexOf('client.newWebSocket(')
   );
-  assert.match(module, /registry\.attach\(connection, socket\)/);
-  assert.match(module, /OnDestroy \{ registry\.invalidate\(\) \}/);
+  assert.match(module, /socketRegistry\.attach\(connection, socket\)/);
+  assert.match(module, /OnDestroy \{ socketRegistry\.invalidate\(\) \}/);
   assert.doesNotMatch(
     module,
     /\.message\b|printStackTrace|Log\.|trustAll|hostnameVerifier|sslSocketFactory/

@@ -20,7 +20,7 @@ private const val MAX_FRAME_BYTES = 2 * 1024 * 1024
 private class SocketException : CodedException("NATIVE_WEBSOCKET_UNAVAILABLE")
 
 class PaliWalletConnectSocketModule : Module() {
-  private val registry = SocketRegistry()
+  private val socketRegistry = SocketRegistry()
   private val cookies = ForwardingCookieHandler()
   private val client by lazy {
     OkHttpClientProvider.getOkHttpClient().newBuilder()
@@ -48,7 +48,7 @@ class PaliWalletConnectSocketModule : Module() {
       if (headers.any { (key, value) -> key.length > 256 || value.length > 8192 ||
         !key.matches(Regex("[!#$%&'*+.^_`|~0-9A-Za-z-]+")) || value.contains('\r') || value.contains('\n') }) throw SocketException()
       if (headers.entries.sumOf { it.key.length + it.value.length } > 65536) throw SocketException()
-      val connection = registry.create(id)
+      val connection = socketRegistry.create(id)
       try {
         val builder = Request.Builder().url(url)
         headers.forEach { (key, value) -> builder.addHeader(key, value) }
@@ -67,39 +67,39 @@ class PaliWalletConnectSocketModule : Module() {
           override fun onOpen(webSocket: WebSocket, response: Response) {
             val protocol = response.header("Sec-WebSocket-Protocol") ?: ""
             if (protocol.length > 256 || (protocol.isNotEmpty() && protocol !in protocols)) {
-              registry.close(id, 1002, "Invalid protocol")
+              socketRegistry.close(id, 1002, "Invalid protocol")
               return
             }
-            if (registry.opened(connection, webSocket)) emit(id, "open", mapOf("protocol" to protocol))
+            if (socketRegistry.opened(connection, webSocket)) emit(id, "open", mapOf("protocol" to protocol))
           }
           override fun onMessage(webSocket: WebSocket, text: String) {
-            if (!registry.readable(connection, webSocket)) return
+            if (!socketRegistry.readable(connection, webSocket)) return
             if (text.length > MAX_FRAME_BYTES || text.toByteArray(Charsets.UTF_8).size > MAX_FRAME_BYTES) {
-              registry.close(id, 1009, "Message too large")
+              socketRegistry.close(id, 1009, "Message too large")
             } else emit(id, "text", mapOf("data" to text))
           }
           override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-            if (!registry.readable(connection, webSocket)) return
-            if (bytes.size > MAX_FRAME_BYTES) registry.close(id, 1009, "Message too large")
+            if (!socketRegistry.readable(connection, webSocket)) return
+            if (bytes.size > MAX_FRAME_BYTES) socketRegistry.close(id, 1009, "Message too large")
             else emit(id, "binary", mapOf("data" to bytes.base64()))
           }
           override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            if (registry.readable(connection, webSocket)) registry.close(id, code, reason)
+            if (socketRegistry.readable(connection, webSocket)) socketRegistry.close(id, code, reason)
           }
           override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            if (registry.finish(connection, webSocket)) emit(id, "close", mapOf("code" to code, "reason" to reason))
+            if (socketRegistry.finish(connection, webSocket)) emit(id, "close", mapOf("code" to code, "reason" to reason))
           }
           override fun onFailure(webSocket: WebSocket, error: Throwable, response: Response?) {
-            if (registry.finish(connection, webSocket)) emit(id, "error")
+            if (socketRegistry.finish(connection, webSocket)) emit(id, "error")
           }
         })
-        registry.attach(connection, socket)
+        socketRegistry.attach(connection, socket)
       } catch (_: Exception) {
-        if (registry.finish(connection, null)) emit(id, "error")
+        if (socketRegistry.finish(connection, null)) emit(id, "error")
       }
     }
     Function("send") { id: String, value: String, binary: Boolean ->
-      val socket = registry.openSocket(id) ?: return@Function false
+      val socket = socketRegistry.openSocket(id) ?: return@Function false
       if (binary) {
         if (value.length > ((MAX_FRAME_BYTES + 2) / 3) * 4) throw SocketException()
         val bytes = value.decodeBase64() ?: throw SocketException()
@@ -110,11 +110,11 @@ class PaliWalletConnectSocketModule : Module() {
         socket.send(value)
       }
     }
-    Function("bufferedAmount") { id: String -> registry.openSocket(id)?.queueSize()?.toDouble() ?: 0.0 }
+    Function("bufferedAmount") { id: String -> socketRegistry.openSocket(id)?.queueSize()?.toDouble() ?: 0.0 }
     Function("close") { id: String, code: Int, reason: String ->
       if ((code != 1000 && code !in 3000..4999) || reason.toByteArray(Charsets.UTF_8).size > 123) throw SocketException()
-      registry.close(id, code, reason)
+      socketRegistry.close(id, code, reason)
     }
-    OnDestroy { registry.invalidate() }
+    OnDestroy { socketRegistry.invalidate() }
   }
 }

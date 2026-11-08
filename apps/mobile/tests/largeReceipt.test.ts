@@ -17,7 +17,7 @@ const receipt = {
 };
 const largeReceipt = {
   ...receipt,
-  logs: [{ address: to, topics: [hash], data: '0x' + 'ab'.repeat(10_000) }],
+  logs: [{ address: to, topics: [hash], data: '0x' + 'ab'.repeat(1024 * 1024) }],
 };
 const canonicalBlock = { number: '0x8', hash: blockHash, gasLimit: '0x1c9c380' };
 const jsonBody = (body: string) =>
@@ -170,7 +170,7 @@ test('ordinary receipt failures cannot become nonce-used evidence', async () => 
 });
 
 test('opaque oversized bodies establish no receipt or nonce-used outcome', async () => {
-  const f = fixture({ receiptResponse: () => jsonBody('x'.repeat(17000)) });
+  const f = fixture({ receiptResponse: () => jsonBody('x'.repeat(1024 * 1024 + 1)) });
   await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), { code: 'UNAVAILABLE' });
   assert(!f.calls.some(c => c.method === 'eth_getTransactionCount'));
 });
