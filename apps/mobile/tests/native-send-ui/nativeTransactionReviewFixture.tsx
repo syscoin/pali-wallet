@@ -46,7 +46,7 @@ export function NativeTransactionReviewFixture() {
   const unavailable = () => { throw new Error('Outside transaction review fixture'); };
   const controller: NativeConnectionsView = {
     getSnapshot: unavailable, subscribe: unavailable, pair: unavailable, approve: unavailable,
-    reject: unavailable, disconnect: unavailable, cancel: unavailable,
+    reject: unavailable, disconnect: unavailable, cancel: unavailable, retry: unavailable,
     async activateRequestAccount(...args) {
       calls.push({ method: 'activateRequestAccount', args });
       setReview((current) => current && { ...current, revision: current.revision + 1, needsAccountSwitch: false });

@@ -87,6 +87,30 @@ export class NativeCustodyAuthority {
     }, expectedRevision);
   }
 
+  /** A connection request selects through the same owned context publication as account management. */
+  selectConnectionAccount(accountId: string, expectedRevision: number, assertRequestCurrent: () => void): Promise<void> {
+    const checkRequest = () => {
+      const result: unknown = assertRequestCurrent();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new CustodyOperationError('CANCELLED');
+      }
+    };
+    checkRequest();
+    const catalogue = this.getCatalogue();
+    if (!catalogue) return Promise.reject(new CustodyOperationError('NOT_READY'));
+    return this.manageContext((runtime) => {
+      if (!runtime.accounts) throw new CustodyRuntimeError('NOT_READY');
+      const selection = runtime.accounts.reserve({ kind: 'select', id: accountId }, catalogue.revision);
+      return {
+        cancel: selection.cancel,
+        execute: (assertCurrent) => selection.execute(() => {
+          assertCurrent(); checkRequest(); assertCurrent();
+        }),
+      };
+    }, expectedRevision);
+  }
+
   /** Local, read-only SDK preview. The form receives only the public address. */
   async previewUtxoImport(input: NativeUtxoImportDraft, expectedRevision: number,
     expectedCatalogueRevision: number, assertCurrent: () => void): Promise<string> {
