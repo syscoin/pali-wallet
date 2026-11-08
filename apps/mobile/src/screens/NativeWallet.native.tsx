@@ -112,6 +112,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
   const [balanceReader, setBalanceReader] = useState<Controllers['balanceReader'] | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
+  const [connectionView, setConnectionView] = useState<Controllers['connections'] | null>(null);
   const [networkView, setNetworkView] = useState<NativeNetworkView<EvmNetworkId> | null>(null);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
@@ -251,7 +252,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' ? 'choose' : current);
     }
     setCanRemoveWallet(false);
-    setPublicSource(null); setBalanceReader(null); setAccountView(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setAccountView(null); setConnectionView(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -266,7 +267,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     });
     const update = (state: CustodySnapshot) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
+      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setConnectionView(local.connections); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
       const nextCatalogue = local.authority.getCatalogue();
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       const origin = rootOrigin.current;
@@ -681,6 +682,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
+      connections={connectionView ?? undefined}
       networkLabel={utxo?.name ?? EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}
       onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined}
       onPrivateNotes={() => openStage('private-notes')}

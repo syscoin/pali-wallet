@@ -12,6 +12,7 @@ import {
   PRIVATE_VAULT_FORMAT,
   PRIVATE_VAULT_SHARD_DOMAIN,
 } from '../../../source/wallet/privateVaultEnvelope.ts';
+import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import { ACCOUNT_RECORD_KEY } from '../src/storage/accountRecordKey.ts';
 import { openWalletStorage, type NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { WalletStorageError } from '../src/storage/types.ts';
@@ -95,6 +96,9 @@ async function fixture() {
   await storage.keyringStorage.set('native-activity-v1', { activity: ['fixture'] });
   const pair = await storage.getWalletFingerprint();
   await storage.recovery!.bindIdentity(pair, ROOT, current);
+  const connections = await openNativeConnectionRepository({ storage: storage.keyringStorage, walletBindingId: pair, assertOwner: current });
+  await connections.transport.setItem('test-protocol-keychain', { key: 'test-only-session-secret' });
+  await connections.dispose();
   await storage.confirmBackup(pair);
   await storage.authGuard.recordFailure();
   await storage.notes!.compareAndSet(PROFILE, pair, undefined, NOTES, current);
@@ -117,7 +121,8 @@ test('explicit removal verifies the complete wallet seal and retires the writer,
     assert.deepEqual(before.metadata.map(({ key }) => key), ['auth', 'backup', 'identity', 'installation']);
     assert.equal(before.notes[0]?.value, NOTES);
     assert.equal(before.signedRecords[0]?.value, SIGNED);
-    assert.equal(before.records.length, 5);
+    assert.equal(before.records.length, 6);
+    assert.equal(before.records.some(({ key }) => key === NATIVE_CONNECTION_STORAGE_KEY), true);
 
     const old = f.storage;
     const committed = pause();

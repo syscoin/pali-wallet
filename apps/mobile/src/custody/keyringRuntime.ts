@@ -1,3 +1,5 @@
+import type { NativeConnectionHost } from '../connections/host.ts';
+import { openNativeConnectionRepository, type NativeConnectionRepository } from '../connections/storage.ts';
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
@@ -121,6 +123,7 @@ export function createNativeRetirementReadForChain(
 
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
 export interface KeyringRuntime extends CustodyRuntime {
+  openConnectionHost(): Promise<NativeConnectionHost>;
   readonly readUtxoBalance?: (id: UtxoNetworkId, address: string, signal: AbortSignal) => Promise<UtxoBalance>;
   /** Owns the private Blockbook identifier; a screen receives only projected rows. */
   withUtxoActivityRead<T>(
@@ -147,7 +150,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
   readNoteInventory?(assertCurrent: () => void): Promise<NativeNoteInventory>;
   /** Internal removal authorization. The protected snapshot never reaches a screen. */
-  authorizeWalletRemoval?(password: string, assertCurrent: () => void): Promise<Readonly<{
+  authorizeWalletRemoval?(password: string, assertCurrent: () => void, beforeSnapshot: (assertCurrent: () => void) => Promise<void>): Promise<Readonly<{
     snapshot: RecoveryStorageSnapshot;
     assertCurrent(): void;
   }>>;
@@ -255,13 +258,20 @@ export function createKeyringRuntimeFactory(
         let recoveryRetirement: Promise<string> | null = null;
         let authenticatedPair: string | null = null;
         let verifiedIdentity: WalletIdentityRead | null = null;
+        let connectionWalletBinding: string | null = null;
+        let connectionNetworkId: string | null = null;
+        let connectionNetwork: SdkNetwork | null = null;
+        let connectionRepository: Promise<NativeConnectionRepository> | null = null;
+        let connectionRepositoryBinding: string | null = null;
         const readIdentity = async (): Promise<WalletIdentityRead> => {
           if (storage.recovery) {
             const identity = await storage.recovery.readIdentity();
             if (!identity) throw new KeyringRuntimeError('NOT_READY');
+            connectionWalletBinding = identity.walletBindingId;
             return identity;
           }
           const pairFingerprint = await storage.getWalletFingerprint();
+          connectionWalletBinding = pairFingerprint;
           return { walletBindingId: pairFingerprint, pairFingerprint, root: null, verification: 'requires-unlock' };
         };
 
@@ -317,6 +327,12 @@ export function createKeyringRuntimeFactory(
             if (beforeClose && !failed) {
               if (revoked?.status !== 'fulfilled' || requiresReopen()) failed = true;
               else { try { await beforeClose(); } catch { failed = true; } }
+            }
+            if (connectionRepository) {
+              const opened = await Promise.allSettled([connectionRepository]);
+              if (opened[0]?.status === 'fulfilled') {
+                try { await opened[0].value.dispose(); } catch { failed = true; }
+              }
             }
             try { await storage.close(); } catch { failed = true; }
             if (failed) throw new KeyringRuntimeError('CLEANUP_FAILED');
@@ -405,6 +421,8 @@ export function createKeyringRuntimeFactory(
           const changed = catalogueSnapshot !== next;
           Object.assign(state, stateFor(catalogue.privateRecords));
           catalogueSnapshot = next;
+          connectionNetworkId = next.active.networkId;
+          connectionNetwork = Object.freeze({ ...state.activeNetwork });
           if (changed) retireContextReadLifetime();
         };
         // Transfer only inside an admitted mutation. No await separates the
@@ -655,6 +673,27 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('CANCELLED');
           return verifiedIdentity.walletBindingId;
         };
+        const connectionOwner = (walletBindingId: string) => () => {
+          if (closed || requiresReopen() || connectionWalletBinding !== walletBindingId)
+            throw new KeyringRuntimeError('CANCELLED');
+        };
+        const getConnectionRepository = async (captured: number): Promise<NativeConnectionRepository> => {
+          const walletBindingId = await dataBinding(captured);
+          const assertOwner = connectionOwner(walletBindingId);
+          assertOwner();
+          if (connectionRepositoryBinding !== null && connectionRepositoryBinding !== walletBindingId)
+            throw new KeyringRuntimeError('CANCELLED');
+          if (connectionRepository === null) {
+            connectionRepositoryBinding = walletBindingId;
+            connectionRepository = openNativeConnectionRepository({
+              storage: storage.keyringStorage, walletBindingId, assertOwner,
+            });
+          }
+          const repository = await connectionRepository;
+          current(captured);
+          repository.assertHealthy();
+          return repository;
+        };
         const assertNoteAvailable = () => {
           current(generation);
           if (active || reserved || pendingSubmissions.size) throw new KeyringRuntimeError('BUSY');
@@ -750,12 +789,16 @@ export function createKeyringRuntimeFactory(
           openNotes(assertOwner, (notes, session) => notes.bindCapacity(session));
         const readNoteInventory: NonNullable<KeyringRuntime['readNoteInventory']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => notes.readInventory(session));
-        const authorizeWalletRemoval: NonNullable<KeyringRuntime['authorizeWalletRemoval']> = (password, assertOwner) => runNote(async (captured) => {
+        const authorizeWalletRemoval: NonNullable<KeyringRuntime['authorizeWalletRemoval']> = (password, assertOwner, beforeSnapshot) => runNote(async (captured) => {
+          if (typeof beforeSnapshot !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
           const recovery = storage.recovery;
           if (!recovery || !storage.removal) throw new KeyringRuntimeError('NOT_READY');
           const session = noteSession(captured, assertOwner);
           const identity = verifiedIdentity;
           if (!(await authenticateVerifiedOwner(password, session))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+          session.assertCurrent();
+          await beforeSnapshot(session.assertCurrent);
+          session.assertCurrent();
           const snapshot = await recovery.readSnapshot();
           session.assertCurrent();
           if (snapshot.state.presence !== 'existing' || !identity || JSON.stringify(snapshot.identity) !== JSON.stringify(identity))
@@ -973,10 +1016,26 @@ export function createKeyringRuntimeFactory(
                       }
                     }
                   }
-                  const next = await catalogue.mutate(expectedRevision, mutation, () => { current(captured); checkGuard(assertCurrent); });
-                  current(captured); checkGuard(assertCurrent);
-                  if (derived) state.accounts.HDAccount[derived.id] = derived;
-                  publishAccounts(next);
+                  const guard = () => { current(captured); checkGuard(assertCurrent); };
+                  if (mutation.kind === 'remove') {
+                    const target = parseNativeAccountId(mutation.id);
+                    const repository = await getConnectionRepository(captured);
+                    guard();
+                    await repository.retireAccount({
+                      accountId: target.index,
+                      accountType: target.type === 'Imported' ? sdk.KeyringAccountType.Imported : sdk.KeyringAccountType.HDAccount,
+                      slip44: target.slip44,
+                    }, async (commit) => {
+                      const next = await catalogue.mutate(expectedRevision, mutation, guard, commit);
+                      guard();
+                      publishAccounts(next);
+                    }, guard);
+                  } else {
+                    const next = await catalogue.mutate(expectedRevision, mutation, guard);
+                    guard();
+                    if (derived) state.accounts.HDAccount[derived.id] = derived;
+                    publishAccounts(next);
+                  }
                 });
               },
             };
@@ -1148,6 +1207,42 @@ export function createKeyringRuntimeFactory(
           return task;
         };
         return {
+          async openConnectionHost(): Promise<NativeConnectionHost> {
+            const captured = generation;
+            const repository = await getConnectionRepository(captured);
+            const walletBindingId = connectionRepositoryBinding;
+            if (!walletBindingId) throw new KeyringRuntimeError('CANCELLED');
+            const assertOwner = connectionOwner(walletBindingId);
+            assertOwner();
+            return Object.freeze({
+              repository,
+              walletBindingId,
+              assertOwner,
+              context() {
+                assertOwner();
+                if (connectionNetworkId === null || connectionNetwork === null) throw new KeyringRuntimeError('NOT_READY');
+                const snapshot = catalogueSnapshot;
+                const unlocked = keyring.isUnlocked() && snapshot !== null;
+                const accounts = unlocked ? snapshot.accounts.map((account) => {
+                  const source = state.accounts[account.type][account.index];
+                  if (!source || source.address !== account.address || typeof source.xpub !== 'string' || !source.xpub)
+                    throw new KeyringRuntimeError('CANCELLED');
+                  return Object.freeze({
+                    id: account.id, index: account.index, type: account.type,
+                    address: account.address, xpub: source.xpub, label: account.label,
+                  });
+                }) : [];
+                return Object.freeze({
+                  network: connectionNetwork,
+                  networkId: connectionNetworkId,
+                  networkLabel: connectionNetwork.label,
+                  activeAccountId: unlocked ? snapshot.active.accountId : null,
+                  accounts: Object.freeze(accounts),
+                  unlocked,
+                });
+              },
+            });
+          },
           resetActivity(assertOwner, invalidateViews) {
             if (closed || reserved || !canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
             checkGuard(assertOwner);

@@ -93,6 +93,13 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'remove-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
   | Readonly<{ kind: 'remove'; id: string }>;
+export type CatalogueRemovalCommit = (
+  key: string,
+  expected: unknown,
+  next: unknown,
+  assertCurrent: () => void
+) => Promise<boolean>;
+
 export class WalletCatalogueError extends Error {
   readonly code:
     | 'CATALOGUE_INVALID'
@@ -489,11 +496,25 @@ export class NativeWalletCatalogue {
       this.busy = false;
     }
   }
+  mutate(
+    expectedRevision: number,
+    input: Exclude<CatalogueMutation, { kind: 'remove' }>,
+    assertCurrent: () => void
+  ): Promise<NativeWalletCatalogueSnapshot>;
+  mutate(
+    expectedRevision: number,
+    input: Extract<CatalogueMutation, { kind: 'remove' }>,
+    assertCurrent: () => void,
+    commitRemoval: CatalogueRemovalCommit
+  ): Promise<NativeWalletCatalogueSnapshot>;
   async mutate(
     expectedRevision: number,
     input: CatalogueMutation,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    commitRemoval?: CatalogueRemovalCommit
   ): Promise<NativeWalletCatalogueSnapshot> {
+    if (input.kind === 'remove' && typeof commitRemoval !== 'function')
+      return invalid();
     if (this.busy) throw new WalletCatalogueError('CATALOGUE_BUSY');
     if (this.uncertain)
       throw new WalletCatalogueError('CATALOGUE_REOPEN_REQUIRED');
@@ -648,13 +669,15 @@ export class NativeWalletCatalogue {
       );
       guard();
       writing = true;
-      const committed = await this.storage.compareAndSet(
-        WALLET_CATALOGUE_KEY,
-        this.stored,
-        validated,
-        undefined,
-        guard
-      );
+      const committed = mutation.kind === 'remove'
+        ? await commitRemoval!(WALLET_CATALOGUE_KEY, this.stored, validated, guard)
+        : await this.storage.compareAndSet(
+            WALLET_CATALOGUE_KEY,
+            this.stored,
+            validated,
+            undefined,
+            guard
+          );
       if (typeof committed !== 'boolean') return invalid();
       if (!committed) {
         writing = false;

@@ -7,6 +7,7 @@ import test from 'node:test';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+import { openNativeConnectionRepository, NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
@@ -136,7 +137,7 @@ async function fixture(
   await owner.importPhrase(PHRASE, OLD);
   if (confirmed) { await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata(); }
   const coordinator = (loadSdk?: () => Promise<typeof sdk>, monotonicMilliseconds?: () => number) => new NativeRecoveryCoordinator({ owner,
-    retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds: monotonicMilliseconds ?? clocks?.monotonic });
+    async retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds: monotonicMilliseconds ?? clocks?.monotonic });
   const read = () => {
     const db = new DatabaseSync(file, { readOnly: true });
     try { return { records: db.prepare('SELECT * FROM keyring_records ORDER BY key').all() as { key: string; value: string }[],
@@ -246,6 +247,9 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     await f.owner.importAccount({ privateKey: KEY2, expectedAddress: importedWallet2.address, label: 'Second imported account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     await f.owner.manageAccounts({ kind: 'select', id: 'imported:60:1' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     const fingerprint = await f.store.getWalletFingerprint();
+    const connections = await openNativeConnectionRepository({ storage: f.store.keyringStorage, walletBindingId: fingerprint, assertOwner() {} });
+    await connections.transport.setItem('test-protocol-keychain', { key: 'test-only-session-secret' });
+    await connections.dispose();
     const ethereum = getNativeNetwork('ethereum'), activityScope = createActivityScope(fingerprint, 'imported:60:1', importedWallet2.address, 'ethereum');
     f.write(NATIVE_TOKEN_REGISTRY_KEY, { version: 1, revision: 0, walletFingerprint: fingerprint, entries: [{ accountId: 'imported:60:1', address: importedWallet2.address,
       network: 'ethereum', chainId: '1', registrationHash: ethereum.registrationHash,
@@ -283,6 +287,7 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     assert.equal(await recovery.commit(proof), 'committed-locked');
     await assert.rejects(recovery.commit(proof), { code: 'STATE_CHANGED' });
     assert.deepEqual(retained(f.read()), retained(before));
+    assert.equal(f.read().records.find((row) => row.key === NATIVE_CONNECTION_STORAGE_KEY)?.value, before.records.find((row) => row.key === NATIVE_CONNECTION_STORAGE_KEY)?.value);
     await f.reopen();
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.notEqual(await f.store.getWalletFingerprint(), fingerprint);
@@ -957,7 +962,7 @@ test('cancellation before the first snapshot cannot let an old helper adopt a ne
 
 test('the first in-flight recovery retains its original pair across retirement and a newer recovery', async () => {
   const f = await fixture(); f.owner.lock(); const pause = latch();
-  const old = new NativeRecoveryCoordinator({ owner: f.owner, retireControllers() {}, openStorage: f.open,
+  const old = new NativeRecoveryCoordinator({ owner: f.owner, async retireControllers() {}, openStorage: f.open,
     ensureCryptoReady: async () => { pause.enter(); await pause.gate; } });
   let next: NativeRecoveryCoordinator | undefined;
   try {

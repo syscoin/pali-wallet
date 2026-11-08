@@ -20,6 +20,7 @@ async function fixture() {
   let confirms = 0;
   const runtime: KeyringRuntime = {
     catalogue: { getSnapshot: () => null },
+    async openConnectionHost() { throw new Error('Connections are outside this fixture'); },
     async resetActivity() { throw new Error('Activity is outside this fixture'); },
     async withUtxoActivityRead() { throw new Error('Activity is outside this fixture'); },
     session: {

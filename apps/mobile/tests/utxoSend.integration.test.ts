@@ -1100,7 +1100,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     const nextPassword = 'PUBLIC changed WIF fixture password 2!';
     owner.lock();
     const recovery = new NativeRecoveryCoordinator({
-      owner, retireControllers() {}, ensureCryptoReady: async () => undefined, openStorage,
+      owner, async retireControllers() {}, ensureCryptoReady: async () => undefined, openStorage,
     });
     try {
       const proof = await recovery.prepare(phrase, nextPassword, current);

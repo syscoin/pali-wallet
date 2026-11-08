@@ -1,6 +1,7 @@
 import type { DeviceUnlockEnrollmentSnapshot } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import { inspectNoteDomain, NOTE_DOMAIN_MAX_BYTES } from './noteDomain.ts';
 import { ACCOUNT_RECORD_KEY, ACCOUNT_RECORD_LIMITS, encodeAccountRecord, decodeAccountRecord } from './accountRecordKey.ts';
+import { NATIVE_CONNECTION_STORAGE_KEY, CONNECTION_RECORD_LIMITS, encodeConnectionRecord, decodeConnectionRecord } from './connectionRecordKey.ts';
 import { EVM_SIGNED_RECORD_LIMITS, inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
 import { inspectUtxoSignedBundle, UTXO_SIGNED_RECORD_BYTES, UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import {
@@ -28,7 +29,7 @@ import type {
   WalletRemovalResult,
 } from './types.ts';
 
-const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} ELSE 65536 END))`;
+const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} WHEN '${NATIVE_CONNECTION_STORAGE_KEY}' THEN ${CONNECTION_RECORD_LIMITS.valueBytes} ELSE 65536 END))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
 const NOTES = `CREATE TABLE private_note_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 16777216))`;
 const SIGNED = `CREATE TABLE evm_signed_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ${EVM_SIGNED_RECORD_LIMITS.bytes}))`;
@@ -38,7 +39,7 @@ const boundedColumns = boundedValueColumns();
 // Refuse multiple profiles before any ciphertext crosses the SQL connection.
 const boundedNoteColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM private_note_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const boundedSignedColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM evm_signed_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
-const boundedRecordColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ? WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} ELSE ? END THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
+const boundedRecordColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ? WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} WHEN '${NATIVE_CONNECTION_STORAGE_KEY}' THEN ${CONNECTION_RECORD_LIMITS.valueBytes} ELSE ? END THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const GET = `SELECT ${boundedColumns} FROM keyring_records WHERE key = ?`;
 const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth', 'identity')`;
 const ENROLLMENT_KEY = 'device-unlock-enrollment';
@@ -51,9 +52,9 @@ const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND 
 
 const NOTE_ROWS = `SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY profile_id LIMIT 2`;
 const SIGNED_ROWS = `SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY profile_id LIMIT 2`;
-const recordBytes = (key: string) => key === ACCOUNT_RECORD_KEY ? ACCOUNT_RECORD_LIMITS.valueBytes : key === UTXO_SIGNED_RECORD_KEY ? UTXO_SIGNED_RECORD_BYTES : STORAGE_LIMITS.valueBytes;
-const encodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? encodeAccountRecord(value) : encodeStorageValue(value);
-const decodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? decodeAccountRecord(value) : decodeStorageValue(value);
+const recordBytes = (key: string) => key === ACCOUNT_RECORD_KEY ? ACCOUNT_RECORD_LIMITS.valueBytes : key === UTXO_SIGNED_RECORD_KEY ? UTXO_SIGNED_RECORD_BYTES : key === NATIVE_CONNECTION_STORAGE_KEY ? CONNECTION_RECORD_LIMITS.valueBytes : STORAGE_LIMITS.valueBytes;
+const encodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? encodeAccountRecord(value) : key === NATIVE_CONNECTION_STORAGE_KEY ? encodeConnectionRecord(value) : encodeStorageValue(value);
+const decodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? decodeAccountRecord(value) : key === NATIVE_CONNECTION_STORAGE_KEY ? decodeConnectionRecord(value) : decodeStorageValue(value);
 const failure = () => new WalletStorageError('STORAGE_CORRUPT');
 const safeError = (error: unknown) =>
   error instanceof WalletStorageError
@@ -230,6 +231,13 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       readDeviceUnlockVaultPair: () => this.readDeviceUnlockVaultPair(),
       compareAndSet: (key, expected, value, removeIfEqual, assertCurrent) =>
         this.compareAndSet(key, expected, value, removeIfEqual, assertCurrent),
+      compareAndSetMany: (changes, assertCurrent) => {
+        if (typeof assertCurrent !== 'function')
+          return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+        if (!Array.isArray(changes) || changes.length > STORAGE_LIMITS.batchKeys)
+          return Promise.reject(failure());
+        return this.compareAndSetRecords(changes, assertCurrent);
+      },
     });
     this.deviceUnlockEnrollment = Object.freeze<NonNullable<OpenWalletStorage['deviceUnlockEnrollment']>>({
       read: () => this.readDeviceUnlockEnrollment(),
@@ -547,36 +555,137 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     );
   }
 
-  private compareAndSet(key: string, expected: unknown, value: unknown,
-    removeIfEqual: Readonly<Record<string, unknown>> = {}, assertCurrent?: () => void): Promise<boolean> {
+  private compareAndSet(
+    key: string,
+    expected: unknown,
+    value: unknown,
+    removeIfEqual: Readonly<Record<string, unknown>> = {},
+    assertCurrent?: () => void
+  ): Promise<boolean> {
     validateStorageKey(key);
-    const before = encodeRecord(key, expected);
-    const after = encodeRecord(key, value);
-    if (!removeIfEqual || typeof removeIfEqual !== 'object' || Array.isArray(removeIfEqual) ||
-        ![Object.prototype, null].includes(Object.getPrototypeOf(removeIfEqual))) throw failure();
+    // Preserve the existing single-row API's required present values.
+    encodeRecord(key, expected);
+    encodeRecord(key, value);
+    if (
+      !removeIfEqual ||
+      typeof removeIfEqual !== 'object' ||
+      Array.isArray(removeIfEqual) ||
+      ![Object.prototype, null].includes(Object.getPrototypeOf(removeIfEqual))
+    )
+      throw failure();
     const names = Reflect.ownKeys(removeIfEqual);
     if (names.length > STORAGE_LIMITS.batchKeys) throw failure();
     const removals = names.map((name) => {
       if (typeof name !== 'string' || name === key) throw failure();
       validateStorageKey(name);
       const descriptor = Object.getOwnPropertyDescriptor(removeIfEqual, name);
-      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw failure();
-      return [name, descriptor.value === undefined ? undefined : encodeRecord(name, descriptor.value)] as const;
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor))
+        throw failure();
+      return { key: name, expected: descriptor.value, value: undefined };
     });
-    return this.queued(() => this.guardedMutation(async (check) => {
-      check?.();
-      const row = await this.db.getFirstAsync<StoredRow>(GET, [recordBytes(key), key]);
-      if (row === null || admittedRow(row, recordBytes(key)) !== before) return false;
-      for (const [name, snapshot] of removals) {
-        const candidate = await this.db.getFirstAsync<StoredRow>(GET, [recordBytes(name), name]);
-        if (snapshot === undefined ? candidate !== null : candidate === null || admittedRow(candidate, recordBytes(name)) !== snapshot) return false;
+    return this.compareAndSetRecords(
+      [{ key, expected, value }, ...removals],
+      assertCurrent
+    );
+  }
+
+  private compareAndSetRecords(
+    changes: readonly Readonly<{
+      key: string;
+      expected: unknown;
+      value: unknown;
+    }>[],
+    assertCurrent?: () => void
+  ): Promise<boolean> {
+    if (
+      !Array.isArray(changes) ||
+      !changes.length ||
+      changes.length > STORAGE_LIMITS.batchKeys + 1
+    )
+      throw failure();
+    const names = new Set<string>();
+    const entries = changes.map((change) => {
+      if (!change || typeof change !== 'object' || Array.isArray(change))
+        throw failure();
+      const keys = Reflect.ownKeys(change);
+      if (
+        keys.length !== 3 ||
+        !['key', 'expected', 'value'].every((key) => keys.includes(key))
+      )
+        throw failure();
+      for (const key of keys) {
+        const descriptor = Object.getOwnPropertyDescriptor(change, key);
+        if (!descriptor?.enumerable || !('value' in descriptor))
+          throw failure();
       }
-      await this.db.runAsync('UPDATE keyring_records SET value = ? WHERE key = ?', [after, key]);
-      for (const [name, snapshot] of removals) {
-        if (snapshot !== undefined) await this.db.runAsync('DELETE FROM keyring_records WHERE key = ?', [name]);
-      }
-      return true;
-    }, assertCurrent));
+      validateStorageKey(change.key);
+      if (names.has(change.key)) throw failure();
+      names.add(change.key);
+      return {
+        key: change.key,
+        before:
+          change.expected === undefined
+            ? undefined
+            : encodeRecord(change.key, change.expected),
+        after:
+          change.value === undefined
+            ? undefined
+            : encodeRecord(change.key, change.value),
+      };
+    });
+    return this.queued(() =>
+      this.guardedMutation(async (check) => {
+        check?.();
+        let additions = 0;
+        let removals = 0;
+        for (const entry of entries) {
+          const row = await this.db.getFirstAsync<StoredRow>(GET, [
+            recordBytes(entry.key),
+            entry.key,
+          ]);
+          if (
+            entry.before === undefined
+              ? row !== null
+              : row === null ||
+                admittedRow(row, recordBytes(entry.key)) !== entry.before
+          )
+            return false;
+          if (entry.before === undefined && entry.after !== undefined)
+            additions++;
+          if (entry.before !== undefined && entry.after === undefined)
+            removals++;
+        }
+        if (additions) {
+          const count = await this.db.getFirstAsync<{ count: number }>(
+            'SELECT COUNT(*) AS count FROM keyring_records'
+          );
+          if (
+            !Number.isSafeInteger(count?.count) ||
+            count!.count + additions - removals > STORAGE_LIMITS.records
+          )
+            throw failure();
+        }
+        for (const entry of entries) {
+          if (entry.after === undefined) {
+            if (entry.before !== undefined)
+              await this.db.runAsync(
+                'DELETE FROM keyring_records WHERE key = ?',
+                [entry.key]
+              );
+          } else if (entry.before === undefined) {
+            await this.db.runAsync(
+              'INSERT INTO keyring_records (key, value) VALUES (?, ?)',
+              [entry.key, entry.after]
+            );
+          } else
+            await this.db.runAsync(
+              'UPDATE keyring_records SET value = ? WHERE key = ?',
+              [entry.after, entry.key]
+            );
+        }
+        return true;
+      }, assertCurrent)
+    );
   }
 
   private async pair(includeEnrollment = false): Promise<Pair> {

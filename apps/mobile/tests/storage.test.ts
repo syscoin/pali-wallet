@@ -509,6 +509,58 @@ test('lost compare-and-set commit acknowledgement quarantines until connection r
   } finally { await f.cleanup(); }
 });
 
+test('multi-record CAS checks every snapshot before changing either row', async () => {
+  const f = await fixture();
+  try {
+    await f.storage.keyringStorage.set('accounts', { revision: 0 });
+    await f.storage.keyringStorage.set('permissions', { granted: true });
+    const changes = [
+      { key: 'accounts', expected: { revision: 0 }, value: { revision: 1 } },
+      { key: 'permissions', expected: { granted: false }, value: { granted: false } },
+    ];
+    assert.equal(await f.storage.keyringStorage.compareAndSetMany(changes, () => undefined), false);
+    assert.deepEqual(await f.storage.keyringStorage.get('accounts'), { revision: 0 });
+    changes[1]!.expected.granted = true;
+    assert.equal(await f.storage.keyringStorage.compareAndSetMany(changes, () => undefined), true);
+    assert.deepEqual(await f.storage.keyringStorage.get('accounts'), { revision: 1 });
+    assert.deepEqual(await f.storage.keyringStorage.get('permissions'), { granted: false });
+  } finally { await f.cleanup(); }
+});
+
+for (const interruption of ['cancel', 'lost-ack'] as const) {
+  test(`multi-record CAS remains atomic after ${interruption}`, async () => {
+    let enabled = false, current = true;
+    const f = await fixture({
+      before(kind, sql) {
+        if (enabled && interruption === 'cancel' && kind === 'run' && sql.startsWith('UPDATE')) current = false;
+      },
+      after(kind, sql) {
+        if (enabled && interruption === 'lost-ack' && kind === 'exec' && sql === 'COMMIT') {
+          enabled = false;
+          throw new Error('Lost commit acknowledgement');
+        }
+      },
+    });
+    try {
+      await f.storage.keyringStorage.set('accounts', 0);
+      await f.storage.keyringStorage.set('permissions', true);
+      enabled = true;
+      const change = f.storage.keyringStorage.compareAndSetMany([
+        { key: 'accounts', expected: 0, value: 1 },
+        { key: 'permissions', expected: true, value: false },
+      ], () => { if (!current) throw new Error('Cancelled'); });
+      if (interruption === 'cancel') assert.equal(await change, false);
+      else await assert.rejects(change);
+      await f.storage.close();
+      const reopened = await SqliteWalletStorage.open(nodeConnection(f.file).connection, digest, INSTALLATION, false);
+      try {
+        assert.equal(await reopened.keyringStorage.get('accounts'), interruption === 'cancel' ? 0 : 1);
+        assert.equal(await reopened.keyringStorage.get('permissions'), interruption === 'cancel');
+      } finally { await reopened.close(); }
+    } finally { await f.cleanup(); }
+  });
+}
+
 
 test('CAS cleanup snapshots exact predicates and leaves both records on a mismatch', async () => {
   const f = await fixture();

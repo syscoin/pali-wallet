@@ -58,6 +58,12 @@ export interface KeyringStoragePort {
    * A supplied synchronous owner guard must still pass immediately before COMMIT. */
   compareAndSet(key: string, expected: unknown, value: unknown,
     removeIfEqual?: Readonly<Record<string, unknown>>, assertCurrent?: () => void): Promise<boolean>;
+  /** Compare every captured row and commit all replacements in one guarded transaction.
+   * Undefined expected/value represents an absent/deleted row. */
+  compareAndSetMany(
+    changes: readonly Readonly<{ key: string; expected: unknown; value: unknown }>[],
+    assertCurrent: () => void
+  ): Promise<boolean>;
 }
 
 export type WalletStoredState = Readonly<

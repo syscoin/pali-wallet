@@ -1,5 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
+import { DAPP_REQUEST_LIMITS } from '../../../../utils/requestPayloadBudget';
 import {
   getMessageSignGrantReplacement,
   watchConnectedMessageSignGrant,
@@ -311,8 +312,8 @@ export type Middleware = (
 ) => Promise<any>;
 
 // Limits include queued and executing requests, including read-only RPC calls.
-export const MAX_REQUESTS_PER_ORIGIN = 4;
-export const MAX_PENDING_REQUESTS = 64;
+export const MAX_REQUESTS_PER_ORIGIN = DAPP_REQUEST_LIMITS.requestsPerOrigin;
+export const MAX_PENDING_REQUESTS = DAPP_REQUEST_LIMITS.pendingRequests;
 export const REQUEST_QUEUE_TIMEOUT_MS = 30_000;
 export const NETWORK_READY_TIMEOUT_MS = 15_000;
 

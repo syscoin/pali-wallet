@@ -21,12 +21,19 @@
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
     "@noble/curves": "1.9.7",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/netinfo": "12.0.1",
     "@sidhujag/sysweb3-keyring": "2.1.6",
     "@sidhujag/sysweb3-network": "2.0.0",
+    "@walletconnect/core": "2.26.0",
+    "@walletconnect/sign-client": "2.26.0",
+    "@walletconnect/utils": "2.26.0",
     "assert": "2.1.0",
+    "base-64": "1.0.0",
     "bech32": "2.0.0",
     "ethers": "6.17.0",
     "expo": "58.0.22",
+    "expo-application": "58.1.2",
     "expo-clipboard": "~58.0.4",
     "expo-file-system": "58.0.13",
     "expo-screen-capture": "58.0.6",
@@ -50,6 +57,7 @@
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
+    "@types/base-64": "1.0.2",
     "@types/node": "^22.19.0",
     "@types/react": "~19.2.2",
     "babel-plugin-transform-remove-console": "6.9.4",
@@ -78,6 +86,9 @@
     },
     "@metamask/utils@11.12.1": {
       "uuid": "11.1.1"
+    },
+    "@walletconnect/keyvaluestorage": {
+      "@react-native-async-storage/async-storage": "$@react-native-async-storage/async-storage"
     }
   },
   "engines": {

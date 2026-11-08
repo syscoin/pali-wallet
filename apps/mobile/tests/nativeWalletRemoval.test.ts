@@ -35,6 +35,7 @@ async function fixture() {
   let opens = 0, unlocks = 0, now = 0, active = true, removalCommits = 0;
   let droppingRemovalAck: 'before' | 'after' | undefined, loseHintAck = false;
   let pauseUnlock: ReturnType<typeof pause> | undefined, afterRemovalCommit: SqlHook | undefined;
+  let beforeSnapshot: (check: () => void) => Promise<void> = async () => undefined;
   let reopenedIdentity: string | undefined;
   const rings: sdk.SoftwareKeyring[] = [];
   const statements: string[] = [];
@@ -109,6 +110,7 @@ async function fixture() {
     assertActive() { if (!active) throw new Error('CANCELLED'); },
     monotonicMilliseconds: () => now,
     clearNativeSelection: selections.clearNativeSelection,
+    beforeSnapshot: (check) => beforeSnapshot(check),
   });
   return {
     owner, runtime, storage, removal, values, statements, ports,
@@ -117,6 +119,7 @@ async function fixture() {
     get held() { return held; }, get reopenedIdentity() { return reopenedIdentity; },
     get unlocked() { return rings.some((ring) => ring.isUnlocked()); },
     advance(value: number) { now = value; }, hide() { active = false; },
+    beforeSnapshot(callback: (check: () => void) => Promise<void>) { beforeSnapshot = callback; },
     holdUnlock() { return pauseUnlock = pause(); },
     holdCommit() { const gate = pause(); afterRemovalCommit = () => gate.hold(); return gate; },
     loseRemovalAck(when: 'before' | 'after') { droppingRemovalAck = when; },
@@ -182,6 +185,53 @@ test('wrong credentials use the existing durable throttle and never clear select
     assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
     assert.equal(f.removalCommits, 0);
   } finally { await f.close(); }
+});
+
+test('authenticated producer cleanup finishes before the exact removal snapshot is sealed', async () => {
+  const f = await fixture();
+  try {
+    const unlocks = f.unlocks;
+    let cleanupCalls = 0;
+    f.beforeSnapshot(async (check) => {
+      check();
+      assert.equal(f.unlocks, unlocks + 1);
+      assert.equal(f.unlocked, true);
+      cleanupCalls++;
+      await f.storage.keyringStorage.set('utf8Error', { hasUtf8Error: false });
+      check();
+    });
+    const ticket = await f.removal.authorize(PASSWORD, current);
+    assert.equal(cleanupCalls, 1);
+    const snapshot = await f.storage.recovery!.readSnapshot();
+    assert.equal(snapshot.records.some(({ key }) => key === 'utf8Error'), true);
+    assert.equal(await f.removal.confirm(ticket, current), 'wallet-records-removed');
+    assert.equal(f.removalCommits, 1);
+  } finally { await f.close(); }
+});
+
+test('cleanup is not invoked for a wrong password and cancellation during cleanup prevents a ticket', async () => {
+  const f = await fixture();
+  const gate = pause();
+  try {
+    let cleanupCalls = 0;
+    f.beforeSnapshot(async (check) => {
+      cleanupCalls++;
+      await gate.hold();
+      check();
+    });
+    await assert.rejects(f.removal.authorize(WRONG, current), { code: 'INVALID_CREDENTIAL' });
+    assert.equal(cleanupCalls, 0);
+    f.owner.lock();
+    await f.owner.unlock(PASSWORD);
+    const pending = assert.rejects(f.removal.authorize(PASSWORD, current), { code: 'CANCELLED' });
+    await gate.reached;
+    f.owner.lock();
+    gate.release();
+    await pending;
+    assert.equal(cleanupCalls, 1);
+    assert.equal(f.removalCommits, 0);
+    assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
+  } finally { gate.release(); await f.close(); }
 });
 
 test('ticket expiry, wallet A-B-A and asynchronous confirmation guards cannot admit deletion', async () => {

@@ -1,3 +1,5 @@
+import { prepareWalletConnectRuntime } from './walletConnectRuntime';
+import { NativeConnectionsController } from '../connections/controller.ts';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
 import { custodyIdle, securityPreferences } from './security';
 import { CustodyOperationError, NativeCustodyAuthority } from '../custody/authority.ts';
@@ -78,7 +80,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
 /** Backend capability only; the recovery UI must own its lifecycle guard/disposal. */
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
   return new NativeRecoveryCoordinator({ owner: controllers.authority,
-    retireControllers() { controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); },
+    async retireControllers() { controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); await controllers.disposeConnections(); },
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage, assertActive: custodyGuard() });
 }
 
@@ -94,8 +96,19 @@ export function createNativeWalletControllers() {
   const authority = new NativeCustodyAuthority({
     async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
   }, { preferences: securityPreferences, assertActive });
+  const connections = new NativeConnectionsController({
+    source: authority,
+    preparePlatform: prepareWalletConnectRuntime,
+    async openHost() {
+      if (!runtime) throw new CustodyOperationError('NOT_READY');
+      return runtime.openConnectionHost();
+    },
+    projectId: process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '2385bd7fee9c23847638bb997c6f8409',
+    metadata: { name: 'Pali Wallet', description: 'Pali Wallet', url: 'https://paliwallet.com', icons: [] },
+  });
   const removal = new NativeWalletRemoval({
     owner: authority,
+    beforeSnapshot: async (guard) => { guard(); await connections.dispose(); guard(); },
     source: () => runtime && ownedStorage ? { runtime, storage: ownedStorage } : undefined,
     reopen: openStorage,
     async clearNativeSelection(check) {
@@ -251,6 +264,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, connections: connections.view, disposeConnections: () => connections.dispose(), backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

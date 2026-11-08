@@ -6,7 +6,7 @@ import path from 'node:path';
 import { SigningKey } from 'ethers/crypto';
 import { computeAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
-import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
+import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeAccountRecord, type CatalogueRemovalCommit } from '../src/custody/walletCatalogue.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
@@ -59,6 +59,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     async reopen(){await storage.close().catch(()=>undefined);storage=await SqliteWalletStorage.open(nodeConnection(file).connection,digest,INSTALLATION,false);},
     async close(){await stage.close();await storage.close().catch(()=>undefined);await rm(directory,{recursive:true,force:true});}};
 }
+const removalCommit = (f: Awaited<ReturnType<typeof fixture>>): CatalogueRemovalCommit =>
+  (key, expected, value, guard) => f.storage.keyringStorage.compareAndSetMany(
+    [{ key, expected, value }], guard
+  );
+
 async function importMutation(f: Awaited<ReturnType<typeof fixture>>, index = 0, key = KEY) {
   f.stage.useRecord(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord);
   const result=await f.stage.imported(key,`Imported ${index+1}`);assert.equal(result.account.id,index);
@@ -145,7 +150,7 @@ test('imported identity removal is atomic and the shared SDK can reuse the remov
     const model = await f.open(), mutation = await importMutation(f), { id: _id, ...input } = mutation;
     let state = await model.mutate(0, input, current);
     state = await model.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current);
+    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current, removalCommit(f));
     assert.deepEqual(Object.keys(model.privateRecords.groups[0]!.accounts.Imported),[]);
     delete f.stage.state.accounts.Imported[0];
     const next = await importMutation(f, 0), { id: _nextId, ...nextInput } = next;
@@ -169,7 +174,7 @@ test('SDK gap reuse keeps imported zero before a retained imported one across st
     const before = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
     const retained = before.groups[0]!.accounts.Imported[1];
     state = await model.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current);
+    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current, removalCommit(f));
     delete f.stage.state.accounts.Imported[0];
     const replacementKey = '0x' + '3'.padStart(64, '0');
     const replacement = await importMutation(f, 0, replacementKey), { id: _replacementId, ...replacementInput } = replacement;

@@ -73,6 +73,12 @@ npm run android   # Android SDK, Java and an emulator or device
 
 Native onboarding offers wallet creation, phrase restoration and watch-only accounts directly. Custody requires the native runtime checks. The package scripts disable Expo CLI telemetry. Over-the-air application updates are disabled in app configuration.
 
+### Connected apps configuration
+
+The native build uses Pali Mobile's public [WalletConnect project ID](https://dashboard.walletconnect.com/). Set `EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID` at build time to select another project. This public client identifier is separate from the Chrome Web Store extension ID.
+
+The current native connection slice supports pasted pairing links, explicit account/network consent, saved sessions, revocation and public account/network requests. Message and transaction signing remain separate implementation work. Transport credentials use the existing protected database, and recovery preserves the connection record. Removing an account atomically retires its grants while preserving unrelated connections.
+
 ## Shared code and dependencies
 
 Metro resolves selected platform-independent modules directly from `source/`. Both hosts reuse SDK derivation/signing and shared network identity, exact amounts, fee review, asset checks, nonce planning, signed recovery, history and note-backup code. Native adapters provide rendering, protected storage, HTTP, file access and lifecycle handling.

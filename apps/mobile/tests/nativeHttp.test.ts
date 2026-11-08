@@ -315,8 +315,13 @@ test('native factory explicitly wires one owned transport to all network consume
     throw Error('no HTTP in wiring test');
   };
   const balance = { readBalance() {} };
+  const prepareWalletConnectRuntime = () => {
+    assert.fail('unexpected WalletConnect runtime preparation');
+  };
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     './security': security,
+    './walletConnectRuntime': { prepareWalletConnectRuntime },
+    '../connections/controller.ts': { NativeConnectionsController: capture('connections') },
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
     '../custody/utxoActivity.ts': {
       createNativeUtxoActivity: (...args: unknown[]) => {
@@ -401,8 +406,10 @@ test('native factory explicitly wires one owned transport to all network consume
       },
     },
     './http': { walletFetch: fetcher },
-  });
+  }, { process: { env: {} } });
   const bundle = factory.createNativeWalletControllers();
+  assert.equal(captures.connections![0][0].source, bundle.authority);
+  assert.equal(captures.connections![0][0].preparePlatform, prepareWalletConnectRuntime);
   assert.equal(bundle.balanceReader.readBalance, balance.readBalance);
   assert.equal(typeof bundle.balanceReader.readUtxoBalance, 'function');
   assert.equal(typeof captures.factory![0].readUtxoAccount, 'function');
@@ -428,8 +435,8 @@ test('native factory explicitly wires one owned transport to all network consume
   const recovery = captures.recovery![0][0];
   assert.equal(recovery.owner, bundle.authority);
   assert.equal(typeof recovery.openStorage, 'function');
-  recovery.retireControllers();
-  assert.deepEqual(retired, ['tokens', 'transfers', 'key', 'backup']);
+  await recovery.retireControllers();
+  assert.deepEqual(retired, ['tokens', 'transfers', 'key', 'backup', 'connections']);
 });
 
 test('public platform and native Portfolio fallback bind platform-owned fetch; NativeWallet passes the explicit reader', () => {

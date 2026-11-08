@@ -70,6 +70,10 @@ async function fixture(existing = true) {
   class PassiveController { readonly view = {}; dispose() {} }
   const dependencies: Record<string, unknown> = {
     './security': security,
+    './walletConnectRuntime': {
+      prepareWalletConnectRuntime() { assert.fail('inventory must not prepare WalletConnect'); },
+    },
+    '../connections/controller.ts': { NativeConnectionsController: PassiveController },
     '../custody/authority.ts': { NativeCustodyAuthority, CustodyOperationError },
     '../custody/utxoActivity.ts': { createNativeUtxoActivity: () => ({}) },
     '../core/utxoActivity.ts': { createUtxoActivityReader: () => ({}) },
@@ -108,7 +112,7 @@ async function fixture(existing = true) {
   const source = ts.transpileModule(readFileSync(new NodeURL('../src/platform/nativeFactory.native.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  runInNewContext(source, { module, exports: module.exports, require(name: string) {
+  runInNewContext(source, { module, exports: module.exports, process: { env: {} }, require(name: string) {
     assert.ok(Object.hasOwn(dependencies, name), `unexpected import ${name}`);
     return dependencies[name];
   } });

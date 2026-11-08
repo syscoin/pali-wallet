@@ -16,6 +16,8 @@ import { getNativeNetwork, createNativeNetwork, NATIVE_NETWORKS, type NativeNetw
 import { type NativeAccountRecord, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
+import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
+import type { DappGrant } from '../../../source/shared/dappTypes.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
@@ -88,6 +90,24 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         if (failCasAcknowledgement) { failCasAcknowledgement = false; throw Error('Lost CAS acknowledgement'); }
         return true;
       },
+      async compareAndSetMany(changes, guard) {
+        guard();
+        const matches = () => changes.every(({ key, expected }) =>
+          JSON.stringify(records.get(key)) === JSON.stringify(expected));
+        if (!matches()) return false;
+        for (const { key } of changes) await recordHook?.('cas', key);
+        guard();
+        if (!matches()) return false;
+        for (const { key, value } of changes) {
+          if (value === undefined) records.delete(key);
+          else records.set(key, structuredClone(value));
+        }
+        if (failCasAcknowledgement) {
+          failCasAcknowledgement = false;
+          throw Error('Lost CAS acknowledgement');
+        }
+        return true;
+      },
       async readDeviceUnlockVaultPair() {
         const vault = records.get('vault');
         const keys = records.get('vault-keys');
@@ -145,6 +165,42 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
     restoreNetwork() { globalThis.fetch = originalFetch; assert.equal(networkCalls, 0); },
   };
 }
+
+test('connection host retains its wallet owner across lock while disclosing only unlocked public accounts', async () => {
+  const disk = memoryDisk();
+  disk.denyNetwork();
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  try {
+    await assert.rejects(runtime.openConnectionHost(), /CANCELLED|NOT_READY/);
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    const host = await runtime.openConnectionHost();
+    const initial = host.context();
+    assert.equal(initial.unlocked, true);
+    assert.equal(initial.accounts[0]?.address, ADDRESS);
+    assert.equal(initial.accounts[0]?.id, initial.activeAccountId);
+    assert.equal(Object.keys(initial.accounts[0]!).sort().join(','), 'address,id,index,label,type,xpub');
+    assert.equal(Object.isFrozen(initial.accounts[0]), true);
+    assert.equal(Object.isFrozen(initial.network), true);
+    const target = getNativeNetwork('syscoin-nevm');
+    await runtime.networks!.reserve(target.id, runtime.catalogue.getSnapshot()!.revision).execute(() => undefined);
+    assert.equal(host.context().networkId, target.id);
+    await runtime.session.lock();
+    assert.doesNotThrow(host.assertOwner);
+    assert.equal(host.context().unlocked, false);
+    assert.equal(host.context().networkId, target.id);
+    assert.deepEqual(host.context().accounts, []);
+    assert.equal(host.context().activeAccountId, null);
+    assert.equal((await runtime.session.unlock(PASSWORD)).authenticated, true);
+    assert.doesNotThrow(host.assertOwner);
+    assert.equal(host.context().accounts[0]?.address, ADDRESS);
+    await runtime.storage.close();
+    assert.throws(host.assertOwner, /CANCELLED/);
+    assert.throws(host.context, /CANCELLED/);
+  } finally {
+    await runtime.storage.close().catch(() => undefined);
+    disk.restoreNetwork();
+  }
+});
 
 test('recovery retirement captures the original runtime pair and ordinary close joins the same drain', async () => {
   const disk = memoryDisk(); disk.denyNetwork();
@@ -453,6 +509,82 @@ async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   authority.lock(); await authority.unlock(PASSWORD);
   const execute = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) => authority.manageAccounts(request, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
   return { disk, authority, get runtime() { return runtime; }, execute };
+}
+
+async function grantConnection(host: Awaited<ReturnType<KeyringRuntime['openConnectionHost']>>, accountId: number, suffix: string) {
+  const origin = `https://app-${suffix}.example`;
+  const port = host.repository.permissions({
+    peerPublicKey: suffix.repeat(64), topic: suffix.repeat(64), origin,
+  });
+  const grant: DappGrant = {
+    accountId, accountType: 'HDAccount' as DappGrant['accountType'],
+    chain: 'ethereum' as DappGrant['chain'], chainId: 1, date: 1, host: origin,
+  };
+  const frame = { dapps: { [origin]: grant }, pendingOrigins: [] };
+  await port.exclusive(async () => { await port.write(frame); port.publish(frame); });
+  return { port, origin };
+}
+
+test('account removal and connection retirement share one repository and survive ID reuse', async () => {
+  const f = await readyAccounts();
+  try {
+    await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    const host = await f.runtime.openConnectionHost();
+    assert.equal((await f.runtime.openConnectionHost()).repository, host.repository);
+    const target = await grantConnection(host, 1, 'a');
+    const retained = await grantConnection(host, 0, 'b');
+    await host.repository.transport.setItem('test-protocol-key', { secret: 'fixture-secret' });
+    await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
+    assert.deepEqual(target.port.read().dapps, {});
+    assert.ok(retained.port.read().dapps[retained.origin]);
+    assert.deepEqual(await host.repository.transport.getItem('test-protocol-key'), { secret: 'fixture-secret' });
+    await f.execute({ kind: 'create', label: 'Reused', password: PASSWORD });
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
+    assert.deepEqual(target.port.read().dapps, {});
+    await f.authority.dispose();
+    const reopened = await f.disk.factory.open() as KeyringRuntime;
+    try {
+      await reopened.session.unlock(PASSWORD);
+      const restored = await reopened.openConnectionHost();
+      assert.equal(restored.repository.bindings().length, 1);
+      assert.deepEqual(await restored.repository.transport.getItem('test-protocol-key'), { secret: 'fixture-secret' });
+      assert.equal(restored.context().activeAccountId, 'hd:60:1');
+    } finally { await reopened.storage.close(); }
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+for (const fault of ['cancel', 'lost-ack'] as const) {
+  test(`account removal ${fault} cannot persist only one side of permission retirement`, async () => {
+    const f = await readyAccounts();
+    try {
+      await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
+      await f.execute({ kind: 'select', id: 'hd:60:0' });
+      const host = await f.runtime.openConnectionHost();
+      await grantConnection(host, 1, 'a');
+      const before = structuredClone(f.disk.records.get(NATIVE_CONNECTION_STORAGE_KEY));
+      if (fault === 'cancel') f.disk.onRecord(async (kind, key) => {
+        if (kind === 'cas' && key === WALLET_CATALOGUE_KEY) {
+          f.disk.onRecord();
+          f.authority.lock();
+        }
+      });
+      else f.disk.loseCasAcknowledgement();
+      await assert.rejects(f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD }));
+      const catalogue = f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+      const connection = f.disk.records.get(NATIVE_CONNECTION_STORAGE_KEY) as { sessions: readonly unknown[] };
+      assert.equal(Boolean(catalogue.groups[0]!.accounts.HDAccount[1]), fault === 'cancel');
+      if (fault === 'cancel') assert.deepEqual(connection, before);
+      else assert.equal(connection.sessions.length, 0);
+      await f.authority.dispose().catch(() => undefined);
+      const reopened = await f.disk.factory.open() as KeyringRuntime;
+      try {
+        await reopened.session.unlock(PASSWORD);
+        const restored = await reopened.openConnectionHost();
+        assert.equal(restored.repository.bindings().length, fault === 'cancel' ? 1 : 0);
+      } finally { await reopened.storage.close(); }
+    } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+  });
 }
 
 test('real SDK HD accounts reuse deleted indices and preserve full records across reopen', async () => {

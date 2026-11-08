@@ -8,6 +8,7 @@ import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
 import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
+import { NativeConnectionsFixture } from './nativeConnectionsFixture';
 import { registerRootComponent } from 'expo';
 import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -367,7 +368,9 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('faucet') ? (
+      {new URLSearchParams(window.location.search).has('connections') ? (
+        <NativeConnectionsFixture />
+      ) : new URLSearchParams(window.location.search).has('faucet') ? (
         <NativeFaucetFixture />
       ) : new URLSearchParams(window.location.search).has('utxo-send') ? (
         <NativeUtxoSendFixture />

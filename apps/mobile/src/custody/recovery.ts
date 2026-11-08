@@ -21,7 +21,7 @@ export type RecoveryProof = Readonly<{ [proofBrand]: true }>;
 type Ready = { proof: RecoveryProof; storage: OpenWalletStorage; plan: RecoveryWritePlan; before: RecoveryStorageSnapshot; after: RecoveryStorageSnapshot; generation: number; deadline: number; guard: () => void };
 type Dependencies = Readonly<{
   owner: Pick<NativeCustodyAuthority, 'getSnapshot' | 'retireForRecovery'>;
-  retireControllers(): void;
+  retireControllers(): Promise<void>;
   ensureCryptoReady(): Promise<void>;
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<Sdk>;
@@ -115,7 +115,7 @@ export class NativeRecoveryCoordinator {
         if (!this.retired) {
           const owner = this.dependencies.owner.getSnapshot();
           if (owner.phase !== 'locked' || owner.revision !== ownerRevision) return fail('CANCELLED');
-          this.dependencies.retireControllers();
+          await this.dependencies.retireControllers();
           const fingerprint = await this.dependencies.owner.retireForRecovery();
           this.retired = true;
           if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) return fail('UNAVAILABLE');
