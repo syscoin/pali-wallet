@@ -193,6 +193,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   });
   useLayoutEffect(() => { const owner = screenToken.current; custodyIdle.begin(owner, revoke); return () => custodyIdle.stop(owner); }, [revoke]);
   const exit = useCallback(() => { cancelNoteRestore(); revoke(); onExit(); }, [cancelNoteRestore, onExit, revoke]);
+  const closeDeviceUnlock = () => {
+    if (submitting.current) revoke();
+    else { clearSecrets(); setStage('security'); }
+  };
   const readyContext = useCallback(() => {
     const local = controllers.current;
     return custodyContext(local?.authority.getSnapshot(), local?.authority.getCatalogue());
@@ -275,7 +279,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   useLayoutEffect(() => {
     latestBack.current = () => {
       if (stage === 'device-unlock') {
-        if (busy) revoke(); else { clearSecrets(); setStage('security'); }
+        closeDeviceUnlock();
         return true;
       }
       // Full-screen leaf flows own their Back behavior regardless of listener order.
@@ -768,7 +772,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         if (local.authority.getSnapshot().phase === 'ready') setStage('security');
       });
     }} />
-    <Button title="Cancel" variant="secondary" onPress={() => { clearSecrets(); setStage('security'); }} />
+    <Button title="Cancel" variant="secondary" onPress={closeDeviceUnlock} />
   </>;
   else if (stage === 'words' && presentation) body = <>
     <Notice title="Write these words down in order" body="Anyone with these words can control your wallet. Keep them offline. Pali support will never ask for them." tone="amber" />
@@ -867,7 +871,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     error === message(new Error(snapshot.error));
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen><Header title={title} onBack={stage === 'device-unlock' && !busy ? () => { clearSecrets(); setStage('security'); } : exit} subtitle="Development build · Use a test wallet" />
+      <Screen><Header title={title} onBack={stage === 'device-unlock' ? closeDeviceUnlock : exit} subtitle="Development build · Use a test wallet" />
         {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
         {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
         {snapshot.error && !duplicateAuthenticationError && <NativeCustodyFeedback error={snapshot.error} />}

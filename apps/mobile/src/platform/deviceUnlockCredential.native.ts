@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import { AppState } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { createDeviceUnlockCredentialStore } from '../storage/deviceUnlockCredential.ts';
 import { DeviceUnlockPrompt } from './deviceUnlockPrompt.ts';
 
@@ -15,8 +15,12 @@ export function createNativeDeviceUnlockCapability() {
   const prompt = new DeviceUnlockPrompt({
     state: () => AppState.currentState ?? 'unknown',
     subscribe(listener) {
-      const subscription = AppState.addEventListener('change', listener);
-      return () => subscription.remove();
+      const subscriptions = [AppState.addEventListener('change', listener)];
+      if (Platform.OS === 'android') {
+        subscriptions.push(AppState.addEventListener('blur', () => listener('blur')));
+        subscriptions.push(AppState.addEventListener('focus', () => listener('focus')));
+      }
+      return () => subscriptions.forEach(subscription => subscription.remove());
     },
   });
   const credentials = createDeviceUnlockCredentialStore({

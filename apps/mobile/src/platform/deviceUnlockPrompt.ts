@@ -19,6 +19,7 @@ export class DeviceUnlockPrompt {
   async run<T>(operation: () => Promise<T>): Promise<T> {
     if (this.pending || this.activity.state() !== 'active') throw new Error('DEVICE_UNLOCK_UNAVAILABLE');
     const pending = { cancelled: false, wake: () => undefined as void };
+    let focused = true;
     this.pending = pending;
     const check = () => {
       if (this.pending !== pending || pending.cancelled || this.activity.state() === 'background')
@@ -26,16 +27,18 @@ export class DeviceUnlockPrompt {
     };
     const unsubscribe = this.activity.subscribe((state) => {
       if (state === 'background') pending.cancelled = true;
+      if (state === 'blur') focused = false;
+      if (state === 'focus') focused = true;
       pending.wake();
     });
     try {
       check();
       const result = await operation();
       check();
-      if (this.activity.state() !== 'active') {
+      while (this.activity.state() !== 'active' || !focused) {
         await new Promise<void>((resolve, reject) => {
           pending.wake = () => {
-            try { check(); if (this.activity.state() === 'active') resolve(); }
+            try { check(); if (this.activity.state() === 'active' && focused) resolve(); }
             catch (error) { reject(error); }
           };
           pending.wake();

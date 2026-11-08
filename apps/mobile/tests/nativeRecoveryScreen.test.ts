@@ -240,10 +240,14 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
-async function walletFeedbackFixture(deviceUnlock = false, empty = false) {
+async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }) {
   const root = setup();
-  let state: { phase: string; revision: number; presence: string; backup: string; account: null; error: string | null } =
-    { phase: empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: null, error: null };
+  const address = `0x${'11'.repeat(20)}`;
+  const catalogue = { revision: 1, active: { accountId: 'hd:60:0', networkId: 'ethereum' },
+    accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, address, label: 'Account 1' }],
+    networks: networkContext.NATIVE_NETWORKS, utxoNetworks: [] };
+  let state: { phase: string; revision: number; presence: string; backup: string; account: { address: string; network: string } | null; error: string | null } =
+    { phase: setting ? 'ready' : empty ? 'empty' : 'locked', revision: 1, presence: empty ? 'empty' : 'existing', backup: empty ? 'unconfirmed' : 'confirmed', account: setting ? { address, network: 'ethereum' } : null, error: null };
   let observer: (snapshot: typeof state) => void = () => {};
   let nextError: string | null = null;
   let releasePrompt!: () => void;
@@ -251,22 +255,32 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false) {
   const enrollments: { enabled: boolean; password: string }[] = [];
   const authentication = new DeviceUnlockPrompt({
     state: () => root.native.AppState.currentState,
-    subscribe(listener) { const subscription = root.native.AppState.addEventListener('change', listener); return () => subscription.remove(); },
+    subscribe(listener) {
+      const subscriptions = [root.native.AppState.addEventListener('change', listener),
+        root.native.AppState.addEventListener('blur', () => listener('blur')),
+        root.native.AppState.addEventListener('focus', () => listener('focus'))];
+      return () => subscriptions.forEach(subscription => subscription.remove());
+    },
   });
   const publish = (patch: Partial<typeof state>) => { state = { ...state, ...patch }; observer(state); };
   const controllers = {
     ...(deviceUnlock ? { authentication } : {}),
-    authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
+    authority: { getSnapshot: () => state, getCatalogue: () => setting && state.phase === 'ready' ? catalogue : null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
-      async getDeviceUnlockStatus() { return { available: true, enabled: !empty }; },
+      async getDeviceUnlockStatus() { return { available: true, enabled: setting?.enabled ?? !empty }; },
       async create() { publish({ phase: 'backup-required', presence: 'existing', backup: 'unconfirmed' }); },
-      async setDeviceUnlock(enabled: boolean, password: string, check: () => void) { check(); enrollments.push({ enabled, password }); },
+      async setDeviceUnlock(enabled: boolean, password: string, check: () => void) {
+        check();
+        if (setting) { publish({ phase: 'authenticating', account: null }); await setting.wait; }
+        check(); enrollments.push({ enabled, password });
+        if (setting) publish({ phase: 'ready', account: { address, network: 'ethereum' } });
+      },
       async unlockWithDevice(check: () => void) {
         check(); publish({ phase: 'authenticating', error: null });
         await authentication.run(() => new Promise<void>(resolve => { releasePrompt = resolve; }));
         check(); publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
       },
-      lock() { if (deviceUnlock) { locks++; publish({ phase: 'locked' }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
+      lock() { if (deviceUnlock) { locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
@@ -289,6 +303,9 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false) {
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
     '../core/utxoNetworks': { findUtxoNetwork }, '../custody/password': passwordPolicy,
     '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
+    '../custody/networkContext': networkContext,
+    '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: [{ id: 'ethereum', name: 'Ethereum' }] },
+    './NativePortfolio': { NativePortfolio: 'NativePortfolio' }, './NativeSecurity': { NativeSecurity: 'NativeSecurity' },
     './NativeCustodyFeedback': { NativeCustodyFeedback: 'NativeCustodyFeedback' },
     './NativeRecovery': { NativeRecovery: 'NativeRecovery' }, './NativeNoteRestore': { NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' },
     '../custody/networkView': { createNativeNetworkView: () => ({}) },
@@ -331,18 +348,26 @@ test('password setup makes biometric enrollment an explicit optional choice', as
   }
 });
 
-test('native wallet keeps password fallback and admits only its active biometric prompt interruption', async () => {
+for (const interruption of ['inactive', 'blur']) test(`native wallet keeps password fallback through its active biometric ${interruption}`, async () => {
   const f = await walletFeedbackFixture(true);
   try {
     let tree = f.render();
     assert(button(tree, 'Unlock wallet'));
     press(button(tree, 'Unlock with biometrics'));
     await new Promise(resolve => setImmediate(resolve));
-    f.emit('change', 'inactive'); f.render();
+    if (interruption === 'inactive') f.emit('change', 'inactive'); else f.emit('blur');
+    f.render();
     assert.equal(f.locks, 0);
     f.releasePrompt(); await new Promise(resolve => setImmediate(resolve));
     assert.match(text(f.render()), /Unlocking your wallet/);
-    f.emit('change', 'active'); await new Promise(resolve => setImmediate(resolve));
+    if (interruption === 'inactive') f.emit('change', 'active');
+    else {
+      f.emit('focus'); f.emit('blur');
+      await new Promise(resolve => setImmediate(resolve));
+      assert.match(text(f.render()), /Unlocking your wallet/);
+      f.emit('focus');
+    }
+    await new Promise(resolve => setImmediate(resolve));
     tree = f.render();
     assert.ok(all(tree).some(node => node.props.label === 'Confirm your password'));
     f.emit('blur'); f.render();
@@ -350,11 +375,38 @@ test('native wallet keeps password fallback and admits only its active biometric
   } finally { f.dispose(); }
 });
 
+for (const enabled of [false, true]) test(`a queued settings Cancel revokes pending biometric ${enabled ? 'disable' : 'enrollment'}`, async () => {
+  let finish!: () => void;
+  const f = await walletFeedbackFixture(true, false, { enabled, wait: new Promise(resolve => { finish = resolve; }) });
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    (portfolio.props.onSecurity as () => void)();
+    const security = f.render();
+    assert.equal(security.type, 'NativeSecurity');
+    (security.props.onDeviceUnlock as () => void)();
+    let tree = f.render();
+    const cancel = button(tree, 'Cancel');
+    const input = all(tree).find(node => node.props.label === 'Wallet password'); assert(input);
+    (input.props.onChange as (value: string) => void)('Public test password 1!');
+    tree = f.render();
+    press(button(tree, enabled ? 'Turn off biometric unlock' : 'Enable biometric unlock'));
+    // Authentication replaces the form, but an already queued callback remains callable.
+    assert.equal(all(f.render()).some(node => node.props.title === 'Cancel'), false);
+    press(cancel);
+    assert.equal(f.locks, 1);
+    finish(); await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.enrollments, []);
+    assert(button(f.render(), 'Unlock wallet'));
+  } finally { finish(); f.dispose(); }
+});
+
 test('native wallet background revokes a pending biometric prompt', async () => {
   const f = await walletFeedbackFixture(true);
   try {
     press(button(f.render(), 'Unlock with biometrics'));
     await new Promise(resolve => setImmediate(resolve));
+    f.emit('blur'); f.render();
+    assert.equal(f.locks, 0);
     f.emit('change', 'background'); f.render();
     assert.equal(f.locks, 1);
     f.emit('change', 'active'); f.releasePrompt();
