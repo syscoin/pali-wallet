@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import type { NativeConnectionsSnapshot, NativeConnectionsView } from '../../src/connections/types';
+import type { NativePairingEntry } from '../../src/connections/pairingLinks';
 import { NativeConnections } from '../../src/screens/NativeConnections';
 import { Text } from '../../src/ui';
 
@@ -20,6 +21,7 @@ let snapshot: NativeConnectionsSnapshot = {
 };
 const calls: { method: string; args: unknown[] }[] = [];
 const listeners = new Set<() => void>();
+let receiveEntry: ((entry: NativePairingEntry) => void) | undefined;
 const publish = (next: NativeConnectionsSnapshot) => {
   snapshot = Object.freeze(next);
   for (const listener of listeners) listener();
@@ -48,6 +50,8 @@ declare global {
       calls(): typeof calls;
       proposal(allowed?: boolean): void;
       fail(): void;
+      incoming(entry: NativePairingEntry): void;
+      locked(value: boolean): void;
     };
   }
 }
@@ -59,9 +63,20 @@ window.__nativeConnectionsFixture = {
     ] });
   },
   fail() { publish({ ...snapshot, error: 'CONTEXT_CHANGED' }); },
+  incoming(entry) { receiveEntry?.(entry); },
+  locked(value) { publish({ ...snapshot, status: value ? 'locked' : 'ready' }); },
 };
 
 export function NativeConnectionsFixture() {
   const [open, setOpen] = useState(true);
-  return open ? <NativeConnections controller={controller} onBack={() => setOpen(false)} /> : <Text>Connections closed</Text>;
+  const [incoming, setIncoming] = useState<NativePairingEntry | null>(null);
+  useLayoutEffect(() => {
+    receiveEntry = setIncoming;
+    return () => { receiveEntry = undefined; };
+  }, []);
+  return open ? <NativeConnections controller={controller} onBack={() => setOpen(false)}
+    incomingPairing={incoming} onPairingHandled={(id) => {
+      calls.push({ method: 'handled', args: [id] });
+      setIncoming((current) => current?.id === id ? null : current);
+    }} /> : <Text>Connections closed</Text>;
 }

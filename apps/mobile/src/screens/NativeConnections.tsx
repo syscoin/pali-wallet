@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -6,6 +6,8 @@ import type { NativeConnectionError, NativeConnectionsView } from '../connection
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import { DappSiteStatus } from './DappSiteStatus';
+import { ConnectionQrScanner } from './ConnectionQrScanner';
+import type { NativePairingEntry } from '../connections/pairingLinks';
 
 const ERRORS: Record<NativeConnectionError, string> = {
   INVALID_LINK: 'Copy a WalletConnect link from the app you want to connect to.',
@@ -20,14 +22,22 @@ const ERRORS: Record<NativeConnectionError, string> = {
 };
 
 /** Receives public state only. Transport keys and signing handles stay in custody. */
-export function NativeConnections({ controller, onBack }: {
+export function NativeConnections({ controller, onBack, incomingPairing, onPairingHandled, initialScan = false, onScanStarted, onScanFinished }: {
   controller: NativeConnectionsView;
   onBack(): void;
+  incomingPairing?: NativePairingEntry | null;
+  onPairingHandled?(id: string): void;
+  initialScan?: boolean;
+  onScanStarted?(): void;
+  onScanFinished?(): void;
 }) {
   const subscribe = useCallback((listener: () => void) => controller.subscribe(listener), [controller]);
   const snapshot = useSyncExternalStore(subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selection, setSelection] = useState<{ controller: NativeConnectionsView; accountId: string } | null>(null);
   const [clipboardError, setClipboardError] = useState(false);
+  const [scanning, setScanning] = useState(initialScan);
+  const [entryExpired, setEntryExpired] = useState(false);
+  const handledEntry = useRef<string | null>(null);
   const lifetime = useRef({ active: true, revision: 0 });
   const proposal = snapshot.proposals[0];
   const busy = snapshot.status === 'pairing' || snapshot.status === 'approving';
@@ -45,12 +55,33 @@ export function NativeConnections({ controller, onBack }: {
     };
   }, [controller]);
 
-  const close = () => { lifetime.current.revision++; controller.cancel(); onBack(); };
+  useEffect(() => {
+    if (!incomingPairing || !onPairingHandled || handledEntry.current === incomingPairing.id ||
+        scanning || snapshot.status !== 'ready' || !snapshot.network || proposal || snapshot.messageReview) return;
+    const current = lifetime.current;
+    const revision = ++current.revision;
+    let active = true;
+    queueMicrotask(() => {
+      const latest = controller.getSnapshot();
+      if (!active || !current.active || current.revision !== revision || latest.status !== 'ready' ||
+          !latest.network || latest.proposals.length || latest.messageReview) return;
+      handledEntry.current = incomingPairing.id;
+      onPairingHandled(incomingPairing.id);
+      const expired = incomingPairing.expiresAt <= Date.now();
+      setEntryExpired(expired);
+      if (!expired) void controller.pair(incomingPairing.uri).catch(() => undefined);
+    });
+    return () => { active = false; };
+  }, [controller, incomingPairing, onPairingHandled, proposal, scanning, snapshot.messageReview, snapshot.network, snapshot.status]);
+
+  const close = () => { lifetime.current.revision++; onScanFinished?.(); controller.cancel(); onBack(); };
+  const finishScan = () => { setScanning(false); onScanFinished?.(); };
   const paste = async () => {
     if (busy) return;
     const current = lifetime.current;
-    const revision = current.revision;
+    const revision = ++current.revision;
     setClipboardError(false);
+    setEntryExpired(false);
     let uri: string;
     try {
       uri = await Clipboard.getStringAsync();
@@ -62,6 +93,14 @@ export function NativeConnections({ controller, onBack }: {
     await controller.pair(uri).catch(() => undefined);
   };
   const invoke = (operation: () => Promise<void>) => { void operation().catch(() => undefined); };
+
+  if (scanning && snapshot.status === 'ready') return <ConnectionQrScanner
+    onClose={finishScan} onScan={(uri) => {
+      if (!lifetime.current.active || controller.getSnapshot().status !== 'ready') return;
+      finishScan();
+      setEntryExpired(false);
+      invoke(() => controller.pair(uri));
+    }} />;
 
   return <SafeAreaView edges={['top']} style={s.container}><Screen>
     <Header title="Connected apps" onBack={close} />
@@ -94,13 +133,16 @@ export function NativeConnections({ controller, onBack }: {
       </Card> : <Card style={s.card}>
         <View style={s.requestIcon}><Icon name="globe" size={26} color={colors.blue} /></View>
         <Text style={s.title}>{busy ? 'Waiting for the app' : 'Connect with WalletConnect'}</Text>
-        <Text style={s.body}>{busy ? 'Review the connection request when it arrives.' : 'Copy a connection link from an app, then paste it here.'}</Text>
+        <Text style={s.body}>{busy ? 'Review the connection request when it arrives.' : 'Scan a WalletConnect code or paste a connection link.'}</Text>
         {busy ? <><ActivityIndicator color={colors.blue} accessibilityLabel="Waiting for a connection request" />
           <Button title="Cancel" variant="secondary" onPress={() => controller.cancel()} /></>
-          : <Button title="Paste connection link" icon="copy" disabled={snapshot.status === 'unavailable' || !snapshot.network} onPress={paste} />}
+          : <><Button title="Scan QR code" icon="scan" disabled={snapshot.status === 'unavailable' || !snapshot.network}
+            onPress={() => { lifetime.current.revision++; onScanStarted?.(); setScanning(true); }} />
+            <Button title="Paste connection link" icon="copy" variant="secondary" disabled={snapshot.status === 'unavailable' || !snapshot.network} onPress={paste} /></>}
       </Card>}
       {(snapshot.error || clipboardError) && <Notice title="Connection unavailable"
         body={snapshot.error ? ERRORS[snapshot.error] : 'The clipboard could not be read. Copy the connection link and try again.'} />}
+      {entryExpired && <Notice title="Connection link expired" body="Request a new connection from the app and try again." />}
       {snapshot.status === 'ready' && !snapshot.network && <Notice title="Choose a network"
         body="Select an EVM network in Wallet to connect to an app." />}
       {snapshot.sessions.length > 0 && <View style={s.sessions}>

@@ -47,8 +47,10 @@ import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { RealAppShell, UnavailableActivity, type RealTab } from './RealAppShell';
 import { RealTools } from './RealTools';
+import { NativeConnections } from './NativeConnections';
+import type { NativePairingEntry } from '../connections/pairingLinks';
 import { NativeMessageReviewScreen } from './NativeMessageReview';
-import type { NativeMessageReview } from '../connections/types';
+import type { NativeConnectionsSnapshot, NativeMessageReview } from '../connections/types';
 import { RealSettings } from './RealSettings';
 import { useRealShell } from './useRealShell';
 
@@ -63,7 +65,7 @@ type SendTarget = Readonly<
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-capacity' | 'restore-notes' | 'backup-notes';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-capacity' | 'restore-notes' | 'backup-notes' | 'connections';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null) {
@@ -95,13 +97,16 @@ function SecretInput({ label, value, onChange, multiline = false, disabled = fal
   /></View>;
 }
 
-export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; initialAccountId?: string; onSelectedNative?(id: string): void; onWalletRemoved?(): void };
+export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; initialAccountId?: string; onSelectedNative?(id: string): void; onWalletRemoved?(): void;
+  incomingPairing?: NativePairingEntry | null; onPairingHandled?(id: string): void;
+};
 
-export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelectedNative, onWalletRemoved }: NativeWalletProps) {
+export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled }: NativeWalletProps) {
   const bridge = useRef(accounts);
   const selectedNative = useRef(onSelectedNative);
   useLayoutEffect(() => { bridge.current = accounts; selectedNative.current = onSelectedNative; }, [accounts, onSelectedNative]);
   const requestedAccount = useRef(initialAccountId);
+  useLayoutEffect(() => { if (incomingPairing) requestedAccount.current = undefined; }, [incomingPairing]);
   const controllers = useRef<Controllers | null>(null);
   const screenToken = useRef<object>({});
   const detachSubscriptions = useRef<() => void>(() => undefined);
@@ -115,7 +120,16 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [balanceReader, setBalanceReader] = useState<Controllers['balanceReader'] | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
   const [connectionView, setConnectionView] = useState<Controllers['connections'] | null>(null);
+  const [connectionSnapshot, setConnectionSnapshot] = useState<NativeConnectionsSnapshot | null>(null);
   const [messageReview, setMessageReview] = useState<NativeMessageReview | null>(null);
+  const [scanIntentExpiresAt, setScanIntentExpiresAt] = useState<number | null>(null);
+  const scanStarted = useCallback(() => setScanIntentExpiresAt((previous) => previous && previous > Date.now() ? previous : Date.now() + 5 * 60_000), []);
+  const scanFinished = useCallback(() => setScanIntentExpiresAt(null), []);
+  useEffect(() => {
+    if (scanIntentExpiresAt === null) return;
+    const timer = setTimeout(scanFinished, Math.max(0, scanIntentExpiresAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [scanIntentExpiresAt, scanFinished]);
   const [networkView, setNetworkView] = useState<NativeNetworkView<EvmNetworkId> | null>(null);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
@@ -216,6 +230,32 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     rootOrigin.current = origin;
     setStage(next);
   };
+  useEffect(() => {
+    if (incomingPairing && incomingPairing.expiresAt <= Date.now()) { onPairingHandled?.(incomingPairing.id); return; }
+    const pendingLink = incomingPairing && onPairingHandled;
+    const resumeScan = scanIntentExpiresAt !== null && scanIntentExpiresAt > Date.now();
+    if (!pendingLink && !resumeScan) return;
+    if (AppState.currentState !== 'active' || !protectedScreen || busy ||
+        snapshot.phase !== 'ready' || stage !== 'choose' || shell.immersive ||
+        !connectionView || connectionSnapshot?.status !== 'ready' ||
+        connectionSnapshot.proposals.length || messageReview) return;
+    const current = readyContext();
+    if (!current) return;
+    const capturedEpoch = epoch.current;
+    let active = true;
+    queueMicrotask(() => {
+      const connections = connectionView.getSnapshot();
+      const linkCurrent = incomingPairing && incomingPairing.expiresAt > Date.now();
+      const scanCurrent = scanIntentExpiresAt !== null && scanIntentExpiresAt > Date.now();
+      if ((!linkCurrent && !scanCurrent) || !active || !mounted.current || rootOrigin.current || epoch.current !== capturedEpoch ||
+          AppState.currentState !== 'active' || readyContext()?.context !== current.context ||
+          connections.status !== 'ready' || connections.proposals.length || connections.messageReview) return;
+      rootOrigin.current = { tab: shell.tab, stage: 'connections', ...current, epoch: capturedEpoch };
+      setStage('connections');
+    });
+    return () => { active = false; };
+  }, [incomingPairing, onPairingHandled, protectedScreen, busy, snapshot.phase, snapshot.revision, stage,
+    shell.immersive, connectionView, connectionSnapshot, messageReview, scanIntentExpiresAt, readyContext, shell.tab]);
   const closeStage = () => {
     const origin = rootOrigin.current; rootOrigin.current = null;
     const current = readyContext();
@@ -231,7 +271,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   useLayoutEffect(() => {
     latestBack.current = () => {
       // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if (stage === 'private-notes' && snapshot.phase === 'ready') { closeStage(); return true; }
+      if ((stage === 'private-notes' || stage === 'connections') && snapshot.phase === 'ready') {
+        if (stage === 'connections') {
+          scanFinished();
+          if (incomingPairing) onPairingHandled?.(incomingPairing.id);
+        }
+        closeStage(); return true;
+      }
       if (stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory') && snapshot.phase === 'ready' ||
           stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
@@ -255,7 +301,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' ? 'choose' : current);
     }
     setCanRemoveWallet(false);
-    setPublicSource(null); setBalanceReader(null); setAccountView(null); setConnectionView(null); setMessageReview(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setAccountView(null); setConnectionView(null); setConnectionSnapshot(null); setMessageReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -297,8 +343,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const unsubscribe = local.authority.subscribe(update);
     update(local.authority.getSnapshot());
     const updateMessage = () => {
-      if (mounted.current && controllers.current === local)
-        setMessageReview(local.connections.getSnapshot().messageReview);
+      if (mounted.current && controllers.current === local) {
+        const next = local.connections.getSnapshot();
+        setConnectionSnapshot(next);
+        setMessageReview(next.messageReview);
+      }
     };
     const unsubscribeMessages = local.connections.subscribe(updateMessage);
     updateMessage();
@@ -495,8 +544,15 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     revoke();
     bridge.current?.onSelectWatch(selection);
   };
-  if (stage === 'choose' && snapshot.phase === 'ready' && messageReview && connectionView)
+  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && messageReview && connectionView)
     return <NativeMessageReviewScreen key={messageReview.id} review={messageReview} controller={connectionView} />;
+  if (stage === 'connections' && snapshot.phase === 'ready' && connectionView)
+    return <NativeConnections controller={connectionView} incomingPairing={incomingPairing} onPairingHandled={onPairingHandled}
+      initialScan={scanIntentExpiresAt !== null} onScanStarted={scanStarted} onScanFinished={scanFinished} onBack={() => {
+      scanFinished();
+      if (incomingPairing) onPairingHandled?.(incomingPairing.id);
+      closeStage();
+    }} />;
   if (stage === 'recovery' && recoveryFlow) return <NativeRecovery flow={recoveryFlow} />;
   if (stage === 'remove-wallet' && removalScope) return <NativeWalletRemovalScreen removal={removalScope.local.removal}
     isCurrent={() => removalCurrent(removalScope)} confirm={(ticket, check) => confirmRemoval(removalScope, ticket, check)}
@@ -694,6 +750,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
       connections={connectionView ?? undefined}
+      incomingPairing={incomingPairing} onPairingHandled={onPairingHandled}
+      initialScan={scanIntentExpiresAt !== null} onScanStarted={scanStarted} onScanFinished={scanFinished}
       networkLabel={utxo?.name ?? EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}
       onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined}
       onPrivateNotes={() => openStage('private-notes')}

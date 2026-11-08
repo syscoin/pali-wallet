@@ -1,3 +1,4 @@
+import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import * as sharedHistory from '../../../source/shared/evmHistory.ts';
 import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
 import assert from 'node:assert/strict';
@@ -209,6 +210,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
+    Linking: { getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
     StyleSheet: { create: (value: unknown) => value }, Share: {},
     ...Object.fromEntries(['View', 'Pressable', 'ScrollView', 'TextInput', 'Text', 'Modal', 'KeyboardAvoidingView', 'ActivityIndicator'].map((name) => [name, name])),
   };
@@ -228,6 +230,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   });
   // Only expose the real internal component to this VM; production exports stay unchanged.
   const app = evaluate(`${source('App.tsx')}\nexport { AppContent };`, {
+    './src/connections/pairingLinks': pairingLinks,
     './src/platform/security': idle.security, './src/screens/IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
