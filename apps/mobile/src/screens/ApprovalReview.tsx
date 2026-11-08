@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { StyleSheet, View } from 'react-native';
 import {
   formatApprovalTokenAmount,
@@ -10,23 +11,23 @@ import { IdleTextInput } from './IdleActivityBoundary';
 
 export function ApprovalReview({
   summary,
-  revision,
+  transaction,
   disabled,
   edit,
   onEditingChange,
 }: {
   summary: ApprovalSummary;
-  revision: number;
+  transaction: PreparedEvmTransaction;
   disabled: boolean;
   edit(value: string): Promise<void>;
   onEditingChange(editing: boolean): void;
 }) {
   const [editor, setEditor] = useState<{
-    revision: number;
+    transaction: PreparedEvmTransaction;
     value: string;
     error?: string;
   } | null>(null);
-  const editing = editor?.revision === revision ? editor : null;
+  const editing = editor?.transaction === transaction ? editor : null;
   const token = summary.token;
   const knownAmount =
     summary.standardVerified && summary.tokenStandard === 'ERC-20';
@@ -84,7 +85,7 @@ export function ApprovalReview({
     }
     void edit(editing.value).catch(() => {
       setEditor((current) => {
-        if (current?.revision !== revision) return current;
+        if (current?.transaction !== transaction) return current;
         return {
           ...current,
           error: 'The limit could not be updated. Try again.',
@@ -138,7 +139,7 @@ export function ApprovalReview({
           onPress={() => {
             onEditingChange(true);
             setEditor({
-              revision,
+              transaction,
               value: formatApprovalTokenAmount(
                 summary.amountUnits!,
                 token.decimals
@@ -154,7 +155,7 @@ export function ApprovalReview({
             accessibilityLabel="New spending limit"
             keyboardType="decimal-pad"
             value={editing.value}
-            onChangeText={(value) => setEditor({ revision, value })}
+            onChangeText={(value) => setEditor({ transaction, value })}
             editable={!disabled}
             maxLength={334}
             autoCorrect={false}
@@ -172,7 +173,10 @@ export function ApprovalReview({
             title="Keep current limit"
             variant="quiet"
             disabled={disabled}
-            onPress={() => { onEditingChange(false); setEditor(null); }}
+            onPress={() => {
+              onEditingChange(false);
+              setEditor(null);
+            }}
           />
         </View>
       )}
