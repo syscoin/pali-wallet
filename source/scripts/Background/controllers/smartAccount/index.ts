@@ -110,7 +110,10 @@ import {
   requireSmartAccountAuthenticator,
 } from 'utils/smartAccount/prepareOperation';
 import { signSmartAccountEcdsaOperation } from 'utils/smartAccount/signOperation';
-import { submitSmartAccountOperation } from 'utils/smartAccount/submitOperation';
+import {
+  submitSmartAccountOperation,
+  type SmartAccountSubmitParams,
+} from 'utils/smartAccount/submitOperation';
 import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import {
@@ -143,7 +146,7 @@ export interface ISmartAccountControllerDependencies {
     targetAccount?: { id: number; type: PaliKeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
-      assertBeforeSign?: () => void;
+      assertBeforeSign: () => void;
       assertCurrentContext?: () => void;
       clearNavigation?: boolean;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
@@ -836,6 +839,7 @@ class SmartAccountController {
             {
               clearNavigation: false,
               persist: true,
+              assertBeforeSign: () => this.assertInfrastructureContext(context),
               assertCurrentContext: () =>
                 this.assertInfrastructureContext(context),
               onBroadcast: async (broadcast) => {
@@ -1664,9 +1668,9 @@ class SmartAccountController {
       expiresAt: Date.now() + 15 * 60 * 1000,
       gasPrice: legacyGasPrice,
       snapshot,
-      userOperation: { ...userOperation },
+      userOperation: Object.freeze({ ...userOperation }),
     });
-    return { ...prepared, executionContextId };
+    return { ...prepared, accountId: active.account.id, executionContextId };
   }
 
   private async assertSmartAccountExecutionTargetsAllowed(
@@ -1723,29 +1727,16 @@ class SmartAccountController {
   }
 
   public async submitSmartAccountExecution(
-    params: {
-      accountId?: number;
-      executionCalldata?: string;
-      executionContextId?: string;
-      executions?: SmartAccountExecution[];
-      expectedContext?: IEvmTransactionContext;
-      gasPayer?: {
-        address: string;
-        id: number;
-        type: PaliKeyringAccountType;
-      };
-      gasPrice?: string;
-      maxFeePerGas?: string;
-      maxPriorityFeePerGas?: string;
-      mode?: string;
-      signature: string;
-      skipRapidPolling?: boolean;
-      userOperation?: SmartAccountPackedUserOperation;
-      validator?: string;
-      waitForConfirmation?: boolean;
-    },
+    params: SmartAccountSubmitParams,
     assertApprovalCurrent?: () => void
   ) {
+    const captured = this.infrastructureContext();
+    const assertCurrent = () => {
+      this.assertInfrastructureContext(captured);
+      this.assertSmartAccountExecutionContext(params.executionContextId);
+      assertApprovalCurrent?.();
+    };
+    assertCurrent();
     return submitSmartAccountOperation(
       params,
       {
@@ -1755,9 +1746,13 @@ class SmartAccountController {
           this.assertExpectedExecutionContext(context, id),
         assertSmartAccountExecutionContext: (id) =>
           this.assertSmartAccountExecutionContext(id),
-        getExecutionContext: (id) => this.executionContexts.get(id),
+        getExecutionContext: (id) => {
+          const context = this.executionContexts.get(id);
+          return context?.userOperation
+            ? { ...context, userOperation: context.userOperation }
+            : undefined;
+        },
         getSmartAccountById: (id) => this.getSmartAccountById(id),
-        getActiveSmartAccount: () => this.getActiveSmartAccount(),
         getWalletGasPayerAccount: (preferred, transaction, options) =>
           this.getWalletGasPayerAccount(preferred, transaction, options),
         getLocalNativeExecutionRecipients: (executions) =>
@@ -1771,7 +1766,7 @@ class SmartAccountController {
         invalidateMetadata: (address) =>
           this.invalidateHydratedMetadata(address),
       },
-      assertApprovalCurrent
+      assertCurrent
     );
   }
 
@@ -1814,7 +1809,7 @@ class SmartAccountController {
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
     options: {
-      assertBeforeSign?: () => void;
+      assertBeforeSign: () => void;
       assertCurrentContext: () => void;
       onAcknowledged: () => void;
       onSubmissionAttempt: () => void;
@@ -1926,11 +1921,9 @@ class SmartAccountController {
     throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
-  public async submitSmartAccountGuardianPolicyTransaction(params: {
-    execution: SmartAccountExecution;
-    signature: string;
-  }) {
-    return this.submitSmartAccountExecution(params);
+  public async submitSmartAccountGuardianPolicyTransaction(params: unknown) {
+    void params;
+    throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
   public async submitSmartAccountGuardianStartRecovery(params: {
@@ -2108,6 +2101,7 @@ class SmartAccountController {
         {
           clearNavigation: false,
           persist: true,
+          assertBeforeSign: assertCurrent,
           assertCurrentContext: assertCurrent,
         }
       );
@@ -2178,6 +2172,7 @@ class SmartAccountController {
         {
           clearNavigation: false,
           persist: true,
+          assertBeforeSign: assertCurrent,
           assertCurrentContext: assertCurrent,
         }
       );
@@ -2431,20 +2426,27 @@ class SmartAccountController {
   private async signActionHashWithLocalEcdsaOwners(
     metadata: ISmartAccountMetadata,
     actionHash: string,
-    executionContextId?: string,
+    executionContextId: string,
     assertApprovalCurrent?: () => void
   ): Promise<string> {
+    const captured = this.infrastructureContext();
+    const assertCurrent = () => {
+      this.assertInfrastructureContext(captured);
+      this.assertSmartAccountExecutionContext(executionContextId, actionHash);
+      assertApprovalCurrent?.();
+    };
+    assertCurrent();
     return signSmartAccountEcdsaOperation({
       metadata,
       actionHash,
-      assertCurrent: () => assertApprovalCurrent?.(),
+      assertCurrent,
       findOwner: (address) => this.findLocalSigningAccount(address),
       signOwner: (address, hash, owner) =>
         this.deps.signSmartAccountActionDigestInternal(
           [address, hash],
           owner,
           executionContextId,
-          assertApprovalCurrent
+          assertCurrent
         ),
     });
   }

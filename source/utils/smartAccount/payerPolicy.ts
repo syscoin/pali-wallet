@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
 import { BigNumber, Contract, getAddress } from '../ethersV6Compat.ts';
 
 import {
@@ -121,15 +122,15 @@ export async function ensureSmartAccountDeploymentPrefund<
   gasPayer: { address: string; id: number; type: KeyringAccountType },
   chainId: number,
   options: {
-    assertBeforeSign?: () => void;
+    assertBeforeSign: () => void;
     assertCurrentContext: () => void;
     onAcknowledged: () => void;
     onSubmissionAttempt: () => void;
   }
 ): Promise<void> {
   const assertCurrent = () => {
-    options.assertBeforeSign?.();
-    options.assertCurrentContext();
+    assertSynchronousEvmFeeGuard(options.assertBeforeSign);
+    assertSynchronousEvmFeeGuard(options.assertCurrentContext);
   };
   assertCurrent();
   if (!provider) {

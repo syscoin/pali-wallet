@@ -261,6 +261,7 @@ describe('smart-account execution approval context', () => {
         metadata: registeredMetadata,
       }));
       controller.prepareSmartAccountExecutions = jest.fn(async () => ({
+        accountId: 0,
         actionHash: HASH,
         executions: calls,
         executionContextId: 'registration-fixture',
@@ -754,6 +755,7 @@ describe('smart-account execution approval context', () => {
         payer,
         1,
         {
+          assertBeforeSign: () => undefined,
           assertCurrentContext: () => undefined,
           onAcknowledged: () => undefined,
           onSubmissionAttempt,

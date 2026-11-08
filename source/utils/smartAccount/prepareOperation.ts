@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
 import { BigNumber, Contract, hexConcat } from '../ethersV6Compat.ts';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from '../evmTransactionContext.ts';
 
@@ -105,7 +106,7 @@ export async function prepareSmartAccountOperation({
     maxFeePerGas: BigNumber
   ): Promise<{ gasPayer: SmartAccountGasPayer; useGasTank: boolean }>;
 }) {
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   feeOverrides = { ...feeOverrides };
   executions = executions.map((execution) => ({ ...execution }));
   const metadata = account.smartAccount;
@@ -127,7 +128,7 @@ export async function prepareSmartAccountOperation({
       metadata.factoryAddress || getPaliSmartAccountFactoryAddress(chainId),
     provider,
   });
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const prepared = smartAccount.encodeExecutions(executions);
   const entryPointAddress = getPaliEntryPointAddress(chainId);
   const entryPoint = new Contract(
@@ -138,7 +139,7 @@ export async function prepareSmartAccountOperation({
   const code = knownDeployed
     ? 'cached-deployed'
     : await provider.getCode(account.address);
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const deployment =
     code === '0x' ? requireSmartAccountAddressIdentity(account, chainId) : null;
   if (code !== '0x' && !knownDeployed) {
@@ -151,15 +152,15 @@ export async function prepareSmartAccountOperation({
       throw new Error(
         'This smart account does not support the requested execution mode'
       );
-    assertCurrent();
+    assertSynchronousEvmFeeGuard(assertCurrent);
   }
   const nonce = (
     await entryPoint.getNonce(account.address, smartAccount.getNonceKey())
   ).toString();
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const callData = smartAccount.encodeCalls(executions);
   const feeData = await provider.getFeeData();
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   if (
     legacyGasPrice !== undefined &&
     feeData.lastBaseFeePerGas !== null &&
@@ -182,7 +183,7 @@ export async function prepareSmartAccountOperation({
     slhDsaChildCount: validatorProfile.slhDsaChildCount,
     validatorKind: validatorProfile.validatorKind,
   });
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const hasOuterEip1559FeeParams =
     legacyGasPrice === undefined &&
     ((feeOverrides.maxFeePerGas !== null &&
@@ -210,7 +211,7 @@ export async function prepareSmartAccountOperation({
     gasEstimate,
     maxFeePerGas
   );
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const userOperation = buildSmartAccountUserOperation({
     accountGasLimits: encodeSmartAccountGasLimits({
       callGasLimit: gasEstimate.callGasLimit,
@@ -230,7 +231,7 @@ export async function prepareSmartAccountOperation({
     sender: account.address,
   });
   const actionHash = getSmartAccountUserOpHash(userOperation, chainId);
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const orderedExecutions = prepared.executions.map((execution) => ({
     ...execution,
     nonce,

@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
 import { defaultAbiCoder, getAddress } from '../ethersV6Compat.ts';
 
 import type {
@@ -25,7 +26,7 @@ export async function signSmartAccountEcdsaOperation({
     owner: SmartAccountLocalOwner
   ): Promise<string>;
 }): Promise<string> {
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   const moduleId = metadata.auth?.module || metadata.auth?.scheme;
   if (moduleId !== 'ecdsa' || !metadata.auth?.data)
     throw new Error(
@@ -49,7 +50,7 @@ export async function signSmartAccountEcdsaOperation({
       .slice(0, threshold)
       .map(({ address, owner }) => signOwner(address, actionHash, owner!))
   );
-  assertCurrent();
+  assertSynchronousEvmFeeGuard(assertCurrent);
   return threshold === 1
     ? signatures[0]!
     : defaultAbiCoder.encode(['bytes[]'], [signatures]);

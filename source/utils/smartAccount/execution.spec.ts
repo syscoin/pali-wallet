@@ -68,6 +68,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
         if (method === 'prepareSmartAccountExecutions')
           return {
+            accountId: 0,
             actionHash: `0x${'12'.repeat(32)}`,
             executionContextId: 'fee-context',
             executions: [],
@@ -126,6 +127,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         if (method === 'prepareSmartAccountExecutions') {
           expect(payload[2].expectedContext).toEqual(expectedContext);
           return {
+            accountId: 0,
             actionHash: `0x${'12'.repeat(32)}`,
             executionContextId: 'prepared-context',
             executions: [],
@@ -191,6 +193,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: 0,
           actionHash: `0x${'12'.repeat(32)}`,
           executionContextId: `prepared-${++preparations}`,
           executions: [],
@@ -256,6 +259,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: 0,
           actionHash: `0x${'12'.repeat(32)}`,
           executionContextId: 'policy-context',
           executions: [],
@@ -303,6 +307,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
         if (method === 'prepareSmartAccountExecutions')
           return {
+            accountId: 0,
             actionHash: `0x${'12'.repeat(32)}`,
             executionContextId: 'policy-context',
             executions: [],
@@ -349,9 +354,12 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
       const controllerEmitter = jest.fn(
         async ([, method]: string[], payload: any[]) => {
+          if (method === 'assertSmartAccountExecutionContext') return;
           if (method === 'prepareSmartAccountExecutions') {
             const options = payload[2] || {};
             return {
+              accountId: 0,
+              executionContextId: 'fixture-context',
               actionHash:
                 options.feeOverrides?.[feeField] === '2'
                   ? '0x' + '02'.repeat(32)
@@ -448,8 +456,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         transactionHash: acknowledged ? `0x${'12'.repeat(32)}` : undefined,
       });
       const emitter = jest.fn(async ([, method]: string[]) => {
+        if (method === 'assertSmartAccountExecutionContext') return;
         if (method === 'prepareSmartAccountExecutions')
           return {
+            accountId: 0,
+            executionContextId: 'fixture-context',
             actionHash: `0x${'01'.repeat(32)}`,
             executions,
             smartAccount,
@@ -492,6 +503,8 @@ describe('signAndSubmitSmartAccountExecutions', () => {
 
   it('does not invoke smart submission if its durable boundary fails', async () => {
     const emitter = jest.fn().mockResolvedValue({
+      accountId: 0,
+      executionContextId: 'fixture-context',
       actionHash: `0x${'01'.repeat(32)}`,
       executions: [],
       smartAccount,
@@ -513,6 +526,8 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     ).rejects.toThrow('Persistence failed');
     expect(emitter.mock.calls.map(([[, method]]) => method)).toEqual([
       'prepareSmartAccountExecutions',
+      'assertSmartAccountExecutionContext',
+      'assertSmartAccountExecutionContext',
     ]);
   });
 });

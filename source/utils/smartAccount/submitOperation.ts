@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
 import {
   BigNumber,
   Contract,
@@ -36,9 +37,9 @@ const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
 const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
 const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
 export type SmartAccountSubmitParams = {
-  accountId?: number;
+  accountId: number;
   executionCalldata?: string;
-  executionContextId?: string;
+  executionContextId: string;
   executions?: SmartAccountExecution[];
   expectedContext?: IEvmTransactionContext;
   gasPayer?: {
@@ -52,7 +53,7 @@ export type SmartAccountSubmitParams = {
   mode?: string;
   signature: string;
   skipRapidPolling?: boolean;
-  userOperation?: SmartAccountPackedUserOperation;
+  userOperation: SmartAccountPackedUserOperation;
   validator?: string;
   waitForConfirmation?: boolean;
 };
@@ -77,18 +78,17 @@ export type SmartAccountSubmitHost<
     payer: SmartAccountGasPayer,
     chainId: number,
     options: {
-      assertBeforeSign?: () => void;
+      assertBeforeSign: () => void;
       assertCurrentContext(): void;
       onAcknowledged(): void;
       onSubmissionAttempt(): void;
     }
   ): Promise<void>;
-  getActiveSmartAccount(): SmartAccountRecord;
   getExecutionContext(id: string):
     | {
         accountId: number;
         gasPrice?: string;
-        userOperation?: SmartAccountPackedUserOperation;
+        userOperation: SmartAccountPackedUserOperation;
       }
     | undefined;
   getLocalNativeExecutionRecipients(
@@ -117,7 +117,7 @@ export async function submitSmartAccountOperation<
 >(
   params: SmartAccountSubmitParams,
   host: SmartAccountSubmitHost<TResponse>,
-  assertApprovalCurrent?: () => void
+  assertApprovalCurrent: () => void
 ) {
   // The call may first fund a counterfactual account, then submit handleOps.
   // Only failures before either sender is entered are definitely read-only.
@@ -126,6 +126,29 @@ export async function submitSmartAccountOperation<
   let handleOpsStarted = false;
   let acknowledgedHandleOpsHash: string | undefined;
   try {
+    assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    params = Object.freeze({
+      ...params,
+      userOperation: Object.freeze({ ...params.userOperation }),
+      ...(params.gasPayer
+        ? { gasPayer: Object.freeze({ ...params.gasPayer }) }
+        : {}),
+      ...(params.executions
+        ? {
+            executions: params.executions.map((execution) =>
+              Object.freeze({ ...execution })
+            ),
+          }
+        : {}),
+      ...(params.expectedContext
+        ? {
+            expectedContext: {
+              ...params.expectedContext,
+              account: { ...params.expectedContext.account },
+            },
+          }
+        : {}),
+    });
     const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
     const assertContext = () => {
       if (params.expectedContext) {
@@ -138,36 +161,31 @@ export async function submitSmartAccountOperation<
             transactionNotBroadcast: true,
           });
       }
-      if (params.executionContextId) {
-        host.assertSmartAccountExecutionContext(params.executionContextId);
-        const context = host.getExecutionContext(params.executionContextId)!;
-        const suppliedOperation = params.userOperation;
-        if (
-          (params.accountId !== undefined &&
-            params.accountId !== context.accountId) ||
-          !suppliedOperation ||
-          !context.userOperation ||
-          params.gasPrice !== context.gasPrice ||
-          Object.entries(context.userOperation).some(
-            ([key, value]) =>
-              suppliedOperation[
-                key as keyof SmartAccountPackedUserOperation
-              ] !== value
-          )
+      host.assertSmartAccountExecutionContext(params.executionContextId);
+      const context = host.getExecutionContext(params.executionContextId);
+      const suppliedOperation = params.userOperation;
+      if (
+        !context ||
+        params.accountId !== context.accountId ||
+        !suppliedOperation ||
+        !context.userOperation ||
+        params.gasPrice !== context.gasPrice ||
+        Object.entries(context.userOperation).some(
+          ([key, value]) =>
+            suppliedOperation[key as keyof SmartAccountPackedUserOperation] !==
+            value
         )
-          throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-            transactionNotBroadcast: true,
-          });
-      }
+      )
+        throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+          transactionNotBroadcast: true,
+        });
     };
     const assertCurrent = () => {
-      assertApprovalCurrent?.();
+      assertSynchronousEvmFeeGuard(assertApprovalCurrent);
       assertContext();
     };
     assertCurrent();
-    const active = Number.isInteger(params.accountId)
-      ? host.getSmartAccountById(params.accountId as number)
-      : host.getActiveSmartAccount();
+    const active = host.getSmartAccountById(params.accountId);
     if (!params.userOperation) {
       throw new Error(
         'Signed ERC-4337 UserOperation is required for smart account execution'
@@ -252,7 +270,7 @@ export async function submitSmartAccountOperation<
         gasPayer,
         active.metadata.chainId,
         {
-          assertBeforeSign: assertApprovalCurrent,
+          assertBeforeSign: assertCurrent,
           assertCurrentContext: assertContext,
           onSubmissionAttempt() {
             financialSubmissionAttempted = true;
@@ -329,7 +347,7 @@ export async function submitSmartAccountOperation<
         ],
       },
       {
-        assertBeforeSign: assertApprovalCurrent,
+        assertBeforeSign: assertCurrent,
         assertCurrentContext: assertContext,
         clearNavigation: true,
         async onBroadcast(broadcast: { hash: string }) {

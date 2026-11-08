@@ -76,10 +76,41 @@ test('portable deployment preserves prefund acknowledgement if handleOps submiss
   await assert.rejects(submitSmartAccountOperation({ ...prepared, accountId: 0, executionContextId: 'fixture', signature: '0x1234' }, {
     chainId, provider: f.provider, assertExpectedExecutionContext() {}, assertSmartAccountExecutionContext() {},
     getExecutionContext: () => ({ accountId: 0, userOperation: prepared.userOperation }),
-    getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }), getActiveSmartAccount: () => ({ account: f.account, metadata: f.metadata }),
+    getSmartAccountById: () => ({ account: f.account, metadata: f.metadata }),
     getWalletGasPayerAccount: async () => payer, getLocalNativeExecutionRecipients: () => [], assertGasTankCoversTransaction: async () => BigNumber.from(100000),
     ensureDeploymentPrefund: (...args) => ensureSmartAccountDeploymentPrefund(f.provider, send, ...args),
     sendTransaction: send, invalidateMetadata() {},
   }, () => undefined), (error: any) => error.transactionNotBroadcast === false && error.transactionHash === undefined);
   assert.equal(sends.length, 2);
+});
+
+
+test('shared submission refuses omitted or asynchronous approval guards before host access', async () => {
+  let touched = false;
+  const host = new Proxy({}, { get() { touched = true; throw new Error('host touched'); } });
+  for (const guard of [undefined, async () => undefined]) {
+    await assert.rejects(submitSmartAccountOperation({} as never, host as never, guard as never), (error: any) => error.transactionNotBroadcast === true);
+    assert.equal(touched, false);
+  }
+});
+
+test('shared submission requires the exact issued account and operation before any payer work', async () => {
+  const f = fixture();
+  const prepared = await prepareSmartAccountOperation({ account: f.account as IKeyringAccountState & { smartAccount: typeof f.metadata }, chainId,
+    executions: [{ target: f.account.address, value: '0x0', data: '0x' }], knownDeployed: false, provider: f.provider,
+    async selectGasPayer() { return { gasPayer: payer, useGasTank: false }; }, assertCurrent() {} });
+  const params = { ...prepared, accountId: 0, executionContextId: 'issued', signature: '0x1234' };
+  const contexts = [undefined, { accountId: 1, userOperation: prepared.userOperation },
+    { accountId: 0, userOperation: { ...prepared.userOperation, nonce: '1' } }];
+  for (const context of contexts) {
+    let payerRead = false;
+    const host = {
+      assertSmartAccountExecutionContext(id: string) { assert.equal(id, 'issued'); },
+      getExecutionContext() { return context; },
+      getSmartAccountById() { payerRead = true; throw new Error('account accessed'); },
+    };
+    await assert.rejects(submitSmartAccountOperation(params, host as never, () => undefined),
+      (error: any) => error.transactionNotBroadcast === true);
+    assert.equal(payerRead, false);
+  }
 });

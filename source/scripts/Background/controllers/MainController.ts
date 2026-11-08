@@ -322,6 +322,7 @@ import type {
   SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
 import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
+import type { SmartAccountSubmitParams } from 'utils/smartAccount/submitOperation';
 import { chromeStorage } from 'utils/storageAPI';
 import {
   assertUtxoBuilderFee,
@@ -5345,6 +5346,7 @@ class MainController {
     target: string;
     value: string;
   }): Promise<{
+    accountId: number;
     actionHash: string;
     execution: {
       data: string;
@@ -5388,6 +5390,7 @@ class MainController {
       useCachedMetadata?: boolean;
     }
   ): Promise<{
+    accountId: number;
     actionHash: string;
     execution: {
       data: string;
@@ -5423,37 +5426,17 @@ class MainController {
   }
 
   public async submitSmartAccountExecution(
-    params: {
-      accountId?: number;
-      executionCalldata?: string;
-      executionContextId?: string;
-      executions?: Array<{
-        data: string;
-        nonce?: string;
-        target: string;
-        value: string;
-      }>;
-      expectedContext?: IEvmTransactionContext;
-      gasPayer?: {
-        address: string;
-        id: number;
-        type: KeyringAccountType;
-      };
-      maxFeePerGas?: string;
-      maxPriorityFeePerGas?: string;
-      mode?: string;
-      signature: string;
-      userOperation?: SmartAccountPackedUserOperation;
-      validator?: string;
-      waitForConfirmation?: boolean;
-    },
+    params: SmartAccountSubmitParams,
     assertApprovalCurrent?: () => void
   ) {
     this.assertWalletReadyForSigning();
-    return this.smartAccount.submitSmartAccountExecution(
-      params,
-      assertApprovalCurrent
-    );
+    const generation = this.walletSessionGeneration;
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation);
+      assertApprovalCurrent?.();
+    };
+    return this.smartAccount.submitSmartAccountExecution(params, assertCurrent);
   }
 
   public async prepareSmartAccountGuardianRegistration(params: {
