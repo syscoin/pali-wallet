@@ -67,8 +67,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  validate:
-    name: Mobile types, behavior and bundles
+  foundation:
+    name: Mobile types, behavior and native bundles
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -92,7 +92,48 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build:web
+      # These validate the platform dependency graphs, not native binaries or
+      # device custody. Actual native custody is checked by its separate workflow.
+      - run: npx --no-install expo export --platform android --max-workers 2 --output-dir dist-android
+      - run: npx --no-install expo export --platform ios --max-workers 2 --output-dir dist-ios
+
+  browser:
+    name: Mobile browser (${{ matrix.suite }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: preview
+            command: npm run test:ui
+          - suite: activity
+            command: npm run test:activity-ui
+          - suite: watch
+            command: npm run test:watch-ui -- --workers=2
+          - suite: faucet
+            command: npm run test:faucet-ui
+          - suite: recovery
+            command: npm run test:recovery-ui
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_NO_DOTENV: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci --ignore-scripts
+      - name: Build preview
+        if: matrix.suite == 'preview'
+        run: npm run build:web
       - name: Resolve Playwright browser version
         id: playwright-version
         run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
@@ -128,23 +169,30 @@ jobs:
         run: node --test ../../.github/scripts/tests/configure-chromium-sandbox.test.cjs
       - name: Verify installed Chromium sandbox helper
         run: bash ../../.github/scripts/configure-chromium-sandbox.sh
-      - run: npm run test:ui
-      - run: npm run test:activity-ui
-      - run: npm run test:watch-ui -- --workers=2
-      - run: npm run test:faucet-ui
-      - name: Validate native recovery UI
-        run: npm run test:recovery-ui
-      # These validate the platform dependency graphs, not native binaries or
-      # device custody. Actual native custody is checked by its separate workflow.
-      - run: npx --no-install expo export --platform android --max-workers 2 --output-dir dist-android
-      - run: npx --no-install expo export --platform ios --max-workers 2 --output-dir dist-ios
+      - name: Run browser suite
+        run: ${{ matrix.command }}
       - name: Upload browser failure evidence
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: mobile-browser-${{ github.run_id }}-${{ github.run_attempt }}
+          name: mobile-browser-${{ matrix.suite }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             apps/mobile/test-results/
             apps/mobile/playwright-report/
           if-no-files-found: ignore
           retention-days: 14
+
+  validate:
+    name: Mobile types, behavior and bundles
+    if: always()
+    needs: [foundation, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every mobile check
+        env:
+          FOUNDATION_RESULT: ${{ needs.foundation.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          test "$FOUNDATION_RESULT" = success
+          test "$BROWSER_RESULT" = success
