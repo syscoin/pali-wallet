@@ -113,7 +113,7 @@ describe('infrastructure transaction broadcast boundary', () => {
       now,
       authority
     );
-    bindGenericEvmFeeDispatch(wallet, id, context, async () => undefined);
+    bindGenericEvmFeeDispatch(wallet, id, context, async () => undefined, null);
     return id;
   };
 
