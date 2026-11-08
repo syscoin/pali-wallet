@@ -106,7 +106,7 @@ test('explains uncertain delivery without offering another signature or rejectio
 
 for (const typed of [false, true]) test(`identifies the Smart-account ${typed ? 'V4' : 'personal'} signature without another approval`, async ({ page }, info) => {
   await page.setViewportSize({ width: 320, height: 568 });
-  const base = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4204';
+  const base = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
   await page.goto(`${base}/?message-review&smart${typed ? '&typed&cross-domain' : ''}`);
   await expect(page.getByText('Smart account signature · Your smart account will authorize this request with its configured signing method.', { exact: true })).toBeVisible();
   await expect(page.getByText('Ethereum · Chain ID 1', { exact: true })).toBeVisible();

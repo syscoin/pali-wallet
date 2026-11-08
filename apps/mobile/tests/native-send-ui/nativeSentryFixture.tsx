@@ -144,15 +144,17 @@ window.__nativeSentryFixture = {
   pendingSettings: () => pendingSettings,
   releaseSettings: () => releaseSettings?.(),
 };
-Object.defineProperty(navigator, 'clipboard', {
-  configurable: true,
-  value: {
-    readText: async () => clipboard,
-    writeText: async (value: string) => {
-      copied.push(value);
+if (new URLSearchParams(location.search).has('sentry')) {
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      readText: async () => clipboard,
+      writeText: async (value: string) => {
+        copied.push(value);
+      },
     },
-  },
-});
+  });
+}
 const open = async (_signal: AbortSignal, guard: () => void) => {
   check = () => {
     guard();

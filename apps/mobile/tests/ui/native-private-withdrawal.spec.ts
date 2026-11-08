@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
-const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4197';
+const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
 const recipient = `0x${'11'.repeat(20)}`;
 test.use({ baseURL, viewport: { width: 320, height: 568 } });
 test.beforeEach(async ({ page }) => {

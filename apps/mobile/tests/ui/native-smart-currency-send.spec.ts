@@ -240,7 +240,12 @@ test('Smart ERC20 transfer keeps token identity and payer fee reviews separate o
   ).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'MAX', exact: true })
-  ).toHaveCount(0);
+  ).toBeEnabled();
+  await page.getByRole('button', { name: 'MAX', exact: true }).click();
+  await expect(page.getByLabel('Amount (TOK)', { exact: true })).toHaveValue('100.0');
+  await expect(
+    page.getByRole('button', { name: 'MAX selected', exact: true })
+  ).toBeVisible();
   await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
   await page.getByLabel('Amount (TOK)', { exact: true }).fill('1.234567');
   await page
