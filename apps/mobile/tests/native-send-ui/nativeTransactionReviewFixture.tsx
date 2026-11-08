@@ -69,7 +69,9 @@ export function NativeTransactionReviewFixture() {
       setReview({ ...current, revision: current.revision + 1, transaction: { ...current.transaction, data: edited.data },
         approval: summarizeApproval(edited.data, tokenContract, metadata) });
     },
-    getSnapshot: unavailable, subscribe: unavailable, pair: unavailable, approve: unavailable,
+    getSnapshot: () => ({ revision: review?.revision ?? 0, status: 'ready', accounts: [], selectedAccountId: null,
+      network: null, proposals: [], sessions: [], signingReview: review, error: null }),
+    subscribe: unavailable, pair: unavailable, approve: unavailable,
     reject: unavailable, disconnect: unavailable, cancel: unavailable,
     async activateRequestAccount(...args) {
       calls.push({ method: 'activateRequestAccount', args });

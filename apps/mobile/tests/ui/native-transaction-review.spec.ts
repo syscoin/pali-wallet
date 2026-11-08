@@ -130,3 +130,23 @@ test('unknown approval and NFT token IDs never become verified editable ERC20 li
   await page.goto(`${fixture}&approval=operator`);
   await expect(page.getByText('Remove operator access', { exact: true })).toBeVisible();
 });
+
+test('unapplied or invalid allowance edits block confirmation until discarded', async ({ page }) => {
+  await page.goto(`${fixture}&approval=erc20`);
+  const confirm = page.getByRole('button', { name: 'Confirm transaction', exact: true });
+  await page.getByRole('button', { name: 'Edit spending limit', exact: true }).click();
+  await page.getByRole('textbox', { name: 'New spending limit', exact: true }).fill('1.5');
+  await expect(confirm).toBeDisabled();
+  expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())).toEqual([]);
+  await page.getByRole('textbox', { name: 'New spending limit', exact: true }).fill('invalid');
+  await page.getByRole('button', { name: 'Apply limit', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Enter an exact amount');
+  await expect(confirm).toBeDisabled();
+  await page.getByRole('button', { name: 'Keep current limit', exact: true }).click();
+  await expect(confirm).toBeEnabled();
+  await expect(page.getByText('Unlimited', { exact: true })).toBeVisible();
+  await confirm.click();
+  expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())).toEqual([
+    { method: 'approveRequest', args: ['transaction-1', 7, false] },
+  ]);
+});

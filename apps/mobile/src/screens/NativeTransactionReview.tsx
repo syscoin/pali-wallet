@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeConnectionsView, NativeTransactionReview } from '../connections/types';
@@ -47,6 +47,18 @@ export function NativeTransactionReviewScreen({ review, controller }: {
 }) {
   const [acceptedRevision, setAcceptedRevision] = useState<number | null>(null);
   const [detailsRevision, setDetailsRevision] = useState<number | null>(null);
+  const [approvalDraft, setApprovalDraft] = useState<{ id: string; revision: number } | null>(null);
+  const approvalDraftRef = useRef(approvalDraft);
+  const editingApproval = approvalDraft?.id === review.id && approvalDraft.revision === review.revision;
+  const setApprovalEditing = (editing: boolean) => {
+    const current = controller.getSnapshot().signingReview;
+    if (current?.kind !== 'transaction' || current.id !== review.id || current.revision !== review.revision) return;
+    const previous = approvalDraftRef.current;
+    if (!editing && (previous?.id !== review.id || previous.revision !== review.revision)) return;
+    const next = editing ? { id: review.id, revision: review.revision } : null;
+    approvalDraftRef.current = next;
+    setApprovalDraft(next);
+  };
   const acknowledged = acceptedRevision === review.revision;
   const detailsVisible = detailsRevision === review.revision;
   const submitted = review.broadcastHash !== null || review.dispatched;
@@ -62,6 +74,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
   const transaction = review.transaction;
   const prepared = transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
   const approve = () => {
+    if (approvalDraftRef.current?.id === review.id && approvalDraftRef.current.revision === review.revision) return;
     const action = review.needsAccountSwitch
       ? controller.activateRequestAccount(review.id, review.revision)
       : controller.approveRequest(review.id, review.revision, acknowledged);
@@ -83,6 +96,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
       <Text style={s.muted}>{review.networkLabel} · Chain ID {review.chainId}</Text>
     </Card>
     {review.approval && <ApprovalReview summary={review.approval} revision={review.revision}
+      onEditingChange={setApprovalEditing}
       disabled={review.busy || submitted || review.needsAccountSwitch || review.error !== null}
       edit={(value) => controller.editApprovalAmount(review.id, review.revision, value)} />}
     {transaction && <Card style={s.card}>
@@ -124,7 +138,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
     {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
       <Text>{submitted ? 'Sending transaction…' : transaction ? 'Please wait…' : 'Preparing transaction…'}</Text></View>}
     {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : 'Confirm transaction'}
-      disabled={review.error !== null || review.busy || !review.needsAccountSwitch &&
+      disabled={editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
         (!prepared || review.requiresWarningAcknowledgement && !acknowledged)} onPress={approve} />}
     <Button title={submitted ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
   </Screen></KeyboardAvoidingView></SafeAreaView>;
