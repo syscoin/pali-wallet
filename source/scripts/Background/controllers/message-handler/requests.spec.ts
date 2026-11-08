@@ -76,6 +76,164 @@ describe('malformed signing/network requests settle before admission', () => {
   });
 });
 
+describe('batch requests use shared admission before the extension pipeline', () => {
+  const from = `0x${'11'.repeat(20)}`;
+  const to = `0x${'22'.repeat(20)}`;
+  const batch = { version: '2.0.0', from, chainId: '0x1', calls: [{ to }] };
+
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    null,
+    [],
+    { to: 'invalid' },
+    { value: null },
+    { value: '-1' },
+    { value: Number.MAX_SAFE_INTEGER + 1 },
+    { value: `0x1${'0'.repeat(64)}` },
+    { data: '0x0' },
+    { data: 'plaintext' },
+    { nonce: '0x1' },
+    { gas: '0x5208' },
+    { input: '0x1234' },
+    { capabilities: { future: { optional: 'true' } } },
+  ])(
+    'rejects malformed call %p before any account, RPC or popup work',
+    async (call) => {
+      jest.mocked(getController).mockClear();
+      const execute = jest.spyOn(getPipelineInstance()!, 'execute');
+      await expect(
+        methodRequest('https://requester.example', {
+          method: 'wallet_sendCalls',
+          params: [{ ...batch, calls: [{ to }, call] }],
+        })
+      ).rejects.toMatchObject({ code: -32602 });
+      expect(execute).not.toHaveBeenCalled();
+      expect(getController).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([undefined, [], [batch, batch], [null]])(
+    'rejects malformed batch parameter count %p before admission',
+    async (params) => {
+      const execute = jest.spyOn(getPipelineInstance()!, 'execute');
+      await expect(
+        methodRequest('https://requester.example', {
+          method: 'wallet_sendCalls',
+          params,
+        })
+      ).rejects.toMatchObject({ code: -32602 });
+      expect(execute).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    'from',
+    'chainId',
+    'nonce',
+    'gas',
+    'gasLimit',
+    'gasPrice',
+    'maxFeePerGas',
+    'maxPriorityFeePerGas',
+    'type',
+    'accessList',
+    'input',
+    'authorizationList',
+    'blobVersionedHashes',
+    'blobs',
+    'maxFeePerBlobGas',
+    'kzg',
+    'signature',
+    'hash',
+  ])('rejects ignored per-call %s before pipeline admission', async (field) => {
+    const execute = jest.spyOn(getPipelineInstance()!, 'execute');
+    await expect(
+      methodRequest('https://requester.example', {
+        method: 'wallet_sendCalls',
+        params: [{ ...batch, calls: [{ to, [field]: '0x1' }] }],
+      })
+    ).rejects.toMatchObject({ code: -32602 });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each(['1.0', '2.0.0'])(
+    'ignores unknown call metadata but keeps optional capabilities for %s',
+    async (version) => {
+      const capabilities = { future: { optional: true, values: ['retained'] } };
+      const execute = jest
+        .spyOn(getPipelineInstance()!, 'execute')
+        .mockResolvedValue({ id: '0x1' });
+      await methodRequest('https://requester.example', {
+        method: 'wallet_sendCalls',
+        params: [
+          {
+            ...batch,
+            version,
+            calls: [{ to, metadata: { label: 'ignored' }, capabilities }],
+          },
+        ],
+      });
+      expect(execute.mock.calls[0][0].originalRequest.params[0].calls).toEqual([
+        { to, data: '0x', value: '0x0', capabilities },
+      ]);
+    }
+  );
+
+  it.each([
+    { capabilities: { future: {} } },
+    { calls: [{ to, capabilities: { future: { optional: false } } }] },
+  ])('rejects required capability %p before admission', async (fields) => {
+    const execute = jest.spyOn(getPipelineInstance()!, 'execute');
+    await expect(
+      methodRequest('https://requester.example', {
+        method: 'wallet_sendCalls',
+        params: [{ ...batch, ...fields }],
+      })
+    ).rejects.toMatchObject({ code: 5700 });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each(['1.0', '2.0.0'])(
+    'passes immutable exact calls for wire version %s to pipeline admission',
+    async (version) => {
+      const value = (BigInt(1) << BigInt(255)).toString();
+      const input = {
+        ...batch,
+        version,
+        id: '0x123',
+        calls: [
+          { to, value, data: '0xABCD' },
+          { to: from, value: '1' },
+        ],
+      };
+      const execute = jest
+        .spyOn(getPipelineInstance()!, 'execute')
+        .mockResolvedValue({ id: input.id });
+      await expect(
+        methodRequest('https://requester.example', {
+          method: 'wallet_sendCalls',
+          params: [input],
+        })
+      ).resolves.toEqual({ id: input.id });
+      const parsed = execute.mock.calls[0][0].originalRequest.params[0];
+      expect(parsed).toMatchObject({
+        version,
+        id: input.id,
+        from,
+        chainId: '0x1',
+        atomicRequired: false,
+      });
+      expect(parsed.calls).toEqual([
+        { to, value: `0x${BigInt(value).toString(16)}`, data: '0xABCD' },
+        { to: from, value: '0x1', data: '0x' },
+      ]);
+      expect(Object.isFrozen(parsed.calls[0])).toBe(true);
+      expect(input.calls[1].value).toBe('1');
+    }
+  );
+});
+
 describe('provider-facing signing methods', () => {
   it('rejects an excessive request before method dispatch', async () => {
     await expect(

@@ -31,6 +31,7 @@ const id = '0x1234';
 const token = 'attempt-a';
 const submissionId = 'submission-a';
 const hash = `0x${'12'.repeat(32)}`;
+const payer = `0x${'34'.repeat(20)}`;
 const descriptor = { atomic: false, chainId: 1, smartAccount: false };
 
 describe('sendCalls reservation submission boundary', () => {
@@ -65,7 +66,7 @@ describe('sendCalls reservation submission boundary', () => {
     );
     (getController as jest.Mock).mockReturnValue({
       dapp: {
-        getAccount: () => ({ address: 'payer' }),
+        getAccount: () => ({ address: payer }),
         get: () => ({ accountId: 0, accountType: 'HDAccount' }),
       },
       wallet: { getWalletSessionGeneration: () => 7 },
@@ -97,7 +98,7 @@ describe('sendCalls reservation submission boundary', () => {
       originalRequest: {
         host,
         method: 'wallet_sendCalls',
-        params: [{ id, calls: [] }],
+        params: [{ id, version: '2.0.0', calls: [{ to: payer }] }],
         sender: { tab: { id: 1 }, documentId: 'original-document' },
         signal: new AbortController().signal,
       },
@@ -112,9 +113,9 @@ describe('sendCalls reservation submission boundary', () => {
     };
     await new WalletMethodHandler().handle(request);
     expect((popupPromise as jest.Mock).mock.calls[0][0].data).toMatchObject({
-      from: 'payer',
+      from: payer,
       approvedContext: {
-        account: { address: 'payer', id: 0, type: 'HDAccount' },
+        account: { address: payer, id: 0, type: 'HDAccount' },
         chainId: 1,
         rpcUrl: 'rpc-a',
         sessionGeneration: 7,
