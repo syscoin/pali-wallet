@@ -20,6 +20,12 @@ import { assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApprov
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
 import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
+const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> = Object.freeze({
+  eth_chainId: true,
+  eth_getBlockByNumber: true,
+  eth_getTransactionCount: true,
+  eth_getTransactionReceipt: true,
+});
 const BLOCK_BYTES = 512 * 1024;
 const CODE_BYTES = 32 * 1024;
 type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
@@ -40,6 +46,7 @@ type SendNonceSample = Readonly<{
   count: bigint;
   nativeReservations: EvmNativeReservations;
   state: 'latest' | 'pending';
+  balanceState: 'latest' | 'pending';
 }>;
 export type EvmReceiptObservation = Readonly<
   | { status: 'included'; outcome: 'succeeded' | 'reverted'; canonicalObserved: true; block: EvmSampledBlock }
@@ -192,7 +199,7 @@ export class EvmTransferReadRpc {
   }
   retirementRead(method: EvmSignedRetirementReadMethod, params: readonly unknown[],
     signal: AbortSignal, guard: () => void): Promise<unknown> {
-    if (method !== 'eth_chainId' && method !== 'eth_getBlockByNumber' && method !== 'eth_getTransactionCount')
+    if (typeof method !== 'string' || !Object.hasOwn(RETIREMENT_METHODS, method))
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, (read) => read(method, params), 'endpoint');
   }
@@ -460,6 +467,7 @@ export class EvmTransferReadRpc {
       count, nonce: BigInt(plan.nonce),
       state: pending < count || (nonceOverride !== undefined && BigInt(nonceOverride) < pending) ? 'latest' : 'pending',
       nativeReservations: plan.nativeReservations,
+      balanceState: plan.balanceState,
     };
   }
 
@@ -505,7 +513,7 @@ export class EvmTransferReadRpc {
       read('eth_getBalance', [from, 'pending']).then(quantity),
     ]);
     read.assertCurrent();
-    return availableEvmNativeBalance({ canonical, pending }, sample.nativeReservations, sample.state);
+    return availableEvmNativeBalance({ canonical, pending }, sample.nativeReservations, sample.balanceState);
   }
 
   /** Check the exact collectible envelope while the journal owns wire admission. */
@@ -522,7 +530,7 @@ export class EvmTransferReadRpc {
       if (assetState.balanceUnits < BigInt(intent.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
       const nonceState = replay
         ? read('eth_getTransactionCount', [intent.from, 'latest']).then((value) => ({
-          count: quantity(value), nonce: BigInt(envelope.nonce), state: 'pending' as const, nativeReservations: { canonical: 0n, pending: 0n },
+          count: quantity(value), nonce: BigInt(envelope.nonce), state: 'pending' as const, balanceState: 'pending' as const, nativeReservations: { canonical: 0n, pending: 0n },
         }))
         : this.sampleSendNonce(read, intent.from, sampled, nonceOverride, automaticNonce, assetState);
       const state = manual || automaticNonce ? nonceState.then((sample) => sample.state) : Promise.resolve('pending');

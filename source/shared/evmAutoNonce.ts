@@ -68,7 +68,7 @@ export type EvmNativeReservations = Readonly<{
   pending: bigint;
 }>;
 
-/** Compare each balance with only the commitments absent from that balance. */
+/** Apply canonical commitments and conservative pending reservations. */
 export function availableEvmNativeBalance(
   balances: Readonly<{ canonical: bigint; pending: bigint }>,
   reservations: EvmNativeReservations,
@@ -90,7 +90,8 @@ export function availableEvmNativeBalance(
   return available > BigInt(0) ? available : BigInt(0);
 }
 
-/** Include every retained alternative in the canonical bound, once per nonce. */
+/** Single-variant pending groups follow the node's ordinary pending view.
+ * Competing retained variants have unknown overlap and reserve their full cap. */
 async function nativeReservations(
   snapshot: EvmAutoNonceSnapshot,
   chainId: string,
@@ -100,9 +101,11 @@ async function nativeReservations(
   assertCurrent: () => void
 ): Promise<EvmNativeReservations> {
   assertCurrent();
-  const reserved = new Map<number, bigint>();
+  const groups = new Map<
+    number,
+    { competing: boolean; hash: string; maximum: bigint }
+  >();
   let canonicalCost = BigInt(0);
-  let pendingCost = BigInt(0);
   for (const entry of snapshot.retained) {
     if (!sameSender(entry, chainId, from) || entry.nonce < latest) continue;
     if (!validNonce(entry.nonce)) throw new Error('Invalid retained EVM nonce');
@@ -111,13 +114,21 @@ async function nativeReservations(
     assertCurrent();
     if (typeof cost !== 'bigint' || cost < BigInt(0))
       throw new Error('Invalid retained EVM cost');
-    const previous = reserved.get(entry.nonce) ?? BigInt(0);
-    if (cost > previous) {
-      canonicalCost += cost - previous;
-      if (entry.nonce >= Math.max(latest, pending))
-        pendingCost += cost - previous;
-      reserved.set(entry.nonce, cost);
+    let group = groups.get(entry.nonce);
+    if (!group) {
+      group = { hash: entry.hash, maximum: BigInt(0), competing: false };
+      groups.set(entry.nonce, group);
     }
+    group.competing ||= group.hash !== entry.hash;
+    if (cost > group.maximum) {
+      canonicalCost += cost - group.maximum;
+      group.maximum = cost;
+    }
+  }
+  let pendingCost = BigInt(0);
+  for (const [nonce, group] of groups) {
+    if (nonce >= Math.max(latest, pending) || group.competing)
+      pendingCost += group.maximum;
   }
   assertCurrent();
   return Object.freeze({ canonical: canonicalCost, pending: pendingCost });
@@ -134,6 +145,7 @@ type Selection =
 
 export type EvmAutoNoncePlan =
   | Readonly<{
+      balanceState: 'latest' | 'pending';
       kind: 'ready';
       nativeReservations: EvmNativeReservations;
       nonce: number;
@@ -385,6 +397,7 @@ export class EvmAutoNonceAcceptance {
         kind: 'ready',
         nonce: nonceOverride,
         nativeReservations: costs,
+        balanceState: pending < latest ? 'latest' : 'pending',
       };
     }
     const variants = new Map<number, RetainedNonce[]>();
@@ -483,7 +496,11 @@ export class EvmAutoNonceAcceptance {
     }
     assertCurrent();
     return selection.kind === 'ready'
-      ? { ...selection, nativeReservations: costs! }
+      ? {
+          ...selection,
+          nativeReservations: costs!,
+          balanceState: pending < latest ? 'latest' : 'pending',
+        }
       : selection;
   }
 }

@@ -417,6 +417,11 @@ test('ordinary coin and token sends preserve a deliberate override below the ext
     try {
       f.nextNonce();
       f.externalPendingBalance('latest');
+      await assert.rejects(asset === 'coin'
+        ? f.transfers.view.prepare(to, '0.9', '0')
+        : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '0'), { code: 'INSUFFICIENT_BALANCE' });
+      assert.equal(f.signatures(), 0);
+      f.setPendingBalance(1000000000000000000n);
       await (asset === 'coin'
         ? f.transfers.view.prepare(to, '0.9', '0')
         : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '0'));

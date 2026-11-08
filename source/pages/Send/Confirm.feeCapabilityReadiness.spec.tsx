@@ -175,6 +175,8 @@ let wallet: any;
 let capability: ReturnType<typeof deferred> | undefined;
 let london: boolean;
 const block = () => ({
+  number: '0x64',
+  hash: '0x' + 'ab'.repeat(32),
   gasLimit: BigNumber.from(30000000),
   ...(london ? { baseFeePerGas: BigNumber.from(1000000000) } : {}),
 });
@@ -258,11 +260,26 @@ beforeEach(() => {
     getBlock: jest.fn(async () => block()),
     estimateGas: jest.fn().mockResolvedValue(BigNumber.from(21000)),
     verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
-    send: jest.fn(async (method: string) => {
-      if (method === 'eth_getBlockByNumber')
-        return capability?.promise ?? block();
+    send: jest.fn(async function (
+      this: unknown,
+      method: string,
+      params: unknown[]
+    ) {
+      if (method === 'eth_getBlockByNumber') {
+        expect(['latest', '0x64']).toContain(params[0]);
+        expect(params[1]).toBe(false);
+        // Only the primary provider's capability probe is delayed or failed.
+        // Independent canonical-state reads still receive a coherent header.
+        return this === provider ? capability?.promise ?? block() : block();
+      }
       if (method === 'eth_maxPriorityFeePerGas') return '0x3b9aca00';
-      if (method === 'eth_getTransactionCount') return '0x0';
+      if (method === 'eth_getTransactionCount' || method === 'eth_getBalance') {
+        expect(params[0]).toBe(mockLocation.state.tx.sender);
+        expect(['0x64', 'pending']).toContain(params[1]);
+        return method === 'eth_getTransactionCount'
+          ? '0x0'
+          : '0x56bc75e2d63100000';
+      }
       throw new Error(`Unexpected RPC ${method}`);
     }),
   };
@@ -422,7 +439,7 @@ it('retains a fee transport error and recovers only after an explicit retry', as
   );
   expect(provider.send).toHaveBeenCalledWith('eth_getTransactionCount', [
     mockLocation.state.tx.sender,
-    'latest',
+    '0x64',
   ]);
   expect(provider.send).toHaveBeenCalledWith('eth_getTransactionCount', [
     mockLocation.state.tx.sender,
@@ -431,4 +448,21 @@ it('retains a fee transport error and recovers only after an explicit retry', as
   expect(mockFreshProviders).toHaveLength(2);
   for (const reader of mockFreshProviders)
     expect(reader.destroy).toHaveBeenCalledTimes(1);
+});
+
+it('refuses approval when the independent canonical block read fails', async () => {
+  const send = provider.send.getMockImplementation();
+  provider.send.mockImplementation(async function (
+    this: unknown,
+    method: string,
+    params: unknown[]
+  ) {
+    if (this !== provider && method === 'eth_getBlockByNumber')
+      throw new Error('Synthetic canonical block failure');
+    return send.call(this, method, params);
+  });
+  await renderConfirm();
+  await advance();
+  expect(screen.getAllByText('send.unableToLoad').length).toBeGreaterThan(0);
+  expect(confirm()).toBeDisabled();
 });

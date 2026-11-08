@@ -72,13 +72,29 @@ it('refuses a new send when a costlier retained prefix alternative exceeds canon
     planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(871000) })
   ).rejects.toMatchObject({ transactionNotBroadcast: true });
   await expect(
-    planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(858000) })
+    planExtensionEvmNonce({ ...f.input, minimumBalance: BigInt(737000) })
   ).resolves.toMatchObject({
     nonce: 1,
-    nativeReservations: { canonical: BigInt(142000), pending: BigInt(0) },
+    nativeReservations: { canonical: BigInt(142000), pending: BigInt(142000) },
   });
 });
 
+it('retains external pending debits while reviewing a manual external replacement', async () => {
+  const f = fixture('0x0', '0x2');
+  f.replies.set('eth_getBalance:latest', '0xf4240');
+  f.replies.set('eth_getBalance:pending', '0x74f18'); // 479000
+  const input = { ...f.input, reviewed: reviewedExtensionNonce(1, 'manual') };
+  await expect(
+    planExtensionEvmNonce({ ...input, minimumBalance: BigInt(800000) })
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  await expect(
+    planExtensionEvmNonce({ ...input, minimumBalance: BigInt(479000) })
+  ).resolves.toMatchObject({
+    nonce: 1,
+    state: 'latest',
+    balanceState: 'pending',
+  });
+});
 it('advances across an exact acknowledged predecessor only if its cost and this send fit', async () => {
   const { input, replies } = fixture('0x0', '0x0');
   input.snapshot.retained.push(retained);

@@ -26,6 +26,8 @@ Imported metadata, explorer suggestions, balances and NFT ownership are untruste
 
 Known queued asset debits are reserved once per nonce group. Exact-call simulation checks the reviewed transfer against the selected state. Token-specific fees, rebasing and other contract rules can affect the received amount even after successful execution.
 
+Native funding uses shared canonical and pending balance bounds. Ordinary single-variant pending groups keep the node’s pending-balance semantics. Competing retained variants add a conservative maximum-cost reserve, which can reduce the available amount until that ambiguity clears. Manual nonce selection changes execution estimation independently of funding, so unrelated pending debits remain included.
+
 Ordinary Activity rows use indexed facts without per-row RPC enrichment. Retained unconfirmed EVM submissions use the shared observer, and opening a detail can request additional facts. A canonical receipt supplies the confirmation or revert observation. Later observations can reflect a reorganization. EVM internal transfers, full collectible enumeration and complete historical indexing remain open scope.
 
 UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation window. EVM recent-history storage keeps up to 48 local terminal summaries, 24 indexed candidates and 20 list preferences within 60 KiB. Byte limits can reduce those counts. Older history remains available through a configured explorer.

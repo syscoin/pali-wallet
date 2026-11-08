@@ -252,6 +252,7 @@ export async function planExtensionEvmNonce({
   const finish = async (
     nonce: number,
     state: 'latest' | 'pending',
+    balanceState: 'latest' | 'pending',
     nativeReservations: EvmNativeReservations
   ) => {
     if (minimumBalance !== undefined) {
@@ -265,7 +266,7 @@ export async function planExtensionEvmNonce({
           pending: parseEvmFeeQuantity(pendingBalance, 'pending balance'),
         },
         nativeReservations,
-        state
+        balanceState
       );
       if (available < minimumBalance)
         throw Object.assign(
@@ -296,7 +297,13 @@ export async function planExtensionEvmNonce({
     ])) as { hash?: string } | null;
     if (currentBlock?.hash?.toLowerCase() !== canonicalBlock.hash)
       throw unavailable();
-    return Object.freeze({ nonce, state, nativeReservations, canonicalBlock });
+    return Object.freeze({
+      nonce,
+      state,
+      balanceState,
+      nativeReservations,
+      canonicalBlock,
+    });
   };
 
   const plan = await acceptance
@@ -320,6 +327,7 @@ export async function planExtensionEvmNonce({
   return finish(
     plan.nonce,
     pending < latest || plan.nonce < pending ? 'latest' : 'pending',
+    plan.balanceState,
     plan.nativeReservations
   );
 }

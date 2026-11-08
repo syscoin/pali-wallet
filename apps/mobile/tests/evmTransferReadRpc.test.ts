@@ -6,6 +6,8 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { EvmAutoNonceAcceptance } from '../../../source/shared/evmAutoNonce.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
+import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
+import { signedRecordTestSession } from './signedRecordTestSession.ts';
 import { createNativeNetwork, getNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import type { EvmUnsignedTransfer } from '../src/custody/evmFeeContracts.ts';
 const from = Wallet.fromPhrase('test test test test test test test test test test test junk').address;
@@ -175,8 +177,48 @@ for (const manual of [false, true]) test(`native dispatch budgets the costliest 
  const transfer = { ...transaction(custom), nonce: '1', value: '661000' };
  await assert.rejects(f.rpc.verifyForDispatch(transfer, signal(), () => undefined, planner,
   undefined, manual ? 1 : undefined), { code: 'INSUFFICIENT_BALANCE' });
- await f.rpc.verifyForDispatch({ ...transfer, value: '648000' }, signal(), () => undefined, planner,
+ await f.rpc.verifyForDispatch({ ...transfer, value: '527000' }, signal(), () => undefined, planner,
   undefined, manual ? 1 : undefined);
+ assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+});
+
+for (const originalCap of [100000n, 150000n]) test(`native final admission reserves ambiguous prefixes with external debits (${originalCap})`, async () => {
+ const originalHash = '0x' + '3'.repeat(64), replacementHash = '0x' + '4'.repeat(64);
+ const acceptance = new EvmAutoNonceAcceptance();
+ let pendingBalance = '0x927c0';
+ let competing = true;
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getTransactionCount') return call.params[1] === 'pending' ? '0x2' : '0x0';
+  if (call.method === 'eth_getBalance') return call.params[1] === 'pending' ? pendingBalance : '0xf4240';
+  return undefined;
+ });
+ const planner: NativeAutomaticNoncePlanner = input => acceptance.plan({ ...input,
+  chainId: custom.chainId, endpoint: custom.rpcUrl, from,
+  snapshot: { owner: 'external-pending', minimumNonce: 0, retained: [
+   { chainId: custom.chainId, from, hash: originalHash, nonce: 0, phase: 'submitted' },
+   ...(competing ? [{ chainId: custom.chainId, from, hash: replacementHash, nonce: 0, phase: 'signed' as const }] : []),
+  ], readMaximumCost: async hash => hash === originalHash ? originalCap : 200000n,
+  readAssetDebit: async () => 0n },
+ });
+ const candidate = { ...transaction(custom), nonce: '2', value: '340000' };
+ await assert.rejects(f.rpc.verifyForDispatch(candidate, signal(), () => undefined, planner), { code: 'INSUFFICIENT_BALANCE' });
+ await f.rpc.verifyForDispatch({ ...candidate, value: '190000' }, signal(), () => undefined, planner);
+ pendingBalance = '0xdbba0'; // Without the external debit, the ambiguous-group fallback permits this send.
+ await f.rpc.verifyForDispatch(candidate, signal(), () => undefined, planner);
+ pendingBalance = '0x927c0';
+ competing = false; // Ordinary single-variant queues retain the node's pending balance semantics.
+ await f.rpc.verifyForDispatch(candidate, signal(), () => undefined, planner);
+ assert.equal(f.calls.some(call => call.method === 'eth_getTransactionByHash'), false);
+});
+test('manual final admission keeps the external predecessor in its funding bound', async () => {
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getTransactionCount') return call.params[1] === 'pending' ? '0x2' : '0x0';
+  if (call.method === 'eth_getBalance') return call.params[1] === 'pending' ? '0x74f18' : '0xf4240';
+  return undefined;
+ });
+ const candidate = { ...transaction(custom), nonce: '1', value: '590000' };
+ await assert.rejects(f.rpc.verifyForDispatch(candidate, signal(), () => undefined, emptyNoncePlanner, undefined, 1), { code: 'INSUFFICIENT_BALANCE' });
+ await f.rpc.verifyForDispatch({ ...candidate, value: '269000' }, signal(), () => undefined, emptyNoncePlanner, undefined, 1);
  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
 });
 
@@ -188,9 +230,10 @@ test('signed-record retirement exposes only bounded endpoint reads', async () =>
  assert.equal(await f.rpc.retirementRead('eth_chainId', [], signal(), () => undefined), '0x6ef91');
  await f.rpc.retirementRead('eth_getBlockByNumber', ['finalized', false], signal(), () => undefined);
  assert.equal(await f.rpc.retirementRead('eth_getTransactionCount', [from, '0x64'], signal(), () => undefined), '0x1');
- assert.deepEqual(f.calls.map(({ method }) => method), ['eth_chainId', 'eth_getBlockByNumber', 'eth_getTransactionCount']);
+ await f.rpc.retirementRead('eth_getTransactionReceipt', [hash], signal(), () => undefined);
+ assert.deepEqual(f.calls.map(({ method }) => method), ['eth_chainId', 'eth_getBlockByNumber', 'eth_getTransactionCount', 'eth_getTransactionReceipt']);
  await assert.rejects(f.rpc.retirementRead('eth_sendRawTransaction' as Parameters<EvmTransferReadRpc['retirementRead']>[0], [], signal(), () => undefined), { code: 'INVALID_INPUT' });
- assert.equal(f.calls.length, 3);
+ assert.equal(f.calls.length, 4);
  const oversized = fixture(custom, call => call.method === 'eth_getBlockByNumber'
   ? { number: '0x64', hash: blockHash, padding: 'x'.repeat(512 * 1024) } : undefined);
  await assert.rejects(oversized.rpc.retirementRead('eth_getBlockByNumber', ['finalized', false], signal(), () => undefined), { code: 'UNAVAILABLE' });
@@ -218,4 +261,52 @@ test('signed-record retirement rejects a response from a changed endpoint', asyn
   return response;
  } });
  await assert.rejects(rpc.retirementRead('eth_chainId', [], signal(), () => undefined), { code: 'PROFILE_CHANGED' });
+});
+
+
+test('the native retirement adapter reclaims a confirmed journal entry after exact receipt and finality checks', async () => {
+ const wallet = Wallet.fromPhrase('test test test test test test test test test test test junk');
+ const raw = await wallet.signTransaction({ type: 2, chainId: BigInt(custom.chainId), nonce: 0,
+  to, value: 100n, gasLimit: 21000n, maxFeePerGas: 10n, maxPriorityFeePerGas: 2n });
+ const tx = Transaction.from(raw), finalHash = '0x' + '3'.repeat(64);
+ let stored: string | undefined;
+ const records = new EvmSignedRecords({
+  async read() { return stored; },
+  async compareAndSet(_profileId, expected, next, assertCurrent) {
+   assertCurrent();
+   if (stored !== expected) return false;
+   stored = next;
+   return true;
+  },
+ });
+ const session = signedRecordTestSession();
+ await records.append(session, { rawTransaction: raw, hash: tx.hash!, from, chainId: custom.chainId, nonce: 0, type: 2,
+  context: { account: { id: 0, type: 'HDAccount', address: from },
+   network: { kind: 'ethereum', chainId: Number(custom.chainId), slip44: 60, url: custom.rpcUrl }, operation: 'send' } });
+ await records.updatePhase(session, custom.chainId, from, tx.hash!, 'confirmed');
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getTransactionReceipt') {
+   assert.deepEqual(call.params, [tx.hash]);
+   return { transactionHash: tx.hash, from, to, status: '0x1', blockNumber: '0x50', blockHash, transactionIndex: '0x0' };
+  }
+  if (call.method === 'eth_getBlockByNumber') {
+   assert.equal(call.params[1], false);
+   if (call.params[0] === '0x50') return { number: '0x50', hash: blockHash, gasLimit: '0x1c9c380', transactions: [tx.hash] };
+   assert(['finalized', '0x64'].includes(String(call.params[0])));
+   return { number: '0x64', hash: finalHash, gasLimit: '0x1c9c380', transactions: [] };
+  }
+  if (call.method === 'eth_getTransactionCount') {
+   assert.deepEqual(call.params, [from.toLowerCase(), { blockHash: finalHash, requireCanonical: true }]);
+   return '0x1';
+  }
+ });
+ const removed = await records.retireAvailableFinalized(session, { chainId: custom.chainId, from },
+  (chain, abort, guard) => {
+   assert.equal(chain, custom.chainId);
+   return (method, params) => f.rpc.retirementRead(method, params, abort, guard);
+  });
+ assert.equal(removed, 1);
+ assert.equal(await records.validate(signedRecordTestSession()), 0);
+ assert.equal(f.calls.filter(call => call.method === 'eth_getTransactionReceipt').length, 2);
+ assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
 });
