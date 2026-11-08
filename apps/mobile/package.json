@@ -16,10 +16,13 @@
     "test:activity-ui": "node scripts/build-native-activity-ui.cjs && playwright test --config playwright.activity.config.ts",
     "test:faucet-ui": "playwright test --config playwright.faucet.config.ts",
     "test:recovery-ui": "node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts",
-    "lint": "eslint . --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "postinstall": "node ../../scripts/apply-keyring-ledger.cjs"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
+    "@ledgerhq/device-management-kit": "1.11.0",
+    "@ledgerhq/device-transport-kit-react-native-ble": "1.3.2",
     "@noble/curves": "1.9.7",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/netinfo": "12.0.1",
@@ -47,6 +50,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
+    "react-native-ble-plx": "3.4.0",
     "react-native-nitro-modules": "0.37.2",
     "react-native-qrcode-svg": "6.3.50",
     "react-native-quick-base64": "3.0.1",
@@ -92,6 +96,9 @@
     },
     "@walletconnect/keyvaluestorage": {
       "@react-native-async-storage/async-storage": "$@react-native-async-storage/async-storage"
+    },
+    "@ledgerhq/device-transport-kit-react-native-ble@1.3.2": {
+      "uuid": "11.1.1"
     }
   },
   "engines": {
@@ -101,5 +108,9 @@
     "autolinking": {
       "nativeModulesDir": "./modules"
     }
+  },
+  "paliKeyringPatch": {
+    "sourceCommit": "c68e7f7ca8dd13789a7428a8ec35d3b84a46f2f8",
+    "manifestSha256": "28153063e5d18b4348191b7f2293cd58d9e6bdc585a7e2481975ad6e9d13d2ac"
   }
 }

@@ -1,3 +1,4 @@
+import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
 import { prepareWalletConnectRuntime } from './walletConnectRuntime';
 import { createNativeDeviceUnlockCapability } from './deviceUnlockCredential.native';
 import { NativeConnectionsController } from '../connections/controller.ts';
@@ -55,6 +56,11 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
   return createKeyringRuntimeFactory({
     assertActive,
     deviceUnlock,
+    async createLedgerTransport(owner) {
+      const { createNativeLedgerTransport } = await import('../hardware/ledgerTransport.native');
+      owner.assertCurrent();
+      return createNativeLedgerTransport(owner, {});
+    },
     prepareSmartAccount(network, accountIndex, managementAddress, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).prepareSmartAccount(accountIndex, managementAddress, signal, guard);
     },
@@ -115,9 +121,15 @@ export function createNativeWalletControllers() {
     checkAddress: (address) => blacklistService.checkAddress(address),
     metadata: { name: 'Pali Wallet', description: 'Pali Wallet', url: 'https://paliwallet.com', icons: [] },
   });
+  const ledger = new NativeLedgerAccounts(authority, () => runtime?.ledger);
+  const disposeConnections = async () => {
+    const results = await Promise.allSettled([connections.dispose(), ledger.dispose()]);
+    const failure = results.find((result) => result.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+  };
   const removal = new NativeWalletRemoval({
     owner: authority,
-    beforeSnapshot: async (guard) => { guard(); await connections.dispose(); guard(); },
+    beforeSnapshot: async (guard) => { guard(); await disposeConnections(); guard(); },
     source: () => runtime && ownedStorage ? { runtime, storage: ownedStorage } : undefined,
     reopen: openStorage,
     async clearNativeSelection(check) {
@@ -274,6 +286,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, authentication: deviceUnlock.prompt, connections: connections.view, disposeConnections: () => connections.dispose(), backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, authentication: deviceUnlock.prompt, ledger, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

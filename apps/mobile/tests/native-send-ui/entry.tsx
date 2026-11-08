@@ -9,6 +9,7 @@ import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { NativeConnectionsFixture } from './nativeConnectionsFixture';
+import { NativeLedgerFixture } from './nativeLedgerFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
 import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
 import { registerRootComponent } from 'expo';
@@ -370,7 +371,9 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('transaction-review') ? (
+      {new URLSearchParams(window.location.search).has('ledger') ? (
+        <NativeLedgerFixture />
+      ) : new URLSearchParams(window.location.search).has('transaction-review') ? (
         <NativeTransactionReviewFixture />
       ) : new URLSearchParams(window.location.search).has('message-review') ? (
         <NativeMessageReviewFixture />

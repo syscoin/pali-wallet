@@ -3,7 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import * as sdk from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
+const sdk = await loadNativeKeyringSdk();
 import { createNoteBackupCodec, type INoteBackupEntry } from '../../../source/wallet/noteBackup.ts';
 import { NOTE_BACKUP_PREVIEW_TTL_MS } from '../../../source/wallet/noteBackupService.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -48,9 +49,9 @@ async function fixture() {
   let beforeNoteInsert: ReturnType<typeof pause> | undefined;
   let afterNoteRead: ReturnType<typeof pause> | undefined;
   let noteCommits = 0;
-  const owners: sdk.SoftwareKeyring[] = [];
-  class ObservedKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) { super(...options); owners.push(this); }
+  const owners: InstanceType<typeof sdk.HostKeyring>[] = [];
+  class ObservedKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) { super(...options); owners.push(this); }
     override async unlock(password: string) {
       unlockCalls++;
       const before = beforeUnlock, after = afterUnlock;
@@ -63,7 +64,7 @@ async function fixture() {
   }
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ObservedKeyring }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
     async openStorage() {
       const { connection } = nodeConnection(file, { before(kind, sql) {
         if (kind === 'run' && sql.startsWith('INSERT INTO private_note_records') && beforeNoteInsert) {

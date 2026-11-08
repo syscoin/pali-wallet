@@ -3,7 +3,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import * as sdk from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
+const sdk = await loadNativeKeyringSdk();
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import { ACCOUNT_SELECTION_KEY, createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -41,10 +42,10 @@ async function fixture() {
   let pauseUnlock: ReturnType<typeof pause> | undefined, afterRemovalCommit: SqlHook | undefined;
   let beforeSnapshot: (check: () => void) => Promise<void> = async () => undefined;
   let reopenedIdentity: string | undefined;
-  const rings: sdk.SoftwareKeyring[] = [];
+  const rings: InstanceType<typeof sdk.HostKeyring>[] = [];
   const statements: string[] = [];
-  class ObservedRing extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) { super(...options); rings.push(this); }
+  class ObservedRing extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) { super(...options); rings.push(this); }
     override async unlock(password: string) {
       unlocks++;
       const gate = pauseUnlock; pauseUnlock = undefined;
@@ -89,7 +90,7 @@ async function fixture() {
   const storage = await openWalletStorage(ports);
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ObservedRing }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: ObservedRing }),
     openStorage: async () => storage,
   });
   const runtime = await factory.open() as KeyringRuntime;
