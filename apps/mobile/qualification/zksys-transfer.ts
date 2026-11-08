@@ -1,3 +1,4 @@
+import { sameJsonRpcParameters } from './rpc-parameters.ts';
 import { readSignedRecordEvidence, retainedSignedEntries } from './signed-record-evidence.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
@@ -296,7 +297,7 @@ export async function qualifyNativeZksysTransfer(
       );
       const params = body.params;
       const same = (expected: unknown[]) =>
-        expect(JSON.stringify(params) === JSON.stringify(expected));
+        expect(sameJsonRpcParameters(params, expected));
       let result: unknown;
       if (body.method === 'eth_chainId') {
         same([]);
