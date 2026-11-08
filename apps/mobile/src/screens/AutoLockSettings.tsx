@@ -30,7 +30,7 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     catch { if (owned.mounted && owned.generation === generation) setFeedback('The setting could not be verified. Reopen security settings before saving again.'); }
     finally { owned.pending = false; if (owned.mounted && owned.generation === generation) setBusy(false); }
   };
-  return <SafeAreaView edges={['top', 'bottom']} style={styles.screen}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
+  return <SafeAreaView edges={['top', 'bottom']} style={styles.screen}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}><Screen>
     <Header title="Auto-lock" subtitle={mode === 'custody' ? 'Native wallet' : 'Watch accounts'} onBack={back} />
     <Text style={styles.muted}>{mode === 'custody' ? 'Lock wallet' : 'Hide watch accounts'} after foreground inactivity. Current: {current === 0 ? 'Off while open' : `${current ?? '—'} minutes`}.</Text>
     <Notice title="Background locking stays on" body="Pali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock." />
