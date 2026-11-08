@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { assertSupportedEvmFees } from '../../shared/dappTransaction.ts';
 import { parseErc20Units } from '../../shared/erc20';
 import { EVM_FEE_APPROVAL_LIFETIME_MS } from '../../shared/evmFeeApproval';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
@@ -43,7 +44,6 @@ import {
   findEvmAddressPoisoningCollision,
   getTrustedEvmRecipients,
 } from 'utils/addressPoisoning';
-import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { handleTransactionError } from 'utils/errorHandling';
 import {
   formatEther,

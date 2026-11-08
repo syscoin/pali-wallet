@@ -1,8 +1,13 @@
 import {
+  EthereumProviderErrorHandler,
+  EthereumRpcErrorHandler,
+} from '../helpers/errors';
+import { BigNumber } from '../utils/ethersV6Compat';
+
+import {
   assertSupportedEvmFees,
   normalizeDappTransaction,
-} from './dappTransaction';
-import { BigNumber } from './ethersV6Compat';
+} from './dappTransaction.ts';
 
 const from = `0x${'11'.repeat(20)}`;
 const to = `0x${'22'.repeat(20)}`;
@@ -64,6 +69,33 @@ export const malformedTransactions: [string, Record<string, unknown>][] = [
 ];
 
 describe('dapp transaction admission', () => {
+  it('preserves the existing invalid-parameter error class and payload', () => {
+    let error: EthereumRpcErrorHandler<null> | undefined;
+    try {
+      normalizeDappTransaction({ ...transaction, value: 'bad' });
+    } catch (caught) {
+      error = caught as EthereumRpcErrorHandler<null>;
+    }
+    expect(error).toBeInstanceOf(EthereumRpcErrorHandler);
+    expect(error?.serializeEthereumErrorResponse()).toMatchObject({
+      code: -32602,
+      message: 'Invalid transaction value',
+    });
+  });
+  it('preserves the existing unsupported-method error class and payload', () => {
+    let error: EthereumProviderErrorHandler<null> | undefined;
+    try {
+      normalizeDappTransaction({ ...transaction, type: '0x3' });
+    } catch (caught) {
+      error = caught as EthereumProviderErrorHandler<null>;
+    }
+    expect(error).toBeInstanceOf(EthereumProviderErrorHandler);
+    expect(error?.serializeEthereumErrorResponse()).toMatchObject({
+      code: 4200,
+      message:
+        'Pali supports legacy and EIP-1559 transactions (types 0 and 2).',
+    });
+  });
   it.each(malformedTransactions)(
     'rejects %s without defaulting it',
     (_, fields) => {
