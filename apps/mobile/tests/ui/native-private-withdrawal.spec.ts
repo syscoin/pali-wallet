@@ -402,16 +402,57 @@ test('restored prerequisite clears password and returns to ordinary explicit rev
   ).toHaveLength(0);
 });
 
-test('an opening child closes and disposes a late returned controller', async ({
+test('cancel waits for a pending open and late disposal before reloading inventory', async ({
   page,
 }) => {
-  await page.goto('/?private-withdrawal&hold-open');
+  await page.goto('/?private-withdrawal&hold-open&hold-dispose');
   await page.getByRole('button', { name: /1 ETH pool/ }).click();
   await page
     .getByRole('button', { name: 'Check pool status', exact: true })
     .click();
   await page.getByRole('button', { name: 'Withdraw', exact: true }).click();
+  const inventories = await page.evaluate(
+    () =>
+      window.__privateWithdrawalFixture
+        .events()
+        .filter((event) => event === 'inventory').length
+  );
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByText('Closing withdrawal…')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Saved notes', exact: true })
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        window.__privateWithdrawalFixture
+          .events()
+          .filter((event) => event === 'inventory').length
+    )
+  ).toBe(inventories);
+  await page.evaluate(() => window.__privateWithdrawalFixture.release());
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__privateWithdrawalFixture
+            .events()
+            .filter((event) => event === 'dispose').length
+      )
+    )
+    .toBe(1);
+  await expect(page.getByText('Closing withdrawal…')).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Saved notes', exact: true })
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        window.__privateWithdrawalFixture
+          .events()
+          .filter((event) => event === 'inventory').length
+    )
+  ).toBe(inventories);
   await page.evaluate(() => window.__privateWithdrawalFixture.release());
   await expect(
     page.getByRole('heading', { name: 'Saved notes', exact: true })
@@ -426,6 +467,14 @@ test('an opening child closes and disposes a late returned controller', async ({
       )
     )
     .toBe(1);
+  expect(
+    await page.evaluate(
+      () =>
+        window.__privateWithdrawalFixture
+          .events()
+          .filter((event) => event === 'inventory').length
+    )
+  ).toBe(inventories + 1);
 });
 
 test('proven-unsent failure needs a fresh review before another confirmation', async ({

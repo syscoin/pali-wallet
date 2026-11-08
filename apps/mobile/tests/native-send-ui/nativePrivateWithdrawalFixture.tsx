@@ -29,6 +29,7 @@ export function NativePrivateWithdrawalFixture() {
   const readInventory = useCallback(
     async (assertInventory: () => void): Promise<Inventory> => {
       assertInventory();
+      events.push('inventory');
       const note = Object.freeze({
         amount: '1',
         createdAt: 1762000000000,
@@ -237,6 +238,11 @@ export function NativePrivateWithdrawalFixture() {
                 disposed = true;
                 events.push('dispose');
                 listeners.clear();
+                if (query.has('hold-dispose'))
+                  await new Promise<void>((resolve) => {
+                    release = resolve;
+                  });
+                events.push('disposed');
               }
             },
           };
