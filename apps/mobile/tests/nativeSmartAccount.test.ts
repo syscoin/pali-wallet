@@ -1643,3 +1643,119 @@ test('a different active recovery prevents signing the saved intent until status
     assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
   } finally { controller.dispose(); await f.close(); }
 });
+
+test('executed recovery followed by a later owner change can retire tracking without adopting mismatched metadata', async () => {
+  const { f, controller, guardian, replacement, policy } =
+    await startNativeRecovery();
+  let resumed: typeof controller | undefined;
+  try {
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    f.onBroadcast(() => policy.recover(intent.operation, 'pending'));
+    await controller.review();
+    await controller.confirm(controller.getSnapshot().feeReview!.id);
+    assert.equal(f.submitted.length, 1);
+    controller.dispose();
+    await f.reopen();
+    policy.recover(intent.operation, 'executed');
+    f.recoveredOwner('0x' + '77'.repeat(20));
+    await f.owner.unlock(PASSWORD);
+    const before = (await f.inspectRecovery()).record as {
+      groups: unknown;
+      recovery: unknown;
+    };
+    resumed = await f.runtime.openGuardianRecovery(
+      { kind: 'resume' },
+      new AbortController().signal,
+      () => undefined
+    );
+    await resumed.prepare();
+    assert.equal(resumed.getSnapshot().phase, 'complete');
+    assert.equal(resumed.getSnapshot().metadataRefresh, 'failed');
+    assert.equal(resumed.getSnapshot().canAbandon, true);
+    assert.equal(
+      f.runtime.getGuardianRecoveryIntent()!.operation.hash,
+      intent.operation.hash
+    );
+    assert.deepEqual(
+      ((await f.inspectRecovery()).record as { groups: unknown }).groups,
+      before.groups
+    );
+    await resumed.abandon();
+    assert.equal(resumed.getSnapshot().phase, 'cleared');
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    const after = (await f.inspectRecovery()).record as {
+      groups: unknown;
+      recovery: unknown;
+    };
+    assert.deepEqual(after.groups, before.groups);
+    assert.deepEqual(after.recovery, before.recovery);
+    assert(
+      f.owner
+        .getCatalogue()!
+        .accounts.some((account) => account.id === guardian.id)
+    );
+    assert(
+      f.owner
+        .getCatalogue()!
+        .accounts.some((account) => account.id === replacement.id)
+    );
+    assert.equal(f.submitted.length, 1);
+    assert.equal(f.signatures.length, 2);
+    await f.reopen();
+    await f.owner.unlock(PASSWORD);
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    await f.change({ kind: 'remove', id: replacement.id, password: PASSWORD });
+    assert(
+      !f.owner
+        .getCatalogue()!
+        .accounts.some((account) => account.id === replacement.id)
+    );
+  } finally {
+    resumed?.dispose();
+    controller.dispose();
+    await f.close();
+  }
+});
+
+test('revoking an executed recovery clear during its fresh observation preserves intent and keys', async () => {
+  const { f, controller, policy } = await startNativeRecovery();
+  let resumed: typeof controller | undefined;
+  let current = true;
+  try {
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    controller.dispose();
+    policy.recover(intent.operation, 'executed');
+    f.recoveredOwner('0x' + '77'.repeat(20));
+    resumed = await f.runtime.openGuardianRecovery(
+      { kind: 'resume' },
+      new AbortController().signal,
+      () => {
+        if (!current) throw new Error('CANCELLED');
+      }
+    );
+    await resumed.prepare();
+    assert.equal(resumed.getSnapshot().canAbandon, true);
+    const before = (await f.inspectRecovery()).record;
+    policy.select('hold', GUARDIAN_FIXTURE_RUNTIME);
+    const clearing = resumed.abandon();
+    for (let i = 0; !policy.methods().length && i < 200; i++)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    assert(policy.methods().length);
+    current = false;
+    policy.release();
+    await clearing;
+    assert.notEqual(resumed.getSnapshot().phase, 'cleared');
+    assert.deepEqual((await f.inspectRecovery()).record, before);
+    assert.equal(
+      f.runtime.getGuardianRecoveryIntent()!.operation.hash,
+      intent.operation.hash
+    );
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+  } finally {
+    policy.release();
+    resumed?.dispose();
+    controller.dispose();
+    await f.close();
+  }
+});
