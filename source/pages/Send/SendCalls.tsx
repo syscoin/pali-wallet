@@ -204,6 +204,9 @@ export const SendCalls = () => {
     index: number;
     quote: EoaFeeReview;
   }>();
+  const [reviewedDestinations, setReviewedDestinations] = useState<
+    Readonly<Record<number, string>>
+  >({});
   const eoaDecisionRef = React.useRef<{
     expires: number;
     index: number;
@@ -291,15 +294,19 @@ export const SendCalls = () => {
   const [feeQuoteError, setFeeQuoteError] = useState<string>();
   const [feeQuote, setFeeQuote] = useState<
     SmartAccountFeeQuote & {
+      destinations: Readonly<Record<number, string>>;
       executions: SmartAccountExecutionIntent[];
       key: string;
     }
   >();
-  const quoteCalls = (callsData.calls || []).filter(
-    (_, index) =>
-      effectiveSelectedCalls[index] &&
-      transactionStatuses?.[index]?.status !== 'success'
-  );
+  const quoteCallIndices = (callsData.calls || [])
+    .map((_, index) => index)
+    .filter(
+      (index) =>
+        effectiveSelectedCalls[index] &&
+        transactionStatuses?.[index]?.status !== 'success'
+    );
+  const quoteCalls = quoteCallIndices.map((index) => callsData.calls[index]);
   const feeQuoteKey = requestSmartAccount.supportsAtomicBatch
     ? JSON.stringify([
         approvedContext,
@@ -362,7 +369,20 @@ export const SendCalls = () => {
         expectedContext: approvedContext,
       });
       if (!cancelled) {
-        setFeeQuote({ ...preparedQuote, executions, key: feeQuoteKey });
+        const destinations = Object.freeze(
+          Object.fromEntries(
+            quoteCallIndices.map((index, position) => [
+              index,
+              executions[position].target,
+            ])
+          )
+        );
+        setFeeQuote({
+          ...preparedQuote,
+          destinations,
+          executions,
+          key: feeQuoteKey,
+        });
         setFeeQuoteNeedsRefresh(false);
       }
     };
@@ -771,6 +791,9 @@ export const SendCalls = () => {
             throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
               transactionNotBroadcast: true,
             });
+          setReviewedDestinations((previous) =>
+            Object.freeze({ ...previous, ...approvedQuote.destinations })
+          );
           for (const originalIndex of selectedIndices) {
             setProcessingIndex(originalIndex);
             setTransactionStatuses((prev) => {
@@ -1041,6 +1064,12 @@ export const SendCalls = () => {
               resolve,
               reject,
             };
+            setReviewedDestinations((previous) =>
+              Object.freeze({
+                ...previous,
+                [index]: quote.transaction.to || '',
+              })
+            );
             setEoaFeeReview({ index, quote });
             setLoading(false);
           });
@@ -1425,10 +1454,21 @@ export const SendCalls = () => {
                             );
                           }
 
-                          // If the dapp passed an ENS name, prefer ENS as text; tooltip should be resolved address if available
+                          // The displayed target belongs to the exact review used
+                          // for signing, independently of later ENS cache updates.
                           if (toRaw.toLowerCase().endsWith('.eth')) {
+                            const status = transactionStatuses?.[index]?.status;
                             const resolved =
-                              ensNameToAddress[toRaw.toLowerCase()];
+                              requestSmartAccount.supportsAtomicBatch
+                                ? status === 'signing' ||
+                                  status === 'sending' ||
+                                  status === 'success' ||
+                                  status === 'unknown'
+                                  ? reviewedDestinations[index]
+                                  : hasCurrentFeeQuote
+                                  ? feeQuote?.destinations[index]
+                                  : undefined
+                                : reviewedDestinations[index];
                             return (
                               <Tooltip content={resolved || toRaw}>
                                 <span>{toRaw}</span>
