@@ -13,7 +13,7 @@ import { getNativeNetwork } from '../src/custody/networkContext.ts';
 const wallet = new Wallet(`0x${'11'.repeat(32)}`);
 const recipient = `0x${'22'.repeat(20)}`;
 const network = getNativeNetwork('ethereum');
-function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance = '0x100000000000000') {
+function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance = '0x100000000000000', pendingHeader: 'normal' | 'null' | 'malformed' = 'normal') {
   let current = true, now = 1, estimate = 21_000, estimates = 0, signs = 0, broadcasts = 0;
   let signingHook = () => {};
   const nonceOverrides: (number | undefined)[] = [];
@@ -31,7 +31,9 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
     if (method === 'eth_chainId') result = '0x1';
     else if (method === 'eth_getTransactionCount') result = '0x0';
     else if (method === 'eth_getBalance') result = nativeBalance;
-    else if (method === 'eth_getBlockByNumber') result = { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+    else if (method === 'eth_getBlockByNumber') result = params[0] === 'pending' && pendingHeader !== 'normal'
+      ? pendingHeader === 'null' ? null : []
+      : { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
     else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
     else if (method === 'eth_estimateGas') { estimates++; result = `0x${estimate.toString(16)}`; }
     else if (method === 'eth_sendRawTransaction') { broadcasts++; result = keccak256(params[0]); }
@@ -144,4 +146,15 @@ test('fee funding cannot cover transferred native value or be forged', async () 
   const funding = createOwnedEvmFeeFunding(async approval => BigInt(approval.maximumFeeUnits));
   await assert.rejects(fixture(funding, '0x0').prepare({ from: wallet.address, to: recipient, value: '0x1', data: '0x' }));
   await assert.rejects(fixture({ kind: 'verified-credit' }, '0x0').prepare({ from: wallet.address, to: recipient, value: '0x0', data: '0x' }));
+});
+
+
+test('null pending block uses canonical fee bounds while malformed pending data remains invalid', async () => {
+  const f = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'null');
+  const review = await f.prepare({ from: wallet.address, to: recipient, data: '0x1234' });
+  await review.submit(f.guard, () => undefined);
+  assert.equal(f.broadcasts, 1);
+  const malformed = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'malformed');
+  await assert.rejects(malformed.prepare({ from: wallet.address, to: recipient }), { code: 'INVALID_RESPONSE' });
+  assert.equal(malformed.signs, 0);
 });

@@ -77,9 +77,9 @@ async function fixture() {
       };
     throw Error(method);
   };
-  const create = () =>
+  const create = (reopened = records) =>
     new EvmSignedReplay(
-      records,
+      reopened,
       () => ({
         recordSession: session,
         context,
@@ -118,6 +118,7 @@ async function fixture() {
       chainId?: number;
       gasLimit?: number;
       historical?: true;
+      reviewId?: string;
     } = {}
   ) {
     const { operation = 'send', originalHash, fee = 3, chainId = 7654321 } = options;
@@ -148,7 +149,7 @@ async function fixture() {
       chainId: String(chainId),
       nonce: n,
       type,
-      context: { ...context, network: { ...context.network, chainId }, operation, ...(originalHash ? { originalHash } : {}) },
+      context: { ...context, network: { ...context.network, chainId }, operation, ...(originalHash ? { originalHash } : {}), ...(options.reviewId ? { review: { id: options.reviewId, unsignedHash: tx.unsignedHash } } : {}) },
     };
     if (options.historical) {
       assert(raw);
@@ -175,6 +176,7 @@ async function fixture() {
     return tx;
   }
   return {
+    port,
     records,
     session,
     create,
@@ -236,6 +238,20 @@ function hold() {
     wait = new Promise<void>((resolve) => (release = resolve));
   return { started, release, run: () => { enter(); return wait; } };
 }
+
+test('generic review identity stays transient and restart replay uses fresh recovery consent', async () => {
+  const f = await fixture();
+  const transaction = await f.append(0, 2, recipient, '0x1234', { reviewId: 'expired-original-review' });
+  assert(!f.bytes()!.includes('expired-original-review'));
+  f.expire();
+  const replay = f.create(new EvmSignedRecords(f.port));
+  const prepared = await replay.prepare(transaction.hash!);
+  assert.equal(prepared.status, 'review');
+  if (prepared.status !== 'review') throw Error('review');
+  assert.equal(f.dispatched.length, 0);
+  await replay.confirm(prepared.review.id);
+  assert.deepEqual(f.dispatched, [transaction.serialized]);
+});
 
 test('a saved cancellation suppresses every older payment variant for its nonce, but preserves canonical history', async () => {
   const f = await fixture(), original = await f.append(0),
