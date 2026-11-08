@@ -5,20 +5,39 @@ import { createSentryShakeExecutor } from '../src/crypto/sentryShakeExecutor.ts'
 const scheme = 'slh-dsa-shake-128s' as const;
 const invalid = { message: 'SENTRY_SHAKE_VALIDATION_FAILED' };
 
-test('only a registered native method and a whole SHAKE key reach validation', async () => {
+test('only the public fixed-variant validator and a whole SHAKE key reach validation', async () => {
   assert.throws(() => createSentryShakeExecutor({} as never), {
     message: 'SENTRY_SHAKE_UNAVAILABLE',
   });
+  assert.throws(() => createSentryShakeExecutor(class {} as never), {
+    message: 'SENTRY_SHAKE_UNAVAILABLE',
+  });
+  assert.throws(
+    () =>
+      createSentryShakeExecutor(
+        class {
+          constructor() {
+            throw new Error('native constructor details');
+          }
+        } as never
+      ),
+    { message: 'SENTRY_SHAKE_UNAVAILABLE' }
+  );
   let calls = 0;
-  const native = {
-    async validateSentryShake128sKey(buffer: ArrayBuffer) {
-      assert.equal(this, native);
+  let instance: NativeSlhDsa;
+  class NativeSlhDsa {
+    constructor(variant: 'SLH-DSA-SHAKE-128s') {
+      assert.equal(variant, 'SLH-DSA-SHAKE-128s');
+      instance = this;
+    }
+    async validateRawPrivateKey(buffer: ArrayBuffer) {
+      assert.equal(this, instance);
       assert.equal(buffer.byteLength, 64);
       calls++;
       return Uint8Array.from({ length: 32 }, () => 0x19).buffer;
-    },
-  };
-  const derive = createSentryShakeExecutor(native);
+    }
+  }
+  const derive = createSentryShakeExecutor(NativeSlhDsa);
   const owner = new AbortController();
   await assert.rejects(
     derive('collateral', scheme, new Uint8Array(64), owner.signal),
@@ -56,12 +75,14 @@ test('only a registered native method and a whole SHAKE key reach validation', a
 test('retirement drops the result only after the synchronous native copy drains', async () => {
   const pending = Promise.withResolvers<ArrayBuffer>();
   let copied: Uint8Array<ArrayBuffer> | undefined;
-  const derive = createSentryShakeExecutor({
-    validateSentryShake128sKey(input) {
-      copied = new Uint8Array(input).slice();
-      return pending.promise;
-    },
-  });
+  const derive = createSentryShakeExecutor(
+    class {
+      validateRawPrivateKey(input: ArrayBuffer) {
+        copied = new Uint8Array(input).slice();
+        return pending.promise;
+      }
+    }
+  );
   const owner = new AbortController();
   const bytes = new Uint8Array(64).fill(0x42);
   let settled = false;
@@ -91,11 +112,13 @@ test('forged output does not become a public key or expose an exception payload'
     },
   });
   for (const result of [forged, new ArrayBuffer(31), new Uint8Array(32)]) {
-    const derive = createSentryShakeExecutor({
-      async validateSentryShake128sKey() {
-        return result;
-      },
-    });
+    const derive = createSentryShakeExecutor(
+      class {
+        async validateRawPrivateKey() {
+          return result;
+        }
+      }
+    );
     await assert.rejects(
       derive('owner', scheme, new Uint8Array(64), new AbortController().signal),
       invalid

@@ -1,13 +1,10 @@
-import { NitroModules, type HybridObject } from 'react-native-nitro-modules';
+import QuickCrypto from 'react-native-quick-crypto';
 import {
   createSentryShakeExecutor,
-  type NativeSentryShakeValidation,
+  type NativeSlhDsaConstructor,
 } from '../src/crypto/sentryShakeExecutor.ts';
 
 export const SENTRY_SHAKE_CHECK = 'native Sentry SHAKE-128s import vector';
-
-type NativeShake = HybridObject<{ ios: 'c++'; android: 'c++' }> &
-  NativeSentryShakeValidation;
 
 // Public, fixed Sentry vector. This module is used only by the isolated
 // qualification entry after native crypto and Nitro have been initialized.
@@ -33,8 +30,9 @@ async function expectRejected(operation: Promise<unknown>, message: string) {
 }
 
 export async function qualifyNativeSentryShake(signal: AbortSignal) {
-  const native = NitroModules.createHybridObject<NativeShake>('SlhDsaKeyPair');
-  const derive = createSentryShakeExecutor(native);
+  const SlhDsa: unknown = Reflect.get(QuickCrypto, 'SlhDsa');
+  if (typeof SlhDsa !== 'function') throw new Error('SENTRY_SHAKE_UNAVAILABLE');
+  const derive = createSentryShakeExecutor(SlhDsa as NativeSlhDsaConstructor);
   const start = (bytes: Uint8Array<ArrayBuffer>, owner: AbortSignal) => {
     try {
       return derive('operator', 'slh-dsa-shake-128s', bytes, owner);

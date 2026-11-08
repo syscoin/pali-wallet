@@ -1,8 +1,10 @@
 import { isAllowedSentryKeyRoleScheme } from '../../../../source/wallet/sentryKeyVault.ts';
 import type { DeriveSentryPublicKey } from '../custody/sentryKeyManagement.ts';
 
-export type NativeSentryShakeValidation = Readonly<{
-  validateSentryShake128sKey(secretKey: ArrayBuffer): Promise<ArrayBuffer>;
+export type NativeSlhDsaConstructor = new (
+  variant: 'SLH-DSA-SHAKE-128s'
+) => Readonly<{
+  validateRawPrivateKey(secretKey: ArrayBuffer): Promise<ArrayBuffer>;
 }>;
 
 const size = Object.getOwnPropertyDescriptor(
@@ -12,11 +14,18 @@ const size = Object.getOwnPropertyDescriptor(
 const invalid = () => new Error('SENTRY_SHAKE_VALIDATION_FAILED');
 const cancelled = () => new Error('CANCELLED');
 
-/** Only a trusted, qualified native handle may supply this port. */
+/** Only the trusted, qualified public native constructor may supply this port. */
 export function createSentryShakeExecutor(
-  native: NativeSentryShakeValidation
+  SlhDsa: NativeSlhDsaConstructor
 ): DeriveSentryPublicKey {
-  const validate = native.validateSentryShake128sKey;
+  if (typeof SlhDsa !== 'function') throw new Error('SENTRY_SHAKE_UNAVAILABLE');
+  let native: InstanceType<NativeSlhDsaConstructor>;
+  try {
+    native = new SlhDsa('SLH-DSA-SHAKE-128s');
+  } catch {
+    throw new Error('SENTRY_SHAKE_UNAVAILABLE');
+  }
+  const validate = native.validateRawPrivateKey;
   if (typeof validate !== 'function')
     throw new Error('SENTRY_SHAKE_UNAVAILABLE');
   return async (role, scheme, secret, signal) => {
