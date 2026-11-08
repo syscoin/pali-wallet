@@ -66,7 +66,9 @@ test('private proof workflow remains opt-in, exclusive and within existing owned
     assert.equal(steps[prepare].if, "env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION == '1'");
     assert.equal(steps[prepare]['working-directory'], '.');
     assert.match(steps[prepare].run, /yarn install --frozen-lockfile --ignore-scripts/);
-    assert(steps[prepare].run.indexOf('node scripts/apply-keyring-ledger.cjs') < steps[prepare].run.indexOf('node scripts/prepare-native-private-prover.cjs'));
+    const verifySdk = steps[prepare].run.indexOf('node apps/mobile/scripts/qualification-sdk.cjs');
+    const buildAssets = steps[prepare].run.indexOf('node scripts/prepare-native-private-prover.cjs');
+    assert(verifySdk >= 0 && verifySdk < buildAssets);
     assert(steps.some(step => step.run?.includes('qualification/run-native.cjs')));
     assert.equal(steps.filter(step => step.uses?.startsWith('actions/upload-artifact@')).length, 1);
     assert.equal(steps.find(step => step.uses?.startsWith('actions/upload-artifact@')).if, 'always()');
@@ -91,7 +93,7 @@ test('ordinary native build hooks package pinned assets without a qualification 
         PRIVACY_PROVING_KEY_BYTES: 3,
         PRIVACY_PROVING_KEY_SHA256: hash,
       };
-      if (name === './apply-keyring-ledger.cjs') return { verifyKeyringLedgerPatch() { verified++; } };
+      if (name === '../apps/mobile/scripts/qualification-sdk.cjs') return { readQualificationSdkPin() { return { version: '2.1.8', identity: '2.1.8' }; }, verifyInstalledQualificationSdk() { verified++; } };
       if (name === 'node:child_process') return { spawnSync(executable, args, options) {
         assert.equal(executable, process.execPath);
         assert.equal(path.basename(args[0]), 'build-native-private-prover.cjs');

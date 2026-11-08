@@ -52,9 +52,8 @@ async function main() {
   )
     throw Error('PRIVATE_PROOF_PACKAGING_REQUIRES_ISOLATED_CI');
   const root = path.resolve(__dirname, '..');
-  require('./apply-keyring-ledger.cjs').verifyKeyringLedgerPatch(
-    path.join(root, 'node_modules/@sidhujag/sysweb3-keyring')
-  );
+  const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('../apps/mobile/scripts/qualification-sdk.cjs');
+  verifyInstalledQualificationSdk(root, readQualificationSdkPin(root));
   const directory = app
     ? fs.mkdtempSync(path.join(os.tmpdir(), 'pali-private-proof-'))
     : process.env.RUNNER_TEMP;

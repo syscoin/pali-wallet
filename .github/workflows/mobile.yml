@@ -7,8 +7,6 @@ on:
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
       - 'apps/mobile/**'
-      - 'scripts/apply-keyring-ledger.cjs'
-      - 'scripts/keyring-ledger-2.1.7.json'
       - 'source/shared/**'
       - 'source/scripts/privacyProver/**'
       - 'source/utils/privacy/prover*'
@@ -100,8 +98,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-keyring-ledger.cjs
       - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: node scripts/qualification-sdk.cjs
       - name: Reject moderate and higher dependency advisories
         run: npm audit --audit-level=moderate
       - run: npm run lint
@@ -146,8 +144,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-keyring-ledger.cjs
       - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: node scripts/qualification-sdk.cjs
       - name: Build preview
         if: matrix.suite == 'preview'
         run: npm run build:web

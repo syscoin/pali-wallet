@@ -14,8 +14,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'scripts/apply-keyring-ledger.cjs'
-      - 'scripts/keyring-ledger-2.1.7.json'
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
       - 'apps/mobile/src/**'
@@ -131,14 +129,14 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-keyring-ledger.cjs
       - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: node scripts/qualification-sdk.cjs
       - name: Package pinned local proof assets
         if: env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION == '1'
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
-          node scripts/apply-keyring-ledger.cjs
+          node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-ios"
           cp "$RUNNER_TEMP/pali-private-proof-key.bin.json" "$RUNNER_TEMP/pali-native-ios/proof-key.json"
@@ -236,14 +234,14 @@ jobs:
           echo "$PALI_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           echo "$PALI_SDK_ROOT/emulator" >> "$GITHUB_PATH"
       - run: npm ci --ignore-scripts
-      - run: node ../../scripts/apply-keyring-ledger.cjs
       - run: node ../../scripts/apply-walletconnect-terminal.cjs
+      - run: node scripts/qualification-sdk.cjs
       - name: Package pinned local proof assets
         if: env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION == '1'
         working-directory: .
         run: |
           yarn install --frozen-lockfile --ignore-scripts
-          node scripts/apply-keyring-ledger.cjs
+          node apps/mobile/scripts/qualification-sdk.cjs
           node scripts/prepare-native-private-prover.cjs # pinned public artifacts
           mkdir -p "$RUNNER_TEMP/pali-native-android"
           cp "$RUNNER_TEMP/pali-private-proof-key.bin.json" "$RUNNER_TEMP/pali-native-android/proof-key.json"

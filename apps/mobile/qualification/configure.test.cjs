@@ -134,3 +134,28 @@ test('private proof build mode binds immutable source and lock metadata without 
     assert.equal(fs.readFileSync(path.join(root, 'index.ts'), 'utf8'), 'PUBLIC fixture entry\n');
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test('official SDK verification uses the explicitly selected working directory without changing installed files', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-official-sdk-'));
+  const name = '@sidhujag/sysweb3-keyring';
+  const sdk = path.join(root, 'node_modules', name);
+  try {
+    fs.mkdirSync(sdk, { recursive: true });
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ dependencies: { [name]: '3.9.7' } }));
+    const file = path.join(sdk, 'package.json');
+    const bytes = JSON.stringify({ name, version: '3.9.7' });
+    fs.writeFileSync(file, bytes);
+    const command = require.resolve('../scripts/qualification-sdk.cjs');
+    const valid = spawnSync(process.execPath, [command], { cwd: root, encoding: 'utf8' });
+    assert.equal(valid.status, 0, valid.stderr);
+    assert.match(valid.stdout, /Verified shared keyring 3\.9\.7/);
+    assert.equal(fs.readFileSync(file, 'utf8'), bytes);
+    fs.writeFileSync(file, JSON.stringify({ name, version: '3.9.6' }));
+    const invalid = spawnSync(process.execPath, [command], { cwd: root, encoding: 'utf8' });
+    assert.notEqual(invalid.status, 0);
+    assert.match(invalid.stderr, /exact package pin/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -96,7 +96,6 @@ const receipt = {
   qualificationEntry: 'qualification/index.tsx',
   keyringVersion: sdk.version,
   ...(walletConnectIdentity ? { walletConnectIdentity } : {}),
-  ...(sdk.archive ? { keyringIdentity: sdk.identity } : {}),
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),
   ...(publicPool ? { publicPool } : {}),
