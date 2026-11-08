@@ -255,13 +255,13 @@ async function withController(
         case 'eth_estimateGas':
           if ((call.params[0] as { to: string }).to === recipient) {
             assert.deepEqual(call.params, [{
-              from: owner, to: recipient, value: '0x1', data: '0x', type: '0x2',
+              from: owner, to: recipient, value: '0x1', data: '0x', type: '0x2', accessList: [],
               chainId: '0x1', nonce: confirmed ? '0x1' : '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
             }, 'pending']);
             result = '0x5208';
           } else {
             assert.deepEqual(call.params, [{
-              from: owner, to: contractAddress, value: '0x0', data: asset.data, type: '0x2',
+              from: owner, to: contractAddress, value: '0x0', data: asset.data, type: '0x2', accessList: [],
               chainId: '0x1', nonce: expectedEstimateNonce ?? pendingNonce ?? '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
             }, expectedEstimateTag]);
             result = '0x7530';

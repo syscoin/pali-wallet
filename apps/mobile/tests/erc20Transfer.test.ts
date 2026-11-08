@@ -205,7 +205,7 @@ test('token quote simulates and estimates the exact call with separate token and
       to: contract,
       value: '0x0',
       data: encodeErc20Transfer(recipient, '123'),
-      type:'0x2', chainId:'0x1', nonce:'0x0', maxFeePerGas:'0x3',maxPriorityFeePerGas:'0x1',
+      type:'0x2', chainId:'0x1', nonce:'0x0', accessList: [], maxFeePerGas:'0x3',maxPriorityFeePerGas:'0x1',
     },
     'pending',
   ]);
