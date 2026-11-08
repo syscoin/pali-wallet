@@ -1,8 +1,4 @@
-import QuickCrypto from 'react-native-quick-crypto';
-import {
-  createSentryShakeExecutor,
-  type NativeSlhDsaConstructor,
-} from '../src/crypto/sentryShakeExecutor.ts';
+import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
 
 export const SENTRY_SHAKE_CHECK = 'native Sentry SHAKE-128s import vector';
 
@@ -29,10 +25,9 @@ async function expectRejected(operation: Promise<unknown>, message: string) {
   throw new Error('QUALIFICATION_SENTRY_REJECTION_FAILED');
 }
 
-export async function qualifyNativeSentryShake(signal: AbortSignal) {
-  const SlhDsa: unknown = Reflect.get(QuickCrypto, 'SlhDsa');
-  if (typeof SlhDsa !== 'function') throw new Error('SENTRY_SHAKE_UNAVAILABLE');
-  const derive = createSentryShakeExecutor(SlhDsa as NativeSlhDsaConstructor);
+export async function qualifyNativeSentryShake(signal: AbortSignal, derive: DeriveSentryPublicKey) {
+  if (signal.aborted) throw new Error('CANCELLED');
+  if (typeof derive !== 'function') throw new Error('QUALIFICATION_SENTRY_DERIVER_REQUIRED');
   const start = (bytes: Uint8Array<ArrayBuffer>, owner: AbortSignal) => {
     try {
       return derive('operator', 'slh-dsa-shake-128s', bytes, owner);
@@ -49,11 +44,14 @@ export async function qualifyNativeSentryShake(signal: AbortSignal) {
   corrupt[63]! ^= 1;
   await expectRejected(
     start(corrupt, signal),
-    'SENTRY_SHAKE_VALIDATION_FAILED'
+    'SENTRY_PUBLIC_KEY_VALIDATION_FAILED'
   );
 
   const retired = new AbortController();
   const draining = start(vector(), retired.signal);
+  // Earlier vectors warmed the production loader. Let its lazy-load await enter
+  // the native executor before retiring; the returned Promise must still drain.
+  await Promise.resolve();
   retired.abort();
   await expectRejected(draining, 'CANCELLED');
 

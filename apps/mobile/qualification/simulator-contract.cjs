@@ -1,4 +1,6 @@
 const { CRYPTO_FULL_CASES, isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
+const { SENTRY_CLASSICAL_CHECK } = require('./native-sentry-classical.ts');
+const { SENTRY_SHAKE_CHECK } = require('./native-sentry-shake.ts');
 
 const MODE = '--ios-simulator-contract';
 
@@ -14,6 +16,8 @@ const CHECKS = Object.freeze([
   'native factory handles reject direct construction',
   'native public Merkle and HMAC vectors',
   'native SLH leaf setup vector',
+  SENTRY_CLASSICAL_CHECK,
+  SENTRY_SHAKE_CHECK,
 ]);
 // The remaining labels are substeps, not completed timed cases.
 const TIMED_CRYPTO_CASES = Object.freeze(CRYPTO_FULL_CASES.filter((name) =>
@@ -31,13 +35,16 @@ function exactKeys(value, keys) {
 }
 
 const duration = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 300000;
+const completedCryptoChecks = (checks) => Array.isArray(checks) && CHECKS.every((name, index) =>
+  exactKeys(checks[index], ['name', 'durationMs']) && checks[index].name === name && duration(checks[index].durationMs));
 
 /** This recognizes a refusal after real crypto checks; it never recognizes custody success. */
-function assertSimulatorRefusal(report, expectedVersion) {
+function assertSimulatorRefusal(report, expectedVersion, expectedQuickCryptoIdentity) {
   const valid = exactKeys(report, [
     'version', 'status', 'phase', 'scenario', 'platform', 'osVersion', 'sessionId',
     'checks', 'networkCalls', 'failedStage', 'cryptoEvidence', 'nativeBridgeExercised',
     'storageDiagnostic', 'cryptoDiagnostic',
+    ...(expectedQuickCryptoIdentity ? ['quickCryptoIdentity'] : []),
   ]) && report.version === 1 && report.status === 'failed' && report.phase === 'create' &&
     report.scenario === 'import' && report.platform === 'ios' && typeof expectedVersion === 'string' && /^\d+(?:\.\d+){0,2}$/.test(expectedVersion) && report.osVersion === expectedVersion &&
     typeof report.sessionId === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(report.sessionId) &&
@@ -45,9 +52,8 @@ function assertSimulatorRefusal(report, expectedVersion) {
     report.nativeBridgeExercised === true &&
     exactKeys(report.storageDiagnostic, ['stage', 'code']) &&
     report.storageDiagnostic.code === 'STORAGE_UNAVAILABLE' && REFUSAL_STAGES.includes(report.storageDiagnostic.stage) &&
-    Array.isArray(report.checks) && report.checks.length === CHECKS.length &&
-    report.checks.every((check, index) => exactKeys(check, ['name', 'durationMs']) &&
-      check.name === CHECKS[index] && duration(check.durationMs)) &&
+    (!expectedQuickCryptoIdentity || report.quickCryptoIdentity === expectedQuickCryptoIdentity) &&
+    completedCryptoChecks(report.checks) && report.checks.length === CHECKS.length &&
     exactKeys(report.cryptoEvidence, ['passed', 'productionIterations', 'cases']) &&
     report.cryptoEvidence.passed === true && report.cryptoEvidence.productionIterations === 900000 &&
     Array.isArray(report.cryptoEvidence.cases) && report.cryptoEvidence.cases.length === TIMED_CRYPTO_CASES.length &&
@@ -90,4 +96,4 @@ function selectSimulatorTarget(runtimes, types, requestedRuntime, requestedType)
     type: Object.freeze({ identifier: type.identifier }) });
 }
 
-module.exports = { qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget, REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES };
+module.exports = { qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget, completedCryptoChecks, REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES };

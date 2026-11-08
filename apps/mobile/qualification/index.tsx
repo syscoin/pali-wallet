@@ -112,6 +112,7 @@ function QualificationApp() {
   useEffect(() => {
     let started = false;
     let privateProofLifetime: AbortController | undefined;
+    const qualificationLifetime = new AbortController();
     const run = async () => {
       if (started) return;
       started = true;
@@ -137,6 +138,8 @@ function QualificationApp() {
       let expectedZksysAddress: string | undefined;
       let networkCalls = 0;
       let verifiedSdkVersion: string | undefined;
+      let verifiedQuickCryptoIdentity: string | undefined;
+      let sentryBlindingCalls = 0;
       const check = async <T,>(
         name: string,
         fn: () => Promise<T>
@@ -309,6 +312,7 @@ function QualificationApp() {
           subtle: nativeCrypto.subtle,
           getRandomValues<T extends ArrayBufferView>(array: T): T {
             const result = nativeCrypto.getRandomValues(array);
+            if (result?.byteLength === 16) sentryBlindingCalls++;
             if (observingGeneration && result?.byteLength === 16) {
               if (mnemonicEntropy.length >= 32)
                 throw Error('QUALIFICATION_ENTROPY_BOUND');
@@ -342,6 +346,17 @@ function QualificationApp() {
           const { qualifyNativeSlhLeaf } = await import('./native-slh-leaf.ts');
           await qualifyNativeSlhLeaf(requireNativeModule('PaliWalletCrypto'));
         });
+        const { createNativeSentryPublicKeyDeriver } = await import('../src/crypto/sentryPublicKey.native');
+        const { qualifyNativeSentryClassical, SENTRY_CLASSICAL_CHECK } = await import('./native-sentry-classical.ts');
+        const { qualifyNativeSentryShake, SENTRY_SHAKE_CHECK } = await import('./native-sentry-shake.ts');
+        const sentryDerive = createNativeSentryPublicKeyDeriver();
+        await check(SENTRY_CLASSICAL_CHECK, () => qualifyNativeSentryClassical(
+          qualificationLifetime.signal, () => sentryBlindingCalls, sentryDerive));
+        await check(SENTRY_SHAKE_CHECK, () => qualifyNativeSentryShake(qualificationLifetime.signal, sentryDerive));
+        const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+        expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0 &&
+          paliQualificationSdkIdentity === `${paliQualificationSdkVersion}.${paliQuickCryptoSentryIdentity}`);
+        verifiedQuickCryptoIdentity = paliQuickCryptoSentryIdentity;
         if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
           stage = 'public pool configuration';
           if (parameters.physical || parameters.http || !parameters.publicPool || !['ios', 'android'].includes(Platform.OS) ||
@@ -691,6 +706,7 @@ function QualificationApp() {
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: verifiedSdkVersion,
+          ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),
           ...hdEvidence,
           ...erc20Evidence,
           ...nevmEvidence,
@@ -729,6 +745,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),
           ...(walletConnectDiagnostic ? { walletConnectDiagnostic } : {}),
           ...(cryptoEvidence ? { cryptoEvidence, nativeBridgeExercised: true } : {}),
           storageDiagnostic: storageDiagnostic.report(),
@@ -741,7 +758,7 @@ function QualificationApp() {
       }
     };
     void run();
-    return () => privateProofLifetime?.abort();
+    return () => { qualificationLifetime.abort(); privateProofLifetime?.abort(); };
   }, []);
   return (
     <View

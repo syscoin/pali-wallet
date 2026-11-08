@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { createSentryClassicalExecutor } from '../src/crypto/sentryClassicalExecutor.ts';
 import { qualifyNativeSentryClassical } from '../qualification/native-sentry-classical.ts';
 
 test('the qualification adapter uses shared classical vectors and retires an outstanding result', async () => {
@@ -18,9 +19,11 @@ test('the qualification adapter uses shared classical vectors and retires an out
   });
   const lifetime = new AbortController();
   try {
+    const { deriveSentryClassicalPublicKey } = await import('@sidhujag/sysweb3-sentry/classical-public-key');
     const derive = await qualifyNativeSentryClassical(
       lifetime.signal,
-      () => blindingCalls
+      () => blindingCalls,
+      createSentryClassicalExecutor(deriveSentryClassicalPublicKey)
     );
     const secret = new Uint8Array(32);
     secret[31] = 1;

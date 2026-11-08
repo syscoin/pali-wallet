@@ -133,6 +133,7 @@ test('qualification uses the existing candidate identity channel and preserves t
     const extra = JSON.parse(fs.readFileSync(path.join(f.root, 'app.json'))).expo.extra;
     assert.equal(extra.paliQualificationSdkVersion, '3.9.7');
     assert.equal(extra.paliQualificationSdkIdentity, pin.identity);
+    assert.equal(extra.paliQuickCryptoSentryIdentity, identity);
   } finally { fs.rmSync(f.parent, { recursive: true, force: true }); }
 });
 
