@@ -93,7 +93,7 @@ describe('background initialization ownership', () => {
       privacyRegistrations.push('note-backup');
       return { createExtensionNoteBackupController: startPrivacyOperation };
     });
-    jest.doMock('./controllers/privacyTransactions', () => {
+    jest.doMock('../../wallet/privacyTransactions', () => {
       privacyRegistrations.push('transactions');
       return { createPrivacyTransactionsController: startPrivacyOperation };
     });

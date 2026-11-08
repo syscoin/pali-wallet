@@ -2,6 +2,7 @@ import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
 import { Interface, keccak256, parseEther, toUtf8Bytes } from 'ethers';
 
+import { createPrivacyTransactionsController } from '../../../wallet/privacyTransactions';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { identifyClassicNote } from 'utils/privacy/note';
@@ -14,7 +15,6 @@ import type {
   IPrivacyWithdrawalJournal,
 } from 'utils/privacy/withdrawalTransactionTypes';
 
-import { createPrivacyTransactionsController } from './privacyTransactions';
 import {
   createPrivateVaultController,
   IPrivateVaultSession,
@@ -856,6 +856,7 @@ it('reuses the durable note after failed fee preparation and controller restart'
   const send = jest.fn();
   const transactions = () =>
     createPrivacyTransactionsController({
+      classifySubmissionFailure: () => ({ transactionNotBroadcast: false }),
       captureContext: () => ({
         context: depositAttempt(UUID).context,
         assertCurrent: session.assertCurrent,

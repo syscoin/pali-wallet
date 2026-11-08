@@ -382,7 +382,7 @@ test('near-limit append reserves space for every phase and the largest supported
     await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>{dispatched++;throw capacityError;}),reuseBoundary,undefined,unsigned);
   } catch(error) { reusedError=error; }
   assert.equal(reusedError,capacityError);assert.equal(dispatched,1);
-  assert.equal(evmSubmissionFailure(reusedError).transactionNotBroadcast,false);
+  assert.equal(evmSubmissionFailure(reusedError)?.transactionNotBroadcast,false);
   assert.equal(consumeSignedEvmCapacityRefusal(reusedError,evmSubmissionFailure),false);
 
   // Even before its first classification, a real old capacity error cannot
@@ -392,7 +392,7 @@ test('near-limit append reserves space for every phase and the largest supported
     () => createEvmSignedRecordLifecycle(f.store, oldSession, { retirementReadForChain: null }));
   try { await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>third.hash),oldBoundary,undefined,unsigned); }
   catch(error) { stale=error; }
-  assert(stale instanceof Error);assert.equal(evmSubmissionFailure(stale).transactionNotBroadcast,true);
+  assert(stale instanceof Error);assert.equal(evmSubmissionFailure(stale)?.transactionNotBroadcast,true);
   const next=fixture(), nextSession=next.session();
   const nextBoundary=captureEvmSubmission(third.context,nextSession.assertCurrent,
     () => createEvmSignedRecordLifecycle(next.store, nextSession, { retirementReadForChain: null }));
@@ -400,7 +400,7 @@ test('near-limit append reserves space for every phase and the largest supported
   try { await submitSignedEvmTransaction(third.rawTransaction,()=>{nextBroadcasts++;throw stale;},nextBoundary,undefined,unsigned); }
   catch(error) { nextError=error; }
   assert.equal(nextError,stale);assert.equal(nextBroadcasts,1);
-  assert.equal(evmSubmissionFailure(nextError).transactionNotBroadcast,true);
+  assert.equal(evmSubmissionFailure(nextError)?.transactionNotBroadcast,true);
   assert.equal(consumeSignedEvmCapacityRefusal(nextError,evmSubmissionFailure),false);
   assert((await next.store.readExact(nextSession,third.chainId,third.from,third.hash))?.rawTransaction===third.rawTransaction);
 

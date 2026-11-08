@@ -172,7 +172,7 @@ beforeEach(() => {
     withReplayAdmission: jest.fn(
       async (_session, _target, admit, _predecessorNonce, preflight) => {
         await runReplayPreflight(preflight);
-        return { result: admit([]) };
+        return await admit([]);
       }
     ),
     append: jest.fn(async () => undefined),
@@ -599,7 +599,7 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
           waitingInQueue.resolve();
           await admitWrite.promise;
           await runReplayPreflight(preflight);
-          return { result: admit([]) };
+          return await admit([]);
         }
       );
     }
@@ -1899,13 +1899,13 @@ describe('worker-owned token state at review and initial held POST', () => {
         const conflict = retainedEvmAssetPreflightConflict(failure);
         if (scenario === 'wire uncertain') {
           expect(conflict).toBeNull();
-          expect(evmSubmissionFailure(failure).transactionNotBroadcast).toBe(
+          expect(evmSubmissionFailure(failure)?.transactionNotBroadcast).toBe(
             false
           );
           expect(broadcast).toHaveBeenCalledTimes(1);
         } else {
           expect(conflict?.code).toBe('EVM_SIGNED_RECORD_NONCE_CONFLICT');
-          expect(evmSubmissionFailure(failure).transactionNotBroadcast).toBe(
+          expect(evmSubmissionFailure(failure)?.transactionNotBroadcast).toBe(
             true
           );
           expect(failure.message).not.toContain('synthetic private SDK error');

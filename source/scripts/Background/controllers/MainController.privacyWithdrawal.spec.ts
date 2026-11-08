@@ -20,6 +20,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: jest.fn(() => ({})),
   clearNavigationState: jest.fn(async () => undefined),
   clearTransactionNavigationState: jest.fn(async () => undefined),
 }));
@@ -1044,7 +1045,7 @@ it.each([
   async (kind, stage) => {
     const { createPrivateVaultController } = await import('./privateVault');
     const { createPrivacyTransactionsController } = await import(
-      './privacyTransactions'
+      '../../../wallet/privacyTransactions'
     );
     const ActualKeyring = jest.requireActual(
       '@sidhujag/sysweb3-keyring'
@@ -1067,6 +1068,60 @@ it.each([
     (run.provider.estimateGas as jest.Mock).mockImplementation(() =>
       Promise.resolve(BigInt(100001))
     );
+    if (kind === 'deposit') {
+      Object.defineProperty(run.provider, 'signal', {
+        value: new AbortController().signal,
+      });
+      Object.assign(run.provider, {
+        getGasPrice: jest.fn(async () => BigInt(5)),
+        verifyConfiguredChainId: jest.fn(async () => undefined),
+      });
+      const originalRead = run.provider.send.getMockImplementation()!;
+      run.provider.send.mockImplementation(async (method, params) => {
+        if (method === 'eth_getBlockByNumber')
+          return {
+            hash: '0x' + 'aa'.repeat(32),
+            number: '0x10',
+            gasLimit: '0x1c9c380',
+            baseFeePerGas: '0x2',
+          } as any;
+        if (method === 'eth_estimateGas')
+          return '0x' + BigInt(await run.provider.estimateGas()).toString(16);
+        if (method === 'eth_getBalance')
+          return '0x' + (await run.provider.getBalance()).toString(16);
+        if (method === 'eth_maxPriorityFeePerGas') return '0x1';
+        return originalRead(method, params);
+      });
+      run.wallet.captureFreshEvmRead = () => ({
+        network: run.state.vault.activeNetwork,
+        assertCurrent: () => undefined,
+        overrides: {},
+        run: (action: (provider: unknown) => unknown) => action(run.provider),
+      });
+      run.wallet.inspectOrdinaryEvmNonce = async (
+        _read: unknown,
+        address: string,
+        options: { assertCurrent(): void }
+      ) => {
+        options.assertCurrent();
+        const nonce = Number(
+          BigInt(
+            await run.provider.send('eth_getTransactionCount', [
+              address,
+              'pending',
+            ])
+          )
+        );
+        options.assertCurrent();
+        return {
+          nonce,
+          state: 'pending',
+          balanceState: 'pending',
+          canonicalBlock: { hash: '0x' + 'aa'.repeat(32), number: '16' },
+          nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
+        };
+      };
+    }
     const records: Record<string, unknown> = {};
     let sequence = 100;
     const vault = createPrivateVaultController(

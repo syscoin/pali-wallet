@@ -8,6 +8,8 @@ import { Wallet } from 'ethers/wallet';
 import {
   bindGenericEvmFeeDispatch,
   captureGenericEvmFeeDispatch,
+  captureGenericEvmFeeSdkEntryState,
+  markGenericEvmFeeSdkEntered,
   consumeGenericEvmFeeReview,
   issueGenericEvmFeeReview,
 } from './nativeEvmFeeReviews';
@@ -38,7 +40,7 @@ const context = {
 } as IEvmTransactionContext;
 const nonce = { nonce: 0, source: 'automatic' as const };
 
-function fixture() {
+function fixture(kind: 'dapp' | 'private-deposit' = 'dapp') {
   const owner = {},
     request = {};
   let live = true;
@@ -60,13 +62,10 @@ function fixture() {
     nonce,
     check,
     Math.floor(performance.now()),
-    { kind: 'dapp', request },
+    { kind, request },
     () => 'review-one'
   );
-  const consume = (
-    next = context,
-    authority = { kind: 'dapp' as const, request }
-  ) =>
+  const consume = (next = context, authority = { kind, request }) =>
     consumeGenericEvmFeeReview(
       owner,
       token.id,
@@ -141,7 +140,7 @@ it('requires a consumed bound lease, exact ID, and exact approved unsigned hash'
   const dispatch = jest.fn(async () => undefined);
   bindGenericEvmFeeDispatch(f.owner, f.token.id, context, dispatch);
   expect(captureGenericEvmFeeDispatch(f.owner, f.submission)).toEqual(
-    expect.any(Function)
+    expect.objectContaining({ preflight: expect.any(Function) })
   );
   expect(() =>
     captureGenericEvmFeeDispatch(f.owner, {
@@ -168,7 +167,7 @@ it('rechecks the held owner before and after final dispatch refresh', async () =
     Transaction.from(serializePreparedEvmTransaction(transaction))
   );
   await expect(
-    refresh(
+    refresh.preflight(
       {
         context: f.submission,
         rawTransaction,
@@ -186,4 +185,41 @@ it('rechecks the held owner before and after final dispatch refresh', async () =
   expect(() => captureGenericEvmFeeDispatch(f.owner, f.submission)).toThrow(
     'unavailable'
   );
+});
+
+it('requires the exact private deposit owner and rejects public dapp substitution', () => {
+  const f = fixture('private-deposit');
+  expect(() =>
+    f.consume(context, { kind: 'private-deposit', request: {} })
+  ).toThrow('request changed');
+  expect(() =>
+    f.consume(context, { kind: 'dapp', request: f.request })
+  ).toThrow('request changed');
+  expect(f.consume().review.transaction).toBe(transaction);
+  expect(JSON.stringify(f.token)).not.toContain('private-deposit');
+  expect(f.token).not.toHaveProperty('request');
+  expect(f.token).not.toHaveProperty('submit');
+});
+
+it('retains private pre-SDK stage evidence after a review is removed', () => {
+  const f = fixture();
+  const entered = captureGenericEvmFeeSdkEntryState(f.owner, f.token.id);
+  const held = f.consume();
+  held.close();
+  expect(entered()).toBe(false);
+});
+
+it('records actual SDK entry independently of later review removal', () => {
+  const f = fixture();
+  const entered = captureGenericEvmFeeSdkEntryState(f.owner, f.token.id);
+  const held = f.consume();
+  bindGenericEvmFeeDispatch(
+    f.owner,
+    f.token.id,
+    context,
+    async () => undefined
+  );
+  markGenericEvmFeeSdkEntered(f.owner, f.token.id);
+  held.close();
+  expect(entered()).toBe(true);
 });

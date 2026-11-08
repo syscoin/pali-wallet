@@ -27,7 +27,7 @@ describe('privacy module evaluation', () => {
     // Evaluate real module dependency graphs. None of their exported operations
     // is called; the normal worker registration only needs these definitions.
     jest.isolateModules(() => {
-      require('./controllers/privacyTransactions');
+      require('../../wallet/privacyTransactions');
       require('./controllers/privacyWithdrawals');
       require('utils/privacy/relayers');
       require('utils/privacy/withdrawal');

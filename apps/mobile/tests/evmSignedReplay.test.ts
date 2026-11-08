@@ -1,3 +1,4 @@
+import { authorizePrivateDepositReplay } from '../../../source/wallet/privateDepositReplay.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet, Transaction, sha256 } from 'ethers';
@@ -5,6 +6,7 @@ import type { EvmSignedSubmission } from '@sidhujag/sysweb3-keyring/cjs/transact
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import {
   EvmSignedReplay,
+  type EvmReplayAuthorization,
   observeRetainedEvmTransaction,
 } from '../../../source/wallet/evmSignedReplay.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
@@ -22,6 +24,7 @@ async function fixture() {
   const receipts = new Map<string, any>(),
     dispatched: string[] = [],
     calls: string[] = [];
+  let authorize: ((entry: any) => Promise<EvmReplayAuthorization>) | undefined;
   let beforeObservation: (() => Promise<void>) | undefined,
     beforeAdmission: (() => Promise<void>) | undefined,
     afterAdmission: ((admission: Promise<string>) => Promise<string>) | undefined,
@@ -81,6 +84,7 @@ async function fixture() {
     new EvmSignedReplay(
       reopened,
       () => ({
+        authorizeReplay: (entry) => authorize ? authorize(entry) : authorizePrivateDepositReplay(entry, session.assertCurrent, async () => { throw Error('Unexpected private replay'); }),
         recordSession: session,
         context,
         assertCurrent: session.assertCurrent,
@@ -190,6 +194,7 @@ async function fixture() {
     canonicalTransactions(hashes: string[]) {
       canonicalTransactions = hashes;
     },
+    authorize(callback: (entry: any) => Promise<EvmReplayAuthorization>) { authorize = callback; },
     beforeObservation(callback: () => Promise<void>) {
       beforeObservation = callback;
     },
@@ -1083,4 +1088,45 @@ test('queued revocation after retained helper resolves is checked again by repla
   f.session.assertCurrent=()=>{check();if(armed&&!queued){queued=true;queueMicrotask(()=>f.revoke());}};
   await assert.rejects(f.create().prepare(tx.hash!), /revoked/);
   assert.equal(queued,true);assert.equal(f.dispatched.length,0);
+});
+
+
+for (const delay of [12001, 90001]) test(`expiry after ${delay}ms waiting for private admission cannot initiate replay`, async () => {
+  const f = await fixture();
+  const tx = await f.append(0);
+  let release!: () => void, entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  f.authorize(async () => ({
+    assertCurrent: f.session.assertCurrent,
+    async withAdmission(admit) { entered(); await held; return admit(); },
+    async onAcknowledged() {},
+  }));
+  const replay = f.create();
+  const prepared = await replay.prepare(tx.hash!);
+  assert.equal(prepared.status, 'review');
+  if (prepared.status !== 'review') throw Error('Expected review');
+  const confirmation = replay.confirm(prepared.review.id);
+  const refusal = assert.rejects(confirmation, /EXPIRED/);
+  await started;
+  f.advance(delay);
+  release();
+  await refusal;
+  assert.deepEqual(f.dispatched, []);
+});
+
+
+test('a private admission within the retained preflight deadline still dispatches once', async () => {
+  const f = await fixture();
+  const tx = await f.append(0);
+  f.authorize(async () => ({
+    assertCurrent: f.session.assertCurrent,
+    async withAdmission(admit) { f.advance(11000); return admit(); },
+    async onAcknowledged() {},
+  }));
+  const replay = f.create();
+  const prepared = await replay.prepare(tx.hash!);
+  if (prepared.status !== 'review') throw Error('Expected replay review');
+  assert.deepEqual(await replay.confirm(prepared.review.id), { status: 'submitted', hash: tx.hash });
+  assert.equal(f.dispatched.length, 1);
 });

@@ -16,6 +16,7 @@ import {
   serializePreparedEvmTransaction,
   snapshotPreparedEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { createTrezorWebExtensionHost } from '@sidhujag/sysweb3-keyring/cjs/trezor/webextension-host';
 import {
   coins,
@@ -110,6 +111,7 @@ import {
   importAccountWithRecovery,
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
+import { authorizePrivateDepositReplay } from '../../../wallet/privateDepositReplay.ts';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
 import {
   createOwnedUtxoBlockbookRead,
@@ -428,6 +430,9 @@ import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import {
   bindGenericEvmFeeDispatch,
+  bindPrivateDepositFeeAttempt,
+  captureGenericEvmFeeSdkEntryState,
+  markGenericEvmFeeSdkEntered,
   captureGenericEvmFeeDispatch,
   consumeGenericEvmFeeReview,
   issueGenericEvmFeeReview,
@@ -546,6 +551,20 @@ const utxoReviewsByWallet = new WeakMap<
       timer: ReturnType<typeof setTimeout>;
     }
 >();
+
+class PrivateDepositSubmissionError extends Error {
+  readonly failure: Readonly<{
+    signedTransactionHash?: string;
+    transactionNotBroadcast: boolean;
+  }>;
+  constructor(failure: {
+    signedTransactionHash?: string;
+    transactionNotBroadcast: boolean;
+  }) {
+    super('privacy_deposit_submission_failed');
+    this.failure = Object.freeze({ ...failure });
+  }
+}
 
 class MainController {
   // Map of keyrings indexed by slip44
@@ -1351,6 +1370,21 @@ class MainController {
           provider,
           assertCurrent,
           recordSession: { keyring, assertCurrent },
+          authorizeReplay: (entry) =>
+            authorizePrivateDepositReplay(
+              entry,
+              assertCurrent,
+              async (attempt) => {
+                const privateSession = this.capturePrivateVaultSession();
+                assertCurrent();
+                const privateVault = await this.getPrivateVaultController();
+                assertCurrent();
+                return privateVault.authorizeDepositReplay(
+                  attempt,
+                  privateSession
+                );
+              }
+            ),
         };
       }
     );
@@ -1618,6 +1652,7 @@ class MainController {
         retirementReadForChain,
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
+        metadata: feePreflight?.metadata,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
           const signed = Transaction.from(record.rawTransaction);
           const feePerGas = signed.maxFeePerGas ?? signed.gasPrice;
@@ -1652,7 +1687,11 @@ class MainController {
               : {}),
           });
           if (feePreflight)
-            await feePreflight(record, assertDispatchCurrent, snapshot);
+            await feePreflight.preflight(
+              record,
+              assertDispatchCurrent,
+              snapshot
+            );
         },
       });
     }
@@ -3342,9 +3381,8 @@ class MainController {
       this.isAccountSwitching
     )
       throw new Error('privacy_deposit_context_invalid');
-    // sysweb3-keyring 1.0.625 replaces the approved nonce in its Ledger/Trezor
-    // sendFormattedTransaction branches. Keep this new reserved-nonce flow on
-    // software accounts until those SDK paths preserve the reviewed nonce.
+    // Private deposits currently expose software EOA approvals. Hardware and
+    // Smart-account deposits require their own reviewed product flow.
     if (
       (selected.type !== KeyringAccountType.HDAccount &&
         selected.type !== KeyringAccountType.Imported) ||
@@ -3407,30 +3445,6 @@ class MainController {
       if (!value) throw new Error('privacy_deposit_context_changed');
       return value;
     };
-    const uint = (value: any) => {
-      if (typeof value === 'number' && !Number.isSafeInteger(value))
-        throw new Error('privacy_deposit_fee_invalid');
-      const text = value?.toString();
-      if (
-        typeof text !== 'string' ||
-        !/^(?:0|[1-9][0-9]*|0x(?:0|[1-9a-f][0-9a-f]*))$/.test(text) ||
-        text.length > 80
-      )
-        throw new Error('privacy_deposit_fee_invalid');
-      const parsed = BigInt(text);
-      if (parsed >= BigInt(1) << BigInt(256))
-        throw new Error('privacy_deposit_fee_invalid');
-      return parsed;
-    };
-    const read = async <T>(
-      session: IPrivacyDepositSession,
-      operation: () => Promise<T>
-    ) => {
-      session.assertCurrent();
-      const result = await operation();
-      session.assertCurrent();
-      return result;
-    };
     const original = (
       attempt: Parameters<IPrivacyTransactionsHost['beforeSubmission']>[0]
     ) => {
@@ -3438,7 +3452,23 @@ class MainController {
       if (!value) throw new Error('privacy_deposit_context_changed');
       return value;
     };
+    const reviews = new WeakMap<
+      IEvmTransactionContext,
+      Awaited<ReturnType<MainController['prepareGenericEvmFeeReview']>>
+    >();
+    const reviewed = (context: IEvmTransactionContext) => {
+      const result = reviews.get(context);
+      if (!result)
+        throw new PrivateDepositSubmissionError({
+          transactionNotBroadcast: true,
+        });
+      return result;
+    };
     return {
+      classifySubmissionFailure: (error) =>
+        error instanceof PrivateDepositSubmissionError
+          ? error.failure
+          : { transactionNotBroadcast: false },
       captureContext: () => this.capturePrivacyDepositContext(true),
       prepareNote: async (poolId, noteId, session) => {
         const saved = binding(session);
@@ -3471,92 +3501,53 @@ class MainController {
         return result;
       },
       prepareFees: async (transaction, session) => {
-        const { provider } = binding(session);
-        if (
-          uint(await readLiveEvmChainId(provider, session.assertCurrent)) !==
-          BigInt(1)
-        )
-          throw new Error('privacy_deposit_context_invalid');
-        const estimate = uint(
-          await read(session, () => provider.estimateGas(transaction))
+        binding(session);
+        const read = this.captureFreshEvmRead(getWalletNavigationScope());
+        const check = () => {
+          session.assertCurrent();
+          read.assertCurrent();
+        };
+        check();
+        const plan = await this.inspectOrdinaryEvmNonce(
+          read,
+          session.context.account.address,
+          { assertCurrent: check }
         );
-        const fees = await read(session, () => provider.getFeeData());
-        const nonce = uint(
-          await read(session, () =>
-            provider.send('eth_getTransactionCount', [
-              session.context.account.address,
-              'pending',
-            ])
-          )
+        check();
+        const walletNonce = reviewedExtensionNonce(plan.nonce, 'automatic');
+        const prepared = await this.prepareGenericEvmFeeReview(
+          { ...transaction, nonce: walletNonce.nonce },
+          session.context,
+          walletNonce,
+          check,
+          { assertCurrentContext: check },
+          { kind: 'private-deposit', request: session }
         );
-        const balance = uint(
-          await read(session, () =>
-            provider.getBalance(session.context.account.address)
-          )
-        );
-        // Round a 20% execution buffer upward; never invent a fallback estimate.
-        const gasLimit = (estimate * BigInt(12) + BigInt(9)) / BigInt(10);
-        if (estimate === BigInt(0))
-          throw new Error('privacy_deposit_fee_invalid');
-        if (
-          fees.maxFeePerGas !== null &&
-          fees.maxFeePerGas !== undefined &&
-          fees.maxPriorityFeePerGas !== null &&
-          fees.maxPriorityFeePerGas !== undefined
-        ) {
-          const max = uint(fees.maxFeePerGas),
-            priority = uint(fees.maxPriorityFeePerGas);
-          if (max === BigInt(0) || priority > max)
-            throw new Error('privacy_deposit_fee_invalid');
-          if (balance < uint(transaction.value) + gasLimit * max)
-            throw new Error('privacy_deposit_insufficient_funds');
-          return {
-            nonce: String(nonce),
-            gasLimit: String(gasLimit),
-            maxFeePerGas: String(max),
-            maxPriorityFeePerGas: String(priority),
-          };
-        }
-        const price = uint(fees.gasPrice);
-        if (price === BigInt(0)) throw new Error('privacy_deposit_fee_invalid');
-        if (balance < uint(transaction.value) + gasLimit * price)
-          throw new Error('privacy_deposit_insufficient_funds');
+        check();
+        reviews.set(session.context, prepared);
+        const quote = prepared.token.transaction;
         return {
-          nonce: String(nonce),
-          gasLimit: String(gasLimit),
-          gasPrice: String(price),
+          nonce: quote.nonce,
+          gasLimit: quote.gasLimit,
+          ...(quote.type === 0
+            ? { gasPrice: quote.gasPrice }
+            : {
+                maxFeePerGas: quote.maxFeePerGas,
+                maxPriorityFeePerGas: quote.maxPriorityFeePerGas,
+              }),
         };
       },
       beforeSubmission: async (attempt) => {
         const saved = original(attempt);
-        const session = {
-          context: attempt.context,
-          assertCurrent: saved.assertCurrent,
-        };
-        const nonce = uint(
-          await read(session, () =>
-            saved.provider.send('eth_getTransactionCount', [
-              attempt.context.account.address,
-              'pending',
-            ])
-          )
-        );
-        const balance = uint(
-          await read(session, () =>
-            saved.provider.getBalance(attempt.context.account.address)
-          )
-        );
-        if (nonce !== uint(attempt.transaction.nonce))
-          throw new Error('privacy_deposit_quote_changed');
-        const maximum =
-          uint(attempt.transaction.gasLimit) *
-          uint(
-            attempt.transaction.gasPrice ?? attempt.transaction.maxFeePerGas
-          );
-        if (balance < uint(attempt.transaction.value) + maximum)
-          throw new Error('privacy_deposit_insufficient_funds');
+        reviewed(attempt.context);
         const vault = await this.getPrivateVaultController();
         saved.assertCurrent();
+        bindPrivateDepositFeeAttempt(
+          this,
+          reviewed(attempt.context).token.id,
+          attempt.context,
+          attempt
+        );
         let assertRestoreCurrent: (() => void) | undefined;
         await vault.reserveDepositAttempt(
           attempt,
@@ -3586,30 +3577,60 @@ class MainController {
         saved.session.assertCurrent();
         await vault.clearUnbroadcastDepositAttempt(attempt, saved.session);
       },
-      sendTransaction: (transaction, session, onBroadcast, assertBeforeSign) =>
-        this.sendAndSaveEthTransaction(
-          transaction,
-          transaction.gasPrice !== undefined,
-          {
-            id: session.context.account.id,
-            type: session.context.account.type,
-          },
-          undefined,
-          {
-            expectedContext: session.context,
-            assertCurrentContext: session.assertCurrent,
-            assertBeforeSign,
-            clearNavigation: false,
-            onBroadcast,
-          }
-        ),
+      sendTransaction: (
+        transaction,
+        session,
+        onBroadcast,
+        assertBeforeSign
+      ) => {
+        const prepared = reviewed(session.context);
+        // The shared intent transports quantities as RPC hex. Restore the SDK's
+        // canonical decimal envelope before matching the private fee capability.
+        try {
+          const envelope = snapshotPreparedEvmTransaction({
+            chainId: String(transaction.chainId),
+            from: transaction.from,
+            to: transaction.to,
+            data: transaction.data,
+            value: String(parseEvmFeeQuantity(transaction.value)),
+            nonce: String(parseEvmFeeQuantity(transaction.nonce)),
+            gasLimit: String(parseEvmFeeQuantity(transaction.gasLimit)),
+            ...(transaction.gasPrice !== undefined
+              ? {
+                  type: 0,
+                  gasPrice: String(parseEvmFeeQuantity(transaction.gasPrice)),
+                }
+              : {
+                  type: 2,
+                  accessList: [],
+                  maxFeePerGas: String(
+                    parseEvmFeeQuantity(transaction.maxFeePerGas)
+                  ),
+                  maxPriorityFeePerGas: String(
+                    parseEvmFeeQuantity(transaction.maxPriorityFeePerGas)
+                  ),
+                }),
+          });
+          if (
+            serializePreparedEvmTransaction(envelope) !==
+            serializePreparedEvmTransaction(prepared.token.transaction)
+          )
+            throw new Error('privacy_deposit_quote_changed');
+        } catch (error) {
+          throw new PrivateDepositSubmissionError({
+            transactionNotBroadcast: true,
+          });
+        }
+        reviews.delete(session.context);
+        return prepared.submit(assertBeforeSign, onBroadcast);
+      },
     };
   }
 
   private getPrivacyTransactionsController(): Promise<IPrivacyTransactionsController> {
     if (!this.privacyTransactionsController) {
       this.privacyTransactionsController = import(
-        /* webpackChunkName: "privacy-transactions" */ './privacyTransactions'
+        /* webpackChunkName: "privacy-transactions" */ '../../../wallet/privacyTransactions'
       )
         .then(({ createPrivacyTransactionsController }) =>
           createPrivacyTransactionsController(
@@ -9095,6 +9116,15 @@ class MainController {
         );
         walletNonce = approvedNonce;
       }
+      if (saveOptions?.genericDispatchId !== undefined) {
+        const approved = saveOptions.dappNonceApproval;
+        if (!approved || params.nonce === undefined || params.nonce === null)
+          throw new Error('Generic nonce approval is required');
+        const reviewed = reviewedExtensionNonce(params.nonce, approved.source);
+        if (reviewed.nonce !== approved.nonce)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        walletNonce = reviewed;
+      }
       assertAuthority();
       const { accounts, activeAccount } = store.getState().vault;
       const selectedAccount = accounts[activeAccount.type]?.[activeAccount.id];
@@ -9130,6 +9160,8 @@ class MainController {
           ? undefined
           : snapshotPreparedEvmTransaction(params);
       assertBeforeSign();
+      if (saveOptions?.genericDispatchId !== undefined)
+        markGenericEvmFeeSdkEntered(this, saveOptions.genericDispatchId);
       submissionStarted = true;
       const ethereum = keyring.ethereumTransaction;
       const sending =
@@ -9832,14 +9864,16 @@ class MainController {
       );
     };
     check();
-    return this.prepareGenericEvmFeeReview(
-      params,
-      context,
-      walletNonce,
-      check,
-      { authorizeDapp, dappApprovalOwner: requestOwner },
-      { kind: 'dapp', request: requestOwner }
-    );
+    return (
+      await this.prepareGenericEvmFeeReview(
+        params,
+        context,
+        walletNonce,
+        check,
+        { authorizeDapp, dappApprovalOwner: requestOwner },
+        { kind: 'dapp', request: requestOwner }
+      )
+    ).token;
   }
 
   public async reviewWalletEvmFee(
@@ -9881,14 +9915,16 @@ class MainController {
       slip44: read.network.slip44,
       sessionGeneration: this.walletSessionGeneration,
     };
-    return this.prepareGenericEvmFeeReview(
-      { ...request, nonce: walletNonce.nonce },
-      context,
-      walletNonce,
-      read.assertCurrent,
-      { hardwareScope: { ...scope } },
-      { kind: 'wallet' }
-    );
+    return (
+      await this.prepareGenericEvmFeeReview(
+        { ...request, nonce: walletNonce.nonce },
+        context,
+        walletNonce,
+        read.assertCurrent,
+        { hardwareScope: { ...scope } },
+        { kind: 'wallet' }
+      )
+    ).token;
   }
 
   private async prepareGenericEvmFeeReview(
@@ -9898,7 +9934,8 @@ class MainController {
     assertAuthority: () => void,
     authority:
       | { authorizeDapp: () => void; dappApprovalOwner: object }
-      | { hardwareScope: IWalletNavigationScope },
+      | { hardwareScope: IWalletNavigationScope }
+      | { assertCurrentContext: () => void },
     feeAuthority: import('./nativeEvmFeeReviews').GenericEvmFeeAuthority
   ) {
     const read = this.captureFreshEvmRead(getWalletNavigationScope());
@@ -10027,6 +10064,7 @@ class MainController {
           undefined,
           {
             ...authority,
+            assertBeforeSign: assertCurrent,
             expectedContext: expected,
             genericDispatchId: reviewId,
             clearNavigation: false,
@@ -10049,7 +10087,46 @@ class MainController {
       feeAuthority
     );
     reviewId = token.id;
-    return token;
+    const sdkEntered = captureGenericEvmFeeSdkEntryState(this, token.id);
+    return Object.freeze({
+      token,
+      submit: async (
+        assertBeforeSign: () => void,
+        onBroadcast: (response: IEvmTransactionResponse) => Promise<void>
+      ) => {
+        const assertCurrent = () => {
+          check();
+          assertSynchronousEvmFeeGuard(assertBeforeSign);
+        };
+        let consumed: ReturnType<typeof consumeGenericEvmFeeReview> | undefined;
+        try {
+          consumed = consumeGenericEvmFeeReview(
+            this,
+            token.id,
+            expected,
+            assertCurrent,
+            Math.floor(performance.now()),
+            feeAuthority
+          );
+          return await consumed.review.submit(assertCurrent, (hash) =>
+            onBroadcast({
+              hash,
+              nonce: walletNonce.nonce,
+            } as IEvmTransactionResponse)
+          );
+        } catch (error) {
+          const failure = evmSubmissionFailure(error);
+          const signedTransactionHash = failure?.signedTransactionHash;
+          throw new PrivateDepositSubmissionError({
+            transactionNotBroadcast:
+              !sdkEntered() || failure?.transactionNotBroadcast === true,
+            ...(signedTransactionHash ? { signedTransactionHash } : {}),
+          });
+        } finally {
+          consumed?.close();
+        }
+      },
+    });
   }
 
   /**

@@ -1,13 +1,15 @@
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
-import { keccak256, toUtf8Bytes } from 'ethers';
+import { Interface, keccak256, parseEther, toUtf8Bytes } from 'ethers';
 
 import { createPrivateVaultController as createExtensionVault } from '../scripts/Background/controllers/privateVault';
+import { KeyringAccountType } from '../types/network';
 import { AsyncMutex, walletPersistenceMutex } from '../utils/asyncMutex';
 import {
   generateClassicNote,
   identifyClassicNote,
 } from '../utils/privacy/note';
+import { getPrivacyPool } from '../utils/privacy/registry';
 import { chromeStorage } from '../utils/storageAPI';
 
 import * as core from './privateVault';
@@ -16,6 +18,7 @@ import type {
   IPrivateVaultHost,
   IPrivateVaultSession,
 } from './privateVault';
+import type { IPrivacyDepositAttempt } from '../utils/privacy/transactionTypes';
 
 jest.unmock('syscoinjs-lib');
 jest.mock('@trezor/connect-webextension', () => ({}));
@@ -54,6 +57,7 @@ function fixture() {
   let sessionError = 'privacy_vault_session_changed';
   let sequence = 10;
   let elapsed = 0;
+  let wallNow = 456;
   const storage = {
     getItem: jest.fn(async (key: string) =>
       records[key] === undefined ? null : structuredClone(records[key])
@@ -91,7 +95,7 @@ function fixture() {
     mutex: new AsyncMutex(),
     generate: () => NOTE,
     identify: identifyClassicNote,
-    now: () => 456,
+    now: () => wallNow,
     deadlineNow: () => elapsed,
     randomId: () =>
       `00000000-0000-4000-8000-${String(sequence++).padStart(12, '0')}`,
@@ -103,6 +107,9 @@ function fixture() {
     records,
     keyring: keyring as KeyringManager,
     revalidate,
+    setNow: (value: number) => {
+      wallNow = value;
+    },
     setElapsed: (value: number) => {
       elapsed = value;
     },
@@ -686,3 +693,315 @@ test('cleanup deadline advances independently of fixed record timestamps', async
   expect(f.storage.setItem).not.toHaveBeenCalled();
   expect(f.records).toEqual(before);
 });
+
+function replayAttempt(
+  noteId: string,
+  generation: number
+): IPrivacyDepositAttempt {
+  const pool = getPrivacyPool('eth-1');
+  const address = '0x' + '11'.repeat(20);
+  return {
+    intentId: INTENT_ID,
+    noteId,
+    poolId: pool.id,
+    createdAt: 456,
+    expiresAt: 60456,
+    context: {
+      chainId: 1,
+      rpcUrl: 'https://operator.example',
+      slip44: 60,
+      sessionGeneration: generation,
+      account: { id: 0, type: KeyringAccountType.HDAccount, address },
+    },
+    transaction: {
+      chainId: 1,
+      from: address,
+      to: pool.address,
+      value: parseEther(pool.amount).toString(),
+      data: new Interface([
+        'function deposit(bytes32 commitment) payable',
+      ]).encodeFunctionData('deposit', [identifyClassicNote(NOTE).commitment]),
+      gasLimit: '100000',
+      nonce: '7',
+      maxFeePerGas: '100',
+      maxPriorityFeePerGas: '1',
+    },
+  };
+}
+
+async function replayFixture() {
+  const f = fixture();
+  jest.mocked(f.host.readNote).mockResolvedValue({ phase: 'not-found' });
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  const note = await vault.createDepositNote('eth-1');
+  const session = f.host.captureSession();
+  const attempt = replayAttempt(note.id, session.generation);
+  await vault.reserveDepositAttempt(attempt, session);
+  return { ...f, vault, note, session, attempt };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+test('deposit replay keeps the original attempt across session restart and review expiry', async () => {
+  const f = await replayFixture();
+  const before = await f.vault.getDepositAttempt(f.note.id, f.session);
+  f.cycleSession();
+  f.setNow(100000);
+  const session = f.host.captureSession();
+  expect(session.generation).not.toBe(f.attempt.context.sessionGeneration);
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, session);
+  expect(lease.assertCurrent()).toBeUndefined();
+  await expect(
+    lease.withAdmission(async () => ({ result: 'sent' }))
+  ).resolves.toEqual({ result: 'sent' });
+  await lease.onAcknowledged(HASH);
+  expect(await f.vault.getDepositAttempt(f.note.id, session)).toEqual({
+    ...before,
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+});
+
+test('deposit replay snapshots the original attempt before its first await', async () => {
+  const f = await replayFixture();
+  const gate = deferred<void>();
+  const original = f.keyring.getPrivateRecordProfileId.bind(f.keyring);
+  jest
+    .spyOn(f.keyring, 'getPrivateRecordProfileId')
+    .mockImplementationOnce(async () => {
+      await gate.promise;
+      return original();
+    });
+  const pending = f.vault.authorizeDepositReplay(f.attempt, f.session);
+  f.attempt.transaction = { ...f.attempt.transaction, nonce: '8' };
+  gate.resolve();
+  const lease = await pending;
+  await lease.withAdmission(async () => ({ result: 'sent' }));
+  await lease.onAcknowledged(HASH);
+  expect(await f.vault.getDepositAttempt(f.note.id, f.session)).toMatchObject({
+    nonce: '7',
+    transactionHash: HASH,
+  });
+});
+
+test('deposit replay rejects an altered attempt and never invokes its admission callback', async () => {
+  const f = await replayFixture();
+  const admission = jest.fn(async () => ({ result: 'sent' }));
+  await expect(
+    f.vault.authorizeDepositReplay(
+      { ...f.attempt, transaction: { ...f.attempt.transaction, nonce: '8' } },
+      f.session
+    )
+  ).rejects.toThrow('privacy_deposit_attempt_invalid');
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  await f.vault.clearUnbroadcastDepositAttempt(f.attempt, f.session);
+  await expect(lease.withAdmission(admission)).rejects.toThrow(
+    'privacy_deposit_attempt_invalid'
+  );
+  expect(admission).not.toHaveBeenCalled();
+});
+
+test('deposit replay rejects accessor inputs before reading private storage', async () => {
+  const f = await replayFixture();
+  const getter = jest.fn(() => f.attempt.transaction);
+  const input = { ...f.attempt };
+  Object.defineProperty(input, 'transaction', {
+    enumerable: true,
+    get: getter,
+  });
+  f.storage.getItem.mockClear();
+  await expect(
+    f.vault.authorizeDepositReplay(input, f.session)
+  ).rejects.toThrow();
+  expect(getter).not.toHaveBeenCalled();
+  expect(f.storage.getItem).not.toHaveBeenCalled();
+});
+
+test('deposit replay rejects a revoked session before admitting any transport', async () => {
+  const f = await replayFixture();
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  const admission = jest.fn(async () => ({ result: 'sent' }));
+  f.cycleSession();
+  expect(lease.assertCurrent).toThrow('privacy_vault_session_changed');
+  await expect(lease.withAdmission(admission)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(admission).not.toHaveBeenCalled();
+});
+
+test('deposit replay holds note ownership through admission but releases it before the network acknowledgement', async () => {
+  const f = await replayFixture();
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  const entries = [
+    { note: NOTE, createdAt: 1, reconciliationRequired: true as const },
+  ];
+  const plan = await f.vault.prepareRestore(entries, f.session);
+  const entered = deferred<void>(),
+    release = deferred<void>(),
+    acknowledgement = deferred<string>();
+  const admitting = lease.withAdmission(async () => {
+    entered.resolve();
+    await release.promise;
+    lease.assertCurrent();
+    return { result: acknowledgement.promise };
+  });
+  await entered.promise;
+  let restored = false;
+  const restoring = f.vault
+    .commitRestore(plan, entries, 'synthetic-password', f.session)
+    .then(() => {
+      restored = true;
+    });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(restored).toBe(false);
+  release.resolve();
+  const admitted = await admitting;
+  expect(admitted).not.toBeNull();
+  await restoring;
+  expect(restored).toBe(true);
+  expect(lease.assertCurrent).toThrow('privacy_note_restore_required');
+  await expect(
+    f.vault.authorizeDepositReplay(f.attempt, f.session)
+  ).rejects.toThrow('privacy_note_restore_required');
+  await expect(
+    lease.withAdmission(async () => ({ result: 'never' }))
+  ).rejects.toThrow('privacy_note_restore_required');
+  acknowledgement.resolve(HASH);
+  await expect(admitted!.result).resolves.toBe(HASH);
+  await lease.onAcknowledged(HASH);
+  expect(await f.vault.getDepositAttempt(f.note.id, f.session)).toMatchObject({
+    phase: 'submitted',
+    transactionHash: HASH,
+  });
+});
+
+test('deposit replay binds later admission and acknowledgement to the original profile', async () => {
+  const f = await replayFixture();
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  const admission = jest.fn(async () => ({ result: 'sent' }));
+  jest
+    .spyOn(f.keyring, 'getPrivateRecordProfileId')
+    .mockResolvedValue('0x' + 'ff'.repeat(32));
+  await expect(lease.withAdmission(admission)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(admission).not.toHaveBeenCalled();
+});
+
+test('deposit replay requires a synchronous session guard before private I/O', async () => {
+  const f = await replayFixture();
+  const session = {
+    ...f.session,
+    assertCurrent: (async () => undefined) as unknown as () => void,
+  };
+  f.storage.getItem.mockClear();
+  await expect(
+    f.vault.authorizeDepositReplay(f.attempt, session)
+  ).rejects.toThrow('privacy_vault_session_changed');
+  expect(f.storage.getItem).not.toHaveBeenCalled();
+});
+
+test('an issued deposit replay lease rejects a newly asynchronous guard before private I/O', async () => {
+  const f = await replayFixture();
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  f.session.assertCurrent = (async () => undefined) as unknown as () => void;
+  f.storage.getItem.mockClear();
+  await expect(
+    lease.withAdmission(async () => ({ result: 'never' }))
+  ).rejects.toThrow('privacy_vault_session_changed');
+  await expect(lease.onAcknowledged(HASH)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(f.storage.getItem).not.toHaveBeenCalled();
+});
+
+test('deposit replay refuses a withdrawal recorded after lease capture', async () => {
+  const f = await replayFixture();
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  const identity = identifyClassicNote(NOTE);
+  jest.mocked(f.host.readNote).mockResolvedValue({ phase: 'verified' });
+  await f.vault.reserveWithdrawalAttempt(
+    {
+      intentId: '00000000-0000-4000-8000-000000000003',
+      noteId: f.note.id,
+      poolId: 'eth-1',
+      createdAt: 456,
+      expiresAt: 60456,
+      context: f.attempt.context,
+      root: '0x' + '01'.repeat(32),
+      nullifierHash: identity.nullifierHash,
+      recipient: '0x' + '22'.repeat(20),
+      relayer: '0x' + '33'.repeat(20),
+      fee: '1',
+      refund: '0',
+      proof: '0x' + 'ab'.repeat(256),
+      mode: 'relayed',
+      rewardAccount: '0x' + '33'.repeat(20),
+      endpoint: 'https://relay.example',
+      ensHash: HASH,
+    },
+    f.session
+  );
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  await expect(lease.withAdmission(admit)).rejects.toThrow(
+    'privacy_withdrawal_attempt_exists'
+  );
+  await expect(
+    f.vault.authorizeDepositReplay(f.attempt, f.session)
+  ).rejects.toThrow('privacy_withdrawal_attempt_exists');
+  expect(admit).not.toHaveBeenCalled();
+});
+
+test('deposit replay rechecks ownership after waiting for the private vault mutex', async () => {
+  const f = await replayFixture();
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  const entered = deferred<void>(),
+    release = deferred<void>();
+  const held = f.dependencies.mutex.runExclusive(async () => {
+    entered.resolve();
+    await release.promise;
+  });
+  await entered.promise;
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  const pending = lease.withAdmission(admit);
+  f.cycleSession();
+  release.resolve();
+  await held;
+  await expect(pending).rejects.toThrow('privacy_vault_session_changed');
+  expect(admit).not.toHaveBeenCalled();
+});
+
+test('deposit replay refuses a positively spent note before admission', async () => {
+  const f = await replayFixture();
+  const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+  jest.mocked(f.host.readNote).mockResolvedValue({ phase: 'spent' });
+  const admit = jest.fn(async () => ({ result: 'never' }));
+  await expect(lease.withAdmission(admit)).rejects.toThrow(
+    'privacy_note_spent'
+  );
+  await expect(
+    f.vault.authorizeDepositReplay(f.attempt, f.session)
+  ).rejects.toThrow('privacy_note_spent');
+  expect(admit).not.toHaveBeenCalled();
+});
+
+test.each(['waiting', 'verified'] as const)(
+  'deposit replay preserves a legitimate %s local note status',
+  async (phase) => {
+    const f = await replayFixture();
+    jest.mocked(f.host.readNote).mockResolvedValue({ phase });
+    const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
+    await expect(
+      lease.withAdmission(async () => ({ result: 'sent' }))
+    ).resolves.toEqual({ result: 'sent' });
+  }
+);

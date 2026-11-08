@@ -24,6 +24,7 @@ function fixture() {
   let rejected: Error | null = null,
     reconciliationError: Error | null = null;
   let hold: Promise<void> | undefined;
+  let unknownFailure = false;
   const parent = new AbortController();
   const controller = new NativeGuardianRecoveryController(
     {
@@ -34,6 +35,7 @@ function fixture() {
         retirements++;
       },
       submissionFailure(error) {
+        if (unknownFailure) return undefined;
         return {
           transactionNotBroadcast: !!(error as { knownRefusal?: boolean })
             ?.knownRefusal,
@@ -85,6 +87,7 @@ function fixture() {
     set(value: Partial<NativeGuardianRecoveryStatus>) {
       status = { ...status, ...value };
     },
+    unknownFailure() { unknownFailure = true; },
     reject(error: Error) {
       rejected = error;
     },
@@ -215,6 +218,17 @@ test('a proven submission refusal preserves the saved recovery route without a s
   } finally {
     f.controller.dispose();
   }
+});
+
+
+test('an unrecognized SDK error after submission entry remains unknown', async () => {
+  const f = fixture();
+  f.unknownFailure();
+  f.reject(new Error('unrecognized transport failure'));
+  await f.controller.review();
+  await f.controller.confirm(f.controller.getSnapshot().feeReview!.id);
+  assert.equal(f.controller.getSnapshot().phase, 'unknown');
+  assert.equal(f.counts().submissions, 1);
 });
 
 test('executed recovery with unreconciled metadata can clear only local tracking', async () => {

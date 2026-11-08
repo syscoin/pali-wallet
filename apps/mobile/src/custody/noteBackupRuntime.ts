@@ -1,3 +1,4 @@
+import type { IPrivacyDepositAttempt } from '../../../../source/utils/privacy/transactionTypes.ts';
 import { identifyClassicNote } from '../../../../source/utils/privacy/note.ts';
 import type { IPrivacyNoteReader, IPrivateVaultCapacity, IPrivateVaultController } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import { AsyncMutex } from '../../../../source/utils/asyncMutex.ts';
@@ -133,6 +134,9 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     vault,
   });
   return {
+    authorizeDepositReplay(session: IPrivateVaultSession, attempt: IPrivacyDepositAttempt) {
+      return vault.authorizeDepositReplay(attempt, session);
+    },
     invalidate() { resumeInventory?.(); invalidate?.(); },
     dispose() { resumeInventory?.(); service.dispose(); },
     importNote(session: IPrivateVaultSession, note: string, readNote: IPrivacyNoteReader, assertCurrent: () => void) {

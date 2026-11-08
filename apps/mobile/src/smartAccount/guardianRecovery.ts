@@ -54,7 +54,7 @@ type Host = Readonly<{
   ): Readonly<{
     transactionNotBroadcast: boolean;
     signedTransactionHash?: string;
-  }>;
+  }> | undefined;
   observe(signal: AbortSignal): Promise<NativeGuardianRecoveryStatus>;
   prepare(
     action: NativeGuardianRecoveryAction,
@@ -269,11 +269,11 @@ export class NativeGuardianRecoveryController {
       await this.observe();
     } catch (error) {
       const failure = this.host.submissionFailure(error);
-      if (failure.signedTransactionHash)
+      if (failure?.signedTransactionHash)
         this.publish({ transactionHash: failure.signedTransactionHash });
       this.failed(
         error,
-        !entered || failure.transactionNotBroadcast ? 'failed' : 'unknown'
+        !entered || failure?.transactionNotBroadcast === true ? 'failed' : 'unknown'
       );
     } finally {
       this.busy = false;

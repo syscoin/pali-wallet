@@ -1,3 +1,4 @@
+import { authorizePrivateDepositReplay } from '../../../../source/wallet/privateDepositReplay.ts';
 import { Contract } from '../../../../source/utils/ethersV6Compat.ts';
 import { hexlify } from 'ethers/utils';
 import {
@@ -936,19 +937,28 @@ export function createKeyringRuntimeFactory(
           try { resolve(operation(captured)); } catch (error) { reject(error); }
           return task;
         };
-        const privateDomainSession = (captured: number, assertOwner: () => void): IPrivateVaultSession => {
-          const ring = keyring, identity = verifiedIdentity, revision = catalogueSnapshot?.revision;
+        const privateDomainWalletSession = (captured: number): IPrivateVaultSession => {
+          const ring = keyring, identity = verifiedIdentity;
           const assertCurrent = () => {
-            current(captured); checkGuard(assertOwner); current(captured);
+            current(captured);
             if (!identity?.root || keyring !== ring || !ring.isUnlocked() ||
                 authenticatedPair !== identity.pairFingerprint ||
                 verifiedIdentity?.walletBindingId !== identity.walletBindingId ||
-                verifiedIdentity.root?.profileId !== identity.root.profileId ||
-                catalogueSnapshot?.revision !== revision || revision === undefined)
+                verifiedIdentity.root?.profileId !== identity.root.profileId)
               throw new KeyringRuntimeError('CANCELLED');
           };
           assertCurrent();
           return Object.freeze({ generation: captured, keyring: ring, assertCurrent });
+        };
+        const privateDomainSession = (captured: number, assertOwner: () => void): IPrivateVaultSession => {
+          const wallet = privateDomainWalletSession(captured), revision = catalogueSnapshot?.revision;
+          const assertCurrent = () => {
+            wallet.assertCurrent(); checkGuard(assertOwner); wallet.assertCurrent();
+            if (catalogueSnapshot?.revision !== revision || revision === undefined)
+              throw new KeyringRuntimeError('CANCELLED');
+          };
+          assertCurrent();
+          return Object.freeze({ ...wallet, assertCurrent });
         };
         const authenticateVerifiedOwner = async (password: string, request: IPrivateVaultSession) => {
           request.assertCurrent();
@@ -3796,7 +3806,30 @@ export function createKeyringRuntimeFactory(
                 if (live !== selected || currentNetwork.chainId !== network.chainId || currentNetwork.rpcUrl !== network.rpcUrl)
                   throw new KeyringRuntimeError('CANCELLED');
               };
-              const replay = new EvmSignedReplay(signedRecords, () => ({ context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport }), options.now, options.randomBytes);
+              const replay = new EvmSignedReplay(signedRecords, () => ({
+                context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport,
+                authorizeReplay: (entry) => authorizePrivateDepositReplay(entry, check, async (attempt) => {
+                  // Prepare initializes the existing note runtime. Confirmation reuses it
+                  // inside this owned replay operation, without public note admission.
+                  if (!noteBackups) await openNotes(check, () => undefined);
+                  check();
+                  const lease = await noteBackups!.authorizeDepositReplay(privateDomainWalletSession(captured), attempt);
+                  check();
+                  return Object.freeze({
+                    assertCurrent: lease.assertCurrent,
+                    withAdmission: lease.withAdmission,
+                    async onAcknowledged(hash: string) {
+                      try { await lease.onAcknowledged(hash); }
+                      finally {
+                        if (privateDomainStorageFault === 'unreported') {
+                          privateDomainStorageFault = 'reopen';
+                          try { await lock(); } catch { /* The owner remains quarantined. */ }
+                        }
+                      }
+                    },
+                  });
+                }),
+              }), options.now, options.randomBytes);
               return { prepare: replay.prepare.bind(replay), cancel: replay.cancel.bind(replay), list: replay.list.bind(replay), confirm(id) {
                 const work = replay.confirm(id);
                 const pending = work.finally(() => pendingSubmissions.delete(pending));

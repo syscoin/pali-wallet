@@ -131,6 +131,7 @@ export function createExtensionEvmReplay(
       context: captured.context,
       recordSession: captured.recordSession,
       assertCurrent: captured.assertCurrent,
+      authorizeReplay: captured.authorizeReplay,
       observe: (expected) =>
         observeEvmTransaction(
           expected,

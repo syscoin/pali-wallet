@@ -2478,8 +2478,8 @@ test('connection transactions use real SDK signing and durable shared submission
     loseResponse = true; pendingNonce = '0x6';
     await assert.rejects(submit({ from: ADDRESS, to: `0x${'55'.repeat(20)}`, nonce: '0x4', data: '0x6000' }), error => {
       const failure = evmSubmissionFailure(error);
-      assert.equal(failure.transactionNotBroadcast, false);
-      assert.equal(failure.signedTransactionHash, keccak256(submitted[2]!));
+      assert.equal(failure?.transactionNotBroadcast, false);
+      assert.equal(failure?.signedTransactionHash, keccak256(submitted[2]!));
       return true;
     });
     assert.deepEqual(submitted.map(raw => Transaction.from(raw).nonce), [0, 1, 4]);

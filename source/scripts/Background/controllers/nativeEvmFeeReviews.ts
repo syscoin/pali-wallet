@@ -7,6 +7,10 @@ import {
   assertSynchronousEvmFeeGuard,
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
+import {
+  capturePrivateDepositAttempt,
+  privateDepositUnsignedBytes,
+} from '../../../utils/privacy/depositMetadata';
 
 import type { ExtensionReviewedNonce } from './evmAutoNonce';
 import type { captureReviewedNativeEvmTransfer } from './freshNativeGasEstimate';
@@ -14,6 +18,7 @@ import type { IEvmTransactionResponse } from './transactions/types';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import type { EvmDappReview } from '../../../shared/evmDappReview';
 import type { IEvmTransactionContext } from '../../../utils/evmTransactionContext';
+import type { IPrivacyDepositAttempt } from '../../../utils/privacy/transactionTypes';
 import type {
   EvmSignedSubmission,
   EvmSubmissionContext,
@@ -29,14 +34,15 @@ type DispatchCheck = (
 ) => Promise<void>;
 export type GenericEvmFeeAuthority =
   | Readonly<{ kind: 'dapp'; request: object }>
-  | Readonly<{ kind: 'wallet' }>;
+  | Readonly<{ kind: 'wallet' }>
+  | Readonly<{ kind: 'private-deposit'; request: object }>;
 const sameAuthority = (
   expected: GenericEvmFeeAuthority,
   actual: GenericEvmFeeAuthority
 ) =>
   expected.kind === actual.kind &&
   (expected.kind === 'wallet' ||
-    (actual.kind === 'dapp' && expected.request === actual.request));
+    (actual.kind !== 'wallet' && expected.request === actual.request));
 type GenericPending = Readonly<{
   approval: ReturnType<typeof captureEvmFeeApproval>;
   assertCurrent: () => void;
@@ -52,6 +58,8 @@ type Entry =
       dispatch?: DispatchCheck;
       kind: 'generic';
       phase: 'quoted' | 'consumed' | 'dispatch';
+      privateDeposit: Readonly<IPrivacyDepositAttempt> | null;
+      sdkEntered: boolean;
       value: GenericPending;
     };
 const pendingByOwner = new WeakMap<object, Map<string, Entry>>();
@@ -214,6 +222,8 @@ export function issueGenericEvmFeeReview(
   pending.set(id, {
     kind: 'generic',
     phase: 'quoted',
+    privateDeposit: null,
+    sdkEntered: false,
     value: Object.freeze({
       assertCurrent,
       authority: Object.freeze({ ...authority }),
@@ -313,7 +323,7 @@ export function captureGenericEvmFeeDispatch(
     context.walletNonce?.source !== value.walletNonce.source
   )
     throw new Error('Generic fee review dispatch context changed');
-  return async (
+  const preflight = async (
     record: EvmSignedSubmission,
     assertCurrent: () => void,
     snapshot: EvmAutoNonceSnapshot
@@ -335,6 +345,12 @@ export function captureGenericEvmFeeDispatch(
     assertSynchronousEvmFeeGuard(value.assertCurrent);
     assertEvmFeeApprovalCurrent(value.approval, Math.floor(performance.now()));
   };
+  return Object.freeze({
+    preflight,
+    metadata: entry.privateDeposit
+      ? Object.freeze({ privateDeposit: entry.privateDeposit })
+      : undefined,
+  });
 }
 
 /** Bind the consumed review before the SDK synchronously captures its lifecycle. */
@@ -349,7 +365,9 @@ export function bindGenericEvmFeeDispatch(
     !entry ||
     entry.kind !== 'generic' ||
     entry.phase !== 'consumed' ||
-    typeof dispatch !== 'function'
+    typeof dispatch !== 'function' ||
+    (entry.value.authority.kind === 'private-deposit' &&
+      entry.privateDeposit === null)
   )
     throw new Error('Generic fee review dispatch is unavailable');
   assertMatchingContext(entry.value.context, context);
@@ -360,4 +378,50 @@ export function bindGenericEvmFeeDispatch(
   );
   entry.dispatch = dispatch;
   entry.phase = 'dispatch';
+}
+
+/** Only the private host can bind its reserved note to this opaque fee capability. */
+export function bindPrivateDepositFeeAttempt(
+  owner: object,
+  id: string,
+  context: IEvmTransactionContext,
+  attempt: IPrivacyDepositAttempt
+): void {
+  const entry = pendingByOwner.get(owner)?.get(id);
+  if (
+    !entry ||
+    entry.kind !== 'generic' ||
+    entry.phase !== 'quoted' ||
+    entry.value.authority.kind !== 'private-deposit'
+  )
+    throw new Error('Private deposit fee review is unavailable');
+  assertMatchingContext(entry.value.context, context);
+  assertSynchronousEvmFeeGuard(entry.value.assertCurrent);
+  const captured = capturePrivateDepositAttempt(attempt);
+  assertMatchingContext(context, captured.context);
+  if (
+    privateDepositUnsignedBytes(captured) !==
+    serializePreparedEvmTransaction(entry.value.review.transaction)
+  )
+    throw new Error('Private deposit fee review changed');
+  entry.privateDeposit = captured;
+}
+
+/** The invocation boundary is owned by MainController, independently of provider fields. */
+export function markGenericEvmFeeSdkEntered(owner: object, id: string): void {
+  const entry = pendingByOwner.get(owner)?.get(id);
+  if (!entry || entry.kind !== 'generic' || entry.phase !== 'dispatch')
+    throw new Error('Generic fee review dispatch is unavailable');
+  assertSynchronousEvmFeeGuard(entry.value.assertCurrent);
+  entry.sdkEntered = true;
+}
+
+export function captureGenericEvmFeeSdkEntryState(
+  owner: object,
+  id: string
+): () => boolean {
+  const entry = pendingByOwner.get(owner)?.get(id);
+  if (!entry || entry.kind !== 'generic')
+    throw new Error('Generic fee review is unavailable');
+  return () => entry.sdkEntered;
 }
