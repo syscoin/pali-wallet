@@ -1,60 +1,62 @@
-import {
-  decodeNftSafeTransferData,
-  type NftTransferIntent,
-} from '../shared/nftTransfer.ts';
+import { getAddress } from 'ethers/address';
+import { Transaction } from 'ethers/transaction';
+
 import {
   createErc20Policy,
   decodeErc20Transfer,
   type Erc20Metadata,
 } from '../shared/erc20.ts';
-import { getAddress } from 'ethers/address';
-import { Transaction } from 'ethers/transaction';
-import {
-  getPaliEntryPointAddress,
-  paliEntryPointInterface,
-  paliSmartAccountInterface,
-} from '../utils/smartAccount/contracts.ts';
-import {
-  ERC7579_MODE_SINGLE_DEFAULT,
-  getSmartAccountUserOpRequiredPrefund,
-  type SmartAccountPackedUserOperation,
-} from '../utils/smartAccount/account.ts';
-import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
-import { decodeSmartAccountUserOperationEvent } from '../utils/smartAccount/userOperationEvent.ts';
 import {
   observeEvmTransaction,
   type EvmObservationMethod,
   type EvmTransactionObservation,
 } from '../shared/evmTransactionObservation.ts';
+import {
+  decodeNftSafeTransferData,
+  type NftTransferIntent,
+} from '../shared/nftTransfer.ts';
+import {
+  ERC7579_MODE_SINGLE_DEFAULT,
+  getSmartAccountUserOpRequiredPrefund,
+  type SmartAccountPackedUserOperation,
+} from '../utils/smartAccount/account.ts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from '../utils/smartAccount/contracts.ts';
+import { decodeSmartAccountUserOperationEvent } from '../utils/smartAccount/userOperationEvent.ts';
+import { getSmartAccountUserOpHash } from '../utils/smartAccount/userOperationHash.ts';
+
 import type { EvmRetainedSignedRecord } from './evmSignedRecords.ts';
 
 const tokenPolicy = createErc20Policy(getAddress);
 
 export type SmartAccountActivityIdentity = Readonly<{
-  payer: string;
   operationHash: string;
   operationNonce: string;
+  payer: string;
 }>;
 
 export type SmartAccountActivityObservation = SmartAccountActivityIdentity &
   Readonly<{
+    account: string;
     chainId: string;
     hash: string;
     nonce: number;
-    account: string;
   }>;
 
 export type RetainedSmartAccountTransfer = Readonly<{
-  entry: EvmRetainedSignedRecord;
   account: string;
-  recipient: string;
   amountUnits: string;
-  maximumAccountCharge: string;
-  token?: Erc20Metadata;
   collectibleTransfer?: NftTransferIntent;
   contractInteraction?: true;
+  entry: EvmRetainedSignedRecord;
+  maximumAccountCharge: string;
   operationHash: string;
   operationNonce: string;
+  recipient: string;
+  token?: Erc20Metadata;
 }>;
 
 export function isSmartAccountActivityCandidate(
@@ -69,15 +71,22 @@ export function isSmartAccountActivityCandidate(
   );
 }
 
-/** Metadata only narrows candidates. Every displayed identity and amount comes from signed bytes. */
-export function decodeRetainedSmartAccountTransfer(
-  entry: EvmRetainedSignedRecord,
-  address: string
-): RetainedSmartAccountTransfer | null {
-  if (!isSmartAccountActivityCandidate(entry, address)) return null;
+export type RetainedSmartAccountOperation = Readonly<{
+  account: string;
+  chainId: string;
+  hash: string;
+  operationHash: string;
+  operationNonce: string;
+  payer: string;
+  payerNonce: number;
+}>;
+
+/** Authenticate the outer envelope independently of the inner execution mode. */
+export function decodeRetainedSmartAccountOperations(
+  entry: EvmRetainedSignedRecord
+): readonly RetainedSmartAccountOperation[] {
   try {
-    const account = getAddress(address),
-      tx = Transaction.from(entry.rawTransaction);
+    const tx = Transaction.from(entry.rawTransaction);
     const chainId = Number(entry.chainId);
     if (
       !Number.isSafeInteger(chainId) ||
@@ -89,19 +98,64 @@ export function decodeRetainedSmartAccountTransfer(
       tx.to !== getPaliEntryPointAddress(chainId) ||
       tx.value !== BigInt(0)
     )
-      return null;
+      return [];
     const decoded = paliEntryPointInterface.decodeFunctionData(
       'handleOps',
       tx.data
     );
     if (
-      decoded[0].length !== 1 ||
+      !decoded[0].length ||
       paliEntryPointInterface
         .encodeFunctionData('handleOps', decoded)
         .toLowerCase() !== tx.data.toLowerCase()
     )
+      return [];
+    return Object.freeze(
+      decoded[0].map((raw: SmartAccountPackedUserOperation) => {
+        const operation = {
+          sender: getAddress(raw.sender),
+          nonce: raw.nonce.toString(),
+          initCode: raw.initCode,
+          callData: raw.callData,
+          accountGasLimits: raw.accountGasLimits,
+          preVerificationGas: raw.preVerificationGas.toString(),
+          gasFees: raw.gasFees,
+          paymasterAndData: raw.paymasterAndData,
+          signature: raw.signature,
+        };
+        return Object.freeze({
+          chainId: entry.chainId,
+          payer: entry.from,
+          hash: entry.hash,
+          payerNonce: entry.nonce,
+          account: operation.sender,
+          operationNonce: operation.nonce,
+          operationHash: getSmartAccountUserOpHash(operation, chainId),
+        });
+      })
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Metadata only narrows candidates. Every displayed identity and amount comes from signed bytes. */
+export function decodeRetainedSmartAccountTransfer(
+  entry: EvmRetainedSignedRecord,
+  address: string
+): RetainedSmartAccountTransfer | null {
+  if (!isSmartAccountActivityCandidate(entry, address)) return null;
+  try {
+    const account = getAddress(address),
+      chainId = Number(entry.chainId);
+    const identities = decodeRetainedSmartAccountOperations(entry);
+    if (identities.length !== 1 || identities[0]!.account !== account)
       return null;
-    const raw = decoded[0][0];
+    const tx = Transaction.from(entry.rawTransaction);
+    const raw = paliEntryPointInterface.decodeFunctionData(
+      'handleOps',
+      tx.data
+    )[0][0];
     const operation: SmartAccountPackedUserOperation = {
       sender: getAddress(raw.sender),
       nonce: raw.nonce.toString(),
@@ -113,7 +167,6 @@ export function decodeRetainedSmartAccountTransfer(
       paymasterAndData: raw.paymasterAndData,
       signature: raw.signature,
     };
-    if (operation.sender !== account) return null;
     const [mode, calldata] = paliSmartAccountInterface.decodeFunctionData(
       'execute',
       operation.callData

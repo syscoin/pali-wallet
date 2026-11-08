@@ -81,6 +81,10 @@ describe('read-only smart-account hydration approval and target identity', () =>
       vaultGlobal: { activeSlip44: 60 },
     };
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => ({ web3Provider: provider }),
       getWalletSessionGeneration: () => generation,
       getWalletStateGeneration: () => 0,

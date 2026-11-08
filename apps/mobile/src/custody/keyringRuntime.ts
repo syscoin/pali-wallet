@@ -1670,8 +1670,11 @@ export function createKeyringRuntimeFactory(
             };
             check();
             const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+            const pendingRecords = await signedRecords.captureSmartAccountPendingRecords(
+              { keyring: ring, assertCurrent: check }, network.chainId, account.address);
+            check();
             return createNativeSmartOperation({
-              intent,
+              intent, pendingRecords,
               checkAddress: dependencies.checkSmartAccountAddress ?? (address => blacklistService.checkAddress(address)),
               account: account as IKeyringAccountState & { smartAccount: NonNullable<IKeyringAccountState['smartAccount']> },
               wallet: state, network, rpc, assertCurrent: check,

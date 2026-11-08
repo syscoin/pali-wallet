@@ -302,7 +302,35 @@ const EthSign: React.FC<ISign> = () => {
     smartAccount: ISmartAccountMetadata,
     actionHash: string
   ) => {
+    const messageIdentity = currentPersonalSignReviewRef.current;
+    const typedIdentity = currentTypedOrderRequestRef.current;
+    const generation = await controllerEmitter(
+      ['wallet', 'getWalletSessionGeneration'],
+      []
+    );
     const signature = await signSmartAccountActionHash({
+      async assertBeforeAuthentication() {
+        if (
+          !mountedRef.current ||
+          signingRef.current !== 'submitting' ||
+          currentPersonalSignReviewRef.current !== messageIdentity ||
+          currentTypedOrderRequestRef.current !== typedIdentity
+        )
+          throw new Error('Signing request changed');
+        if (
+          (await controllerEmitter(
+            ['wallet', 'getWalletSessionGeneration'],
+            []
+          )) !== generation
+        )
+          throw new Error('Signing request changed');
+        if (
+          !mountedRef.current ||
+          currentPersonalSignReviewRef.current !== messageIdentity ||
+          currentTypedOrderRequestRef.current !== typedIdentity
+        )
+          throw new Error('Signing request changed');
+      },
       actionHash,
       authenticatorContexts: getSmartAccountLocalOwnerContexts({
         accounts,

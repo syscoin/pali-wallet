@@ -117,6 +117,7 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
           case 'setAccount':
           case 'registerSmartAccountOnChain':
           case 'connect':
+          case 'assertSmartAccountPreparedNonce':
           case 'assertSmartAccountExecutionContext':
             return undefined;
           case 'provisionSLHDSASmartAccountValidator':

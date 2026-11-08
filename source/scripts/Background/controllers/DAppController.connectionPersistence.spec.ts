@@ -1274,6 +1274,7 @@ describe('connected personal-sign approval authority', () => {
     });
     const sign = (signingMetadata = metadata, rendererDigest = actionHash) =>
       signSmartAccountActionHash({
+        assertBeforeAuthentication: async () => undefined,
         actionHash: rendererDigest,
         authenticatorContexts: getSmartAccountLocalOwnerContexts({
           accounts: store.getState().vault.accounts,

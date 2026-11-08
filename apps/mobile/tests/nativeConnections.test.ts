@@ -172,7 +172,7 @@ function fixture(
           assertCurrent: () => { check(); input.approval.assertCurrent(); },
           async prepare() { return { kind: 'authorization', intent, operation: {
             executions: [{ target: intent.recipient, data: intent.data, value: intent.amountUnits }],
-            actionHash: '0x' + '66'.repeat(32), userOperation: { nonce: '0', initCode: '0x', callData: '0x',
+            actionHash: '0x' + '66'.repeat(32), userOperation: { nonce: String(transactions.length), initCode: '0x', callData: '0x',
               accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1',
               gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03' },
           } as never }; },
@@ -2538,5 +2538,36 @@ test('Smart allowance edit replaces the exact operation before authorization', a
     review = f.view.getSnapshot().signingReview; assert(review?.kind === 'smart-transaction');
     await f.view.confirmSmartPayer(review.id, review.revision, review.operation.payerReview!.id); await completing;
     assert.equal((f.transactions[0] as { data: string }).data, iface.encodeFunctionData('approve', [ADDRESS, 2500000]));
+  } finally { await f.controller.dispose(); }
+});
+
+
+test('Smart queued requests prepare only when foreground and retain distinct pending nonces', async () => {
+  const f = await pairedSmart();
+  try {
+    requestSmart(f, 800); requestSmart(f, 801); await settle();
+    assert.equal(f.preparedTransactions.length, 1);
+    let review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    assert.equal(review.operation.authorization!.nonce, '0');
+    const first = f.view.approveRequest(review.id, review.revision, false);
+    await settle();
+    review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    await f.view.confirmSmartPayer(review.id, review.revision, review.operation.payerReview!.id);
+    await first; await settle();
+    review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    assert.equal(f.preparedTransactions.length, 2);
+    assert.equal(review.operation.authorization!.nonce, '1');
+    assert.equal(f.signatures.length, 1);
+    assert.equal(f.transactions.length, 1);
+    const second = f.view.approveRequest(review.id, review.revision, false);
+    await settle();
+    review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    await f.view.confirmSmartPayer(review.id, review.revision, review.operation.payerReview!.id);
+    await second;
+    assert.equal(f.transactions.length, 2);
   } finally { await f.controller.dispose(); }
 });

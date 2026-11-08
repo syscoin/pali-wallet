@@ -83,6 +83,10 @@ describe('guardian recovery provider numeric boundaries', () => {
     send = jest.fn().mockResolvedValue({ hash: `0x${'55'.repeat(32)}` });
     const transaction = { web3Provider: provider };
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => 9,
       sendAndSaveEthTransaction: send,

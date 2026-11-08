@@ -81,7 +81,10 @@ it.each([false, true])(
       );
       const initialMetadata = metadata(`0x${'cc'.repeat(20)}`);
       const emitter = jest.fn(async ([, method]: string[], payload: any[]) => {
-        if (method === 'assertSmartAccountExecutionContext') {
+        if (
+          method === 'assertSmartAccountExecutionContext' ||
+          method === 'assertSmartAccountPreparedNonce'
+        ) {
           expect(prepared.get(payload[0])?.actionHash).toBe(payload[1]);
           return;
         }

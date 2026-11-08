@@ -1,8 +1,3 @@
-import {
-  decodeRetainedSmartAccountTransfer,
-  isSmartAccountActivityCandidate,
-  type RetainedSmartAccountTransfer,
-} from './smartAccountActivity.ts';
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { getAddress } from 'ethers/address';
 import { sha256 } from 'ethers/crypto';
@@ -17,6 +12,13 @@ import { observeEvmTransaction } from '../shared/evmTransactionObservation.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 
+import {
+  decodeRetainedSmartAccountTransfer,
+  decodeRetainedSmartAccountOperations,
+  type RetainedSmartAccountOperation,
+  isSmartAccountActivityCandidate,
+  type RetainedSmartAccountTransfer,
+} from './smartAccountActivity.ts';
 import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
 import type {
@@ -105,6 +107,12 @@ export type EvmSignedRecordStorage = {
   ): Promise<boolean>;
   read(profileId: string): Promise<string | undefined>;
 };
+export type SmartAccountPendingRecords = Readonly<{
+  profileId: string;
+  read(fresh: boolean): Promise<readonly RetainedSmartAccountOperation[]>;
+}>;
+const mutationSerials = new WeakMap<EvmSignedRecordStorage, number>();
+
 export type EvmSignedRecordSession = {
   assertCurrent(): void;
   keyring: {
@@ -860,6 +868,10 @@ export class EvmSignedRecords {
       assertFresh?.();
     };
     assertWrite();
+    mutationSerials.set(
+      this.storage,
+      (mutationSerials.get(this.storage) ?? 0) + 1
+    );
     const committed = await this.storage.compareAndSet(
       id,
       before,
@@ -1967,19 +1979,57 @@ export class EvmSignedRecords {
       });
     });
   }
+  /** A private operation-owned projection. Final admission explicitly reauthenticates storage. */
+  async captureSmartAccountPendingRecords(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string
+  ): Promise<SmartAccountPendingRecords> {
+    session = this.captureSession(session);
+    const owner = getAddress(address);
+    const id = await profile(session);
+    guard(session);
+    let serial = -1;
+    let cached: readonly RetainedSmartAccountOperation[] | undefined;
+    return Object.freeze({
+      profileId: id,
+      read: (fresh: boolean) =>
+        this.exclusive(async () => {
+          guard(session);
+          const currentSerial = mutationSerials.get(this.storage) ?? 0;
+          if (!fresh && cached && serial === currentSerial) return cached;
+          const { bundle } = await this.load(session, id);
+          const operations: RetainedSmartAccountOperation[] = [];
+          for (const entry of bundle?.entries ?? []) {
+            if (entry.chainId !== chainId) continue;
+            const materialized = await this.materialize(session, entry);
+            operations.push(
+              ...decodeRetainedSmartAccountOperations(materialized).filter(
+                (operation) => operation.account === owner
+              )
+            );
+          }
+          guard(session);
+          cached = Object.freeze(operations);
+          serial = currentSerial;
+          return cached;
+        }),
+    });
+  }
+
   readSmartAccountActivity(
     session: EvmSignedRecordSession,
     chainId: string,
     address: string,
     options: Readonly<{
-      maximum: number;
       beforeHash?: string;
+      maximum: number;
     }>
   ): Promise<
     Readonly<{
-      transfers: readonly RetainedSmartAccountTransfer[];
       nextCursor: string | null;
       total: number;
+      transfers: readonly RetainedSmartAccountTransfer[];
     }>
   > {
     const owner = getAddress(address);

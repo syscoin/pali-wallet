@@ -111,6 +111,10 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     };
     transaction = { web3Provider: provider };
     deps = {
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => generation,
       sendAndSaveEthTransaction: jest.fn(

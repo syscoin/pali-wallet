@@ -262,6 +262,10 @@ beforeEach(async () => {
   };
   const transaction = { web3Provider: provider };
   wallet.smartAccount = new SmartAccountController({
+    captureSmartAccountPendingRecords: async () => ({
+      profileId: '0x' + '11'.repeat(32),
+      read: async () => [],
+    }),
     getEthereumTransaction: () => transaction,
     getWalletSessionGeneration: () => wallet.walletSessionGeneration,
   } as any);

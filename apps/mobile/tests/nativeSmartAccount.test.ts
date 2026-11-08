@@ -49,6 +49,9 @@ async function fixture() {
   let readReceipts = true;
   let userOperationSuccess = true;
   let nonceReset = false;
+  let deployedByBroadcast = false;
+  let externalSmartNonce = 0n;
+  let wrongChain = false;
   let blockedRecipient = false;
   let smartBalance = '0x0';
   let payerBalance = '0x1000000000000000';
@@ -64,12 +67,12 @@ async function fixture() {
         const request = JSON.parse(String(init.body));
         calls.push(request.method);
         let result: unknown;
-        if (request.method === 'eth_chainId') result = `0x${BigInt(network.chainId).toString(16)}`;
+        if (request.method === 'eth_chainId') result = wrongChain ? '0x2' : `0x${BigInt(network.chainId).toString(16)}`;
         else if (request.method === 'eth_getCode') {
           const target = request.params[0].toLowerCase();
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
-          result = builtIn ? '0x01' : deployed && smartTarget ? deployedCode : '0x';
+          result = builtIn ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
           if (smartTarget) {
             smartCodeRead?.();
             if (deployed && interruptAfterReceipt) {
@@ -78,11 +81,22 @@ async function fixture() {
             }
           }
         }
-        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${submitted.length.toString(16)}`;
+        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(request.params[1] === 'pending' || readReceipts ? submitted.length : 0).toString(16)}`;
         else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : payerBalance;
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
-        else if (request.method === 'eth_estimateGas') result = '0x186a0';
+        else if (request.method === 'eth_estimateGas') {
+          const call = request.params[0];
+          if (call.to?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) {
+            const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
+            for (const op of operations) {
+              const earlier = submitted.filter(raw => Transaction.from(raw).to === getPaliEntryPointAddress(Number(network.chainId))).length;
+              const sequence = request.params[1] === 'pending' || readReceipts ? earlier : 0;
+              assert.equal(op.nonce & ((1n << 64n) - 1n), BigInt(sequence) + externalSmartNonce, 'handleOps must estimate against matching pending state');
+            }
+          }
+          result = '0x186a0';
+        }
         else if (request.method === 'eth_getTransactionReceipt') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
           const transaction = raw ? Transaction.from(raw) : undefined;
@@ -108,7 +122,7 @@ async function fixture() {
           assert(saved);
           assert.equal(inspectEvmSignedBundle(saved, identity.profileId).transactions, submitted.length + 1);
           submitted.push(request.params[0]);
-          if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) deployed = true;
+          if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) { deployed = true; deployedByBroadcast = true; }
           result = Transaction.from(request.params[0]).hash;
         }
         else if (request.method === 'eth_call') {
@@ -127,6 +141,16 @@ async function fixture() {
             result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [[ownerAddress]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('threshold')!.selector)) {
             result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [1]);
+          } else if (to === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector)) {
+            assert.equal(request.params[1], 'pending');
+            const [sender, key] = paliEntryPointInterface.decodeFunctionData('getNonce', data);
+            const matching = submitted.flatMap(raw => {
+              const tx = Transaction.from(raw);
+              if (tx.to !== getPaliEntryPointAddress(Number(network.chainId))) return [];
+              const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', tx.data);
+              return [...operations].filter(op => op.sender.toLowerCase() === sender.toLowerCase() && (op.nonce >> BigInt(64)) === key);
+            });
+            result = coder.encode(['uint256'], [(key << BigInt(64)) + BigInt(matching.length) + externalSmartNonce]);
           } else if (to !== PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()) {
             result = coder.encode(['uint256'], [0]);
           } else {
@@ -171,6 +195,8 @@ async function fixture() {
     get owner() { return owner; }, get runtime() { return runtime; }, calls, submitted,
     gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
     loseGasCredit() { gasCredit = 0n; },
+    wrongChain() { wrongChain = true; },
+    advanceSmartNonce() { externalSmartNonce++; },
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     holdReceipts() { readReceipts = false; },
     showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
@@ -824,4 +850,85 @@ for (const data of ['0x', '0x12345678']) test(`real Smart dapp zero-value call $
     assert.equal(saved.saved.archived[0]!.contractInteraction, true);
     assert.equal(saved.saved.archived[0]!.phase, 'reverted');
   } finally { operation?.dispose(); approval?.dispose(); await f.close(); }
+});
+
+
+for (const existing of [false, true]) test(`two real Smart sends queue before mining (${existing ? 'deployed' : 'first deployment'})`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Queued Smart', password: PASSWORD });
+    f.fundedSmart(); f.holdReceipts();
+    if (existing) f.deployed();
+    const nonces: bigint[] = [];
+    for (let index = 0; index < 2; index++) {
+      operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
+      await operation.prepare();
+      const ready = operation.getSnapshot();
+      assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+      nonces.push(BigInt(ready.authorization!.nonce));
+      assert.equal(ready.authorization!.initCode === '0x', existing || index > 0);
+      const submission = operation.authorize(ready.revision);
+      for (let attempt = 0; attempt < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
+        await new Promise(resolve => setTimeout(resolve, 5));
+      const review = operation.getSnapshot().payerReview;
+      assert(review, JSON.stringify(operation.getSnapshot()));
+      operation.confirmPayer(review.id);
+      await submission;
+      assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+      operation.dispose();
+    }
+    assert.equal(nonces[1], nonces[0]! + 1n);
+    assert.equal(f.submitted.length, 2);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+
+test('a changed pending nonce during payer consent requires fresh Smart authorization', async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Fresh nonce', password: PASSWORD });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
+    await operation.prepare();
+    const old = operation.getSnapshot();
+    const authorizing = operation.authorize(old.revision);
+    for (let attempt = 0; attempt < 300 && !operation.getSnapshot().payerReview; attempt++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const payer = operation.getSnapshot().payerReview;
+    assert(payer);
+    f.advanceSmartNonce();
+    operation.confirmPayer(payer.id);
+    await authorizing;
+    const fresh = operation.getSnapshot();
+    assert.equal(fresh.phase, 'authorize', JSON.stringify(fresh));
+    assert.equal(BigInt(fresh.authorization!.nonce), BigInt(old.authorization!.nonce) + 1n);
+    assert.notEqual(fresh.userOperationHash, old.userOperationHash);
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+
+for (const phase of ['inner-sign', 'payer-review']) test(`changed RPC chain refuses Smart ${phase}`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Chain bound', password: PASSWORD });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    if (phase === 'inner-sign') f.wrongChain();
+    const authorizing = operation.authorize(operation.getSnapshot().revision);
+    if (phase === 'payer-review') {
+      for (let attempt = 0; attempt < 300 && !operation.getSnapshot().payerReview; attempt++)
+        await new Promise(resolve => setTimeout(resolve, 5));
+      const review = operation.getSnapshot().payerReview;
+      assert(review); f.wrongChain(); operation.confirmPayer(review.id);
+    }
+    await authorizing;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
 });

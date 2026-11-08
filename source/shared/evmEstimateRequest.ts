@@ -29,18 +29,20 @@ export function evmCallRequest(
   transaction: Readonly<{
     accessList?: EvmAccessList;
     data: string;
-    from: string;
-    nonce: string;
+    from?: string;
+    nonce?: string;
     to: string | null;
     value: string;
   }>
 ) {
   return {
-    from: transaction.from,
+    ...(transaction.from === undefined ? {} : { from: transaction.from }),
     ...(transaction.to === null ? {} : { to: transaction.to }),
     value: quantity(transaction.value),
     data: transaction.data,
-    nonce: quantity(transaction.nonce),
+    ...(transaction.nonce === undefined
+      ? {}
+      : { nonce: quantity(transaction.nonce) }),
     ...(transaction.accessList === undefined
       ? {}
       : {

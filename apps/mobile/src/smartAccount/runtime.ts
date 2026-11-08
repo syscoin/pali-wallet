@@ -1,3 +1,8 @@
+import {
+  createSmartAccountPendingState,
+  type SmartAccountPendingState,
+} from '../../../../source/utils/smartAccount/pendingState.ts';
+import type { SmartAccountPendingRecords } from '../../../../source/wallet/evmSignedRecords.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer.ts';
 import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAccount/erc20Transfer.ts';
 import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
@@ -47,6 +52,7 @@ import { createNativeSmartAccountProvider } from './provider.ts';
 type Response = { hash: string; wait(): Promise<unknown> };
 export type NativeSmartOperationPorts = Readonly<{
   intent: NativeSmartAccountIntent;
+  pendingRecords: SmartAccountPendingRecords;
   account: IKeyringAccountState & { smartAccount: ISmartAccountMetadata };
   network: NativeNetworkRegistration;
   rpc: EvmTransferReadRpc;
@@ -85,6 +91,7 @@ export function createNativeSmartOperation(
   const intent = Object.freeze({ ...ports.intent });
   const chainId = Number(ports.network.chainId);
   let issued: PreparedSmartAccountOperation | undefined;
+  let pending: SmartAccountPendingState;
   const contextId = 'native-smart-account-operation';
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   const ownerFor = (address: string) => {
@@ -107,12 +114,21 @@ export function createNativeSmartOperation(
     network: ports.network,
     assertCurrent: check,
     async prepare(signal, assertCurrent) {
-      const provider = createNativeSmartAccountProvider(
+      const rawProvider = createNativeSmartAccountProvider(
         ports.network,
         ports.rpc,
         signal,
         assertCurrent
       );
+      pending = createSmartAccountPendingState(
+        rawProvider,
+        ports.pendingRecords,
+        chainId,
+        account.address,
+        assertCurrent
+      );
+      const provider = pending.provider;
+      await pending.verify();
       if (intent.kind !== 'deploy') {
         await assertSmartAccountTargetsAllowed(
           getBlacklistTargetsForEvmCall(
@@ -175,6 +191,7 @@ export function createNativeSmartOperation(
           account: { ...account, smartAccount: metadata },
           chainId,
           provider,
+          pending,
           knownDeployed:
             intent.kind !== 'deploy' &&
             state === 'deployed' &&
@@ -282,6 +299,7 @@ export function createNativeSmartOperation(
     },
     async sign(prepared, assertCurrent) {
       if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
+      await pending.assertNonce(prepared.userOperation);
       return signSmartAccountEcdsaOperation({
         metadata,
         actionHash: prepared.actionHash,
@@ -300,12 +318,7 @@ export function createNativeSmartOperation(
       onBroadcast
     ) {
       if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
-      const provider = createNativeSmartAccountProvider(
-        ports.network,
-        ports.rpc,
-        signal,
-        assertCurrent
-      );
+      const provider = pending.provider;
       const assertContext = (id: string) => {
         assertCurrent();
         if (id !== contextId || prepared !== issued)
@@ -324,6 +337,8 @@ export function createNativeSmartOperation(
           !options ||
           typeof options.assertBeforeSign !== 'function' ||
           typeof options.assertCurrentContext !== 'function' ||
+          (transactionMetadata?.smartAccountExecution === true &&
+            typeof options.assertPendingState !== 'function') ||
           !options.feeFunding
         )
           throw new Error('SMART_OPERATION_EXPIRED');
@@ -374,6 +389,9 @@ export function createNativeSmartOperation(
           },
           guard
         );
+        if (transactionMetadata?.smartAccountExecution === true)
+          await options.assertPendingState();
+        else await pending.assertNonce(prepared.userOperation);
         guard();
         let acknowledged: Promise<void> = Promise.resolve();
         const hash = await quote.submit(guard, (hash) => {
@@ -400,6 +418,7 @@ export function createNativeSmartOperation(
         {
           chainId,
           provider,
+          pending,
           assertExpectedExecutionContext: () => {
             throw new Error('Unexpected dapp provenance');
           },

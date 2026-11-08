@@ -355,7 +355,9 @@ export function NativeSmartAccountOperationContent({
           <View style={s.progress}>
             <ActivityIndicator color={colors.pink} />
             <Text>
-              {state.phase === 'waiting'
+              {state.error && state.phase === 'preparing'
+                ? state.error
+                : state.phase === 'waiting'
                 ? 'Waiting for the network…'
                 : transfer
                 ? 'Preparing transfer…'
@@ -379,7 +381,7 @@ export function NativeSmartAccountOperationContent({
             }
           />
         )}
-        {state.error && (
+        {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
               transfer ? 'Check transfer status' : 'Check deployment status'

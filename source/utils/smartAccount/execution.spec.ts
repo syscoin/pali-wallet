@@ -86,7 +86,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
                 BigInt(3).toString(16).padStart(32, '0'),
             },
           };
-        if (method === 'assertSmartAccountExecutionContext') return;
+        if (
+          method === 'assertSmartAccountExecutionContext' ||
+          method === 'assertSmartAccountPreparedNonce'
+        )
+          return;
         if (method === 'submitSmartAccountExecution') return payload[0];
         throw Error(method);
       });
@@ -135,6 +139,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
             userOperation: { sender: ACCOUNT_ADDRESS },
           };
         }
+        if (method === 'assertSmartAccountPreparedNonce') return;
         if (method === 'assertSmartAccountExecutionContext') {
           expect(payload).toEqual(['prepared-context', `0x${'12'.repeat(32)}`]);
           if (++checks === expectedCheck)
@@ -204,7 +209,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
           smartAccount,
           userOperation: { sender: ACCOUNT_ADDRESS },
         };
-      if (method === 'assertSmartAccountExecutionContext') return;
+      if (
+        method === 'assertSmartAccountExecutionContext' ||
+        method === 'assertSmartAccountPreparedNonce'
+      )
+        return;
       if (method === 'submitSmartAccountExecution') return payload[0];
       throw Error(`Unexpected method ${method}`);
     });
@@ -269,7 +278,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
           executions: [],
           smartAccount,
         };
-      if (method === 'assertSmartAccountExecutionContext') return;
+      if (
+        method === 'assertSmartAccountExecutionContext' ||
+        method === 'assertSmartAccountPreparedNonce'
+      )
+        return;
       if (method === 'submitSmartAccountExecution') return payload[0];
       throw Error(method);
     });
@@ -317,7 +330,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
             executions: [],
             smartAccount,
           };
-        if (method === 'assertSmartAccountExecutionContext') return;
+        if (
+          method === 'assertSmartAccountExecutionContext' ||
+          method === 'assertSmartAccountPreparedNonce'
+        )
+          return;
         if (method === 'submitSmartAccountExecution') return payload[0];
         throw Error(method);
       });
@@ -358,7 +375,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       const signActionHash = jest.fn().mockResolvedValue(validSlhDsaSignature);
       const controllerEmitter = jest.fn(
         async ([, method]: string[], payload: any[]) => {
-          if (method === 'assertSmartAccountExecutionContext') return;
+          if (
+            method === 'assertSmartAccountExecutionContext' ||
+            method === 'assertSmartAccountPreparedNonce'
+          )
+            return;
           if (method === 'prepareSmartAccountExecutions') {
             const options = payload[2] || {};
             return {
@@ -460,7 +481,11 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         transactionHash: acknowledged ? `0x${'12'.repeat(32)}` : undefined,
       });
       const emitter = jest.fn(async ([, method]: string[]) => {
-        if (method === 'assertSmartAccountExecutionContext') return;
+        if (
+          method === 'assertSmartAccountExecutionContext' ||
+          method === 'assertSmartAccountPreparedNonce'
+        )
+          return;
         if (method === 'prepareSmartAccountExecutions')
           return {
             accountId: 0,
@@ -539,6 +564,7 @@ describe('signAndSubmitSmartAccountExecutions', () => {
     expect(emitter.mock.calls.map(([[, method]]) => method)).toEqual([
       'prepareSmartAccountExecutions',
       'assertSmartAccountExecutionContext',
+      'assertSmartAccountPreparedNonce',
       'assertSmartAccountExecutionContext',
     ]);
   });
@@ -608,6 +634,7 @@ describe('getSmartAccountLocalOwnerContexts', () => {
 
     await expect(
       signSmartAccountActionHash({
+        assertBeforeAuthentication: async () => undefined,
         actionHash,
         authenticatorContexts: {
           ecdsa: { localOwners: [owner], signActionHash },

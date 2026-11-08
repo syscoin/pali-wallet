@@ -26,6 +26,7 @@ import { INetworkType, KeyringAccountType } from 'types/network';
 import { BigNumber, Contract, Interface } from 'utils/ethersV6Compat';
 import {
   buildSmartAccountUserOperation,
+  paliEntryPointInterface,
   encodeEcdsaValidatorInitData,
   encodeSmartAccountGasFees,
   encodeSmartAccountGasLimits,
@@ -180,6 +181,28 @@ describe('smart-account execution approval context', () => {
       verificationGasLimit: 150000,
     });
     provider = {
+      verifyConfiguredChainId: jest.fn(async () => {
+        if ((await provider.send('eth_chainId', [])) !== '0x1')
+          throw new Error('wrong chain');
+      }),
+      send: jest.fn(async (method, params) => {
+        if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_call') {
+          const [, key] = paliEntryPointInterface.decodeFunctionData(
+            'getNonce',
+            params[0].data
+          );
+          return paliEntryPointInterface.encodeFunctionResult('getNonce', [
+            BigInt(key) << BigInt(64),
+          ]);
+        }
+        if (method === 'eth_estimateGas')
+          return (
+            '0x' + BigInt(await provider.estimateGas(params[0])).toString(16)
+          );
+        if (method === 'eth_getCode') return '0x01';
+        throw new Error('Unexpected RPC ' + method);
+      }),
       estimateGas: jest.fn().mockResolvedValue('200000'),
       getFeeData: jest.fn().mockResolvedValue({
         maxFeePerGas: 1000000000,
@@ -192,6 +215,10 @@ describe('smart-account execution approval context', () => {
       return { hash: HASH };
     });
     controller = new SmartAccountController({
+      captureSmartAccountPendingRecords: async () => ({
+        profileId: '0x' + '11'.repeat(32),
+        read: async () => [],
+      }),
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => generation,
       sendAndSaveEthTransaction: send,
@@ -817,7 +844,8 @@ describe('smart-account execution approval context', () => {
           assertCurrentContext: () => undefined,
           onAcknowledged: () => undefined,
           onSubmissionAttempt,
-        }
+        },
+        provider
       );
       expect(onSubmissionAttempt).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
       expect(send).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
@@ -843,7 +871,7 @@ describe('smart-account execution approval context', () => {
     );
     await expect(submit(prepared)).resolves.toEqual({ hash: HASH });
     expect(provider.estimateGas).toHaveBeenCalledWith(
-      expect.objectContaining({ gasPrice: '13', from: OWNER })
+      expect.objectContaining({ gasPrice: '0xd', from: OWNER })
     );
     expect(send).toHaveBeenCalledWith(
       expect.objectContaining({ gasPrice: '13', gasLimit: '200000' }),

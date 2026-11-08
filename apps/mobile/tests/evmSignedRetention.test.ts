@@ -1,3 +1,4 @@
+import { paliEntryPointInterface, getPaliEntryPointAddress } from '../../../source/utils/smartAccount/contracts.ts';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 import test from 'node:test';
@@ -1113,4 +1114,37 @@ test('an elapsed deadline yields its group even before timeout callbacks run', a
     2
   );
   assert.equal(receipts[0], entries[1]!.hash);
+});
+
+
+test('Smart nonce projection caches one owned snapshot and invalidates on writes, final refresh and lock', async () => {
+  const f = fixture(), session = f.session();
+  const smart = '0x1111111111111111111111111111111111111111';
+  const create = async (nonce: number, wallet: Wallet) => {
+    const operation = { sender: smart, nonce, initCode: '0x', callData: '0x12345678',
+      accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: 1,
+      gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03', paymasterAndData: '0x', signature: '0x1234' };
+    const submission = await signed(nonce, wallet, '1');
+    const bytes = await wallet.signTransaction({ chainId: 1, nonce, to: getPaliEntryPointAddress(1), gasLimit: 500000, gasPrice: 2,
+      data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], wallet.address]) });
+    return { ...submission, type: 0, rawTransaction: bytes, hash: Transaction.from(bytes).hash! };
+  };
+  await f.records.append(session, await create(0, signer));
+  let decryptions = 0;
+  const original = session.keyring.decryptPrivateRecord.bind(session.keyring);
+  session.keyring.decryptPrivateRecord = async (input) => { decryptions++; return original(input); };
+  const reader = await f.records.captureSmartAccountPendingRecords(session, '1', smart);
+  const first = await reader.read(false);
+  const firstDecryptions = decryptions;
+  assert.equal(first.length, 1);
+  assert.strictEqual(await reader.read(false), first);
+  assert.equal(decryptions, firstDecryptions);
+  await f.records.append(session, await create(1, otherSigner));
+  assert.equal((await reader.read(false)).length, 2);
+  assert(decryptions > firstDecryptions);
+  f.replace(undefined);
+  assert.equal((await reader.read(false)).length, 2);
+  assert.equal((await reader.read(true)).length, 0);
+  f.revoke();
+  await assert.rejects(reader.read(false), /revoked/);
 });
