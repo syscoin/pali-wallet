@@ -321,6 +321,11 @@ test('native factory explicitly wires one owned transport to all network consume
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
+    './deviceUnlockCredential.native': {
+      createNativeDeviceUnlockCapability: () => ({
+        prompt: { cancel() { retired.push('authentication'); } },
+      }),
+    },
     '../../../../source/utils/security/blacklistService': {
       blacklistService: {
         checkUrl() { assert.fail('unexpected site check in factory wiring test'); },
@@ -442,7 +447,7 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(recovery.owner, bundle.authority);
   assert.equal(typeof recovery.openStorage, 'function');
   await recovery.retireControllers();
-  assert.deepEqual(retired, ['tokens', 'transfers', 'key', 'backup', 'connections']);
+  assert.deepEqual(retired, ['authentication', 'tokens', 'transfers', 'key', 'backup', 'connections']);
 });
 
 test('public platform and native Portfolio fallback bind platform-owned fetch; NativeWallet passes the explicit reader', () => {
