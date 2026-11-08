@@ -5,6 +5,7 @@ import { IApprovalAddressValues } from '../../../shared/approval';
 import { AddressText } from 'components/AddressText';
 
 interface IApprovalDetailsProps extends IApprovalAddressValues {
+  approved?: boolean;
   formattedAmount?: string;
   isUnlimited?: boolean;
   standardVerified: boolean;
@@ -12,6 +13,7 @@ interface IApprovalDetailsProps extends IApprovalAddressValues {
 }
 
 export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
+  approved,
   approvalType,
   authority,
   authorityLabelKey,
@@ -58,6 +60,16 @@ export const ApprovalDetails: React.FC<IApprovalDetailsProps> = ({
           preset="short"
         />
       </div>
+      {!standardVerified &&
+        approvalType === 'nft-all' &&
+        typeof approved === 'boolean' && (
+          <div className="flex items-center justify-between gap-3 w-full">
+            <span className="text-brand-graylight">
+              {t('send.approvalRawValue')}
+            </span>
+            <span className="text-brand-white">{String(approved)}</span>
+          </div>
+        )}
       {approvalType === 'erc20-amount' && (
         <>
           <div className="flex items-center justify-between gap-3 w-full">

@@ -50,6 +50,33 @@ const decodeApproval = async (
 };
 
 describe('ApprovalDetails', () => {
+  it.each([true, false])(
+    'shows the exact operator flag %s without verified metadata',
+    async (approved) => {
+      const decodedTx = await decodeApproval(
+        'setApprovalForAll',
+        approved,
+        'Unknown'
+      );
+      const values = getApprovalAddressValues(
+        decodedTx,
+        TOKEN_CONTRACT,
+        decodedTx.approvalType
+      );
+      const markup = renderToStaticMarkup(
+        <ApprovalDetails
+          {...values}
+          standardVerified={false}
+          approved={decodedTx.inputs[1]}
+        />
+      );
+      expect(markup).toContain('send.approvalRawValue');
+      expect(markup).toContain(`>${String(approved)}</span>`);
+      expect(markup).not.toContain('send.grantCollectionAccess');
+      expect(markup).not.toContain('send.revokeCollectionAccess');
+    }
+  );
+
   afterEach(() => {
     jest.restoreAllMocks();
   });
