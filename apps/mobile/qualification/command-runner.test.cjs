@@ -465,6 +465,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
       process: { env: { ANDROID_HOME: '/public-sdk' } },
       httpEnabled: false, httpCompanion: undefined,
       publicPoolBuild: undefined,
+      privateProofBuild: undefined,
       httpRead: undefined, captureHttpDiagnostic: async () => undefined,
       fs: { readdirSync: () => ['35.0.0'], writeFileSync() {}, readFileSync: () => Buffer.from('public APK fixture') },
       prepareAndroidRoot: require('./native-readiness.cjs').prepareAndroidRoot,
