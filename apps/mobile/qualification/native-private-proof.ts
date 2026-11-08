@@ -7,32 +7,17 @@ import { PRIVACY_PROVING_KEY_SHA256 } from '../../../source/utils/privacy/prover
 import type {
   IPrivacyProofOptions,
   IPrivacyProofProgress,
+  IPrivacyProofResult,
 } from '../../../source/utils/privacy/proverTypes';
 import { runNativePrivacyProof } from '../modules/pali-private-prover';
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeApproval';
+import {
+  PRIVATE_PROOF_CASES,
+  type PrivateProofResult,
+} from './private-proof-contract.ts';
 
 /** A public synthetic vector only. This caller never opens wallet storage. */
-export async function qualifyNativePrivateProof(options: IPrivacyProofOptions) {
-  const stages = new Set<IPrivacyProofProgress['stage']>();
-  const assertCurrent = () =>
-    assertSynchronousEvmFeeGuard(options.assertCurrent);
-  assertCurrent();
-  const started = Date.now();
-  const result = await runNativePrivacyProof(
-    {
-      ...fixture.input,
-      pathElements: [...fixture.input.pathElements],
-      pathIndices: [...fixture.input.pathIndices],
-    },
-    {
-      ...options,
-      onProgress(progress) {
-        stages.add(progress.stage);
-        options.onProgress?.(progress);
-      },
-    }
-  );
-  assertCurrent();
+function verifyResult(result: IPrivacyProofResult) {
   const expected = privacyPublicSignals(fixture.input);
   if (
     result.publicSignals.length !== 6 ||
@@ -61,13 +46,86 @@ export async function qualifyNativePrivateProof(options: IPrivacyProofOptions) {
     if (verifyPrivacyProof(proof, changed))
       throw new Error('PRIVATE_PROOF_MUTATION_ACCEPTED');
   }
+}
+
+export async function qualifyNativePrivateProof(
+  options: IPrivacyProofOptions
+): Promise<PrivateProofResult> {
+  const assertCurrent = () =>
+    assertSynchronousEvmFeeGuard(options.assertCurrent);
+  const cases: PrivateProofResult['cases'][number][] = [];
+  for (const name of PRIVATE_PROOF_CASES) {
+    assertCurrent();
+    const started = Date.now();
+    const stages = new Set<IPrivacyProofProgress['stage']>();
+    const owner = new AbortController();
+    let requestedCancellation = false;
+    const externalAbort = () => owner.abort(options.signal?.reason);
+    options.signal?.addEventListener('abort', externalAbort, { once: true });
+    if (options.signal?.aborted) externalAbort();
+    try {
+      let result: IPrivacyProofResult;
+      try {
+        result = await runNativePrivacyProof(
+          {
+            ...fixture.input,
+            pathElements: [...fixture.input.pathElements],
+            pathIndices: [...fixture.input.pathIndices],
+          },
+          {
+            assertCurrent,
+            signal: owner.signal,
+            onProgress(progress) {
+              stages.add(progress.stage);
+              options.onProgress?.(progress);
+              if (
+                name === 'cancel-while-proving' &&
+                progress.stage === 'proving'
+              ) {
+                requestedCancellation = true;
+                owner.abort();
+              }
+            },
+          }
+        );
+      } catch (error) {
+        assertCurrent();
+        if (
+          !requestedCancellation ||
+          options.signal?.aborted ||
+          !(error instanceof Error) ||
+          error.message !== 'privacy_proof_cancelled'
+        )
+          throw error;
+        cases.push({
+          name,
+          outcome: 'cancelled',
+          durationMs: Date.now() - started,
+          stages: [...stages],
+          rejectedPublicSignalMutations: 0,
+        });
+        continue;
+      }
+      assertCurrent();
+      if (name === 'cancel-while-proving')
+        throw new Error('PRIVATE_PROOF_CANCELLATION_NOT_OBSERVED');
+      verifyResult(result);
+      cases.push({
+        name,
+        outcome: 'verified',
+        durationMs: Date.now() - started,
+        stages: [...stages],
+        rejectedPublicSignalMutations: 6,
+      });
+    } finally {
+      options.signal?.removeEventListener('abort', externalAbort);
+      owner.abort();
+    }
+  }
   assertCurrent();
   return Object.freeze({
     version: 1,
-    proofVerified: true,
-    rejectedPublicSignalMutations: 6,
-    durationMs: Date.now() - started,
-    stages: [...stages],
     provingKeySha256: PRIVACY_PROVING_KEY_SHA256,
+    cases,
   });
 }

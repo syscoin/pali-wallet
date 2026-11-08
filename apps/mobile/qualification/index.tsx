@@ -18,6 +18,7 @@ import { httpBuild, type HttpLaunch } from './http-contract.ts';
 import { withWalletConnectQualificationScope } from './walletconnect-scope.ts';
 import type { WalletConnectQualificationDiagnostic } from './walletconnect-native.ts';
 import { makePublicPoolFailure, PUBLIC_POOL_FAILURE_FILE, publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
+import { parsePrivateProofReport, privateProofReportName } from './private-proof-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -174,7 +175,7 @@ function QualificationApp() {
           const { paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
           expect(typeof installedVersion === 'string' && installedVersion === paliQualificationSdkVersion &&
             typeof paliQualificationSdkIdentity === 'string');
-          const destination = `${FileSystem.documentDirectory}pali-native-private-proof-${token}.json`;
+          const destination = `${FileSystem.documentDirectory}${privateProofReportName(token)}`;
           expect(!(await FileSystem.getInfoAsync(destination)).exists && !(await FileSystem.getInfoAsync(`${destination}.tmp`)).exists);
           stage = 'private proof host';
           const owner = new AbortController();
@@ -191,11 +192,15 @@ function QualificationApp() {
             const result = await qualifyNativePrivateProof({ assertCurrent, signal: owner.signal });
             assertCurrent();
             expect(networkCalls === 0);
-            await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify({
+            const expected = { ...build, token, sdkVersion: paliQualificationSdkIdentity, sdkPackageVersion: installedVersion,
+              platform: Platform.OS as 'ios' | 'android' };
+            const text = JSON.stringify({
               ...build, token, sdkVersion: paliQualificationSdkIdentity, sdkPackageVersion: installedVersion,
               kind: 'native-private-proof', status: 'passed', platform: Platform.OS, sessionId: Constants.sessionId,
               jsNetworkCalls: networkCalls, nativeNetworkObservation: 'unmeasured', result,
-            }));
+            });
+            parsePrivateProofReport(text, expected);
+            await FileSystem.writeAsStringAsync(`${destination}.tmp`, text);
             assertCurrent();
             await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
             setStatus('Native public proof vector passed');
