@@ -1,4 +1,5 @@
 import { prepareWalletConnectRuntime } from './walletConnectRuntime';
+import { createNativeDeviceUnlockCapability } from './deviceUnlockCredential.native';
 import { NativeConnectionsController } from '../connections/controller.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
@@ -47,12 +48,13 @@ function custodyGuard() {
   const guard = custodyIdle.captureGuard();
   return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
 }
-function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard()) {
+function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard(), deviceUnlock = createNativeDeviceUnlockCapability()) {
   const scopedUtxoReader = (network: UtxoNetwork) => createUtxoBalanceReader({
     fetch: isCustomUtxoNetworkId(network.id) ? exactUtxoResponseFetch(walletFetch) : walletFetch,
   });
   return createKeyringRuntimeFactory({
     assertActive,
+    deviceUnlock,
     readEvmRetirement(network, method, params, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).retirementRead(method, params, signal, guard);
     },
@@ -81,7 +83,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
 /** Backend capability only; the recovery UI must own its lifecycle guard/disposal. */
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
   return new NativeRecoveryCoordinator({ owner: controllers.authority,
-    async retireControllers() { controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); await controllers.disposeConnections(); },
+    async retireControllers() { controllers.authentication.cancel(); controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); await controllers.disposeConnections(); },
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage, assertActive: custodyGuard() });
 }
 
@@ -93,7 +95,8 @@ export function createNativeWalletControllers() {
   let runtime: KeyringRuntime | undefined;
   let ownedStorage: OpenWalletStorage | undefined;
   const assertActive = custodyGuard();
-  const base = factory((storage) => { ownedStorage = storage; }, assertActive);
+  const deviceUnlock = createNativeDeviceUnlockCapability();
+  const base = factory((storage) => { ownedStorage = storage; }, assertActive, deviceUnlock);
   const authority = new NativeCustodyAuthority({
     async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
   }, { preferences: securityPreferences, assertActive });
@@ -267,6 +270,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, connections: connections.view, disposeConnections: () => connections.dispose(), backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, authentication: deviceUnlock.prompt, connections: connections.view, disposeConnections: () => connections.dispose(), backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

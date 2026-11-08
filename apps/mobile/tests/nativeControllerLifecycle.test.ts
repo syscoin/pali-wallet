@@ -5,6 +5,28 @@ import type { CustodySnapshot } from '../src/custody/types.ts';
 
 const deferred = () => { let resolve!: () => void; let reject!: (error: Error) => void; const promise = new Promise<void>((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test('retirement cancels native authentication before locking and closing its owner', async () => {
+  const events: string[] = [];
+  const lifecycle = new NativeControllerLifecycle({
+    async protect() {},
+    create: () => ({
+      authentication: { cancel() { events.push('cancel-authentication'); } },
+      authority: {
+        getSnapshot: () => ({ phase: 'locked' as const, presence: 'existing' as const, backup: 'confirmed' as const, revision: 0, account: null, error: null }),
+        async initialize() {}, lock() { events.push('lock'); }, async dispose() { events.push('close'); },
+      },
+      keyExport: { dispose() {} }, backup: { dispose() {} },
+      disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
+    }),
+    recovery: () => ({ cancel() {}, async dispose() {} }),
+  });
+  const token = {};
+  await lifecycle.acquire(token, () => true);
+  await lifecycle.release(token);
+  assert.deepEqual(events, ['cancel-authentication', 'lock', 'close']);
+});
+
 function fixture() {
   const events: string[] = []; let count = 0;
   let close: Promise<void> = Promise.resolve(), recoveryClose: Promise<void> = Promise.resolve();

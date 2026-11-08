@@ -133,7 +133,7 @@ Sentry operation, link and vote reviews have their own action summaries and curr
 
 Account management preserves seed-derived/imported/watch-only/hardware/smart distinctions. Renaming does not change identity. Removing an account and forgetting the wallet explain which local records and secrets are affected, plus what is required to restore each type. A detected storage failure is a repair/error screen, never an invitation to create a new wallet over unreadable data.
 
-Biometric unlock is an optional Security & backups setting. Enrolling requires the wallet password and a device-protected unlock credential. Offer the password on the unlock screen when biometrics are unavailable, canceled, or no longer enrolled. Wallet recovery and fresh-password checks for secret reveal remain separate. This feature needs physical-device qualification before it is enabled.
+Biometric unlock is an optional Security & backups setting. Enrolling requires the wallet password and a device-protected unlock credential. Offer the password on the unlock screen when biometrics are unavailable, canceled, or no longer enrolled. Wallet recovery and fresh-password checks for secret reveal remain separate. Native biometric prompting and credential invalidation require device qualification before release.
 
 Security presents auto-lock, supported native privacy behavior and unlock methods. Preferences include language/currency and balance visibility. Advanced settings hold infrastructure/provider/diagnostic controls without becoming the only route to ordinary backups. The Recovery center inventories seed, imported keys, private notes and authenticator dependencies independently; one checkmark does not imply that everything is backed up.
 

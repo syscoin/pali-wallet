@@ -45,7 +45,7 @@ export function HelpAbout({ onBack }: { onBack(): void }) {
     <Header title="Help & about" onBack={onBack} />
     <Card style={{ padding: 18, gap: 8 }}><Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: '600' }}>Pali Wallet</Text>
       <Text>Version {app.expo.version} · Development build</Text>
-      <Text style={{ color: colors.muted, lineHeight: 22 }}>Biometric unlock and connected apps are not available. Use only test wallets and testnet funds.</Text></Card>
+      <Text style={{ color: colors.muted, lineHeight: 22 }}>Native features are under qualification. Use only test wallets and testnet funds.</Text></Card>
     <View style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>Support</Text>
       <Text selectable>{PALI_INFORMATION.supportUrl}</Text>
       <Button title="Get support" disabled={busy} onPress={() => void act('support')} />{feedbackFor('support')}

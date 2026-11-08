@@ -1,5 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
+import { AppState, Platform } from 'react-native';
 import { createDeviceUnlockCredentialStore } from '../storage/deviceUnlockCredential.ts';
+import { DeviceUnlockPrompt } from './deviceUnlockPrompt.ts';
 
 // Keep this namespace separate from the database key and every unprotected item.
 const protectedItem = Object.freeze<SecureStore.SecureStoreOptions>({
@@ -9,9 +11,25 @@ const protectedItem = Object.freeze<SecureStore.SecureStoreOptions>({
   authenticationPrompt: 'Confirm biometrics for Pali',
 });
 
-export const nativeDeviceUnlockCredentialStore = createDeviceUnlockCredentialStore({
-  async available() { return await SecureStore.isAvailableAsync() && SecureStore.canUseBiometricAuthentication(); },
-  read: (name) => SecureStore.getItemAsync(name, protectedItem),
-  write: (name, value) => SecureStore.setItemAsync(name, value, protectedItem),
-  remove: (name) => SecureStore.deleteItemAsync(name, protectedItem),
-});
+export function createNativeDeviceUnlockCapability() {
+  const prompt = new DeviceUnlockPrompt({
+    state: () => AppState.currentState ?? 'unknown',
+    subscribe(listener) {
+      const subscriptions = [AppState.addEventListener('change', listener)];
+      if (Platform.OS === 'android') {
+        subscriptions.push(AppState.addEventListener('blur', () => listener('blur')));
+        subscriptions.push(AppState.addEventListener('focus', () => listener('focus')));
+      }
+      return () => subscriptions.forEach(subscription => subscription.remove());
+    },
+  });
+  const credentials = createDeviceUnlockCredentialStore({
+    async available() { return await SecureStore.isAvailableAsync() && SecureStore.canUseBiometricAuthentication(); },
+    read: (name) => prompt.run(() => SecureStore.getItemAsync(name, protectedItem)),
+    write: (name, value) => prompt.run(() => SecureStore.setItemAsync(name, value, protectedItem)),
+    remove: (name) => SecureStore.deleteItemAsync(name, protectedItem),
+  });
+  return { credentials, prompt,
+    randomId: () => Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, '0')).join(''),
+  };
+}
