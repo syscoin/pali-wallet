@@ -73,7 +73,7 @@ test('portable recovery output is exercised in the existing CI budget and upload
     }
   }
   const upload = browser.steps.find((step) => step.name === 'Upload browser failure evidence');
-  assert.equal(upload.if, 'failure()');
+  assert.equal(upload.if, 'failure() || cancelled()');
   const includes = upload.with.path.split('\n').map((line) => line.trim());
   assert(includes.includes('apps/mobile/test-results/'), 'existing recursive upload must include the recovery output directory');
   assert(path.resolve(mobile, output).startsWith(path.resolve(root, 'apps/mobile/test-results') + path.sep));
