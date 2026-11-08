@@ -36,6 +36,7 @@ import * as syscoinjs from 'syscoinjs-lib';
 import { utils as syscoinTransactionTypes } from 'syscointx-js';
 
 import { getController, notificationManager } from '..';
+import { assertSupportedEvmFees } from '../../../shared/dappTransaction.ts';
 import { readStoredDappPermissions } from '../../../shared/dappTypes';
 import {
   encodeErc20Transfer,
@@ -218,7 +219,6 @@ import {
   SYSCOIN_UTXO_MAINNET_NETWORK,
   PALI_NETWORKS_STATE,
 } from 'utils/constants';
-import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import {
   Contract,
   formatUnits,
