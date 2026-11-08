@@ -30,6 +30,7 @@ on:
       - 'source/utils/nativeBalance.ts'
       - 'source/utils/nftTokenId.ts'
       - 'source/utils/personalSignReview.ts'
+      - 'source/utils/passkey/account.ts'
       - 'source/utils/privacy/note.ts'
       - 'source/utils/privacy/merkle.ts'
       - 'source/utils/privacy/merklePath.ts'

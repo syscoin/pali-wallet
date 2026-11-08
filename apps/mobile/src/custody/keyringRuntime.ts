@@ -1,5 +1,8 @@
-import { createNativeSmartDeployment } from '../smartAccount/runtime.ts';
-import type { NativeSmartAccountDeployment } from '../smartAccount/deployment.ts';
+import { blacklistService } from '../../../../source/utils/security/blacklistService.ts';
+import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
+import { parseDecimalAmount } from '../core/amounts.ts';
+import { createNativeSmartOperation } from '../smartAccount/runtime.ts';
+import type { NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import { loadNativeKeyringSdk, type NativeKeyringSdk } from './keyringSdk.ts';
 import { createNativeLedgerHost } from '../hardware/ledgerHost.ts';
 import type { NativeLedgerTransport, NativeLedgerOwner } from '../hardware/ownedLedgerTransport.ts';
@@ -87,6 +90,7 @@ export class KeyringRuntimeError extends CustodyRuntimeError {
 
 export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
+  checkSmartAccountAddress?: (address: string) => Promise<IBlacklistCheckResult>;
   connectionFetch?: typeof walletFetch;
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
@@ -145,7 +149,8 @@ export function createNativeRetirementReadForChain(
 export interface KeyringRuntime extends CustodyRuntime {
   readonly ledger: NativeLedgerRuntime;
   openConnectionHost(): Promise<NativeConnectionHost>;
-  openSmartAccountDeployment(assertCurrent: () => void): Promise<NativeSmartAccountDeployment>;
+  openSmartAccountDeployment(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  openSmartAccountSend(recipient: string, amount: string, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   readonly readUtxoBalance?: (id: UtxoNetworkId, address: string, signal: AbortSignal) => Promise<UtxoBalance>;
   /** Owns the private Blockbook identifier; a screen receives only projected rows. */
   withUtxoActivityRead<T>(
@@ -1638,9 +1643,7 @@ export function createKeyringRuntimeFactory(
             }
           },
         };
-        return {
-          ledger,
-          async openSmartAccountDeployment(assertOwner) {
+        const openSmartAccountOperation = async (intent: NativeSmartAccountIntent, assertOwner: () => void): Promise<NativeSmartAccountOperation> => {
             if (active || reserved || !catalogueSnapshot || !keyring.isUnlocked() ||
                 !nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks)) throw new KeyringRuntimeError('NOT_READY');
             let snapshot = catalogueSnapshot!, selected = selectedAccount();
@@ -1657,7 +1660,9 @@ export function createKeyringRuntimeFactory(
             };
             check();
             const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
-            return createNativeSmartDeployment({
+            return createNativeSmartOperation({
+              intent,
+              checkAddress: dependencies.checkSmartAccountAddress ?? (address => blacklistService.checkAddress(address)),
               account: account as IKeyringAccountState & { smartAccount: NonNullable<IKeyringAccountState['smartAccount']> },
               wallet: state, network, rpc, assertCurrent: check,
               signOwner(address, digest, owner, assertCurrent) {
@@ -1717,6 +1722,17 @@ export function createKeyringRuntimeFactory(
                 account = state.accounts.SmartAccount[selected.index]!;
               },
             });
+        };
+        return {
+          ledger,
+          openSmartAccountDeployment: (assertOwner) => openSmartAccountOperation({ kind: 'deploy' }, assertOwner),
+          async openSmartAccountSend(recipient, amount, assertOwner) {
+            let intent: NativeSmartAccountIntent;
+            try {
+              intent = Object.freeze({ kind: 'native-transfer', recipient: normalizePublicAddress(recipient, 'ethereum'),
+                amountUnits: parseDecimalAmount(amount, 18).toString() });
+            } catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
+            return openSmartAccountOperation(intent, assertOwner);
           },
           async openConnectionHost(): Promise<NativeConnectionHost> {
             const captured = generation;

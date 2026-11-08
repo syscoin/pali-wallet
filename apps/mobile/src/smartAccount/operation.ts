@@ -7,14 +7,22 @@ import {
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 
-export type PreparedSmartAccountDeployment = Awaited<
+export type NativeSmartAccountIntent =
+  | Readonly<{ kind: 'deploy' }>
+  | Readonly<{
+      kind: 'native-transfer';
+      recipient: string;
+      amountUnits: string;
+    }>;
+
+export type PreparedSmartAccountOperation = Awaited<
   ReturnType<typeof prepareSmartAccountOperation>
 >;
-export type SmartAccountDeploymentPreparation =
+export type SmartAccountOperationPreparation =
   | Readonly<{ kind: 'already-deployed' }>
   | Readonly<{
       kind: 'authorization';
-      operation: PreparedSmartAccountDeployment;
+      operation: PreparedSmartAccountOperation;
     }>;
 
 export type SmartAccountPayerReview = Readonly<{
@@ -22,9 +30,10 @@ export type SmartAccountPayerReview = Readonly<{
   transaction: PreparedEvmTransaction;
   maximumFeeUnits: string;
   maximumTotalUnits: string;
-  purpose: 'fund-account' | 'submit-deployment';
+  purpose: 'fund-account' | 'submit-operation';
 }>;
-export type NativeSmartAccountDeploymentSnapshot = Readonly<{
+export type NativeSmartAccountOperationSnapshot = Readonly<{
+  intent: NativeSmartAccountIntent;
   phase:
     | 'preparing'
     | 'authorize'
@@ -48,20 +57,21 @@ export type NativeSmartAccountDeploymentSnapshot = Readonly<{
   transactionHash: string | null;
   error: string | null;
 }>;
-export type NativeSmartAccountDeploymentHost = Readonly<{
+export type NativeSmartAccountOperationHost = Readonly<{
   account: string;
+  intent: NativeSmartAccountIntent;
   network: NativeNetworkRegistration;
   assertCurrent(): void;
   prepare(
     signal: AbortSignal,
     assertCurrent: () => void
-  ): Promise<SmartAccountDeploymentPreparation>;
+  ): Promise<SmartAccountOperationPreparation>;
   sign(
-    prepared: PreparedSmartAccountDeployment,
+    prepared: PreparedSmartAccountOperation,
     assertCurrent: () => void
   ): Promise<string>;
   submit(
-    prepared: PreparedSmartAccountDeployment,
+    prepared: PreparedSmartAccountOperation,
     signature: string,
     signal: AbortSignal,
     assertCurrent: () => void,
@@ -74,13 +84,13 @@ export type NativeSmartAccountDeploymentHost = Readonly<{
 }>;
 
 /** Presentation owns two explicit authorizations. The shared engine owns every transaction. */
-export class NativeSmartAccountDeployment {
-  private snapshot: NativeSmartAccountDeploymentSnapshot;
+export class NativeSmartAccountOperation {
+  private snapshot: NativeSmartAccountOperationSnapshot;
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
   private revision = 0;
   private disposed = false;
-  private prepared: PreparedSmartAccountDeployment | null = null;
+  private prepared: PreparedSmartAccountOperation | null = null;
   private signingStarted = false;
   private preparing = false;
   private pendingPayer: {
@@ -91,10 +101,10 @@ export class NativeSmartAccountDeployment {
   private readonly deadline: number;
   private readonly expiry: ReturnType<typeof setTimeout>;
 
-  private readonly host: NativeSmartAccountDeploymentHost;
+  private readonly host: NativeSmartAccountOperationHost;
   private readonly now: () => number;
   constructor(
-    host: NativeSmartAccountDeploymentHost,
+    host: NativeSmartAccountOperationHost,
     now = () => performance.now()
   ) {
     this.host = host;
@@ -104,6 +114,7 @@ export class NativeSmartAccountDeployment {
       phase: 'preparing',
       revision: 0,
       account: host.account,
+      intent: Object.freeze({ ...host.intent }),
       network: host.network,
       maximumPrefundUnits: null,
       userOperationHash: null,
@@ -130,16 +141,16 @@ export class NativeSmartAccountDeployment {
       this.lifetime.signal.aborted ||
       this.now() >= this.deadline
     )
-      throw new Error('DEPLOYMENT_EXPIRED');
+      throw new Error('SMART_OPERATION_EXPIRED');
     const result: unknown = this.host.assertCurrent();
     if (result !== undefined) {
       void Promise.resolve(result).catch(() => undefined);
-      throw new Error('DEPLOYMENT_EXPIRED');
+      throw new Error('SMART_OPERATION_EXPIRED');
     }
     if (this.disposed || this.lifetime.signal.aborted)
-      throw new Error('DEPLOYMENT_EXPIRED');
+      throw new Error('SMART_OPERATION_EXPIRED');
   };
-  private publish(change: Partial<NativeSmartAccountDeploymentSnapshot>) {
+  private publish(change: Partial<NativeSmartAccountOperationSnapshot>) {
     if (this.disposed) return;
     this.snapshot = Object.freeze({
       ...this.snapshot,
@@ -168,6 +179,8 @@ export class NativeSmartAccountDeployment {
       const result = await this.host.prepare(this.lifetime.signal, this.check);
       this.check();
       if (result.kind === 'already-deployed') {
+        if (this.host.intent.kind !== 'deploy')
+          throw new Error('Invalid operation outcome');
         clearTimeout(this.expiry);
         this.publish({ phase: 'complete' });
         return;
@@ -244,7 +257,8 @@ export class NativeSmartAccountDeployment {
     authorize: () => void
   ): Promise<void> {
     this.check();
-    if (this.pendingPayer) return Promise.reject(new Error('DEPLOYMENT_BUSY'));
+    if (this.pendingPayer)
+      return Promise.reject(new Error('SMART_OPERATION_BUSY'));
     const id = this.revision + 1;
     return new Promise((resolve, reject) => {
       this.pendingPayer = {
@@ -281,7 +295,7 @@ export class NativeSmartAccountDeployment {
   private fail() {
     if (this.disposed || this.snapshot.phase === 'complete') return;
     this.prepared = null;
-    this.pendingPayer?.reject(new Error('DEPLOYMENT_EXPIRED'));
+    this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
     this.pendingPayer = null;
     clearTimeout(this.expiry);
     this.lifetime.abort();
@@ -289,8 +303,8 @@ export class NativeSmartAccountDeployment {
       phase: 'failed',
       payerReview: null,
       error: this.signingStarted
-        ? 'Deployment authorization ended. Check the account and Activity before starting again.'
-        : 'Deployment could not be prepared. Return to your account and try again.',
+        ? 'Authorization ended. Check the account and Activity before starting again.'
+        : 'This operation could not be prepared. Return to your account and try again.',
     });
   }
   cancel(): void {
@@ -302,7 +316,7 @@ export class NativeSmartAccountDeployment {
     clearTimeout(this.expiry);
     this.lifetime.abort();
     this.prepared = null;
-    this.pendingPayer?.reject(new Error('DEPLOYMENT_EXPIRED'));
+    this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
     this.pendingPayer = null;
     this.listeners.clear();
   }

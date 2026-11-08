@@ -1,3 +1,4 @@
+import { getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -18,7 +19,7 @@ import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
-import { paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import { paliEcdsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
@@ -41,6 +42,9 @@ async function fixture() {
   const submitted: string[] = [];
   let deployed = false;
   let deployedCode = '0x01';
+  let readReceipts = true;
+  let blockedRecipient = false;
+  let smartBalance = '0x0';
   let interruptAfterReceipt = false;
   let smartCodeRead: (() => void) | undefined;
   const openStorage = async () => {
@@ -67,14 +71,14 @@ async function fixture() {
           }
         }
         else if (request.method === 'eth_getTransactionCount') result = `0x${submitted.length.toString(16)}`;
-        else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? '0x0' : '0x1000000000000000';
+        else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : '0x1000000000000000';
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (request.method === 'eth_estimateGas') result = '0x186a0';
         else if (request.method === 'eth_getTransactionReceipt') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
           const transaction = raw && Transaction.from(raw);
-          result = transaction ? { transactionHash: transaction.hash, from: transaction.from, to: transaction.to, status: '0x1',
+          result = transaction && readReceipts ? { transactionHash: transaction.hash, from: transaction.from, to: transaction.to, status: '0x1',
             blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32) } : null;
         }
         else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'aa'.repeat(32), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
@@ -88,7 +92,20 @@ async function fixture() {
           result = Transaction.from(request.params[0]).hash;
         }
         else if (request.method === 'eth_call') {
-          if (request.params[0].to.toLowerCase() !== PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()) {
+          const to = request.params[0].to.toLowerCase();
+          const data = request.params[0].data;
+          const smartAddress = runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase();
+          if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
+            const args = paliSmartAccountInterface.decodeFunctionData('isModuleInstalled', data);
+            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase()]);
+          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
+            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa')]);
+          } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
+            const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [[ownerAddress]]);
+          } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('threshold')!.selector)) {
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [1]);
+          } else if (to !== PALI_CANONICAL_FACTORY_ADDRESS.toLowerCase()) {
             result = coder.encode(['uint256'], [0]);
           } else {
           const parsed = paliSmartAccountFactoryInterface.parseTransaction({ data: request.params[0].data });
@@ -112,6 +129,7 @@ async function fixture() {
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
   };
   const factory = createKeyringRuntimeFactory({
+    checkSmartAccountAddress: async () => ({ isBlacklisted: blockedRecipient, severity: 'high' }),
     ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
     connectionFetch: (_url, init) => backend(getNativeNetwork('ethereum'), init),
     prepareSmartAccount(network, index, owner, signal, guard) {
@@ -129,6 +147,10 @@ async function fixture() {
   await owner.refreshAuthenticatedMetadata();
   return {
     get owner() { return owner; }, get runtime() { return runtime; }, calls, submitted,
+    fundedSmart() { smartBalance = '0x1000000000000000'; },
+    holdReceipts() { readReceipts = false; },
+    blockRecipient() { blockedRecipient = true; },
+    undeployed() { deployed = false; },
     deployed(code = '0x01') { deployed = true; deployedCode = code; },
     interruptAfterReceipt() { interruptAfterReceipt = true; },
     onSmartCodeRead(hook: () => void) { smartCodeRead = hook; },
@@ -376,4 +398,108 @@ test('restart after the deployment receipt refreshes metadata without another tr
     assert.equal(f.submitted.length, 2);
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === smartId)!.smartAccount!.isDeployed, true);
   } finally { deployment?.dispose(); await f.close(); }
+});
+
+
+for (const alreadyDeployed of [false, true]) test(`real SDK smart native send authorizes exact value and submits without waiting (${alreadyDeployed ? 'deployed' : 'counterfactual'})`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    const payer = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
+    const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+    f.fundedSmart(); f.holdReceipts();
+    if (alreadyDeployed) f.deployed();
+    const recipient = '0x2222222222222222222222222222222222222222';
+    operation = await f.runtime.openSmartAccountSend(recipient, '0.000000000000000009', () => undefined);
+    await operation.prepare();
+    const ready = operation.getSnapshot();
+    assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+    assert.deepEqual(ready.intent, { kind: 'native-transfer', recipient, amountUnits: '9' });
+    assert.equal(f.submitted.length, 0);
+    assert.equal(ready.authorization!.initCode === '0x', alreadyDeployed);
+    const pending = operation.authorize(ready.revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const review = operation.getSnapshot().payerReview;
+    assert(review, JSON.stringify(operation.getSnapshot()));
+    assert.equal(review.transaction.from, payer);
+    assert.equal(review.purpose, 'submit-operation');
+    assert.equal(f.submitted.length, 0);
+    operation.confirmPayer(review.id);
+    await pending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    const outer = Transaction.from(f.submitted[0]!);
+    assert.equal(outer.from, payer);
+    assert.equal(outer.value, 0n);
+    const entryPoint = new Interface(['function handleOps((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)[] ops,address beneficiary)']);
+    const [ops] = entryPoint.decodeFunctionData('handleOps', outer.data);
+    assert.equal(ops[0].sender, smart.address);
+    assert.equal(ops[0].callData, ready.authorization!.callData);
+    const [, execution] = paliSmartAccountInterface.decodeFunctionData('execute', ops[0].callData);
+    assert.equal('0x' + execution.slice(2, 42), recipient);
+    assert.equal(BigInt('0x' + execution.slice(42, 106)), 9n);
+    assert.equal(f.calls.includes('eth_getTransactionReceipt'), false);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('smart native sends reject invalid input and blocked recipients before authorizing', async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
+    for (const [recipient, amount] of [['bad', '1'], ['0x2222222222222222222222222222222222222222', '1e2'], ['0x2222222222222222222222222222222222222222', '0']])
+      await assert.rejects(f.runtime.openSmartAccountSend(recipient!, amount!, () => undefined), { code: 'INVALID_INPUT' });
+    f.blockRecipient();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '1', () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().authorization, null);
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+
+test('locking a native Smart send at payer review retires its signed operation without broadcasting', async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
+    f.fundedSmart();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '0.01', () => undefined);
+    await operation.prepare();
+    const pending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    const payer = operation.getSnapshot().payerReview;
+    assert(payer);
+    f.owner.lock();
+    operation.confirmPayer(payer.id);
+    await pending;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+
+test('fresh absent code overrides saved deployed metadata for a Smart send', async () => {
+  const f = await fixture();
+  let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
+  let send: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Reorg fixture', password: PASSWORD });
+    f.deployed();
+    deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
+    await deployment.prepare();
+    assert.equal(deployment.getSnapshot().phase, 'complete');
+    assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!.smartAccount!.isDeployed, true);
+    deployment.dispose(); deployment = undefined;
+    f.undeployed(); f.fundedSmart();
+    send = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '0.1', () => undefined);
+    await send.prepare();
+    assert.equal(send.getSnapshot().phase, 'authorize', JSON.stringify(send.getSnapshot()));
+    assert.notEqual(send.getSnapshot().authorization!.initCode, '0x');
+    assert.equal(f.submitted.length, 0);
+  } finally { send?.dispose(); deployment?.dispose(); await f.close(); }
 });

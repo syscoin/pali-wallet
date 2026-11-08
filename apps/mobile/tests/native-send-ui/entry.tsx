@@ -1,3 +1,4 @@
+import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
@@ -13,9 +14,8 @@ import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 import { NativeLedgerFixture } from './nativeLedgerFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
 import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
-import { NativeSmartAccountDeploymentFixture } from './nativeSmartAccountDeploymentFixture';
+import { NativeSmartAccountOperationFixture } from './nativeSmartAccountDeploymentFixture';
 import { registerRootComponent } from 'expo';
-import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   getNativeSendContext,
@@ -41,9 +41,6 @@ const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
 const ledgerConnection = route.has('ledger-send') && !route.has('utxo-send') ? createLedgerConnectionFixture(sender) : undefined;
-// RN Web sets fontScale to 1 and rejects Dimensions.set in a browser. This
-// fixture-only hook sets the dimensions before the actual component mounts.
-if (route.get('font-scale') === '1.6') Dimensions.get('window').fontScale = 1.6;
 const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
 const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
 const collectibleStandard = route.get('collectible');
@@ -381,8 +378,10 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('smart-deployment') ? (
-        <NativeSmartAccountDeploymentFixture />
+      {new URLSearchParams(window.location.search).has('smart-currency') ? (
+        <NativeSmartCurrencyFixture />
+      ) : new URLSearchParams(window.location.search).has('smart-deployment') ? (
+        <NativeSmartAccountOperationFixture />
       ) : new URLSearchParams(window.location.search).has('ledger') ? (
         <NativeLedgerFixture />
       ) : new URLSearchParams(window.location.search).has('transaction-review') ? (

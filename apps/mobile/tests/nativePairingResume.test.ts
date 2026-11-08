@@ -136,14 +136,14 @@ function harness(ready = false, smartAccount = false) {
       accountId: smartAccount ? 'smart:60:0' : 'hd:60:0',
       networkId: 'ethereum',
     },
-    networks: [],
+    networks: networks.NATIVE_NETWORKS,
     utxoNetworks: [],
     accounts: [
       {
         id: smartAccount ? 'smart:60:0' : 'hd:60:0',
         index: 0,
         type: smartAccount ? 'SmartAccount' : 'HDAccount',
-        ...(smartAccount ? { smartAccount: { isDeployed: false } } : {}),
+        ...(smartAccount ? { smartAccount: { isDeployed: false, localEcdsa: true } } : {}),
         address: '0x' + '11'.repeat(20),
         label: 'Account 1',
       },
@@ -197,6 +197,7 @@ function harness(ready = false, smartAccount = false) {
     keyExport: { cancel() {} },
     backup: { cancel() {}, onClear: () => () => {} },
     removal: { requiresControllerReopen: () => false },
+    openSmartAccountSend() { throw new Error('Route mocked in parent navigation test'); },
     openSmartAccountDeployment() {
       throw new Error('Route mocked in parent navigation test');
     },
@@ -298,9 +299,10 @@ function harness(ready = false, smartAccount = false) {
         goBack() {},
       }),
     },
+    './NativeSmartAccountSend': { NativeSmartAccountSend: 'NativeSmartAccountSend' },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
-    './NativeSmartAccountDeployment': {
-      NativeSmartAccountDeploymentRoute: 'NativeSmartAccountDeploymentRoute',
+    './NativeSmartAccountOperation': {
+      NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },
     './NativeConnections': { NativeConnections: 'NativeConnections' },
     './NativeMessageReview': {
@@ -359,7 +361,7 @@ function harness(ready = false, smartAccount = false) {
         revision: catalogue.revision + 1,
         accounts: catalogue.accounts.map((account) => ({
           ...account,
-          smartAccount: { ...account.smartAccount, isDeployed: true },
+          smartAccount: { ...account.smartAccount!, isDeployed: true },
         })),
       };
     },
@@ -521,7 +523,7 @@ for (const back of ['Android', 'screen'] as const)
       assert.equal(portfolio.props.smartAccount.isDeployed, false);
       portfolio.props.onDeploySmartAccount();
       const route = f.render();
-      assert.equal(route.type, 'NativeSmartAccountDeploymentRoute');
+      assert.equal(route.type, 'NativeSmartAccountOperationRoute');
       // The runtime committed new metadata without an authority phase change.
       f.completeDeployment();
       if (back === 'Android') assert.equal(f.hardwareBack(), true);
@@ -538,3 +540,21 @@ for (const back of ['Android', 'screen'] as const)
       f.dispose();
     }
   });
+
+
+test('Smart account native Send uses its owned operation route while token and NFT actions remain gated', async () => {
+  const f = await mounted(true, true);
+  try {
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio');
+    assert(portfolio);
+    assert.equal(typeof portfolio.props.onSend, 'function');
+    assert.equal(portfolio.props.onSendToken, undefined);
+    assert.equal(portfolio.props.onSendCollectible, undefined);
+    portfolio.props.onSend();
+    const route = f.render();
+    assert.equal(route.type, 'NativeSmartAccountSend');
+    assert.equal(f.hardwareBack(), true);
+    assert(find(f.render(), node => node.type === 'NativePortfolio'));
+    assert.equal(f.exits(), 0);
+  } finally { f.dispose(); }
+});

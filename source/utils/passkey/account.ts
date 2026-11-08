@@ -1,7 +1,8 @@
-import type { SmartAccountP256WebAuthnConfig } from 'types/network';
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
-import type { SmartAccountAuthConfig } from 'utils/smartAccount';
-import { getPaliP256WebAuthnValidatorAddress } from 'utils/smartAccount/contracts';
+import { defaultAbiCoder } from '../ethersV6Compat.ts';
+import { getPaliP256WebAuthnValidatorAddress } from '../smartAccount/contracts.ts';
+
+import type { SmartAccountP256WebAuthnConfig } from '../../types/network.ts';
+import type { SmartAccountAuthConfig } from '../smartAccount/account.ts';
 
 export type SmartAccountP256WebAuthnAuthenticatorConfig = {
   backupStatus?: SmartAccountP256WebAuthnConfig['backupStatus'];

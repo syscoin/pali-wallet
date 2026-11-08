@@ -51,7 +51,7 @@ import {
   Text,
 } from '../ui';
 
-const failure = (
+export const nativeTransferFailure = (
   error: unknown,
   context: NativeSendContext,
   asset: 'coin' | 'token' | 'collectible',
@@ -118,7 +118,7 @@ type RecipientPickerSession = Readonly<{
   accounts: readonly EvmRecipientChoice[];
 }>;
 
-function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder }: {
+export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder }: {
   label: string;
   value: string;
   onChange(value: string): void;
@@ -358,7 +358,7 @@ export function NativeSend({
         const asset = reviewedCollectible || (draftCollectible && !current.hash)
           ? 'collectible'
           : token || current.intent ? 'token' : 'coin';
-        setError(failure(cause, capturedContext, asset, !!current.hash, cancellation));
+        setError(nativeTransferFailure(cause, capturedContext, asset, !!current.hash, cancellation));
       }
     }
   };
@@ -693,7 +693,7 @@ export function NativeSend({
             !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
-              <SendInput
+              <NativeSendInput
                 label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}
                 value={recipient}
                 onChange={setRecipient}
@@ -721,7 +721,7 @@ export function NativeSend({
                   />
                   {picker && (
                     <Card style={s.summary}>
-                      <SendInput
+                      <NativeSendInput
                         label="Find account"
                         value={picker.query}
                         onChange={(query) => {
@@ -759,15 +759,15 @@ export function NativeSend({
                 <>
                   {collectibleIdentity(draftCollectible)}
                   {draftCollectible.tokenStandard === 'ERC-721'
-                    ? <SendInput label="Token ID" value={tokenId} onChange={setTokenId}
+                    ? <NativeSendInput label="Token ID" value={tokenId} onChange={setTokenId}
                         onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={257} />
-                    : <SendInput label="Quantity" value={amount} onChange={setAmount}
+                    : <NativeSendInput label="Quantity" value={amount} onChange={setAmount}
                         onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={79} />}
                 </>
               ) : (
                 <>
                   {token && tokenIdentity(token)}
-                  <SendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
+                  <NativeSendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
                     onChange={setAmount} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
                 </>
               )}
@@ -780,7 +780,7 @@ export function NativeSend({
                   setAdvanced(!advanced);
                 }} />
               {advanced && <>
-                <SendInput label="Transaction nonce" value={nonce} onChange={setNonce}
+                <NativeSendInput label="Transaction nonce" value={nonce} onChange={setNonce}
                   busy={busy} keyboardType="number-pad" max={64} placeholder="Automatic"
                   onEdit={() => { if (error) setError(''); }} />
                 <Text style={s.hint}>Leave blank for automatic selection. A higher nonce can wait for earlier transactions.</Text>
