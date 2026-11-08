@@ -51,6 +51,7 @@ import {
 import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeRefreshApproved,
+  assertSynchronousEvmFeeGuard,
 } from '../../../shared/evmFeeApproval';
 import { getEvmTransferCost } from '../../../shared/evmTransferCost';
 import {
@@ -5434,8 +5435,10 @@ class MainController {
     const assertCurrent = () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation);
-      assertApprovalCurrent?.();
+      if (assertApprovalCurrent)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
+    assertCurrent();
     return this.smartAccount.submitSmartAccountExecution(params, assertCurrent);
   }
 
@@ -9104,7 +9107,8 @@ class MainController {
       this.assertCurrentWalletSession(generation);
       if (executionContextId)
         this.assertSmartAccountExecutionContext(executionContextId, params[1]);
-      assertApprovalCurrent?.();
+      if (assertApprovalCurrent)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertContext();
     const { accounts, activeAccount } = store.getState().vault;

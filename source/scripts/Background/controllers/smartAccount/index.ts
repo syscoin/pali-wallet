@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
+import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeApproval';
 import {
   IEvmTransactionResponse,
   ISysTransaction,
@@ -1099,7 +1100,8 @@ class SmartAccountController {
     try {
       const context = this.infrastructureContext();
       const assertCurrent = () => {
-        assertApprovalCurrent?.();
+        if (assertApprovalCurrent)
+          assertSynchronousEvmFeeGuard(assertApprovalCurrent);
         try {
           this.assertInfrastructureContext(context);
           if (params.expectedContext) {
@@ -1734,7 +1736,8 @@ class SmartAccountController {
     const assertCurrent = () => {
       this.assertInfrastructureContext(captured);
       this.assertSmartAccountExecutionContext(params.executionContextId);
-      assertApprovalCurrent?.();
+      if (assertApprovalCurrent)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();
     return submitSmartAccountOperation(
@@ -2433,7 +2436,8 @@ class SmartAccountController {
     const assertCurrent = () => {
       this.assertInfrastructureContext(captured);
       this.assertSmartAccountExecutionContext(executionContextId, actionHash);
-      assertApprovalCurrent?.();
+      if (assertApprovalCurrent)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();
     return signSmartAccountEcdsaOperation({

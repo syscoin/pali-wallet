@@ -114,6 +114,25 @@ describe('smart-account execution approval context', () => {
       assertCurrent
     );
 
+  it.each([async () => undefined, () => true])(
+    'rejects non-synchronous optional guards in submission and local signing facades',
+    async (guard) => {
+      const prepared = await prepare();
+      await expect(submit(prepared, {}, guard as never)).rejects.toThrow(
+        'guard must be synchronous'
+      );
+      await expect(
+        controller.signActionHashWithLocalEcdsaOwners(
+          metadata,
+          prepared.actionHash,
+          prepared.executionContextId,
+          guard
+        )
+      ).rejects.toThrow('guard must be synchronous');
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
   beforeEach(() => {
     jest
       .mocked(toPaliSmartAccount)
