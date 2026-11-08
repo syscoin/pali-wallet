@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { createNativeNetwork } from '../../src/custody/networkContext';
-import { NativeSmartAccountDeploymentScreen } from '../../src/screens/NativeSmartAccountDeployment';
+import { NativeSmartAccountOperationScreen } from '../../src/screens/NativeSmartAccountOperation';
 import type {
-  NativeSmartAccountDeployment,
-  NativeSmartAccountDeploymentSnapshot,
+  NativeSmartAccountOperation,
+  NativeSmartAccountOperationSnapshot,
   SmartAccountPayerReview,
-} from '../../src/smartAccount/deployment';
+} from '../../src/smartAccount/operation';
 import { Text } from '../../src/ui';
 
 const query = new URLSearchParams(window.location.search);
@@ -28,8 +28,8 @@ type FixturePhase =
 type Call = { method: string; value?: number };
 const calls: Call[] = [];
 const listeners = new Set<() => void>();
-let snapshot: NativeSmartAccountDeploymentSnapshot = {
-  phase: 'authorize',
+let snapshot: NativeSmartAccountOperationSnapshot = {
+  intent: { kind: 'deploy' }, phase: 'authorize',
   revision: 7,
   account,
   network: createNativeNetwork({
@@ -93,7 +93,7 @@ function show(phase: FixturePhase) {
         : phase,
     payerReview:
       phase === 'fund-account' || phase === 'submit-deployment'
-        ? payerReview(phase)
+        ? payerReview(phase === 'submit-deployment' ? 'submit-operation' : phase)
         : null,
     transactionHash: ['waiting', 'complete', 'failed'].includes(phase)
       ? transactionHash
@@ -140,7 +140,7 @@ const controller = {
   dispose() {
     calls.push({ method: 'dispose' });
   },
-} as unknown as NativeSmartAccountDeployment;
+} as unknown as NativeSmartAccountOperation;
 
 declare global {
   interface Window {
@@ -157,12 +157,12 @@ window.__nativeSmartAccountDeploymentFixture = {
   revision: () => snapshot.revision,
 };
 
-export function NativeSmartAccountDeploymentFixture() {
+export function NativeSmartAccountOperationFixture() {
   const [closed, setClosed] = useState(false);
   return closed ? (
     <Text>Deployment screen closed</Text>
   ) : (
-    <NativeSmartAccountDeploymentScreen
+    <NativeSmartAccountOperationScreen
       controller={controller}
       onBack={() => {
         calls.push({ method: 'close' });

@@ -5,7 +5,7 @@ import { PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartA
 
 /** Host fixture only. Load the pinned compiler artifact without importing deployment logic. */
 function readGuardianRuntime(): string {
-  const source = readFileSync(resolve('../../source/utils/smartAccount/deployment.ts'), 'utf8');
+  const source = readFileSync(resolve('../../source/utils/smartAccount/operation.ts'), 'utf8');
   const creation = /^  guardianRecoveryModule:\s*'(0x[0-9a-f]+)'/m.exec(source)?.[1];
   const metadata = PALI_INFRASTRUCTURE_METADATA_BY_ID.guardianRecoveryModule;
   if (!creation || keccak256(creation) !== metadata.bytecodeHash)

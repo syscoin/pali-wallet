@@ -1,8 +1,19 @@
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     dispatch: jest.fn(),
-    getState: () => ({ vault: { activeNetwork: { chainId: 999 } } }),
+    getState: () => ({
+      vault: {
+        activeNetwork: {
+          chainId: 57057,
+          kind: 'ethereum',
+          url: 'https://fixture.invalid',
+        },
+        activeAccount: { id: 0, type: 'SmartAccount' },
+        accounts: {},
+      },
+    }),
   },
 }));
 
@@ -19,7 +30,8 @@ import { PALI_MODULE_CANONICAL_ADDRESSES } from 'utils/smartAccount/deployment';
 
 import SmartAccountController from './index';
 
-const accountAddress = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const identity = smartAccountAddressFixture(57057);
+const accountAddress = identity.account.address;
 const customAddress = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const guardianAddress = '0xcccccccccccccccccccccccccccccccccccccccc';
 const moduleAddress = PALI_MODULE_CANONICAL_ADDRESSES['guardian-recovery']!;
@@ -29,17 +41,19 @@ describe('guardian policy metadata hydration', () => {
   let account: any;
 
   beforeEach(() => {
+    const transaction = {
+      web3Provider: { getCode: jest.fn().mockResolvedValue('0x01') },
+    };
     controller = new SmartAccountController({
-      getEthereumTransaction: () => ({
-        web3Provider: { getCode: jest.fn().mockResolvedValue('0x01') },
-      }),
+      getEthereumTransaction: () => transaction,
     } as any);
     controller.getGuardianRecoveryStatusForAccount = jest.fn();
     account = {
+      ...identity.account,
       address: accountAddress,
       smartAccount: {
+        ...identity.account.smartAccount,
         chainId: 57057,
-        deploymentSalt: 'saved-deployment-salt',
         customModules: [
           {
             address: customAddress,
@@ -78,7 +92,9 @@ describe('guardian policy metadata hydration', () => {
       accountAddress,
       57057
     );
-    expect(result.deploymentSalt).toBe('saved-deployment-salt');
+    expect(result.deploymentSalt).toBe(
+      identity.account.smartAccount.deploymentSalt
+    );
     expect(result.installedModules).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

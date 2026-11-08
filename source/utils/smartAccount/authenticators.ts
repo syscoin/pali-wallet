@@ -1,17 +1,20 @@
-import type {
-  ISmartAccountMetadata,
-  SmartAccountP256WebAuthnConfig,
-  SmartAccountSLHDSAConfig,
-} from 'types/network';
-import { getAddress } from 'utils/ethersV6Compat';
-import { toP256PasskeyAuthConfig } from 'utils/passkey/account';
-import { SLH_DSA_SIGNATURE_LIMIT, getSLHDSAKeyId } from 'utils/slhDsa';
+import { getAddress } from '../ethersV6Compat.ts';
+import { toP256PasskeyAuthConfig } from '../passkey/account.ts';
+import {
+  SLH_DSA_SIGNATURE_LIMIT,
+  getSLHDSAKeyId,
+} from '../slhDsa/constants.ts';
 
 import {
   encodeSLHDSAValidatorInitData,
   getConfiguredAuthenticatorAddress,
   type PaliAuthConfig,
-} from './account';
+} from './account.ts';
+import type {
+  ISmartAccountMetadata,
+  SmartAccountP256WebAuthnConfig,
+  SmartAccountSLHDSAConfig,
+} from '../../types/network.ts';
 
 export type SmartAccountAuthenticatorBuildResult = {
   auth: PaliAuthConfig;

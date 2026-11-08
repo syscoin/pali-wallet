@@ -30,7 +30,7 @@ export async function signSmartAccountEcdsaOperation({
   const moduleId = metadata.auth?.module || metadata.auth?.scheme;
   if (moduleId !== 'ecdsa' || !metadata.auth?.data)
     throw new Error(
-      'Smart account registration requires an interactive signature for this validator. Submit any transaction from the account to deploy it.'
+      'This smart account requires an interactive signature for its configured validator.'
     );
   const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
     ['address[]', 'uint64'],
@@ -43,7 +43,7 @@ export async function signSmartAccountEcdsaOperation({
     .filter((entry) => entry.owner !== null);
   if (localOwners.length < threshold)
     throw new Error(
-      'Smart account registration requires the configured ECDSA owner keys in this wallet.'
+      'This smart account requires the configured ECDSA owner keys in this wallet.'
     );
   const signatures = await Promise.all(
     localOwners

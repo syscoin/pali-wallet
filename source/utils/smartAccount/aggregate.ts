@@ -1,10 +1,10 @@
-import { Interface } from 'utils/ethersV6Compat';
-import type { Result } from 'utils/ethersV6Compat';
+import { Interface } from '../ethersV6Compat.ts';
 
+import type { Result } from '../ethersV6Compat.ts';
 import {
   PALI_INFRASTRUCTURE_METADATA_BY_ID,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
-} from './deploymentMetadata';
+} from './deploymentMetadata.ts';
 
 /**
  * Read-call aggregation for smart-account RPC traffic.

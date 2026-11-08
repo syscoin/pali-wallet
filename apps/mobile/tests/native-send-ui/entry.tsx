@@ -13,7 +13,7 @@ import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 import { NativeLedgerFixture } from './nativeLedgerFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
 import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
-import { NativeSmartAccountDeploymentFixture } from './nativeSmartAccountDeploymentFixture';
+import { NativeSmartAccountOperationFixture } from './nativeSmartAccountDeploymentFixture';
 import { registerRootComponent } from 'expo';
 import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -382,7 +382,7 @@ function Fixture() {
   return (
     <SafeAreaProvider>
       {new URLSearchParams(window.location.search).has('smart-deployment') ? (
-        <NativeSmartAccountDeploymentFixture />
+        <NativeSmartAccountOperationFixture />
       ) : new URLSearchParams(window.location.search).has('ledger') ? (
         <NativeLedgerFixture />
       ) : new URLSearchParams(window.location.search).has('transaction-review') ? (

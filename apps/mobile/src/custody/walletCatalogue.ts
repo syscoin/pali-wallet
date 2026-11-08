@@ -46,7 +46,7 @@ export const WALLET_CATALOGUE_KEY = ACCOUNT_RECORD_KEY;
 export type NativeCatalogueAccount = Readonly<{
   id: string;
   type: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger';
-  smartAccount?: Readonly<{ chainId: number; isDeployed: boolean; managementAddress: string }>;
+  smartAccount?: Readonly<{ chainId: number; isDeployed: boolean; localEcdsa: boolean; managementAddress: string }>;
   index: number;
   slip44: number;
   address: string;
@@ -393,7 +393,7 @@ function publicAccounts(group: RecoveryAccountGroup, chainId?: number): NativeCa
     const managementAddress = /^pali:eip155:\d+:(0x[0-9a-f]{40}):smart-account-v1$/.exec(metadata.descriptor!.anchor)![1]!;
     accounts.push(Object.freeze({ id: nativeAccountId('SmartAccount', account.id), type: 'SmartAccount', index: account.id,
       slip44: 60, address: account.address, label: account.label,
-      smartAccount: Object.freeze({ chainId: metadata.chainId, isDeployed: metadata.isDeployed === true, managementAddress }),
+      smartAccount: Object.freeze({ chainId: metadata.chainId, isDeployed: metadata.isDeployed === true, localEcdsa: (metadata.auth?.module ?? metadata.auth?.scheme) === 'ecdsa', managementAddress }),
     }));
   }
   return accounts;

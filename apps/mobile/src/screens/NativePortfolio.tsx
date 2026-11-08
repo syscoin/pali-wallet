@@ -81,7 +81,7 @@ function NativePortfolioContent({ model, snapshot, smartAccount, onDeploySmartAc
   const canReceive = !!account && (!utxo || canUseUtxoCustodyAddress(account.address, utxo));
   const receiving = canReceive && receiveScope === scope;
   const loading = snapshot.status === 'loading';
-  const canSend = !smartAccount && !!onSend && (utxo !== undefined ||
+  const canSend = (!smartAccount || smartAccount.localEcdsa) && !!onSend && (utxo !== undefined ||
     !!registration && nativeSigningEnabled(registration.id, [registration]));
   const faucet = registration ? getTestnetFaucet(registration) : null;
 

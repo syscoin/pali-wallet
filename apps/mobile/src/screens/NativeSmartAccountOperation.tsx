@@ -3,22 +3,22 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
 import { getNativeSendContext } from '../custody/networkContext';
-import type { NativeSmartAccountDeployment } from '../smartAccount/deployment';
+import type { NativeSmartAccountOperation } from '../smartAccount/operation';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 
-export function NativeSmartAccountDeploymentRoute({
+export function NativeSmartAccountOperationRoute({
   open,
   onBack,
 }: {
-  open(assertCurrent: () => void): Promise<NativeSmartAccountDeployment>;
+  open(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   onBack(): void;
 }) {
   const [controller, setController] =
-    useState<NativeSmartAccountDeployment | null>(null);
+    useState<NativeSmartAccountOperation | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
-    let current: NativeSmartAccountDeployment | undefined;
+    let current: NativeSmartAccountOperation | undefined;
     const check = () => {
       if (!alive) throw new Error('DEPLOYMENT_EXPIRED');
     };
@@ -39,7 +39,7 @@ export function NativeSmartAccountDeploymentRoute({
   }, [open]);
   if (controller)
     return (
-      <NativeSmartAccountDeploymentScreen
+      <NativeSmartAccountOperationScreen
         controller={controller}
         onBack={onBack}
       />
@@ -62,11 +62,11 @@ export function NativeSmartAccountDeploymentRoute({
   );
 }
 
-export function NativeSmartAccountDeploymentScreen({
+export function NativeSmartAccountOperationScreen({
   controller,
   onBack,
 }: {
-  controller: NativeSmartAccountDeployment;
+  controller: NativeSmartAccountOperation;
   onBack(): void;
 }) {
   const state = useSyncExternalStore(
@@ -83,6 +83,8 @@ export function NativeSmartAccountDeploymentScreen({
     return () => controller.dispose();
   }, [controller]);
   const payer = state.payerReview;
+  const transfer =
+    state.intent.kind === 'native-transfer' ? state.intent : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
     state.phase
   );
@@ -92,9 +94,13 @@ export function NativeSmartAccountDeploymentScreen({
         <Header
           title={
             state.phase === 'authorize'
-              ? 'Authorize deployment'
+              ? transfer
+                ? 'Review transfer'
+                : 'Authorize deployment'
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
+              : transfer
+              ? 'Send'
               : 'Deploy smart account'
           }
           onBack={onBack}
@@ -106,11 +112,29 @@ export function NativeSmartAccountDeploymentScreen({
           </Text>
           <Text style={s.label}>Chain ID {state.network.chainId}</Text>
         </Card>
+        {transfer && (
+          <Card style={s.card}>
+            <Text style={s.label}>To</Text>
+            <Text selectable style={s.address}>
+              {transfer.recipient}
+            </Text>
+            <Text style={s.label}>Amount</Text>
+            <Text style={s.value}>{amount(transfer.amountUnits)}</Text>
+          </Card>
+        )}
         {state.phase === 'authorize' && (
           <>
             <Notice
-              title="Create this account on the network"
-              body="Authorize the account’s deployment. This operation sends no assets. The following review confirms the wallet account and network fee used to submit it."
+              title={
+                transfer
+                  ? 'Authorize this transfer'
+                  : 'Create this account on the network'
+              }
+              body={
+                transfer
+                  ? 'Authorize this smart account transfer. The following review confirms the paying account and submission fee.'
+                  : 'Authorize the account’s deployment. This operation sends no assets. The following review confirms the wallet account and network fee used to submit it.'
+              }
             />
             <Card style={s.card}>
               <Text style={s.label}>Maximum account charge</Text>
@@ -154,7 +178,7 @@ export function NativeSmartAccountDeploymentScreen({
               )}
             </Card>
             <Button
-              title="Authorize deployment"
+              title={transfer ? 'Authorize transfer' : 'Authorize deployment'}
               onPress={() => void controller.authorize(state.revision)}
             />
           </>
@@ -164,12 +188,16 @@ export function NativeSmartAccountDeploymentScreen({
             <Notice
               title={
                 payer.purpose === 'fund-account'
-                  ? 'Fund the deployment charge'
+                  ? 'Fund the account charge'
+                  : transfer
+                  ? 'Submit the authorized transfer'
                   : 'Submit the authorized deployment'
               }
               body={
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
+                  : transfer
+                  ? 'This transaction submits the transfer you authorized.'
                   : 'This transaction submits your existing deployment authorization.'
               }
             />
@@ -189,6 +217,8 @@ export function NativeSmartAccountDeploymentScreen({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
+                  : transfer
+                  ? 'Confirm transfer'
                   : 'Confirm deployment'
               }
               onPress={() => controller.confirmPayer(payer.id)}
@@ -201,19 +231,27 @@ export function NativeSmartAccountDeploymentScreen({
             <Text>
               {state.phase === 'waiting'
                 ? 'Waiting for the network…'
+                : transfer
+                ? 'Preparing transfer…'
                 : 'Preparing deployment…'}
             </Text>
           </View>
         )}
         {state.phase === 'complete' && (
           <Notice
-            title="Smart account deployed"
-            body="Your account is available on this network."
+            title={transfer ? 'Transfer submitted' : 'Smart account deployed'}
+            body={
+              transfer
+                ? 'Follow this transaction in Activity.'
+                : 'Your account is available on this network.'
+            }
           />
         )}
         {state.error && (
           <Notice
-            title="Check deployment status"
+            title={
+              transfer ? 'Check transfer status' : 'Check deployment status'
+            }
             body={state.error}
             tone="amber"
           />

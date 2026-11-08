@@ -9,7 +9,7 @@ import {
   getNativeNetwork,
   getNativeSendContext,
 } from '../src/custody/networkContext.ts';
-import type { NativeSmartAccountDeploymentSnapshot } from '../src/smartAccount/deployment.ts';
+import type { NativeSmartAccountOperationSnapshot } from '../src/smartAccount/operation.ts';
 
 type Element = {
   type: unknown;
@@ -18,7 +18,8 @@ type Element = {
 };
 function fixture() {
   let expanded = false;
-  let state: NativeSmartAccountDeploymentSnapshot = {
+  let state: NativeSmartAccountOperationSnapshot = {
+    intent: { kind: 'deploy' },
     phase: 'authorize',
     revision: 4,
     account: '0x1111111111111111111111111111111111111111',
@@ -62,7 +63,7 @@ function fixture() {
     },
   };
   const source = readFileSync(
-    new NodeURL('../src/screens/NativeSmartAccountDeployment.tsx', import.meta.url),
+    new NodeURL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url),
     'utf8'
   );
   const code = ts.transpileModule(source, {
@@ -104,7 +105,7 @@ function fixture() {
   });
   const render = () =>
     (
-      module.exports.NativeSmartAccountDeploymentScreen as (
+      module.exports.NativeSmartAccountOperationScreen as (
         props: object
       ) => Element
     )({
@@ -125,7 +126,7 @@ function fixture() {
   return {
     render,
     calls,
-    update(change: Partial<NativeSmartAccountDeploymentSnapshot>) {
+    update(change: Partial<NativeSmartAccountOperationSnapshot>) {
       state = { ...state, ...change };
     },
   };
@@ -168,7 +169,7 @@ test('deployment screen separates exact account authorization from payer confirm
     phase: 'review-fee',
     payerReview: {
       id: 8,
-      purpose: 'submit-deployment',
+      purpose: 'submit-operation',
       maximumFeeUnits: '42000',
       maximumTotalUnits: '42000',
       transaction: {
@@ -217,4 +218,17 @@ test('waiting and failed deployment screens expose no stale signing button', () 
     button(tree, 'Close')();
   }
   assert.equal(f.calls.close, 3);
+});
+
+
+test('native Smart transfer review binds the recipient and exact amount to authorization', () => {
+  const f = fixture();
+  const recipient = '0x4444444444444444444444444444444444444444';
+  f.update({ intent: { kind: 'native-transfer', recipient, amountUnits: '9' } });
+  const tree = f.render();
+  assert.match(text(tree), new RegExp(recipient));
+  assert.match(text(tree), /0.000000000000000009 ETH/);
+  assert.doesNotMatch(text(tree), /This operation sends no assets/);
+  button(tree, 'Authorize transfer')();
+  assert.deepEqual(f.calls.authorize, [4]);
 });

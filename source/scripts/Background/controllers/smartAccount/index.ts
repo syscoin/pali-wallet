@@ -33,12 +33,9 @@ import {
 } from 'utils/slhDsa';
 import {
   aggregateContractCalls,
-  AggregateCallRequest,
   AggregateCallResult,
   clearMulticall3AddressCache,
-  buildHydratedSLHDSAAuthenticator,
   buildP256WebAuthnAuthenticator,
-  buildHydratedP256WebAuthnAuthenticator,
   buildSLHDSAAuthenticator,
   buildSmartAccountGuardianRecoveryOperation,
   getGuardianRecoveryDigestContext,
@@ -46,7 +43,6 @@ import {
   getPaliErc7739PersonalSignHash,
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
-  encodeCompositeValidatorInitData,
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
   CustomValidatorPreflightResult,
@@ -63,11 +59,7 @@ import {
   ERC7579_MODULE_TYPE_EXECUTOR,
   PALI_ENTRYPOINT_V09_ABI,
   getPaliEntryPointAddress,
-  paliCompositeValidatorInterface,
-  paliEcdsaValidatorInterface,
   paliGuardianRecoveryModuleInterface,
-  paliP256WebAuthnValidatorInterface,
-  paliSlhDsaValidatorInterface,
   paliSmartAccountInterface,
   SmartAccountExecution,
   SmartAccountPackedUserOperation,
@@ -83,6 +75,10 @@ import {
   type PaliInfrastructureContractId,
 } from 'utils/smartAccount/deployment';
 import { readSmartAccountDeploymentState } from 'utils/smartAccount/deploymentState';
+import {
+  hasUsableSmartAccountAuthMetadata,
+  readSmartAccountValidatorMetadata,
+} from 'utils/smartAccount/executionMetadata';
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 import {
@@ -116,6 +112,7 @@ import {
   submitSmartAccountOperation,
   type SmartAccountSubmitParams,
 } from 'utils/smartAccount/submitOperation';
+import { assertSmartAccountTargetsAllowed } from 'utils/smartAccount/targetPolicy';
 import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import {
@@ -1589,7 +1586,7 @@ class SmartAccountController {
       if (options.expectedContext)
         this.assertExpectedExecutionContext(options.expectedContext, accountId);
     };
-    await this.assertSmartAccountExecutionTargetsAllowed(params);
+    await this.assertSmartAccountExecutionTargetsAllowed(params, assertContext);
     assertContext();
 
     const useCachedMetadata = options.useCachedMetadata !== false;
@@ -1604,7 +1601,7 @@ class SmartAccountController {
     if (
       useCachedMetadata &&
       active.metadata.isDeployed &&
-      !this.hasUsableSmartAccountAuthMetadata(active.metadata)
+      !hasUsableSmartAccountAuthMetadata(active.metadata)
     ) {
       active = Number.isInteger(accountId)
         ? await this.getHydratedSmartAccountById(accountId as number)
@@ -1622,7 +1619,7 @@ class SmartAccountController {
     const useDeployedCachedMetadata =
       useCachedMetadata &&
       active.metadata.isDeployed &&
-      this.hasUsableSmartAccountAuthMetadata(active.metadata);
+      hasUsableSmartAccountAuthMetadata(active.metadata);
     if (!useDeployedCachedMetadata) {
       await this.assertInfrastructureSupported(snapshot, assertContext);
       assertContext();
@@ -1680,7 +1677,8 @@ class SmartAccountController {
   }
 
   private async assertSmartAccountExecutionTargetsAllowed(
-    executions: Array<{ data?: string; target: string }>
+    executions: Array<{ data?: string; target: string }>,
+    assertCurrent: () => void
   ): Promise<void> {
     const provider = this.ethereumTransaction?.web3Provider;
     for (const execution of executions) {
@@ -1690,46 +1688,12 @@ class SmartAccountController {
         web3Provider: provider,
       });
 
-      for (const target of targets) {
-        const blacklistResult = await blacklistService.checkAddress(
-          target.address
-        );
-        if (
-          blacklistResult.isBlacklisted &&
-          (blacklistResult.severity === 'critical' ||
-            blacklistResult.severity === 'high')
-        ) {
-          const fallbackReason =
-            target.type === 'approval'
-              ? 'Spender address is blacklisted'
-              : target.type === 'token-recipient'
-              ? 'Recipient address is blacklisted'
-              : 'Target address is blacklisted';
-          throw new Error(
-            `Smart account execution blocked: ${
-              blacklistResult.reason || fallbackReason
-            }. Severity: ${blacklistResult.severity}`
-          );
-        }
-      }
+      await assertSmartAccountTargetsAllowed(
+        targets,
+        (address) => blacklistService.checkAddress(address),
+        assertCurrent
+      );
     }
-  }
-
-  private hasUsableSmartAccountAuthMetadata(
-    metadata: ISmartAccountMetadata
-  ): boolean {
-    const auth = metadata.auth;
-    if (!auth?.validator) {
-      return false;
-    }
-
-    return Boolean(
-      metadata.installedModules?.some(
-        (module) =>
-          module.type === 'validator' &&
-          module.address.toLowerCase() === auth.validator.toLowerCase()
-      )
-    );
   }
 
   public async submitSmartAccountExecution(
@@ -2670,235 +2634,22 @@ class SmartAccountController {
   private async fetchSmartAccountMetadata(
     account: any
   ): Promise<ISmartAccountMetadata> {
-    const metadata = account.smartAccount as ISmartAccountMetadata;
     const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-    }
-    const chainId = metadata.chainId;
-
-    const p256Address = getConfiguredAuthenticatorAddress(
-      chainId,
-      'p256-webauthn'
-    );
-    const ecdsaAddress = getConfiguredAuthenticatorAddress(chainId, 'ecdsa');
-    const compositeAddress = getConfiguredAuthenticatorAddress(
-      chainId,
-      'composite'
-    );
-    const slhDsaAddress = getConfiguredAuthenticatorAddress(chainId, 'slh-dsa');
-    const includeSlhDsa = Boolean(slhDsaAddress);
-    const isModuleInstalledCall = (
-      moduleAddress: string,
-      moduleType: number = ERC7579_MODULE_TYPE_VALIDATOR
-    ): AggregateCallRequest => ({
-      args: [moduleType, moduleAddress, '0x'],
-      fn: 'isModuleInstalled',
-      iface: paliSmartAccountInterface,
-      target: account.address,
+    if (!provider) throw new Error(PROVIDER_UNAVAILABLE_ERROR);
+    const context = this.infrastructureContext();
+    const assertCurrent = () => this.assertInfrastructureContext(context);
+    const metadata = await readSmartAccountValidatorMetadata({
+      account,
+      chainId: context.chainId,
+      provider,
+      assertCurrent,
     });
-
-    // Bring-your-own modules: hydration only knows builtin addresses, so the
-    // durable custom records tell us which extra addresses to probe.
-    // v1 scope is custom validators only (moduleType 1).
-    const customRecords = (metadata.customModules || []).filter(
-      (record) => record.moduleType === ERC7579_MODULE_TYPE_VALIDATOR
-    );
-
-    const calls: AggregateCallRequest[] = [
-      isModuleInstalledCall(p256Address),
-      {
-        args: [account.address],
-        fn: 'authData',
-        iface: paliP256WebAuthnValidatorInterface,
-        target: p256Address,
-      },
-      isModuleInstalledCall(ecdsaAddress),
-      {
-        args: [account.address],
-        fn: 'owners',
-        iface: paliEcdsaValidatorInterface,
-        target: ecdsaAddress,
-      },
-      {
-        args: [account.address],
-        fn: 'threshold',
-        iface: paliEcdsaValidatorInterface,
-        target: ecdsaAddress,
-      },
-      isModuleInstalledCall(compositeAddress),
-      {
-        args: [account.address],
-        fn: 'childValidators',
-        iface: paliCompositeValidatorInterface,
-        target: compositeAddress,
-      },
-      {
-        args: [account.address],
-        fn: 'threshold',
-        iface: paliCompositeValidatorInterface,
-        target: compositeAddress,
-      },
-      ...(includeSlhDsa
-        ? ([
-            isModuleInstalledCall(slhDsaAddress),
-            {
-              args: [account.address],
-              fn: 'authData',
-              iface: paliSlhDsaValidatorInterface,
-              target: slhDsaAddress,
-            },
-          ] as AggregateCallRequest[])
-        : []),
-      {
-        args: [],
-        fn: 'activeValidator',
-        iface: paliSmartAccountInterface,
-        target: account.address,
-      },
-      ...customRecords.map((record) =>
-        isModuleInstalledCall(record.address, record.moduleType)
-      ),
-    ];
-
-    const [code, results] = await Promise.all([
-      provider.getCode(account.address),
-      aggregateContractCalls(provider, chainId, calls),
-    ]);
-    if (code === '0x') {
-      return {
-        ...metadata,
-        availableModules: getAvailablePaliModules(metadata.chainId),
-        isDeployed: false,
-        installedModules: metadata.installedModules || [],
-      };
-    }
-
+    assertCurrent();
+    if (!metadata.isDeployed) return metadata;
     const installedModules: NonNullable<
       ISmartAccountMetadata['installedModules']
-    > = [];
-
-    const [p256Installed] = this.requireAggregateResult(
-      results[0],
-      'p256 isModuleInstalled'
-    );
-    if (p256Installed) {
-      const [authData] = this.requireAggregateResult(
-        results[1],
-        'p256 authData'
-      ) as unknown as [any];
-      const publicKey = {
-        originHash: authData.originHash || authData[3],
-        originLength: Number(authData.originLength || authData[4] || 0),
-        rpIdHash: authData.rpIdHash || authData[2],
-        x: authData.publicKeyX || authData[0],
-        y: authData.publicKeyY || authData[1],
-      };
-      const built = buildHydratedP256WebAuthnAuthenticator({
-        chainId,
-        publicKey,
-      });
-      installedModules.push(...(built.metadata.installedModules || []));
-    }
-
-    const [ecdsaInstalled] = this.requireAggregateResult(
-      results[2],
-      'ecdsa isModuleInstalled'
-    );
-    if (ecdsaInstalled) {
-      const [rawOwners] = this.requireAggregateResult(
-        results[3],
-        'ecdsa owners'
-      ) as unknown as [string[]];
-      const owners = rawOwners.map((owner: string) => getAddress(owner));
-      const threshold = Number(
-        this.requireAggregateResult(results[4], 'ecdsa threshold')[0]
-      );
-      installedModules.push({
-        address: getAddress(ecdsaAddress),
-        config: { owners, threshold },
-        data: encodeEcdsaValidatorInitData(owners, threshold),
-        id: 'ecdsa',
-        type: 'validator',
-      });
-    }
-
-    const [compositeInstalled] = this.requireAggregateResult(
-      results[5],
-      'composite isModuleInstalled'
-    );
-    if (compositeInstalled) {
-      const [rawChildren] = this.requireAggregateResult(
-        results[6],
-        'composite childValidators'
-      ) as unknown as [string[]];
-      const childValidators = rawChildren.map((child: string) =>
-        getAddress(child)
-      );
-      const threshold = Number(
-        this.requireAggregateResult(results[7], 'composite threshold')[0]
-      );
-      installedModules.push({
-        address: getAddress(compositeAddress),
-        config: { childValidators, threshold },
-        data: encodeCompositeValidatorInitData(childValidators, threshold),
-        id: 'composite',
-        type: 'validator',
-      });
-    }
-
-    const activeValidatorResultIndex = 8 + (includeSlhDsa ? 2 : 0);
-
-    if (includeSlhDsa) {
-      const slhDsaInstalled =
-        results[8]?.success && Boolean(results[8].result[0]);
-      if (slhDsaInstalled) {
-        const [authData] = this.requireAggregateResult(
-          results[9],
-          'slh-dsa authData'
-        ) as unknown as [any];
-        const pkSeed = authData.pkSeed || authData[0];
-        const pkRoot = authData.pkRoot || authData[1];
-        const built = buildHydratedSLHDSAAuthenticator({
-          chainId,
-          pkRoot,
-          pkSeed,
-        });
-        installedModules.push(...(built.metadata.installedModules || []));
-      }
-    }
-
-    // Custom (bring-your-own) modules still installed on-chain. Failed
-    // probes (e.g. module self-destructed) simply drop the module from the
-    // installed list; the durable record remains for later re-probing.
-    const customBaseIndex = activeValidatorResultIndex + 1;
-    const installedValidatorAddresses = new Set(
-      installedModules.map((module) => module.address.toLowerCase())
-    );
-    customRecords.forEach((record, index) => {
-      const probe = results[customBaseIndex + index];
-      const installed = probe?.success && Boolean(probe.result[0]);
-      if (installed) {
-        const address = getAddress(record.address);
-        if (installedValidatorAddresses.has(address.toLowerCase())) return;
-        // A builtin already read from its canonical contract is authoritative;
-        // a durable custom-install record must not shadow or duplicate it.
-        installedValidatorAddresses.add(address.toLowerCase());
-        installedModules.push({
-          address,
-          config: {
-            compositeCompatible: record.compositeCompatible,
-            initData: record.initData,
-            moduleType: record.moduleType,
-            name: record.name,
-          },
-          data: record.initData,
-          id: 'custom',
-          type: 'validator',
-        });
-      }
-    });
-
+    > = [...(metadata.installedModules || [])];
+    const chainId = metadata.chainId;
     const guardianStatus = await this.getGuardianRecoveryStatusForAccount(
       account.address,
       chainId
@@ -2923,36 +2674,8 @@ class SmartAccountController {
       });
     }
 
-    const activeValidatorAddress = getAddress(
-      this.requireAggregateResult(
-        results[activeValidatorResultIndex],
-        'activeValidator'
-      )[0] as string
-    );
-    const activeValidator =
-      activeValidatorAddress !== AddressZero
-        ? installedModules.find(
-            (module) =>
-              module.type === 'validator' &&
-              module.address.toLowerCase() ===
-                activeValidatorAddress.toLowerCase()
-          )
-        : null;
-    const hydrated: ISmartAccountMetadata = {
-      ...metadata,
-      auth:
-        activeValidator?.type === 'validator'
-          ? {
-              data: activeValidator.data || '0x',
-              module: activeValidator.id,
-              validator: activeValidator.address,
-            }
-          : undefined,
-      availableModules: getAvailablePaliModules(chainId),
-      isDeployed: true,
-      installedModules,
-    };
-    return hydrated;
+    assertCurrent();
+    return { ...metadata, installedModules };
   }
 
   private decodeGuardianRecoveryStatus(

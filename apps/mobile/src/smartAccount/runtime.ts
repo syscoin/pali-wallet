@@ -1,7 +1,15 @@
+import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
+import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
+import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
+import {
+  hasUsableSmartAccountAuthMetadata,
+  readSmartAccountValidatorMetadata,
+} from '../../../../source/utils/smartAccount/executionMetadata.ts';
 import { readSmartAccountDeploymentState } from '../../../../source/utils/smartAccount/deploymentState.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
 import {
   prepareSmartAccountOperation,
+  requireSmartAccountAuthenticator,
   type SmartAccountGasPayer,
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { signSmartAccountEcdsaOperation } from '../../../../source/utils/smartAccount/signOperation.ts';
@@ -25,18 +33,21 @@ import type { NativePreparedConnectionTransaction } from '../connections/transac
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
 import {
-  NativeSmartAccountDeployment,
-  type PreparedSmartAccountDeployment,
-} from './deployment.ts';
+  NativeSmartAccountOperation,
+  type NativeSmartAccountIntent,
+  type PreparedSmartAccountOperation,
+} from './operation.ts';
 import { createNativeSmartAccountProvider } from './provider.ts';
 
 type Response = { hash: string; wait(): Promise<unknown> };
-export type NativeSmartDeploymentPorts = Readonly<{
+export type NativeSmartOperationPorts = Readonly<{
+  intent: NativeSmartAccountIntent;
   account: IKeyringAccountState & { smartAccount: ISmartAccountMetadata };
   network: NativeNetworkRegistration;
   rpc: EvmTransferReadRpc;
   wallet: SmartAccountPayerWallet;
   assertCurrent(): void;
+  checkAddress(address: string): Promise<IBlacklistCheckResult>;
   signOwner(
     address: string,
     digest: string,
@@ -60,14 +71,15 @@ export type NativeSmartDeploymentPorts = Readonly<{
 }>;
 
 /** Native presentation and transport around the extension's shared operation engine. */
-export function createNativeSmartDeployment(
-  ports: NativeSmartDeploymentPorts
-): NativeSmartAccountDeployment {
+export function createNativeSmartOperation(
+  ports: NativeSmartOperationPorts
+): NativeSmartAccountOperation {
   const account = ports.account;
-  const metadata = account.smartAccount;
+  let metadata = account.smartAccount;
+  const intent = Object.freeze({ ...ports.intent });
   const chainId = Number(ports.network.chainId);
-  let issued: PreparedSmartAccountDeployment | undefined;
-  const contextId = 'native-smart-account-deployment';
+  let issued: PreparedSmartAccountOperation | undefined;
+  const contextId = 'native-smart-account-operation';
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   const ownerFor = (address: string) => {
     for (const type of ['HDAccount', 'Imported'] as const) {
@@ -83,8 +95,9 @@ export function createNativeSmartDeployment(
     }
     return null;
   };
-  return new NativeSmartAccountDeployment({
+  return new NativeSmartAccountOperation({
     account: account.address,
+    intent,
     network: ports.network,
     assertCurrent: check,
     async prepare(signal, assertCurrent) {
@@ -94,6 +107,13 @@ export function createNativeSmartDeployment(
         signal,
         assertCurrent
       );
+      if (intent.kind === 'native-transfer') {
+        await assertSmartAccountTargetsAllowed(
+          getBlacklistTargetsForEvmCall({ to: intent.recipient, data: '0x' }),
+          ports.checkAddress,
+          assertCurrent
+        );
+      }
       await ports.rpc.assertSmartAccountSupported(signal, assertCurrent);
       const state = await readSmartAccountDeploymentState({
         account,
@@ -101,17 +121,47 @@ export function createNativeSmartDeployment(
         provider,
         assertCurrent,
       });
-      if (state === 'deployed') {
+      if (state === 'deployed' && intent.kind === 'deploy') {
         await ports.markDeployed(assertCurrent);
         assertCurrent();
         return { kind: 'already-deployed' };
       }
+      if (
+        intent.kind === 'native-transfer' &&
+        state === 'deployed' &&
+        (!metadata.isDeployed || !hasUsableSmartAccountAuthMetadata(metadata))
+      ) {
+        metadata = await readSmartAccountValidatorMetadata({
+          account,
+          chainId,
+          provider,
+          assertCurrent,
+        });
+        assertCurrent();
+      }
+      if (requireSmartAccountAuthenticator(metadata).module !== 'ecdsa')
+        throw new Error(
+          'This authenticator is not available for native transfers'
+        );
       issued = await prepareSmartAccountOperation({
-        account,
+        account: { ...account, smartAccount: metadata },
         chainId,
         provider,
-        knownDeployed: false,
-        executions: [{ target: account.address, data: '0x', value: '0x0' }],
+        knownDeployed:
+          intent.kind === 'native-transfer' &&
+          state === 'deployed' &&
+          metadata.isDeployed &&
+          hasUsableSmartAccountAuthMetadata(metadata),
+        executions:
+          intent.kind === 'deploy'
+            ? [{ target: account.address, data: '0x', value: '0x0' }]
+            : [
+                {
+                  target: intent.recipient,
+                  data: '0x',
+                  value: intent.amountUnits,
+                },
+              ],
         assertCurrent,
         async selectGasPayer(gasEstimate, maxFeePerGas) {
           const primary = getSmartAccountGasPayerCandidates(
@@ -146,7 +196,7 @@ export function createNativeSmartDeployment(
       return { kind: 'authorization', operation: issued };
     },
     async sign(prepared, assertCurrent) {
-      if (prepared !== issued) throw new Error('DEPLOYMENT_EXPIRED');
+      if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
       return signSmartAccountEcdsaOperation({
         metadata,
         actionHash: prepared.actionHash,
@@ -164,7 +214,7 @@ export function createNativeSmartDeployment(
       reviewPayer,
       onBroadcast
     ) {
-      if (prepared !== issued) throw new Error('DEPLOYMENT_EXPIRED');
+      if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
       const provider = createNativeSmartAccountProvider(
         ports.network,
         ports.rpc,
@@ -174,7 +224,7 @@ export function createNativeSmartDeployment(
       const assertContext = (id: string) => {
         assertCurrent();
         if (id !== contextId || prepared !== issued)
-          throw new Error('DEPLOYMENT_EXPIRED');
+          throw new Error('SMART_OPERATION_EXPIRED');
       };
       const send: SmartAccountSubmitHost<Response>['sendTransaction'] = async (
         request,
@@ -190,7 +240,7 @@ export function createNativeSmartDeployment(
           typeof options.assertBeforeSign !== 'function' ||
           typeof options.assertCurrentContext !== 'function'
         )
-          throw new Error('DEPLOYMENT_EXPIRED');
+          throw new Error('SMART_OPERATION_EXPIRED');
         const payer = getSmartAccountGasPayerCandidates(
           ports.wallet,
           prepared.gasPayer
@@ -203,7 +253,7 @@ export function createNativeSmartDeployment(
           payer.address.toLowerCase() !==
             prepared.gasPayer.address.toLowerCase()
         )
-          throw new Error('DEPLOYMENT_EXPIRED');
+          throw new Error('SMART_OPERATION_EXPIRED');
         const guard = () => {
           assertCurrent();
           assertSynchronousEvmFeeGuard(options.assertBeforeSign);
@@ -221,7 +271,7 @@ export function createNativeSmartDeployment(
             maximumTotalUnits: quote.maximumTotalUnits,
             purpose: transactionMetadata?.smartAccountDeploymentPrefund
               ? 'fund-account'
-              : 'submit-deployment',
+              : 'submit-operation',
           },
           guard
         );
@@ -246,7 +296,7 @@ export function createNativeSmartDeployment(
           accountId: account.id,
           executionContextId: contextId,
           signature,
-          waitForConfirmation: true,
+          waitForConfirmation: intent.kind === 'deploy',
         },
         {
           chainId,
@@ -265,7 +315,7 @@ export function createNativeSmartDeployment(
           },
           getSmartAccountById: (id) => {
             assertCurrent();
-            if (id !== account.id) throw new Error('DEPLOYMENT_EXPIRED');
+            if (id !== account.id) throw new Error('SMART_OPERATION_EXPIRED');
             return { account, metadata };
           },
           getWalletGasPayerAccount: (preferred, request, options) =>
@@ -287,10 +337,12 @@ export function createNativeSmartDeployment(
         assertCurrent
       );
       assertCurrent();
-      if ((await provider.getCode(account.address)) === '0x')
-        throw new Error('Smart account deployment not observed');
-      assertCurrent();
-      await ports.markDeployed(assertCurrent);
+      if (intent.kind === 'deploy') {
+        if ((await provider.getCode(account.address)) === '0x')
+          throw new Error('Smart account deployment not observed');
+        assertCurrent();
+        await ports.markDeployed(assertCurrent);
+      }
       return response.hash;
     },
   });

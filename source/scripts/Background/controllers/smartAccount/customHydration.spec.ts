@@ -1,8 +1,19 @@
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     dispatch: jest.fn(),
-    getState: () => ({ vault: { activeNetwork: { chainId: 57057 } } }),
+    getState: () => ({
+      vault: {
+        activeNetwork: {
+          chainId: 57057,
+          kind: 'ethereum',
+          url: 'https://fixture.invalid',
+        },
+        activeAccount: { id: 0, type: 'SmartAccount' },
+        accounts: {},
+      },
+    }),
   },
 }));
 jest.mock('state/vault', () => ({}));
@@ -23,7 +34,7 @@ import {
 
 import SmartAccountController from './index';
 
-const ACCOUNT = '0x' + '11'.repeat(20);
+const identity = smartAccountAddressFixture(57057);
 const OWNER = '0x' + '22'.repeat(20);
 const CUSTOM = '0xabcdefabcdefabcdefabcdefabcdefabcdefabcd';
 const ECDSA = getAddress(getConfiguredAuthenticatorAddress(57057, 'ecdsa'));
@@ -37,10 +48,11 @@ describe('custom validator hydration address identity', () => {
   let controller: any;
   beforeEach(() => {
     jest.clearAllMocks();
+    const transaction = {
+      web3Provider: { getCode: jest.fn().mockResolvedValue('0x01') },
+    };
     controller = new SmartAccountController({
-      getEthereumTransaction: () => ({
-        web3Provider: { getCode: jest.fn().mockResolvedValue('0x01') },
-      }),
+      getEthereumTransaction: () => transaction,
     } as any);
     controller.getGuardianRecoveryStatusForAccount = jest
       .fn()
@@ -99,8 +111,8 @@ describe('custom validator hydration address identity', () => {
       },
     ];
     const account = {
-      address: ACCOUNT,
-      smartAccount: { chainId: 57057, customModules },
+      ...identity.account,
+      smartAccount: { ...identity.account.smartAccount, customModules },
     };
     const original = JSON.stringify(account);
     const result = await controller.fetchSmartAccountMetadata(account);
@@ -154,8 +166,8 @@ describe('custom validator hydration address identity', () => {
       },
     ];
     const result = await controller.fetchSmartAccountMetadata({
-      address: ACCOUNT,
-      smartAccount: { chainId: 57057, customModules },
+      ...identity.account,
+      smartAccount: { ...identity.account.smartAccount, customModules },
     });
     const customs = result.installedModules.filter(
       (module: any) => module.id === 'custom'

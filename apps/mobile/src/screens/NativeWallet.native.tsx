@@ -1,4 +1,5 @@
-import { NativeSmartAccountDeploymentRoute } from './NativeSmartAccountDeployment';
+import { NativeSmartAccountSend } from './NativeSmartAccountSend';
+import { NativeSmartAccountOperationRoute } from './NativeSmartAccountOperation';
 import { findUtxoNetwork, supportsUtxoSoftwareCustody } from '../core/utxoNetworks';
 import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
 import { walletFetch } from '../platform/http';
@@ -140,6 +141,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [networkView, setNetworkView] = useState<NativeNetworkView<EvmNetworkId> | null>(null);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
+  const [openSmartSend, setOpenSmartSend] = useState<Controllers['openSmartAccountSend'] | null>(null);
   const [openSmartDeployment, setOpenSmartDeployment] = useState<Controllers['openSmartAccountDeployment'] | null>(null);
   const [openUtxoSend, setOpenUtxoSend] = useState<Controllers['openUtxoSend'] | null>(null);
   const [tokenView, setTokenView] = useState<Controllers['tokens'] | null>(null);
@@ -214,6 +216,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const selectedAccountType = selectedCatalogueAccount?.type;
   const hasSigningAccount = selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection;
   const canSign = !!snapshot.account && hasSigningAccount && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
+  const canSendSmart = !!snapshot.account && selectedAccountType === 'SmartAccount' && !!openSmartSend && !!publicSource && !!balanceReader &&
+    selectedCatalogueAccount?.smartAccount?.localEcdsa === true &&
+    nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
   const canSendUtxo = hasSigningAccount && !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
   const canSendSpt = canSendUtxo && !!utxo && supportsSptUtxoChain(utxo.chainId);
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
@@ -228,7 +233,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const origin = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
     if (next === 'send') {
       if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
-        !canSign && !(canSendUtxo && sendTarget.kind === 'native'))) return;
+        !canSign && !((canSendUtxo || canSendSmart) && sendTarget.kind === 'native'))) return;
       const sender = owner?.account?.address.toLowerCase();
       const recipientPicker = sendTarget.kind === 'native' && canSign && local && sender &&
         capturedCatalogue?.accounts.some(({ address }) => address.toLowerCase() !== sender)
@@ -277,7 +282,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const closeStage = () => {
     const origin = rootOrigin.current; rootOrigin.current = null;
     const current = readyContext();
-    if (stage === 'smart-deploy') setCatalogue(controllers.current?.authority.getCatalogue() ?? null);
+    if (stage === 'smart-deploy' || stage === 'send' && selectedAccountType === 'SmartAccount') setCatalogue(controllers.current?.authority.getCatalogue() ?? null);
     setSendDraft(null);
     setStage('choose');
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
@@ -294,7 +299,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         return true;
       }
       // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if ((stage === 'private-notes' || stage === 'connections' || stage === 'smart-deploy') && snapshot.phase === 'ready') {
+      if ((stage === 'private-notes' || stage === 'connections' || stage === 'smart-deploy' || stage === 'send' && canSendSmart) && snapshot.phase === 'ready') {
         if (stage === 'connections') {
           scanFinished();
           if (incomingPairing) onPairingHandled?.(incomingPairing.id);
@@ -307,7 +312,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
-          stage === 'send' && snapshot.phase === 'ready' && (transferView && canSign || canSendUtxo) ||
+          stage === 'send' && snapshot.phase === 'ready' && (transferView && canSign || canSendUtxo || canSendSmart) ||
           stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
             (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1)) return false;
       if (snapshot.phase === 'ready' && stage === 'choose') shell.goBack(); else exit();
@@ -326,7 +331,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }
     setCanRemoveWallet(false); setDeviceUnlockStatus(null);
     setPublicSource(null); setBalanceReader(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
-    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
+    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
   const attach = useCallback((local: Controllers) => {
@@ -347,7 +352,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           if (mounted.current && controllers.current === local && local.authority.getSnapshot() === state) setDeviceUnlockStatus(null);
         });
       }
-      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setConnectionView(local.connections); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setOpenSmartDeployment(() => local.openSmartAccountDeployment); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
+      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setConnectionView(local.connections); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setOpenSmartDeployment(() => local.openSmartAccountDeployment); setOpenSmartSend(() => local.openSmartAccountSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
       const nextCatalogue = local.authority.getCatalogue();
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       const origin = rootOrigin.current;
@@ -818,8 +823,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountDeploymentRoute
+  else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountOperationRoute
     open={openSmartDeployment} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && sendTarget?.kind === 'native' && canSendSmart && openSmartSend && snapshot.account && publicSource && balanceReader)
+    return <NativeSmartAccountSend source={publicSource} reader={balanceReader} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
     ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
@@ -842,7 +849,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
-    onSend={canSign || canSendUtxo ? () => openStage('send', { kind: 'native' }) : undefined}
+    onSend={canSign || canSendUtxo || canSendSmart ? () => openStage('send', { kind: 'native' }) : undefined}
     onSendSysx={canSendSpt ? () => openStage('send', { kind: 'spt' }) : undefined}
     onSendToken={canSign ? (token) => openStage('send', { kind: 'token', token }) : undefined}
     onSendCollectible={canSign ? (collectible) => openStage('send', { kind: 'collectible', collectible }) : undefined}

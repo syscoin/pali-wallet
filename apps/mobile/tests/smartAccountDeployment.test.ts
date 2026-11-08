@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  NativeSmartAccountDeployment,
-  type PreparedSmartAccountDeployment,
-} from '../src/smartAccount/deployment.ts';
+  NativeSmartAccountOperation,
+  type PreparedSmartAccountOperation,
+} from '../src/smartAccount/operation.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import {
   encodeSmartAccountGasLimits,
@@ -27,7 +27,7 @@ const prepared = {
     preVerificationGas: '1',
     paymasterAndData: '0x',
   },
-} as PreparedSmartAccountDeployment;
+} as PreparedSmartAccountOperation;
 const transaction: PreparedEvmTransaction = {
   chainId: '1',
   from: address,
@@ -52,9 +52,10 @@ function fixture() {
     authorizePayer = 0,
     prepares = 0;
   let held: Promise<void> | undefined;
-  const model = new NativeSmartAccountDeployment(
+  const model = new NativeSmartAccountOperation(
     {
       account: address,
+      intent: { kind: 'deploy' },
       network: getNativeNetwork('ethereum'),
       assertCurrent() {
         assert(current, 'owner changed');
@@ -75,7 +76,7 @@ function fixture() {
         guard();
         await review(
           {
-            purpose: 'submit-deployment',
+            purpose: 'submit-operation',
             transaction,
             maximumFeeUnits: '42000',
             maximumTotalUnits: '42000',
@@ -196,9 +197,10 @@ for (const event of ['cancel', 'expiry'] as const)
     let clock = 0;
     let broadcast: ((value: string) => void) | undefined;
     let finish: (() => void) | undefined;
-    const model = new NativeSmartAccountDeployment(
+    const model = new NativeSmartAccountOperation(
       {
         account: address,
+      intent: { kind: 'deploy' },
         network: getNativeNetwork('ethereum'),
         assertCurrent() {},
         async prepare() {
