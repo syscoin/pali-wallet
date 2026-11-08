@@ -25,6 +25,7 @@ async function fixture({ lifetime = 60_000 } = {}) {
   let failBefore = false,
     failAfter = false;
   const claimed = new Set<string>();
+  const quoteRequests: Record<string, unknown>[] = [];
   const quotes: string[] = [],
     sent: string[] = [],
     dispatched: string[] = [];
@@ -74,7 +75,8 @@ async function fixture({ lifetime = 60_000 } = {}) {
       ],
     },
     async prepare(input): Promise<NativePreparedConnectionTransaction> {
-      const request = input as { nonce?: number; to: string; value: string };
+      const request = input as { nonce?: number; to: string; value: string; gasLimit?: string; maxFeePerGas?: string; maxPriorityFeePerGas?: string };
+      quoteRequests.push({ ...request });
       quotes.push(request.to);
       await quoteWait;
       check();
@@ -85,15 +87,16 @@ async function fixture({ lifetime = 60_000 } = {}) {
         data: '0x',
         chainId: '1',
         nonce: String(request.nonce ?? nonce),
-        gasLimit: '21000',
+        gasLimit: request.gasLimit ?? '21000',
         type: 2,
         accessList: [],
-        maxFeePerGas: '2',
-        maxPriorityFeePerGas: '1',
+        maxFeePerGas: request.maxFeePerGas ?? '2',
+        maxPriorityFeePerGas: request.maxPriorityFeePerGas ?? '1',
       });
       const deadline = performance.now() + feeLifetime;
       return {
         transaction,
+        feeComparison: { recommendationOnly: true },
         maximumFeeUnits: '42000',
         coveredFeeUnits: '0',
         maximumTotalUnits: String(42000n + BigInt(request.value)),
@@ -123,6 +126,7 @@ async function fixture({ lifetime = 60_000 } = {}) {
   return {
     operation,
     quotes,
+    quoteRequests,
     sent,
     dispatched,
     registry,
@@ -305,5 +309,108 @@ test('a quote completing after request expiry cannot start an attempt', async ()
   assert.equal(f.operation.getSnapshot().phase, 'failed');
   assert.equal(f.saved()?.submissionStarted, undefined);
   assert.deepEqual(f.dispatched, []);
+  f.operation.dispose();
+});
+
+test('requoting a fee replaces only the current unsigned consent', async () => {
+  const f = await fixture();
+  await f.operation.start();
+  const old = f.operation.getSnapshot().revision;
+  await f.operation.requote(old, {
+    gasLimit: '21000',
+    maxFeePerGas: '9007199254740993',
+    maxPriorityFeePerGas: '0',
+  });
+  assert.deepEqual(f.sent, []);
+  assert.equal(f.saved()?.submissionStarted, undefined);
+  const firstQuote = f.operation.getSnapshot().prepared;
+  assert(firstQuote?.transaction.type === 2);
+  assert.equal(firstQuote.transaction.maxFeePerGas, '9007199254740993');
+  await assert.rejects(f.operation.approve(old), /REVIEW_REQUIRED/);
+  await f.operation.approve(f.operation.getSnapshot().revision);
+  assert.deepEqual(f.sent, [first]);
+  assert.equal(f.operation.getSnapshot().index, 1);
+  const nextQuote = f.operation.getSnapshot().prepared;
+  assert(nextQuote?.transaction.type === 2);
+  assert.equal(nextQuote.transaction.maxFeePerGas, '2');
+  f.operation.dispose();
+  await tick();
+});
+
+test('a second-call requote keeps the acknowledged prefix and cannot resend it', async () => {
+  const f = await fixture();
+  await f.operation.start();
+  await f.operation.approve(f.operation.getSnapshot().revision);
+  const acknowledged = [...f.saved()!.txHashes];
+  await f.operation.requote(f.operation.getSnapshot().revision, {
+    gasLimit: '22000',
+    maxFeePerGas: '3',
+    maxPriorityFeePerGas: '1',
+  });
+  assert.equal(f.operation.getSnapshot().index, 1);
+  assert.deepEqual(f.saved()!.txHashes, acknowledged);
+  assert.deepEqual(f.sent, [first]);
+  await f.operation.approve(f.operation.getSnapshot().revision);
+  assert.deepEqual(f.sent, [first, second]);
+  assert.deepEqual(
+    f.quoteRequests.map((row) => row.to),
+    [first, second, second]
+  );
+});
+
+test('a held fee requote cannot publish after lock', async () => {
+  const f = await fixture();
+  await f.operation.start();
+  const gate = Promise.withResolvers<void>();
+  f.waitForQuote(gate.promise);
+  const pending = f.operation.requote(f.operation.getSnapshot().revision, {
+    gasLimit: '21000',
+    maxFeePerGas: '3',
+    maxPriorityFeePerGas: '1',
+  });
+  assert.equal(f.operation.getSnapshot().phase, 'preparing');
+  f.lock();
+  gate.resolve();
+  await assert.rejects(pending, /CANCELLED/);
+  assert.deepEqual(f.sent, []);
+  assert.equal(f.saved()?.submissionStarted, undefined);
+});
+
+test('an expired current quote cannot be replaced after its consent deadline', async () => {
+  const f = await fixture();
+  f.expireFees();
+  await f.operation.start();
+  const gate = Promise.withResolvers<void>();
+  f.waitForQuote(gate.promise);
+  const pending = f.operation.requote(f.operation.getSnapshot().revision, {
+    gasLimit: '21000',
+    maxFeePerGas: '3',
+    maxPriorityFeePerGas: '1',
+  });
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  gate.resolve();
+  await assert.rejects(pending, /REVIEW_REQUIRED/);
+  assert.deepEqual(f.sent, []);
+  assert.equal(f.saved()?.submissionStarted, undefined);
+  f.operation.dispose();
+});
+
+test('a requote cannot change the nonce underlying the remaining sequence', async () => {
+  const f = await fixture();
+  await f.operation.start();
+  f.claimNonce('0');
+  await assert.rejects(
+    f.operation.requote(f.operation.getSnapshot().revision, {
+      gasLimit: '21000',
+      maxFeePerGas: '3',
+      maxPriorityFeePerGas: '1',
+    }),
+    /REVIEW_REQUIRED/
+  );
+  await tick();
+  assert.equal(f.operation.getSnapshot().phase, 'failed');
+  assert.deepEqual(f.sent, []);
+  await f.operation.start();
+  assert.equal(f.operation.getSnapshot().prepared?.transaction.nonce, '1');
   f.operation.dispose();
 });

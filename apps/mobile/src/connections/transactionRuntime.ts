@@ -1,3 +1,4 @@
+import type { EvmDappFeeComparison } from '../../../../source/shared/evmDappFeePolicy.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { prepareEvmDappReview } from '../../../../source/shared/evmDappReview.ts';
 import { type EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
@@ -9,6 +10,7 @@ import { decodeApprovalData, summarizeApproval, type ApprovalContractMetadata, t
 
 /** Private one-use capability. Only the connection controller holds it. */
 export type NativePreparedConnectionTransaction = Readonly<{
+  feeComparison: EvmDappFeeComparison;
   transaction: PreparedEvmTransaction;
   maximumFeeUnits: string;
   coveredFeeUnits: string;

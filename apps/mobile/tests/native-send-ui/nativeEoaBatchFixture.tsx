@@ -47,6 +47,8 @@ function reviewFor(
           accessList: [],
         };
   return {
+    feeComparison: null,
+    feeChoice: null,
     kind: 'transaction',
     method: 'wallet_sendCalls',
     id: 'eoa-batch-1',
@@ -149,6 +151,7 @@ export function NativeEoaBatchFixture() {
     retry: unavailable,
     cancel: unavailable,
     activateRequestAccount: unavailable,
+    chooseTransactionFee: unavailable,
     editApprovalAmount: unavailable,
     confirmSmartPayer: unavailable,
     callsStatusShown: unavailable,

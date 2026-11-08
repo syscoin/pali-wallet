@@ -18,6 +18,13 @@ import {
   getEffectiveApprovalData,
 } from '../../shared/approval';
 import { parseErc20Decimals } from '../../shared/erc20';
+import {
+  evmDappFeeChoiceMatches,
+  selectEvmDappFeeChoice,
+  type EvmDappFeeChoice,
+  type EvmDappFeeChoiceFields,
+  type EvmDappFeeComparison,
+} from '../../shared/evmDappFeePolicy';
 import { Button, DeviceWaitingBanner, WarningModal } from 'components/index';
 import { LoadingComponent, PqSigningOverlay } from 'components/Loading';
 import { ToastActionFooter } from 'components/ToastActionFooter';
@@ -70,7 +77,6 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
-import type { EvmDappFeeComparison } from '../../shared/evmDappFeePolicy';
 
 type GenericFeeQuote = Readonly<{
   feeComparison: EvmDappFeeComparison;
@@ -322,12 +328,7 @@ export const SendTransaction = () => {
     gasPrice: 0,
   });
   const [genericFeeChoice, setGenericFeeChoice] = useState<{
-    fields: {
-      gasLimit: string;
-      gasPrice?: string;
-      maxFeePerGas?: string;
-      maxPriorityFeePerGas?: string;
-    };
+    fields: EvmDappFeeChoiceFields;
     requestKey: string;
   }>();
   const [feeSafetyAdjustment, setFeeSafetyAdjustment] =
@@ -459,7 +460,7 @@ export const SendTransaction = () => {
     );
   }, [customFee, fee, isLegacyTransaction]);
 
-  const applyGenericFeeChoice = (recommended: boolean) => {
+  const applyGenericFeeChoice = (choice: EvmDappFeeChoice) => {
     const current = genericFeeView;
     if (
       !canEditTransaction() ||
@@ -468,37 +469,20 @@ export const SendTransaction = () => {
       current.key !== genericFeeKeyRef.current
     )
       return;
-    const transaction = current.quote.transaction;
-    const comparison = current.quote.feeComparison;
-    const selected = (
-      field: { recommended: string; requested: string } | undefined,
-      fallback: string
-    ) => (field ? field[recommended ? 'recommended' : 'requested'] : fallback);
     setGenericFeeChoice({
       requestKey: genericFeeRequestKey,
-      fields: {
-        gasLimit: selected(comparison.gasLimit, transaction.gasLimit),
-        ...(transaction.type === 0
-          ? { gasPrice: selected(comparison.gasPrice, transaction.gasPrice) }
-          : {
-              maxFeePerGas: selected(
-                comparison.maxFeePerGas,
-                transaction.maxFeePerGas
-              ),
-              maxPriorityFeePerGas: selected(
-                comparison.maxPriorityFeePerGas,
-                transaction.maxPriorityFeePerGas
-              ),
-            }),
-      },
+      fields: selectEvmDappFeeChoice(
+        current.quote.transaction,
+        current.quote.feeComparison,
+        choice
+      ),
     });
-    setAcceptedDappFeeRequest(true);
   };
 
   const handleUseDappFeeRequest = () => {
     if (!canEditTransaction() || !fee) return;
     if (!activeAccount.isSmartAccount) {
-      applyGenericFeeChoice(false);
+      applyGenericFeeChoice('dapp');
       return;
     }
 
@@ -535,7 +519,7 @@ export const SendTransaction = () => {
   const handleUseNetworkFeeSuggestion = () => {
     if (!canEditTransaction() || !fee) return;
     if (!activeAccount.isSmartAccount) {
-      applyGenericFeeChoice(true);
+      applyGenericFeeChoice('network');
       return;
     }
     setCustomFee({
@@ -1457,7 +1441,12 @@ export const SendTransaction = () => {
             maxFeePerGas: display(comparison.maxFeePerGas, 1e9),
             maxPriorityFeePerGas: display(comparison.maxPriorityFeePerGas, 1e9),
           });
-          setAcceptedDappFeeRequest(Boolean(currentGenericFeeChoice));
+          setAcceptedDappFeeRequest(
+            Boolean(
+              currentGenericFeeChoice &&
+                evmDappFeeChoiceMatches(transaction, currentGenericFeeChoice)
+            )
+          );
           setFeeRecommendationOnly(comparison.recommendationOnly);
           quotedApprovalDataRef.current = txForEstimation.data;
           setHasGasError(false);

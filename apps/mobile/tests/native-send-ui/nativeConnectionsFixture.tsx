@@ -31,6 +31,7 @@ const controller: NativeConnectionsView = {
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
+  async chooseTransactionFee() { throw new Error('Fee choices are unavailable for this fixture'); },
   async editApprovalAmount() { throw new Error('Transaction editing is outside this fixture'); },
   getSnapshot: () => snapshot,
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },

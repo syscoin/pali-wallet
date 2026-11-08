@@ -60,6 +60,7 @@ export function NativeMessageReviewFixture() {
     async disconnect() { throw new Error('Connections are outside this fixture'); },
     async retry() { throw new Error('Connections are outside this fixture'); },
     cancel() { throw new Error('Connections are outside this fixture'); },
+    async chooseTransactionFee() { throw new Error('Fee choices are unavailable for this fixture'); },
     async editApprovalAmount() { throw new Error('Transaction editing is outside this fixture'); },
     async activateRequestAccount(...args) {
       calls.push({ method: 'activateRequestAccount', args });

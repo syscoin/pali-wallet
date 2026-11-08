@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-const fixture = 'http://127.0.0.1:4179/?transaction-review=1';
+const fixture = `${process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179'}/?transaction-review=1`;
+test.use({ hasTouch: true });
 
 test('shows exact amounts and inspectable transaction details on a narrow screen', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
@@ -174,5 +175,193 @@ test('unrelated controller revisions preserve an allowance draft and its confirm
   expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())).toEqual([
     { method: 'editApprovalAmount', args: ['transaction-1', 8, '1.5'] },
     { method: 'approveRequest', args: ['transaction-1', 9, false] },
+  ]);
+});
+
+test("fee choices remain reachable by keyboard and touch at 320px and require a fresh Confirm", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 480 });
+  await page.goto(`${fixture}&fees=recommendation&font-scale=1.6`);
+  await expect(
+    page.getByRole("heading", { name: "Below estimate", exact: true })
+  ).toBeVisible();
+  const appFee = page.getByRole("button", {
+    name: "Use dapp fee anyway",
+    exact: true,
+  });
+  const networkFee = page.getByRole("button", {
+    name: "Use network suggestion",
+    exact: true,
+  });
+  for (const button of [appFee, networkFee]) {
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeInViewport({ ratio: 0.999 });
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  }
+  for (let attempt = 0; attempt < 12; attempt++) {
+    await page.keyboard.press("Tab");
+    if (await appFee.evaluate((element) => element === document.activeElement))
+      break;
+  }
+  await expect(appFee).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(networkFee).toBeFocused();
+  await page.screenshot({
+    path: test.info().outputPath("fee-choices-320.png"),
+    fullPage: true,
+  });
+  await page.keyboard.press("Enter");
+  await expect(appFee).toHaveCount(0);
+  await expect(
+    page.getByText("0.000000000000504 COIN", { exact: true })
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+  ).toEqual([
+    { method: "chooseTransactionFee", args: ["transaction-1", 7, "network"] },
+  ]);
+  await page
+    .getByRole("button", { name: "Confirm transaction", exact: true })
+    .click();
+  expect(
+    await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+  ).toEqual([
+    { method: "chooseTransactionFee", args: ["transaction-1", 7, "network"] },
+    { method: "approveRequest", args: ["transaction-1", 9, false] },
+  ]);
+});
+
+test("adjusted fees expose only the app choice and hold both choice and Confirm during preparation", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 360 });
+  await page.goto(`${fixture}&fees=adjusted&hold-fee=1`);
+  await expect(
+    page.getByRole("heading", { name: "Fee adjusted", exact: true })
+  ).toBeVisible();
+  const appFee = page.getByRole("button", {
+    name: "Use dapp fee anyway",
+    exact: true,
+  });
+  const confirm = page.getByRole("button", {
+    name: "Confirm transaction",
+    exact: true,
+  });
+  await expect(
+    page.getByRole("button", { name: "Use network suggestion", exact: true })
+  ).toHaveCount(0);
+  await appFee.scrollIntoViewIfNeeded();
+  await expect(appFee).toBeInViewport({ ratio: 0.999 });
+  await appFee.tap();
+  await expect(appFee).toBeDisabled();
+  await expect(confirm).toBeDisabled();
+  expect(
+    await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+  ).toEqual([
+    { method: "chooseTransactionFee", args: ["transaction-1", 7, "dapp"] },
+  ]);
+  await page.evaluate(() =>
+    window.__nativeTransactionReviewFixture.releaseFeeChoice()
+  );
+  await expect(appFee).toHaveCount(0);
+  await expect(confirm).toBeEnabled();
+  expect(
+    await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+  ).toHaveLength(1);
+});
+
+for (const mode of ["switch", "broadcasting", "invalid-origin"]) {
+  test(`fee choices are disabled for ${mode}`, async ({ page }) => {
+    await page.goto(`${fixture}&fees=recommendation&${mode}=1`);
+    await expect(
+      page.getByRole("button", { name: "Use dapp fee anyway", exact: true })
+    ).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Use network suggestion", exact: true })
+    ).toBeDisabled();
+    expect(
+      await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+    ).toEqual([]);
+  });
+}
+
+test("an expired held fee choice cannot revive confirmation", async ({
+  page,
+}) => {
+  await page.goto(`${fixture}&fees=recommendation&hold-fee=1`);
+  await page
+    .getByRole("button", { name: "Use network suggestion", exact: true })
+    .click();
+  await page.evaluate(() => window.__nativeTransactionReviewFixture.expire());
+  await page.evaluate(() =>
+    window.__nativeTransactionReviewFixture.releaseFeeChoice()
+  );
+  await expect(
+    page.getByRole("button", { name: "Use dapp fee anyway", exact: true })
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Confirm transaction", exact: true })
+  ).toBeDisabled();
+  expect(
+    await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+  ).toEqual([
+    { method: "chooseTransactionFee", args: ["transaction-1", 7, "network"] },
+  ]);
+});
+
+test("the review deadline disables fee choices and Confirm before another command", async ({
+  page,
+}) => {
+  await page.clock.install({ time: new Date("2026-11-08T12:00:00Z") });
+  await page.goto(`${fixture}&fees=recommendation`);
+  const appFee = page.getByRole("button", {
+    name: "Use dapp fee anyway",
+    exact: true,
+  });
+  const confirm = page.getByRole("button", {
+    name: "Confirm transaction",
+    exact: true,
+  });
+  await expect(appFee).toBeEnabled();
+  await expect(confirm).toBeEnabled();
+  await page.clock.fastForward(300001);
+  await expect(appFee).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Use network suggestion", exact: true })
+  ).toBeDisabled();
+  await expect(confirm).toBeDisabled();
+  expect(
+    await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+  ).toEqual([]);
+});
+
+test("a requote that raises the requested choice keeps the adjustment visible without another automatic command", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 480 });
+  await page.goto(`${fixture}&fees=recommendation&raise-after-choice=1`);
+  await page
+    .getByRole("button", { name: "Use network suggestion", exact: true })
+    .click();
+  await expect(
+    page.getByRole("heading", { name: "Fee adjusted", exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText("0.0000000000006 COIN", { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Use dapp fee anyway", exact: true })
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Use network suggestion", exact: true })
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Confirm transaction", exact: true })
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
+  ).toEqual([
+    { method: "chooseTransactionFee", args: ["transaction-1", 7, "network"] },
   ]);
 });

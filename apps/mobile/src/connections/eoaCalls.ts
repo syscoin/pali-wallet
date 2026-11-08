@@ -3,6 +3,7 @@ import {
   type EoaCallsProgress,
 } from '../../../../source/wallet/evmCallsSequence.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
+import type { EvmDappFeeChoiceFields } from '../../../../source/shared/evmDappFeePolicy.ts';
 import type { DappCallsRequest } from '../../../../source/shared/dappCalls.ts';
 import type { NativeConnectionHost } from './host.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
@@ -49,6 +50,7 @@ export function createNativeEoaCalls(
       >
     | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
+  let reviewRequest: Readonly<Record<string, unknown>> | undefined;
   let state: NativeEoaCallsSnapshot = Object.freeze({
     revision: 0,
     phase: 'preparing',
@@ -111,6 +113,7 @@ export function createNativeEoaCalls(
     publish({ phase: 'preparing', prepared: null });
     const waiting = ready();
     let initial: NativePreparedConnectionTransaction | undefined;
+    let initialRequest: Readonly<Record<string, unknown>> | undefined;
     const firstIndex = state.progress.findIndex(
       (item) => item?.status !== 'success'
     );
@@ -123,11 +126,12 @@ export function createNativeEoaCalls(
         async nonce() {
           const first = input.calls.calls[index];
           if (!first) throw new Error('No remaining call');
-          initial = await input.prepare({
+          initialRequest = Object.freeze({
             ...first,
             from: input.calls.from,
             chainId: input.calls.chainId,
           });
+          initial = await input.prepare(initialRequest);
           check();
           return Number(BigInt(initial.transaction.nonce));
         },
@@ -135,6 +139,9 @@ export function createNativeEoaCalls(
         async prepare(transaction, callIndex) {
           check();
           publish({ phase: 'preparing', index: callIndex, prepared: null });
+          reviewRequest = Object.freeze({
+            ...(initial && callIndex === index ? initialRequest : transaction),
+          });
           const prepared =
             initial && callIndex === index
               ? initial
@@ -266,13 +273,57 @@ export function createNativeEoaCalls(
       };
     },
     start,
+    async requote(revision: number, fields: EvmDappFeeChoiceFields) {
+      check();
+      const consent = decision;
+      if (
+        state.phase !== 'review' ||
+        state.revision !== revision ||
+        !state.prepared ||
+        !consent ||
+        !reviewRequest ||
+        state.prepared.expiresAtMonotonicMilliseconds <= performance.now()
+      )
+        throw new Error('REVIEW_REQUIRED');
+      const previous = state.prepared;
+      const transaction: Record<string, unknown> = {
+        ...reviewRequest,
+        ...fields,
+      };
+      delete transaction.gas;
+      publish({ phase: 'preparing', prepared: null });
+      try {
+        const prepared = await input.prepare(transaction);
+        check();
+        if (
+          decision !== consent ||
+          prepared.transaction.nonce !== previous.transaction.nonce
+        )
+          throw new Error('REVIEW_REQUIRED');
+        const remaining = Math.min(
+          input.expiresAt - Date.now(),
+          prepared.expiresAtMonotonicMilliseconds - performance.now()
+        );
+        if (remaining <= 0) throw new Error('REVIEW_EXPIRED');
+        clearTimeout(expiry);
+        expiry = setTimeout(
+          () => consent.reject(new Error('REVIEW_EXPIRED')),
+          remaining
+        );
+        publish({ phase: 'review', prepared });
+      } catch (error) {
+        consent.reject(error);
+        throw error;
+      }
+    },
     async approve(revision: number) {
       check();
       if (
         state.phase !== 'review' ||
         state.revision !== revision ||
         !state.prepared ||
-        !decision
+        !decision ||
+        state.prepared.expiresAtMonotonicMilliseconds <= performance.now()
       )
         throw new Error('REVIEW_REQUIRED');
       const waiting = ready();

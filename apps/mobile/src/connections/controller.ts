@@ -1,4 +1,9 @@
 import {
+  evmDappFeeChoiceMatches,
+  selectEvmDappFeeChoice,
+  type EvmDappFeeChoice,
+} from '../../../../source/shared/evmDappFeePolicy.ts';
+import {
   normalizeDappCallsRequest,
   assertDappCallsAtomicSupport,
   createSmartAccountCallsExecutions,
@@ -274,6 +279,10 @@ export class NativeConnectionsController {
         }),
       activateRequestAccount: (id, revision) =>
         this.perform(() => this.activateRequestAccount(id, revision), {
+          owner: this.requests.get(id),
+        }),
+      chooseTransactionFee: (id, revision, choice) =>
+        this.perform(() => this.chooseTransactionFee(id, revision, choice), {
           owner: this.requests.get(id),
         }),
       editApprovalAmount: (id, revision, amount) =>
@@ -1639,6 +1648,8 @@ export class NativeConnectionsController {
         ...(isTransactionRequest(request)
           ? {
               kind: 'transaction' as const,
+              feeComparison: null,
+              feeChoice: null,
               method: request.method,
               transaction: null,
               maximumFeeUnits: null,
@@ -1823,6 +1834,9 @@ export class NativeConnectionsController {
       const prepared = snapshot.prepared;
       message.busy = snapshot.phase === 'preparing' || snapshot.phase === 'submitting';
       message.review = Object.freeze({ ...message.review, kind: 'transaction', method: 'wallet_sendCalls',
+        feeComparison: prepared?.feeComparison ?? null,
+        feeChoice: message.review.kind === 'transaction' && prepared?.transaction === message.review.transaction
+          ? message.review.feeChoice : null,
         transaction: prepared?.transaction ?? null, maximumFeeUnits: prepared?.maximumFeeUnits ?? null,
         maximumTotalUnits: prepared?.maximumTotalUnits ?? null, approval: prepared?.approval ?? null,
         symbol: this.host!.context().network.currency, decimals: 18, broadcastHash: message.broadcastHash ?? null,
@@ -2005,6 +2019,8 @@ export class NativeConnectionsController {
     message.review = Object.freeze({
       ...message.review,
       transaction: prepared.transaction,
+      feeComparison: prepared.feeComparison,
+      feeChoice: null,
       maximumFeeUnits: prepared.maximumFeeUnits,
       maximumTotalUnits: prepared.maximumTotalUnits,
       approval: prepared.approval,
@@ -2016,6 +2032,89 @@ export class NativeConnectionsController {
     message.timer = setTimeout(() => {
       void this.retireRequest(message);
     }, Math.max(0, expiresAt - Date.now()));
+  }
+  private async chooseTransactionFee(
+    id: string,
+    revision: number,
+    choice: EvmDappFeeChoice
+  ) {
+    const message = this.requests.get(id);
+    if (choice !== 'dapp' && choice !== 'network')
+      return failure('UNSUPPORTED_REQUEST');
+    if (
+      !message ||
+      revision !== this.revision ||
+      this.requests.values().next().value !== message ||
+      message.review.kind !== 'transaction' ||
+      message.dispatched ||
+      (message.broadcastHash && !message.eoa)
+    )
+      return failure('REQUEST_EXPIRED');
+    if (message.busy || this.action) return failure('BUSY');
+    if (
+      message.review.error ||
+      this.host!.context().activeAccountId !== message.accountId ||
+      !isTransactionRequest(message.request)
+    )
+      return failure('UNSUPPORTED_REQUEST');
+    const prepared = message.eoa?.getSnapshot().prepared ?? message.prepared;
+    const approval = message.approval;
+    if (
+      !prepared ||
+      !approval ||
+      !message.review.transaction ||
+      prepared.transaction !== message.review.transaction ||
+      prepared.expiresAtMonotonicMilliseconds <= performance.now()
+    )
+      return failure('REQUEST_EXPIRED');
+    approval.assertCurrent();
+    const fields = selectEvmDappFeeChoice(
+      prepared.transaction,
+      prepared.feeComparison,
+      choice
+    );
+    message.busy = true;
+    this.publish();
+    try {
+      if (message.eoa) {
+        const state = message.eoa.getSnapshot();
+        await message.eoa.requote(state.revision, fields);
+      } else {
+        if (message.request.method !== 'eth_sendTransaction')
+          return failure('UNSUPPORTED_REQUEST');
+        const transaction: ReturnType<typeof normalizeDappTransaction> = {
+          ...message.request.transaction,
+          ...fields,
+        };
+        delete transaction.gas;
+        message.prepared = undefined;
+        message.request = { ...message.request, transaction };
+        await this.prepareTransactionReview(message);
+      }
+      approval.assertCurrent();
+      if (message.review.kind === 'transaction') {
+        const updated = message.eoa?.getSnapshot().prepared ?? message.prepared;
+        const honored = updated &&
+          evmDappFeeChoiceMatches(updated.transaction, fields);
+        message.review = Object.freeze({
+          ...message.review,
+          feeChoice: honored ? choice : null,
+        });
+      }
+      message.busy = false;
+      this.publish();
+    } catch (error) {
+      if (this.requestConnectionCurrent(message)) {
+        message.busy = false;
+        if (!message.eoa)
+          message.review = Object.freeze({
+            ...message.review,
+            error: 'TRANSACTION_UNAVAILABLE',
+          });
+        this.publish();
+      } else await this.retireRequest(message);
+      throw error;
+    }
   }
   private async editApprovalAmount(
     id: string,

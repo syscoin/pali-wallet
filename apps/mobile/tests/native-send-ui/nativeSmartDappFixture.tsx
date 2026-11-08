@@ -213,6 +213,7 @@ export function NativeSmartDappFixture() {
       calls.push({ method: 'rejectRequest', args });
       setReview(null);
     },
+    async chooseTransactionFee() { throw new Error('Fee choices are unavailable for this fixture'); },
     async editApprovalAmount(...args) {
       calls.push({ method: 'editApprovalAmount', args });
       const units = parseApprovalAmount(args[2], metadata.token.decimals);

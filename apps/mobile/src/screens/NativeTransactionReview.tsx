@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { EvmDappFeeChoice } from '../../../../source/shared/evmDappFeePolicy';
 import type { NativeConnectionsView, NativeTransactionReview } from '../connections/types';
 import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
@@ -45,6 +46,16 @@ export function NativeTransactionReviewScreen({ review, controller }: {
   review: NativeTransactionReview;
   controller: NativeConnectionsView;
 }) {
+  const expiryKey = `${review.id}:${review.expiresAt}`;
+  const [expiredKey, setExpiredKey] = useState<string | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(
+      () => setExpiredKey(expiryKey),
+      Math.max(0, review.expiresAt - Date.now())
+    );
+    return () => clearTimeout(timer);
+  }, [expiryKey, review.expiresAt]);
+  const expired = expiredKey === expiryKey;
   const [acceptedRevision, setAcceptedRevision] = useState<number | null>(null);
   const [detailsRevision, setDetailsRevision] = useState<number | null>(null);
   const [expandedCalls, setExpandedCalls] = useState<string | null>(null);
@@ -78,7 +89,40 @@ export function NativeTransactionReviewScreen({ review, controller }: {
 
   const transaction = review.transaction;
   const prepared = transaction !== null && review.maximumFeeUnits !== null && review.maximumTotalUnits !== null;
+  const comparison = review.feeComparison;
+  const showFeeChoices =
+    review.feeChoice === null &&
+    comparison !== null &&
+    Boolean(
+      comparison.gasLimit ||
+        comparison.gasPrice ||
+        comparison.maxFeePerGas ||
+        comparison.maxPriorityFeePerGas
+    );
+  const feeChoicesDisabled =
+    editingApproval ||
+    review.busy ||
+    submitted ||
+    review.needsAccountSwitch ||
+    review.error !== null ||
+    expired;
+  const chooseFee = (choice: EvmDappFeeChoice) => {
+    const current = controller.getSnapshot().signingReview;
+    if (
+      feeChoicesDisabled ||
+      review.expiresAt <= Date.now() ||
+      current?.kind !== 'transaction' ||
+      current.id !== review.id ||
+      current.revision !== review.revision ||
+      current.busy
+    )
+      return;
+    void controller
+      .chooseTransactionFee(review.id, review.revision, choice)
+      .catch(() => undefined);
+  };
   const approve = () => {
+    if (expired || review.expiresAt <= Date.now()) return;
     if (approvalDraftRef.current?.id === review.id && approvalDraftRef.current.transaction === review.transaction) return;
     const action = review.needsAccountSwitch
       ? controller.activateRequestAccount(review.id, review.revision)
@@ -115,6 +159,34 @@ export function NativeTransactionReviewScreen({ review, controller }: {
       <Text selectable style={s.account}>{review.maximumFeeUnits === null ? 'Calculating…' : amount(review.maximumFeeUnits)}</Text>
       <Text style={s.label}>Maximum total</Text>
       <Text selectable style={s.account}>{review.maximumTotalUnits === null ? 'Calculating…' : amount(review.maximumTotalUnits)}</Text>
+      {showFeeChoices && comparison && (
+        <View style={s.feeNotice}>
+          <Text accessibilityRole="header" style={s.feeTitle}>
+            {comparison.recommendationOnly
+              ? 'Below estimate'
+              : 'Fee adjusted'}
+          </Text>
+          <Text style={s.feeDescription}>
+            {comparison.recommendationOnly
+              ? 'This fee is below the current estimate. The transaction may stay pending or fail.'
+              : 'The dapp requested a fee below the current estimate. Pali raised it to reduce the chance of a stuck transaction.'}
+          </Text>
+          <Button
+            title="Use dapp fee anyway"
+            variant="quiet"
+            disabled={feeChoicesDisabled}
+            onPress={() => chooseFee('dapp')}
+          />
+          {comparison.recommendationOnly && (
+            <Button
+              title="Use network suggestion"
+              variant="quiet"
+              disabled={feeChoicesDisabled}
+              onPress={() => chooseFee('network')}
+            />
+          )}
+        </View>
+      )}
       <Button title={detailsVisible ? 'Hide transaction details' : 'View transaction details'} variant="quiet"
         expanded={detailsVisible} onPress={() => setDetailsRevision(detailsVisible ? null : review.revision)} />
     </Card>}
@@ -156,7 +228,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
     {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
       <Text>{submitted ? 'Sending transaction…' : transaction ? 'Please wait…' : 'Preparing transaction…'}</Text></View>}
     {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm transaction'}
-      disabled={editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
+      disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
         (!retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} />}
     <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
   </Screen></KeyboardAvoidingView></SafeAreaView>;
@@ -173,6 +245,20 @@ const s = StyleSheet.create({
   label: { fontSize: 12, lineHeight: 17, color: colors.muted },
   address: { fontSize: 13, lineHeight: 20, color: colors.muted },
   muted: { fontSize: 14, lineHeight: 22, color: colors.muted },
+  feeNotice: {
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.amber,
+    borderRadius: 12,
+    padding: 12,
+  },
+  feeTitle: {
+    fontSize: 16,
+    lineHeight: 23,
+    fontWeight: '600',
+    color: colors.amber,
+  },
+  feeDescription: { fontSize: 14, lineHeight: 21 },
   sectionTitle: { fontSize: 18, lineHeight: 25, fontWeight: '600' },
   payload: { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontSize: 12, lineHeight: 19 },
   pagination: { flexDirection: 'row', gap: 8 },

@@ -188,6 +188,7 @@ export function NativeGuardianRecoveryFixture() {
                     maxPriorityFeePerGas: '0x3b9aca00',
                     accessList: [],
                   },
+                  feeComparison: { recommendationOnly: true },
                   maximumFeeUnits: '100000000000000',
                   maximumTotalUnits: '100000000000000',
                   coveredFeeUnits: '0',
