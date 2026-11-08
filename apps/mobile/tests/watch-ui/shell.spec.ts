@@ -454,7 +454,7 @@ test('all four labels remain whole, operable and unclipped at 320px with large b
     if (name === 'Settings') {
       await page.getByRole('button', { name: 'Help & about', exact: false }).click();
       await expect(page.getByRole('heading', { name: 'Help & about', exact: true })).toBeVisible();
-      await expect(page.getByText('Biometric unlock and connected apps are not available. Use only test wallets and testnet funds.', { exact: true })).toBeVisible();
+      await expect(page.getByText('Native features are under qualification. Use only test wallets and testnet funds.', { exact: true })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Copy support link', exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
       await page.screenshot({ path: testInfo.outputPath('help-about-320-large.png'), fullPage: true });

@@ -21,7 +21,8 @@ internal class SocketRegistry(private val limit: Int = 8) {
 
   fun attach(connection: Connection, socket: WebSocket) {
     val cancel = synchronized(this) {
-      if (connections[connection.id] !== connection || connection.finished || connection.closing) {
+      if (connections[connection.id] !== connection || connection.finished ||
+        (connection.closing && (!connection.opened || connection.socket !== socket))) {
         true
       } else {
         check(connection.socket == null || connection.socket === socket)
