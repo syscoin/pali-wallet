@@ -13,6 +13,8 @@ import {
 } from './networkContext.ts';
 import { ACCOUNT_RECORD_KEY, decodeAccountRecord as decodeStorageValue, encodeAccountRecord as encodeStorageValue } from '../storage/accountRecordKey.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
+import { getFirstCompatibleAccountForNetwork, isAccountCompatibleWithNetwork } from '../../../../source/utils/accountCompatibility.ts';
+import { requireSmartAccountAddressIdentity } from '../../../../source/utils/smartAccount/addressIdentity.ts';
 import { nativeAccountId, parseNativeAccountId } from './accountIdentity.ts';
 import {
   assertImportedRecoveryAccount,
@@ -32,6 +34,7 @@ import type {
   StagedAccountRecovery,
 } from '../../../../source/wallet/accountRecovery.ts';
 import type {
+  INetworkType,
   IKeyringAccountState,
   KeyringAccountType as SharedAccountType,
 } from '../../../../source/types/network.ts';
@@ -42,7 +45,8 @@ const KeyringAccountType =
 export const WALLET_CATALOGUE_KEY = ACCOUNT_RECORD_KEY;
 export type NativeCatalogueAccount = Readonly<{
   id: string;
-  type: 'HDAccount' | 'Imported';
+  type: 'HDAccount' | 'Imported' | 'SmartAccount';
+  smartAccount?: Readonly<{ chainId: number; isDeployed: boolean; managementAddress: string }>;
   index: number;
   slip44: number;
   address: string;
@@ -79,6 +83,7 @@ export type NativeAccountRecord = Readonly<{
 }>;
 export type CatalogueMutation =
   | Readonly<{ kind: 'create'; account: IKeyringAccountState }>
+  | Readonly<{ kind: 'create-smart'; account: IKeyringAccountState }>
   | Readonly<{
       kind: 'import';
       account: IKeyringAccountState;
@@ -279,6 +284,12 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
             account.isSmartAccount)
         )
           return invalid();
+        if (type === 'SmartAccount') {
+          if (network.kind !== 'ethereum' || !account.isSmartAccount || account.isImported || account.isLedgerWallet || account.isTrezorWallet || account.xprv !== '' ||
+              !Number.isSafeInteger(account.smartAccount?.chainId) || account.smartAccount!.chainId < 1)
+            return invalid();
+          requireSmartAccountAddressIdentity({ address: account.address, xpub: account.xpub, smartAccount: account.smartAccount }, account.smartAccount!.chainId);
+        }
         if (
           network.kind === 'ethereum' &&
           ['HDAccount', 'Imported'].includes(type) &&
@@ -348,6 +359,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     !group || selected.slip44 !== group.activeNetwork.slip44 || !account
   )
     return invalid();
+  if (selected.type === 'SmartAccount' && account.smartAccount?.chainId !== Number(getNativeNetwork(active.networkId, catalogueEvmNetworks(record)).chainId)) return invalid();
   if (utxo) {
     const identity = parseUtxoPublicIdentifier(account.xpub, utxo);
     if (identity.kind !== (account.xpub === account.address ? 'address' : 'account') ||
@@ -360,26 +372,31 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     active: Object.freeze({ ...active }),
   });
 }
-function publicAccounts(group: RecoveryAccountGroup): NativeCatalogueAccount[] {
+function publicAccounts(group: RecoveryAccountGroup, chainId?: number): NativeCatalogueAccount[] {
   const slip44 = group.activeNetwork.slip44;
-  return (['HDAccount', 'Imported'] as const).flatMap((type) =>
+  const accounts: NativeCatalogueAccount[] = (['HDAccount', 'Imported'] as const).flatMap((type) =>
     Object.values(group.accounts[type]).map((account) => Object.freeze({
-      id: nativeAccountId(type, account.id, slip44),
-      type,
-      index: account.id,
-      slip44,
-      address: account.address,
-      label: account.label,
-      ...(group.activeNetwork.kind === 'syscoin' && type === 'Imported' &&
-        account.xpub !== account.address ? { utxoExtended: true as const } : {}),
+      id: nativeAccountId(type, account.id, slip44), type, index: account.id, slip44,
+      address: account.address, label: account.label,
+      ...(group.activeNetwork.kind === 'syscoin' && type === 'Imported' && account.xpub !== account.address ? { utxoExtended: true as const } : {}),
     }))
   );
+  if (chainId !== undefined) for (const account of Object.values(group.accounts.SmartAccount)) {
+    const metadata = account.smartAccount!;
+    if (metadata.chainId !== chainId) continue;
+    const managementAddress = /^pali:eip155:\d+:(0x[0-9a-f]{40}):smart-account-v1$/.exec(metadata.descriptor!.anchor)![1]!;
+    accounts.push(Object.freeze({ id: nativeAccountId('SmartAccount', account.id), type: 'SmartAccount', index: account.id,
+      slip44: 60, address: account.address, label: account.label,
+      smartAccount: Object.freeze({ chainId, isDeployed: metadata.isDeployed === true, managementAddress }),
+    }));
+  }
+  return accounts;
 }
 function projection(record: NativeAccountRecord): NativeWalletCatalogueSnapshot {
   const group = catalogueAccountGroup(record) ?? invalid();
   return Object.freeze({
     revision: record.revision,
-    accounts: Object.freeze(publicAccounts(group)),
+    accounts: Object.freeze(publicAccounts(group, group.activeNetwork.kind === 'ethereum' ? Number(getNativeNetwork(record.active.networkId, catalogueEvmNetworks(record)).chainId) : undefined)),
     networks: Object.freeze(catalogueEvmNetworks(record)),
     utxoNetworks: catalogueUtxoNetworks(record.networks),
     active: record.active,
@@ -538,11 +555,11 @@ export class NativeWalletCatalogue {
         networks = [...next.networks],
         recovery = [...next.recovery],
         groups = [...next.groups];
-      if (mutation.kind === 'create' || mutation.kind === 'import') {
+      if (mutation.kind === 'create' || mutation.kind === 'create-smart' || mutation.kind === 'import') {
         const type =
-          mutation.kind === 'create'
-            ? KeyringAccountType.HDAccount
-            : KeyringAccountType.Imported;
+          mutation.kind === 'create' ? KeyringAccountType.HDAccount
+            : mutation.kind === 'create-smart' ? KeyringAccountType.SmartAccount : KeyringAccountType.Imported;
+        if (type === KeyringAccountType.SmartAccount && (group.activeNetwork.kind !== 'ethereum' || mutation.account.smartAccount?.chainId !== Number(getNativeNetwork(active.networkId, catalogueEvmNetworks(next)).chainId))) return invalid();
         assertAccountCreationAvailable(
           group.accounts,
           type,
@@ -621,8 +638,16 @@ export class NativeWalletCatalogue {
           groups.push(target);
         }
         if (!target) return invalid();
-        const accountId = target === group ? active.accountId
-          : nativeAccountId(target.activeAccount.type as 'HDAccount' | 'Imported', target.activeAccount.id, target.activeNetwork.slip44);
+        let selection = target === group ? parseNativeAccountId(active.accountId) : { type: target.activeAccount.type, index: target.activeAccount.id };
+        if (!utxo) {
+          const network = { kind: 'ethereum' as INetworkType, chainId: Number(getNativeNetwork(mutation.id, catalogueEvmNetworks(next)).chainId), slip44: 60 };
+          if (!isAccountCompatibleWithNetwork(target.accounts[selection.type][selection.index], selection.type, network)) {
+            const compatible = getFirstCompatibleAccountForNetwork(target.accounts, network) ?? invalid();
+            selection = { type: compatible.type, index: compatible.id };
+          }
+        }
+        setActiveAccountRecord(target as { activeAccount: typeof target.activeAccount }, { type: selection.type as SharedAccountType, id: selection.index });
+        const accountId = nativeAccountId(selection.type as 'HDAccount' | 'Imported' | 'SmartAccount', selection.index, target.activeNetwork.slip44);
         active = { accountId, networkId: mutation.id };
       } else {
         const selected = parseNativeAccountId(mutation.id),

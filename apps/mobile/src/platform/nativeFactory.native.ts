@@ -53,6 +53,9 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
   });
   return createKeyringRuntimeFactory({
     assertActive,
+    prepareSmartAccount(network, accountIndex, managementAddress, signal, guard) {
+      return new EvmTransferReadRpc(network, { fetch: walletFetch }).prepareSmartAccount(accountIndex, managementAddress, signal, guard);
+    },
     readEvmRetirement(network, method, params, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).retirementRead(method, params, signal, guard);
     },
@@ -148,6 +151,7 @@ export function createNativeWalletControllers() {
     getContextRevision: () => authority.getSnapshot().revision,
     subscribe: (listener: () => void) => authority.subscribe(() => listener()),
     execute: (...args: Parameters<NativeAccountView['execute']>) => authority.manageAccounts(...args),
+    supportsSmartAccounts: () => runtime?.accounts?.supportsSmartAccounts?.() === true,
     cancel: () => authority.cancelAccountOperation(),
   });
   const imports: NativeImportView = Object.freeze({

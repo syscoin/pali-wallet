@@ -219,3 +219,16 @@ test('Imported selection is advisory, kind-bound and separate from watch and HD 
     { kind: 'imported', id: 'imported:60:9007199254740992' }, { kind: 'imported', id: 'imported:60:00' }])
     assert.throws(() => parseAccountSelection(selection));
 });
+
+
+test('smart accounts retain a distinct picker identity and receive-only capability', () => {
+  const smart = { id: 'smart:60:0', index: 0, type: 'SmartAccount', slip44: 60, label: 'Smart', address: '0x1111111111111111111111111111111111111111', smartAccount: { chainId: 1, isDeployed: false, managementAddress: '0x2222222222222222222222222222222222222222' } } as const;
+  const catalogue = { accounts: [smart] } as unknown as import('../src/custody/walletCatalogue.ts').NativeWalletCatalogueSnapshot;
+  const entry = projectAccounts(catalogue, [])[0]!;
+  assert.deepEqual(entry.selection, { kind: 'smart', id: smart.id });
+  assert.equal(entry.identity, 'smart/smart:60:0');
+  assert.equal(entry.capabilities.signing, 'unavailable');
+  assert.deepEqual(parseAccountSelection(entry.selection), entry.selection);
+  assert.throws(() => parseAccountSelection({ kind: 'hd', id: smart.id }));
+  assert.throws(() => parseAccountSelection({ kind: 'imported', id: smart.id }));
+});

@@ -5,11 +5,7 @@ import {
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
 } from './account';
-import {
-  getPaliModuleAddress,
-  PaliAuthenticatorModuleId,
-  PALI_MODULE_REGISTRY,
-} from './contracts';
+import { getPaliModuleAddress, PaliAuthenticatorModuleId } from './contracts';
 
 export type PaliSmartAccountTemplateId =
   | 'comanaged-passkey-ecdsa'
@@ -27,24 +23,10 @@ export type PaliModuleInstallTemplate = {
   }>;
 };
 
-export const isSLHDSAOffscreenSignerSupported = () =>
-  typeof TARGET_BROWSER === 'undefined' || TARGET_BROWSER === 'chrome';
-
-export const getAvailablePaliModules = (chainId: number) =>
-  PALI_MODULE_REGISTRY.map((entry) => {
-    const address = getPaliModuleAddress(chainId, entry.id);
-    const supported =
-      Boolean(address) &&
-      (entry.id !== 'slh-dsa' || isSLHDSAOffscreenSignerSupported());
-    return {
-      capability: entry.capability,
-      displayName: entry.displayName,
-      id: entry.id,
-      kind: entry.kind,
-      moduleType: entry.moduleType,
-      supported,
-    };
-  });
+export {
+  getAvailablePaliModules,
+  isSLHDSAOffscreenSignerSupported,
+} from './capabilities';
 
 export const createPasskeyDefaultTemplate = (params: {
   chainId: number;

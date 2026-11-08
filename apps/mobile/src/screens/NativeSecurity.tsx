@@ -9,7 +9,7 @@ type Props = {
   keyExport: HdKeyExportFlow;
   keyFormat: 'evm' | { kind: 'wif' | 'extended'; networkLabel: string; addressType: string } | null;
   accountId: string;
-  accountType: 'HDAccount' | 'Imported';
+  accountType: 'HDAccount' | 'Imported' | 'SmartAccount';
   accountLabel: string;
   address: string;
   onViewRecovery(): void;
