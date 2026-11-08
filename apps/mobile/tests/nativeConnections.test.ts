@@ -1,3 +1,4 @@
+import type { EvmDappFeeComparison } from '../../../source/shared/evmDappFeePolicy.ts';
 import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
 import { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import assert from 'node:assert/strict';
@@ -38,6 +39,8 @@ const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
     capabilities?: boolean;
+    feeComparison?: EvmDappFeeComparison;
+    minimumGasLimit?: string;
     batch?: boolean;
     smart?: boolean;
     imported?: boolean;
@@ -235,14 +238,17 @@ function fixture(
         beforePreparedReturn?.();
         return { operation, approval: summarizeApproval(intent.data, intent.recipient, approvalMetadata) };
       }
+      const legacy = value.type === '0x0' || value.type === 0 || value.gasPrice !== undefined;
       const transaction = snapshotPreparedEvmTransaction({
         from: ADDRESS, to: value.to ?? null, chainId: '1', value: BigInt(value.value as string ?? '0').toString(),
-        data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? '0').toString(), gasLimit: '50000',
-        type: 2, accessList: value.accessList ?? [], maxFeePerGas: '10', maxPriorityFeePerGas: '1',
+        data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? '0').toString(), gasLimit: (BigInt(value.gasLimit as string ?? '50000') < BigInt(options.minimumGasLimit ?? '0') ? BigInt(options.minimumGasLimit!) : BigInt(value.gasLimit as string ?? '50000')).toString(),
+        ...(legacy ? { type: 0, gasPrice: BigInt(value.gasPrice as string ?? '10').toString() }
+          : { type: 2, accessList: value.accessList ?? [], maxFeePerGas: BigInt(value.maxFeePerGas as string ?? '10').toString(), maxPriorityFeePerGas: BigInt(value.maxPriorityFeePerGas as string ?? '1').toString() }),
       });
       const fee = captureEvmFeeApproval(transaction, 'fixture', Math.floor(performance.now()) + 60000);
       return {
         transaction,
+        feeComparison: options.feeComparison ?? { recommendationOnly: true },
         maximumFeeUnits: fee.maximumFeeUnits,
         coveredFeeUnits: '0',
         maximumTotalUnits: fee.maximumTotalUnits,
@@ -1367,6 +1373,8 @@ for (const retirement of [
 async function connectedFixture(
   options: {
     capabilities?: boolean;
+    feeComparison?: EvmDappFeeComparison;
+    minimumGasLimit?: string;
     batch?: boolean;
     smart?: boolean;
     imported?: boolean;
@@ -3020,4 +3028,268 @@ test('Smart response handoff rechecks expiry after the transport wait', async ()
     assert.equal(f.signatures.length, 1);
     assert.equal(f.handedOff.some((row: any) => row.result.result), false);
   } finally { Date.now = now; release?.(); await f.controller.dispose(); }
+});
+
+const feeComparisonFixture = {
+  maxFeePerGas: {
+    requested: '9007199254740993',
+    recommended: '9007199254740995',
+  },
+  maxPriorityFeePerGas: { requested: '0', recommended: '2' },
+  recommendationOnly: true,
+};
+
+test('fee choice requotes exact base units and consumes only a fresh confirmation', async () => {
+  const f = await connectedFixture({ feeComparison: feeComparisonFixture });
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [
+      {
+        from: ADDRESS,
+        to: ADDRESS,
+        maxFeePerGas: feeComparisonFixture.maxFeePerGas.requested,
+        maxPriorityFeePerGas: '0',
+      },
+    ]);
+    assert(review?.kind === 'transaction');
+    assert.deepEqual(review.feeComparison, feeComparisonFixture);
+    await f.view.chooseTransactionFee(review.id, review.revision, 'network');
+    const next = f.view.getSnapshot().signingReview;
+    assert(next?.kind === 'transaction');
+    assert.equal(next.feeChoice, 'network');
+    assert.equal(
+      next.transaction?.type === 2 && next.transaction.maxFeePerGas,
+      '9007199254740995'
+    );
+    assert.equal(f.transactions.length, 0);
+    assert.equal(
+      f.preparedTransactions.at(-1)?.maxFeePerGas,
+      '9007199254740995'
+    );
+    await assert.rejects(
+      f.view.approveRequest(review.id, review.revision, false),
+      { message: 'REQUEST_EXPIRED' }
+    );
+    await f.view.approveRequest(next.id, f.view.getSnapshot().revision, false);
+    assert.equal(f.transactions.length, 1);
+    assert.equal((f.transactions[0] as any).maxFeePerGas, '9007199254740995');
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('a fee choice finishing after a network round trip cannot revive an old review', async () => {
+  const f = await connectedFixture({ feeComparison: feeComparisonFixture });
+  const gate = Promise.withResolvers<void>();
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [
+      { from: ADDRESS, to: ADDRESS },
+    ]);
+    assert(review?.kind === 'transaction');
+    f.setPreparationWait(gate.promise);
+    const pending = f.view.chooseTransactionFee(
+      review.id,
+      review.revision,
+      'network'
+    );
+    await settle();
+    assert.equal(f.view.getSnapshot().signingReview?.busy, true);
+    f.selectChain(2);
+    f.selectChain(1);
+    gate.resolve();
+    await assert.rejects(pending);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.transactions.length, 0);
+  } finally {
+    gate.resolve();
+    await f.controller.dispose();
+  }
+});
+
+test('EOA batch fee choices reset for the next call and retain the acknowledged prefix', async () => {
+  const f = await connectedFixture({
+    batch: true,
+    feeComparison: feeComparisonFixture,
+  });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [
+      {
+        version: '2.0.0',
+        id: '0xfee1',
+        atomicRequired: false,
+        calls: [
+          { to: ADDRESS, value: '0x1' },
+          { to: ADDRESS, value: '0x2' },
+        ],
+      },
+    ]);
+    assert(review?.kind === 'transaction');
+    await f.view.chooseTransactionFee(review.id, review.revision, 'network');
+    let current = f.view.getSnapshot().signingReview;
+    assert(current?.kind === 'transaction');
+    assert.equal(current.feeChoice, 'network');
+    await f.view.approveRequest(current.id, current.revision, false);
+    current = f.view.getSnapshot().signingReview;
+    assert(current?.kind === 'transaction' && current.batch?.index === 1);
+    assert.equal(current.feeChoice, null);
+    assert.equal(f.transactions.length, 1);
+    const stored = await (
+      await f.repository
+    ).calls.getStoredSendCallsBundle(ORIGIN, '0xfee1');
+    const hashes = [...stored!.txHashes];
+    await f.view.chooseTransactionFee(current.id, current.revision, 'dapp');
+    current = f.view.getSnapshot().signingReview;
+    assert(current?.kind === 'transaction');
+    assert.equal(current.batch?.index, 1);
+    assert.deepEqual(
+      (
+        await (
+          await f.repository
+        ).calls.getStoredSendCallsBundle(ORIGIN, '0xfee1')
+      )?.txHashes,
+      hashes
+    );
+    assert.equal(f.transactions.length, 1);
+    await f.view.approveRequest(current.id, current.revision, false);
+    assert.equal(f.transactions.length, 2);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('invalid and stale fee choices never prepare or submit a transaction', async () => {
+  const f = await connectedFixture({ feeComparison: feeComparisonFixture });
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [
+      { from: ADDRESS, to: ADDRESS },
+    ]);
+    assert(review?.kind === 'transaction');
+    const prepared = f.preparedTransactions.length;
+    await assert.rejects(
+      f.view.chooseTransactionFee('other', review.revision, 'network'),
+      { message: 'REQUEST_EXPIRED' }
+    );
+    await assert.rejects(
+      f.view.chooseTransactionFee(review.id, review.revision - 1, 'network'),
+      { message: 'REQUEST_EXPIRED' }
+    );
+    await assert.rejects(
+      f.view.chooseTransactionFee(
+        review.id,
+        f.view.getSnapshot().revision,
+        'unknown' as 'network'
+      ),
+      { message: 'UNSUPPORTED_REQUEST' }
+    );
+    assert.equal(f.preparedTransactions.length, prepared);
+    assert.equal(f.transactions.length, 0);
+  } finally {
+    await f.controller.dispose();
+  }
+});
+
+test('a second fee choice cannot overtake an in-flight requote', async () => {
+  const f = await connectedFixture({ feeComparison: feeComparisonFixture });
+  const gate = Promise.withResolvers<void>();
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [
+      { from: ADDRESS, to: ADDRESS },
+    ]);
+    assert(review?.kind === 'transaction');
+    f.setPreparationWait(gate.promise);
+    const pending = f.view.chooseTransactionFee(
+      review.id,
+      review.revision,
+      'network'
+    );
+    await settle();
+    await assert.rejects(
+      f.view.chooseTransactionFee(
+        review.id,
+        f.view.getSnapshot().revision,
+        'dapp'
+      ),
+      { message: 'BUSY' }
+    );
+    gate.resolve();
+    await pending;
+    assert.equal(f.preparedTransactions.length, 2);
+    assert.equal(f.transactions.length, 0);
+  } finally {
+    gate.resolve();
+    await f.controller.dispose();
+  }
+});
+
+for (const batch of [false, true]) {
+  test(`a ${
+    batch ? 'batch' : 'single'
+  } requote keeps its adjustment when the selected gas cannot be honored`, async () => {
+    const f = await connectedFixture({
+      batch,
+      minimumGasLimit: '60000',
+      feeComparison: {
+        gasLimit: { requested: '21000', recommended: '60000' },
+        recommendationOnly: false,
+      },
+    });
+    try {
+      const review = await messageRequest(
+        f,
+        batch ? 'wallet_sendCalls' : 'eth_sendTransaction',
+        batch
+          ? [
+              {
+                version: '2.0.0',
+                id: '0xfef1',
+                atomicRequired: false,
+                calls: [{ to: ADDRESS, value: '0x1' }],
+              },
+            ]
+          : [{ from: ADDRESS, to: ADDRESS, gas: '0x5208' }]
+      );
+      assert(review?.kind === 'transaction');
+      await f.view.chooseTransactionFee(review.id, review.revision, 'dapp');
+      const current = f.view.getSnapshot().signingReview;
+      assert(current?.kind === 'transaction');
+      assert.equal(current.transaction?.gasLimit, '60000');
+      assert.equal(current.feeChoice, null);
+      assert.equal(current.feeComparison?.recommendationOnly, false);
+      assert.deepEqual(current.feeComparison?.gasLimit, {
+        requested: '21000',
+        recommended: '60000',
+      });
+      assert.equal(f.transactions.length, 0);
+      await f.view.approveRequest(current.id, current.revision, false);
+      assert.equal((f.transactions[0] as any).gasLimit, '60000');
+    } finally {
+      await f.controller.dispose();
+    }
+  });
+}
+
+test('a legacy fee choice stays legacy through the native reprepare and submission path', async () => {
+  const f = await connectedFixture({
+    feeComparison: {
+      gasPrice: { requested: '1500000000', recommended: '2000000000' },
+      recommendationOnly: true,
+    },
+  });
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [
+      { from: ADDRESS, to: ADDRESS, gasPrice: '1500000000' },
+    ]);
+    assert(review?.kind === 'transaction');
+    await f.view.chooseTransactionFee(review.id, review.revision, 'network');
+    const current = f.view.getSnapshot().signingReview;
+    assert(current?.kind === 'transaction');
+    assert.equal(current.transaction?.type, 0);
+    assert.equal(current.feeChoice, 'network');
+    assert(current.transaction?.type === 0);
+    assert.equal(current.transaction.gasPrice, '2000000000');
+    assert(!('maxFeePerGas' in current.transaction));
+    await f.view.approveRequest(current.id, current.revision, false);
+    assert.equal((f.transactions[0] as any).gasPrice, '2000000000');
+  } finally {
+    await f.controller.dispose();
+  }
 });

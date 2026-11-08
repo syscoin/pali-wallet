@@ -1,6 +1,7 @@
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
-import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { getEvmProtocolLimits } from '@sidhujag/sysweb3-network/cjs/evm.js';
+
+import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
 export type EvmDappFeeRequest = Readonly<{
   gasPrice?: bigint;
@@ -94,12 +95,51 @@ export type EvmDappFeeComparison = Readonly<{
   recommendationOnly: boolean;
 }>;
 
+export type EvmDappFeeChoice = 'dapp' | 'network';
 export type EvmDappFeeChoiceFields = Readonly<
   { gasLimit: string } & (
     | { gasPrice: string }
     | { maxFeePerGas: string; maxPriorityFeePerGas: string }
   )
 >;
+
+/** Fee choices reuse the exact captured quote amounts and require another review. */
+export function selectEvmDappFeeChoice(
+  transaction: PreparedEvmTransaction,
+  comparison: EvmDappFeeComparison,
+  choice: EvmDappFeeChoice
+): EvmDappFeeChoiceFields {
+  if (choice !== 'dapp' && choice !== 'network')
+    throw new Error('Invalid fee choice');
+  const selected = (
+    field: EvmDappFeeAdjustment | undefined,
+    fallback: string
+  ) =>
+    uint256(
+      BigInt(
+        field
+          ? field[choice === 'network' ? 'recommended' : 'requested']
+          : fallback
+      )
+    ).toString();
+  const gasLimit = selected(comparison.gasLimit, transaction.gasLimit);
+  if (gasLimit === '0') throw new Error('Invalid gas limit');
+  return Object.freeze({
+    gasLimit,
+    ...(transaction.type === 0
+      ? { gasPrice: selected(comparison.gasPrice, transaction.gasPrice) }
+      : {
+          maxFeePerGas: selected(
+            comparison.maxFeePerGas,
+            transaction.maxFeePerGas
+          ),
+          maxPriorityFeePerGas: selected(
+            comparison.maxPriorityFeePerGas,
+            transaction.maxPriorityFeePerGas
+          ),
+        }),
+  });
+}
 
 /** A fresh quote may raise requested fields again to satisfy execution bounds. */
 export function evmDappFeeChoiceMatches(

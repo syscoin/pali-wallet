@@ -20,6 +20,8 @@ import {
 import { parseErc20Decimals } from '../../shared/erc20';
 import {
   evmDappFeeChoiceMatches,
+  selectEvmDappFeeChoice,
+  type EvmDappFeeChoice,
   type EvmDappFeeChoiceFields,
   type EvmDappFeeComparison,
 } from '../../shared/evmDappFeePolicy';
@@ -458,7 +460,7 @@ export const SendTransaction = () => {
     );
   }, [customFee, fee, isLegacyTransaction]);
 
-  const applyGenericFeeChoice = (recommended: boolean) => {
+  const applyGenericFeeChoice = (choice: EvmDappFeeChoice) => {
     const current = genericFeeView;
     if (
       !canEditTransaction() ||
@@ -467,36 +469,20 @@ export const SendTransaction = () => {
       current.key !== genericFeeKeyRef.current
     )
       return;
-    const transaction = current.quote.transaction;
-    const comparison = current.quote.feeComparison;
-    const selected = (
-      field: { recommended: string; requested: string } | undefined,
-      fallback: string
-    ) => (field ? field[recommended ? 'recommended' : 'requested'] : fallback);
     setGenericFeeChoice({
       requestKey: genericFeeRequestKey,
-      fields: {
-        gasLimit: selected(comparison.gasLimit, transaction.gasLimit),
-        ...(transaction.type === 0
-          ? { gasPrice: selected(comparison.gasPrice, transaction.gasPrice) }
-          : {
-              maxFeePerGas: selected(
-                comparison.maxFeePerGas,
-                transaction.maxFeePerGas
-              ),
-              maxPriorityFeePerGas: selected(
-                comparison.maxPriorityFeePerGas,
-                transaction.maxPriorityFeePerGas
-              ),
-            }),
-      },
+      fields: selectEvmDappFeeChoice(
+        current.quote.transaction,
+        current.quote.feeComparison,
+        choice
+      ),
     });
   };
 
   const handleUseDappFeeRequest = () => {
     if (!canEditTransaction() || !fee) return;
     if (!activeAccount.isSmartAccount) {
-      applyGenericFeeChoice(false);
+      applyGenericFeeChoice('dapp');
       return;
     }
 
@@ -533,7 +519,7 @@ export const SendTransaction = () => {
   const handleUseNetworkFeeSuggestion = () => {
     if (!canEditTransaction() || !fee) return;
     if (!activeAccount.isSmartAccount) {
-      applyGenericFeeChoice(true);
+      applyGenericFeeChoice('network');
       return;
     }
     setCustomFee({

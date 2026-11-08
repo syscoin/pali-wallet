@@ -170,6 +170,7 @@ export function NativeSmartBatchFixture() {
       retry: unavailable,
       cancel: unavailable,
       activateRequestAccount: unavailable,
+      async chooseTransactionFee() { throw new Error('Fee choices are unavailable for this fixture'); },
       editApprovalAmount: unavailable,
       async approveRequest(...args) {
         const review = current.current.review;

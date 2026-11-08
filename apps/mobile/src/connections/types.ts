@@ -1,3 +1,4 @@
+import type { EvmDappFeeChoice, EvmDappFeeComparison } from '../../../../source/shared/evmDappFeePolicy.ts';
 import type { NativeSmartAccountOperationSnapshot } from '../smartAccount/operation.ts';
 import type { WalletConnectVerification } from './walletConnect.ts';
 import type { DappMessageMethod } from '../../../../source/shared/dappMessageRequest.ts';
@@ -71,6 +72,8 @@ export type NativeMessageReview = NativeSigningReviewBase &
 export type NativeTransactionReview = NativeSigningReviewBase &
   Readonly<{
     kind: 'transaction';
+    feeComparison: EvmDappFeeComparison | null;
+    feeChoice: EvmDappFeeChoice | null;
     method: 'eth_sendTransaction' | 'wallet_sendCalls';
     transaction: PreparedEvmTransaction | null;
     maximumFeeUnits: string | null;
@@ -162,6 +165,7 @@ export type NativeConnectionsView = Readonly<{
   ): Promise<void>;
   rejectRequest(id: string): Promise<void>;
   activateRequestAccount(id: string, revision: number): Promise<void>;
+  chooseTransactionFee(id: string, revision: number, choice: EvmDappFeeChoice): Promise<void>;
   editApprovalAmount(
     id: string,
     revision: number,

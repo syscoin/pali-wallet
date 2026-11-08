@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { NativeConnectionsView, NativeTransactionReview } from '../../src/connections/types';
 import { NativeTransactionReviewScreen } from '../../src/screens/NativeTransactionReview';
 import { Text } from '../../src/ui';
@@ -17,6 +17,16 @@ const metadata: ApprovalContractMetadata | undefined = approvalKind === 'erc20'
   : approvalKind === 'nft' ? { standard: 'ERC-721' }
   : approvalKind === 'operator' ? { standard: 'ERC-1155' } : undefined;
 const initialReview: NativeTransactionReview = {
+  feeComparison: query.has('fees')
+    ? {
+        maxFeePerGas: { requested: '10', recommended: '20' },
+        ...(query.get('fees') === 'adjusted'
+          ? { gasLimit: { requested: '21000', recommended: '25200' } }
+          : {}),
+        recommendationOnly: query.get('fees') !== 'adjusted',
+      }
+    : null,
+  feeChoice: null,
   kind: 'transaction', method: 'eth_sendTransaction', id: 'transaction-1', revision: 7,
   appName: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings',
   address: '0x2222222222222222222222222222222222222222', networkLabel: 'Custom network',
@@ -44,15 +54,18 @@ const calls: { method: string; args: unknown[] }[] = [];
 
 declare global {
   interface Window {
-    __nativeTransactionReviewFixture: { calls(): typeof calls; revise(): void };
+    __nativeTransactionReviewFixture: { calls(): typeof calls; revise(): void; expire(): void; releaseFeeChoice(): void };
   }
 }
 
 export function NativeTransactionReviewFixture() {
+  const releaseFeeChoice = useRef<(() => void) | null>(null);
   const [review, setReview] = useState<NativeTransactionReview | null>(initialReview);
   useLayoutEffect(() => {
     window.__nativeTransactionReviewFixture = {
       calls: () => calls,
+      releaseFeeChoice: () => releaseFeeChoice.current?.(),
+      expire: () => setReview((current) => current && { ...current, revision: current.revision + 1, expiresAt: Date.now() - 1, error: 'TRANSACTION_UNAVAILABLE' }),
       revise: () => setReview((current) => current && { ...current, revision: current.revision + 1 }),
     };
   }, []);
@@ -61,6 +74,50 @@ export function NativeTransactionReviewFixture() {
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
+    async chooseTransactionFee(...args) {
+      calls.push({ method: 'chooseTransactionFee', args });
+      setReview(
+        (current) =>
+          current && { ...current, revision: current.revision + 1, busy: true }
+      );
+      if (query.has('hold-fee'))
+        await new Promise<void>((resolve) => {
+          releaseFeeChoice.current = resolve;
+        });
+      setReview((current) =>
+        current && current.error === null
+          ? {
+              ...current,
+              revision: current.revision + 1,
+              busy: false,
+              feeChoice: query.has('raise-after-choice') ? null : args[2],
+              feeComparison: query.has('raise-after-choice')
+                ? {
+                    gasLimit: { requested: '25200', recommended: '30000' },
+                    recommendationOnly: false,
+                  }
+                : current.feeComparison,
+              maximumFeeUnits: query.has('raise-after-choice')
+                ? '600000'
+                : args[2] === 'network'
+                ? '504000'
+                : '252000',
+              maximumTotalUnits: query.has('raise-after-choice')
+                ? '1234567890123456789612345'
+                : args[2] === 'network'
+                ? '1234567890123456789516345'
+                : '1234567890123456789264345',
+              transaction: current.transaction && {
+                ...current.transaction,
+                gasLimit: query.has('raise-after-choice')
+                  ? '30000'
+                  : current.transaction.gasLimit,
+                maxFeePerGas: args[2] === 'network' ? '20' : '10',
+              },
+            }
+          : current
+      );
+    },
     async editApprovalAmount(...args) {
       calls.push({ method: 'editApprovalAmount', args });
       const current = review, summary = current?.approval;
