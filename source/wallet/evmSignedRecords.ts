@@ -1,3 +1,8 @@
+import {
+  decodeRetainedSmartAccountTransfer,
+  isSmartAccountActivityCandidate,
+  type RetainedSmartAccountTransfer,
+} from './smartAccountActivity.ts';
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { getAddress } from 'ethers/address';
 import { sha256 } from 'ethers/crypto';
@@ -1962,6 +1967,90 @@ export class EvmSignedRecords {
       });
     });
   }
+  readSmartAccountActivity(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    options: Readonly<{
+      maximum: number;
+      beforeHash?: string;
+    }>
+  ): Promise<
+    Readonly<{
+      transfers: readonly RetainedSmartAccountTransfer[];
+      nextCursor: string | null;
+      total: number;
+    }>
+  > {
+    const owner = getAddress(address);
+    const { maximum, beforeHash } = options;
+    if (
+      !Number.isSafeInteger(maximum) ||
+      maximum < 1 ||
+      maximum > 48 ||
+      (beforeHash !== undefined && !HASH.test(beforeHash))
+    )
+      throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const candidates = (bundle?.entries ?? []).filter(
+        (entry) =>
+          entry.chainId === chainId &&
+          isSmartAccountActivityCandidate(entry, owner)
+      );
+      const end =
+        beforeHash === undefined
+          ? candidates.length
+          : candidates.findIndex((entry) => entry.hash === beforeHash);
+      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      const visible = candidates.slice(0, end);
+      const start = Math.max(0, visible.length - maximum),
+        transfers: RetainedSmartAccountTransfer[] = [];
+      for (const entry of visible.slice(start).reverse()) {
+        const decoded = decodeRetainedSmartAccountTransfer(
+          await this.materialize(session, entry),
+          owner
+        );
+        if (decoded) transfers.push(decoded);
+      }
+      guard(session);
+      return Object.freeze({
+        transfers: Object.freeze(transfers),
+        total: candidates.length,
+        nextCursor: start > 0 ? visible[start]!.hash : null,
+      });
+    });
+  }
+
+  readSmartAccountActivityExact(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    hash: string
+  ): Promise<RetainedSmartAccountTransfer | null> {
+    const owner = getAddress(address);
+    if (!HASH.test(hash)) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+    session = this.captureSession(session);
+    return this.exclusive(async () => {
+      const id = await profile(session),
+        { bundle } = await this.load(session, id);
+      const entry = bundle?.entries.find(
+        (item) =>
+          item.chainId === chainId &&
+          item.hash === hash &&
+          isSmartAccountActivityCandidate(item, owner)
+      );
+      return entry
+        ? decodeRetainedSmartAccountTransfer(
+            await this.materialize(session, entry),
+            owner
+          )
+        : null;
+    });
+  }
+
   readPage(
     session: EvmSignedRecordSession,
     chainId: string,

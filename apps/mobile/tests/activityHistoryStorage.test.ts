@@ -53,7 +53,7 @@ test('activity reset removes every selected-address alias while preserving other
     const alias = f.record(2, { accountId: 'imported:60:0' });
     const otherAddress = f.record(3, { address: RECIPIENT });
     const otherNetwork = f.record(4, { networkId: network.id, chainId: network.chainId, registrationHash: network.registrationHash });
-    for (const record of [selected, alias, otherAddress, otherNetwork]) await history.archiveTerminal(record, guard);
+    for (const record of [selected, alias, otherAddress, otherNetwork]) await history.recordObservation(record, guard);
     await history.saveCache(f.scope(), [{ hash: selected.hash, blockNumber: '1', timestamp: null, tokenHint: false }], guard);
     await history.saveView(f.scope(1), { filter: 'sent', showZero: false, anchor: selected.hash, offset: 20 }, guard);
     await history.clearScope(f.scope(), guard);
@@ -79,11 +79,11 @@ for (const kind of ['create', 'clear'] as const) test(`activity ${kind} rolls ba
   const check = () => { if (!current) throw Error('CANCELLED'); };
   try {
     const history = f.history();
-    if (kind === 'clear') await history.archiveTerminal(f.record(1), guard);
+    if (kind === 'clear') await history.recordObservation(f.record(1), guard);
     const before = await f.port.get(ACTIVITY_STORAGE_KEY);
     held = true;
     const operation = kind === 'create'
-      ? history.archiveTerminal(f.record(1), check)
+      ? history.recordObservation(f.record(1), check)
       : history.clearScope(f.scope(), check);
     const rejected = assert.rejects(operation, /CANCELLED/);
     await started;
@@ -100,11 +100,11 @@ test('identical archive retries do not rewrite the document and conflicting dupl
   const f = await fixture();
   try {
     const history = f.history(); const record = f.record(1);
-    await history.archiveTerminal(record, guard);
+    await history.recordObservation(record, guard);
     const before = encodeStorageValue(await f.port.get(ACTIVITY_STORAGE_KEY));
-    await history.archiveTerminal({ ...record }, guard);
+    await history.recordObservation({ ...record }, guard);
     assert.equal(encodeStorageValue(await f.port.get(ACTIVITY_STORAGE_KEY)), before);
-    await assert.rejects(history.archiveTerminal({ ...record, amountUnits: '999' }, guard), { code: 'INVALID' });
+    await assert.rejects(history.recordObservation({ ...record, amountUnits: '999' }, guard), { code: 'INVALID' });
     assert.equal(encodeStorageValue(await f.port.get(ACTIVITY_STORAGE_KEY)), before);
   } finally { await f.cleanup(); }
 });
@@ -114,7 +114,7 @@ test('ERC20 archive preserves reviewed full-range metadata without retaining tra
   try {
     const token = { contractAddress: TOKEN, decimals: 255, symbol: '😀'.repeat(64), name: '😀'.repeat(128) };
     const record = f.record(1, { recipient: RECIPIENT, amountUnits: '1234567', maximumFeeUnits: '100000', token });
-    await f.history().archiveTerminal(record, guard);
+    await f.history().recordObservation(record, guard);
     await f.reopen();
     const [archived] = (await f.history().load(f.scope(), guard)).archived;
     assert.equal(archived?.recipient, RECIPIENT); assert.equal(archived?.amountUnits, '1234567');
@@ -139,9 +139,9 @@ test('archive rejects malformed or unsafe ERC20 metadata without persisting it',
     ];
     const history = f.history();
     for (const metadata of invalid)
-      await assert.rejects(async () => history.archiveTerminal(f.record(1, { token: metadata }), guard));
+      await assert.rejects(async () => history.recordObservation(f.record(1, { token: metadata }), guard));
     let accessed = false;
-    await assert.rejects(async () => history.archiveTerminal(f.record(1, { token: {
+    await assert.rejects(async () => history.recordObservation(f.record(1, { token: {
       ...token, get symbol() { accessed = true; return 'TOK'; },
     } }), guard));
     assert.equal(accessed, false);
@@ -153,7 +153,7 @@ test('archive retention is bounded and discloses count pruning while preserving 
   const f = await fixture();
   try {
     const history = f.history();
-    for (let index = 1; index <= 50; index++) await history.archiveTerminal(f.record(index), guard);
+    for (let index = 1; index <= 50; index++) await history.recordObservation(f.record(index), guard);
     const snapshot = await history.load(f.scope(), guard);
     assert.equal(snapshot.archived.length, 48);
     assert.equal(snapshot.truncated, true);
@@ -168,13 +168,13 @@ test('byte pruning stays inside the global document budget with explicit coverag
   try {
     const history = f.history();
     const token = { contractAddress: TOKEN, decimals: 255, name: '\uffff'.repeat(128), symbol: '\uffff'.repeat(32) };
-    for (let index = 1; index <= 48; index++) await history.archiveTerminal(f.record(index, {
+    for (let index = 1; index <= 48; index++) await history.recordObservation(f.record(index, {
       token, amountUnits: '9'.repeat(78), maximumFeeUnits: '9'.repeat(78),
     }), guard);
     for (let index = 0; index < 20; index++) await history.saveView(f.scope(index), { filter: 'received', showZero: true, anchor: entryHash(index + 1), offset: 9999 }, guard);
     await history.saveCache(f.scope(), Array.from({ length: 24 }, (_, index) => ({ hash: entryHash(100 + index), blockNumber: '9'.repeat(78), timestamp: Number.MAX_SAFE_INTEGER, tokenHint: true })), guard);
     assert.equal((await history.load(f.scope(), guard)).truncated, true, 'byte pressure must be disclosed even before a count cap is exceeded');
-    await history.archiveTerminal(f.record(49, { token, amountUnits: '9'.repeat(78), maximumFeeUnits: '9'.repeat(78) }), guard);
+    await history.recordObservation(f.record(49, { token, amountUnits: '9'.repeat(78), maximumFeeUnits: '9'.repeat(78) }), guard);
     const snapshot = await history.load(f.scope(), guard);
     assert.equal(snapshot.truncated, true);
     assert.equal(snapshot.archived.at(-1)?.hash, entryHash(49));
@@ -212,7 +212,7 @@ test('archive byte cap includes revision digit growth and preserves the newly ar
     assert.equal(bytes(), limit);
     const newest = records.at(-1)!;
     await f.port.set(ACTIVITY_STORAGE_KEY, { ...proposed, archived: records.slice(0, -1) });
-    await f.history().archiveTerminal(newest, guard);
+    await f.history().recordObservation(newest, guard);
     const stored = await f.port.get(ACTIVITY_STORAGE_KEY) as typeof proposed;
     assert.equal(stored.revision, 100);
     assert(new TextEncoder().encode(encodeStorageValue(stored)).length <= limit);
@@ -243,7 +243,7 @@ test('untyped archive commit acknowledgement requires reopen even if the write h
       await f.port.createManyIfAbsent(items); return 1 as unknown as boolean;
     } };
     const history = f.history(port);
-    await assert.rejects(history.archiveTerminal(f.record(1), guard), { code: 'REOPEN_REQUIRED' });
+    await assert.rejects(history.recordObservation(f.record(1), guard), { code: 'REOPEN_REQUIRED' });
     assert.equal(history.requiresReopen, true);
     assert.equal((await f.history().load(f.scope(), guard)).archived.length, 1);
   } finally { await f.cleanup(); }
@@ -256,7 +256,7 @@ test('corrupt persisted history is preserved and never presented as a new empty 
     await f.port.set(ACTIVITY_STORAGE_KEY, corrupt);
     const history = f.history();
     await assert.rejects(history.load(f.scope(), guard), { code: 'INVALID' });
-    await assert.rejects(history.archiveTerminal(f.record(1), guard), { code: 'INVALID' });
+    await assert.rejects(history.recordObservation(f.record(1), guard), { code: 'INVALID' });
     assert.deepEqual(await f.port.get(ACTIVITY_STORAGE_KEY), corrupt);
   } finally { await f.cleanup(); }
 });
@@ -265,8 +265,8 @@ test('imported history retains its own identity across retirement and never appe
   const f = await fixture();
   try {
     const history = f.history();
-    await history.archiveTerminal(f.record(1), guard);
-    await history.archiveTerminal(f.record(2, { accountId: 'imported:60:0' }), guard);
+    await history.recordObservation(f.record(1), guard);
+    await history.recordObservation(f.record(2, { accountId: 'imported:60:0' }), guard);
     assert.deepEqual((await history.load(f.scope(), guard)).archived.map((entry) => entry.hash), [entryHash(1)]);
     const importedScope = createActivityScope(f.fingerprint, 'imported:60:0', wallet.address, 'ethereum');
     assert.deepEqual((await history.load(importedScope, guard)).archived.map((entry) => entry.hash), [entryHash(2)]);
@@ -281,10 +281,10 @@ test('revising an observed outcome preserves immutable archived transaction iden
   const f = await fixture();
   try {
     const history = f.history(), original = f.record(1);
-    await history.archiveTerminal(original, guard);
-    await history.archiveTerminal({ ...original, phase: 'reverted' }, guard);
+    await history.recordObservation(original, guard);
+    await history.recordObservation({ ...original, phase: 'reverted' }, guard);
     assert.equal((await history.load(f.scope(), guard)).archived[0]!.phase, 'reverted');
-    await assert.rejects(history.archiveTerminal({ ...original, phase: 'reverted', amountUnits: '999' }, guard), { code: 'INVALID' });
+    await assert.rejects(history.recordObservation({ ...original, phase: 'reverted', amountUnits: '999' }, guard), { code: 'INVALID' });
     assert.equal((await history.load(f.scope(), guard)).archived[0]!.amountUnits, original.amountUnits);
   } finally { await f.cleanup(); }
 });
@@ -293,7 +293,7 @@ test('empty cache groups stay within the existing limit without changing archive
   const f = await fixture();
   try {
     const history = f.history(), record = f.record(1);
-    await history.archiveTerminal(record, guard);
+    await history.recordObservation(record, guard);
     const archived = encodeStorageValue((await history.load(f.scope(), guard)).archived);
     const pairBefore = [await f.port.get('vault'), await f.port.get('vault-keys')].map(encodeStorageValue);
     for (let index = 0; index < 25; index++) await history.saveCache(f.scope(index), [], guard);
@@ -312,5 +312,23 @@ test('empty cache groups stay within the existing limit without changing archive
     assert.equal(reopened.truncated, true);
     assert.equal(encodeStorageValue((await f.history().load(f.scope(), guard)).archived), archived);
     assert.deepEqual([await f.port.get('vault'), await f.port.get('vault-keys')].map(encodeStorageValue), pairBefore);
+  } finally { await f.cleanup(); }
+});
+
+test('Smart public identity and unresolved observations survive protected history reopen', async () => {
+  const f = await fixture();
+  try {
+    const smartAccount = { payer: wallet.address, operationHash: entryHash(50), operationNonce: '7' };
+    const record = f.record(1, { accountId: 'smart:60:0', smartAccount });
+    await f.history().recordObservation(record, guard);
+    await f.history().recordObservation({ ...record, smartAccount, phase: 'submitted' }, guard);
+    await f.reopen();
+    const scope = createActivityScope(f.fingerprint, record.accountId, record.address, 'ethereum');
+    const saved = await f.history().load(scope, guard);
+    assert.equal(saved.archived[0]!.phase, 'submitted');
+    assert.deepEqual(saved.archived[0]!.smartAccount, smartAccount);
+    await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, operationHash: '0x01' } }, guard));
+    await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, operationNonce: (1n << 256n).toString() } }, guard));
+    await assert.rejects(async () => f.history().recordObservation({ ...record, smartAccount: { ...smartAccount, payer: RECIPIENT } }, guard), { code: 'INVALID' });
   } finally { await f.cleanup(); }
 });

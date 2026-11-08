@@ -1,0 +1,189 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { Wallet, Transaction } from 'ethers';
+import {
+  decodeRetainedSmartAccountTransfer,
+  observeSmartAccountActivity,
+} from '../../../source/wallet/smartAccountActivity.ts';
+import {
+  getPaliEntryPointAddress,
+  paliEntryPointInterface,
+  paliSmartAccountInterface,
+} from '../../../source/utils/smartAccount/contracts.ts';
+import { ERC7579_MODE_SINGLE_DEFAULT } from '../../../source/utils/smartAccount/account.ts';
+import type { EvmRetainedSignedRecord } from '../../../source/wallet/evmSignedRecords.ts';
+
+const account = '0x1111111111111111111111111111111111111111';
+const recipient = '0x2222222222222222222222222222222222222222';
+const payer = new Wallet('0x' + '33'.repeat(32));
+const blockHash = '0x' + '44'.repeat(32);
+async function signed() {
+  const operation = {
+    sender: account,
+    nonce: 7n,
+    initCode: '0x',
+    callData: paliSmartAccountInterface.encodeFunctionData('execute', [
+      ERC7579_MODE_SINGLE_DEFAULT,
+      recipient + 9n.toString(16).padStart(64, '0'),
+    ]),
+    accountGasLimits:
+      '0x' + '00'.repeat(12) + '000186a0' + '00'.repeat(12) + '000186a0',
+    preVerificationGas: 21000,
+    gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03',
+    paymasterAndData: '0x',
+    signature: '0x1234',
+  };
+  const rawTransaction = await payer.signTransaction({
+    chainId: 1,
+    nonce: 0,
+    to: getPaliEntryPointAddress(1),
+    value: 0,
+    gasLimit: 300000,
+    gasPrice: 2,
+    type: 0,
+    data: paliEntryPointInterface.encodeFunctionData('handleOps', [
+      [operation],
+      payer.address,
+    ]),
+  });
+  const tx = Transaction.from(rawTransaction);
+  const entry: EvmRetainedSignedRecord = {
+    chainId: '1',
+    from: payer.address,
+    hash: tx.hash!,
+    nonce: 0,
+    createdAt: 1,
+    phase: 'submitted',
+    operation: 'send',
+    signer: { id: 0, type: 'HDAccount' },
+    rawTransaction,
+    metadata: {
+      smartAccountExecution: true,
+      smartAccountExecutionFrom: account,
+    },
+  };
+  const transfer = decodeRetainedSmartAccountTransfer(entry, account)!;
+  assert(transfer);
+  const observation = {
+    chainId: entry.chainId,
+    hash: entry.hash,
+    payer: entry.from,
+    nonce: entry.nonce,
+    account,
+    operationHash: transfer.operationHash,
+    operationNonce: transfer.operationNonce,
+  };
+  return { entry, transfer, observation };
+}
+
+test('Smart projection authenticates inner amount and identity from the signed outer transaction', async () => {
+  const { entry, transfer } = await signed();
+  assert.equal(transfer.recipient, recipient);
+  assert.equal(transfer.amountUnits, '9');
+  assert.equal(transfer.operationNonce, '7');
+  assert.equal(transfer.entry.from, payer.address);
+  assert.equal(decodeRetainedSmartAccountTransfer(entry, recipient), null);
+  assert.equal(
+    decodeRetainedSmartAccountTransfer({ ...entry, hash: blockHash }, account),
+    null
+  );
+  assert.equal(
+    decodeRetainedSmartAccountTransfer({ ...entry, nonce: 99 }, account),
+    null
+  );
+  assert.equal(
+    decodeRetainedSmartAccountTransfer({ ...entry, from: recipient }, account),
+    null
+  );
+  assert.equal(
+    decodeRetainedSmartAccountTransfer(
+      {
+        ...entry,
+        metadata: { ...entry.metadata, smartAccountOperationHash: blockHash },
+      },
+      account
+    ),
+    null
+  );
+});
+
+for (const success of [true, false])
+  test(`Smart activity observes the inner ${
+    success ? 'successful' : 'failed'
+  } result with one receipt`, async () => {
+    const { transfer, observation: expected } = await signed();
+    let receipts = 0;
+    const event = paliEntryPointInterface.encodeEventLog(
+      paliEntryPointInterface.getEvent('UserOperationEvent')!,
+      [
+        transfer.operationHash,
+        account,
+        '0x' + '00'.repeat(20),
+        7,
+        success,
+        100,
+        50,
+      ]
+    );
+    const observation = await observeSmartAccountActivity(
+      expected,
+      async (method) => {
+        if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_getBlockByNumber')
+          return { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
+        if (method === 'eth_getTransactionReceipt') {
+          receipts++;
+          return {
+            transactionHash: transfer.entry.hash,
+            from: payer.address,
+            to: getPaliEntryPointAddress(1),
+            status: '0x1',
+            blockNumber: '0x10',
+            blockHash,
+            logs: [
+              {
+                ...event,
+                address: getPaliEntryPointAddress(1),
+                transactionHash: transfer.entry.hash,
+                blockHash,
+                blockNumber: '0x10',
+              },
+            ],
+          };
+        }
+        assert.fail(method);
+      },
+      () => undefined
+    );
+    assert.equal(observation.status, 'mined');
+    assert.equal(
+      observation.status === 'mined' && observation.outcome,
+      success ? 'confirmed' : 'reverted'
+    );
+    assert.equal(receipts, 1);
+  });
+
+test('outer success without the exact inner event cannot confirm a Smart transfer', async () => {
+  const { transfer, observation: expected } = await signed();
+  await assert.rejects(
+    observeSmartAccountActivity(
+      expected,
+      async (method) => {
+        if (method === 'eth_chainId') return '0x1';
+        if (method === 'eth_getBlockByNumber')
+          return { number: '0x10', hash: blockHash, gasLimit: '0x100000' };
+        return {
+          transactionHash: transfer.entry.hash,
+          from: payer.address,
+          to: getPaliEntryPointAddress(1),
+          status: '0x1',
+          blockNumber: '0x10',
+          blockHash,
+          logs: [],
+        };
+      },
+      () => undefined
+    ),
+    /outcome unavailable/
+  );
+});

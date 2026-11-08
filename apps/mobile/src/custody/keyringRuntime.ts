@@ -26,6 +26,8 @@ import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod, type EvmSignedRetirementReadForChain } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
+import { observeSmartAccountActivity } from '../../../../source/wallet/smartAccountActivity.ts';
+import { getObservedEvmTerminalPhase } from '../../../../source/shared/evmTransactionObservation.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
 import { createNativeAutomaticNoncePlanner, createNativeSignedRecordView } from './sharedSignedRecords.ts';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
@@ -2258,24 +2260,59 @@ export function createKeyringRuntimeFactory(
               const journal = createNativeSignedRecordView(signedRecords,{keyring,assertCurrent:guard},scope.walletFingerprint,{index,type,address:scope.address},scope.network);
               const recent = await journal.activities(); guard();
               const saved = await activityHistory.load(scope, guard); guard();
+              const locals = type === 'SmartAccount' ? recent.records.map(local => {
+                const archived = saved.archived.find(record => record.hash === local.hash &&
+                  record.recipient === local.recipient && record.amountUnits === local.amountUnits &&
+                  record.maximumFeeUnits === local.maximumFeeUnits && record.nonce === local.nonce &&
+                  record.createdAt === local.createdAt);
+                return archived ? { ...local, phase: archived.phase } : local;
+              }) : recent.records;
               const inventory = await tokens.load({ walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
                 address: scope.address, network: scope.network.id, chainId: scope.network.chainId,
                 registrationHash: scope.network.registrationHash }, guard); guard();
-              return { scope, locals: recent.records, assets: inventory.items,
-                saved: { ...saved, truncated: saved.truncated || recent.truncated } };
+              return { scope, locals, assets: inventory.items,
+                saved: { ...saved, archived: type === 'SmartAccount'
+                  ? saved.archived.map(record => ({ ...record, inspectionOnly: true as const })) : saved.archived,
+                  truncated: saved.truncated || recent.truncated } };
             },
             async loadSavedPending(previousScope, beforeHash, assertCurrent) {
               const { scope, guard, index, type } = await checkActivityContext(previousScope, assertCurrent);
               const journal = createNativeSignedRecordView(signedRecords, { keyring, assertCurrent: guard }, scope.walletFingerprint,
                 { index, type, address: scope.address }, scope.network);
               const page = await journal.pendingActivities(beforeHash); guard();
-              return page;
+              if (type !== 'SmartAccount') return page;
+              const saved = await activityHistory.load(scope, guard); guard();
+              return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')) };
             },
             async observeLocal(local, assertCurrent, signal) {
               const { hash, chainId, address, walletFingerprint } = local;
-              const { scope, guard } = await activityContext(assertCurrent);
-              if (chainId !== scope.network.chainId || address !== scope.address || walletFingerprint !== scope.walletFingerprint)
+              const { scope, guard, type } = await activityContext(assertCurrent);
+              if (chainId !== scope.network.chainId || address !== scope.address || walletFingerprint !== scope.walletFingerprint || local.accountId !== scope.accountId)
                 throw new KeyringRuntimeError('CANCELLED');
+              if (type === 'SmartAccount') {
+                const transfer = await signedRecords.readSmartAccountActivityExact({ keyring, assertCurrent: guard }, chainId, address, hash);
+                guard();
+                const saved = transfer ? null : await activityHistory.load(scope, guard);
+                guard();
+                const record = transfer ? {
+                  walletFingerprint, accountId: scope.accountId, address, networkId: scope.network.id,
+                  registrationHash: scope.network.registrationHash, chainId, hash,
+                  nonce: transfer.entry.nonce, createdAt: transfer.entry.createdAt,
+                  recipient: transfer.recipient, amountUnits: transfer.amountUnits, maximumFeeUnits: transfer.maximumAccountCharge,
+                  smartAccount: { payer: normalizePublicAddress(transfer.entry.from, scope.network.id), operationHash: transfer.operationHash, operationNonce: transfer.operationNonce },
+                } : saved?.archived.find(item => item.hash === hash);
+                if (!record?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
+                const rpc = new EvmTransferReadRpc(scope.network, { fetch: dependencies.connectionFetch ?? walletFetch });
+                const observation = await observeSmartAccountActivity({ chainId, hash, account: address, nonce: record.nonce, ...record.smartAccount },
+                  (method, params) => rpc.retirementRead(method, params, signal, guard), guard);
+                guard();
+                const phase = getObservedEvmTerminalPhase(observation, record.nonce);
+                const observed = phase ? { ...record, phase }
+                  : { ...record, smartAccount: record.smartAccount, phase: 'submitted' as const };
+                await activityHistory.recordObservation(observed, guard);
+                guard();
+                return observation;
+              }
               if (!dependencies.observeActivity) throw new KeyringRuntimeError('NOT_READY');
               const observe = dependencies.observeActivity;
               try {

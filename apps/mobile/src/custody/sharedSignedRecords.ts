@@ -1,6 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
+import type { RetainedSmartAccountTransfer } from '../../../../source/wallet/smartAccountActivity.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
 import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
 import type { NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
@@ -63,6 +64,16 @@ export function createNativeSignedRecordView(
       ...(speedUpEligible ? { speedUpEligible: true as const } : {}),
       ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
   };
+  const smartActivity = (transfer: RetainedSmartAccountTransfer): LocalActivityRecord => Object.freeze({
+    walletFingerprint: walletBindingId, accountId: nativeAccountId(account.type, account.index),
+    address: account.address, networkId: network.id, registrationHash: network.registrationHash,
+    chainId: network.chainId, hash: transfer.entry.hash, nonce: transfer.entry.nonce,
+    createdAt: transfer.entry.createdAt, recipient: transfer.recipient, amountUnits: transfer.amountUnits,
+    maximumFeeUnits: transfer.maximumAccountCharge,
+    // The outer transaction's terminal status does not establish the UserOperation outcome.
+    phase: 'submitted', inspectionOnly: true,
+    smartAccount: Object.freeze({ payer: transfer.entry.from, operationHash: transfer.operationHash, operationNonce: transfer.operationNonce }),
+  });
   return Object.freeze({
     planAutomaticNonce: (...args: Parameters<NativeAutomaticNoncePlanner>) => checked(() => planAutomaticNonce(...args)),
     assertSpendingNonce(nonce: number) {
@@ -91,6 +102,10 @@ export function createNativeSignedRecordView(
     }); },
     async activities():Promise<Readonly<{records: readonly LocalActivityRecord[]; truncated: boolean}>> {
       return checked(async () => {
+        if (account.type === 'SmartAccount') {
+          const page = await records.readSmartAccountActivity(session, network.chainId, account.address, { maximum: LOCAL_ACTIVITY_LIMIT });
+          return Object.freeze({ records: Object.freeze(page.transfers.map(smartActivity)), truncated: page.nextCursor !== null });
+        }
         const recent=await records.readRecent(session,network.chainId,account.address,LOCAL_ACTIVITY_LIMIT);
         const projected=recent.entries.map(activity);
         return Object.freeze({records:Object.freeze(projected),truncated:recent.total>projected.length});
@@ -98,6 +113,11 @@ export function createNativeSignedRecordView(
     },
     pendingActivities(beforeHash?: string) {
       return checked(async () => {
+        if (account.type === 'SmartAccount') {
+          const page = await records.readSmartAccountActivity(session, network.chainId, account.address,
+            { beforeHash, maximum: 20 });
+          return Object.freeze({ records: Object.freeze(page.transfers.map(smartActivity)), nextCursor: page.nextCursor });
+        }
         const page = await records.readPage(session, network.chainId, account.address,
           { beforeHash, maximum: 20, pendingOnly: true });
         return Object.freeze({ records: Object.freeze(page.entries.map(activity)), nextCursor: page.nextCursor });

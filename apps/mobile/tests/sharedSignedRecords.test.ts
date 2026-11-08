@@ -561,3 +561,39 @@ test('unreadable storage and exhausted revision are not local append capacity re
   assert.equal(await exhausted.store.validate(exhausted.session()),1);
   await assertUnbranded(exhausted);
 });
+
+test('Smart activity is a bounded authenticated projection and preserves the outer payer owner', async () => {
+  const { paliEntryPointInterface, paliSmartAccountInterface, getPaliEntryPointAddress } = await import('../../../source/utils/smartAccount/contracts.ts');
+  const { ERC7579_MODE_SINGLE_DEFAULT } = await import('../../../source/utils/smartAccount/account.ts');
+  const f = fixture();
+  const session = f.session(), address = '0x' + '44'.repeat(20), recipient = '0x' + '55'.repeat(20);
+  const inputs = [];
+  for (let nonce = 0; nonce < 3; nonce++) {
+    const operation = { sender: address, nonce, initCode: '0x',
+      callData: paliSmartAccountInterface.encodeFunctionData('execute', [ERC7579_MODE_SINGLE_DEFAULT, recipient + '0'.repeat(63) + '9']),
+      accountGasLimits: '0x' + '00'.repeat(32), preVerificationGas: 1, gasFees: '0x' + '00'.repeat(32), paymasterAndData: '0x', signature: '0x12' };
+    const original = await signed(nonce);
+    const rawTransaction = await signer.signTransaction({ chainId: 7654321, type: 0, nonce,
+      to: getPaliEntryPointAddress(7654321), value: 0, gasPrice: 2, gasLimit: 300000,
+      data: paliEntryPointInterface.encodeFunctionData('handleOps', [[operation], signer.address]) });
+    const input = { ...original, rawTransaction, hash: Transaction.from(rawTransaction).hash!, type: 0 };
+    await f.store.append(session, input, { smartAccountExecution: true, smartAccountExecutionFrom: address });
+    inputs.push(input);
+  }
+  const options = { maximum: 1 };
+  const reading = f.store.readSmartAccountActivity(session, '7654321', address, options);
+  options.maximum = 48;
+  const newest = await reading;
+  assert.equal(newest.total, 3);
+  assert.deepEqual(newest.transfers.map(transfer => transfer.entry.hash), [inputs[2]!.hash]);
+  assert.equal(newest.transfers[0]!.recipient, recipient);
+  assert.equal(newest.transfers[0]!.amountUnits, '9');
+  await f.store.updatePhase(session, '7654321', signer.address, inputs[1]!.hash, 'confirmed');
+  const older = await f.store.readSmartAccountActivity(session, '7654321', address, { maximum: 1, beforeHash: newest.nextCursor! });
+  assert.deepEqual(older.transfers.map(transfer => transfer.entry.hash), [inputs[1]!.hash]);
+  assert.equal((await f.store.readRecent(session, '7654321', address, 10)).entries.length, 0);
+  assert.equal((await f.store.readRecent(session, '7654321', signer.address, 10)).entries.length, 3);
+  assert.equal(await f.store.readSmartAccountActivityExact(session, '7654321', recipient, inputs[0]!.hash), null);
+  assert.equal((await f.store.readSmartAccountActivityExact(session, '7654321', address, inputs[0]!.hash))?.entry.from, signer.address.toLowerCase());
+  assert.equal(await f.store.readExact(session, '7654321', address, inputs[0]!.hash), null);
+});
