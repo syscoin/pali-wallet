@@ -10,6 +10,15 @@ const yaml = require('js-yaml');
 
 const root = path.resolve(__dirname, '../../..');
 
+test('both mobile workflows cover shared proof code, vectors and asset packagers', () => {
+  for (const file of ['mobile.yml', 'mobile-native-qualification.yml']) {
+    const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows', file), 'utf8'));
+    for (const dependency of ['source/scripts/privacyProver/**', 'source/utils/privacy/prover*',
+      'scripts/build-native-private-prover.cjs', 'scripts/prepare-native-private-prover.cjs'])
+      assert(workflow.on.pull_request.paths.includes(dependency), `${file} must include ${dependency}`);
+  }
+});
+
 test('proof key preparation accepts only the fixed URL, bounded body and matching pin', async () => {
   const fixture = Buffer.from('abc');
   const pin = crypto.createHash('sha256').update(fixture).digest('hex');

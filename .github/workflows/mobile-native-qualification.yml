@@ -35,7 +35,7 @@ on:
       - 'apps/mobile/vendor/*.tgz'
       - 'source/shared/**'
       - 'source/scripts/privacyProver/**'
-      - 'source/utils/privacy/prover*.ts'
+      - 'source/utils/privacy/prover*'
       - 'scripts/build-native-private-prover.cjs'
       - 'scripts/prepare-native-private-prover.cjs'
       - 'source/wallet/**'
