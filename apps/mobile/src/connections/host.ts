@@ -1,5 +1,14 @@
 import type { INetwork } from '../../../../source/types/network.ts';
 import type { NativeConnectionRepository } from './storage.ts';
+import type { DappMessageRequest } from '../../../../source/shared/dappMessageRequest.ts';
+import type { createDappMessageApproval } from '../../../../source/wallet/dappMessageApproval.ts';
+
+export type NativeConnectionMessageSigning = Readonly<{
+  accountId: string;
+  networkId: string;
+  request: DappMessageRequest;
+  approval: ReturnType<typeof createDappMessageApproval>;
+}>;
 
 export type NativeConnectionAccount = Readonly<{
   id: string;
@@ -16,6 +25,12 @@ export type NativeConnectionHost = Readonly<{
   walletBindingId: string;
   /** Stable wallet/runtime lifetime, deliberately independent of lock state. */
   assertOwner(): void;
+  sessionGeneration(): number;
+  activateMessageAccount(
+    accountId: string,
+    assertCurrent: () => void
+  ): Promise<void>;
+  signMessage(input: NativeConnectionMessageSigning): Promise<string>;
   context(): Readonly<{
     network: INetwork;
     networkId: string;

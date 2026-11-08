@@ -15,6 +15,7 @@ let snapshot: NativeConnectionsSnapshot = {
   network: { id: 'ethereum', label: 'Ethereum', chainId: '1' },
   proposals: [],
   sessions: [],
+  messageReview: null,
   error: null,
 };
 const calls: { method: string; args: unknown[] }[] = [];
@@ -35,6 +36,9 @@ const controller: NativeConnectionsView = {
   },
   async reject(id) { calls.push({ method: 'reject', args: [id] }); publish({ ...snapshot, proposals: [] }); },
   async disconnect(id) { calls.push({ method: 'disconnect', args: [id] }); publish({ ...snapshot, sessions: [] }); },
+  async approveMessage() { throw new Error('Message signing is outside this fixture'); },
+  async rejectMessage() { throw new Error('Message signing is outside this fixture'); },
+  async activateMessageAccount() { throw new Error('Message signing is outside this fixture'); },
   cancel() { calls.push({ method: 'cancel', args: [] }); publish({ ...snapshot, status: 'ready', proposals: [] }); },
 };
 
@@ -51,7 +55,7 @@ window.__nativeConnectionsFixture = {
   calls: () => calls,
   proposal(allowed = true) {
     publish({ ...snapshot, revision: snapshot.revision + 1, status: 'ready', proposals: [
-      { id: 42, name: 'Example app', origin: 'https://example.invalid', requiredMethods: ['eth_accounts'], canApprove: allowed },
+      { id: 42, name: 'Example app', origin: 'https://example.invalid', verification: { validation: 'VALID', isScam: false }, requiredMethods: ['eth_accounts'], canApprove: allowed },
     ] });
   },
   fail() { publish({ ...snapshot, error: 'CONTEXT_CHANGED' }); },

@@ -73,6 +73,12 @@ async function fixture(existing = true) {
     './walletConnectRuntime': {
       prepareWalletConnectRuntime() { assert.fail('inventory must not prepare WalletConnect'); },
     },
+    '../../../../source/utils/security/blacklistService': {
+      blacklistService: {
+        checkUrl() { assert.fail('inventory must not check sites'); },
+        checkAddress() { assert.fail('inventory must not check addresses'); },
+      },
+    },
     '../connections/controller.ts': { NativeConnectionsController: PassiveController },
     '../custody/authority.ts': { NativeCustodyAuthority, CustodyOperationError },
     '../custody/utxoActivity.ts': { createNativeUtxoActivity: () => ({}) },

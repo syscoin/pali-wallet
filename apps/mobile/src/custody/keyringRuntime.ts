@@ -1,4 +1,5 @@
 import type { NativeConnectionHost } from '../connections/host.ts';
+import { matchesDappMessageRequest, readDappMessageRequest } from '../../../../source/shared/dappMessageRequest.ts';
 import { openNativeConnectionRepository, type NativeConnectionRepository } from '../connections/storage.ts';
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
@@ -1218,6 +1219,116 @@ export function createKeyringRuntimeFactory(
               repository,
               walletBindingId,
               assertOwner,
+              sessionGeneration() {
+                assertOwner();
+                return generation;
+              },
+              async activateMessageAccount(accountId, assertRequestCurrent) {
+                assertOwner();
+                checkGuard(assertRequestCurrent);
+                if (!keyring.isUnlocked() || !catalogueSnapshot)
+                  throw new KeyringRuntimeError('NOT_READY');
+                const selection = accounts.reserve(
+                  { kind: 'select', id: accountId },
+                  catalogueSnapshot.revision
+                );
+                await selection.execute(assertRequestCurrent);
+              },
+              signMessage(input) {
+                assertOwner();
+                const approval = input.approval;
+                const snapshot = catalogueSnapshot;
+                if (!keyring.isUnlocked() || !snapshot)
+                  return Promise.reject(new KeyringRuntimeError('NOT_READY'));
+                const selected = snapshot.accounts.find(
+                  (account) => account.id === snapshot.active.accountId
+                );
+                if (
+                  !selected ||
+                  selected.id !== input.accountId ||
+                  selected.slip44 !== 60 ||
+                  snapshot.active.networkId !== input.networkId ||
+                  !approval ||
+                  typeof approval.assertCurrent !== 'function' ||
+                  typeof approval.bindSigner !== 'function'
+                )
+                  return Promise.reject(new KeyringRuntimeError('INVALID_INPUT'));
+                const params =
+                  input.request?.method === 'personal_sign'
+                    ? [input.request.message, input.request.address]
+                    : [input.request?.address, input.request?.typedData];
+                const request = readDappMessageRequest(
+                  input.request?.method,
+                  params,
+                  selected.address
+                );
+                if (
+                  !request ||
+                  (request.method !== 'personal_sign' &&
+                    (input.request.method === 'personal_sign' ||
+                      request.version !== input.request.version))
+                )
+                  return Promise.reject(new KeyringRuntimeError('INVALID_INPUT'));
+                const ring = keyring,
+                  captured = generation;
+                const account = state.accounts[selected.type][selected.index];
+                const network = getNativeNetwork(
+                  snapshot.active.networkId,
+                  snapshot.networks
+                );
+                const isCurrent = () =>
+                  !closed &&
+                  generation === captured &&
+                  keyring === ring &&
+                  ring.isUnlocked() &&
+                  catalogueSnapshot === snapshot &&
+                  state.activeAccount.id === selected.index &&
+                  state.activeAccount.type === selected.type &&
+                  state.accounts[selected.type][selected.index] === account &&
+                  account?.address === selected.address &&
+                  state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
+                  state.activeNetwork.chainId === Number(network.chainId) &&
+                  state.activeNetwork.url === network.rpcUrl;
+                approval.bindSigner('native-software-message', isCurrent);
+                return run(async (ownerGeneration) => {
+                  const guard = () => {
+                    current(ownerGeneration);
+                    assertOwner();
+                    checkGuard(approval.assertCurrent);
+                    if (!isCurrent()) throw new KeyringRuntimeError('CANCELLED');
+                  };
+                  guard();
+                  const transactions = ring.ethereumTransaction;
+                  const args =
+                    request.method === 'personal_sign'
+                      ? [[request.address, request.message]]
+                      : [request.address, request.typedData, request.version];
+                  if (!matchesDappMessageRequest(request, args))
+                    throw new KeyringRuntimeError('INVALID_INPUT');
+                  const signature =
+                    request.method === 'personal_sign'
+                      ? await transactions.signPersonalMessage([
+                          request.address,
+                          request.message,
+                        ])
+                      : await transactions.signTypedData(
+                          request.address,
+                          request.typedData as Parameters<
+                            typeof transactions.signTypedData
+                          >[1],
+                          request.version as Parameters<
+                            typeof transactions.signTypedData
+                          >[2]
+                        );
+                  guard();
+                  if (
+                    typeof signature !== 'string' ||
+                    !/^0x[0-9a-f]{130}$/i.test(signature)
+                  )
+                    throw new KeyringRuntimeError('OPERATION_FAILED');
+                  return signature;
+                });
+              },
               context() {
                 assertOwner();
                 if (connectionNetworkId === null || connectionNetwork === null) throw new KeyringRuntimeError('NOT_READY');

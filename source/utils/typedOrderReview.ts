@@ -131,7 +131,7 @@ const withinBounds = (value: unknown): boolean => {
     for (const key of keys) {
       if (typeof key !== 'string') return false;
       length += key.length;
-      const descriptor = descriptors[key];
+      const descriptor = descriptors[key]!;
       if (
         length > MAX_INPUT_LENGTH ||
         !descriptor.enumerable ||
@@ -174,8 +174,8 @@ const matchesSchema = (value: unknown, schema: Schema) =>
   value.every(
     (entry, index) =>
       hasKeys(entry, ['name', 'type']) &&
-      entry.name === schema[index][0] &&
-      entry.type === schema[index][1]
+      entry.name === schema[index]![0] &&
+      entry.type === schema[index]![1]
   );
 
 const matchesTypes = (

@@ -5,6 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 import type { NativeConnectionError, NativeConnectionsView } from '../connections/types';
 import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
+import { DappSiteStatus } from './DappSiteStatus';
 
 const ERRORS: Record<NativeConnectionError, string> = {
   INVALID_LINK: 'Copy a WalletConnect link from the app you want to connect to.',
@@ -13,6 +14,9 @@ const ERRORS: Record<NativeConnectionError, string> = {
   UNSUPPORTED_REQUEST: 'This app requested an action that is unavailable for this connection.',
   CONNECTION_UNAVAILABLE: 'The connection service is unavailable. Try again.',
   BUSY: 'Finish the current connection request first.',
+  BLOCKED_SITE: 'This website is on a known phishing list. The connection was blocked.',
+  SITE_MISMATCH: 'The requesting website does not match the app’s claimed address. The connection was blocked.',
+  DELIVERY_UNCERTAIN: 'The signature was handed to WalletConnect, but delivery could not be confirmed. Check the requesting app before trying again.',
 };
 
 /** Receives public state only. Transport keys and signing handles stay in custody. */
@@ -67,6 +71,7 @@ export function NativeConnections({ controller, onBack }: {
         <Text accessibilityRole="header" style={s.title}>Connect to {proposal.name}</Text>
         <Text style={s.label}>Reported website</Text>
         <Text selectable style={s.origin}>{proposal.origin}</Text>
+        <DappSiteStatus verification={proposal.verification} />
         <Text style={s.body}>Share the selected account with this app.</Text>
         {snapshot.network && <Text style={s.network}>{snapshot.network.label} · Chain ID {snapshot.network.chainId}</Text>}
         <View accessibilityRole="radiogroup" accessibilityLabel="Connection account" style={s.accounts}>
@@ -79,7 +84,7 @@ export function NativeConnections({ controller, onBack }: {
             {account.id === selectedAccountId && <Icon name="check" color={colors.blue} size={20} />}
           </IdlePressable>)}
         </View>
-        {!proposal.canApprove && <Notice title="Unsupported request" body="This app requested actions that are unavailable for this connection." />}
+        {!proposal.canApprove && proposal.verification.validation !== 'INVALID' && !proposal.verification.isScam && <Notice title="Unsupported request" body="This app requested actions that are unavailable for this connection." />}
         <Button title={snapshot.status === 'approving' ? 'Connecting…' : 'Connect'}
           disabled={busy || !proposal.canApprove || !selectedAccountId || !snapshot.network}
           onPress={() => {

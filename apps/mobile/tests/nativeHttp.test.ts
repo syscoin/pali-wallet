@@ -321,6 +321,12 @@ test('native factory explicitly wires one owned transport to all network consume
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
+    '../../../../source/utils/security/blacklistService': {
+      blacklistService: {
+        checkUrl() { assert.fail('unexpected site check in factory wiring test'); },
+        checkAddress() { assert.fail('unexpected address check in factory wiring test'); },
+      },
+    },
     '../connections/controller.ts': { NativeConnectionsController: capture('connections') },
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
     '../custody/utxoActivity.ts': {

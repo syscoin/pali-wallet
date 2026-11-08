@@ -47,6 +47,8 @@ import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { RealAppShell, UnavailableActivity, type RealTab } from './RealAppShell';
 import { RealTools } from './RealTools';
+import { NativeMessageReviewScreen } from './NativeMessageReview';
+import type { NativeMessageReview } from '../connections/types';
 import { RealSettings } from './RealSettings';
 import { useRealShell } from './useRealShell';
 
@@ -113,6 +115,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [balanceReader, setBalanceReader] = useState<Controllers['balanceReader'] | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
   const [connectionView, setConnectionView] = useState<Controllers['connections'] | null>(null);
+  const [messageReview, setMessageReview] = useState<NativeMessageReview | null>(null);
   const [networkView, setNetworkView] = useState<NativeNetworkView<EvmNetworkId> | null>(null);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
@@ -252,7 +255,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' ? 'choose' : current);
     }
     setCanRemoveWallet(false);
-    setPublicSource(null); setBalanceReader(null); setAccountView(null); setConnectionView(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setAccountView(null); setConnectionView(null); setMessageReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -293,8 +296,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     setReadNoteInventory(() => local.readNoteInventory ?? null);
     const unsubscribe = local.authority.subscribe(update);
     update(local.authority.getSnapshot());
+    const updateMessage = () => {
+      if (mounted.current && controllers.current === local)
+        setMessageReview(local.connections.getSnapshot().messageReview);
+    };
+    const unsubscribeMessages = local.connections.subscribe(updateMessage);
+    updateMessage();
     const clear = local.backup.onClear(() => { setPresentation(null); setAnswers(['', '', '']); });
-    detachSubscriptions.current = () => { unsubscribe(); clear(); };
+    detachSubscriptions.current = () => { unsubscribe(); unsubscribeMessages(); clear(); };
     setProtectedScreen(true);
   }, [clearSecrets]);
   const install = useCallback(async () => {
@@ -486,6 +495,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     revoke();
     bridge.current?.onSelectWatch(selection);
   };
+  if (stage === 'choose' && snapshot.phase === 'ready' && messageReview && connectionView)
+    return <NativeMessageReviewScreen key={messageReview.id} review={messageReview} controller={connectionView} />;
   if (stage === 'recovery' && recoveryFlow) return <NativeRecovery flow={recoveryFlow} />;
   if (stage === 'remove-wallet' && removalScope) return <NativeWalletRemovalScreen removal={removalScope.local.removal}
     isCurrent={() => removalCurrent(removalScope)} confirm={(ticket, check) => confirmRemoval(removalScope, ticket, check)}

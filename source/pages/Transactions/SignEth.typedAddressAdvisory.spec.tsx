@@ -1,6 +1,6 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { typedDataValidationMiddleware } from 'scripts/Background/controllers/message-handler/middleware/typedDataValidationMiddleware';
@@ -17,6 +17,7 @@ const genericAddresses = {
   delegate: `0x${'66'.repeat(20)}`,
 };
 const mockEmitter = jest.fn();
+const mockTranslate = (key: string) => key;
 const mockAlert = { error: jest.fn(), info: jest.fn(), success: jest.fn() };
 let mockQuery: any;
 let mockFlagged = true;
@@ -46,7 +47,7 @@ jest.mock('react-redux', () => ({
     }),
 }));
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: mockTranslate }),
 }));
 jest.mock('hooks/index', () => ({
   useQueryData: () => mockQuery,
@@ -131,8 +132,9 @@ const prepare = async (
     0: ACCOUNT,
     1: payload,
   };
-  render(<EthSign />);
+  const view = render(<EthSign />);
   await screen.findByRole('button', { name: 'buttons.confirm' });
+  return view;
 };
 
 const checkedAddresses = () =>
@@ -187,6 +189,121 @@ it('does not warn for a known Permit spender with a safe result', async () => {
   await waitFor(() =>
     expect(checkedAddresses()).toEqual([genericAddresses.recipient])
   );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('retains the first high-risk warning when a later address lookup rejects', async () => {
+  let rejectLater!: (error: Error) => void;
+  const unavailable = new Error('lookup unavailable');
+  const errorLog = jest
+    .spyOn(console, 'error')
+    .mockImplementation(() => undefined);
+  mockEmitter
+    .mockResolvedValueOnce({
+      isBlacklisted: true,
+      severity: 'high',
+      reason: 'Known dangerous spender',
+    })
+    .mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectLater = reject;
+        })
+    );
+  try {
+    await prepare(
+      'eth_signTypedData_v4',
+      typedMessage('Permit', {
+        spender: genericAddresses.recipient,
+        to: genericAddresses.delegate,
+      })
+    );
+    await waitFor(() => expect(checkedAddresses()).toHaveLength(2));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Known dangerous spender'
+    );
+    await act(async () => rejectLater(unavailable));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Known dangerous spender'
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      genericAddresses.recipient
+    );
+    expect(errorLog).toHaveBeenCalledWith(
+      'Error checking permit blacklist:',
+      unavailable
+    );
+  } finally {
+    errorLog.mockRestore();
+  }
+});
+
+it('discards an old lookup after the request changes', async () => {
+  let finish!: (result: unknown) => void;
+  mockEmitter.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      })
+  );
+  const view = await prepare(
+    'eth_signTypedData_v4',
+    typedMessage('Permit', { spender: genericAddresses.recipient })
+  );
+  mockFlagged = false;
+  mockQuery = {
+    ...mockQuery,
+    1: typedMessage('Permit', { spender: genericAddresses.delegate }),
+  };
+  view.rerender(<EthSign />);
+  await waitFor(() =>
+    expect(checkedAddresses()).toEqual([
+      genericAddresses.recipient,
+      genericAddresses.delegate,
+    ])
+  );
+  await act(async () =>
+    finish({
+      isBlacklisted: true,
+      severity: 'high',
+      reason: 'Stale request result',
+    })
+  );
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(screen.queryByText('Stale request result')).not.toBeInTheDocument();
+});
+
+it('clears a prior warning on request change while its later lookup is pending', async () => {
+  let rejectLater!: (error: Error) => void;
+  mockEmitter
+    .mockResolvedValueOnce({
+      isBlacklisted: true,
+      severity: 'high',
+      reason: 'Old request warning',
+    })
+    .mockImplementationOnce(
+      () =>
+        new Promise((_, reject) => {
+          rejectLater = reject;
+        })
+    );
+  const view = await prepare(
+    'eth_signTypedData_v4',
+    typedMessage('Permit', {
+      spender: genericAddresses.recipient,
+      to: genericAddresses.delegate,
+    })
+  );
+  expect(screen.getByRole('alert')).toHaveTextContent('Old request warning');
+  mockFlagged = false;
+  mockQuery = {
+    ...mockQuery,
+    1: typedMessage('Permit', { spender: genericAddresses.to }),
+  };
+  view.rerender(<EthSign />);
+  await waitFor(() => expect(checkedAddresses()).toHaveLength(3));
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  await act(async () => rejectLater(new Error('old lookup failed')));
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 

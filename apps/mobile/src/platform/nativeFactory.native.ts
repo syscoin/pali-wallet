@@ -1,5 +1,6 @@
 import { prepareWalletConnectRuntime } from './walletConnectRuntime';
 import { NativeConnectionsController } from '../connections/controller.ts';
+import { blacklistService } from '../../../../source/utils/security/blacklistService';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
 import { custodyIdle, securityPreferences } from './security';
 import { CustodyOperationError, NativeCustodyAuthority } from '../custody/authority.ts';
@@ -104,6 +105,8 @@ export function createNativeWalletControllers() {
       return runtime.openConnectionHost();
     },
     projectId: process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '2385bd7fee9c23847638bb997c6f8409',
+    checkSite: (origin) => blacklistService.checkUrl(origin),
+    checkAddress: (address) => blacklistService.checkAddress(address),
     metadata: { name: 'Pali Wallet', description: 'Pali Wallet', url: 'https://paliwallet.com', icons: [] },
   });
   const removal = new NativeWalletRemoval({

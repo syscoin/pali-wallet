@@ -45,7 +45,7 @@ const isUri = (value: string) => {
   const literal = value.match(
     /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/?#]*?(\[[^\]]+\])/
   );
-  if (!literal || /^\[[vV]/.test(literal[1])) return true;
+  if (!literal || /^\[[vV]/.test(literal[1]!)) return true;
   try {
     new URL(`https://${literal[1]}`); // Validate the IPv6 production, too.
     return true;
@@ -61,10 +61,14 @@ const isDateTime = (value: string) => {
     )
   )
     return false;
-  const [year, month, day] = value.slice(0, 10).split('-').map(Number);
+  const [year, month, day] = value.slice(0, 10).split('-').map(Number) as [
+    number,
+    number,
+    number
+  ];
   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
   const days = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-  return day <= days[month - 1];
+  return day <= days[month - 1]!;
 };
 
 // ERC-4361 domain is an authority, with an optional scheme on the first line.
@@ -72,7 +76,7 @@ const isDateTime = (value: string) => {
 // or a path and could accept a misleading sign-in header for the same origin.
 const getSiweOrigin = (header: string): string | null => {
   const schemeMatch = header.match(/^([A-Za-z][A-Za-z0-9+.-]*):\/\//);
-  const scheme = schemeMatch ? schemeMatch[1].toLowerCase() : 'https';
+  const scheme = schemeMatch ? schemeMatch[1]!.toLowerCase() : 'https';
   const authority = schemeMatch ? header.slice(schemeMatch[0].length) : header;
   if (
     (scheme !== 'https' && scheme !== 'http') ||
@@ -133,12 +137,12 @@ const parseSiwe = (text: string) => {
   if (lines[index] === 'Resources:') {
     index += 1;
     while (index < lines.length) {
-      const resource = lines[index++];
+      const resource = lines[index++]!;
       if (!resource.startsWith('- ') || !isUri(resource.slice(2))) return null;
     }
   }
   if (index !== lines.length) return null;
-  return { address: lines[1], origin: getSiweOrigin(header[1]) };
+  return { address: lines[1]!, origin: getSiweOrigin(header[1]!) };
 };
 
 /** Review exactly the bytes personal_sign will sign, without changing its params. */

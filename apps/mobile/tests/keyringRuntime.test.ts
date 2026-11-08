@@ -18,6 +18,9 @@ import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
 import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import type { DappGrant } from '../../../source/shared/dappTypes.ts';
+import { createDappMessageApproval } from '../../../source/wallet/dappMessageApproval.ts';
+import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { recoverPersonalSignature, recoverTypedSignature, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
@@ -510,6 +513,186 @@ async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   const execute = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) => authority.manageAccounts(request, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
   return { disk, authority, get runtime() { return runtime; }, execute };
 }
+
+function approveRuntimeMessage(
+  f: Awaited<ReturnType<typeof readyAccounts>>,
+  host: Awaited<ReturnType<KeyringRuntime['openConnectionHost']>>,
+  request: DappMessageRequest,
+  accountId = host.context().activeAccountId!
+) {
+  const approved = host
+    .context()
+    .accounts.find((account) => account.id === accountId)!;
+  const grant: DappGrant = {
+    accountId: approved.index,
+    accountType: approved.type as DappGrant['accountType'],
+    chain: 'ethereum' as DappGrant['chain'],
+    chainId: host.context().network.chainId,
+    date: 1,
+    host: 'https://approved-message.example',
+  };
+  const approval = createDappMessageApproval({
+    readScope: () => {
+      const context = host.context();
+      const account = context.accounts.find((value) => value.id === accountId);
+      return {
+        account: {
+          id: approved.index,
+          type: approved.type,
+          address: account?.address,
+          xpub: account?.xpub,
+        },
+        grant,
+        isBitcoinBased: context.network.kind !== 'ethereum',
+        network: context.network,
+        sessionGeneration: host.sessionGeneration(),
+      };
+    },
+    subscribe: (changed) => f.authority.subscribe(changed),
+  });
+  return { accountId, networkId: host.context().networkId, request, approval };
+}
+
+test('connection message signing uses the published SDK for personal and typed V1/V3/V4 without changing selection', async () => {
+  const f = await readyAccounts();
+  try {
+    const host = await f.runtime.openConnectionHost();
+    for (const imported of [false, true]) {
+      if (imported) await importTestKey(f);
+      const before = f.authority.getCatalogue()!.active.accountId;
+      const address = f.authority.getSnapshot().account!.address;
+      const payloads = [
+        { method: 'personal_sign', data: '0x68656c6c6f' },
+        { method: 'personal_sign', data: '0x' + '22'.repeat(20) },
+        {
+          method: 'eth_signTypedData',
+          data: [{ name: 'value', type: 'uint256', value: '7' }],
+        },
+        ...['eth_signTypedData_v3', 'eth_signTypedData_v4'].map((method) => ({
+          method,
+          data: {
+            types: {
+              EIP712Domain: [{ name: 'chainId', type: 'uint256' }],
+              Message: [{ name: 'value', type: 'uint256' }],
+            },
+            primaryType: 'Message',
+            domain: { chainId: 1 },
+            message: { value: '7' },
+          },
+        })),
+      ];
+      for (const { method, data } of payloads) {
+        const request = readDappMessageRequest(
+          method,
+          method === 'personal_sign' ? [data, address] : [address, data],
+          address
+        )!;
+        assert(request);
+        const input = approveRuntimeMessage(f, host, request);
+        try {
+          const signature = await host.signMessage(input);
+          const recovered =
+            request.method === 'personal_sign'
+              ? recoverPersonalSignature({ data: request.message, signature })
+              : recoverTypedSignature({
+                  data: request.typedData as Parameters<
+                    typeof recoverTypedSignature
+                  >[0]['data'],
+                  signature,
+                  version: request.version as SignTypedDataVersion,
+                });
+          assert.equal(recovered.toLowerCase(), address.toLowerCase());
+          assert.equal(f.authority.getCatalogue()!.active.accountId, before);
+          assert.equal(f.authority.getSnapshot().phase, 'ready');
+        } finally {
+          input.approval.dispose();
+        }
+      }
+    }
+  } finally {
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
+});
+
+test('message signing requires an explicit account switch and a new approval after that switch', async () => {
+  const f = await readyAccounts();
+  try {
+    const host = await f.runtime.openConnectionHost();
+    await f.execute({
+      kind: 'create',
+      label: 'Other account',
+      password: PASSWORD,
+    });
+    const request = readDappMessageRequest(
+      'personal_sign',
+      [ADDRESS, 'hello'],
+      ADDRESS
+    )!;
+    const old = approveRuntimeMessage(f, host, request, 'hd:60:0');
+    await assert.rejects(host.signMessage(old), /INVALID_INPUT/);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
+    const generation = host.sessionGeneration();
+    await host.activateMessageAccount('hd:60:0', () => undefined);
+    assert(host.sessionGeneration() > generation);
+    assert.throws(old.approval.assertCurrent);
+    assert.throws(() => host.signMessage(old), { code: 4001 });
+    old.approval.dispose();
+    const next = approveRuntimeMessage(f, host, request);
+    try {
+      assert.match(await host.signMessage(next), /^0x[0-9a-f]{130}$/i);
+    } finally {
+      next.approval.dispose();
+    }
+  } finally {
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
+});
+
+test('a message signature completing after lock is discarded and shares the privileged-operation mutex', async () => {
+  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const entered = deferredAccount(),
+    release = deferredAccount();
+  class HeldMessageKeyring extends sdk.SoftwareKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...args);
+      const sign = this.ethereumTransaction.signPersonalMessage;
+      this.ethereumTransaction.signPersonalMessage = async (params) => {
+        const signature = await sign(params);
+        entered.resolve();
+        await release.promise;
+        return signature;
+      };
+    }
+  }
+  const f = await readyAccounts(async () => ({
+    ...sdk,
+    SoftwareKeyring: HeldMessageKeyring,
+  }));
+  try {
+    const host = await f.runtime.openConnectionHost();
+    const request = readDappMessageRequest(
+      'personal_sign',
+      [ADDRESS, 'hello'],
+      ADDRESS
+    )!;
+    const input = approveRuntimeMessage(f, host, request);
+    const signing = host.signMessage(input);
+    const rejected = assert.rejects(signing, /CANCELLED/);
+    await entered.promise;
+    await assert.rejects(host.signMessage(input), /BUSY/);
+    f.authority.lock();
+    release.resolve();
+    await rejected;
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
+    input.approval.dispose();
+  } finally {
+    release.resolve();
+    await f.authority.dispose();
+    f.disk.restoreNetwork();
+  }
+});
 
 async function grantConnection(host: Awaited<ReturnType<KeyringRuntime['openConnectionHost']>>, accountId: number, suffix: string) {
   const origin = `https://app-${suffix}.example`;

@@ -4,8 +4,19 @@ import {
   NetworkPreference,
   NetworkEnforcement,
 } from '../source/scripts/Background/controllers/message-handler/types';
+import { assertDappTypedDataValid } from '../source/shared/dappTypedDataValidation';
 
-describe('TypedData Validation Security Tests', () => {
+describe.each([
+  { name: 'extension middleware', validate: typedDataValidationMiddleware },
+  {
+    name: 'shared validation',
+    validate: async (context: any, next: () => Promise<void>) => {
+      const { method, params } = context.originalRequest;
+      assertDappTypedDataValid(method, params);
+      return next();
+    },
+  },
+])('$name typed-data validation', ({ validate }) => {
   const createMockContext = (params: any[]) =>
     ({
       originalRequest: {
@@ -32,6 +43,60 @@ describe('TypedData Validation Security Tests', () => {
 
   beforeEach(() => {
     mockNext.mockClear();
+  });
+
+  it('leaves unrelated methods to the next middleware', async () => {
+    const context = createMockContext([]);
+    context.originalRequest.method = 'personal_sign';
+    await validate(context, mockNext);
+    expect(mockNext).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves the existing checksum validation and invalidParams message', async () => {
+    const address = '0x8ba1f109551bD432803012645Ac136ddd64DBA72';
+    const typedData = {
+      types: { Message: [{ name: 'recipients', type: 'address[]' }] },
+      domain: { verifyingContract: address },
+      message: { recipients: [address] },
+    };
+    const before = JSON.stringify(typedData);
+    await validate(createMockContext([address, typedData]), mockNext);
+    expect(mockNext).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(typedData)).toBe(before);
+
+    mockNext.mockClear();
+    const invalidChecksum = '0x8Ba1f109551bD432803012645Ac136ddd64DBA72';
+    typedData.domain.verifyingContract = invalidChecksum;
+    await expect(
+      validate(createMockContext([address, typedData]), mockNext)
+    ).rejects.toMatchObject({
+      code: -32602,
+      message: `Invalid address format in domain.verifyingContract: "${invalidChecksum}". Expected hex address starting with 0x`,
+    });
+    expect(mockNext).not.toHaveBeenCalled();
+  });
+
+  it('preserves work-budget errors before approving typed data', async () => {
+    const typedData = {
+      types: {
+        Message: Array.from({ length: 129 }, (_, index) => ({
+          name: `field${index}`,
+          type: 'string',
+        })),
+      },
+      message: {},
+    };
+    await expect(
+      validate(
+        createMockContext(['0xSenderAddress', JSON.stringify(typedData)]),
+        mockNext
+      )
+    ).rejects.toMatchObject({
+      code: -32602,
+      message:
+        'Request exceeds wallet work limits: maximum 128 fields per type',
+    });
+    expect(mockNext).not.toHaveBeenCalled();
   });
 
   describe.each(['eth_signTypedData_v3', 'eth_signTypedData_v4'])(
@@ -68,9 +133,9 @@ describe('TypedData Validation Security Tests', () => {
             reversed ? [payload, address] : [address, payload]
           );
           context.originalRequest.method = method;
-          await expect(
-            typedDataValidationMiddleware(context, mockNext)
-          ).rejects.toMatchObject({ code: -32602 });
+          await expect(validate(context, mockNext)).rejects.toMatchObject({
+            code: -32602,
+          });
           expect(mockNext).not.toHaveBeenCalled();
         }
       );
@@ -94,7 +159,7 @@ describe('TypedData Validation Security Tests', () => {
             reversed ? [payload, address] : [address, payload]
           );
           context.originalRequest.method = method;
-          await typedDataValidationMiddleware(context, mockNext);
+          await validate(context, mockNext);
           expect(mockNext).toHaveBeenCalledTimes(1);
         }
       );
@@ -114,7 +179,7 @@ describe('TypedData Validation Security Tests', () => {
       reversed ? [payload, address] : [address, payload]
     );
     context.originalRequest.method = 'eth_signTypedData';
-    await typedDataValidationMiddleware(context, mockNext);
+    await validate(context, mockNext);
     expect(mockNext).toHaveBeenCalledTimes(1);
   });
 
@@ -145,9 +210,7 @@ describe('TypedData Validation Security Tests', () => {
         maliciousTypedData,
       ]);
 
-      await expect(
-        typedDataValidationMiddleware(context, mockNext)
-      ).rejects.toThrow(
+      await expect(validate(context, mockNext)).rejects.toThrow(
         'primaryType "NonExistentType" is not defined in types'
       );
     });
@@ -174,9 +237,9 @@ describe('TypedData Validation Security Tests', () => {
         incompleteTypedData,
       ]);
 
-      await expect(
-        typedDataValidationMiddleware(context, mockNext)
-      ).rejects.toThrow('Required field "to" is missing from message');
+      await expect(validate(context, mockNext)).rejects.toThrow(
+        'Required field "to" is missing from message'
+      );
     });
 
     it('should reject typed data without primaryType when no root type can be determined', async () => {
@@ -199,9 +262,9 @@ describe('TypedData Validation Security Tests', () => {
 
       // The validation will find TypeA as the root type and then
       // detect that required field "b" is missing from the message
-      await expect(
-        typedDataValidationMiddleware(context, mockNext)
-      ).rejects.toThrow('Required field "b" is missing from message');
+      await expect(validate(context, mockNext)).rejects.toThrow(
+        'Required field "b" is missing from message'
+      );
     });
 
     it('should reject arrays that are not actually arrays', async () => {
@@ -221,9 +284,9 @@ describe('TypedData Validation Security Tests', () => {
 
       const context = createMockContext(['0xSenderAddress', invalidArrayData]);
 
-      await expect(
-        typedDataValidationMiddleware(context, mockNext)
-      ).rejects.toThrow('Field "recipients" must be an array');
+      await expect(validate(context, mockNext)).rejects.toThrow(
+        'Field "recipients" must be an array'
+      );
     });
 
     it('should validate nested struct arrays properly', async () => {
@@ -249,9 +312,9 @@ describe('TypedData Validation Security Tests', () => {
 
       const context = createMockContext(['0xSenderAddress', nestedStructData]);
 
-      await expect(
-        typedDataValidationMiddleware(context, mockNext)
-      ).rejects.toThrow('Invalid address format in message.token');
+      await expect(validate(context, mockNext)).rejects.toThrow(
+        'Invalid address format in message.token'
+      );
     });
 
     it('should reject when types object is missing', async () => {
@@ -266,9 +329,9 @@ describe('TypedData Validation Security Tests', () => {
 
       const context = createMockContext(['0xSenderAddress', noTypesData]);
 
-      await expect(
-        typedDataValidationMiddleware(context, mockNext)
-      ).rejects.toThrow('"types" must be an object');
+      await expect(validate(context, mockNext)).rejects.toThrow(
+        '"types" must be an object'
+      );
     });
   });
 
@@ -282,7 +345,7 @@ describe('TypedData Validation Security Tests', () => {
       const context = createMockContext(['0xSenderAddress', v1TypedData]);
       context.originalRequest.method = 'eth_signTypedData'; // v1 method
 
-      await typedDataValidationMiddleware(context, mockNext);
+      await validate(context, mockNext);
 
       expect(mockNext).toHaveBeenCalledTimes(1);
     });
@@ -300,9 +363,9 @@ describe('TypedData Validation Security Tests', () => {
       ]);
       context.originalRequest.method = 'eth_signTypedData'; // v1 method
 
-      await expect(
-        typedDataValidationMiddleware(context, mockNext)
-      ).rejects.toThrow('Invalid address format: invalid-address');
+      await expect(validate(context, mockNext)).rejects.toThrow(
+        'Invalid address format: invalid-address'
+      );
     });
 
     it('should accept valid typed data with proper structure', async () => {
@@ -332,7 +395,7 @@ describe('TypedData Validation Security Tests', () => {
 
       const context = createMockContext(['0xSenderAddress', validTypedData]);
 
-      await typedDataValidationMiddleware(context, mockNext);
+      await validate(context, mockNext);
 
       expect(mockNext).toHaveBeenCalledTimes(1);
     });

@@ -1,3 +1,14 @@
+import { createDappMessageApproval } from '../../../../source/wallet/dappMessageApproval.ts';
+import {
+  isDappMessageMethod,
+  readDappMessageRequest,
+  type DappMessageRequest,
+} from '../../../../source/shared/dappMessageRequest.ts';
+import { assertDappTypedDataValid } from '../../../../source/shared/dappTypedDataValidation.ts';
+import { getPersonalSignReview } from '../../../../source/utils/personalSignReview.ts';
+import { reviewDappMessageAdvisories } from '../../../../source/shared/dappMessageAdvisories.ts';
+import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
+import { getTypedOrderReview } from '../../../../source/utils/typedOrderReview.ts';
 import { createDappSessions } from '../../../../source/wallet/dappSessions.ts';
 import { DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import { createDappApprovalLifetime } from '../../../../source/utils/dappApprovalLifetime.ts';
@@ -17,6 +28,8 @@ import {
 } from './walletConnect.ts';
 import type {
   NativeConnectionError,
+  NativeMessageReview,
+  NativeMessageReviewError,
   NativeConnectionsSnapshot,
   NativeConnectionsView,
 } from './types.ts';
@@ -26,6 +39,10 @@ const METHODS = Object.freeze([
   'net_version',
   'eth_accounts',
   'eth_requestAccounts',
+  'personal_sign',
+  'eth_signTypedData',
+  'eth_signTypedData_v3',
+  'eth_signTypedData_v4',
 ]);
 const EVENTS = Object.freeze(['accountsChanged', 'chainChanged']);
 type Source = {
@@ -34,10 +51,35 @@ type Source = {
 };
 type Engine = ReturnType<typeof createDappSessions>;
 type Connected = { id: string; session: WalletConnectSession; engine: Engine };
+type MessageApproval = ReturnType<typeof createDappMessageApproval>;
+type PendingMessage = {
+  id: string;
+  wire: WalletConnectRequest;
+  connection: Connected;
+  session: WalletConnectSession;
+  request: DappMessageRequest;
+  accountId: string;
+  networkId: string;
+  networkFingerprint: string;
+  accountXpub: string;
+  approval: MessageApproval | undefined;
+  review: Omit<
+    NativeMessageReview,
+    'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
+  >;
+  sourceRevision: number;
+  timer: ReturnType<typeof setTimeout>;
+  busy: boolean;
+  switching: boolean;
+  dispatched: boolean;
+};
+const MESSAGE_REVIEW_LIFETIME_MS = 5 * 60_000;
 type Options = {
   source: Source;
   openHost(): Promise<NativeConnectionHost>;
   preparePlatform(): Promise<void>;
+  checkSite(origin: string): Promise<Readonly<{ isBlacklisted: boolean }>>;
+  checkAddress(address: string): Promise<IBlacklistCheckResult>;
   projectId: string;
   metadata: Parameters<typeof openWalletConnectTransport>[0]['metadata'];
   openTransport?: typeof openWalletConnectTransport;
@@ -79,6 +121,7 @@ export class NativeConnectionsController {
   private error: NativeConnectionError | null = null;
   private readonly connections = new Map<string, Connected>();
   private readonly proposals = new Map<number, WalletConnectProposal>();
+  private readonly messages = new Map<string, PendingMessage>();
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private snapshot: NativeConnectionsSnapshot;
@@ -101,11 +144,25 @@ export class NativeConnectionsController {
         this.perform(() => this.approve(id, accountId, networkId, revision)),
       reject: (id) => this.perform(() => this.reject(id)),
       disconnect: (id) => this.perform(() => this.disconnect(id)),
+      approveMessage: (id, revision, acknowledgeWarning) =>
+        this.perform(
+          () => this.approveMessage(id, revision, acknowledgeWarning),
+          { owner: this.messages.get(id) }
+        ),
+      rejectMessage: (id) =>
+        this.perform(() => this.rejectMessage(id), {
+          owner: this.messages.get(id),
+        }),
+      activateMessageAccount: (id, revision) =>
+        this.perform(() => this.activateMessageAccount(id, revision), {
+          owner: this.messages.get(id),
+        }),
       cancel: () => this.cancel(),
     });
     this.unsubscribe = options.source.subscribe(() => {
       const phase = options.source.getSnapshot().phase;
       if (phase !== 'ready' && (this.action || this.pairing)) this.cancel();
+      this.revalidateMessages();
       const previous = this.publishedScope;
       const current = this.publicScope();
       this.publishedScope = current;
@@ -162,6 +219,11 @@ export class NativeConnectionsController {
     ];
   }
   private canApprove(proposal: WalletConnectProposal): boolean {
+    if (
+      proposal.verification.isScam ||
+      proposal.verification.validation === 'INVALID'
+    )
+      return false;
     const context = this.host?.context();
     if (!context || context.network.kind !== 'ethereum') return false;
     const chain = `eip155:${context.network.chainId}`;
@@ -217,6 +279,7 @@ export class NativeConnectionsController {
                 id: proposal.id,
                 name: proposal.metadata.name,
                 origin: new URL(proposal.metadata.url).origin,
+                verification: proposal.verification,
                 requiredMethods: Object.freeze(this.requiredMethods(proposal)),
                 canApprove: this.canApprove(proposal),
               })
@@ -250,6 +313,7 @@ export class NativeConnectionsController {
             )
           : []
       ),
+      messageReview: ready ? this.messageReview() : null,
       error: ready ? this.error : null,
     });
   }
@@ -436,6 +500,9 @@ export class NativeConnectionsController {
             .catch(() => this.unavailable());
           this.connections.delete(key);
         }
+    } else if (event.type === 'request-expired') {
+      for (const message of this.messages.values())
+        if (message.wire.id === event.id) this.retireMessage(message, false);
     } else if (event.type === 'request')
       void this.respond(event.request).catch(() => {
         try {
@@ -445,9 +512,13 @@ export class NativeConnectionsController {
         }
       });
     else if (event.type === 'unavailable') this.unavailable();
+    this.revalidateMessages();
     this.publish();
   }
-  private async perform(operation: () => Promise<void>): Promise<void> {
+  private async perform(
+    operation: () => Promise<void>,
+    messageScope?: Readonly<{ owner: PendingMessage | undefined }>
+  ): Promise<void> {
     let epoch = this.actionEpoch;
     try {
       this.check();
@@ -455,7 +526,13 @@ export class NativeConnectionsController {
       epoch = this.actionEpoch;
       await result;
     } catch (error) {
-      if (epoch === this.actionEpoch && !this.disposed) {
+      if (
+        epoch === this.actionEpoch &&
+        !this.disposed &&
+        (!messageScope ||
+          (messageScope.owner !== undefined &&
+            this.messages.get(messageScope.owner.id) === messageScope.owner))
+      ) {
         this.error =
           error instanceof ConnectionActionError
             ? error.code
@@ -538,6 +615,9 @@ export class NativeConnectionsController {
       this.options.source.getSnapshot().phase !== 'ready'
     )
       return failure('CONTEXT_CHANGED');
+    if (proposal.verification.isScam) return failure('BLOCKED_SITE');
+    if (proposal.verification.validation === 'INVALID')
+      return failure('SITE_MISMATCH');
     if (!this.canApprove(proposal)) return failure('UNSUPPORTED_REQUEST');
     const action = new AbortController(),
       sourceRevision = this.options.source.getSnapshot().revision;
@@ -573,6 +653,11 @@ export class NativeConnectionsController {
       guard();
       await this.ensureTransport();
       guard();
+      const site = await this.options.checkSite(
+        new URL(proposal.metadata.url).origin
+      );
+      guard();
+      if (site.isBlacklisted) return failure('BLOCKED_SITE');
       const chain = `eip155:${context.network.chainId}`;
       const requested = [
         ...Object.values(proposal.requiredNamespaces),
@@ -675,6 +760,8 @@ export class NativeConnectionsController {
       (value) => value.id === id
     );
     if (!connected) return;
+    for (const message of [...this.messages.values()])
+      if (message.connection === connected) void this.retireMessage(message);
     await connected.engine.revoke(connected.session.binding.origin, {
       allowAlreadyDisconnected: true,
     });
@@ -710,6 +797,10 @@ export class NativeConnectionsController {
       )
         failure('CONTEXT_CHANGED');
     };
+    if (isDappMessageMethod(request.method)) {
+      await this.queueMessage(request);
+      return;
+    }
     let result: unknown, error: { code: number; message: string } | undefined;
     if (!connected?.engine.isConnected(request.session.binding.origin))
       error = { code: 4100, message: 'Not connected' };
@@ -732,10 +823,442 @@ export class NativeConnectionsController {
       request.session.binding,
       request.id,
       error ? { error } : { result },
-      guard
+      guard,
+      () => undefined
     );
   }
+  private messageReview(): NativeMessageReview | null {
+    const message = this.messages.values().next().value as
+      | PendingMessage
+      | undefined;
+    if (!message) return null;
+    try {
+      return Object.freeze({
+        ...message.review,
+        revision: this.revision,
+        busy: message.busy,
+        dispatched: message.dispatched,
+        needsAccountSwitch:
+          this.host!.context().activeAccountId !== message.accountId,
+      });
+    } catch {
+      return null;
+    }
+  }
+  private messageConnectionCurrent(message: PendingMessage): boolean {
+    const context = this.host?.context();
+    const account = context?.accounts.find(
+      (entry) => entry.id === message.accountId
+    );
+    return (
+      !this.disposed &&
+      this.options.source.getSnapshot().phase === 'ready' &&
+      context?.networkId === message.networkId &&
+      JSON.stringify(context.network) === message.networkFingerprint &&
+      account?.address === message.review.address &&
+      account.xpub === message.accountXpub &&
+      this.messages.get(message.id) === message &&
+      this.connections.get(sessionKey(message.session)) ===
+        message.connection &&
+      message.connection.session === message.session &&
+      message.connection.engine.get(message.session.binding.origin) !==
+        undefined &&
+      Date.now() < message.review.expiresAt
+    );
+  }
+  private captureMessageApproval(message: PendingMessage): MessageApproval {
+    const host = this.host!;
+    message.sourceRevision = this.options.source.getSnapshot().revision;
+    const readScope = () => {
+      try {
+        const context = host.context();
+        const account = context.accounts.find(
+          (entry) => entry.id === message.accountId
+        );
+        return {
+          account: account
+            ? {
+                id: account.index,
+                type: account.type,
+                address: account.address,
+                xpub: account.xpub,
+              }
+            : { id: -1, type: 'HDAccount' },
+          grant: message.connection.engine.get(message.session.binding.origin),
+          isBitcoinBased: context.network.kind === 'syscoin',
+          network: context.network,
+          sessionGeneration: host.sessionGeneration(),
+        };
+      } catch {
+        return {
+          account: { id: -1, type: 'HDAccount' },
+          grant: undefined,
+          isBitcoinBased: false,
+          network: { kind: '', chainId: -1 },
+          sessionGeneration: -1,
+        };
+      }
+    };
+    const approval = createDappMessageApproval({
+      readScope,
+      signal: this.lifetime.signal,
+      subscribe: (changed) => this.options.source.subscribe(() => changed()),
+    });
+    try {
+      approval.bindSigner(
+        'native-connection-request',
+        () =>
+          this.messageConnectionCurrent(message) &&
+          message.sourceRevision === this.options.source.getSnapshot().revision
+      );
+      return approval;
+    } catch (error) {
+      approval.dispose();
+      throw error;
+    }
+  }
+  private revalidateMessages() {
+    for (const message of [...this.messages.values()]) {
+      try {
+        if (!this.messageConnectionCurrent(message))
+          throw Error('Stale request');
+        if (!message.switching && !message.dispatched)
+          message.approval?.assertCurrent();
+      } catch {
+        void this.retireMessage(message);
+      }
+    }
+  }
+  private retireMessage(
+    message: PendingMessage,
+    respond = true
+  ): Promise<void> {
+    if (this.messages.get(message.id) !== message) return Promise.resolve();
+    this.messages.delete(message.id);
+    message.approval?.dispose();
+    clearTimeout(message.timer);
+    this.publish();
+    if (!respond || message.dispatched || this.disposed || !this.transport)
+      return Promise.resolve();
+    const guard = () => {
+      this.check();
+      if (
+        this.connections.get(sessionKey(message.session))?.session !==
+        message.session
+      )
+        failure('CONTEXT_CHANGED');
+    };
+    return this.transport
+      .respond(
+        message.session.binding,
+        message.wire.id,
+        { error: { code: 4001, message: 'User rejected or request expired' } },
+        guard,
+        () => undefined
+      )
+      .catch(() => undefined);
+  }
+  private async queueMessage(wire: WalletConnectRequest) {
+    const connection = this.connections.get(sessionKey(wire.session));
+    const context = this.host!.context();
+    const origin = wire.session.binding.origin;
+    const grant = connection?.engine.get(origin);
+    const account =
+      grant &&
+      context.accounts.find(
+        (entry) =>
+          entry.index === grant.accountId && entry.type === grant.accountType
+      );
+    const reject = (code: number, message: string) =>
+      this.transport!.respond(
+        wire.session.binding,
+        wire.id,
+        { error: { code, message } },
+        () => this.check(),
+        () => undefined
+      );
+    if (
+      !connection ||
+      !grant ||
+      !account ||
+      !context.unlocked ||
+      this.options.source.getSnapshot().phase !== 'ready' ||
+      context.network.kind !== 'ethereum'
+    )
+      return reject(4100, 'Account is unavailable');
+    if (wire.chainId !== `eip155:${context.network.chainId}`)
+      return reject(4901, 'Requested chain is not selected');
+    const permitted = Object.values(connection.session.namespaces).some(
+      (namespace) =>
+        namespace.methods.includes(wire.method) &&
+        namespace.accounts.some(
+          (id) =>
+            id.toLowerCase() ===
+            `${wire.chainId}:${account.address}`.toLowerCase()
+        )
+    );
+    if (!permitted) return reject(4100, 'Method or account is not authorized');
+    if (
+      this.messages.size >= DAPP_REQUEST_LIMITS.pendingRequests ||
+      [...this.messages.values()].filter(
+        (entry) => entry.connection === connection
+      ).length >= DAPP_REQUEST_LIMITS.requestsPerOrigin
+    )
+      return reject(-32005, 'Too many requests');
+    if (
+      [...this.messages.values()].some(
+        (entry) =>
+          entry.wire.id === wire.id &&
+          entry.session.binding.topic === wire.session.binding.topic
+      )
+    )
+      return;
+    let request: DappMessageRequest | undefined;
+    try {
+      assertDappTypedDataValid(wire.method, wire.params);
+      request = readDappMessageRequest(
+        wire.method,
+        wire.params,
+        account.address
+      );
+    } catch {
+      /* Invalid requests never become signing capabilities. */
+    }
+    if (!request) return reject(-32602, 'Invalid signing request');
+    const personal =
+      request.method === 'personal_sign'
+        ? getPersonalSignReview(request.message, origin, account.address)
+        : null;
+    const error: NativeMessageReviewError | null = wire.verification.isScam
+      ? 'BLOCKED_SITE'
+      : wire.verification.validation === 'INVALID'
+      ? 'SITE_MISMATCH'
+      : personal?.error === 'send.signingForWrongAddress'
+      ? 'SIGNER_MISMATCH'
+      : personal?.error === 'send.suspiciousSignInRequest'
+      ? 'SUSPICIOUS_SIGN_IN'
+      : personal?.error
+      ? 'INVALID_MESSAGE'
+      : null;
+    const order =
+      request.method === 'personal_sign' || request.version === 'V1'
+        ? null
+        : getTypedOrderReview(request.typedData);
+    const expiresAt = Math.min(
+      wire.expiresAt,
+      Date.now() + MESSAGE_REVIEW_LIFETIME_MS,
+      wire.session.expiry * 1000
+    );
+    if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
+      return reject(4001, 'Request expired');
+    const id = `message-${++this.serial}`;
+    const message: PendingMessage = {
+      id,
+      wire,
+      connection,
+      session: connection.session,
+      request,
+      accountId: account.id,
+      networkId: context.networkId,
+      networkFingerprint: JSON.stringify(context.network),
+      accountXpub: account.xpub,
+      approval: undefined,
+      sourceRevision: this.options.source.getSnapshot().revision,
+      busy: true,
+      switching: false,
+      dispatched: false,
+      review: Object.freeze({
+        id,
+        method: request.method,
+        appName: wire.session.metadata.name,
+        origin,
+        verification: wire.verification,
+        accountLabel: account.label,
+        address: account.address,
+        networkLabel: context.networkLabel,
+        chainId: String(context.network.chainId),
+        expiresAt,
+        message: personal?.message ?? null,
+        typedData:
+          request.method === 'personal_sign'
+            ? null
+            : JSON.stringify(request.typedData, null, 2),
+        order: order
+          ? Object.freeze({
+              ...order,
+              warnings: Object.freeze([...order.warnings]),
+            })
+          : null,
+        error,
+        advisories: Object.freeze([]),
+        requiresWarningAcknowledgement: false,
+      }),
+      timer: setTimeout(() => {
+        void this.retireMessage(message);
+      }, Math.max(0, expiresAt - Date.now())),
+    };
+    this.messages.set(id, message);
+    try {
+      message.approval = this.captureMessageApproval(message);
+      this.publish();
+      const site = await this.options.checkSite(origin);
+      message.approval.assertCurrent();
+      if (site.isBlacklisted)
+        message.review = Object.freeze({
+          ...message.review,
+          error: 'BLOCKED_SITE',
+        });
+      const advisories = await reviewDappMessageAdvisories({
+        method: request.method,
+        typedData:
+          request.method === 'personal_sign' ? undefined : request.typedData,
+        checkAddress: this.options.checkAddress,
+        assertCurrent: message.approval.assertCurrent,
+        onWarning: (warning) => {
+          message.review = Object.freeze({
+            ...message.review,
+            advisories: Object.freeze([
+              Object.freeze({
+                ...warning,
+                ...(warning.reason
+                  ? { reason: warning.reason.slice(0, 512) }
+                  : {}),
+              }),
+            ]),
+            requiresWarningAcknowledgement: true,
+          });
+          this.publish();
+        },
+      });
+      message.approval.assertCurrent();
+      message.review = Object.freeze({
+        ...message.review,
+        advisories: Object.freeze(
+          advisories.addresses.map((entry) =>
+            Object.freeze({
+              ...entry,
+              ...(entry.reason ? { reason: entry.reason.slice(0, 512) } : {}),
+            })
+          )
+        ),
+        requiresWarningAcknowledgement: Boolean(advisories.warning),
+      });
+      message.busy = false;
+      this.publish();
+    } catch {
+      await this.retireMessage(message);
+    }
+  }
+  private async approveMessage(
+    id: string,
+    revision: number,
+    acknowledgeWarning: boolean
+  ) {
+    const message = this.messages.get(id);
+    if (
+      !message ||
+      revision !== this.revision ||
+      this.messages.values().next().value !== message
+    )
+      return failure('REQUEST_EXPIRED');
+    if (message.dispatched) return failure('REQUEST_EXPIRED');
+    if (message.busy || this.action) return failure('BUSY');
+    if (
+      typeof acknowledgeWarning !== 'boolean' ||
+      message.review.error ||
+      (message.review.requiresWarningAcknowledgement && !acknowledgeWarning) ||
+      this.host!.context().activeAccountId !== message.accountId
+    )
+      return failure('UNSUPPORTED_REQUEST');
+    const approval = message.approval;
+    if (!approval) return failure('REQUEST_EXPIRED');
+    approval.assertCurrent();
+    message.busy = true;
+    this.publish();
+    try {
+      const signature = await this.host!.signMessage({
+        accountId: message.accountId,
+        networkId: message.networkId,
+        request: message.request,
+        approval,
+      });
+      approval.assertCurrent();
+      await this.transport!.respond(
+        message.session.binding,
+        message.wire.id,
+        { result: signature },
+        approval.assertCurrent,
+        () => {
+          message.dispatched = true;
+          queueMicrotask(() => {
+            if (this.messages.get(message.id) === message) this.publish();
+          });
+        }
+      );
+      await this.retireMessage(message, false);
+    } catch (error) {
+      if (message.dispatched) {
+        approval.dispose();
+        if (this.messages.get(message.id) === message) {
+          message.busy = false;
+          message.review = Object.freeze({
+            ...message.review,
+            error: 'DELIVERY_UNCERTAIN',
+          });
+          this.publish();
+        }
+        return failure('DELIVERY_UNCERTAIN');
+      }
+      await this.retireMessage(message);
+      throw error;
+    }
+  }
+  private rejectMessage(id: string): Promise<void> {
+    const message = this.messages.get(id);
+    if (!message) return Promise.resolve();
+    if (message.dispatched && this.error === 'DELIVERY_UNCERTAIN')
+      this.error = null;
+    return this.retireMessage(message);
+  }
+  private async activateMessageAccount(id: string, revision: number) {
+    const message = this.messages.get(id);
+    if (
+      !message ||
+      revision !== this.revision ||
+      this.messages.values().next().value !== message
+    )
+      return failure('REQUEST_EXPIRED');
+    if (message.dispatched) return failure('REQUEST_EXPIRED');
+    if (message.busy || this.action) return failure('BUSY');
+    message.approval?.assertCurrent();
+    const grant = message.connection.engine.get(message.session.binding.origin);
+    const guard = () => {
+      this.check();
+      if (
+        !this.messageConnectionCurrent(message) ||
+        message.connection.engine.get(message.session.binding.origin) !== grant
+      )
+        failure('CONTEXT_CHANGED');
+    };
+    message.switching = true;
+    message.busy = true;
+    message.approval?.dispose();
+    this.publish();
+    try {
+      await this.host!.activateMessageAccount(message.accountId, guard);
+      guard();
+      message.approval = this.captureMessageApproval(message);
+      message.switching = false;
+      message.busy = false;
+      this.publish();
+    } catch (error) {
+      await this.retireMessage(message);
+      throw error;
+    }
+  }
   private cancel() {
+    for (const message of [...this.messages.values()])
+      this.retireMessage(message);
     this.error = null;
     this.actionEpoch++;
     this.action?.abort();
@@ -764,6 +1287,8 @@ export class NativeConnectionsController {
   }
   async dispose(): Promise<void> {
     if (this.closing) return this.closing;
+    for (const message of [...this.messages.values()])
+      this.retireMessage(message, false);
     this.disposed = true;
     this.lifetime.abort();
     this.action?.abort();

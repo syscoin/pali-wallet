@@ -22,11 +22,16 @@ type Namespace = Readonly<{
   chains?: readonly string[];
 }>;
 export type WalletConnectNamespaces = Readonly<Record<string, Namespace>>;
+export type WalletConnectVerification = Readonly<{
+  validation: 'VALID' | 'INVALID' | 'UNKNOWN';
+  isScam: boolean;
+}>;
 export type WalletConnectProposal = Readonly<{
   id: number;
   pairingTopic: string;
   peerPublicKey: string;
   metadata: Metadata;
+  verification: WalletConnectVerification;
   requiredNamespaces: Readonly<Record<string, unknown>>;
   optionalNamespaces: Readonly<Record<string, unknown>>;
 }>;
@@ -38,10 +43,12 @@ export type WalletConnectSession = Readonly<{
 }>;
 export type WalletConnectRequest = Readonly<{
   id: number;
+  expiresAt: number;
   session: WalletConnectSession;
   chainId: string;
   method: string;
   params: unknown;
+  verification: WalletConnectVerification;
 }>;
 export type WalletConnectTransportEvent =
   | Readonly<{ type: 'proposal'; proposal: WalletConnectProposal }>
@@ -110,6 +117,7 @@ interface SignClient {
 }
 /** The production loader uses only official Core/SignClient entry points. */
 export type WalletConnectSdk = Readonly<{
+  requestExpirySeconds: Readonly<{ min: number; max: number }>;
   createCore(input: {
     projectId: string;
     storage: NativeConnectionRepository['transport'];
@@ -150,7 +158,8 @@ export type WalletConnectTransport = Readonly<{
     binding: NativeConnectionBinding,
     id: number,
     response: WalletConnectResponse,
-    assertRequestCurrent: () => void
+    assertRequestCurrent: () => void,
+    onDispatch: () => void
   ): Promise<void>;
   disconnect(binding: NativeConnectionBinding): Promise<void>;
   emit(
@@ -231,6 +240,37 @@ function checkedId(value: unknown): number {
 function checkedTopic(value: unknown): string {
   return typeof value === 'string' && HEX.test(value) ? value : fail();
 }
+
+/** SDK evidence belongs to this event and never replaces the peer's permission origin. */
+function readVerification(
+  value: unknown,
+  metadataUrl: string
+): WalletConnectVerification {
+  let verified: Record<string, unknown>;
+  try {
+    verified = record(record(value).verified);
+  } catch {
+    return Object.freeze({ validation: 'UNKNOWN', isScam: false });
+  }
+  const isScam = verified.isScam === true;
+  if (verified.validation === 'INVALID')
+    return Object.freeze({ validation: 'INVALID', isScam });
+  const origin =
+    typeof verified.origin === 'string' && verified.origin.length <= 2048
+      ? getDappOrigin(verified.origin)
+      : null;
+  const validShape =
+    origin !== null &&
+    verified.origin === origin &&
+    typeof verified.verifyUrl === 'string' &&
+    verified.verifyUrl.length <= 2048 &&
+    getDappOrigin(verified.verifyUrl) !== null &&
+    (verified.isScam === undefined || typeof verified.isScam === 'boolean');
+  let validation: WalletConnectVerification['validation'] = 'UNKNOWN';
+  if (validShape && verified.validation === 'VALID')
+    validation = origin === getDappOrigin(metadataUrl) ? 'VALID' : 'INVALID';
+  return Object.freeze({ validation, isScam });
+}
 function namespaces(value: unknown): WalletConnectNamespaces {
   const data = record(copy(value));
   for (const [name, raw] of Object.entries(data)) {
@@ -291,12 +331,17 @@ function sameBinding(
   );
 }
 async function officialSdk(): Promise<WalletConnectSdk> {
-  const [{ Core }, { SignClient: Client }, { parseUri }] = await Promise.all([
+  const [
+    { Core },
+    { SignClient: Client, SESSION_REQUEST_EXPIRY_BOUNDARIES },
+    { parseUri },
+  ] = await Promise.all([
     import('@walletconnect/core'),
     import('@walletconnect/sign-client'),
     import('@walletconnect/utils'),
   ]);
   return {
+    requestExpirySeconds: SESSION_REQUEST_EXPIRY_BOUNDARIES,
     createCore: (input) => new Core(input),
     initialize: (input) => {
       if (!(input.core instanceof Core)) return fail();
@@ -337,7 +382,9 @@ export async function openWalletConnectTransport(options: {
   const listeners = new Map<EventName, (value: unknown) => void>();
   const proposals = new Map<number, WalletConnectProposal>();
   const requests = new Map<string, string>();
+  const dispatchedRequests = new Set<string>();
   let queuedEvents = 0;
+  let requestExpirySeconds: WalletConnectSdk['requestExpirySeconds'];
   const guard = (check = options.assertOwner) => {
     if (closed || options.signal.aborted) return fail();
     let result: unknown;
@@ -352,6 +399,24 @@ export async function openWalletConnectTransport(options: {
       return fail();
     }
   };
+  const storageCall = async <T>(operation: () => Promise<T>): Promise<T> => {
+    guard();
+    const result = await operation();
+    guard();
+    return result;
+  };
+  const protocolStorage: NativeConnectionRepository['transport'] =
+    Object.freeze({
+      getKeys: () => storageCall(() => repository.transport.getKeys()),
+      getEntries: <T>() =>
+        storageCall(() => repository.transport.getEntries<T>()),
+      getItem: <T>(key: string) =>
+        storageCall(() => repository.transport.getItem<T>(key)),
+      setItem: <T>(key: string, value: T) =>
+        storageCall(() => repository.transport.setItem(key, value)),
+      removeItem: (key: string) =>
+        storageCall(() => repository.transport.removeItem(key)),
+    });
   const barrier = async () => {
     await repository.transport.getKeys();
     guard();
@@ -382,16 +447,17 @@ export async function openWalletConnectTransport(options: {
     listeners.clear();
     proposals.clear();
     requests.clear();
+    dispatchedRequests.clear();
     // Retirement is local and must also complete offline. Per-session remote
     // disconnect remains an explicit command, never a prerequisite to erasure.
     if (core) {
       await attempt(() => core!.relayer.transportClose());
       await attempt(() => core!.heartbeat.stop());
-      await attempt(async () => {
-        await repository.transport.getKeys();
-        repository.assertHealthy();
-      });
     }
+    await attempt(async () => {
+      await repository.transport.getKeys();
+      repository.assertHealthy();
+    });
     if (failures.length) fail();
   };
   const close = () => {
@@ -439,7 +505,9 @@ export async function openWalletConnectTransport(options: {
       return fail();
     return current;
   };
-  const readProposal = (raw: unknown): WalletConnectProposal => {
+  const readProposal = (
+    raw: unknown
+  ): Omit<WalletConnectProposal, 'verification'> => {
     const data = record(copy(raw));
     const proposer = record(data.proposer);
     return Object.freeze({
@@ -454,8 +522,10 @@ export async function openWalletConnectTransport(options: {
   const currentProposal = (proposal: WalletConnectProposal) => {
     if (
       proposals.get(proposal.id) !== proposal ||
-      JSON.stringify(readProposal(client!.proposal.get(proposal.id))) !==
-        JSON.stringify(proposal)
+      JSON.stringify({
+        ...readProposal(client!.proposal.get(proposal.id)),
+        verification: proposal.verification,
+      }) !== JSON.stringify(proposal)
     )
       return fail();
   };
@@ -513,7 +583,14 @@ export async function openWalletConnectTransport(options: {
         await barrier();
         let event: WalletConnectTransportEvent;
         if (name === 'session_proposal') {
-          const proposal = readProposal(data.params);
+          const decoded = readProposal(data.params);
+          const proposal = Object.freeze({
+            ...decoded,
+            verification: readVerification(
+              data.verifyContext,
+              decoded.metadata.url
+            ),
+          });
           if (proposal.id !== checkedId(data.id)) return fail();
           if (
             proposals.size >= MAX_PENDING_EVENTS &&
@@ -538,8 +615,27 @@ export async function openWalletConnectTransport(options: {
             return fail();
           const id = checkedId(data.id),
             payload = copy(params, DAPP_REQUEST_LIMITS.bytes + 1024);
+          const now = Date.now();
+          const expiry =
+            request.expiryTimestamp === undefined
+              ? Math.floor(now / 1000) + requestExpirySeconds.min
+              : request.expiryTimestamp;
+          if (
+            typeof expiry !== 'number' ||
+            !Number.isSafeInteger(expiry) ||
+            expiry <= now / 1000 ||
+            expiry > Math.floor(now / 1000) + requestExpirySeconds.max ||
+            !Number.isSafeInteger(current.expiry * 1000)
+          )
+            return fail();
+          const expiresAt = Math.min(expiry * 1000, current.expiry * 1000);
+          if (expiresAt <= now) return fail();
+          const verification = readVerification(
+            data.verifyContext,
+            current.metadata.url
+          );
           const key = `${current.binding.topic}:${id}`,
-            serialized = JSON.stringify(payload);
+            serialized = JSON.stringify({ params: payload, verification });
           if (requests.has(key)) return;
           const peerRequests = [...requests.keys()].filter((key) =>
             key.startsWith(`${current.binding.topic}:`)
@@ -560,6 +656,7 @@ export async function openWalletConnectTransport(options: {
             type: 'request',
             request: Object.freeze({
               id,
+              expiresAt,
               session: current,
               chainId: params.chainId,
               method: request.method,
@@ -567,6 +664,7 @@ export async function openWalletConnectTransport(options: {
                 request.params === undefined
                   ? undefined
                   : immutable(copy(request.params, DAPP_REQUEST_LIMITS.bytes)),
+              verification,
             }),
           };
         } else if (name === 'session_update') {
@@ -581,12 +679,18 @@ export async function openWalletConnectTransport(options: {
         } else if (name === 'session_request_expire') {
           const id = checkedId(data.id);
           for (const key of requests.keys())
-            if (key.endsWith(`:${id}`)) requests.delete(key);
+            if (key.endsWith(`:${id}`)) {
+              requests.delete(key);
+              dispatchedRequests.delete(key);
+            }
           event = { type: 'request-expired', id };
         } else {
           const topic = checkedTopic(data.topic);
           for (const key of requests.keys())
-            if (key.startsWith(`${topic}:`)) requests.delete(key);
+            if (key.startsWith(`${topic}:`)) {
+              requests.delete(key);
+              dispatchedRequests.delete(key);
+            }
           event = { type: 'session-ended', topic };
         }
         guard();
@@ -613,13 +717,22 @@ export async function openWalletConnectTransport(options: {
     guard();
     const sdk = await owned((options.loadSdk ?? officialSdk)());
     guard();
+    requestExpirySeconds = sdk.requestExpirySeconds;
+    if (
+      !requestExpirySeconds ||
+      !Number.isSafeInteger(requestExpirySeconds.min) ||
+      !Number.isSafeInteger(requestExpirySeconds.max) ||
+      requestExpirySeconds.min <= 0 ||
+      requestExpirySeconds.max < requestExpirySeconds.min
+    )
+      return fail();
     core = sdk.createCore({
       projectId: options.projectId,
-      storage: repository.transport,
+      storage: protocolStorage,
       telemetryEnabled: false,
       logger: 'silent',
     });
-    if (core.storage !== repository.transport) return fail();
+    if (core.storage !== protocolStorage) return fail();
     const initializing = sdk.initialize({
       core,
       metadata: ownMetadata,
@@ -633,7 +746,7 @@ export async function openWalletConnectTransport(options: {
     };
     void initializing.then(retireLateInitialization, retireLateInitialization);
     client = await owned(initializing);
-    if (client.core !== core || client.core.storage !== repository.transport)
+    if (client.core !== core || client.core.storage !== protocolStorage)
       return fail();
     await barrier();
     for (const name of [
@@ -778,20 +891,34 @@ export async function openWalletConnectTransport(options: {
         binding: NativeConnectionBinding,
         id: number,
         response: WalletConnectResponse,
-        assertRequestCurrent: () => void
+        assertRequestCurrent: () => void,
+        onDispatch: () => void
       ) => {
-        if (typeof assertRequestCurrent !== 'function')
+        if (
+          typeof assertRequestCurrent !== 'function' ||
+          typeof onDispatch !== 'function'
+        )
           return Promise.reject(new WalletConnectTransportError());
+        let handedOff = false;
+        // Approval authorizes the handoff. Later cancellation cannot recall it.
+        const assertBeforeHandoff = () => {
+          if (!handedOff) assertRequestCurrent();
+        };
         return run(async () => {
-          readSession(binding);
+          const current = readSession(binding);
           const key = `${binding.topic}:${checkedId(id)}`;
           const pending = record(client!.pendingRequest.get(id));
           if (
             pending.topic !== binding.topic ||
             !requests.has(key) ||
-            JSON.stringify(
-              copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024)
-            ) !== requests.get(key)
+            dispatchedRequests.has(key) ||
+            JSON.stringify({
+              params: copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024),
+              verification: readVerification(
+                pending.verifyContext,
+                current.metadata.url
+              ),
+            }) !== requests.get(key)
           )
             return fail();
           const result = copy(response, DAPP_REQUEST_LIMITS.bytes);
@@ -806,12 +933,20 @@ export async function openWalletConnectTransport(options: {
           )
             return fail();
           guard(assertRequestCurrent);
+          dispatchedRequests.add(key);
+          const dispatchResult = onDispatch();
+          if (dispatchResult !== undefined) {
+            void Promise.resolve(dispatchResult).catch(() => undefined);
+            return fail();
+          }
+          handedOff = true;
           await client!.respond({
             topic: binding.topic,
             response: { ...result, id, jsonrpc: '2.0' },
           });
           requests.delete(key);
-        }, assertRequestCurrent);
+          dispatchedRequests.delete(key);
+        }, assertBeforeHandoff);
       },
       disconnect: (binding: NativeConnectionBinding) =>
         run(async () => {
