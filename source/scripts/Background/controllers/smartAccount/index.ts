@@ -86,10 +86,12 @@ import {
 import { projectGuardianPolicyModule } from 'utils/smartAccount/guardianPolicy';
 import {
   captureGuardianRecoveryClaim,
+  captureReleasedGuardianRecoveryRecord,
   guardianRecoveryReplacementApplied,
   sameGuardianRecoveryClaim,
   type GuardianRecoveryClaim,
   type GuardianRecoveryReplacement,
+  type ReleasedGuardianRecoveryRecord,
 } from 'utils/smartAccount/guardianRecoveryClaim';
 import {
   buildGuardianRecoveryStart,
@@ -2302,6 +2304,110 @@ class SmartAccountController {
     origin.assertCurrent();
     this.assertGuardianRecoveryClaim(account, claim);
     return claim;
+  }
+
+  /** Adopt only the public format written by the official stable v4.0.69. */
+  public async adoptReleasedSmartAccountGuardianRecovery(params: {
+    account: string;
+    expectedContext: IEvmTransactionContext;
+    record: ReleasedGuardianRecoveryRecord;
+  }): Promise<GuardianRecoveryClaim> {
+    if (!params.expectedContext)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const expectedContext = Object.freeze({
+      ...params.expectedContext,
+      account: Object.freeze({ ...params.expectedContext.account }),
+    });
+    const origin = this.recoveryApprovalContext(expectedContext),
+      account = getAddress(params.account),
+      input = captureReleasedGuardianRecoveryRecord(params.record),
+      operation = input.intent.operation,
+      target = this.getActiveSmartAccount(account);
+    const check = () => {
+      origin.assertCurrent();
+      if (
+        !this.sameSmartAccountTarget(
+          this.getActiveSmartAccount(account),
+          target
+        )
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    if (
+      operation.account !== account ||
+      operation.chainId !== origin.snapshot.chainId
+    )
+      throw new Error('Invalid released guardian recovery owner');
+    const assertObserved = (status: GuardianRecoveryObservation) => {
+      check();
+      if (
+        !status.exists ||
+        status.account !== account ||
+        status.chainId !== operation.chainId ||
+        getAddress(status.moduleAddress) !== operation.recoveryModule ||
+        status.policyEpoch !== operation.policyEpoch ||
+        status.threshold !== 1 ||
+        status.guardians.length !== 1 ||
+        status.knownOperation?.operationId !==
+          getGuardianRecoveryOperationId(operation) ||
+        !['pending', 'ready', 'executed'].includes(status.knownOperation.status)
+      )
+        throw new Error('Released guardian recovery is not observed on chain');
+    };
+    const observed = await this.getSmartAccountGuardianRecoveryStatus({
+      account,
+      knownOperationId: getGuardianRecoveryOperationId(operation),
+    });
+    assertObserved(observed);
+    const guardian = getAddress(observed.guardians[0]);
+    const provider = origin.snapshot.provider;
+    const code = await provider.getCode(
+      guardian,
+      observed.observedBlock.number
+    );
+    check();
+    if (typeof code !== 'string' || !/^0x(?:[0-9a-f]{2})*$/i.test(code))
+      throw new Error('Guardian recovery signer code is unavailable');
+    await this.validateSmartAccountGuardianRecoveryOperation({
+      account,
+      operation,
+    });
+    check();
+    const claim = captureGuardianRecoveryClaim({
+      ...input,
+      guardian: {
+        guardian,
+        kind: code.toLowerCase() === '0x' ? 'ecdsa' : 'contract',
+      },
+    });
+    const current = await this.getSmartAccountGuardianRecoveryStatus({
+      account,
+      intent: claim.intent,
+      guardian,
+      guardianApproval: claim.guardian.kind,
+    });
+    assertObserved(current);
+    if (
+      getAddress(current.guardians[0]) !== guardian ||
+      current.recoveryTransactionHash !== null
+    )
+      throw new Error('A guardian recovery transaction is unresolved');
+    const currentCode = await provider.getCode(
+      guardian,
+      current.observedBlock.number
+    );
+    check();
+    const block = await provider.getBlock(current.observedBlock.number);
+    check();
+    if (
+      typeof currentCode !== 'string' ||
+      currentCode.toLowerCase() !== code.toLowerCase() ||
+      block?.number !== current.observedBlock.number ||
+      block?.hash?.toLowerCase() !== current.observedBlock.hash.toLowerCase()
+    )
+      throw new Error('Guardian recovery signer observation changed');
+    // The same durable CAS as prepare/finalize; public released data grants no authority.
+    return this.claimGuardianRecovery(account, claim, null);
   }
 
   public async reconcileSmartAccountGuardianRecovery(params: {

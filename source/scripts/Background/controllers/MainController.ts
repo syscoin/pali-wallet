@@ -482,6 +482,7 @@ import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import type {
   GuardianRecoveryClaim,
   GuardianRecoveryReplacement,
+  ReleasedGuardianRecoveryRecord,
 } from '../../../utils/smartAccount/guardianRecoveryClaim';
 import type { GuardianRecoveryIntent } from '../../../utils/smartAccount/guardianRecoveryIntent';
 import type { GuardianRecoveryTransactionRecords } from '../../../utils/smartAccount/guardianRecoveryLifecycle';
@@ -5807,6 +5808,15 @@ class MainController {
   }) {
     this.assertWalletReadyForSigning();
     return this.smartAccount.finalizeSmartAccountGuardianRecovery(params);
+  }
+
+  public async adoptReleasedSmartAccountGuardianRecovery(params: {
+    account: string;
+    expectedContext: IEvmTransactionContext;
+    record: ReleasedGuardianRecoveryRecord;
+  }) {
+    this.assertWalletReadyForSigning();
+    return this.smartAccount.adoptReleasedSmartAccountGuardianRecovery(params);
   }
 
   public async reconcileSmartAccountGuardianRecovery(params: {

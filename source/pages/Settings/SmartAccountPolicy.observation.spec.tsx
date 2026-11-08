@@ -9,7 +9,11 @@ import {
   within,
 } from '@testing-library/react';
 import React from 'react';
-import { acknowledgedGuardianRecoveryClaim } from 'tests/fixtures/guardianRecoveryClaim';
+import {
+  acknowledgedGuardianRecoveryClaim,
+  guardianRecoveryFixture,
+  releasedGuardianRecoveryRecord,
+} from 'tests/fixtures/guardianRecoveryClaim';
 
 import {
   createPasskeyCredential,
@@ -175,20 +179,15 @@ const pending = (operationId = OP, status = 'pending') => ({
   executableAt: TIME + 500,
   expiresAt: TIME + 605300,
 });
-const local = () => ({
-  kind: 'ecdsa',
-  authenticator: { id: 'ecdsa', config: { owners: [OWNER], threshold: 1 } },
-  recoveryOperation: {
-    account: ACCOUNT,
-    chainId: 57057,
-    recoveryModule: MODULE,
-    policyEpoch: '7',
-    salt: OP,
-    mode: `0x${'00'.repeat(32)}`,
-    executionCalldata: '0x1234',
-    readyAt: TIME + 999999,
-  },
-});
+const local = () => {
+  const record = releasedGuardianRecoveryRecord(
+    guardianRecoveryFixture(ACCOUNT, OWNER, 57057, OP).claim
+  );
+  return {
+    ...record,
+    recoveryOperation: { ...record.recoveryOperation, readyAt: TIME + 999999 },
+  };
+};
 
 beforeEach(() => {
   mockConnected = true;

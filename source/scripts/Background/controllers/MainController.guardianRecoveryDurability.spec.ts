@@ -38,6 +38,7 @@ import {
 import { webcrypto } from 'crypto';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
+import { releasedGuardianRecoveryRecord } from 'tests/fixtures/guardianRecoveryClaim';
 
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
@@ -76,7 +77,13 @@ function fixture() {
       encryptPrivateRecordBytes(key, input, () => undefined),
     decryptPrivateRecord: (input: any) =>
       decryptPrivateRecordBytes(key, input, () => undefined),
-    ethereumTransaction: { web3Provider: { send: jest.fn() } },
+    ethereumTransaction: {
+      web3Provider: {
+        send: jest.fn(),
+        getCode: jest.fn(async () => '0x'),
+        getBlock: jest.fn(async (number: number) => ({ number, hash: BLOCK })),
+      },
+    },
   };
   let disk: string | undefined;
   const storage = {
@@ -159,6 +166,9 @@ function fixture() {
     moduleAddress: intent.operation.recoveryModule,
     exists: true,
     policyEpoch: '7',
+    guardians: [signer.address],
+    threshold: 1,
+    observedBlock: { number: 2, hash: BLOCK, timestamp: 100 },
     pending: null,
     active: null,
     knownOperation: { operationId: id, status: 'unknown' },
@@ -322,6 +332,21 @@ function fixture() {
             .serialized,
         },
       }),
+    adopt: () => {
+      mockState.vault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim =
+        undefined;
+      return controller.adoptReleasedSmartAccountGuardianRecovery({
+        account: ACCOUNT,
+        record: releasedGuardianRecoveryRecord(claim),
+        expectedContext: {
+          account: { id: 1, type: 'SmartAccount' as any, address: ACCOUNT },
+          chainId: 1,
+          rpcUrl: 'https://fixture.invalid',
+          slip44: 60,
+          sessionGeneration: wallet.walletSessionGeneration,
+        },
+      });
+    },
     append,
     reopen,
     send,
@@ -523,4 +548,47 @@ test('canceling the first admission drains old queued owners and releases the re
   expect(f.dispatch).toHaveBeenCalledTimes(1);
   await f.submit();
   expect(f.dispatch).toHaveBeenCalledTimes(2);
+});
+
+test('released adoption waits for complete encrypted retained scheduling-byte reconciliation before durable claim', async () => {
+  const f = fixture();
+  const attempt = (await f.append())!;
+  mockChain.pending = mockChain.knownOperation = {
+    operationId: f.id,
+    status: 'ready',
+  };
+  f.reopen();
+  await expect(f.adopt()).rejects.toThrow('transaction is unresolved');
+  expect(
+    mockState.vault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+  ).toBeUndefined();
+  expect(f.proof).not.toHaveBeenCalled();
+  expect(f.signature).not.toHaveBeenCalled();
+  expect(f.dispatch).not.toHaveBeenCalled();
+  f.mined.add(attempt.hash);
+  mockState.vault.accounts.HDAccount = {}; // The guardian can have left this profile after scheduling.
+  const claim = await f.adopt();
+  expect(claim.intent.operation).toEqual(f.intent.operation);
+  expect(claim.guardian).toEqual({ guardian: signer.address, kind: 'ecdsa' });
+  expect(
+    mockState.vault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+  ).toEqual(claim);
+  expect(f.proof).not.toHaveBeenCalled();
+  expect(f.signature).not.toHaveBeenCalled();
+  expect(f.dispatch).not.toHaveBeenCalled();
+});
+
+test('released adoption retains the public record when retained receipt observation is unavailable', async () => {
+  const f = fixture();
+  await f.append();
+  mockChain.pending = mockChain.knownOperation = {
+    operationId: f.id,
+    status: 'ready',
+  };
+  f.send.mockRejectedValueOnce(new Error('Retained receipt unavailable'));
+  await expect(f.adopt()).rejects.toThrow();
+  expect(
+    mockState.vault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+  ).toBeUndefined();
+  expect(f.dispatch).not.toHaveBeenCalled();
 });

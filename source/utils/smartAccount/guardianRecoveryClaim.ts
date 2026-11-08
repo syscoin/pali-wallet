@@ -1,5 +1,8 @@
 import { AbiCoder } from 'ethers/abi';
 import { getAddress } from 'ethers/address';
+import { sha256 } from 'ethers/crypto';
+
+import { base64UrlToBytes, bytesToBase64Url } from '../passkey/base64url.ts';
 
 import {
   encodeEcdsaValidatorInitData,
@@ -7,11 +10,16 @@ import {
   type PaliSmartAccountAuthenticatorSetup,
   type PaliRecoveryTarget,
 } from './account.ts';
+import { captureGuardianRecoveryOperation } from './guardianRecoveryCommands.ts';
 import {
   captureGuardianRecoveryIntent,
   type GuardianRecoveryIntent,
 } from './guardianRecoveryIntent.ts';
 import type { GuardianRecoveryApprovalVerification } from './guardianRecoveryLifecycle.ts';
+import {
+  getSmartAccountGuardianRecoveryHash,
+  type SmartAccountGuardianRecoveryOperation,
+} from './recovery.ts';
 
 export type GuardianRecoveryReplacement = Readonly<{
   authenticator: PaliSmartAccountAuthenticatorSetup;
@@ -51,7 +59,23 @@ export function captureGuardianRecoveryClaim(
     kind: input.guardian.kind,
     guardian: getAddress(input.guardian.guardian),
   });
-  const source = input.replacement;
+  const { replacement, target } = captureGuardianRecoveryReplacement(
+    input.replacement,
+    intent.operation.chainId
+  );
+  captureGuardianRecoveryIntent({ operation: intent.operation, target });
+  return Object.freeze({
+    guardian,
+    intent,
+    replacement,
+    readyAt: input.readyAt,
+  });
+}
+
+function captureGuardianRecoveryReplacement(
+  source: GuardianRecoveryReplacement,
+  chainId: number
+) {
   const config = source?.authenticator?.config;
   let replacement: GuardianRecoveryReplacement, target: PaliRecoveryTarget;
   if (source?.kind === 'ecdsa' && source.authenticator.id === 'ecdsa') {
@@ -77,10 +101,7 @@ export function captureGuardianRecoveryClaim(
     target = {
       auth: {
         module: 'ecdsa',
-        validator: getConfiguredAuthenticatorAddress(
-          intent.operation.chainId,
-          'ecdsa'
-        ),
+        validator: getConfiguredAuthenticatorAddress(chainId, 'ecdsa'),
         data: encodeEcdsaValidatorInitData([...owners], 1),
       },
     };
@@ -153,10 +174,7 @@ export function captureGuardianRecoveryClaim(
     target = {
       auth: {
         module: 'p256-webauthn',
-        validator: getConfiguredAuthenticatorAddress(
-          intent.operation.chainId,
-          'p256-webauthn'
-        ),
+        validator: getConfiguredAuthenticatorAddress(chainId, 'p256-webauthn'),
         data: AbiCoder.defaultAbiCoder().encode(
           ['tuple(bytes32,bytes32,bytes32,bytes32,uint256)'],
           [
@@ -172,13 +190,75 @@ export function captureGuardianRecoveryClaim(
       },
     };
   } else throw new Error('Invalid guardian replacement authenticator');
-  captureGuardianRecoveryIntent({ operation: intent.operation, target });
-  return Object.freeze({
-    guardian,
-    intent,
-    replacement,
-    readyAt: input.readyAt,
+  return { replacement, target };
+}
+
+/** Public localStorage schema written by the official stable v4.0.69 ZIP. */
+export type ReleasedGuardianRecoveryRecord = GuardianRecoveryReplacement & {
+  recoveryOperation: Omit<SmartAccountGuardianRecoveryOperation, 'hash'> & {
+    readyAt: number;
+  };
+};
+
+export function captureReleasedGuardianRecoveryRecord(
+  input: ReleasedGuardianRecoveryRecord
+): Omit<GuardianRecoveryClaim, 'guardian'> {
+  const allowed = [
+    'authenticator',
+    'backupStatus',
+    'credentialId',
+    'credentialIdHash',
+    'kind',
+    'recoveryOperation',
+    'userHandle',
+  ];
+  const operationKeys = [
+    'account',
+    'chainId',
+    'policyEpoch',
+    'executionCalldata',
+    'mode',
+    'readyAt',
+    'recoveryModule',
+    'salt',
+  ];
+  if (
+    !input ||
+    typeof input !== 'object' ||
+    Object.keys(input).some((key) => !allowed.includes(key)) ||
+    !input.recoveryOperation ||
+    Object.keys(input.recoveryOperation).length !== operationKeys.length ||
+    Object.keys(input.recoveryOperation).some(
+      (key) => !operationKeys.includes(key)
+    )
+  )
+    throw new Error('Invalid released guardian recovery record');
+  const operation = captureGuardianRecoveryOperation(input.recoveryOperation);
+  const readyAt = input.recoveryOperation.readyAt;
+  if (!Number.isSafeInteger(readyAt) || readyAt < 0)
+    throw new Error('Invalid released guardian recovery time');
+  const { replacement, target } = captureGuardianRecoveryReplacement(
+    input,
+    operation.chainId
+  );
+  if (replacement.kind === 'p256-webauthn') {
+    const bytes = base64UrlToBytes(replacement.credentialId!);
+    if (
+      !bytes.length ||
+      bytesToBase64Url(bytes) !== replacement.credentialId ||
+      sha256(bytes).toLowerCase() !==
+        replacement.credentialIdHash!.toLowerCase()
+    )
+      throw new Error('Invalid released guardian replacement credential');
+  }
+  const intent = captureGuardianRecoveryIntent({
+    operation: {
+      ...operation,
+      hash: getSmartAccountGuardianRecoveryHash(operation),
+    },
+    target,
   });
+  return Object.freeze({ intent, replacement, readyAt });
 }
 
 export function sameGuardianRecoveryClaim(
