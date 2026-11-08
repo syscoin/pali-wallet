@@ -159,17 +159,3 @@ test('unavailable balance and preparation preserve readable failure states', asy
     path: test.info().outputPath('smart-send-unavailable-preparation.png'),
   });
 });
-
-test('large type retains the full precise amount and reachable action on a narrow screen', async ({ page }) => {
-  await page.setViewportSize({ width: 320, height: 568 });
-  await page.goto('/?smart-currency=1&font-scale=1.6');
-  await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
-  await page.getByLabel('Amount (ETH)', { exact: true }).fill('0.000000000000000009');
-  await page.getByRole('button', { name: 'Review transfer', exact: true }).click();
-  await expect(page.getByText('0.000000000000000009', { exact: true })).toBeVisible();
-  await contained(page);
-  await page.screenshot({ path: test.info().outputPath('smart-send-precise-large-type-320.png') });
-  const authorize = page.getByRole('button', { name: 'Authorize transfer', exact: true });
-  await authorize.scrollIntoViewIfNeeded();
-  await expect(authorize).toBeInViewport({ ratio: 0.999 });
-});

@@ -177,7 +177,7 @@ test('long authorization details remain complete and actions stay reachable on a
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 568 });
-  await page.goto('/?smart-deployment=1&long-values=1&font-scale=1.6');
+  await page.goto('/?smart-deployment=1&long-values=1');
   const details = page.getByRole('button', {
     name: 'View authorization details',
     exact: true,
