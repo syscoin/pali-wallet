@@ -67,6 +67,10 @@ import { loadNativeKeyringSdk, type NativeKeyringSdk } from './keyringSdk.ts';
 import { createNativeLedgerHost } from '../hardware/ledgerHost.ts';
 import type { NativeLedgerTransport, NativeLedgerOwner } from '../hardware/ownedLedgerTransport.ts';
 import type { NativeLedgerRuntime } from './ledgerAccounts.ts';
+import type { NativeTrezorView, NativeTrezorResumeIntent, NativeTrezorSnapshot } from './trezorAccounts.ts';
+import type { NativeTrezorSessions, NativeTrezorSession } from '../hardware/trezorSessions.ts';
+import type { NativeTrezorHandoffOwner } from '../hardware/trezorHandoff.ts';
+import type { TrezorHost } from '@sidhujag/sysweb3-keyring/cjs/trezor/host-types.js';
 import { prepareNativeConnectionTransaction } from '../connections/transactionRuntime.ts';
 import { readNativeApprovalMetadata } from '../connections/approvalMetadata.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
@@ -179,6 +183,9 @@ export class KeyringRuntimeError extends CustodyRuntimeError {
     this.name = 'KeyringRuntimeError';
   }
 }
+class TrezorReviewChangedError extends Error {
+  constructor() { super('Network conditions changed. Review this transfer again and approve the new request on Trezor.'); }
+}
 
 export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
@@ -187,6 +194,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
   createLedgerTransport?: (owner: NativeLedgerOwner) => Promise<NativeLedgerTransport>;
+  trezorSessions?: NativeTrezorSessions;
   openPrivacyPool?: (network: NativeNetworkRegistration, poolId: PrivacyPoolId, signal: AbortSignal, assertCurrent: () => void) => Promise<ReturnType<typeof createNativePrivacyPoolSync>>;
   openPrivacyWithdrawal?: (signal: AbortSignal, assertCurrent: () => void) => Promise<Readonly<{
     prove: IPrivacyWithdrawalsHost['prove'];
@@ -248,6 +256,7 @@ export function createNativeRetirementReadForChain(
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
 export interface KeyringRuntime extends CustodyRuntime {
   readonly ledger: NativeLedgerRuntime;
+  readonly trezor: NativeTrezorView;
   openConnectionHost(): Promise<NativeConnectionHost>;
   openSmartAccountDeployment(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   openWalletAuthenticator(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
@@ -382,17 +391,91 @@ export function createKeyringRuntimeFactory(
         };
         let preparedLedger: { account: IKeyringAccountState; generation: number; snapshot: NativeWalletCatalogueSnapshot } | undefined;
         const ledgerHost = createNativeLedgerHost(() => ledgerTransport);
-        const openKeyring = (scope: State) => {
+        const openKeyring = (scope: State, trezorHost?: TrezorHost) => {
           let controls: DeviceUnlockControls | undefined;
           const instance = new sdk.HostKeyring(host, { captureEvmSubmission: null,
             ...(deviceUnlock ? { receiveDeviceUnlock: (value: DeviceUnlockControls) => { controls = value; } } : {}),
-          }, () => sdk.createLedgerHardware(ledgerHost)) as IndexedKeyring;
+          }, () => {
+            const hardware = sdk.createLedgerHardware(ledgerHost);
+            if (!trezorHost) return hardware;
+            const trezor = sdk.createTrezorHardware(trezorHost);
+            return { ...hardware, trezorSigner: trezor.trezorSigner,
+              syscoinHardwareSigners: { ...hardware.syscoinHardwareSigners, ...trezor.syscoinHardwareSigners } };
+          }) as IndexedKeyring;
           if (controls) deviceControls.set(instance, controls);
           instance.setVaultStateGetter(() => scope);
           return instance;
         };
         let state = initialState();
         let keyring = openKeyring(state);
+        let trezorSessionGeneration = 0;
+        let trezorSession: NativeTrezorSession | undefined;
+        let trezorWorker: IndexedKeyring | undefined;
+        let trezorSequence = 0;
+        let trezorEpoch = 0;
+        let preparedTrezor: { account: IKeyringAccountState; generation: number; snapshot: NativeWalletCatalogueSnapshot } | undefined;
+        let pendingTrezor: {
+          owner: NativeTrezorHandoffOwner;
+          job: NativeTrezorSession['job'];
+          label: string;
+          networkLabel: string;
+          accountLabel: string;
+          operation: 'import' | 'send' | 'utxo-send';
+          resume?: NativeTrezorResumeIntent;
+          accepted: boolean;
+        } | undefined;
+        let trezorError: string | null = null;
+        const trezorListeners = new Set<() => void>();
+        let trezorSnapshot: NativeTrezorSnapshot = Object.freeze({ phase: 'idle', operation: null,
+          networkLabel: '', accountLabel: '', address: null, error: null });
+        const publishTrezor = () => {
+          const pending = pendingTrezor, transport = dependencies.trezorSessions?.getSnapshot();
+          const next: NativeTrezorSnapshot = {
+            phase: trezorError ? 'error' : !pending || !transport ? 'idle'
+              : transport.phase === 'response-ready' ? 'resume'
+                : transport.phase === 'awaiting-response' || transport.phase === 'locked' ? 'waiting' : pending.operation === 'import' ? 'importing' : 'opening',
+            operation: pending?.operation ?? null, networkLabel: pending?.networkLabel ?? '',
+            accountLabel: pending?.accountLabel ?? '', address: pending?.owner.accountAddress ?? null, error: trezorError,
+          };
+          if ((Object.keys(next) as (keyof NativeTrezorSnapshot)[]).every(key => next[key] === trezorSnapshot[key])) return;
+          trezorSnapshot = Object.freeze(next);
+          for (const listener of trezorListeners) {
+            try { listener(); } catch { /* Observation cannot grant custody. */ }
+          }
+        };
+        const unsubscribeTrezor = dependencies.trezorSessions?.subscribe(publishTrezor);
+        let trezorCleanup: Promise<void> | undefined;
+        const joinTrezorCleanup = (work: () => readonly (Promise<void> | undefined)[]) => {
+          const previous = trezorCleanup;
+          let resolve!: () => void, reject!: (error: unknown) => void;
+          const closing = new Promise<void>((accept, fail) => { resolve = accept; reject = fail; });
+          trezorCleanup = closing;
+          let tasks: readonly (Promise<void> | undefined)[];
+          try { tasks = work(); } catch (error) { tasks = [Promise.reject(error)]; }
+          void Promise.allSettled([previous, ...tasks]).then(results => {
+            const failure = results.find(result => result.status === 'rejected');
+            if (failure?.status === 'rejected') reject(failure.reason); else resolve();
+          });
+          // The barrier remains sticky even when no caller is currently awaiting it.
+          void closing.catch(() => undefined);
+          return closing;
+        };
+        const retireTrezor = () => {
+          const session = trezorSession, worker = trezorWorker;
+          trezorSession = undefined; trezorWorker = undefined;
+          return session ? joinTrezorCleanup(() => [session.retire(async () => { await worker?.trezorSigner?.destroy(); })]) : trezorCleanup;
+        };
+        const cancelTrezor = (invalidate = true): Promise<void> => {
+          if (invalidate) trezorEpoch++;
+          const pending = pendingTrezor;
+          pendingTrezor = undefined; trezorError = null;
+          preparedTrezor = undefined;
+          const retirement = retireTrezor();
+          publishTrezor();
+          return pending
+            ? joinTrezorCleanup(() => [retirement, dependencies.trezorSessions?.cancel(pending.job)])
+            : retirement ?? Promise.resolve();
+        };
         const catalogue = new NativeWalletCatalogue(storage.keyringStorage);
         const tokens = new NativeTokenRegistry(storage.keyringStorage);
         const activityHistory = new NativeActivityHistory(storage.keyringStorage);
@@ -425,6 +508,7 @@ export function createKeyringRuntimeFactory(
         const revokeGeneration = () => {
           const next = ++generation;
           void retireLedger()?.catch(() => undefined);
+          void cancelTrezor().catch(() => undefined);
           retireContextReadLifetime();
           retireSentryKeys();
           noteBackups?.invalidate();
@@ -467,11 +551,14 @@ export function createKeyringRuntimeFactory(
           generation++;
           // Invoke the SDK now: its secret buffers are retired synchronously.
           const pending = keyring.lockWallet();
-          const hardwareCleanup = retireLedger();
+          const ledgerRetirement = retireLedger(), trezorRetirement = retireTrezor();
+          const hardwareCleanup = trezorRetirement ? Promise.all([ledgerRetirement, trezorRetirement]) : ledgerRetirement;
           const retired = hardwareCleanup ? Promise.all([pending, hardwareCleanup]) : pending;
           state.accounts = initialState().accounts;
           catalogueSnapshot = null;
           authenticatedPair = null; verifiedIdentity = null;
+          preparedTrezor = undefined;
+          publishTrezor();
           retireContextReadLifetime();
           retireSentryKeys();
           noteBackups?.invalidate();
@@ -495,13 +582,15 @@ export function createKeyringRuntimeFactory(
             return pairFingerprint;
           });
           closed = true;
+          unsubscribeTrezor?.();
+          const trezorRetirement = cancelTrezor();
           const work = active;
           let revocation: Promise<void>;
           try { revocation = lock(); } catch { revocation = Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED')); }
           noteBackups?.dispose();
           void (async () => {
-            const [, revoked] = await Promise.allSettled([work, revocation, ...pendingSubmissions]);
-            let failed = false;
+            const [, revoked, trezorRetired] = await Promise.allSettled([work, revocation, trezorRetirement, ...pendingSubmissions]);
+            let failed = trezorRetired?.status !== 'fulfilled';
             try { await keyring.lockWallet(); } catch { failed = true; }
             if (capturePair && !failed) {
               try {
@@ -870,6 +959,7 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('CLEANUP_FAILED');
           await hydrate(captured);
           guard();
+          trezorSessionGeneration = dependencies.trezorSessions?.advanceSessionGeneration() ?? 0;
         };
         const selectedAccount = () => {
           if (!catalogueSnapshot || !keyring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
@@ -921,7 +1011,10 @@ export function createKeyringRuntimeFactory(
           check();
           await storage.authGuard.recordSuccess();
           check();
-          if (!live) { authenticatedPair = identity.pairFingerprint; verifiedIdentity = null; }
+          if (!live) {
+            authenticatedPair = identity.pairFingerprint; verifiedIdentity = null;
+            trezorSessionGeneration = dependencies.trezorSessions?.advanceSessionGeneration() ?? 0;
+          }
           return true;
         };
         const dataBinding = async (captured: number, guard: () => void = () => undefined): Promise<string> => {
@@ -930,6 +1023,94 @@ export function createKeyringRuntimeFactory(
           if (!keyring.isUnlocked() || !verifiedIdentity || JSON.stringify(identity) !== JSON.stringify(verifiedIdentity))
             throw new KeyringRuntimeError('CANCELLED');
           return verifiedIdentity.walletBindingId;
+        };
+        const trezorOwner = async (captured: number, check: () => void, importing: boolean): Promise<NativeTrezorHandoffOwner> => {
+          const walletFingerprint = await dataBinding(captured, check); check();
+          const snapshot = catalogueSnapshot!;
+          const selected = importing ? undefined : selectedAccount();
+          if (selected && selected.type !== 'Trezor') throw new KeyringRuntimeError('NOT_READY');
+          const utxo = findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
+          const network = utxo ?? getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+          return Object.freeze({ walletFingerprint,
+            accountId: selected?.id ?? null, accountIndex: selected?.index ?? null, accountAddress: selected?.address ?? null,
+            network: Object.freeze({ id: network.id, kind: utxo ? 'utxo' as const : 'evm' as const,
+              chainId: String(network.chainId), slip44: utxo?.slip44 ?? 60,
+              registrationHash: keyExportRegistrationHash(network.id, snapshot) }),
+          });
+        };
+        const assertPendingTrezorOwner = async (captured: number, check: () => void) => {
+          const pending = pendingTrezor;
+          if (!pending || dependencies.trezorSessions?.getSnapshot()?.job !== pending.job)
+            throw new KeyringRuntimeError('NOT_READY');
+          const owner = await trezorOwner(captured, check, pending.operation === 'import'); check();
+          if (pending !== pendingTrezor || JSON.stringify(owner) !== JSON.stringify(pending.owner)) {
+            await cancelTrezor();
+            throw new KeyringRuntimeError('CANCELLED');
+          }
+          return pending;
+        };
+        const openTrezorAttempt = async (captured: number, check: () => void,
+          operation: 'import' | 'send' | 'utxo-send', label: string, resume?: NativeTrezorResumeIntent) => {
+          const sessions = dependencies.trezorSessions;
+          if (!sessions || !trezorSessionGeneration || trezorSession) throw new KeyringRuntimeError('NOT_READY');
+          await trezorCleanup;
+          check();
+          const owner = await trezorOwner(captured, check, operation === 'import'); check();
+          const existing = pendingTrezor;
+          if (existing && (existing.operation !== operation || !existing.accepted ||
+              JSON.stringify(existing.owner) !== JSON.stringify(owner) ||
+              (resume && JSON.stringify(existing.resume) !== JSON.stringify(resume)))) {
+            await cancelTrezor();
+            throw new TrezorReviewChangedError();
+          }
+          const session = existing
+            ? sessions.resume({ job: existing.job, owner, sessionGeneration: trezorSessionGeneration, accepted: true, assertCurrent: check })
+            : sessions.start({ owner, workflow: operation === 'import' ? 'import' : 'send', expiresAt: Date.now() + 5 * 60_000,
+                sessionGeneration: trezorSessionGeneration, assertCurrent: check });
+          const snapshot = catalogueSnapshot!;
+          const selected = snapshot.accounts.find(account => account.id === snapshot.active.accountId);
+          const network = findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks) ?? getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+          pendingTrezor = existing ?? { owner, job: session.job, label, networkLabel: network.name,
+            accountLabel: operation === 'import' ? label : selected?.label ?? '', operation, resume, accepted: false };
+          pendingTrezor.accepted = false;
+          trezorError = null;
+          trezorSession = session;
+          publishTrezor();
+          const source = keyring, target = openKeyring(state, session.host);
+          try {
+            check();
+            const transfer = await source.prepareSessionTransfer(target, check); check();
+            transfer.transfer();
+            keyring = target;
+            trezorWorker = target;
+            await source.destroy(); check();
+            return { session, ring: target };
+          } catch (error) {
+            await (keyring === target ? target.lockWallet() : target.destroy()).catch(() => undefined);
+            await cancelTrezor();
+            throw error;
+          }
+        };
+        const finishTrezor = async (session: NativeTrezorSession, check: () => void) => {
+          check();
+          if (trezorSession !== session) throw new KeyringRuntimeError('CANCELLED');
+          await session.finish(); check();
+          trezorSession = undefined; trezorWorker = undefined; pendingTrezor = undefined;
+          publishTrezor();
+        };
+        const failTrezor = async (captured: number, admittedEpoch: number, error?: unknown) => {
+          if (admittedEpoch !== trezorEpoch) {
+            if (error instanceof TrezorReviewChangedError && !pendingTrezor && !dependencies.trezorSessions?.getSnapshot()) {
+              trezorError = error.message; publishTrezor();
+            }
+            return;
+          }
+          // Background lock already revoked the SDK invocation. Only its public
+          // transcript survives; the next attempt must use a newly unlocked owner.
+          if (captured !== generation && dependencies.trezorSessions?.getSnapshot()) return;
+          await cancelTrezor();
+          trezorError = error instanceof TrezorReviewChangedError ? error.message : 'Could not complete the Trezor request. Try again.';
+          publishTrezor();
         };
         const connectionOwner = (walletBindingId: string) => () => {
           if (closed || requiresReopen() || connectionWalletBinding !== walletBindingId)
@@ -1810,7 +1991,7 @@ export function createKeyringRuntimeFactory(
             const accountTarget = 'id' in request && !['select-network', 'remove-network'].includes(request.kind);
             const requiresUtxoApproval = request.kind === 'add-utxo-network' ||
               request.kind === 'edit-utxo-network' || request.kind === 'remove-utxo-network';
-            const fields = request.kind === 'import-ledger' ? ['kind', 'label'] : request.kind === 'create' || request.kind === 'create-smart' ? ['kind', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
+            const fields = request.kind === 'import-ledger' || request.kind === 'import-trezor' ? ['kind', 'label'] : request.kind === 'create' || request.kind === 'create-smart' ? ['kind', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
               : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'save-network' ? ['kind', 'registration'] : requiresUtxoApproval ? ['kind'] : request.kind === 'select' || request.kind === 'select-network' || request.kind === 'remove-network' ? ['kind', 'id'] : [];
             if (!fields.length || Object.keys(request).sort().join(',') !== fields.sort().join(',') ||
                 (accountTarget && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
@@ -1837,7 +2018,10 @@ export function createKeyringRuntimeFactory(
                 throw new KeyringRuntimeError('ACCOUNT_NOT_REMOVABLE');
             }
             const ledger = request.kind === 'import-ledger' ? preparedLedger : undefined;
+            const trezor = request.kind === 'import-trezor' ? preparedTrezor : undefined;
             if (request.kind === 'import-ledger' && (!ledger || ledger.generation !== generation || ledger.snapshot !== catalogueSnapshot))
+              throw new KeyringRuntimeError('CANCELLED');
+            if (request.kind === 'import-trezor' && (!trezor || trezor.generation !== generation || trezor.snapshot !== catalogueSnapshot))
               throw new KeyringRuntimeError('CANCELLED');
             const token = {};
             reserved = token;
@@ -1867,6 +2051,10 @@ export function createKeyringRuntimeFactory(
                     if (!ledger || ledger.snapshot !== before) throw new KeyringRuntimeError('CANCELLED');
                     derived = { ...ledger.account, label: request.label };
                     mutation = { kind: 'import-ledger', account: derived } as const;
+                  } else if (request.kind === 'import-trezor') {
+                    if (!trezor || trezor.snapshot !== before) throw new KeyringRuntimeError('CANCELLED');
+                    derived = { ...trezor.account, label: request.label };
+                    mutation = { kind: 'import-trezor', account: derived } as const;
                   } else if (request.kind === 'create') {
                   const created = await keyring.addNewAccount(request.label);
                       current(captured); checkGuard(assertCurrent);
@@ -1957,7 +2145,7 @@ export function createKeyringRuntimeFactory(
                   } else {
                     const next = await catalogue.mutate(expectedRevision, mutation, guard);
                     guard();
-                    if (derived) state.accounts[derived.isLedgerWallet ? 'Ledger' : derived.isSmartAccount ? 'SmartAccount' : 'HDAccount'][derived.id] = derived;
+                    if (derived) state.accounts[derived.isLedgerWallet ? 'Ledger' : derived.isTrezorWallet ? 'Trezor' : derived.isSmartAccount ? 'SmartAccount' : 'HDAccount'][derived.id] = derived;
                     publishAccounts(next);
                   }
                 });
@@ -2074,7 +2262,7 @@ export function createKeyringRuntimeFactory(
             return reserveContext(request, expectedRevision, true);
           },
         };
-        const canSign = () => !!catalogueSnapshot && ['HDAccount', 'Imported', 'Ledger'].includes(selectedAccount().type) && nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks);
+        const canSign = () => !!catalogueSnapshot && ['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(selectedAccount().type) && nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks);
         const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number; type: NativeAccountType }> => {
           const captured = generation;
           const guard = () => { current(captured); checkGuard(assertCurrent); if (reserved) throw new KeyringRuntimeError('BUSY'); if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
@@ -2130,6 +2318,46 @@ export function createKeyringRuntimeFactory(
           }).finally(() => { if (active === task) active = null; });
           active = task;
           return task;
+        };
+        const importTrezor = (label: string, resume: boolean) => {
+          const admittedEpoch = trezorEpoch;
+          return run(async (captured) => {
+          const before = catalogueSnapshot;
+          const check = () => { current(captured); if (admittedEpoch !== trezorEpoch || !before || catalogueSnapshot !== before || !keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED'); };
+          check();
+          if (typeof label !== 'string' || !label.isWellFormed() || !label || label.trim() !== label || label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(label))
+            throw new KeyringRuntimeError('INVALID_INPUT');
+          if (resume) {
+            const pending = await assertPendingTrezorOwner(captured, check);
+            if (pending.operation !== 'import' || pending.label !== label) throw new KeyringRuntimeError('INVALID_INPUT');
+            pending.accepted = true;
+          } else if (pendingTrezor) throw new KeyringRuntimeError('BUSY');
+          try {
+            const { session, ring } = await openTrezorAttempt(captured, check, 'import', label);
+            const account = await ring.importTrezorAccount(label); check();
+            if (!account.isTrezorWallet || account.isLedgerWallet || account.isImported || account.isSmartAccount || account.xprv !== '')
+              throw new KeyringRuntimeError('OPERATION_FAILED');
+            await finishTrezor(session, check);
+            preparedTrezor = { account, generation: captured, snapshot: before! };
+          } catch (error) { await failTrezor(captured, admittedEpoch, error); throw error; }
+          });
+        };
+        const trezor: NativeTrezorView = {
+          getSnapshot: () => trezorSnapshot,
+          subscribe(listener) { trezorListeners.add(listener); return () => { trezorListeners.delete(listener); }; },
+          startImport: label => importTrezor(label, false),
+          resumeImport() {
+            if (!pendingTrezor || pendingTrezor.operation !== 'import') return Promise.reject(new KeyringRuntimeError('NOT_READY'));
+            return importTrezor(pendingTrezor.label, true);
+          },
+          resumeSend: () => { const admittedEpoch = trezorEpoch; return run(async captured => {
+            const check = () => { current(captured); if (admittedEpoch !== trezorEpoch) throw new KeyringRuntimeError('CANCELLED'); };
+            const pending = await assertPendingTrezorOwner(captured, check); check();
+            if (!pending.resume || pending.operation === 'import') throw new KeyringRuntimeError('NOT_READY');
+            pending.accepted = true;
+            return Object.freeze(decodeStorageValue(encodeStorageValue(pending.resume)) as NativeTrezorResumeIntent);
+          }); },
+          cancel: cancelTrezor,
         };
         const ledger: NativeLedgerRuntime = {
           subscribeStatus(listener) {
@@ -3191,6 +3419,7 @@ export function createKeyringRuntimeFactory(
         };
         return {
           ledger,
+          trezor,
           getGuardianRecoveryIntent,
           openGuardianRecovery,
           canManageGuardianPolicy,
@@ -3919,7 +4148,7 @@ export function createKeyringRuntimeFactory(
                 const unlocked = keyring.isUnlocked() && snapshot !== null;
                 const accounts = unlocked
                   ? snapshot.accounts.flatMap((account) => {
-                      if (account.type === 'Ledger') return [];
+                      if (account.type === 'Ledger' || account.type === 'Trezor') return [];
                       const type = account.type;
                       const source =
                         state.accounts[account.type][account.index];
@@ -4062,6 +4291,7 @@ export function createKeyringRuntimeFactory(
                 check(); await storage.authGuard.recordSuccess(); check();
                 authenticatedPair = identity.pairFingerprint; verifiedIdentity = null;
                 await hydrate(captured); check();
+                trezorSessionGeneration = dependencies.trezorSessions?.advanceSessionGeneration() ?? 0;
               }
               return { authenticated };
             }),
@@ -4265,14 +4495,27 @@ export function createKeyringRuntimeFactory(
             }
           } } : {}),
           ...(dependencies.utxoFetch && utxoRecords ? { async openUtxoSend(assertOwner: () => void) {
-            const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
+            const captured = generation, snapshot = catalogueSnapshot;
+            const admittedTrezorEpoch = trezorEpoch;
+            let ring = keyring;
             const selected = selectedAccount(), network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
             if (!network || selected.type === 'SmartAccount' || !supportsUtxoSoftwareCustody(network)) throw new KeyringRuntimeError('NOT_READY');
+            let trezorAttempt: Awaited<ReturnType<typeof openTrezorAttempt>> | undefined;
+            if (selected.type === 'Trezor') {
+              const check = () => {
+                current(captured); checkGuard(assertOwner);
+                if (admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
+                  throw new KeyringRuntimeError('CANCELLED');
+              };
+              trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label);
+              ring = trezorAttempt.ring;
+            }
             const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
             const { xpub } = account;
             if (selected.type === 'Imported') checkedUtxoImport(account, network);
             const guard = () => {
               current(captured); checkGuard(assertOwner); current(captured);
+              if (selected.type === 'Trezor' && admittedTrezorEpoch !== trezorEpoch) throw new KeyringRuntimeError('CANCELLED');
               const actual = state.activeNetwork, live = state.accounts[selected.type][selected.index];
               if (ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
                   live !== account || live.xpub !== xpub || live.address !== selected.address ||
@@ -4287,18 +4530,68 @@ export function createKeyringRuntimeFactory(
             const profileId = await ring.getPrivateRecordProfileId(); guard();
             utxoSend?.cancel();
             const { createNativeUtxoSend } = await import('./utxoSend.ts'); guard();
-            if (selected.type !== 'HDAccount' && selected.type !== 'Imported' && selected.type !== 'Ledger') throw new KeyringRuntimeError('NOT_READY');
-            const opened = createNativeUtxoSend(network, {
+            if (selected.type !== 'HDAccount' && selected.type !== 'Imported' && selected.type !== 'Ledger' && selected.type !== 'Trezor') throw new KeyringRuntimeError('NOT_READY');
+            const accountType = selected.type;
+            const createOpened = () => createNativeUtxoSend(network, {
               profileId,
-              account: { address: selected.address, id: selected.index, type: selected.type, xpub },
+              account: { address: selected.address, id: selected.index, type: accountType, xpub },
               network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
                 genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url },
             }, { keyring: ring, assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!, ring.getAddress);
+            let opened = createOpened();
             utxoSend = opened;
-            return Object.freeze<NativeUtxoSend>({ ...opened, async confirm(view) {
+            return Object.freeze<NativeUtxoSend>({ ...opened,
+              cancel: () => opened.cancel(),
+              list: () => opened.list(),
+              check: txid => opened.check(txid),
+              async prepareRetry(txid) {
+                if (trezorAttempt && trezorSession === trezorAttempt.session) await cancelTrezor(false);
+                trezorAttempt = undefined;
+                return opened.prepareRetry(txid);
+              },
+              async prepare(input) {
+                if (selected.type === 'Trezor' && (!pendingTrezor || trezorSession !== trezorAttempt?.session)) {
+                  guard();
+                  const check = () => {
+                    current(captured); checkGuard(assertOwner);
+                    if (admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
+                      throw new KeyringRuntimeError('CANCELLED');
+                  };
+                  trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label);
+                  ring = trezorAttempt.ring;
+                  opened = createOpened(); utxoSend = opened;
+                }
+                const view = await opened.prepare(input);
+                if (trezorAttempt) {
+                  guard();
+                  if (!pendingTrezor || pendingTrezor.job !== trezorAttempt.session.job) throw new KeyringRuntimeError('CANCELLED');
+                  const resume: NativeTrezorResumeIntent = Object.freeze({
+                    id: pendingTrezor.resume?.id ?? `trezor-${++trezorSequence}`,
+                    kind: 'utxo', accountId: selected.id, networkId: network.id,
+                    recipient: input.recipient.trim(), amount: input.amount,
+                    ...(input.max === true ? { max: true } : {}),
+                    ...(input.asset ? { asset: Object.freeze({ ...input.asset }) } : {}),
+                  });
+                  const transport = dependencies.trezorSessions?.getSnapshot();
+                  if (pendingTrezor.resume && JSON.stringify(pendingTrezor.resume) !== JSON.stringify(resume) &&
+                      !(transport?.phase === 'active' && transport.completedSteps === 0)) {
+                    await cancelTrezor(); throw new TrezorReviewChangedError();
+                  }
+                  pendingTrezor.resume = resume;
+                }
+                return view;
+              },
+              async confirm(view) {
               const pending = opened.confirm(view);
               pendingSubmissions.add(pending);
-              try { return await pending; }
+              try {
+                const result = await pending;
+                if (trezorAttempt) await finishTrezor(trezorAttempt.session, guard);
+                return result;
+              } catch (error) {
+                if (trezorAttempt) await failTrezor(captured, admittedTrezorEpoch, error);
+                throw error;
+              }
               finally {
                 pendingSubmissions.delete(pending);
                 if (utxoRecords.requiresReopen) void lock().catch(() => undefined);
@@ -4715,7 +5008,7 @@ export function createKeyringRuntimeFactory(
                       from: tx.from, to: tx.to, value: tx.value.toString(), data: tx.data, nonce: String(tx.nonce), type: tx.type!,
                     });
                   }
-                  if (context.account.type === 'Ledger') {
+                  if (context.account.type === 'Ledger' || context.account.type === 'Trezor') {
                     await sdk.submitSignedHardwareEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned,
                       async () => { check(); await verifyChain(); check(); });
                   } else {
@@ -4740,6 +5033,7 @@ export function createKeyringRuntimeFactory(
               if (!keyring.isUnlocked() || !canSign()) throw new KeyringRuntimeError('NOT_READY');
             },
             sign: (transaction, authority, inputIntent, replacement) => {
+              const admittedTrezorEpoch = trezorEpoch;
               const assertCurrent = () => {
                 if (authority.signal.aborted)
                   throw new KeyringRuntimeError('CANCELLED');
@@ -4811,6 +5105,26 @@ export function createKeyringRuntimeFactory(
                   current(captured);
                   assertCurrent();
                   return signed;
+                }
+                if (selected.type === 'Trezor') {
+                  const check = () => { current(captured); assertCurrent(); if (admittedTrezorEpoch !== trezorEpoch) throw new KeyringRuntimeError('CANCELLED'); };
+                  const unsignedTransaction = serializePreparedEvmTransaction(prepared);
+                  const resume: NativeTrezorResumeIntent = Object.freeze({
+                    id: pendingTrezor?.resume?.id ?? `trezor-${++trezorSequence}`,
+                    kind: 'evm', accountId: selected.id, networkId: network.id, unsignedTransaction,
+                    ...(intent ? { intent } : {}),
+                    ...(replacement ? { replacement: { mode: replacement.mode, originalHash: replacement.original.hash } } : {}),
+                  });
+                  try {
+                    const { session, ring } = await openTrezorAttempt(captured, check, 'send', selected.label, resume);
+                    const signed = await sdk.signTrezorEvmTransaction(ring.trezorSigner!, {
+                      accountIndex: selected.index, expectedAddress: selected.address, coin: 'eth', slip44: network.slip44,
+                      unsignedTransaction,
+                    }, { signal: authority.signal, assertCurrent: check });
+                    check();
+                    await finishTrezor(session, check);
+                    return signed;
+                  } catch (error) { await failTrezor(captured, admittedTrezorEpoch, error); throw error; }
                 }
                 if (
                   selected.type !== 'HDAccount' &&

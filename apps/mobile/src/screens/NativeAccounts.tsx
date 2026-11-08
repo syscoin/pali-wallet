@@ -33,7 +33,7 @@ import {
 } from '../ui';
 
 type Form = {
-  accountType?: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger';
+  accountType?: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger' | 'Trezor';
   kind: 'create' | 'create-smart' | 'rename' | 'remove';
   id?: string;
   index?: number;
@@ -69,6 +69,7 @@ export function NativeAccounts({
   onBack,
   onImport,
   onLedger,
+  onTrezor,
   networkLabel = 'EVM',
 }: {
   controller: NativeAccountView;
@@ -76,6 +77,7 @@ export function NativeAccounts({
   onBack(): void;
   onImport?(): void;
   onLedger?(): void;
+  onTrezor?(): void;
 }) {
   const [form, setForm] = useState<Form | null>(null);
   const [name, setName] = useState('');
@@ -255,6 +257,7 @@ export function NativeAccounts({
               {controller.supportsSmartAccounts?.() && <Button title="Create smart account" variant="secondary"
                 onPress={() => open({ kind: 'create-smart', label: '' })} />}
               {onLedger && <Button title="Connect Ledger" variant="secondary" onPress={onLedger} />}
+              {onTrezor && <Button title="Connect Trezor" variant="secondary" onPress={onTrezor} />}
               {onImport && (
                 <Button
                   title="Import private key"
@@ -409,7 +412,7 @@ export function NativeAccounts({
                   <Notice
                     title="Your funds stay at this address"
                     body={
-                      form.accountType === 'Ledger' ? 'Removing this local account keeps its keys on your Ledger. Connect the same Ledger to add it again.'
+                      form.accountType === 'Ledger' || form.accountType === 'Trezor' ? `Removing this local account keeps its keys on your ${form.accountType}. Connect the same device to add it again.`
                         : form.accountType === 'SmartAccount' ? 'Removing this local record does not move funds or change its on-chain owners. Keep the account address and wallet backup.'
                         : form.accountType === 'Imported'
                         ? 'Removing this account removes its saved key from this wallet. Your recovery phrase cannot restore it. Keep the original key backed up separately. This does not move funds or cancel transactions.'

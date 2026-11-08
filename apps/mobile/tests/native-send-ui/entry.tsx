@@ -21,6 +21,7 @@ import { NetworkPickerFixture } from './networkPickerFixture';
 import { NativeConnectionsFixture } from './nativeConnectionsFixture';
 import { createLedgerConnectionFixture } from './nativeLedgerConnectionFixture';
 import { NativeLedgerFixture } from './nativeLedgerFixture';
+import { NativeTrezorFixture } from './nativeTrezorFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
 import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
 import { NativeSmartAccountOperationFixture } from './nativeSmartAccountDeploymentFixture';
@@ -411,6 +412,8 @@ function Fixture() {
         <NativeSmartCurrencyFixture />
       ) : new URLSearchParams(window.location.search).has('smart-deployment') ? (
         <NativeSmartAccountOperationFixture />
+      ) : new URLSearchParams(window.location.search).has('trezor') ? (
+        <NativeTrezorFixture />
       ) : new URLSearchParams(window.location.search).has('ledger') ? (
         <NativeLedgerFixture />
       ) : new URLSearchParams(window.location.search).has('transaction-review') ? (

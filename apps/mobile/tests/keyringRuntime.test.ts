@@ -32,7 +32,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch']) {
+function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions'], utxoFetch?: typeof fetch) {
   const records = new Map<string, unknown>();
   let confirmation: string | undefined;
   let failures = 0;
@@ -46,6 +46,12 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   let identity: import('../src/storage/types.ts').WalletIdentityRead | null = null;
   const signedBundles = new Map<string,string>();
   let recordHook: ((kind: string, key: string) => Promise<void>) | undefined;
+  let identityHook: (() => Promise<void>) | undefined;
+  let utxoSigned: string | undefined;
+  const utxoPort: NonNullable<OpenWalletStorage['utxoSignedRecords']> = {
+    async read() { return utxoSigned; },
+    async compareAndSet(_profile, expected, next, guard) { guard(); if (utxoSigned !== expected) return false; utxoSigned = next; return true; },
+  };
   const originalFetch = globalThis.fetch;
   const fingerprint = () => createHash('sha256')
     .update(JSON.stringify([records.get('vault'), records.get('vault-keys')])).digest('hex');
@@ -57,6 +63,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   });
   const plans = new WeakMap<object, { before: ReturnType<typeof snapshot>; after: ReturnType<typeof snapshot> }>();
   const open = async (): Promise<OpenWalletStorage> => { let signedUnavailable=false; return ({
+    utxoSignedRecords: utxoPort,
     signedRecords: {
       async read(profileId) { if(signedUnavailable) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED'); await recordHook?.('get','pali-evm-signed-v1:'+profileId); if (!identity?.root || identity.root.profileId !== profileId) throw Error('profile mismatch'); return signedBundles.get(profileId); },
       async compareAndSet(profileId, expected, next, guard) { guard(); if(signedUnavailable) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED'); if (!identity?.root || identity.root.profileId !== profileId) throw Error('profile mismatch'); if (signedBundles.get(profileId) !== expected) return false; signedBundles.set(profileId,next); await recordHook?.('create','pali-evm-signed-v1:'+profileId); if(failAcknowledgement || failCasAcknowledgement){failAcknowledgement=false;failCasAcknowledgement=false;signedUnavailable=true;throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');} return true; },
@@ -81,7 +88,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         if(failCatalogueAcknowledgement){failCatalogueAcknowledgement=false;signedUnavailable=true;throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');}
         guard();
       },
-      async readIdentity() { if (!records.has('vault')) return null; if (identity && identity.pairFingerprint !== fingerprint()) throw Error('pair changed'); return identity ?? {walletBindingId:fingerprint(),pairFingerprint:fingerprint(),root:null,verification:'requires-unlock'}; },
+      async readIdentity() { await identityHook?.(); if (!records.has('vault')) return null; if (identity && identity.pairFingerprint !== fingerprint()) throw Error('pair changed'); return identity ?? {walletBindingId:fingerprint(),pairFingerprint:fingerprint(),root:null,verification:'requires-unlock'}; },
       async bindIdentity(expected, root, guard) { guard(); assert.equal(expected,fingerprint()); if (identity) assert.deepEqual(identity.root,root); else identity={walletBindingId:expected,pairFingerprint:expected,root,verification:'requires-unlock'}; },
       async readSnapshot() { return snapshot(); },
       async recordFailureForPair(pair) { assert.equal(pair,fingerprint()); failures++; failureWrites++; },
@@ -153,11 +160,12 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   }); };
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null, ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
-  }, openStorage: open, loadSdk, assertActive, connectionFetch });
+  }, openStorage: open, loadSdk, assertActive, connectionFetch, trezorSessions, utxoFetch });
   return {
     clearFixtureIdentity() { identity = null; }, fixtureIdentity: () => identity,
-    records, factory, signedBundles, signedValue: () => [...signedBundles.values()][0],
+    records, factory, signedBundles, utxoPort, signedValue: () => [...signedBundles.values()][0],
     onRecord(hook?: (kind: string, key: string) => Promise<void>) { recordHook = hook; },
+    onIdentity(hook?: () => Promise<void>) { identityHook = hook; },
     get closes() { return closes; },
     loseCasAcknowledgement() { failCasAcknowledgement = true; },
     loseCatalogueAcknowledgement() { failCatalogueAcknowledgement = true; },
@@ -2590,4 +2598,429 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
     await f.authority.dispose();
     f.disk.restoreNetwork();
   }
+});
+
+function trezorFixtureSessions() {
+  type Sessions = NonNullable<KeyringRuntimeDependencies['trezorSessions']>;
+  let generation = 0;
+  let state: ReturnType<Sessions['getSnapshot']> = null;
+  const listeners = new Set<() => void>();
+  const paths: string[] = [];
+  let beforeAddress: (() => Promise<void>) | undefined;
+  let beforeRetirement: (() => Promise<void>) | undefined;
+  let beforeCancellation: (() => Promise<void>) | undefined;
+  let inAddress = false;
+  const publish = () => { for (const listener of listeners) listener(); };
+  const sessions: Sessions = {
+    advanceSessionGeneration: () => ++generation,
+    getSnapshot: () => state,
+    subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+    receiveCallback: () => false,
+    async cancel() { state = null; publish(); await beforeCancellation?.(); },
+    async dispose() { state = null; publish(); },
+    start(request) {
+      assert.equal(request.sessionGeneration, generation);
+      request.assertCurrent();
+      const job = {} as NonNullable<typeof state>['job'];
+      state = { job, owner: request.owner, workflow: request.workflow, phase: 'active', expiresAt: request.expiresAt, completedSteps: 0 };
+      publish();
+      return open(request.assertCurrent, job);
+    },
+    resume(request) {
+      assert.equal(request.accepted, true);
+      assert.equal(request.sessionGeneration, generation);
+      assert.equal(request.job, state?.job);
+      request.assertCurrent();
+      return open(request.assertCurrent, request.job);
+    },
+  };
+  function open(check: () => void, job: NonNullable<typeof state>['job']) {
+    let live = true;
+    const host = new Proxy<Record<string, unknown>>({
+      async init(guard: () => void) { check(); guard(); },
+      async dispose() { live = false; },
+    }, {
+      get(target, method: string) {
+        if (method === 'then') return undefined;
+        if (method in target) return target[method as keyof typeof target];
+        return async (guard: () => void, request: { path: string; transaction?: Record<string, unknown> }) => {
+          check(); guard(); assert(live);
+          const path = request.path;
+          paths.push(path);
+          if (method === 'getAccountInfo') {
+            const [{ getNetworkConfig }, { utils }] = await Promise.all([import('@sidhujag/sysweb3-network'), import('syscoinjs-lib')]);
+            const [, , slip, index] = path.split('/');
+            const slip44 = Number(slip!.replace("'", ''));
+            const currency = slip44 === 57 ? 'sys' : 'btc';
+            const config = getNetworkConfig(slip44, currency);
+            const hd = new utils.HDSigner('test test test test test test test test test test test junk', null, slip44 === 1,
+              config.networks, slip44, config.types.zPubType, 84);
+            hd.createAccountAtIndex(Number(index!.replace("'", '')), 84);
+            return { success: true, payload: { descriptor: hd.getAccountXpub(), balance: '0', empty: true, history: { total: 0, unconfirmed: 0 } } };
+          }
+          const wallet = HDNodeWallet.fromPhrase('test test test test test test test test test test test junk', undefined, path);
+          if (method === 'ethereumGetAddress') {
+            inAddress = true;
+            await beforeAddress?.();
+            inAddress = false;
+            if (state?.job === job && state.phase === 'locked') { state = { ...state, phase: 'response-ready' }; publish(); }
+            check(); guard();
+            return { success: true, payload: { address: wallet.address } };
+          }
+          if (method === 'ethereumGetPublicKey')
+            return { success: true, payload: { publicKey: wallet.publicKey.slice(2) } };
+          if (method === 'ethereumSignTransaction') {
+            const tx = request.transaction!;
+            const parsed = Transaction.from({ ...tx, type: tx.gasPrice === undefined ? 2 : 0 });
+            const signature = wallet.signingKey.sign(parsed.unsignedHash);
+            return { success: true, payload: { r: signature.r, s: signature.s, v: signature.v.toString(16) } };
+          }
+          throw new Error(`Unexpected Trezor method ${method}`);
+        };
+      },
+    }) as unknown as import('@sidhujag/sysweb3-keyring/cjs/trezor/host-types.js').TrezorHost;
+    return { job, host,
+      async retire(retireSdk: () => Promise<void>) {
+        live = false;
+        if (state?.job === job) { state = { ...state, phase: inAddress ? 'locked' : 'response-ready' }; publish(); }
+        await beforeRetirement?.();
+        await retireSdk();
+      },
+      async finish() { check(); state = null; live = false; publish(); },
+      async cancel() { await sessions.cancel(job); },
+    };
+  }
+  return { sessions, paths, holdAddress(hook: () => Promise<void>) { beforeAddress = hook; },
+    holdRetirement(hook: () => Promise<void>) { beforeRetirement = hook; },
+    holdCancellation(hook: () => Promise<void>) { beforeCancellation = hook; } };
+}
+
+test('Trezor runtime uses shared allocation, preserves records on unlock and signs the exact reviewed envelope', async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    const idle = runtime.trezor.getSnapshot();
+    assert.equal(runtime.trezor.getSnapshot(), idle);
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await runtime.trezor.startImport('Trezor one');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Trezor one' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    assert.equal(owner.getCatalogue()!.active.accountId, 'trezor:60:0');
+    await runtime.trezor.startImport('Trezor two');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Trezor two' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    assert.equal(owner.getCatalogue()!.active.accountId, 'trezor:60:1');
+    assert(fixture.paths.includes("m/44'/60'/0'/0/1"));
+    const saved = owner.getCatalogue()!.accounts.find(account => account.id === 'trezor:60:1')!;
+    assert(saved.address); assert(!JSON.stringify(saved).includes('xprv'));
+    owner.lock(); await owner.unlock(PASSWORD);
+    assert.equal(owner.getCatalogue()!.active.accountId, saved.id);
+    const prepared = { type: 2 as const, accessList: [], from: saved.address, to: '0x' + '22'.repeat(20), chainId: '1',
+      nonce: '9', value: '123', gasLimit: '25200', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
+    const signed = await runtime.transfers!.sign(prepared, { signal: new AbortController().signal, assertCurrent() {} });
+    const parsed = Transaction.from(signed.rawTransaction);
+    assert.equal(parsed.from, saved.address); assert.equal(parsed.nonce, 9); assert.equal(parsed.value, 123n);
+    assert.equal(parsed.hash, signed.hash);
+    assert.equal(runtime.trezor.getSnapshot(), runtime.trezor.getSnapshot());
+    let broadcasts = 0;
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum', fetch: async (_url, init) => {
+      const request = JSON.parse(String(init.body));
+      const result = await (async () => {
+        switch (request.method) {
+          case 'eth_chainId': return '0x1';
+          case 'eth_getTransactionCount': return '0x0';
+          case 'eth_getBalance': return '0x10000000000000000';
+          case 'eth_gasPrice': return '0x2';
+          case 'eth_feeHistory': return { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
+          case 'eth_maxPriorityFeePerGas': return '0x1';
+          case 'eth_estimateGas': return '0x5208';
+          case 'eth_getTransactionByHash': case 'eth_getTransactionReceipt': return null;
+          case 'eth_getBlockByNumber': return { number: '0x20', hash: '0x' + 'ab'.repeat(32), baseFeePerGas: '0x1', gasLimit: '0x1c9c380' };
+          case 'eth_sendRawTransaction': {
+            broadcasts++;
+            const raw = request.params[0];
+            const saved = await (await runtime.transfers!.journal(() => undefined)).load(keccak256(raw));
+            assert(saved?.rawTransaction === raw);
+            return keccak256(raw);
+          }
+          default: throw new Error('Unexpected test RPC ' + request.method);
+        }
+      })();
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
+    } });
+    const transfers = new NativeTransfers(owner, () => runtime.transfers, { rpc });
+    try {
+      await transfers.prepare('0x' + '22'.repeat(20), '0.001', '7');
+      await transfers.confirm(transfers.getSnapshot().review!.id);
+      assert.equal(transfers.getSnapshot().phase, 'pending');
+      assert.equal(broadcasts, 1);
+    } finally { transfers.dispose(); }
+  } finally { await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime keeps a stable waiting snapshot and cannot save an import after lock', async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    fixture.holdAddress(async () => { entered(); await held; });
+    const pending = runtime.trezor.startImport('Cancelled Trezor');
+    void pending.catch(() => undefined);
+    await started; owner.lock();
+    const waiting = runtime.trezor.getSnapshot();
+    assert.equal(waiting.phase, 'waiting');
+    assert.equal(runtime.trezor.getSnapshot(), waiting);
+    release(); await assert.rejects(pending, /CANCELLED|no longer current/);
+    await owner.unlock(PASSWORD);
+    assert(!owner.getCatalogue()!.accounts.some(account => account.type === 'Trezor'));
+    assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
+  } finally { release(); await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime cancellation before identity admission never opens a device session', async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    disk.onIdentity(async () => { entered(); await held; });
+    const pending = runtime.trezor.startImport('Cancelled before device');
+    void pending.catch(() => undefined);
+    await started; await runtime.trezor.cancel(); release();
+    await assert.rejects(pending, /CANCELLED/);
+    assert.equal(fixture.paths.length, 0);
+    assert.equal(fixture.sessions.getSnapshot(), null);
+  } finally { release(); await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runtime waits for zero-step UTXO retirement with ${failure} failure`, async () => {
+  const fixture = trezorFixtureSessions();
+  const disk = memoryDisk(undefined, undefined, undefined, fixture.sessions, async () => { throw new Error('No network needed'); });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await runtime.trezor.startImport('Bitcoin Trezor');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    assert.equal(owner.getCatalogue()!.active.accountId, 'trezor:0:0');
+    const calls = fixture.paths.length;
+    await runtime.openUtxoSend!(() => undefined);
+    await runtime.trezor.cancel();
+    await runtime.openUtxoSend!(() => undefined);
+    assert.equal(fixture.paths.length, calls);
+    if (failure === 'cancellation') fixture.holdCancellation(async () => { throw new Error('Cancellation refused'); });
+    fixture.holdRetirement(async () => { entered(); await held; if (failure === 'retirement') throw new Error('Retirement refused'); });
+    const cancelled = runtime.trezor.cancel();
+    void cancelled.catch(() => undefined);
+    await started;
+    const cancelledAgain = runtime.trezor.cancel();
+    assert.equal(cancelledAgain, cancelled);
+    let settled = false;
+    const closing = runtime.storage.close().finally(() => { settled = true; });
+    void closing.catch(() => undefined);
+    await Promise.resolve(); assert.equal(settled, false); release();
+    if (failure !== 'none') {
+      await assert.rejects(cancelled);
+      await assert.rejects(closing, /CLEANUP_FAILED/);
+    } else { await cancelled; await closing; }
+  } finally { release(); await owner.dispose().catch(() => undefined); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime replays saved UTXO bytes without Suite or a new signature', async () => {
+  const [{ UtxoSignedRecords }, { getUtxoNetwork }, { utxoSubmissionUrl }, { utils }, { metadata }] = await Promise.all([
+    import('../../../source/wallet/utxoSignedRecords.ts'), import('../src/core/utxoNetworks.ts'),
+    import('../../../source/wallet/utxoSignedBinding.ts'), import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
+  ]);
+  const fixture = trezorFixtureSessions();
+  const sdk = await loadNativeKeyringSdk();
+  let ring!: InstanceType<typeof sdk.HostKeyring>;
+  class Host extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) { super(...args); ring = this; }
+  }
+  let broadcasts = 0;
+  const network = getUtxoNetwork('bitcoin');
+  const disk = memoryDisk(async () => ({ ...sdk, HostKeyring: Host }), undefined, undefined, fixture.sessions,
+    async (url, init) => {
+      if (String(url) === network.endpoint + '/api/v2/') {
+        const response = Response.json(metadata(network)); Object.defineProperty(response, 'url', { value: String(url) }); return response;
+      }
+      if (String(url) === network.endpoint + '/api/v2/block-index/0') {
+        const response = Response.json({ blockHash: network.genesisHash }); Object.defineProperty(response, 'url', { value: String(url) }); return response;
+      }
+      assert.equal(String(url), utxoSubmissionUrl(network.endpoint));
+      assert.equal(init?.method, 'POST'); broadcasts++;
+      const raw = utils.bitcoinjs.Transaction.fromHex(String(init?.body));
+      const response = Response.json({ result: raw.getId() });
+      Object.defineProperty(response, 'url', { value: String(url) });
+      return response;
+    });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await runtime.trezor.startImport('Bitcoin Trezor');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    const account = owner.getCatalogue()!.accounts.find(account => account.type === 'Trezor')!;
+    const previous = new utils.bitcoinjs.Transaction();
+    previous.addInput(Buffer.alloc(32, 7), 0);
+    previous.addOutput(utils.bitcoinjs.address.toOutputScript(account.address, network.addressNetwork), 1000n);
+    const txid = previous.getId();
+    const record = { operation: 'wallet' as const, rawTransaction: previous.toHex(), txid,
+      url: utxoSubmissionUrl(network.endpoint), feeSatoshis: '10', virtualSize: previous.virtualSize(),
+      outpoints: ['07'.repeat(32) + ':0'],
+      owner: { chainId: network.chainId, genesisHash: network.genesisHash, slip44: network.slip44,
+        account: { id: 0, type: 'Trezor', xpub: (disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.find(group => group.activeNetwork.slip44 === 0)!.accounts.Trezor[0]!.xpub } },
+    };
+    const records = new UtxoSignedRecords(disk.utxoPort, disk.utxoPort);
+    await records.admit({ keyring: ring, assertCurrent() {} }, record, 'initial', async prepare => { await prepare(); });
+    const calls = fixture.paths.length;
+    const send = await runtime.openUtxoSend!(() => undefined);
+    const review = await send.prepareRetry(txid);
+    const result = await send.confirm(review);
+    assert.equal(result.txid, txid); assert.equal(broadcasts, 1);
+    assert.equal(fixture.paths.length, calls);
+    assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
+    let entered!: () => void, release!: () => void;
+    const reached = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    disk.onIdentity(async () => { entered(); await held; });
+    const preparing = send.prepare({ recipient: account.address, amount: '0.00001' });
+    void preparing.catch(() => undefined);
+    await reached; await runtime.trezor.cancel(); release();
+    await assert.rejects(preparing, /CANCELLED/);
+    assert.equal(fixture.sessions.getSnapshot(), null);
+    assert.equal(fixture.paths.length, calls);
+    disk.onIdentity();
+  } finally { await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature', async () => {
+  const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
+    import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
+    import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
+  ]);
+  const network = getUtxoNetwork('bitcoin');
+  const config = getNetworkConfig(0, 'btc');
+  const hd = new utils.HDSigner('test test test test test test test test test test test junk', null, false,
+    config.networks, 0, config.types.zPubType, 84);
+  hd.createAccountAtIndex(0, 84);
+  const address = utils.bitcoinjs.payments.p2wpkh({ pubkey: hd.getRootNode().derivePath("m/84'/0'/0'/0/0").publicKey,
+    network: network.addressNetwork }).address!;
+  const previous = new utils.bitcoinjs.Transaction();
+  previous.addInput(Buffer.alloc(32, 7), 0);
+  previous.addOutput(utils.bitcoinjs.address.toOutputScript(address, network.addressNetwork), 100000n);
+  const recipient = utils.bitcoinjs.payments.p2wpkh({ hash: Buffer.alloc(20, 8), network: network.addressNetwork }).address!;
+  const methods: string[] = [];
+  let random = 0, requestId = 0, broadcasts = 0;
+  const sessions = createTrezorSessions({
+    randomBytes: length => new Uint8Array(length).fill(++random),
+    async loadClient() {
+      let settings!: Parameters<import('../src/hardware/trezorHost.ts').NativeTrezorClient['init']>[0];
+      let resolve!: (value: unknown) => void;
+      const pending = new Promise<unknown>(done => { resolve = done; });
+      return {
+        async init(value) { settings = value; },
+        call({ method, ...params }) {
+          const callback = new URL(settings.deeplinkCallbackUrl); callback.searchParams.set('id', `call-${++requestId}`);
+          const url = new URL(settings.connectSrc + 'deeplink/1/');
+          url.searchParams.set('method', String(method)); url.searchParams.set('params', JSON.stringify(params));
+          url.searchParams.set('callback', callback.toString()); url.searchParams.set('appName', settings.manifest.appName);
+          settings.deeplinkOpen(url.toString()); return pending;
+        },
+        cancel() { resolve(undefined); }, async dispose() {},
+      };
+    },
+    async openURL(value) {
+      const url = new URL(value), method = url.searchParams.get('method')!;
+      const params = JSON.parse(url.searchParams.get('params')!);
+      methods.push(method);
+      let payload: unknown;
+      if (method === 'getAccountInfo') payload = { descriptor: hd.getAccountXpub(), balance: '0', empty: true, history: { total: 0, unconfirmed: 0 } };
+      else if (method === 'getFeatures') payload = { major_version: 2, minor_version: 8, patch_version: 0, model: 'T' };
+      else if (method === 'signTransaction') {
+        // Connect's existing fixPath normalizes its public address_n values to uint32.
+        const pathText = (path: number[]) => 'm/' + path.map(value => {
+          const index = value >>> 0;
+          return index >= 0x80000000 ? `${index - 0x80000000}'` : String(index);
+        }).join('/');
+        const psbt = new utils.bitcoinjs.Psbt({ network: network.addressNetwork });
+        psbt.setVersion(params.version); psbt.setLocktime(params.locktime);
+        for (const input of params.inputs) {
+          const path = pathText(input.address_n);
+          const key = hd.getRootNode().derivePath(path);
+          psbt.addInput({ hash: input.prev_hash, index: input.prev_index, sequence: input.sequence,
+            witnessUtxo: previous.outs[input.prev_index],
+            bip32Derivation: [{ path, masterFingerprint: hd.getMasterFingerprint(), pubkey: key.publicKey }],
+          });
+        }
+        for (const output of params.outputs) {
+          const destination = output.address ?? utils.bitcoinjs.payments.p2wpkh({
+            pubkey: hd.getRootNode().derivePath(pathText(output.address_n)).publicKey, network: network.addressNetwork,
+          }).address;
+          psbt.addOutput({ address: destination, value: BigInt(output.amount) });
+        }
+        psbt.signAllInputsHD(hd.getRootNode()); psbt.finalizeAllInputs();
+        payload = { serializedTx: psbt.extractTransaction().toHex(), signatures: [] };
+      } else throw new Error(`Unexpected device method ${method}`);
+      const callback = new URL(url.searchParams.get('callback')!);
+      callback.searchParams.set('response', JSON.stringify({ success: true, payload }));
+      assert.equal(sessions.receiveCallback(callback.toString()), true);
+    },
+  });
+  const disk = memoryDisk(undefined, undefined, undefined, sessions, async (input, init) => {
+    const url = String(input), route = url.slice(network.endpoint.length);
+    let result: unknown;
+    if (route === '/api/v2/') result = metadata(network);
+    else if (route === '/api/v2/block-index/0') result = { blockHash: network.genesisHash };
+    else if (route === '/api/v2/estimatefee/1') result = { result: '0.00001024' };
+    else if (route.startsWith('/api/v2/xpub/')) result = { tokens: [] };
+    else if (route.startsWith('/api/v2/utxo/')) result = [{ txid: previous.getId(), vout: 0, value: '100000', address, confirmations: 10, path: "m/84'/0'/0'/0/0" }];
+    else if (route === '/api/v2/tx/' + previous.getId()) result = { hex: previous.toHex() };
+    else if (route === '/api/v2/sendtx/' && init?.method === 'POST') { broadcasts++; result = { result: utils.bitcoinjs.Transaction.fromHex(String(init.body)).getId() }; }
+    else throw new Error('Unexpected UTXO route ' + route);
+    const response = Response.json(result); Object.defineProperty(response, 'url', { value: url }); return response;
+  });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await runtime.trezor.startImport('Bitcoin Trezor');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    const callCount = methods.length;
+    const first = await runtime.openUtxoSend!(() => undefined);
+    const review = await first.prepare({ recipient, amount: '0.0005' });
+    assert.equal(methods.length, callCount);
+    owner.lock(); await owner.unlock(PASSWORD);
+    assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
+    await assert.rejects(first.confirm(review), /CANCELLED|NOT_READY/);
+    const intent = await runtime.trezor.resumeSend(); assert.equal(intent.kind, 'utxo');
+    if (intent.kind !== 'utxo') throw new Error('Unexpected draft');
+    const fresh = await runtime.openUtxoSend!(() => undefined);
+    const freshReview = await fresh.prepare(intent);
+    assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
+    await fresh.confirm(freshReview);
+    assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
+    assert.equal(broadcasts, 1);
+  } finally { await owner.dispose(); await sessions.dispose(); }
 });

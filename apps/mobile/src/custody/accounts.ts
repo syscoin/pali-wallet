@@ -5,6 +5,7 @@ export type NativeAccountRequest =
   | Readonly<{ kind: 'create'; label: string; password: string }>
   | Readonly<{ kind: 'create-smart'; label: string; password: string }>
   | Readonly<{ kind: 'import-ledger'; label: string }>
+  | Readonly<{ kind: 'import-trezor'; label: string }>
   | Readonly<{ kind: 'select'; id: string }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
   | Readonly<{ kind: 'remove'; id: string; password: string }>;

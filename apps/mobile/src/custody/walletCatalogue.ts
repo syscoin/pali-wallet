@@ -18,7 +18,7 @@ import { requireSmartAccountAddressIdentity } from '../../../../source/utils/sma
 import { encodeEcdsaValidatorInitData, getConfiguredAuthenticatorAddress, type PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
 import type { SmartAccountGuardianRecoveryOperation } from '../../../../source/utils/smartAccount/recovery.ts';
 import { captureGuardianRecoveryIntent } from '../../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
-import { nativeAccountId, parseNativeAccountId } from './accountIdentity.ts';
+import { nativeAccountId, parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
 import {
   assertImportedRecoveryAccount,
   snapshotImportedRecoveryEntry,
@@ -50,7 +50,7 @@ const KeyringAccountType =
 export const WALLET_CATALOGUE_KEY = ACCOUNT_RECORD_KEY;
 export type NativeCatalogueAccount = Readonly<{
   id: string;
-  type: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger';
+  type: NativeAccountType;
   smartAccount?: Readonly<{ chainId: number; isDeployed: boolean; localEcdsa: boolean; managementAddress: string }>;
   index: number;
   slip44: number;
@@ -104,6 +104,7 @@ export type NativeAccountRecord = Readonly<{
 export type CatalogueMutation =
   | Readonly<{ kind: 'create'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'import-ledger'; account: IKeyringAccountState }>
+  | Readonly<{ kind: 'import-trezor'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'create-smart'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'mark-smart-deployed'; id: string }>
   | Readonly<{ kind: 'refresh-smart-metadata'; id: string; metadata: Pick<ISmartAccountMetadata,
@@ -317,7 +318,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     assertCompleteHDAccountData(group.accounts.HDAccount);
     for (const [type, accounts] of Object.entries(group.accounts)) {
       if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts) ||
-          (utxo && type !== 'HDAccount' && type !== 'Imported' && type !== 'Ledger' && Object.keys(accounts).length))
+          (utxo && type !== 'HDAccount' && type !== 'Imported' && type !== 'Ledger' && type !== 'Trezor' && Object.keys(accounts).length))
         return invalid();
       for (const [id, account] of Object.entries(accounts)) {
         if (
@@ -345,6 +346,10 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
           if (!account.isLedgerWallet || account.isImported || account.isTrezorWallet || account.isSmartAccount || account.xprv !== '') return invalid();
           if (network.kind === 'ethereum') publicIdentity({ address: account.address, publicKey: `0x${account.xpub.replace(/^0x/, '')}` });
         }
+        if (type === 'Trezor') {
+          if (!account.isTrezorWallet || account.isImported || account.isLedgerWallet || account.isSmartAccount || account.xprv !== '') return invalid();
+          if (network.kind === 'ethereum') publicIdentity({ address: account.address, publicKey: `0x${account.xpub.replace(/^0x/, '')}` });
+        }
         if (type === 'SmartAccount') {
           if (network.kind !== 'ethereum' || !account.isSmartAccount || account.isImported || account.isLedgerWallet || account.isTrezorWallet || account.xprv !== '' ||
               !Number.isSafeInteger(account.smartAccount?.chainId) || account.smartAccount!.chainId < 1)
@@ -361,7 +366,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
           if (normalizeUtxoAddress(account.address, utxo) !== account.address)
             return invalid();
           const bip84 = /^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub);
-          if ((type === 'HDAccount' || type === 'Ledger') && !bip84)
+          if ((type === 'HDAccount' || type === 'Ledger' || type === 'Trezor') && !bip84)
             return invalid();
           if (type === 'Imported' &&
               ((account.xpub !== account.address &&
@@ -447,7 +452,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
 }
 function publicAccounts(group: RecoveryAccountGroup, chainId?: number): NativeCatalogueAccount[] {
   const slip44 = group.activeNetwork.slip44;
-  const accounts: NativeCatalogueAccount[] = (['HDAccount', 'Imported', 'Ledger'] as const).flatMap((type) =>
+  const accounts: NativeCatalogueAccount[] = (['HDAccount', 'Imported', 'Ledger', 'Trezor'] as const).flatMap((type) =>
     Object.values(group.accounts[type]).map((account) => Object.freeze({
       id: nativeAccountId(type, account.id, slip44), type, index: account.id, slip44,
       address: account.address, label: account.label,
@@ -644,10 +649,10 @@ export class NativeWalletCatalogue {
         recovery = [...next.recovery],
         groups = [...next.groups],
         guardianRecoveryIntents = next.guardianRecoveryIntents ? [...next.guardianRecoveryIntents] : undefined;
-      if (mutation.kind === 'create' || mutation.kind === 'create-smart' || mutation.kind === 'import' || mutation.kind === 'import-ledger') {
+      if (mutation.kind === 'create' || mutation.kind === 'create-smart' || mutation.kind === 'import' || mutation.kind === 'import-ledger' || mutation.kind === 'import-trezor') {
         const type =
           mutation.kind === 'create' ? KeyringAccountType.HDAccount
-            : mutation.kind === 'create-smart' ? KeyringAccountType.SmartAccount : mutation.kind === 'import-ledger' ? KeyringAccountType.Ledger : KeyringAccountType.Imported;
+            : mutation.kind === 'create-smart' ? KeyringAccountType.SmartAccount : mutation.kind === 'import-ledger' ? KeyringAccountType.Ledger : mutation.kind === 'import-trezor' ? KeyringAccountType.Trezor : KeyringAccountType.Imported;
         if (type === KeyringAccountType.SmartAccount && (group.activeNetwork.kind !== 'ethereum' || mutation.account.smartAccount?.chainId !== Number(getNativeNetwork(active.networkId, catalogueEvmNetworks(next)).chainId))) return invalid();
         assertAccountCreationAvailable(
           group.accounts,

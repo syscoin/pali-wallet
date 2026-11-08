@@ -7,7 +7,7 @@ import ts from 'typescript';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }) {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>) {
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -44,7 +44,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const prepared: unknown[] = [];
   const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;},async prepareToken(...args: unknown[]) { prepared.push(args); }};
   const context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,account:{address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1},onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,account:{address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1},onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
   return {render,prepared,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
 }
 function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all)];}
@@ -71,6 +71,28 @@ test('an outcome arriving while the prompt is open is not discarded by stale Lea
 });
 test('ordinary Back without a submission still exits directly',()=>{
  const f=setup();f.snapshot.phase='idle';const tree=f.render();headerBack(tree);assert.deepEqual(f.counts(),{backs:1,cancels:1});f.dispose();
+});
+
+test('hardware Back drains once before navigation and cannot publish after unmount', async () => {
+ let release!: () => void, drains=0;
+ const pending=new Promise<void>(resolve=>{release=resolve;});
+ const f=setup(undefined,()=>{drains++;return pending;});
+ f.snapshot.phase='idle';const tree=f.render();headerBack(tree);headerBack(tree);
+ await new Promise(setImmediate);assert.equal(drains,1);assert.deepEqual(f.counts(),{backs:0,cancels:1});
+ release();await new Promise(setImmediate);assert.deepEqual(f.counts(),{backs:1,cancels:1});f.dispose();
+ let finish!:()=>void;
+ const other=setup(undefined,()=>new Promise<void>(resolve=>{finish=resolve;}));
+ other.snapshot.phase='idle';headerBack(other.render());await new Promise(setImmediate);other.dispose();
+ finish();await new Promise(setImmediate);assert.equal(other.counts().backs,0);
+});
+
+test('failed hardware cleanup keeps the screen and allows Back to retry the drain', async () => {
+ let drains=0;
+ const f=setup(undefined,async()=>{if(++drains===1)throw Error('held transport');});
+ f.snapshot.phase='idle';headerBack(f.render());await new Promise(setImmediate);
+ assert.equal(f.counts().backs,0);
+ const tree=f.render();assert.match(all(tree).flatMap(e=>e.children.filter(v=>typeof v==='string')).join(' '),/hardware request is still closing/);
+ headerBack(tree);await new Promise(setImmediate);assert.equal(drains,2);assert.equal(f.counts().backs,1);f.dispose();
 });
 
 test('a later submission with a distinct review cannot resurrect the earlier warning',()=>{

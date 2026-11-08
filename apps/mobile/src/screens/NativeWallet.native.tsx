@@ -47,6 +47,10 @@ import { createNativeNetworkView, type NativeNetworkView } from '../custody/netw
 import { getNativeNetwork, getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
 import { NativeLedger } from './NativeLedger';
+import { NativeTrezor, NativeTrezorResumeNotice } from './NativeTrezor';
+import { trezorResumeDraft } from './trezorResumeDraft';
+import type { NativeTrezorView, NativeTrezorResumeIntent } from '../custody/trezorAccounts';
+import type { NativeUtxoAsset } from '../custody/utxoSend';
 import type { NativeLedgerConnectionView, NativeLedgerImportView } from '../custody/ledgerAccounts';
 import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
@@ -72,11 +76,11 @@ let savedRecoveryOutcome: RecoveryOutcome | null = null;
 type RootOrigin = Readonly<{ tab: RealTab; stage: Stage; context: string; identity: string; epoch: number }>;
 const SYSX_SEND_ASSET = Object.freeze({ assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' });
 type SendTarget = Readonly<
-  { kind: 'native' | 'spt' } | { kind: 'token'; token: Erc20Metadata } |
+  { kind: 'native' | 'spt' } | { kind: 'utxo'; asset?: NativeUtxoAsset } | { kind: 'token'; token: Erc20Metadata } |
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'smart-deploy' | 'smart-authenticator' | 'sentry-keys';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'trezor' | 'smart-deploy' | 'smart-authenticator' | 'sentry-keys';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null) {
@@ -141,6 +145,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     local: Controllers; epoch: number; context: string; targetId: string; payerId: string; chainId: number; hash: string;
   } | null>(null);
   const [resumeGuardianScope, setResumeGuardianScope] = useState<string | null>(null);
+  const [trezorView, setTrezorView] = useState<NativeTrezorView | null>(null);
   const [ledgerView, setLedgerView] = useState<NativeLedgerImportView | null>(null);
   const [ledgerConnection, setLedgerConnection] = useState<NativeLedgerConnectionView | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
@@ -176,7 +181,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; utxoAddressTypes?: readonly UtxoImportAddressType[]; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
-  const [sendDraft, setSendDraft] = useState<Readonly<{ origin: RootOrigin; target: SendTarget; recipientPicker?: NativeRecipientPicker }> | null>(null);
+  const [sendDraft, setSendDraft] = useState<Readonly<{ origin: RootOrigin; target: SendTarget; recipientPicker?: NativeRecipientPicker; resume?: ReturnType<typeof trezorResumeDraft>; resumeId?: string }> | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -282,7 +287,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     setCatalogue(next); bridge.current?.onNativeCatalogue(next);
   }, [guardianEpoch, guardianContext, readyContext]);
 
-  const hasSigningAccount = selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection;
+  const hasSigningAccount = selectedAccountType === 'HDAccount' || selectedAccountType === 'Imported' || selectedAccountType === 'Ledger' && !!ledgerConnection || selectedAccountType === 'Trezor' && !!trezorView;
   const canSign = !!snapshot.account && hasSigningAccount && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
   const canSendSmart = !!snapshot.account && selectedAccountType === 'SmartAccount' && !!openSmartSend && !!publicSource && !!balanceReader &&
     selectedCatalogueAccount?.smartAccount?.localEcdsa === true &&
@@ -427,6 +432,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       if ((stage === 'smart-authenticator' || stage === 'smart-deploy' || stage === 'send' && canSendSmart) && snapshot.phase === 'ready') return false;
       if (sentryRoute || stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory' || stage === 'note-import' || stage === 'note-deposit') && snapshot.phase === 'ready' ||
           stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
+          stage === 'trezor' && trezorView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
@@ -451,7 +457,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }
     setCanRemoveWallet(false); setDeviceUnlockStatus(null);
     setCanUseWalletAuthenticator(false); setOpenWalletAuthenticator(null);
-    setPublicSource(null); setBalanceReader(null); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setGuardianRecoveryController(null); setRecoveryActivity(null); setResumeGuardianScope(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setGuardianRecoveryController(null); setRecoveryActivity(null); setResumeGuardianScope(null); setAccountView(null); setTrezorView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setOpenPrivateDeposit(null); setDepositActivity(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -555,7 +561,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }
       if (nextCatalogue) selectedNative.current?.(nextCatalogue.active.accountId);
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
-      setLedgerView(local.ledger); setLedgerConnection(local.ledgerConnection);
+      setLedgerView(local.ledger); setLedgerConnection(local.ledgerConnection); setTrezorView(local.trezor);
       const removal = removalRef.current;
       if (removal?.local === local && removal.phase === 'reviewing' && state !== removal.authority) {
         local.removal.cancel(); removalRef.current = null; setRemovalScope(null); setStage('choose');
@@ -856,12 +862,33 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         setStage('choose');
       }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
+  if (stage === 'trezor' && trezorView && snapshot.phase === 'ready')
+    return <NativeTrezor controller={trezorView} onBack={() => {
+      if (rootOrigin.current?.stage === 'trezor') closeStage(); else setStage('manage-hd');
+    }} onImported={() => { rootOrigin.current = null; setStage('choose'); }} onResumeSend={(intent: NativeTrezorResumeIntent) => {
+      const local = controllers.current;
+      const current = readyContext();
+      const captured = local?.authority.getCatalogue();
+      if (!current || !captured || AppState.currentState !== 'active' ||
+          captured.active.accountId !== intent.accountId || captured.active.networkId !== intent.networkId)
+        throw new Error('CANCELLED');
+      const resume = trezorResumeDraft(intent);
+      const target: SendTarget = resume.kind === 'utxo' ? { kind: 'utxo', asset: resume.asset }
+        : resume.kind === 'replacement' ? { kind: resume.replacement.mode, hash: resume.replacement.originalHash }
+        : resume.kind === 'token' ? { kind: 'token', token: resume.token }
+        : resume.kind === 'collectible' ? { kind: 'collectible', collectible: resume.collectible }
+        : { kind: 'native' };
+      const origin: RootOrigin = { tab: shell.tab, stage: 'send', ...current, epoch: epoch.current };
+      rootOrigin.current = origin;
+      setSendDraft({ origin, target, resume, resumeId: intent.id });
+      setStage('send');
+    }} />;
   if (stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeLedger controller={ledgerView} onBack={() => setStage('manage-hd')} onFinished={() => {
       rootOrigin.current = null; setStage('choose');
     }} />;
   if (stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
-    return <NativeAccounts controller={accountView} networkLabel={utxo?.name} onLedger={ledgerView ? () => setStage('ledger') : undefined} onImport={canSign || canSendUtxo ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
+    return <NativeAccounts controller={accountView} networkLabel={utxo?.name} onTrezor={trezorView ? () => setStage('trezor') : undefined} onLedger={ledgerView ? () => setStage('ledger') : undefined} onImport={canSign || canSendUtxo ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
   if (stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
       (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1))
     return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
@@ -925,7 +952,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const selected = catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!;
     const extended = selected.type === 'HDAccount' || selected.utxoExtended;
     const script = utxo && !extended ? findWifAddressType(selected.address, utxo) : undefined;
-    const keyFormat = selected.type === 'Ledger' ? null : canSign ? 'evm' : utxo && extended
+    const keyFormat = selected.type === 'Ledger' || selected.type === 'Trezor' ? null : canSign ? 'evm' : utxo && extended
       ? { kind: 'extended' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS.p2wpkh }
       : utxo && script ? { kind: 'wif' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
@@ -1048,7 +1075,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     open={openSmartDeployment} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'token' || sendTarget?.kind === 'collectible') && canSendSmart && openSmartSend && snapshot.account && publicSource && balanceReader)
     return <NativeSmartAccountSend account={{ ...snapshot.account, revision: snapshot.revision }} source={publicSource} reader={balanceReader} tokenView={tokenView ?? undefined} token={sendTarget.kind === 'token' ? sendTarget.token : undefined} collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined} open={openSmartSend} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} accountLabel={accountLabel} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
+  else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && sendTarget.kind !== 'utxo' && canSign && transferView && snapshot.account) return <NativeSend key={sendDraft?.resumeId}
+    beforeClose={selectedAccountType === 'Trezor' ? trezorView?.cancel : undefined}
+    initialDraft={sendDraft?.resume && sendDraft.resume.kind !== 'utxo' ? sendDraft.resume.draft : undefined}
     account={{ ...snapshot.account, revision: snapshot.revision }}
     ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
     tokenView={tokenView ?? undefined}
@@ -1059,14 +1088,15 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     savedHash={sendTarget.kind === 'saved' ? sendTarget.hash : undefined}
     replacement={sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved' || sendTarget.kind === 'speed-up' ? { hash: sendTarget.hash, mode: sendTarget.kind } : undefined}
     accountLabel={accountLabel} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt) && utxo && canSendUtxo && openUtxoSend)
-    return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend}
+  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt || sendTarget?.kind === 'utxo') && utxo && canSendUtxo && openUtxoSend)
+    return <NativeUtxoSendScreen beforeClose={selectedAccountType === 'Trezor' ? trezorView?.cancel : undefined} initialDraft={sendDraft?.resume?.kind === 'utxo' ? sendDraft.resume.draft : undefined} key={sendDraft?.resumeId ?? snapshot.revision} network={utxo} open={openUtxoSend}
       ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
-      asset={sendTarget.kind === 'spt' ? SYSX_SEND_ASSET : undefined} accountLabel={accountLabel} onBack={closeStage} />;
+      asset={sendTarget.kind === 'spt' ? SYSX_SEND_ASSET : sendTarget.kind === 'utxo' ? sendTarget.asset : undefined} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
     if (shell.tab === 'wallet') content = <NativePortfolio
+    hardwareRequest={trezorView ? <NativeTrezorResumeNotice controller={trezorView} onResume={() => openStage('trezor')} /> : undefined}
     smartAccount={selectedCatalogueAccount?.smartAccount}
     onUseWalletAuthenticator={canUseWalletAuthenticator && openWalletAuthenticator ? () => openStage('smart-authenticator') : undefined}
     onDeploySmartAccount={selectedCatalogueAccount?.smartAccount && !selectedCatalogueAccount.smartAccount.isDeployed && openSmartDeployment ? () => openStage('smart-deploy') : undefined}

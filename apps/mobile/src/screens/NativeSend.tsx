@@ -162,6 +162,13 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
 const emptyTokenSubscribe = () => () => undefined;
 const emptyTokenSnapshot = () => null;
 
+export type NativeSendInitialDraft = Readonly<{
+  recipient: string;
+  amount: string;
+  tokenId?: string;
+  nonce: string;
+}>;
+
 export function NativeSend({
   controller,
   onBack,
@@ -175,9 +182,13 @@ export function NativeSend({
   replacement,
   recipientPicker,
   ledgerConnection,
+  initialDraft,
+  beforeClose,
 }: {
   controller: NativeTransferView;
   ledgerConnection?: NativeLedgerConnectionView;
+  initialDraft?: NativeSendInitialDraft;
+  beforeClose?(): Promise<void>;
   onBack(): void;
   accountLabel?: string;
   account: NativePortfolioAccount;
@@ -215,7 +226,7 @@ export function NativeSend({
   const [recipientDraft, setRecipientDraft] = useState<{
     value: string;
     owner?: NativeRecipientPicker;
-  }>({ value: '' });
+  }>({ value: initialDraft?.recipient ?? '' });
   const recipient = recipientDraft.owner && recipientDraft.owner !== recipientPicker
     ? '' : recipientDraft.value;
   const setRecipient = (value: string) => setRecipientDraft({ value });
@@ -232,10 +243,10 @@ export function NativeSend({
     activePicker.current = null;
     setOpenPicker(null);
   }, []);
-  const [amount, setAmount] = useState(initialAmount);
-  const [tokenId, setTokenId] = useState('');
-  const [advanced, setAdvanced] = useState(false);
-  const [nonce, setNonce] = useState('');
+  const [amount, setAmount] = useState(initialDraft?.amount ?? initialAmount);
+  const [tokenId, setTokenId] = useState(initialDraft?.tokenId ?? '');
+  const [advanced, setAdvanced] = useState(!!initialDraft);
+  const [nonce, setNonce] = useState(initialDraft?.nonce ?? '');
   const [error, setError] = useState('');
   const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
   const leaving = useRef(false);
@@ -246,7 +257,8 @@ export function NativeSend({
   useLayoutEffect(() => {
     latestBack.current = onBack;
   }, [onBack]);
-  const busy = ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
+  const [closingHardware, setClosingHardware] = useState(false);
+  const busy = closingHardware || ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
   const promptMatches = (current: typeof snapshot) => !!leavePrompt &&
     current.phase === 'submitting' && current.review === leavePrompt.review &&
     (leavePrompt.review !== null || current === leavePrompt.fallback);
@@ -325,10 +337,21 @@ export function NativeSend({
     leaving.current = true;
     retirePicker();
     lifetime.current.epoch++;
+    const closingEpoch = lifetime.current.epoch;
     controller.cancel();
     Keyboard.dismiss();
-    latestBack.current();
-  }, [controller, retirePicker]);
+    if (!beforeClose) { latestBack.current(); return; }
+    setClosingHardware(true);
+    void Promise.resolve().then(beforeClose).then(() => {
+      if (lifetime.current.alive && lifetime.current.epoch === closingEpoch) latestBack.current();
+    }, () => {
+      if (lifetime.current.alive && lifetime.current.epoch === closingEpoch) {
+        leaving.current = false;
+        setClosingHardware(false);
+        setError('The hardware request is still closing. Try again.');
+      }
+    });
+  }, [beforeClose, controller, retirePicker]);
   const close = useCallback(() => {
     if (!lifetime.current.alive || leaving.current) return;
     const current = controller.getSnapshot();

@@ -1,4 +1,7 @@
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
+import { createNativeTrezorSessions } from '../hardware/trezorTransport.native';
+import type { NativeTrezorSessions } from '../hardware/trezorSessions';
+import type { NativeTrezorView, NativeTrezorSnapshot } from '../custody/trezorAccounts';
 import { prepareWalletConnectRuntime } from './walletConnectRuntime';
 import { createNativeDeviceUnlockCapability } from './deviceUnlockCredential.native';
 import { NativeConnectionsController } from '../connections/controller.ts';
@@ -51,13 +54,14 @@ function custodyGuard() {
   const guard = custodyIdle.captureGuard();
   return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
 }
-function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard(), deviceUnlock = createNativeDeviceUnlockCapability()) {
+function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard(), deviceUnlock = createNativeDeviceUnlockCapability(), trezorSessions?: NativeTrezorSessions) {
   const scopedUtxoReader = (network: UtxoNetwork) => createUtxoBalanceReader({
     fetch: isCustomUtxoNetworkId(network.id) ? exactUtxoResponseFetch(walletFetch) : walletFetch,
   });
   return createKeyringRuntimeFactory({
     assertActive,
     deviceUnlock,
+    trezorSessions,
     async createLedgerTransport(owner) {
       const { createNativeLedgerTransport } = await import('../hardware/ledgerTransport.native');
       owner.assertCurrent();
@@ -154,9 +158,23 @@ export function createNativeWalletControllers() {
   let ownedStorage: OpenWalletStorage | undefined;
   const assertActive = custodyGuard();
   const deviceUnlock = createNativeDeviceUnlockCapability();
-  const base = factory((storage) => { ownedStorage = storage; }, assertActive, deviceUnlock);
+  const trezorSessions = createNativeTrezorSessions({
+    randomBytes: (length) => globalThis.crypto.getRandomValues(new Uint8Array(length)),
+  });
+  const trezorListeners = new Set<() => void>();
+  let unsubscribeTrezor: (() => void) | undefined;
+  const base = factory((storage) => { ownedStorage = storage; }, assertActive, deviceUnlock, trezorSessions);
   const authority = new NativeCustodyAuthority({
-    async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
+    async open() {
+      runtime = await base.open() as KeyringRuntime;
+      unsubscribeTrezor?.();
+      unsubscribeTrezor = runtime.trezor.subscribe(() => {
+        for (const listener of trezorListeners) {
+          try { listener(); } catch { /* UI observation cannot grant custody. */ }
+        }
+      });
+      return runtime;
+    },
   }, { preferences: securityPreferences, assertActive });
   const connections = new NativeConnectionsController({
     source: authority,
@@ -173,8 +191,39 @@ export function createNativeWalletControllers() {
   });
   const ledger = new NativeLedgerAccounts(authority, () => runtime?.ledger, 'import');
   const ledgerConnection = new NativeLedgerAccounts(authority, () => runtime?.ledger, 'connect');
+  const emptyTrezor: NativeTrezorSnapshot = Object.freeze({
+    phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null,
+  });
+  const requireTrezor = () => {
+    if (!runtime) throw new CustodyOperationError('NOT_READY');
+    return runtime.trezor;
+  };
+  const importTrezor = async (label: string, resume: boolean) => {
+    const before = authority.getSnapshot();
+    const catalogue = authority.getCatalogue();
+    if (before.phase !== 'ready' || !catalogue)
+      throw new CustodyOperationError('NOT_READY');
+    const control = requireTrezor();
+    if (resume) await control.resumeImport();
+    else await control.startImport(label);
+    await authority.manageAccounts(
+      { kind: 'import-trezor', label }, before.revision, catalogue.revision
+    );
+  };
+  const trezor: NativeTrezorView = Object.freeze({
+    getSnapshot: () => runtime?.trezor.getSnapshot() ?? emptyTrezor,
+    subscribe(listener: () => void) {
+      trezorListeners.add(listener);
+      return () => { trezorListeners.delete(listener); };
+    },
+    startImport: (label: string) => importTrezor(label, false),
+    resumeImport: () => importTrezor(requireTrezor().getSnapshot().accountLabel, true),
+    resumeSend: () => requireTrezor().resumeSend(),
+    cancel: () => requireTrezor().cancel(),
+  });
   const disposeConnections = async () => {
-    const results = await Promise.allSettled([connections.dispose(), ledger.dispose(), ledgerConnection.dispose()]);
+    unsubscribeTrezor?.(); unsubscribeTrezor = undefined;
+    const results = await Promise.allSettled([connections.dispose(), ledger.dispose(), ledgerConnection.dispose(), trezorSessions.dispose()]);
     const failure = results.find((result) => result.status === 'rejected');
     if (failure?.status === 'rejected') throw failure.reason;
   };
@@ -436,6 +485,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentryKeys, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentryKeys, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

@@ -19,6 +19,10 @@ async function fixture() {
   let fingerprint = 'wallet-one';
   let confirms = 0;
   const runtime: KeyringRuntime = {
+    trezor: { getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null }),
+      subscribe: () => () => {}, async startImport() { throw new Error('Hardware is outside this fixture'); },
+      async resumeImport() { throw new Error('Hardware is outside this fixture'); },
+      async resumeSend() { throw new Error('Hardware is outside this fixture'); }, async cancel() {} },
     ledger: { subscribeStatus: () => () => {}, isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
     catalogue: { getSnapshot: () => null },
     async openSmartAccountSend() { throw new Error('not used'); },

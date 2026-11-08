@@ -30,6 +30,7 @@
     "@react-native-community/netinfo": "12.0.1",
     "@sidhujag/sysweb3-keyring": "2.1.8",
     "@sidhujag/sysweb3-network": "2.0.0",
+    "@trezor/connect-mobile": "10.0.1",
     "@walletconnect/core": "2.26.0",
     "@walletconnect/sign-client": "2.26.0",
     "@walletconnect/utils": "2.26.0",

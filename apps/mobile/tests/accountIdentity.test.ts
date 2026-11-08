@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { nativeAccountId, parseNativeAccountId } from '../src/custody/accountIdentity.ts';
 
-for (const type of ['HDAccount', 'Imported'] as const) test(`${type} preserves exact canonical SDK account IDs above the old mobile cap`, () => {
+for (const type of ['HDAccount', 'Imported', 'Trezor'] as const) test(`${type} preserves exact canonical SDK account IDs above the old mobile cap`, () => {
   for (const index of [0, 4095, 4096, 2147483647, Number.MAX_SAFE_INTEGER]) {
     const id = nativeAccountId(type, index);
     assert.deepEqual(parseNativeAccountId(id), {id, type, index, slip44: 60});
@@ -14,7 +14,7 @@ test('account ID parsing rejects lossy numbers and noncanonical spellings', () =
 });
 
 test('account IDs separate HD and imported identities across Bitcoin, Syscoin, testnet and EVM', () => {
-  for (const [type, prefix] of [['HDAccount', 'hd'], ['Imported', 'imported']] as const) {
+  for (const [type, prefix] of [['HDAccount', 'hd'], ['Imported', 'imported'], ['Trezor', 'trezor']] as const) {
     for (const slip44 of [0, 1, 57, 60]) {
       for (const index of [0, 4096]) {
         const id = nativeAccountId(type, index, slip44);
