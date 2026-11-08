@@ -1,0 +1,519 @@
+import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
+import {
+  assertSmartAccountCallsIdentity,
+  getSmartAccountCallsOutcome,
+} from '../shared/dappCallsStatus.ts';
+import cleanErrorStack from '../utils/cleanErrorStack.ts';
+import {
+  CALLS_STATUS_PENDING,
+  computeCallsStatusCode,
+  type ISendCallsBatchDescriptor,
+} from '../utils/sendCallsBatch.ts';
+
+const MAX_BUNDLES_PER_HOST = 50;
+const BUNDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+export interface IStoredSendCallsBundle extends ISendCallsBatchDescriptor {
+  createdAt: number;
+  // True while the id is reserved but the batch has not been broadcast yet.
+  pending?: boolean;
+  reservationId?: string;
+  sender?: string;
+  submissionId?: string;
+  // Persisted before invoking a sender. A missing hash cannot prove that an
+  // interrupted popup failed to broadcast, including after a worker restart.
+}
+
+export type CallsBundleStore = Record<
+  string,
+  Record<string, IStoredSendCallsBundle>
+>;
+export type CallsBundlePorts = Readonly<{
+  assertCurrent(): void;
+  now(): number;
+  randomBytes(length: number): Uint8Array;
+  storage: Readonly<{
+    /** Return a detached snapshot from this owner's fixed storage scope. */
+    read(): Promise<CallsBundleStore>;
+    /** Check the supplied owner guard at the storage commit boundary. */
+    write(next: CallsBundleStore, assertCurrent: () => void): Promise<void>;
+  }>;
+}>;
+export type CallsStatusRpc = Readonly<{
+  assertCurrent(): void;
+  forChain(chainId: number): Readonly<{
+    getTransactionReceipt(hash: string): Promise<any>;
+  }> | null;
+}>;
+export type EoaSendCallsReservation = Readonly<{
+  host: string;
+  id: string;
+  reservationId: string;
+}>;
+
+/** Shared EIP-5792 metadata lifecycle. Each factory has one fixed storage owner. */
+export function createCallsBundleRegistry(ports: CallsBundlePorts) {
+  if (
+    typeof ports?.assertCurrent !== 'function' ||
+    typeof ports.now !== 'function' ||
+    typeof ports.randomBytes !== 'function' ||
+    typeof ports.storage?.read !== 'function' ||
+    typeof ports.storage.write !== 'function'
+  )
+    throw new Error('Calls bundle storage is unavailable');
+  const now = ports.now.bind(ports);
+  const randomBytes = ports.randomBytes.bind(ports);
+  const assertCurrent = ports.assertCurrent.bind(ports);
+  const read = ports.storage.read.bind(ports.storage);
+  const write = ports.storage.write.bind(ports.storage);
+  const check = () => {
+    const result: unknown = assertCurrent();
+    if (result !== undefined) {
+      void Promise.resolve(result).catch(() => undefined);
+      throw new Error('Calls bundle owner changed');
+    }
+  };
+  let storeQueue: Promise<unknown> = Promise.resolve();
+  const withStoreLock = <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = storeQueue.then(() => {
+      check();
+      return fn();
+    });
+    storeQueue = run.then(
+      () => undefined,
+      () => undefined
+    );
+    return run;
+  };
+  const readBundleStore = async (): Promise<CallsBundleStore> => {
+    check();
+    const value = await read();
+    check();
+    return value;
+  };
+  const writeBundleStore = async (next: CallsBundleStore): Promise<void> => {
+    check();
+    await write(next, check);
+    check();
+  };
+
+  const hasUnresolvedSubmission = (bundle: IStoredSendCallsBundle) =>
+    bundle.submissionStarted && !bundle.submissionCompleted;
+
+  // Wallet-minted bundle ids are 32 random bytes: unguessable and carrying no
+  // information, so a dapp cannot fabricate an id this wallet never issued nor
+  // correlate ids across apps.
+  const generateWalletBundleId = (): string => {
+    check();
+    const bytes = randomBytes(32);
+    if (!(bytes instanceof Uint8Array) || bytes.length !== 32)
+      throw new Error('Invalid calls bundle randomness');
+    check();
+    return `0x${Array.from(bytes)
+      .map((byte) => byte.toString(16).padStart(2, '0'))
+      .join('')}`;
+  };
+
+  const getStoredSendCallsBundle = async (
+    host: string,
+    id: string
+  ): Promise<ISendCallsBatchDescriptor | null> => {
+    const storeData = await readBundleStore();
+    const bundle = storeData[host]?.[id];
+    if (!bundle) {
+      return null;
+    }
+    return {
+      atomic: bundle.atomic,
+      chainId: bundle.chainId,
+      failed: bundle.failed,
+      smartAccount: bundle.smartAccount,
+      smartAccountIdentity: bundle.smartAccountIdentity,
+      submissionCompleted: bundle.submissionCompleted,
+      submissionStarted: bundle.submissionStarted,
+      txHashes: bundle.txHashes,
+    };
+  };
+
+  const evictAndWrite = async (
+    storeData: CallsBundleStore,
+    host: string,
+    hostBundles: { [id: string]: IStoredSendCallsBundle },
+    timestamp: number
+  ): Promise<void> => {
+    // Unknown submissions must keep their duplicate-id protection until an
+    // outcome is recorded. Age or other requests cannot prove they never sent.
+    const entries = Object.entries(hostBundles).filter(
+      ([, bundle]) =>
+        hasUnresolvedSubmission(bundle) ||
+        timestamp - bundle.createdAt <= BUNDLE_TTL_MS
+    );
+    entries.sort(([, a], [, b]) => b.createdAt - a.createdAt);
+    const unknown = entries.filter(([, bundle]) =>
+      hasUnresolvedSubmission(bundle)
+    );
+    const remaining = entries.filter(
+      ([, bundle]) => !hasUnresolvedSubmission(bundle)
+    );
+    storeData[host] = Object.fromEntries([
+      ...unknown,
+      ...remaining.slice(0, Math.max(0, MAX_BUNDLES_PER_HOST - unknown.length)),
+    ]);
+    await writeBundleStore(storeData);
+  };
+
+  // Atomically reserves a bundle id before the approval popup opens. Returns
+  // false when the id is already taken for this host (reserved or completed),
+  // which the caller maps to the spec 5720 duplicate-id error.
+  const reserveSendCallsBundle = (
+    host: string,
+    id: string,
+    input: Omit<ISendCallsBatchDescriptor, 'txHashes' | 'smartAccountIdentity'>,
+    reservationId: string,
+    sender: string
+  ): Promise<boolean> => {
+    const descriptor = { ...input };
+    return withStoreLock(async () => {
+      if (typeof sender !== 'string' || !/^0x[0-9a-f]{40}$/i.test(sender))
+        throw new Error('Invalid calls sender');
+      const storeData = await readBundleStore();
+      const timestamp = now();
+      const hostBundles = storeData[host] || {};
+      const existing = hostBundles[id];
+      if (
+        existing &&
+        (hasUnresolvedSubmission(existing) ||
+          timestamp - existing.createdAt <= BUNDLE_TTL_MS)
+      ) {
+        return false;
+      }
+      if (
+        Object.values(hostBundles).filter(hasUnresolvedSubmission).length >=
+        MAX_BUNDLES_PER_HOST
+      )
+        throw new Error('Too many unresolved sendCalls bundles for this app');
+      hostBundles[id] = {
+        ...descriptor,
+        sender: sender.toLowerCase(),
+        txHashes: [],
+        createdAt: timestamp,
+        pending: true,
+        reservationId,
+      };
+      await evictAndWrite(storeData, host, hostBundles, timestamp);
+      return true;
+    });
+  };
+
+  // Finalizes a reservation with the broadcast transaction hashes (also used
+  // by the SendCalls popup through MainController.recordSendCallsBundle).
+  const recordSendCallsBundle = (
+    host: string,
+    id: string,
+    input: ISendCallsBatchDescriptor & {
+      previousSubmissionId?: string;
+      reservationId: string;
+      submissionId?: string;
+      submissionNotBroadcast?: boolean;
+      submissionStarted?: boolean;
+    }
+  ): Promise<void> => {
+    const descriptor = {
+      ...input,
+      txHashes: [...input.txHashes],
+      ...(input.smartAccountIdentity
+        ? { smartAccountIdentity: { ...input.smartAccountIdentity } }
+        : {}),
+    };
+    return withStoreLock(async () => {
+      const storeData = await readBundleStore();
+      const timestamp = now();
+      const hostBundles = storeData[host] || {};
+      const existing = hostBundles[id];
+      if (!existing || existing.reservationId !== descriptor.reservationId)
+        throw new Error('sendCalls bundle reservation is unavailable');
+      if (existing.chainId !== descriptor.chainId)
+        throw new Error('sendCalls bundle network changed');
+      if (
+        existing.smartAccount !== descriptor.smartAccount ||
+        existing.atomic !== descriptor.atomic
+      )
+        throw new Error('sendCalls bundle context changed');
+      if (descriptor.smartAccountIdentity !== undefined) {
+        if (!descriptor.submissionStarted || !existing.smartAccount)
+          throw new Error('Unexpected smart account calls identity');
+        assertSmartAccountCallsIdentity(
+          descriptor.smartAccountIdentity,
+          existing.chainId
+        );
+        if (descriptor.smartAccountIdentity.sender !== existing.sender)
+          throw new Error('Smart account calls sender changed');
+      }
+      if (descriptor.submissionStarted) {
+        if (existing.smartAccount && !descriptor.smartAccountIdentity)
+          throw new Error('Smart account calls identity is required');
+        if (
+          existing.smartAccountIdentity &&
+          JSON.stringify(existing.smartAccountIdentity) !==
+            JSON.stringify(descriptor.smartAccountIdentity) &&
+          (existing.submissionId === descriptor.submissionId ||
+            existing.submissionStarted ||
+            existing.txHashes.length > 0)
+        )
+          throw new Error('Smart account calls identity changed');
+        if (!descriptor.submissionId)
+          throw new Error('sendCalls submission identity is unavailable');
+        if (descriptor.submissionId !== existing.submissionId) {
+          if (descriptor.previousSubmissionId !== existing.submissionId)
+            throw new Error('sendCalls submission changed');
+          hostBundles[id] = {
+            ...existing,
+            smartAccountIdentity: descriptor.smartAccountIdentity,
+            submissionId: descriptor.submissionId,
+            submissionStarted: true,
+            submissionCompleted: false,
+          };
+        } else
+          hostBundles[id] = {
+            ...existing,
+            smartAccountIdentity: descriptor.smartAccountIdentity,
+            submissionStarted: true,
+          };
+        await evictAndWrite(storeData, host, hostBundles, timestamp);
+        return;
+      }
+      if (descriptor.submissionId !== existing.submissionId)
+        throw new Error('sendCalls submission changed');
+      if (descriptor.submissionNotBroadcast) {
+        if (existing.txHashes.length === 0 && !existing.submissionCompleted)
+          hostBundles[id] = {
+            ...existing,
+            failed: true,
+            pending: true,
+            submissionStarted: false,
+          };
+      } else {
+        hostBundles[id] = {
+          ...descriptor,
+          smartAccountIdentity: existing.smartAccountIdentity,
+          sender: existing.sender,
+          failed: existing.submissionCompleted
+            ? existing.failed
+            : descriptor.failed,
+          createdAt: existing?.createdAt ?? timestamp,
+          pending: false,
+          submissionCompleted:
+            existing.submissionCompleted ||
+            descriptor.submissionCompleted === true,
+          submissionStarted: existing?.submissionStarted,
+          txHashes: Array.from(
+            new Set([...(existing?.txHashes || []), ...descriptor.txHashes])
+          ),
+        };
+      }
+      await evictAndWrite(storeData, host, hostBundles, timestamp);
+    });
+  };
+
+  // Only an unstarted approval can be released. Popup closure/navigation after
+  // submission began is ambiguous even when no hash reached the component.
+  const releaseSendCallsBundleReservation = (
+    host: string,
+    id: string,
+    reservationId: string
+  ): Promise<void> =>
+    withStoreLock(async () => {
+      const storeData = await readBundleStore();
+      const bundle = storeData[host]?.[id];
+      if (
+        !bundle ||
+        bundle.reservationId !== reservationId ||
+        (!bundle.pending && !bundle.failed) ||
+        bundle.submissionStarted ||
+        bundle.txHashes.length > 0
+      ) {
+        return;
+      }
+      delete storeData[host][id];
+      await writeBundleStore(storeData);
+    });
+
+  /** Bind the current durable EOA attempt before entering the background sender. */
+  async function captureStartedEoaSendCallsAttempt(
+    { host, id, reservationId }: EoaSendCallsReservation,
+    chainId: number,
+    submissionId: unknown
+  ): Promise<(() => Promise<void>) | undefined> {
+    if (typeof submissionId !== 'string' || !submissionId) return;
+    const matches = (bundle: IStoredSendCallsBundle | undefined) =>
+      bundle?.reservationId === reservationId &&
+      bundle.chainId === chainId &&
+      bundle.submissionId === submissionId &&
+      !bundle.smartAccount &&
+      !bundle.atomic &&
+      bundle.submissionStarted === true &&
+      bundle.submissionCompleted !== true;
+    if (!matches((await readBundleStore())[host]?.[id])) return;
+    return () =>
+      withStoreLock(async () => {
+        const storeData = await readBundleStore();
+        const bundle = storeData[host]?.[id];
+        if (!bundle || !matches(bundle) || bundle.txHashes.length !== 0) return;
+        delete storeData[host][id];
+        await writeBundleStore(storeData);
+      });
+  }
+
+  const unknownBundleError = () => {
+    const error = new Error('Unknown bundle id');
+    (error as any).code = 5730;
+    return cleanErrorStack(error);
+  };
+
+  // Resolves an id to its batch descriptor from the per-host registry: only
+  // ids this wallet actually issued to the host resolve. Null when unknown.
+  const resolveSendCallsBundleDescriptor = (
+    host: string,
+    id: string
+  ): Promise<ISendCallsBatchDescriptor | null> =>
+    getStoredSendCallsBundle(host, id);
+
+  // EIP-5792 v2.0.0 wallet_getCallsStatus: resolves a bundle id into the status
+  // object by fetching transaction receipts. Receipts are queried on the
+  // bundle's own chain (the descriptor carries its chainId), not the active
+  // network, so status stays correct after the user switches networks. Throws
+  // the spec "Unknown bundle id" error (5730) for ids this wallet did not
+  // produce or record, and 5710 when the bundle's chain is no longer
+  // configured in the wallet.
+  const resolveCallsStatus = async (
+    rpc: CallsStatusRpc,
+    host: string,
+    id: string
+  ): Promise<any> => {
+    if (
+      typeof rpc?.assertCurrent !== 'function' ||
+      typeof rpc.forChain !== 'function'
+    )
+      throw new Error('Calls status RPC is unavailable');
+    const assertQueryCurrent = rpc.assertCurrent.bind(rpc);
+    const forChain = rpc.forChain.bind(rpc);
+    const checkQuery = () => {
+      check();
+      const result: unknown = assertQueryCurrent();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error('Calls status owner changed');
+      }
+      check();
+    };
+    checkQuery();
+    const descriptor = await resolveSendCallsBundleDescriptor(host, id);
+    checkQuery();
+    if (!descriptor) {
+      throw unknownBundleError();
+    }
+
+    // No broadcast hashes: still pending while the approval popup is open, or
+    // an offchain failure when the batch terminally failed before broadcast.
+    if (descriptor.txHashes.length === 0) {
+      return {
+        version: '2.0.0',
+        id,
+        chainId: `0x${descriptor.chainId.toString(16)}`,
+        atomic: descriptor.atomic,
+        status:
+          descriptor.submissionStarted && !descriptor.submissionCompleted
+            ? CALLS_STATUS_PENDING
+            : computeCallsStatusCode({
+                atomic: descriptor.atomic,
+                receiptStatuses: [],
+                smartAccount: descriptor.smartAccount,
+                someCallsFailedToBroadcast: descriptor.failed,
+              }),
+      };
+    }
+
+    const provider = forChain(descriptor.chainId);
+    checkQuery();
+    if (!provider) {
+      throw cleanErrorStack(
+        new EthereumRpcErrorHandler(
+          5710,
+          `This wallet has no RPC configured for the bundle's chain (chainId ${descriptor.chainId}).`
+        )
+      );
+    }
+
+    const receipts = await Promise.all(
+      descriptor.txHashes.map(async (hash) => {
+        checkQuery();
+        const receipt = await provider
+          .getTransactionReceipt(hash)
+          .catch(() => null);
+        checkQuery();
+        return receipt;
+      })
+    );
+    checkQuery();
+    const receiptStatuses = receipts.map((receipt) =>
+      receipt ? (receipt.status === 0 ? '0x0' : '0x1') : null
+    ) as Array<'0x0' | '0x1' | null>;
+
+    const smartAccountInnerSuccess = descriptor.smartAccount
+      ? getSmartAccountCallsOutcome(
+          descriptor.smartAccountIdentity,
+          descriptor.chainId,
+          receipts
+        )
+      : undefined;
+
+    const status =
+      descriptor.submissionStarted && !descriptor.submissionCompleted
+        ? CALLS_STATUS_PENDING
+        : computeCallsStatusCode({
+            atomic: descriptor.atomic,
+            receiptStatuses,
+            smartAccount: descriptor.smartAccount,
+            someCallsFailedToBroadcast: descriptor.failed,
+            smartAccountInnerSuccess,
+          });
+
+    const minedReceipts = receipts
+      .filter((receipt) => Boolean(receipt))
+      .map((receipt: any) => ({
+        blockHash: receipt.blockHash,
+        blockNumber: `0x${Number(receipt.blockNumber).toString(16)}`,
+        gasUsed:
+          typeof receipt.gasUsed?.toHexString === 'function'
+            ? receipt.gasUsed.toHexString()
+            : `0x${BigInt(receipt.gasUsed ?? 0).toString(16)}`,
+        logs: (receipt.logs || []).map((log: any) => ({
+          address: log.address,
+          data: log.data,
+          topics: log.topics,
+        })),
+        status: receipt.status === 0 ? '0x0' : '0x1',
+        transactionHash: receipt.hash,
+      }));
+
+    return {
+      version: '2.0.0',
+      id,
+      chainId: `0x${descriptor.chainId.toString(16)}`,
+      atomic: descriptor.atomic,
+      status,
+      ...(minedReceipts.length > 0 ? { receipts: minedReceipts } : {}),
+    };
+  };
+
+  return Object.freeze({
+    generateWalletBundleId,
+    getStoredSendCallsBundle,
+    reserveSendCallsBundle,
+    recordSendCallsBundle,
+    releaseSendCallsBundleReservation,
+    captureStartedEoaSendCallsAttempt,
+    resolveSendCallsBundleDescriptor,
+    resolveCallsStatus,
+  });
+}
