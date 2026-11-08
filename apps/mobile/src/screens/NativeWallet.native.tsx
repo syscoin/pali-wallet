@@ -400,15 +400,21 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const lifecycleEpoch = epoch, ownedToken = screenToken.current;
     mounted.current = true;
     void install().catch(() => undefined);
+    const resume = () => {
+      if (!mounted.current || AppState.currentState !== 'active') return;
+      custodyIdle.begin(screenToken.current, revoke);
+      if (!controllers.current && !recoveryRef.current && !removalRef.current)
+        void install().catch(() => undefined);
+    };
     const lifecycle = AppState.addEventListener('change', (state) => {
       if (state === 'inactive' && controllers.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); }
       else if (state !== 'active') revoke();
-      else { custodyIdle.begin(screenToken.current, revoke); if (!controllers.current && !recoveryRef.current && !removalRef.current) void install().catch(() => undefined); }
+      else resume();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
       if (controllers.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke();
     }) : null;
-    const focus = AppState.addEventListener('focus', () => { if (AppState.currentState === 'active') custodyIdle.begin(screenToken.current, revoke); });
+    const focus = AppState.addEventListener('focus', resume);
     return () => {
       mounted.current = false; lifecycleEpoch.current++; recoveryRef.current?.cancel();
       removalRef.current?.local.removal.cancel(); removalRef.current = null;
