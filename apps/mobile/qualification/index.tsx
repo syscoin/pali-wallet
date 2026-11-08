@@ -15,6 +15,7 @@ import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from '
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
 import { httpBuild, type HttpLaunch } from './http-contract.ts';
+import { withWalletConnectQualificationScope } from './walletconnect-scope.ts';
 import { makePublicPoolFailure, PUBLIC_POOL_FAILURE_FILE, publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -144,6 +145,7 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
+        const NativeWebSocket = globalThis.WebSocket;
         globalThis.fetch = (() => {
           networkCalls++;
           throw Error('QUALIFICATION_NETWORK_FORBIDDEN');
@@ -342,6 +344,26 @@ function QualificationApp() {
               sessionId: Constants.sessionId, networkCalls: () => networkCalls });
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
             await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            const candidateIdentity = Constants.expoConfig?.extra?.paliWalletConnectIdentity;
+            if (candidateIdentity !== undefined) {
+              if (typeof candidateIdentity !== 'string') throw Error('WALLETCONNECT_NATIVE_BUILD_INVALID');
+              stage = 'native WalletConnect lifecycle';
+              const { http: launch, phase, scenario } = parameters;
+              const connectionEvidence = await withWalletConnectQualificationScope({
+                crypto: nativeCrypto, WebSocket: NativeWebSocket, launch,
+                onForbidden() { networkCalls++; throw Error('QUALIFICATION_NETWORK_FORBIDDEN'); },
+              }, async () => {
+                const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
+                await prepareWalletConnectRuntime();
+                const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
+                return qualifyNativeWalletConnect({ launch, build,
+                  candidateIdentity, walletFetch, phase, scenario,
+                  platform: Platform.OS as 'ios' | 'android', sessionId: Constants.sessionId });
+              });
+              const connectionDestination = `${FileSystem.documentDirectory}pali-native-walletconnect-${parameters.http.token}.json`;
+              await FileSystem.writeAsStringAsync(`${connectionDestination}.tmp`, JSON.stringify(connectionEvidence));
+              await FileSystem.moveAsync({ from: `${connectionDestination}.tmp`, to: connectionDestination });
+            }
             stage = 'native POST transport';
             const postDestination = `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json`;
             const postEvidence = await qualifyNativePost({ launch: parameters.http, build, walletFetch,

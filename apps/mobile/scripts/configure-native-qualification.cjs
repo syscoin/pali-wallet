@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('./qualification-sdk.cjs');
+const { readQualificationSdkPin, verifyInstalledQualificationSdk, readWalletConnectSdkIdentity } = require('./qualification-sdk.cjs');
 
 // This mutates an isolated CI checkout only. Never use the fixture identifier or
 // entrypoint for production builds, upgrades, or a user's installed wallet.
@@ -25,6 +25,7 @@ if (
   throw Error('Qualification must preserve backup/update restrictions');
 const sdk = readQualificationSdkPin(root);
 verifyInstalledQualificationSdk(root, sdk);
+const walletConnectIdentity = readWalletConnectSdkIdentity(root);
 const productionEntry = fs.readFileSync(path.join(root, 'index.ts'));
 const physicalScenario = process.env.PALI_PHYSICAL_QUALIFICATION;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
@@ -81,6 +82,7 @@ const receipt = {
   identifier: 'com.paliwallet.qualification',
   qualificationEntry: 'qualification/index.tsx',
   keyringVersion: sdk.version,
+  ...(walletConnectIdentity ? { walletConnectIdentity } : {}),
   ...(sdk.archive ? { keyringIdentity: sdk.identity } : {}),
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),
@@ -91,6 +93,7 @@ app.expo.extra = {
   ...app.expo.extra,
   paliQualificationSdkVersion: sdk.version,
   paliQualificationSdkIdentity: sdk.identity,
+  ...(walletConnectIdentity ? { paliWalletConnectIdentity: walletConnectIdentity } : {}),
 };
 app.expo.name = 'PaliQualification';
 app.expo.slug = 'pali-native-qualification';

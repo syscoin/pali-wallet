@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const { Buffer } = require('node:buffer');
+const path = require('node:path');
 const test = require('node:test');
 const {
   qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget,
@@ -114,7 +115,15 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
   argv: ['node', 'runner', 'ios', '/public-app', ...(limited ? ['--ios-simulator-contract'] : [])], exitCode: 0 };
   await runInNewContext(source, {
     require(name) {
-      if (name === './http-companion.cjs') return { startHttpCompanion: async () => ({
+      if (name === '../scripts/qualification-sdk.cjs') return {
+        readWalletConnectSdkIdentity(root) {
+          assert.equal(root, path.dirname(path.dirname(require.resolve('./run-native.cjs'))));
+          return 'fixture-walletconnect-identity';
+        },
+      };
+      if (name === './http-companion.cjs') return { startHttpCompanion: async ({ walletConnectIdentity }) => {
+        assert.equal(walletConnectIdentity, 'fixture-walletconnect-identity');
+        return {
         begin: async () => `&httpPort=45454&httpToken=${'a'.repeat(32)}`,
         verify: async () => { if (httpFailure) throw Error('HTTP_QUALIFICATION_REPORT_INVALID'); httpVerifications++; return { nativeHttpQualified: true }; },
         assertComplete: (count) => assert.equal(httpVerifications, count),
@@ -125,7 +134,8 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
             failedCase: 'abort-stream', server: { counts: { body: 1 }, closed: { body: false } } } };
         },
         close: async () => { httpEvents.push('close'); httpClosed = true; if (cleanupFailure) throw Error('HTTP_CLEANUP_FAILED'); },
-      }) };
+        };
+      } };
       if (name === 'fs') return {
         existsSync: (file) => file.endsWith('/ios-qualification.json') ? mixedOutput : true, mkdirSync() {},
         writeFileSync(file, data) { writes.push({ file, data }); },
@@ -139,6 +149,7 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
       return require(name);
     },
     process: fakeProcess, console: { error() {}, log() {} }, setTimeout,
+    __dirname: path.dirname(require.resolve('./run-native.cjs')),
   });
   return { writes, calls, fakeProcess, original, httpVerifications, httpClosed, httpEvents };
 }

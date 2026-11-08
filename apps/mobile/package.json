@@ -17,7 +17,7 @@
     "test:faucet-ui": "playwright test --config playwright.faucet.config.ts",
     "test:recovery-ui": "node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts",
     "lint": "eslint . --max-warnings 0",
-    "postinstall": "node ../../scripts/apply-keyring-ledger.cjs"
+    "postinstall": "node ../../scripts/apply-keyring-ledger.cjs && node ../../scripts/apply-walletconnect-terminal.cjs"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
@@ -112,5 +112,6 @@
   "paliKeyringPatch": {
     "sourceCommit": "eaddf2a53709057b6b1dc219b5cc11869324d5e6",
     "manifestSha256": "7237fb1ef7651ea58eac2ec7461eb4bb56092367c62252b9460c592f457b9cfe"
-  }
+  },
+  "paliWalletConnectPatch": "core.9a6890ed312e22696246d1c971674816158bc289.utils.7e48b0453db3f3c7f2d417ef3823fc5c218f21bf.sha256.03ce9132174333bdb653e3b0d8da3e87fad27532fdc0c2f6ab1b0c528f1b0180"
 }

@@ -38,6 +38,21 @@ function verifyInstalledQualificationSdk(root, pin) {
     const { verifyKeyringLedgerPatch } = require(path.resolve(root, '../../scripts/apply-keyring-ledger.cjs'));
     verifyKeyringLedgerPatch(path.join(root, 'node_modules', name));
   }
+  readWalletConnectSdkIdentity(root);
 }
 
-module.exports = { readQualificationSdkPin, verifyInstalledQualificationSdk };
+function readWalletConnectSdkIdentity(root) {
+  const pkg = readJson(path.join(root, 'package.json'));
+  if (pkg.paliWalletConnectPatch === undefined) {
+    if (pkg.scripts?.postinstall?.includes('apply-walletconnect-terminal'))
+      throw Error('WalletConnect candidate requires qualification provenance');
+    return undefined;
+  }
+  const { identity, verifyWalletConnectTerminalPatch } = require(path.resolve(root, '../../scripts/apply-walletconnect-terminal.cjs'));
+  if (pkg.paliWalletConnectPatch !== identity)
+    throw Error('WalletConnect candidate provenance mismatch');
+  verifyWalletConnectTerminalPatch(root);
+  return identity;
+}
+
+module.exports = { readQualificationSdkPin, verifyInstalledQualificationSdk, readWalletConnectSdkIdentity };
