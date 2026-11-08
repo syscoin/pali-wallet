@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { expectReceiveFooter, receiveViewports, scaleReceiveText } from '../receiveLayout';
 
 const TABS = ['Wallet', 'Activity', 'Tools', 'Settings'] as const;
 const PUBLIC_KEY = `0x${'1'.repeat(64)}`;
@@ -45,6 +46,47 @@ async function openWatch(page: Page) {
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
   await tabs(page);
+}
+
+test('Receive footer hides retained public account data when the mounted watch authority locks', async ({ page }) => {
+  await page.goto('/?watch-receive-fixture');
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  const address = page.getByLabel('Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
+  await expect(address).toBeVisible();
+  await page.evaluate(() => window.__watchReceiveFixture.lock());
+  await expect.poll(() => page.evaluate(() => window.__watchReceiveFixture.status())).toBe('locked');
+  await expect(page.getByRole('heading', { name: 'Receive ETH', exact: true })).toBeVisible();
+  await expect(page.getByText('Public account hidden', { exact: true })).toBeVisible();
+  await expect(address).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Copy address', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Share address', exact: true })).toHaveCount(0);
+});
+
+for (const viewport of receiveViewports) {
+  for (const scale of [1, 1.6]) {
+    test(`Receive address and actions stay reachable in watch at ${viewport.width}x${viewport.height} and ${scale} text`, async ({ page }, info) => {
+      await page.setViewportSize(viewport);
+      await openWatch(page);
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      if (scale !== 1) await scaleReceiveText(page, scale);
+      const address = page.getByLabel('Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', { exact: true });
+      const qr = page.getByRole('img', { name: 'QR code for Ethereum address 0x52908400098527886E0F7030069857D2E4169EE7', exact: true });
+      await expect(address).toBeInViewport({ ratio: 1 });
+      if (scale === 1 && viewport.height >= 568) {
+        await expect(qr).toBeInViewport({ ratio: 1 });
+        await expect(page.getByRole('button', { name: 'Copy address', exact: true })).toBeInViewport({ ratio: 1 });
+        await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
+      }
+      await expectReceiveFooter(page, address, qr);
+      await page.evaluate(() => { navigator.clipboard.writeText = async () => undefined; });
+      await page.getByRole('button', { name: 'Copy address', exact: true }).click();
+      await expect(page.getByText('Ethereum address copied.', { exact: true })).toBeVisible();
+      if (scale !== 1) await scaleReceiveText(page, scale);
+      await expectReceiveFooter(page, address, qr);
+      await address.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: info.outputPath('receive-address-footer.png') });
+    });
+  }
 }
 async function openSecurity(page: Page) {
   await chooseTab(page, 'Settings');
@@ -640,10 +682,10 @@ for (const { width, height } of [{ width: 320, height: 360 }, { width: 844, heig
       const message = page.getByText('Could not copy this address. Try again.', { exact: true });
       await expect(message).toBeVisible();
       if (scale !== 1) await scaleText();
-      await expect(message).toBeInViewport({ ratio: 1 });
-      await expect(copy).toBeInViewport({ ratio: 1 });
-      await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
-      await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeInViewport({ ratio: 1 });
+      for (const control of [message, copy, page.getByRole('button', { name: 'Share address', exact: true }), page.getByRole('button', { name: 'Back', exact: true })]) {
+        await control.evaluate((element) => element.scrollIntoView({ block: 'center' }));
+        await expect(control).toBeInViewport({ ratio: 1 });
+      }
       await page.screenshot({ path: testInfo.outputPath(`watch-receive-${width}x${height}-${scale}.png`) });
     });
   }

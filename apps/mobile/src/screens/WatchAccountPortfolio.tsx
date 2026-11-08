@@ -18,6 +18,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   authority: WatchOnlyAuthority; onAccounts(): void; onExit(): void; onLock(): void; navigation?: ShellLeafNavigation;
 }) {
   const { width, fontScale } = useWindowDimensions();
+  const receiveQrSize = width <= 340 ? 176 : 204;
   const stackActions = fontScale >= 1.6 && width < 240 * fontScale;
   const actionStyle = [s.flex, width <= 340 && s.compactAction, stackActions && s.stackedAction];
   const [mode, setMode] = useState<'home' | 'receive' | 'networks'>('home');
@@ -46,6 +47,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const account = snapshot.accounts.find((entry) => entry.id === snapshot.selectedAccountId);
   const network = authority.getNetwork(snapshot.selectedNetworkId);
   const address = account?.addresses[network.id];
+  const receiving = mode === 'receive' && snapshot.status === 'ready' && snapshot.capabilities.receive && !!address;
   const current = (generation: number) => lifecycle.current.alive && AppState.currentState === 'active' && authority.getSnapshot().generation === generation && authority.getSnapshot().status === 'ready';
   const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
     if (!address || !snapshot.capabilities.receive || lifecycle.current.busy || AppState.currentState !== 'active') return;
@@ -74,16 +76,15 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const back = () => { invalidateActions(); if (mode !== 'home') setMode('home'); else onExit(); };
   const faucetCard = address && network.kind === 'evm' && <TestnetFaucetCard registration={getNativeNetwork(network.id)} busy={busy} opening={openingFaucet} onCopy={mode === 'receive' ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const feedbackView = !!feedback && <Text accessibilityRole={feedback.startsWith('Could not ') ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, feedback.startsWith('Could not ') && { color: colors.red }]}>{feedback}</Text>;
-  return <SafeAreaView style={s.safe} edges={navigation && mode === 'home' ? ['top'] : ['top', 'bottom']}><Screen key={mode} footer={mode === 'receive' ? <>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}><Button title="Copy address" icon="copy" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} /><Button title="Share address" icon="share" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} /></View></> : undefined}>
+  return <SafeAreaView style={s.safe} edges={navigation && mode === 'home' ? ['top'] : ['top', 'bottom']}><Screen key={mode} footerScrollable={receiving} gap={mode === 'receive' ? 12 : 22} footer={receiving ? <><Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}><Button title="Copy address" icon="copy" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} /><Button title="Share address" icon="share" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} /></View></> : undefined}>
     <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : 'Wallet'} subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={back} right={mode === 'home' && !stackActions ? <Button title="Accounts" variant="quiet" onPress={onAccounts} /> : undefined} />
     {mode === 'home' && stackActions && <Button title="Accounts" variant="quiet" onPress={onAccounts} style={s.accountsBelowHeader} />}
     {snapshot.status !== 'ready' || !address ? <Notice title="Public account hidden" body="Open your watch account to view its public balance." /> : mode === 'networks' ? <>
       <Text style={styles.muted}>Choose the network for this saved EVM public address.</Text>
       {authority.getAccountNetworks(account).map((choice) => <Card key={choice.id}><Row title={choice.name} subtitle={`${choice.symbol}${choice.testnet ? ' · Test network' : ''}${choice.id === network.id ? ' · Selected' : ''}`} icon="globe" onPress={() => { authority.selectNetwork(choice.id); setMode('home'); setFeedback(''); void authority.refresh(); }} last /></Card>)}
     </> : mode === 'receive' ? <>
-      <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={48} /><Text style={s.name}>{network.name}</Text><Text style={styles.muted}>{account.name}</Text></View>
-      <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${network.name} address ${address}`}><QRCode value={address} size={204} quietZone={16} color={colors.bg} backgroundColor="#ffffff" /></View>
-      <Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>
+      <View style={[s.hero, { paddingVertical: 0, gap: 8 }]}><Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={48} /><Text style={s.name}>{network.name}</Text><Text style={styles.muted}>{account.name}</Text></View>
+      <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${network.name} address ${address}`}><QRCode value={address} size={receiveQrSize} quietZone={16} color={colors.bg} backgroundColor="#ffffff" /></View>
       <Notice title="Check the network" body={`Use ${network.name}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
       {utxo && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
       {faucetCard}
