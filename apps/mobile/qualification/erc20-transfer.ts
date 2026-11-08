@@ -1,3 +1,4 @@
+import { sameJsonRpcParameters } from './rpc-parameters.ts';
 import { readSignedRecordEvidence, retainedSignedEntries } from './signed-record-evidence.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -315,7 +316,7 @@ export async function qualifyNativeErc20Transfer(
       const params = body.params;
       let result: unknown;
       const same = (expected: unknown[]) =>
-        expect(JSON.stringify(params) === JSON.stringify(expected));
+        expect(sameJsonRpcParameters(params, expected));
       if (body.method === 'eth_chainId') {
         same([]);
         result = '0x1';
