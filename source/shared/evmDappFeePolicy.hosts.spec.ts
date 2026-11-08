@@ -22,6 +22,8 @@ import store from 'state/store';
 import { KeyringAccountType, type INetwork } from 'types/network';
 import { BigNumber } from 'utils/ethersV6Compat';
 
+import { NATIVE_EVM_FEE_FUNDING } from './evmFeeApproval';
+
 const FROM = `0x${'11'.repeat(20)}`;
 const TO = `0x${'22'.repeat(20)}`;
 const cases = [
@@ -225,6 +227,7 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
   };
   const extension = fetchGasAndDecodeFunction(input, network);
   const native = prepareNativeConnectionTransaction(input, {
+    funding: NATIVE_EVM_FEE_FUNDING,
     network: registration,
     rpc: read,
     signal: new AbortController().signal,
