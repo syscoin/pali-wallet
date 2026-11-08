@@ -321,6 +321,12 @@ test('native factory explicitly wires one owned transport to all network consume
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
+    './deviceUnlockCredential.native': {
+      createNativeDeviceUnlockCapability: () => ({
+        prompt: { cancel() { retired.push('authentication'); } },
+      }),
+    },
+    '../custody/ledgerAccounts.ts': { NativeLedgerAccounts: capture('ledger') },
     '../../../../source/utils/security/blacklistService': {
       blacklistService: {
         checkUrl() { assert.fail('unexpected site check in factory wiring test'); },
@@ -414,6 +420,9 @@ test('native factory explicitly wires one owned transport to all network consume
     './http': { walletFetch: fetcher },
   }, { process: { env: {} } });
   const bundle = factory.createNativeWalletControllers();
+  const ledgerCount = bundle.ledgerConnection ? 2 : 1;
+  assert.equal(captures.ledger!.length, ledgerCount);
+  for (const args of captures.ledger!) assert.equal(args[0], bundle.authority);
   assert.equal(captures.connections![0][0].source, bundle.authority);
   assert.equal(captures.connections![0][0].preparePlatform, prepareWalletConnectRuntime);
   assert.equal(bundle.balanceReader.readBalance, balance.readBalance);
@@ -442,7 +451,11 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(recovery.owner, bundle.authority);
   assert.equal(typeof recovery.openStorage, 'function');
   await recovery.retireControllers();
-  assert.deepEqual(retired, ['tokens', 'transfers', 'key', 'backup', 'connections']);
+  assert.deepEqual(retired, [
+    ...(bundle.authentication ? ['authentication'] : []),
+    'tokens', 'transfers', 'key', 'backup', 'connections',
+    ...Array.from({ length: ledgerCount }, () => 'ledger'),
+  ]);
 });
 
 test('public platform and native Portfolio fallback bind platform-owned fetch; NativeWallet passes the explicit reader', () => {
