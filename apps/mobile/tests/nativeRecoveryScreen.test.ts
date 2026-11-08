@@ -198,7 +198,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
     connections: { getSnapshot: () => ({ status: 'ready', messageReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
-    disposeTokens() {}, disposeTransfers() {}, async readRecoveryInventory() { return inventory; },
+    disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {}, async readRecoveryInventory() { return inventory; },
   };
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
@@ -256,7 +256,7 @@ async function walletFeedbackFixture() {
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
     connections: { getSnapshot: () => ({ status: 'ready', messageReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
-    disposeTokens() {}, disposeTransfers() {},
+    disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
   };
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
