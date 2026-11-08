@@ -66,6 +66,7 @@ function payerReview(
     id: purpose === 'fund-account' ? 8 : 9,
     purpose,
     maximumFeeUnits,
+    coveredFeeUnits: '0',
     maximumTotalUnits: (BigInt(value) + BigInt(maximumFeeUnits)).toString(),
     transaction: {
       chainId: snapshot.network.chainId,

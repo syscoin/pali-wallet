@@ -21,6 +21,7 @@ export type SmartAccountPayerReview = Readonly<{
   id: number;
   transaction: PreparedEvmTransaction;
   maximumFeeUnits: string;
+  coveredFeeUnits: string;
   maximumTotalUnits: string;
   purpose: 'fund-account' | 'submit-deployment';
 }>;
