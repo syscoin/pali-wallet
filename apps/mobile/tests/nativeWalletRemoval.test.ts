@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
-const sdk = await loadNativeKeyringSdk();
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import { ACCOUNT_SELECTION_KEY, createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -16,6 +15,7 @@ import type { WalletConnectTransport } from '../src/connections/walletConnect.ts
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { openWalletStorage, type NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
+const sdk = await loadNativeKeyringSdk();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Public fixture wallet removal password 1!';

@@ -34,7 +34,7 @@ function fixture(options:{legacy?:boolean;update?:(call:Call,result:unknown)=>un
 for(const legacy of [false,true])test(`${legacy?'legacy':'EIP1559'} preparation binds the exact selected fee fields before gas estimation`,async()=>{
  const f=fixture({legacy}),quote=await f.rpc.prepare(from,to,'7',signal(), undefined, emptyNoncePlanner);const estimate=f.calls.findIndex(c=>c.method==='eth_estimateGas');
  for(const method of ['eth_getTransactionCount','eth_getBalance','eth_gasPrice'])assert(f.calls.findIndex(c=>c.method===method)<estimate);
- assert.deepEqual(f.calls[estimate]!.params,[{type:legacy?'0x0':'0x2',chainId:'0x'+BigInt(network.chainId).toString(16),from,to,nonce:'0x0',value:'0x7',data:'0x',...(legacy?{gasPrice:'0x65'}:{maxFeePerGas:'0xfa',maxPriorityFeePerGas:'0x0'})},'pending']);
+ assert.deepEqual(f.calls[estimate]!.params,[{type:legacy?'0x0':'0x2',chainId:'0x'+BigInt(network.chainId).toString(16),from,to,nonce:'0x0',value:'0x7',data:'0x',...(legacy?{gasPrice:'0x65'}:{accessList: [], maxFeePerGas:'0xfa',maxPriorityFeePerGas:'0x0'})},'pending']);
  assert.equal(quote.transaction.gasLimit,'72000');assert.equal(quote.maximumFeeUnits,legacy?'7272000':'18000000');assert.equal(quote.totalUnits,legacy?'7272007':'18000007');
  assert(f.calls.every(c=>c.url===network.rpcUrl));assert.equal(f.calls.some(c=>c.method==='eth_feeHistory'),false);
  const fees=await f.reader.quoteFees(quote.transaction,signal(),()=>undefined);assert.equal(fees.maximumTotalUnits,quote.totalUnits);assert.equal(fees.envelopeFeeCapUnits,quote.maximumFeeUnits);
