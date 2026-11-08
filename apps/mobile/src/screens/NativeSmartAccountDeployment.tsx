@@ -125,6 +125,7 @@ export function NativeSmartAccountDeploymentScreen({
                     : 'View authorization details'
                 }
                 variant="quiet"
+                expanded={details}
                 onPress={() => setDetails(!details)}
               />
               {details && (
