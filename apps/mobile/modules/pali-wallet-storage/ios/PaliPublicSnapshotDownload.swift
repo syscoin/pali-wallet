@@ -122,7 +122,7 @@ final class PaliPublicSnapshotDownloader: @unchecked Sendable {
     completion: @escaping PaliPublicSnapshotCompletion
   ) throws -> PaliPublicSnapshotOperation {
     guard let endpoint = Self.endpoint(for: pool, serviceOrigin: serviceOrigin) else { throw PaliPublicSnapshotDownloadError.invalid }
-    return try reserve(endpoint, timeout: 25, snapshotLimit: 2 * 1024 * 1024, completion: completion)
+    return try reserve(endpoint, timeout: 25, snapshotLimit: 16 * 1024 * 1024, completion: completion)
   }
 
   /// Same reservation, cancellation and pull protocol as the public GET.

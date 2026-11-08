@@ -598,3 +598,25 @@ test('runner requires imported account evidence and binds every restarted chain 
   assert.equal(matchesImportedRestartEvidence(created, { ...restored, importedTransferHashes: ['0x' + 'f'.repeat(64), ...restored.importedTransferHashes.slice(1)] }), false);
   assert.equal(matchesImportedRestartEvidence({ status: 'failed', phase: 'create' }, { status: 'failed', phase: 'restart' }), false);
 });
+
+test('WalletConnect failure diagnostics remain bounded and cannot turn a failure into a pass', () => {
+  const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
+  const report = { version: 1, status: 'failed', phase: 'create', scenario: 'import', platform: 'android',
+    osVersion: '35', sessionId: 'public-fixture', checks: [], networkCalls: 0,
+    failedStage: 'native WalletConnect lifecycle', storageDiagnostic: {},
+    walletConnectDiagnostic: { substage: 'pair', errorName: 'Error', errorCode: 'CONNECTION_UNAVAILABLE',
+      counts: { opened: 1, closed: 0, pending: 0, pendingClosed: 0, frames: 1, invalid: 0 } } };
+  const parsed = decodeNativeReport(JSON.stringify(report), 'android', 'create', 'import');
+  assert.deepEqual(parsed.walletConnectDiagnostic, report.walletConnectDiagnostic);
+  assert.throws(() => assertFullNativeReport(parsed), /walletConnect.*CONNECTION_UNAVAILABLE/);
+  for (const change of [
+    { status: 'passed' }, { failedStage: 'native POST transport' },
+    { walletConnectDiagnostic: { ...report.walletConnectDiagnostic, message: 'PRIVATE_PAIRING_KEY' } },
+    { walletConnectDiagnostic: { ...report.walletConnectDiagnostic, substage: 'PRIVATE_URI' } },
+    { walletConnectDiagnostic: { ...report.walletConnectDiagnostic, errorCode: 'PRIVATE_CODE' } },
+    { walletConnectDiagnostic: { ...report.walletConnectDiagnostic, counts: { ...report.walletConnectDiagnostic.counts, invalid: Infinity } } },
+  ]) assert.throws(() => decodeNativeReport(JSON.stringify({ ...report, ...change }), 'android', 'create', 'import'), /schema/);
+  const withoutDiagnostic = { ...report };
+  delete withoutDiagnostic.walletConnectDiagnostic;
+  assert.equal(decodeNativeReport(JSON.stringify(withoutDiagnostic), 'android', 'create', 'import').status, 'failed');
+});

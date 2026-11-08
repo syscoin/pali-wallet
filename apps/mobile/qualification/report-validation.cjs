@@ -5,6 +5,7 @@ const EXPECTED_SDK_VERSION = readQualificationSdkPin(
 const { isImportedQualificationReport, matchesImportedRestartEvidence, IMPORTED_REPORT_FIELDS } = require('./imported-evm.ts');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { Buffer } = require('node:buffer');
+const { isWalletConnectQualificationDiagnostic } = require('./walletconnect-native.ts');
 const {
   isStorageQualificationDiagnostic,
 } = require('./storage-diagnostics.ts');
@@ -51,6 +52,7 @@ const FIELDS = new Set([
   'failedStage',
   'cryptoEvidence',
   'cryptoDiagnostic',
+  'walletConnectDiagnostic',
   'mnemonicEntropyVerified',
   'storageDiagnostic',
   'nativeHdAccountsVerified',
@@ -123,6 +125,9 @@ function decodeNativeReport(
     !isImportedQualificationReport(report) ||
     (report.cryptoDiagnostic !== undefined &&
       !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
+    (report.walletConnectDiagnostic !== undefined &&
+      (report.status !== 'failed' || report.failedStage !== 'native WalletConnect lifecycle' ||
+        !isWalletConnectQualificationDiagnostic(report.walletConnectDiagnostic))) ||
     !isStorageQualificationDiagnostic(
       report.storageDiagnostic,
       report.status,
@@ -159,7 +164,9 @@ function assertFullNativeReport(report) {
         report.failedStage || report.phase
       } (${JSON.stringify(
         report.cryptoDiagnostic || {}
-      )}; storage ${JSON.stringify(report.storageDiagnostic)})`
+      )}; storage ${JSON.stringify(report.storageDiagnostic)}${
+        report.walletConnectDiagnostic ? `; walletConnect ${JSON.stringify(report.walletConnectDiagnostic)}` : ''
+      })`
     );
   return report;
 }

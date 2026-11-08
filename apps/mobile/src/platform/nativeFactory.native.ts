@@ -37,6 +37,7 @@ import type { OpenWalletStorage } from '../storage/types.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
 import type { NativeNoteImportRuntime } from '../custody/noteImport.ts';
 import type { NativeUtxoSend } from '../custody/utxoSend.ts';
+import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement.ts';
 
 async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
@@ -230,6 +231,21 @@ export function createNativeWalletControllers() {
     }
     return { selected, assertCurrent, observeFailure };
   };
+  const sentryKeys = Object.freeze({
+    available: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.(),
+    async open(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryKeyManagement> {
+      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+      const open = selected.openSentryKeyManagement;
+      if (!open) throw new CustodyOperationError('NOT_READY');
+      const manager = await observeFailure(() => open(lifetime, assertCurrent));
+      assertCurrent();
+      return Object.freeze<NativeSentryKeyManagement>({
+        ...manager,
+        confirmImport: (...args) => observeFailure(() => manager.confirmImport(...args)),
+        confirmRemoval: (...args) => observeFailure(() => manager.confirmRemoval(...args)),
+      });
+    },
+  });
   const readGuardianRecovery = async (signal: AbortSignal, assertOwner: () => void) => {
     const { assertCurrent, observeFailure } = noteRoute(assertOwner);
     const snapshot = authority.getSnapshot();
@@ -337,6 +353,7 @@ export function createNativeWalletControllers() {
     assertCurrent();
     return Object.freeze<NativeNoteInventory>({
       notes: inventory.notes,
+      ...(inventory.checkNote ? { checkNote: (...args: Parameters<NonNullable<NativeNoteInventory['checkNote']>>) => observeFailure(() => inventory.checkNote!(...args)) } : {}),
       async revealNote(...args) {
         assertCurrent();
         const secret = await observeFailure(() => inventory.revealNote(...args));
@@ -344,6 +361,11 @@ export function createNativeWalletControllers() {
         return secret;
       },
     });
+  };
+  const openPrivateDeposit = async (signal: AbortSignal, assertOwner: () => void) => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    if (!selected.openPrivateDeposit) throw new CustodyOperationError('NOT_READY');
+    return observeFailure(() => selected.openPrivateDeposit!(signal, assertCurrent));
   };
   const openNoteImport = async (assertOwner: () => void): Promise<NativeNoteImportRuntime> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
@@ -375,6 +397,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentryKeys, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

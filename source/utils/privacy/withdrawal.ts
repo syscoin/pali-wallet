@@ -135,7 +135,7 @@ function withdrawalFields(request: IPrivacyWithdrawalRequest, amount: string) {
   return { recipient, relayer, fee: request.fee, refund: '0' };
 }
 
-/** Background-only preparation. All pool data is supplied locally; this never fetches. */
+/** Shared custody withdrawal preparation. All pool data is supplied locally; this never fetches. */
 export async function preparePrivacyWithdrawal(
   request: IPrivacyWithdrawalRequest,
   options: IPrivacyWithdrawalPreparationOptions

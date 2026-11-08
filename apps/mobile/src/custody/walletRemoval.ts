@@ -191,6 +191,11 @@ export class NativeWalletRemoval {
       this.check(authorized, owner, deadline, guard);
       authorized.assertRuntime();
       this.check(authorized, owner, deadline, guard);
+      const current = await source.storage.recovery!.readSnapshot();
+      this.check(authorized, owner, deadline, guard);
+      if (!sameRecoverySnapshot(current, authorized.before)) return fail('STATE_CHANGED');
+      authorized.assertRuntime();
+      this.check(authorized, owner, deadline, guard);
       result = await this.dependencies.owner.retireForRemoval(owner, async () => {
         const retired = this.dependencies.owner.getSnapshot();
         if (retired.phase !== 'disposed' || retired.revision !== owner.revision + 1) return fail('CANCELLED');

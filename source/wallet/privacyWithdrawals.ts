@@ -194,7 +194,7 @@ function capture(
   });
 }
 
-/** Background intent owner. A returned review never contains a note, proof or nullifier. */
+/** Shared custody intent owner. A returned review never contains a note, proof or nullifier. */
 export function createPrivacyWithdrawalsController(
   host: IPrivacyWithdrawalsHost,
   options: {

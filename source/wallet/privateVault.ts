@@ -120,6 +120,10 @@ export interface IPrivateVaultDepositController {
     noteId: string | undefined,
     session: IPrivateVaultSession
   ) => Promise<{ id: string; poolId: PrivacyPoolId }>;
+  readNoteStatus: (
+    noteId: string,
+    session: IPrivateVaultSession
+  ) => Promise<IPrivateNoteStatus>;
   recordDepositBroadcast: (
     attempt: IPrivacyDepositAttempt,
     transactionHash: string,
@@ -1829,6 +1833,14 @@ export function createPrivateVaultController(
         throw publicError(error);
       }
     },
+    readNoteStatus: (noteId, session) =>
+      internal(session, async (context) => {
+        const { manifest } = await load(context);
+        const note = findNote(manifest, noteId);
+        const status = await readStatus(context, identify(note.note));
+        await assertProfile(context);
+        return status;
+      }),
     getNotes: async () => {
       try {
         const context = await capture();
