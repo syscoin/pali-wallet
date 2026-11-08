@@ -14,6 +14,7 @@ import {
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { formatBaseUnits } from '../core/amounts';
 import React, {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -23,6 +24,7 @@ import React, {
 } from 'react';
 import {
   ActivityIndicator,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -39,6 +41,20 @@ import { Button, colors, Header, Notice, Screen, styles, Text } from '../ui';
 
 const emptySubscribe = () => () => undefined;
 const emptyInventory = () => null;
+type SendOwner = {
+  active: boolean;
+  returning: boolean;
+  operation: NativeSmartAccountOperation | null;
+  busy: boolean;
+  opening?: Promise<void>;
+  disposing?: Promise<void>;
+};
+function disposeSend(owner: SendOwner): Promise<void> {
+  owner.disposing ??= Promise.resolve(owner.opening)
+    .catch(() => undefined)
+    .then(() => owner.operation?.dispose());
+  return owner.disposing;
+}
 
 export function NativeSmartAccountSend({
   open,
@@ -118,19 +134,49 @@ export function NativeSmartAccountSend({
   const [error, setError] = useState('');
   const [controller, setController] =
     useState<NativeSmartAccountOperation | null>(null);
-  const owner = useRef({
+  const [closing, setClosing] = useState(false);
+  const callbacks = useRef({ onBack });
+  useLayoutEffect(() => {
+    callbacks.current = { onBack };
+  }, [onBack]);
+  const owner = useRef<SendOwner>({
     active: true,
+    returning: false,
     operation: null as NativeSmartAccountOperation | null,
     busy: false,
   });
-  useEffect(() => {
+  const back = useCallback(() => {
     const current = owner.current;
-    current.active = true;
+    if (!current.active) return;
+    current.active = false;
+    current.returning = true;
+    const close = callbacks.current.onBack;
+    setClosing(true);
+    void disposeSend(current)
+      .catch(() => undefined)
+      .then(() => {
+        if (owner.current === current && current.returning) close();
+      });
+  }, []);
+  useEffect(() => {
+    const current: SendOwner = {
+      active: true,
+      returning: false,
+      operation: null,
+      busy: false,
+    };
+    owner.current = current;
+    const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
+      back();
+      return true;
+    });
     return () => {
       current.active = false;
-      current.operation?.dispose();
+      current.returning = false;
+      void disposeSend(current).catch(() => undefined);
+      hardware.remove();
     };
-  }, []);
+  }, [back]);
   const review = async () => {
     const current = owner.current;
     if (!current.active || current.busy) return;
@@ -167,7 +213,7 @@ export function NativeSmartAccountSend({
           amountUnits: quantity,
         };
       }
-      const operation = await open(
+      current.opening = open(
         recipient,
         nftRequest ??
           (token
@@ -176,13 +222,14 @@ export function NativeSmartAccountSend({
             ? { kind: 'maximum' }
             : { kind: 'exact', amount }),
         check
-      );
-      if (!current.active) {
-        operation.dispose();
-        return;
-      }
-      current.operation = operation;
-      setController(operation);
+      ).then((operation) => {
+        current.operation = operation;
+        if (current.active) {
+          check();
+          setController(operation);
+        }
+      });
+      await current.opening;
     } catch (error) {
       if (current.active)
         setError(
@@ -199,11 +246,19 @@ export function NativeSmartAccountSend({
       if (current.active) setBusy(false);
     }
   };
+  if (closing)
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
+        <Screen>
+          <Text>Closing transfer review…</Text>
+        </Screen>
+      </SafeAreaView>
+    );
   if (controller)
     return (
       <NativeSmartAccountOperationScreen
         controller={controller}
-        onBack={onBack}
+        onBack={back}
       />
     );
   return (
@@ -213,7 +268,7 @@ export function NativeSmartAccountSend({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Screen>
-          <Header title="Send" onBack={onBack} />
+          <Header title="Send" onBack={back} />
           <Text style={styles.muted}>
             {accountLabel} · {context.name}
           </Text>

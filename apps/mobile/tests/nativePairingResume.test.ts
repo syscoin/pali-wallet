@@ -47,6 +47,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let guardianReads = 0;
   let guardianOpens = 0;
   let recoveryOpens = 0;
+  const authenticatorGuards: (() => void)[] = [];
   let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
     : {
@@ -214,6 +215,12 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       throw new Error('Route mocked in parent navigation test');
     },
     canManageGuardianPolicy: () => smartAccount && canManage,
+    canUseWalletAuthenticator: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
+    async openWalletAuthenticator(_signal: AbortSignal, check: () => void) {
+      check();
+      authenticatorGuards.push(check);
+      return { dispose() {} };
+    },
     guardianRecovery: { hasIntent: () => true, async open(_draft: unknown, _signal: AbortSignal, check: () => void) { check(); recoveryOpens++; return { dispose() {} }; } },
     inspectGuardianRemoval: async (_signal: AbortSignal, check: () => void) => { check(); return { status: 'retry-ready', transactions: [], totalPending: 0 }; },
     openGuardianPolicy: async (_draft: unknown, _signal: AbortSignal, check: () => void) => { check(); guardianOpens++; return { dispose() {} }; },
@@ -318,6 +325,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
         goBack() {},
       }),
     },
+    './NativeSmartAccountAuthenticator': { NativeSmartAccountAuthenticator: 'NativeSmartAccountAuthenticator' },
     './NativeSmartAccountSend': { NativeSmartAccountSend: 'NativeSmartAccountSend' },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
     './NativeSmartAccountOperation': {
@@ -376,6 +384,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     guardianReads: () => guardianReads,
     guardianOpens: () => guardianOpens,
     recoveryOpens: () => recoveryOpens,
+    authenticatorGuards: () => authenticatorGuards,
     hardwareBack() {
       assert(hardwareBack);
       return hardwareBack();
@@ -556,8 +565,8 @@ for (const back of ['Android', 'screen'] as const)
       assert.equal(route.type, 'NativeSmartAccountOperationRoute');
       // The runtime committed new metadata without an authority phase change.
       f.completeDeployment();
-      if (back === 'Android') assert.equal(f.hardwareBack(), true);
-      else route.props.onBack();
+      if (back === 'Android') assert.equal(f.hardwareBack(), false);
+      route.props.onBack();
       const refreshed = find(
         f.render(),
         (node) => node.type === 'NativePortfolio'
@@ -583,7 +592,8 @@ test('Smart native, ERC20 and NFT sends use the owned operation route', async ()
     portfolio.props.onSend();
     const route = f.render();
     assert.equal(route.type, 'NativeSmartAccountSend');
-    assert.equal(f.hardwareBack(), true);
+    assert.equal(f.hardwareBack(), false);
+    route.props.onBack();
     const returned = find(f.render(), node => node.type === 'NativePortfolio');
     assert(returned);
     const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 6, name: 'Token', symbol: 'TKN' };
@@ -591,7 +601,8 @@ test('Smart native, ERC20 and NFT sends use the owned operation route', async ()
     const tokenRoute = f.render();
     assert.equal(tokenRoute.type, 'NativeSmartAccountSend');
     assert.equal(tokenRoute.props.token, token);
-    assert.equal(f.hardwareBack(), true);
+    assert.equal(f.hardwareBack(), false);
+    tokenRoute.props.onBack();
     const afterToken = find(f.render(), node => node.type === 'NativePortfolio');
     assert(afterToken);
     const collectible = { contractAddress: '0x6666666666666666666666666666666666666666', tokenStandard: 'ERC-721' };
@@ -599,7 +610,8 @@ test('Smart native, ERC20 and NFT sends use the owned operation route', async ()
     const nftRoute = f.render();
     assert.equal(nftRoute.type, 'NativeSmartAccountSend');
     assert.equal(nftRoute.props.collectible, collectible);
-    assert.equal(f.hardwareBack(), true);
+    assert.equal(f.hardwareBack(), false);
+    nftRoute.props.onBack();
     assert(find(f.render(), node => node.type === 'NativePortfolio'));
     assert.equal(f.exits(), 0);
   } finally { f.dispose(); }
@@ -715,5 +727,56 @@ test('saved recovery transaction handoff selects its payer and returns to the ve
     assert.equal(tools.props.initialGuardianScope, tools.props.guardianRecovery.scope);
     assert.equal(f.recoveryOpens(), 0);
     await assert.rejects(initial.recovery.onActivity('hd:60:1', 1, hash), /CANCELLED/);
+  } finally { f.dispose(); }
+});
+
+
+test('Pali wallet authenticator entry uses runtime eligibility and retains ownership across metadata revisions', async () => {
+  const f = await mounted(true, true);
+  try {
+    assert.equal(find(f.render(), node => node.type === 'NativePortfolio')!.props.onUseWalletAuthenticator, undefined);
+    f.completeDeployment();
+    f.readyAtRevision(2);
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(typeof portfolio.props.onUseWalletAuthenticator, 'function');
+    portfolio.props.onUseWalletAuthenticator();
+    const route = f.render();
+    assert.equal(route.type, 'NativeSmartAccountAuthenticator');
+    await route.props.open(new AbortController().signal, () => undefined);
+    assert.equal(f.authenticatorGuards().length, 1);
+    f.readyAtRevision(3);
+    const refreshedRoute = f.render();
+    assert.equal(refreshedRoute.type, 'NativeSmartAccountAuthenticator');
+    assert.equal(refreshedRoute.props.open, route.props.open);
+    f.authenticatorGuards()[0]!();
+    // The leaf drains any pending open before calling this parent callback.
+    assert.equal(f.hardwareBack(), false);
+    refreshedRoute.props.onBack();
+    assert(find(f.render(), node => node.type === 'NativePortfolio'));
+    assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
+    assert.equal(f.exits(), 0);
+  } finally { f.dispose(); }
+});
+
+test('Pali wallet authenticator entry stays hidden for a runtime-ineligible Smart account', async () => {
+  const f = await mounted(true, true, false, false);
+  try {
+    f.completeDeployment();
+    f.readyAtRevision(2);
+    assert.equal(find(f.render(), node => node.type === 'NativePortfolio')!.props.onUseWalletAuthenticator, undefined);
+  } finally { f.dispose(); }
+});
+
+test('Pali wallet authenticator owner is revoked when the wallet backgrounds', async () => {
+  const f = await mounted(true, true);
+  try {
+    f.completeDeployment();
+    f.readyAtRevision(2);
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onUseWalletAuthenticator();
+    const route = f.render();
+    await route.props.open(new AbortController().signal, () => undefined);
+    f.background();
+    assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
+    assert.notEqual(f.render().type, 'NativeSmartAccountAuthenticator');
   } finally { f.dispose(); }
 });

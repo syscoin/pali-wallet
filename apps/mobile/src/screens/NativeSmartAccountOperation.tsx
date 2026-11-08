@@ -2,8 +2,21 @@ import {
   formatTokenUnits,
   type Erc20Metadata,
 } from '../../../../source/shared/erc20';
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
+import {
+  ActivityIndicator,
+  AppState,
+  BackHandler,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
 import { getNativeSendContext } from '../custody/networkContext';
@@ -15,6 +28,20 @@ import { TransactionDetails } from './NativeTransactionReview';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { guardianDelayLabel } from './guardianPolicyLabels';
 
+type DeploymentOwner = {
+  live: boolean;
+  returning: boolean;
+  operation?: NativeSmartAccountOperation;
+  opening?: Promise<void>;
+  disposing?: Promise<void>;
+};
+function disposeDeployment(owner: DeploymentOwner): Promise<void> {
+  owner.disposing ??= Promise.resolve(owner.opening).then(() =>
+    owner.operation?.dispose()
+  );
+  return owner.disposing;
+}
+
 export function NativeSmartAccountOperationRoute({
   open,
   onBack,
@@ -22,42 +49,82 @@ export function NativeSmartAccountOperationRoute({
   open(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   onBack(): void;
 }) {
-  const [controller, setController] =
-    useState<NativeSmartAccountOperation | null>(null);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    let current: NativeSmartAccountOperation | undefined;
-    const check = () => {
-      if (!alive) throw new Error('DEPLOYMENT_EXPIRED');
-    };
-    void open(check).then(
-      (value) => {
-        current = value;
-        if (alive) setController(value);
-        else value.dispose();
-      },
-      () => {
-        if (alive) setFailed(true);
-      }
-    );
-    return () => {
-      alive = false;
-      current?.dispose();
-    };
+  const owner = useRef<DeploymentOwner | undefined>(undefined);
+  const callbacks = useRef({ onBack });
+  const [opened, setOpened] = useState<{
+    source: typeof open;
+    controller?: NativeSmartAccountOperation;
+    failed?: true;
+    closing?: true;
+  }>();
+  useLayoutEffect(() => {
+    callbacks.current = { onBack };
+  }, [onBack]);
+  const back = useCallback(() => {
+    const current = owner.current;
+    if (!current?.live) return;
+    current.live = false;
+    current.returning = true;
+    const close = callbacks.current.onBack;
+    setOpened({ source: open, closing: true });
+    void disposeDeployment(current)
+      .catch(() => undefined)
+      .then(() => {
+        if (owner.current === current && current.returning) close();
+      });
   }, [open]);
-  if (controller)
+  useEffect(() => {
+    const current: DeploymentOwner = { live: true, returning: false };
+    owner.current = current;
+    const check = () => {
+      if (
+        owner.current !== current ||
+        !current.live ||
+        AppState.currentState !== 'active'
+      )
+        throw new Error('DEPLOYMENT_EXPIRED');
+    };
+    current.opening = Promise.resolve()
+      .then(() => {
+        check();
+        return open(check);
+      })
+      .then((operation) => {
+        current.operation = operation;
+        if (current.live) {
+          check();
+          setOpened({ source: open, controller: operation });
+        }
+      })
+      .catch(() => {
+        if (current.live) setOpened({ source: open, failed: true });
+      });
+    const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
+      back();
+      return true;
+    });
+    return () => {
+      current.live = false;
+      current.returning = false;
+      void disposeDeployment(current).catch(() => undefined);
+      hardware.remove();
+    };
+  }, [back, open]);
+  const current = opened?.source === open ? opened : undefined;
+  if (current?.controller)
     return (
       <NativeSmartAccountOperationScreen
-        controller={controller}
-        onBack={onBack}
+        controller={current.controller}
+        onBack={back}
       />
     );
   return (
     <SafeAreaView style={s.safe}>
       <Screen>
-        <Header title="Deploy smart account" onBack={onBack} />
-        {failed ? (
+        <Header title="Deploy smart account" onBack={back} />
+        {current?.closing ? (
+          <Text>Closing deployment review…</Text>
+        ) : current?.failed ? (
           <Notice
             title="Deployment unavailable"
             body="Return to your account and try again."
@@ -65,7 +132,12 @@ export function NativeSmartAccountOperationRoute({
         ) : (
           <ActivityIndicator color={colors.pink} />
         )}
-        <Button title="Close" variant="quiet" onPress={onBack} />
+        <Button
+          title="Close"
+          variant="quiet"
+          disabled={current?.closing}
+          onPress={back}
+        />
       </Screen>
     </SafeAreaView>
   );
@@ -85,7 +157,9 @@ export function NativeSmartAccountOperationScreen({
   );
   useEffect(() => {
     void controller.prepare();
-    return () => controller.dispose();
+    return () => {
+      void Promise.resolve(controller.dispose()).catch(() => undefined);
+    };
   }, [controller]);
   return (
     <NativeSmartAccountOperationContent
@@ -140,10 +214,13 @@ export function NativeSmartAccountOperationContent({
   const batch = state.intent.kind === 'dapp-batch' ? state.intent : null;
   const guardian =
     state.intent.kind === 'guardian-policy' ? state.intent.command : null;
+  const walletAuthenticator =
+    state.intent.kind === 'wallet-authenticator' ? state.intent.command : null;
   const transfer =
     state.intent.kind !== 'deploy' &&
     state.intent.kind !== 'dapp-batch' &&
-    state.intent.kind !== 'guardian-policy'
+    state.intent.kind !== 'guardian-policy' &&
+    state.intent.kind !== 'wallet-authenticator'
       ? state.intent
       : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
@@ -155,7 +232,9 @@ export function NativeSmartAccountOperationContent({
         <Header
           title={
             state.phase === 'authorize'
-              ? guardian
+              ? walletAuthenticator
+                ? 'Review Pali wallet authenticator'
+                : guardian
                 ? guardian.kind === 'remove'
                   ? 'Review guardian removal'
                   : 'Review guardian policy'
@@ -168,6 +247,8 @@ export function NativeSmartAccountOperationContent({
                 : 'Authorize deployment'
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
+              : walletAuthenticator
+              ? 'Use Pali wallet'
               : guardian
               ? guardian.kind === 'remove'
                 ? 'Guardian removal'
@@ -188,6 +269,21 @@ export function NativeSmartAccountOperationContent({
           </Text>
           <Text style={s.label}>Chain ID {state.network.chainId}</Text>
         </Card>
+        {walletAuthenticator && (
+          <Card style={s.card}>
+            <Text style={s.label}>ECDSA authenticator</Text>
+            <Text style={s.label}>New owner</Text>
+            <Text selectable style={s.address}>
+              {walletAuthenticator.ownerAddress}
+            </Text>
+            <Text style={s.label}>Owner threshold · 1</Text>
+            <Text style={s.label}>
+              {walletAuthenticator.sourceModule === 'ecdsa'
+                ? 'This rotates the smart account’s ECDSA ownership to the Pali wallet owner shown above, with a threshold of 1.'
+                : 'This changes the smart account’s authenticator to the Pali wallet ECDSA owner shown above, with a threshold of 1.'}
+            </Text>
+          </Card>
+        )}
         {guardian && (
           <Card style={s.card}>
             <Text style={s.label}>
@@ -305,7 +401,9 @@ export function NativeSmartAccountOperationContent({
           <>
             <Notice
               title={
-                guardian
+                walletAuthenticator
+                  ? 'Authorize Pali wallet ownership'
+                  : guardian
                   ? guardian.kind === 'remove'
                     ? 'Authorize guardian removal'
                     : 'Authorize this guardian policy'
@@ -318,7 +416,9 @@ export function NativeSmartAccountOperationContent({
                   : 'Create this account on the network'
               }
               body={
-                guardian
+                walletAuthenticator
+                  ? 'Authorize replacing the current authenticator settings with the owner and threshold shown above. The following review confirms the paying account and submission fee.'
+                  : guardian
                   ? guardian.kind === 'remove'
                     ? 'Authorize removing guardian recovery from this account. The following review confirms the paying account and submission fee.'
                     : 'Authorize the guardian and recovery delay shown above. The following review confirms the paying account and submission fee.'
@@ -374,7 +474,9 @@ export function NativeSmartAccountOperationContent({
             </Card>
             <Button
               title={
-                guardian
+                walletAuthenticator
+                  ? 'Authorize authenticator change'
+                  : guardian
                   ? guardian.kind === 'remove'
                     ? 'Authorize removal'
                     : 'Authorize policy'
@@ -397,6 +499,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Fund the account charge'
+                  : walletAuthenticator
+                  ? 'Submit the authorized authenticator change'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Submit the authorized removal'
@@ -412,6 +516,8 @@ export function NativeSmartAccountOperationContent({
               body={
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
+                  : walletAuthenticator
+                  ? 'This transaction submits the Pali wallet owner and threshold you authorized.'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'This transaction submits the guardian removal you authorized.'
@@ -449,6 +555,8 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
+                  : walletAuthenticator
+                  ? 'Confirm authenticator change'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Confirm removal'
@@ -474,6 +582,8 @@ export function NativeSmartAccountOperationContent({
                 ? state.error
                 : state.phase === 'waiting'
                 ? 'Waiting for the network…'
+                : walletAuthenticator
+                ? 'Preparing authenticator change…'
                 : guardian
                 ? guardian.kind === 'remove'
                   ? 'Preparing removal…'
@@ -489,7 +599,11 @@ export function NativeSmartAccountOperationContent({
         {state.phase === 'complete' && (
           <Notice
             title={
-              guardian
+              walletAuthenticator
+                ? state.transactionHash
+                  ? 'Authenticator transaction confirmed'
+                  : 'Pali wallet already configured'
+                : guardian
                 ? guardian.kind === 'remove'
                   ? 'Guardian recovery removed'
                   : 'Guardian policy updated'
@@ -502,7 +616,11 @@ export function NativeSmartAccountOperationContent({
                 : 'Smart account deployed'
             }
             body={
-              guardian
+              walletAuthenticator
+                ? state.transactionHash
+                  ? 'The network confirmed the authenticator change.'
+                  : 'The account already uses this Pali wallet owner with a threshold of 1.'
+                : guardian
                 ? guardian.kind === 'remove'
                   ? 'The network confirmed this guardian removal transaction.'
                   : 'The network confirmed this guardian policy transaction.'
@@ -514,18 +632,22 @@ export function NativeSmartAccountOperationContent({
             }
           />
         )}
-        {guardian &&
+        {(guardian || walletAuthenticator) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'refreshing' && (
             <Text>Refreshing account status…</Text>
           )}
-        {guardian &&
+        {(guardian || walletAuthenticator) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'failed' && (
             <>
               <Notice
                 title="Account status unavailable"
-                body="The policy transaction is confirmed. Refresh the saved account status to see the updated policy."
+                body={
+                  walletAuthenticator
+                    ? 'The authenticator transaction is confirmed. Refresh the saved account status to see the updated owner.'
+                    : 'The policy transaction is confirmed. Refresh the saved account status to see the updated policy.'
+                }
                 tone="amber"
               />
               <Button
@@ -538,7 +660,9 @@ export function NativeSmartAccountOperationContent({
         {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
-              guardian
+              walletAuthenticator
+                ? 'Check authenticator status'
+                : guardian
                 ? guardian.kind === 'remove'
                   ? 'Check removal status'
                   : 'Check guardian policy status'
@@ -554,7 +678,11 @@ export function NativeSmartAccountOperationContent({
         )}
         {state.transactionHash && (
           <Card style={s.card}>
-            <Text style={s.label}>Latest transaction</Text>
+            <Text style={s.label}>
+              {walletAuthenticator && state.phase === 'complete'
+                ? 'Confirmed transaction'
+                : 'Latest transaction'}
+            </Text>
             <Text selectable style={s.address}>
               {state.transactionHash}
             </Text>

@@ -59,6 +59,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     useRef(initial: unknown) {
       return cell(() => ({ current: initial }));
     },
+    useCallback(callback: unknown) { return cell(() => callback); },
     useMemo(create: () => unknown) {
       return cell(create);
     },
@@ -84,6 +85,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     react,
     'react-native': {
       ActivityIndicator: 'ActivityIndicator',
+      BackHandler: { addEventListener: () => ({ remove() {} }) },
       KeyboardAvoidingView: 'KeyboardAvoidingView',
       Platform: { OS: 'android' },
     },

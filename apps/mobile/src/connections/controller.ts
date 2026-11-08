@@ -3,6 +3,7 @@ import {
   selectEvmDappFeeChoice,
   type EvmDappFeeChoice,
 } from '../../../../source/shared/evmDappFeePolicy.ts';
+import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import {
   normalizeDappCallsRequest,
   assertDappCallsAtomicSupport,
@@ -202,7 +203,8 @@ export class NativeConnectionsController {
   private transportOwner: object | undefined;
   private transportRetirement: Promise<void> = Promise.resolve();
   private publishedScope: { network: string; accounts: string } | undefined;
-  private closing: Promise<void> | undefined;
+  private readonly disposal = new NativeOperationDrain();
+  private requestRetirement: Promise<void> = Promise.resolve();
   private disposed = false;
   private readonly lifetime = new AbortController();
   private revision = 0;
@@ -567,6 +569,7 @@ export class NativeConnectionsController {
       this.repository.assertHealthy();
       this.publishedScope = this.publicScope();
       await this.transportRetirement;
+      await this.requestRetirement;
       if (this.repository.bindings().length) await this.ensureTransport();
       this.check();
       this.restored = true;
@@ -594,6 +597,7 @@ export class NativeConnectionsController {
       let transport: WalletConnectTransport | undefined;
       try {
         await this.transportRetirement;
+        await this.requestRetirement;
         guard();
         transport = await (
           this.options.openTransport ?? openWalletConnectTransport
@@ -1387,32 +1391,30 @@ export class NativeConnectionsController {
     message: PendingSigning,
     respond = true
   ): Promise<void> {
-    if (this.requests.get(message.id) !== message) return Promise.resolve();
+    if (this.requests.get(message.id) !== message) return this.requestRetirement;
     this.requests.delete(message.id);
-    if (message.request.method === 'wallet_sendCalls')
-      void this.host?.calls
+    const reservation = message.request.method === 'wallet_sendCalls'
+      ? this.host?.calls
         .releaseSendCallsBundleReservation(
           message.session.binding.origin,
           message.request.bundleId,
           message.request.reservationId
         )
-        .catch(() => undefined);
+        .catch(() => undefined)
+      : undefined;
     message.unsubscribeSmart?.();
-    message.smart?.dispose();
+    const smart = message.smart?.dispose();
     message.unsubscribeEoa?.();
     message.eoa?.dispose();
     message.approval?.dispose();
     clearTimeout(message.timer);
-    this.publish();
-    void this.prepareForegroundRequest();
-    if (
+    const respondToRequest = !(
       !respond ||
       message.dispatched ||
       (message.broadcastHash && !message.eoa) ||
       this.disposed ||
       !this.transport
-    )
-      return Promise.resolve();
+    );
     const guard = () => {
       this.check();
       if (
@@ -1421,8 +1423,9 @@ export class NativeConnectionsController {
       )
         failure('CONTEXT_CHANGED');
     };
-    return this.transport
-      .respond(
+    const retiring = Promise.allSettled([this.requestRetirement, smart, reservation]).then(async () => {
+      if (!respondToRequest || !this.transport) return;
+      await this.transport.respond(
         message.session.binding,
         message.wire.id,
         message.eoa && message.broadcastHash && message.request.method === 'wallet_sendCalls'
@@ -1431,7 +1434,12 @@ export class NativeConnectionsController {
         guard,
         () => undefined
       )
-      .catch(() => undefined);
+        .catch(() => undefined);
+    });
+    this.requestRetirement = retiring;
+    this.publish();
+    void retiring.then(() => this.prepareForegroundRequest());
+    return retiring;
   }
   private async queueSigningRequest(wire: WalletConnectRequest) {
     const connection = this.connections.get(sessionKey(wire.session));
@@ -1701,6 +1709,8 @@ export class NativeConnectionsController {
           error: 'BLOCKED_SITE',
         });
       if (isTransactionRequest(request)) {
+        await this.requestRetirement;
+        message.approval.assertCurrent();
         if (
           this.requests.values().next().value === message &&
           context.activeAccountId === account.id &&
@@ -1755,7 +1765,7 @@ export class NativeConnectionsController {
       ) {
         message.prepared = undefined;
         message.unsubscribeSmart?.();
-        message.smart?.dispose();
+        await message.smart?.dispose();
         message.busy = false;
         message.review = Object.freeze({
           ...message.review,
@@ -1768,6 +1778,7 @@ export class NativeConnectionsController {
     }
   }
   private async prepareForegroundRequest(): Promise<void> {
+    await this.requestRetirement;
     const message = this.requests.values().next().value;
     if (
       !message ||
@@ -1818,7 +1829,7 @@ export class NativeConnectionsController {
         const prepared = await this.host!.prepareTransaction({ accountId: message.accountId,
           networkId: message.networkId, transaction, approval }, approval.assertCurrent);
         approval.assertCurrent();
-        if ('operation' in prepared) { prepared.operation.dispose(); throw new Error('Expected an EOA review'); }
+        if ('operation' in prepared) { await prepared.operation.dispose(); throw new Error('Expected an EOA review'); }
         const result = await reviewDappAddressAdvisories({
           targets: getBlacklistTargetsForEvmCall({ data: prepared.transaction.data,
             to: prepared.transaction.to ?? undefined, tokenStandard: prepared.approval?.standardVerified
@@ -1879,7 +1890,8 @@ export class NativeConnectionsController {
       return;
     }
     message.unsubscribeSmart?.();
-    message.smart?.dispose();
+    await message.smart?.dispose();
+    approval.assertCurrent();
     message.smart = undefined;
     message.unsubscribeSmart = undefined;
     const prepared =
@@ -1908,7 +1920,7 @@ export class NativeConnectionsController {
     try {
       approval.assertCurrent();
     } catch (error) {
-      if ('operation' in prepared) prepared.operation.dispose();
+      if ('operation' in prepared) await prepared.operation.dispose();
       throw error;
     }
     if ('operation' in prepared) {
@@ -2388,17 +2400,18 @@ export class NativeConnectionsController {
     this.publish();
   }
   async dispose(): Promise<void> {
-    if (this.closing) return this.closing;
-    this.dismissStatus();
-    for (const message of [...this.requests.values()])
-      this.retireRequest(message, false);
-    this.disposed = true;
-    this.transportOwner = undefined;
-    this.lifetime.abort();
-    this.action?.abort();
-    this.unsubscribe();
-    this.publish();
-    this.closing = (async () => {
+    return this.disposal.close(() => {
+      this.dismissStatus();
+      this.disposed = true;
+      for (const message of [...this.requests.values()])
+        void this.retireRequest(message, false);
+      this.transportOwner = undefined;
+      this.lifetime.abort();
+      this.action?.abort();
+      this.unsubscribe();
+      this.publish();
+    }, [async () => {
+      await this.requestRetirement;
       await this.opening?.catch(() => undefined);
       await this.openingTransport?.catch(() => undefined);
       try {
@@ -2408,7 +2421,6 @@ export class NativeConnectionsController {
         this.connections.clear();
         this.proposals.clear();
       }
-    })();
-    return this.closing;
+    }]);
   }
 }

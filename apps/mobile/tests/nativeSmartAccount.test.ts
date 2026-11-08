@@ -5,7 +5,7 @@ import { createDappSigningApproval } from '../../../source/wallet/dappSigningApp
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
 import { decodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
-import { getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
+import { encodeEcdsaValidatorInitData, getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -331,6 +331,144 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     assert.equal(f.owner.getSnapshot().account!.address, ownerAddress);
     await assert.rejects(f.change({ kind: 'remove', id: 'hd:60:0', password: PASSWORD }), { code: 'ACCOUNT_NOT_REMOVABLE' });
   } finally { await f.close(); }
+});
+
+test('wallet authenticator recognizes an already configured owner without signing or submission', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    f.guardianStatus('no-policy');
+    operation = await f.runtime.openWalletAuthenticator(new AbortController().signal, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(operation.getSnapshot().transactionHash, null);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const delayedMetadata of [false, 'stale', 'unavailable'] as const) test(`wallet authenticator rotates the exact ECDSA owner and preserves confirmed state (delayed metadata ${delayedMetadata})`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    const target = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create', label: 'Previous owner', password: PASSWORD });
+    const previous = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    f.guardianStatus('no-policy');
+    f.observedEcdsaOwners([previous], 1);
+    f.fundedSmart();
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert.equal(f.runtime.canUseWalletAuthenticator(), true);
+    operation = await f.runtime.openWalletAuthenticator(new AbortController().signal, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    const intent = operation.getSnapshot().intent;
+    assert.equal(intent.kind, 'wallet-authenticator');
+    if (intent.kind !== 'wallet-authenticator') throw Error('Wrong intent');
+    assert.equal(intent.command.ownerAddress.toLowerCase(), target.toLowerCase());
+    assert.equal(intent.command.executions.length, 1);
+    const rotation = paliSmartAccountInterface.decodeFunctionData('rotateValidator', intent.command.executions[0]!.data);
+    assert.equal(rotation[0].toLowerCase(), getConfiguredAuthenticatorAddress(1, 'ecdsa').toLowerCase());
+    assert.equal(rotation[1], '0x');
+    assert.equal(rotation[2], encodeEcdsaValidatorInitData([target], 1));
+    f.onBroadcast(() => {
+      if (!delayedMetadata) f.observedEcdsaOwners([target], 1);
+      if (delayedMetadata === 'unavailable') f.guardianStatus('unavailable');
+    });
+    const submitting = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+    await submitting;
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(operation.getSnapshot().metadataRefresh, delayedMetadata ? 'failed' : 'complete');
+    const hash = operation.getSnapshot().transactionHash;
+    assert(hash);
+    assert.equal(f.submitted.length, 1);
+    assert.equal(f.signatures.length, 1);
+    if (delayedMetadata) {
+      if (delayedMetadata === 'unavailable') f.guardianStatus('no-policy');
+      f.observedEcdsaOwners([target], 1);
+      await operation.retryMetadata();
+      assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+      assert.equal(operation.getSnapshot().transactionHash, hash);
+      await operation.authorize(operation.getSnapshot().revision);
+      assert.equal(f.submitted.length, 1);
+      assert.equal(f.signatures.length, 1);
+    }
+    const stored = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
+    assert.equal(stored.auth.data, encodeEcdsaValidatorInitData([target], 1));
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.auth.data, stored.auth.data);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const revoked of ['lifetime', 'selection', 'source-config'] as const) test(`wallet authenticator refuses ${revoked} change before dispatch`, async () => {
+  const f = await fixture({}, true);
+  const lifetime = new AbortController();
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    const target = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create', label: 'Previous owner', password: PASSWORD });
+    const previous = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.observedEcdsaOwners([previous], 1); f.fundedSmart();
+    operation = await f.runtime.openWalletAuthenticator(lifetime.signal, () => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'authorize');
+    if (revoked === 'lifetime') {
+      lifetime.abort();
+      await operation.authorize(operation.getSnapshot().revision);
+      assert.equal(f.signatures.length, 0);
+    } else {
+      const submitting = operation.authorize(operation.getSnapshot().revision);
+      for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+        await new Promise(resolve => setTimeout(resolve, 5));
+      assert(operation.getSnapshot().payerReview);
+      if (revoked === 'selection') await f.change({ kind: 'select', id: 'hd:60:0' });
+      else f.observedEcdsaOwners([target], 1);
+      operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+      await submitting;
+      assert.equal(f.signatures.length, 1);
+    }
+    assert.equal(f.submitted.length, 0);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+test('wallet authenticator disposal drains held owner signing before another wallet operation', async () => {
+  const f = await fixture({}, true);
+  const entered = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  let operation: NativeSmartAccountOperation | undefined;
+  let submitting: Promise<void> | undefined;
+  try {
+    await f.change({ kind: 'create', label: 'Previous owner', password: PASSWORD });
+    const previous = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.observedEcdsaOwners([previous], 1); f.fundedSmart();
+    operation = await f.runtime.openWalletAuthenticator(new AbortController().signal, () => undefined);
+    await operation.prepare();
+    f.onSignature(async () => { entered.resolve(); await release.promise; });
+    submitting = operation.authorize(operation.getSnapshot().revision);
+    await entered.promise;
+    const disposing = Promise.resolve(operation.dispose());
+    let disposed = false;
+    void disposing.then(() => { disposed = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    await assert.rejects(f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined), /BUSY/);
+    assert.equal(disposed, false);
+    release.resolve();
+    await Promise.all([submitting, disposing]);
+    f.owner.lock();
+    await f.owner.unlock(PASSWORD);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert.equal(f.submitted.length, 0);
+  } finally { release.resolve(); await submitting; operation?.dispose(); await f.close(); }
 });
 
 test('a smart account remains selected on its chain and uses shared compatible-account fallback on another chain', async () => {

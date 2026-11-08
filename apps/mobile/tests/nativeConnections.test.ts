@@ -234,7 +234,7 @@ function fixture(
           },
         });
         const dispose = operation.dispose.bind(operation);
-        operation.dispose = () => { smartDisposals++; dispose(); };
+        operation.dispose = () => { smartDisposals++; return dispose(); };
         beforePreparedReturn?.();
         return { operation, approval: summarizeApproval(intent.data, intent.recipient, approvalMetadata) };
       }
@@ -2577,6 +2577,65 @@ test('Smart transaction reply loss stays consumed after broadcast', async () => 
     await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
     assert.equal(f.transactions.length, 1);
   } finally { await f.controller.dispose(); }
+});
+
+for (const ending of ['reject', 'dispose'] as const) test(`Smart connection ${ending} waits for its held owner signing to drain`, async () => {
+  const f = await pairedSmart();
+  const held = Promise.withResolvers<void>();
+  let signing: Promise<void> | undefined;
+  try {
+    requestSmart(f); await settle();
+    const review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    f.setSignWait(held.promise);
+    signing = f.view.approveRequest(review.id, review.revision, false).catch(() => undefined);
+    await settle();
+    const closing = ending === 'reject' ? f.view.rejectRequest(review.id) : f.controller.dispose();
+    let closed = false;
+    void closing.then(() => { closed = true; });
+    await settle();
+    assert.equal(closed, false);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    held.resolve();
+    await Promise.all([signing, closing]);
+    assert.equal(closed, true);
+    assert.equal(f.transactions.length, 0);
+  } finally { held.resolve(); await signing; await f.controller.dispose(); }
+});
+
+test('a synchronous retirement subscriber joins held Smart signing before closing transport', async () => {
+  const f = await pairedSmart();
+  const held = Promise.withResolvers<void>();
+  let signing: Promise<void> | undefined;
+  let subscriberClosing: Promise<void> | undefined;
+  let unsubscribe = () => {};
+  try {
+    requestSmart(f); await settle();
+    const review = f.view.getSnapshot().signingReview;
+    assert(review?.kind === 'smart-transaction');
+    f.setSignWait(held.promise);
+    signing = f.view.approveRequest(review.id, review.revision, false).catch(() => undefined);
+    await settle();
+    unsubscribe = f.view.subscribe(() => {
+      if (f.view.getSnapshot().signingReview || subscriberClosing) return;
+      unsubscribe();
+      subscriberClosing = f.controller.dispose();
+    });
+    const rejecting = f.view.rejectRequest(review.id);
+    let closed = false;
+    assert(subscriberClosing);
+    void subscriberClosing.then(() => { closed = true; });
+    await settle();
+    assert.equal(closed, false);
+    assert.equal(f.closed(), 0);
+    held.resolve();
+    await Promise.all([signing, rejecting, subscriberClosing]);
+    assert.equal(closed, true);
+    assert.equal(f.closed(), 1);
+    assert.equal(f.transactions.length, 0);
+  } finally {
+    unsubscribe(); held.resolve(); await signing; await f.controller.dispose();
+  }
 });
 
 test('Smart operation returned after request retirement is immediately disposed', async () => {

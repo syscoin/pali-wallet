@@ -70,6 +70,12 @@ import {
   GuardianRecoveryObservation,
 } from 'utils/smartAccount/guardianStatus';
 import {
+  assertPaliWalletValidatorSwitchApplied,
+  assertPaliWalletValidatorSwitchCurrent,
+  buildPaliWalletValidatorSwitch,
+  type PaliWalletValidatorSwitch,
+} from 'utils/smartAccount/validatorSwitch';
+import {
   getSmartAccountActionErrorMessage,
   isGuardianRecoveryAlreadyScheduledError,
   isGuardianRecoveryExpiredError,
@@ -162,6 +168,12 @@ type SLHDSAPreparedSignerRecord = {
 type PolicyApprovalScope = {
   assertCurrent: () => void;
   expectedContext: IEvmTransactionContext;
+};
+type WalletAuthenticatorReconciliation = {
+  approval: PolicyApprovalScope;
+  command: PaliWalletValidatorSwitch;
+  hash: string;
+  scope: string;
 };
 
 type GuardianDisablePending = {
@@ -524,6 +536,11 @@ const SmartAccountPolicy = () => {
     key: string;
     promise: Promise<void>;
   } | null>(null);
+  const walletAuthenticatorBusy = useRef<object | null>(null);
+  const [walletAuthenticatorPending, setWalletAuthenticatorPending] =
+    useState<WalletAuthenticatorReconciliation | null>(null);
+  const walletAuthenticatorPendingRef = useRef(walletAuthenticatorPending);
+  walletAuthenticatorPendingRef.current = walletAuthenticatorPending;
   useEffect(() => {
     setLoading(false);
     setModuleActionKey('');
@@ -549,6 +566,9 @@ const SmartAccountPolicy = () => {
     slhDsaSetupOwnerRef.current = '';
     slhDsaApprovalRef.current = null;
     validatorSwitchRef.current = null;
+    walletAuthenticatorBusy.current = null;
+    walletAuthenticatorPendingRef.current = null;
+    setWalletAuthenticatorPending(null);
   }, [scopeKey, selectedAccountKey]);
   const modules = getAvailablePaliModules(activeNetwork.chainId);
   const installedModuleIds = new Set(
@@ -867,6 +887,8 @@ const SmartAccountPolicy = () => {
       return '';
     }
   })();
+  const walletManagementAddressRef = useRef(walletManagementAddress);
+  walletManagementAddressRef.current = walletManagementAddress;
 
   const storeGuardianReplacementCredential = (
     credential: GuardianReplacementCredential
@@ -1581,48 +1603,111 @@ const SmartAccountPolicy = () => {
     }
   };
 
+  const reconcileWalletAuthenticator = async (
+    pending: WalletAuthenticatorReconciliation
+  ) => {
+    const isCurrentUi = createUiGuard();
+    await assertApprovalSession(pending.approval);
+    const hydrated = await refreshMetadata(pending.approval, false);
+    if (!hydrated) throw new Error('Smart account metadata unavailable');
+    assertPaliWalletValidatorSwitchApplied(pending.command, hydrated);
+    if (isCurrentUi() && walletAuthenticatorPendingRef.current === pending) {
+      walletAuthenticatorPendingRef.current = null;
+      setWalletAuthenticatorPending(null);
+      alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+    }
+  };
+
+  const retryWalletAuthenticatorMetadata = async () => {
+    const pending = walletAuthenticatorPendingRef.current;
+    if (!pending || walletAuthenticatorBusy.current) return;
+    const run = {};
+    const isCurrentUi = createUiGuard();
+    walletAuthenticatorBusy.current = run;
+    setLoading(true);
+    try {
+      await reconcileWalletAuthenticator(pending);
+    } catch {
+      // The submitted transaction remains recorded while its metadata is unavailable.
+    } finally {
+      if (walletAuthenticatorBusy.current === run)
+        walletAuthenticatorBusy.current = null;
+      if (isCurrentUi()) setLoading(false);
+    }
+  };
+
   const setupPaliWalletAuthenticator = async () => {
     if (!account?.isSmartAccount || !metadata || !walletManagementAddress) {
       return;
     }
-    const isCurrentUi = createUiGuard();
-    const ecdsaValidator = getConfiguredAuthenticatorAddress(
-      activeNetwork.chainId,
-      'ecdsa'
-    );
-    if (!ecdsaValidator) {
+    if (
+      walletAuthenticatorBusy.current ||
+      walletAuthenticatorPendingRef.current
+    )
       return;
-    }
-
+    const run = {};
+    walletAuthenticatorBusy.current = run;
+    const isCurrentUi = createUiGuard();
     setLoading(true);
     setModuleActionKey('ecdsa:use');
     try {
       const approval = await capturePolicyApproval();
-      const data = encodeEcdsaValidatorInitData([walletManagementAddress], 1);
-      await replaceActiveValidator(
-        {
-          auth: {
-            data,
-            module: 'ecdsa',
-            validator: ecdsaValidator,
-          },
-          metadata: {
-            installedModules: [
-              {
-                address: getAddress(ecdsaValidator),
-                config: { owners: [walletManagementAddress], threshold: 1 },
-                data,
-                id: 'ecdsa',
-                type: 'validator',
-              },
-            ],
-          },
+      const hydrated = await refreshMetadata(approval);
+      if (!hydrated) throw new Error('Smart account metadata unavailable');
+      const command = buildPaliWalletValidatorSwitch({
+        accountAddress: account.address,
+        chainId: activeNetwork.chainId,
+        metadata: hydrated,
+        ownerAddress: walletManagementAddress,
+      });
+      const boundApproval: PolicyApprovalScope = {
+        expectedContext: approval.expectedContext,
+        assertCurrent() {
+          approval.assertCurrent();
+          if (
+            walletManagementAddressRef.current.toLowerCase() !==
+            command.ownerAddress.toLowerCase()
+          )
+            throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
         },
-        approval
-      );
-      if (isCurrentUi()) {
-        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      };
+      if (command.executions.length === 0) {
+        if (isCurrentUi())
+          alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+        return;
       }
+      const response = await submitModuleExecutions(
+        command.executions.map((execution) => ({ ...execution })),
+        {
+          approval: boundApproval,
+          retrySignature: false,
+          useCachedMetadata: true,
+          waitForConfirmation: false,
+          refreshAfterSubmit: false,
+          onBeforeSubmit: async () => {
+            const current = await refreshMetadata(boundApproval);
+            if (!current) throw new Error('Smart account metadata unavailable');
+            assertPaliWalletValidatorSwitchCurrent(command, current);
+          },
+        }
+      );
+      if (
+        !response ||
+        typeof response.hash !== 'string' ||
+        !/^0x[0-9a-f]{64}$/i.test(response.hash)
+      )
+        throw new Error('Smart account transaction status unavailable');
+      const pending = {
+        approval: boundApproval,
+        command,
+        hash: response.hash,
+        scope: metadataEntryKey,
+      };
+      if (isCurrentUi()) {
+        walletAuthenticatorPendingRef.current = pending;
+        setWalletAuthenticatorPending(pending);
+      }
+      await reconcileWalletAuthenticator(pending).catch(() => undefined);
     } catch (error: any) {
       if (!isCurrentUi()) return;
       const wasHandled = handleWalletLockedError(error);
@@ -1637,6 +1722,8 @@ const SmartAccountPolicy = () => {
         );
       }
     } finally {
+      if (walletAuthenticatorBusy.current === run)
+        walletAuthenticatorBusy.current = null;
       if (isCurrentUi(false)) {
         setModuleActionKey('');
         setLoading(false);
@@ -3269,6 +3356,21 @@ const SmartAccountPolicy = () => {
             <p className="mb-2 text-sm font-semibold text-brand-white">
               {t('settings.smartAccountModules')}
             </p>
+            {walletAuthenticatorPending?.scope === metadataEntryKey && (
+              <div className="mb-3 rounded-2xl border border-brand-yellowInfo p-3 text-xs">
+                <p role="status">{t('notifications.submitted')}</p>
+                <p className="break-all font-mono">
+                  {walletAuthenticatorPending.hash}
+                </p>
+                <p>{t('smartAccountHub.moduleMetadataSaveFailed')}</p>
+                {renderModuleAction(
+                  retryWalletAuthenticatorMetadata,
+                  loading,
+                  loading,
+                  t('header.refresh')
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-3">
               {modules.map((module) => {
                 const installedModule = metadata?.installedModules?.find(
@@ -3287,8 +3389,13 @@ const SmartAccountPolicy = () => {
                 const canInstallPaliWallet =
                   module.id === 'ecdsa' &&
                   module.supported &&
-                  !isActiveValidator &&
-                  Boolean(walletManagementAddress);
+                  Boolean(walletManagementAddress) &&
+                  (!isActiveValidator ||
+                    metadata?.auth?.data.toLowerCase() !==
+                      encodeEcdsaValidatorInitData(
+                        [walletManagementAddress],
+                        1
+                      ).toLowerCase());
                 const canInstallSLHDSA =
                   module.id === 'slh-dsa' &&
                   module.supported &&
@@ -3308,7 +3415,10 @@ const SmartAccountPolicy = () => {
                   canInstallPasskey ||
                   canInstallSLHDSA ||
                   canManageGuardianRecovery;
-                if (isActiveValidator || !hasAction) {
+                if (
+                  (isActiveValidator && !canInstallPaliWallet) ||
+                  !hasAction
+                ) {
                   return null;
                 }
 
@@ -3328,7 +3438,7 @@ const SmartAccountPolicy = () => {
                             {t(moduleDisplayKey(module.id)) ||
                               module.displayName}
                           </p>
-                          {paliWalletOwnerAddress && (
+                          {paliWalletOwnerAddress && !isActiveValidator && (
                             <button
                               type="button"
                               className={`mt-1 max-w-full truncate text-xs text-brand-graylight ${copyAddressMotion}`}
@@ -3361,13 +3471,21 @@ const SmartAccountPolicy = () => {
                           moduleActionKey === `${module.id}:use`,
                           t('settings.useSmartAccountValidator')
                         )}
-                      {canInstallPaliWallet &&
-                        renderModuleAction(
-                          setupPaliWalletAuthenticator,
-                          loading,
-                          moduleActionKey === `${module.id}:use`,
-                          t('settings.useSmartAccountValidator')
-                        )}
+                      {canInstallPaliWallet && (
+                        <>
+                          <p className="break-all text-xs font-mono">
+                            {walletManagementAddress}
+                          </p>
+                          {renderModuleAction(
+                            setupPaliWalletAuthenticator,
+                            loading ||
+                              walletAuthenticatorPending?.scope ===
+                                metadataEntryKey,
+                            moduleActionKey === `${module.id}:use`,
+                            t('settings.useSmartAccountValidator')
+                          )}
+                        </>
+                      )}
                       {canInstallSLHDSA && (
                         <div className="space-y-3">
                           <PqOperationStatus

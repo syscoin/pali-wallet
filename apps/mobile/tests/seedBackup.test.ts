@@ -23,6 +23,8 @@ async function fixture() {
     catalogue: { getSnapshot: () => null },
     async openSmartAccountSend() { throw new Error('not used'); },
     openSmartAccountDeployment() { throw new Error('Unused test capability'); },
+    async openWalletAuthenticator() { throw new Error('Authenticator is outside this fixture'); },
+    canUseWalletAuthenticator: () => false,
     async refreshSmartAccountMetadata() { throw new Error('Metadata is outside this fixture'); },
     getGuardianRecoveryIntent: () => null,
     async openGuardianRecovery() { throw new Error('Recovery is outside this fixture'); },

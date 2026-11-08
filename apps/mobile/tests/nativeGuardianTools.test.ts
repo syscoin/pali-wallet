@@ -227,3 +227,28 @@ test('actual status screen reports absent policy and a closed pane discards its 
   assert.match(text(current.render()), /No compatible guardian policy/);
   current.dispose();
 });
+
+test('Tools Back delegates to the active guardian child before closing its lifetime', () => {
+  let hardware!: () => boolean;
+  let requested = 0;
+  let closed = 0;
+  const tools = screen('RealTools', {
+    accountLabel: 'Smart account', networkLabel: 'Ethereum', watchOnly: false,
+    onAccounts() {}, onBack() {}, onGuardianClose() { closed++; },
+    navigation: { registerBack(handler: () => boolean) { hardware = handler; return () => {}; }, setImmersive() {} },
+    guardianRecovery: { scope: 'guardian-owner', address: '0x' + '11'.repeat(20), async read() { return { status: 'no-compatible-policy' }; } },
+  });
+  action(tools.render(), 'Guardian recovery');
+  const guardian = tools.render();
+  assert.equal(guardian.type, 'WatchGuardianRecovery');
+  const remove = guardian.props.registerBack(() => { requested++; });
+  assert.equal(hardware(), true);
+  assert.equal(requested, 1);
+  assert.equal(closed, 0);
+  assert.equal(guardian.props.lifetime.aborted, false);
+  guardian.props.onBack();
+  assert.equal(closed, 1);
+  assert.equal(guardian.props.lifetime.aborted, true);
+  remove();
+  tools.dispose();
+});

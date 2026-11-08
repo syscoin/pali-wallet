@@ -1,4 +1,6 @@
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
+import { NativeOperationDrain } from '../custody/operationDrain.ts';
+import type { PaliWalletValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import {
   createSmartAccountCallsExecutions,
   type DappCall,
@@ -10,7 +12,10 @@ import { buildSmartAccountErc20Transfer } from '../../../../source/utils/smartAc
 import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { getPaliEntryPointAddress } from '../../../../source/utils/smartAccount/contracts.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
-import { buildGuardianPolicyExecutions, type GuardianPolicyCommand } from '../../../../source/utils/smartAccount/guardianPolicy.ts';
+import {
+  buildGuardianPolicyExecutions,
+  type GuardianPolicyCommand,
+} from '../../../../source/utils/smartAccount/guardianPolicy.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import {
@@ -21,6 +26,10 @@ import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/s
 
 export type NativeSmartAccountResolvedIntent =
   | Readonly<{ kind: 'deploy' }>
+  | Readonly<{
+      kind: 'wallet-authenticator';
+      command: PaliWalletValidatorSwitch;
+    }>
   | Readonly<{ kind: 'guardian-policy'; command: GuardianPolicyCommand }>
   | Readonly<{ kind: 'dapp-batch'; calls: readonly DappCall[] }>
   | Readonly<{
@@ -58,17 +67,25 @@ export type NativeSmartAccountIntent =
   | NativeSmartAccountResolvedIntent
   | Readonly<{ kind: 'native-max'; recipient: string }>;
 
-export type NativeGuardianPolicyDraft = Readonly<{
-  action: 'set'; guardian: string; delaySeconds: number; acknowledgedPendingOperationId: string | null;
-}> | Readonly<{
-  action: 'remove'; recoveryLossAcknowledged: true; acknowledgedPendingOperationId: string | null;
-}>;
+export type NativeGuardianPolicyDraft =
+  | Readonly<{
+      action: 'set';
+      guardian: string;
+      delaySeconds: number;
+      acknowledgedPendingOperationId: string | null;
+    }>
+  | Readonly<{
+      action: 'remove';
+      recoveryLossAcknowledged: true;
+      acknowledgedPendingOperationId: string | null;
+    }>;
 
 export type PreparedSmartAccountOperation = Awaited<
   ReturnType<typeof prepareSmartAccountOperation>
 >;
 export type SmartAccountOperationPreparation =
   | Readonly<{ kind: 'already-deployed' }>
+  | Readonly<{ kind: 'already-configured' }>
   | Readonly<{
       kind: 'authorization';
       intent: NativeSmartAccountResolvedIntent;
@@ -114,7 +131,10 @@ export type NativeSmartAccountOperationHost = Readonly<{
   intent: NativeSmartAccountIntent;
   network: NativeNetworkRegistration;
   assertCurrent(): void;
-  refreshMetadata?(signal: AbortSignal, assertCurrent: () => void): Promise<void>;
+  refreshMetadata?(
+    signal: AbortSignal,
+    assertCurrent: () => void
+  ): Promise<void>;
   prepare(
     signal: AbortSignal,
     assertCurrent: () => void
@@ -143,6 +163,7 @@ export class NativeSmartAccountOperation {
   private readonly lifetime = new AbortController();
   private revision = 0;
   private disposed = false;
+  private readonly drain = new NativeOperationDrain();
   private prepared: PreparedSmartAccountOperation | null = null;
   private signingStarted = false;
   private preparing = false;
@@ -161,8 +182,12 @@ export class NativeSmartAccountOperation {
     now = () => performance.now()
   ) {
     this.host = host;
-    if (host.intent.kind === 'guardian-policy' && typeof host.refreshMetadata !== 'function')
-      throw new Error('Guardian policy metadata reconciliation is required');
+    if (
+      (host.intent.kind === 'guardian-policy' ||
+        host.intent.kind === 'wallet-authenticator') &&
+      typeof host.refreshMetadata !== 'function'
+    )
+      throw new Error('Smart account metadata reconciliation is required');
     this.now = now;
     this.deadline = now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
     this.snapshot = Object.freeze({
@@ -222,6 +247,7 @@ export class NativeSmartAccountOperation {
   }
   async prepare(): Promise<void> {
     if (
+      this.disposed ||
       this.preparing ||
       this.prepared ||
       this.signingStarted ||
@@ -229,6 +255,7 @@ export class NativeSmartAccountOperation {
     )
       return;
     this.preparing = true;
+    const finish = this.drain.begin();
     try {
       this.check();
       let result;
@@ -260,6 +287,16 @@ export class NativeSmartAccountOperation {
         }
       }
       this.check();
+      if (result.kind === 'already-configured') {
+        if (
+          this.host.intent.kind !== 'wallet-authenticator' ||
+          this.host.intent.command.executions.length !== 0
+        )
+          throw new Error('Invalid authenticator outcome');
+        clearTimeout(this.expiry);
+        this.publish({ phase: 'complete', metadataRefresh: 'complete' });
+        return;
+      }
       if (result.kind === 'already-deployed') {
         if (this.host.intent.kind !== 'deploy')
           throw new Error('Invalid operation outcome');
@@ -269,15 +306,34 @@ export class NativeSmartAccountOperation {
       }
       const prepared = result.operation;
       const intent = result.intent;
-      if (intent.kind === 'guardian-policy') {
-        if (this.host.intent.kind !== 'guardian-policy' || this.host.intent.command !== intent.command)
+      if (
+        intent.kind === 'guardian-policy' ||
+        intent.kind === 'wallet-authenticator'
+      ) {
+        if (
+          (this.host.intent.kind !== 'guardian-policy' &&
+            this.host.intent.kind !== 'wallet-authenticator') ||
+          this.host.intent.kind !== intent.kind ||
+          this.host.intent.command !== intent.command
+        )
           throw new Error('SMART_OPERATION_EXPIRED');
-        const expected = buildGuardianPolicyExecutions(intent.command);
-        if (expected.length !== prepared.executions.length || expected.some((execution, index) => {
-          const actual = prepared.executions[index];
-          return !actual || actual.target.toLowerCase() !== execution.target.toLowerCase() ||
-            actual.data !== execution.data || BigInt(actual.value) !== BigInt(execution.value);
-        })) throw new Error('Guardian policy review changed');
+        const expected =
+          intent.kind === 'guardian-policy'
+            ? buildGuardianPolicyExecutions(intent.command)
+            : intent.command.executions;
+        if (
+          expected.length !== prepared.executions.length ||
+          expected.some((execution, index) => {
+            const actual = prepared.executions[index];
+            return (
+              !actual ||
+              actual.target.toLowerCase() !== execution.target.toLowerCase() ||
+              actual.data !== execution.data ||
+              BigInt(actual.value) !== BigInt(execution.value)
+            );
+          })
+        )
+          throw new Error('Guardian policy review changed');
       } else if (intent.kind === 'dapp-batch') {
         const requested = this.host.intent;
         if (requested.kind !== 'dapp-batch' || requested.calls !== intent.calls)
@@ -298,7 +354,11 @@ export class NativeSmartAccountOperation {
           throw new Error('SMART_OPERATION_EXPIRED');
       } else if (intent.kind !== 'deploy') {
         const requested = this.host.intent;
-        if (requested.kind === 'dapp-batch' || requested.kind === 'guardian-policy')
+        if (
+          requested.kind === 'dapp-batch' ||
+          requested.kind === 'guardian-policy' ||
+          requested.kind === 'wallet-authenticator'
+        )
           throw new Error('SMART_OPERATION_EXPIRED');
         const expected =
           intent.kind === 'nft-transfer'
@@ -371,10 +431,12 @@ export class NativeSmartAccountOperation {
       this.fail();
     } finally {
       this.preparing = false;
+      finish();
     }
   }
   async authorize(revision: number): Promise<void> {
     if (
+      this.disposed ||
       this.snapshot.phase !== 'authorize' ||
       revision !== this.snapshot.revision ||
       this.signingStarted ||
@@ -382,6 +444,7 @@ export class NativeSmartAccountOperation {
     )
       return;
     this.signingStarted = true;
+    const finish = this.drain.begin();
     const prepared = this.prepared;
     try {
       this.check();
@@ -413,7 +476,11 @@ export class NativeSmartAccountOperation {
         phase: 'complete',
         payerReview: null,
       });
-      if (this.host.intent.kind === 'guardian-policy') await this.retryMetadata();
+      if (
+        this.host.intent.kind === 'guardian-policy' ||
+        this.host.intent.kind === 'wallet-authenticator'
+      )
+        await this.retryMetadata();
     } catch (error) {
       if (
         isSmartAccountPendingStateError(error) &&
@@ -431,16 +498,27 @@ export class NativeSmartAccountOperation {
         });
         await this.prepare();
       } else this.fail();
+    } finally {
+      finish();
     }
   }
   async retryMetadata(): Promise<void> {
-    if (this.disposed || this.lifetime.signal.aborted || this.snapshot.phase !== 'complete' ||
-        this.host.intent.kind !== 'guardian-policy' || this.snapshot.metadataRefresh === 'refreshing' ||
-        this.snapshot.metadataRefresh === 'complete') return;
+    if (
+      this.disposed ||
+      this.lifetime.signal.aborted ||
+      this.snapshot.phase !== 'complete' ||
+      (this.host.intent.kind !== 'guardian-policy' &&
+        this.host.intent.kind !== 'wallet-authenticator') ||
+      this.snapshot.metadataRefresh === 'refreshing' ||
+      this.snapshot.metadataRefresh === 'complete'
+    )
+      return;
     const check = () => {
-      if (this.disposed || this.lifetime.signal.aborted) throw new Error('SMART_OPERATION_EXPIRED');
+      if (this.disposed || this.lifetime.signal.aborted)
+        throw new Error('SMART_OPERATION_EXPIRED');
       assertSynchronousEvmFeeGuard(this.host.assertCurrent);
     };
+    const finish = this.drain.begin();
     this.publish({ metadataRefresh: 'refreshing' });
     try {
       check();
@@ -449,9 +527,15 @@ export class NativeSmartAccountOperation {
       this.publish({ metadataRefresh: 'complete' });
     } catch {
       if (!this.disposed) {
-        try { assertSynchronousEvmFeeGuard(this.host.assertCurrent); } catch { /* The owner handles storage quarantine. */ }
+        try {
+          assertSynchronousEvmFeeGuard(this.host.assertCurrent);
+        } catch {
+          /* The owner handles storage quarantine. */
+        }
         this.publish({ metadataRefresh: 'failed' });
       }
+    } finally {
+      finish();
     }
   }
   private reviewPayer(
@@ -512,14 +596,15 @@ export class NativeSmartAccountOperation {
   cancel(): void {
     this.fail();
   }
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    clearTimeout(this.expiry);
-    this.lifetime.abort();
-    this.prepared = null;
-    this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
-    this.pendingPayer = null;
-    this.listeners.clear();
+  dispose(): Promise<void> {
+    return this.drain.close(() => {
+      this.disposed = true;
+      clearTimeout(this.expiry);
+      this.lifetime.abort();
+      this.prepared = null;
+      this.pendingPayer?.reject(new Error('SMART_OPERATION_EXPIRED'));
+      this.pendingPayer = null;
+      this.listeners.clear();
+    }, []);
   }
 }

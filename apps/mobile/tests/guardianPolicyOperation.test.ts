@@ -66,3 +66,29 @@ test('a retired owner cannot retry metadata or alter its retained completion', a
     assert.deepEqual(f.counts(), { signed: 1, submitted: 1, refreshed: 1 });
   } finally { f.model.dispose(); }
 });
+
+test('Smart disposal joins authorize and its nested metadata reconciliation', async () => {
+  const f = fixture();
+  const entered = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  const model = new NativeSmartAccountOperation({ ...f.host,
+    async refreshMetadata() { entered.resolve(); await released.promise; },
+  });
+  let authorizing: Promise<void> | undefined;
+  try {
+    await model.prepare();
+    authorizing = model.authorize(model.getSnapshot().revision);
+    await entered.promise;
+    assert.equal(model.getSnapshot().phase, 'complete');
+    const closing = model.dispose();
+    assert.equal(model.dispose(), closing);
+    let closed = false;
+    void closing.then(() => { closed = true; });
+    await Promise.resolve();
+    assert.equal(closed, false);
+    released.resolve();
+    await Promise.all([authorizing, closing]);
+    assert.equal(closed, true);
+    assert.equal(model.getSnapshot().transactionHash, hash);
+  } finally { released.resolve(); await authorizing; await model.dispose(); await f.model.dispose(); }
+});

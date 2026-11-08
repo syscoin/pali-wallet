@@ -2,6 +2,7 @@ import {
   createSmartAccountPendingState,
   type SmartAccountPendingState,
 } from '../../../../source/utils/smartAccount/pendingState.ts';
+import { assertPaliWalletValidatorSwitchCurrent } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import {
   createSmartAccountCallsExecutions,
   normalizeDappCallsRequest,
@@ -113,7 +114,10 @@ export function createNativeSmartOperation(
       : Object.freeze({ ...ports.intent });
   if (intent.kind === 'dapp-batch' && typeof ports.submitBatch !== 'function')
     throw new Error('Smart batch submission boundary is required');
-  if (intent.kind === 'guardian-policy' && typeof ports.assertGuardianPolicy !== 'function')
+  if (
+    intent.kind === 'guardian-policy' &&
+    typeof ports.assertGuardianPolicy !== 'function'
+  )
     throw new Error('Guardian policy ownership is required');
   const chainId = Number(ports.network.chainId);
   let issued: PreparedSmartAccountOperation | undefined;
@@ -134,6 +138,17 @@ export function createNativeSmartOperation(
         return { id: owner.id, type: type as SmartAccountGasPayer['type'] };
     }
     return null;
+  };
+  const assertValidatorSwitch = async (assertCurrent: () => void) => {
+    if (intent.kind !== 'wallet-authenticator') return;
+    const observed = await readSmartAccountValidatorMetadata({
+      account,
+      chainId,
+      provider: pending.provider,
+      assertCurrent,
+    });
+    assertCurrent();
+    assertPaliWalletValidatorSwitchCurrent(intent.command, observed);
   };
   return new NativeSmartAccountOperation({
     account: account.address,
@@ -165,7 +180,11 @@ export function createNativeSmartOperation(
             ports.checkAddress,
             assertCurrent
           );
-      } else if (intent.kind !== 'deploy' && intent.kind !== 'guardian-policy') {
+      } else if (
+        intent.kind !== 'deploy' &&
+        intent.kind !== 'guardian-policy' &&
+        intent.kind !== 'wallet-authenticator'
+      ) {
         await assertSmartAccountTargetsAllowed(
           getBlacklistTargetsForEvmCall(
             intent.kind === 'nft-transfer'
@@ -203,7 +222,20 @@ export function createNativeSmartOperation(
         assertCurrent();
         return { kind: 'already-deployed' };
       }
-      if (
+      if (intent.kind === 'wallet-authenticator') {
+        if (state !== 'deployed')
+          throw new Error('Smart account must be deployed');
+        metadata = await readSmartAccountValidatorMetadata({
+          account,
+          chainId,
+          provider,
+          assertCurrent,
+        });
+        assertCurrent();
+        assertPaliWalletValidatorSwitchCurrent(intent.command, metadata);
+        if (intent.command.executions.length === 0)
+          return { kind: 'already-configured' };
+      } else if (
         intent.kind !== 'deploy' &&
         state === 'deployed' &&
         (!metadata.isDeployed || !hasUsableSmartAccountAuthMetadata(metadata))
@@ -308,7 +340,9 @@ export function createNativeSmartOperation(
         };
       }
       issued = await prepare(
-        intent.kind === 'guardian-policy'
+        intent.kind === 'wallet-authenticator'
+          ? intent.command.executions.map((execution) => ({ ...execution }))
+          : intent.kind === 'guardian-policy'
           ? buildGuardianPolicyExecutions(intent.command)
           : intent.kind === 'dapp-batch'
           ? [...createSmartAccountCallsExecutions(intent.calls)]
@@ -339,7 +373,9 @@ export function createNativeSmartOperation(
     },
     async sign(prepared, assertCurrent) {
       if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
-      if (intent.kind === 'guardian-policy') await ports.assertGuardianPolicy!(policySignal, assertCurrent);
+      await assertValidatorSwitch(assertCurrent);
+      if (intent.kind === 'guardian-policy')
+        await ports.assertGuardianPolicy!(policySignal, assertCurrent);
       await pending.assertNonce(prepared.userOperation);
       return signSmartAccountEcdsaOperation({
         metadata,
@@ -433,7 +469,9 @@ export function createNativeSmartOperation(
         if (transactionMetadata?.smartAccountExecution === true)
           await options.assertPendingState();
         else await pending.assertNonce(prepared.userOperation);
-        if (intent.kind === 'guardian-policy') await ports.assertGuardianPolicy!(signal, guard);
+        if (intent.kind === 'guardian-policy')
+          await ports.assertGuardianPolicy!(signal, guard);
+        await assertValidatorSwitch(guard);
         guard();
         let acknowledged: Promise<void> = Promise.resolve();
         const hash = await quote.submit(guard, (hash) => {
@@ -446,10 +484,19 @@ export function createNativeSmartOperation(
         return {
           hash,
           wait: () =>
-            ports.waitForReceipt(hash, quote.transaction, signal, guard,
+            ports.waitForReceipt(
+              hash,
+              quote.transaction,
+              signal,
+              guard,
               transactionMetadata?.smartAccountExecution === true
-                ? { operationHash: prepared.actionHash, operationNonce: prepared.userOperation.nonce, payer: quote.transaction.from }
-                : undefined),
+                ? {
+                    operationHash: prepared.actionHash,
+                    operationNonce: prepared.userOperation.nonce,
+                    payer: quote.transaction.from,
+                  }
+                : undefined
+            ),
         };
       };
       const submit = async () => {
@@ -459,7 +506,10 @@ export function createNativeSmartOperation(
             accountId: account.id,
             executionContextId: contextId,
             signature,
-            waitForConfirmation: intent.kind === 'deploy' || intent.kind === 'guardian-policy',
+            waitForConfirmation:
+              intent.kind === 'deploy' ||
+              intent.kind === 'guardian-policy' ||
+              intent.kind === 'wallet-authenticator',
           },
           {
             chainId,
