@@ -48,6 +48,14 @@
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "neverForLocation": true,
+          "bluetoothAlwaysPermission": "Allow Pali to connect to your Ledger hardware wallet."
+        }
       ]
     ],
     "updates": {
