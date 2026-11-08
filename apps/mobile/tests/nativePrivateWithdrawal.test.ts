@@ -510,7 +510,7 @@ test('unknown withdrawal preserves the signed transaction and note reservation f
   }
 });
 
-test('cancel during held proof prevents late review and submission', async () => {
+test('cancel during held proof drains the runtime before returning to inventory', async () => {
   const f = await fixture();
   let release!: () => void;
   let entered!: () => void;
@@ -535,8 +535,18 @@ test('cancel during held proof prevents late review and submission', async () =>
     const preparing = model.prepare({ recipient: RECIPIENT, mode: 'direct' });
     await started;
     lifetime.abort();
+    const disposing = model.dispose();
+    let disposed = false;
+    void disposing.then(() => {
+      disposed = true;
+    });
+    await Promise.resolve();
+    assert.equal(disposed, false);
+    await assert.rejects(f.runtime.readNoteInventory!(noop), /BUSY/);
     release();
-    await preparing;
+    await Promise.all([preparing, disposing]);
+    assert.equal(disposed, true);
+    await f.runtime.readNoteInventory!(noop);
     assert.notEqual(model.getSnapshot().phase, 'review');
     assert.equal(f.posted.length, 1);
   } finally {
