@@ -218,8 +218,21 @@ export function NativePrivateWithdrawalFixture() {
               events.push('status');
               publish({
                 checking: false,
+                ...(query.has('reconciled-submission')
+                  ? {
+                      status: {
+                        phase: 'submitted' as const,
+                        noteId,
+                        mode: 'direct' as const,
+                        transactionHash: `0x${'cd'.repeat(32)}`,
+                      },
+                    }
+                  : {}),
                 noteStatus: {
-                  phase: query.has('unknown') ? 'verified' : 'spent',
+                  phase:
+                    query.has('unknown') && !query.has('reconciled-spent')
+                      ? 'verified'
+                      : 'spent',
                   blockNumber: 101,
                 },
               });

@@ -113,7 +113,7 @@ test('saved note opens direct by default and requires confirmation after proof',
   ).toHaveLength(1);
   await page.getByRole('button', { name: 'Check status', exact: true }).click();
   await expect(
-    page.getByText('Note already spent.', { exact: true })
+    page.getByRole('heading', { name: 'Note already spent', exact: true })
   ).toBeVisible();
 });
 
@@ -311,6 +311,49 @@ test('unknown result offers status without a duplicate confirmation', async ({
     page.getByRole('button', { name: 'View withdrawal status', exact: true })
   ).toBeVisible();
 });
+
+for (const [observation, heading] of [
+  ['reconciled-submission', 'Withdrawal submitted'],
+  ['reconciled-spent', 'Note already spent'],
+] as const) {
+  test(`an unknown result displays newer ${observation} without resubmission`, async ({
+    page,
+  }) => {
+    await open(page, `&unknown&${observation}`);
+    await prepare(page);
+    await page
+      .getByRole('button', { name: 'Confirm withdrawal', exact: true })
+      .click();
+    await expect(
+      page.getByRole('heading', {
+        name: 'Submission status unknown',
+        exact: true,
+      })
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Check status', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: heading, exact: true })
+    ).toBeVisible();
+    if (observation === 'reconciled-submission') {
+      await expect(page.getByText(`0x${'cd'.repeat(32)}`, { exact: true })).toBeVisible();
+      await expect(page.getByText(`0x${'ab'.repeat(32)}`, { exact: true })).toHaveCount(0);
+    } else {
+      await expect(
+        page.getByText('Pool data confirms the note is spent.', { exact: true })
+      ).toBeVisible();
+    }
+    await expect(
+      page.getByRole('button', { name: 'Confirm withdrawal', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Review withdrawal', exact: true })
+    ).toHaveCount(0);
+    expect(
+      (await page.evaluate(() => window.__privateWithdrawalFixture.events()))
+        .filter((event) => event.startsWith('confirm:'))
+    ).toHaveLength(1);
+  });
+}
 
 test('cancelled proof cannot publish a late review', async ({ page }) => {
   await open(page, '&hold-proof');

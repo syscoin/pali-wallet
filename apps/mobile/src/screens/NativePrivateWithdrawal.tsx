@@ -192,6 +192,12 @@ function WithdrawalContent({
     state.phase === 'submitting';
   const submitted =
     !!state.result || (!!state.status && state.status.phase !== 'none');
+  const observed =
+    state.status && state.status.phase !== 'none'
+      ? state.status
+      : state.result;
+  const spent = state.noteStatus?.phase === 'spent';
+  const unknown = observed?.phase === 'unknown';
   const showReview = !!review && !editing && !submitted;
   const reviewExpired = !!review && expired === review.intentId;
   const healthyRelayer = state.relayers.some(
@@ -277,20 +283,22 @@ function WithdrawalContent({
     void controller.reviewRestored(entered).catch(() => undefined);
   };
   const title = submitted
-    ? state.result?.phase === 'unknown' || state.status?.phase === 'unknown'
+    ? spent
+      ? 'Note already spent'
+      : unknown
       ? 'Submission status unknown'
-      : (state.result?.jobId || state.status?.jobId) &&
-        !(state.result?.transactionHash || state.status?.transactionHash)
+      : (state.status?.jobId || state.result?.jobId) &&
+        !(state.status?.transactionHash || state.result?.transactionHash)
       ? 'Relayer accepted the request'
       : 'Withdrawal submitted'
     : showReview
     ? 'Review withdrawal'
     : 'Withdraw note';
   const hash =
-    state.result?.transactionHash ??
     state.status?.transactionHash ??
+    state.result?.transactionHash ??
     state.result?.signedTransactionHash;
-  const jobId = state.result?.jobId ?? state.status?.jobId;
+  const jobId = state.status?.jobId ?? state.result?.jobId;
   const error =
     state.error === 'expired'
       ? 'This review expired. Prepare a fresh review before confirming.'
@@ -575,8 +583,9 @@ function WithdrawalContent({
           {submitted && (
             <>
               <Text accessibilityLiveRegion="polite" style={styles.muted}>
-                {state.result?.phase === 'unknown' ||
-                state.status?.phase === 'unknown'
+                {spent
+                  ? 'Pool data confirms the note is spent.'
+                  : unknown
                   ? 'Do not submit again. Check the transaction or relayer status before another withdrawal.'
                   : jobId && !hash
                   ? 'The relayer has a job ID. This does not mean the withdrawal is mined.'
@@ -597,11 +606,6 @@ function WithdrawalContent({
                     {jobId}
                   </Text>
                 </Card>
-              )}
-              {state.noteStatus?.phase === 'spent' && (
-                <Text accessibilityLiveRegion="polite">
-                  Note already spent.
-                </Text>
               )}
               <Button
                 title={state.checking ? 'Checking status…' : 'Check status'}
