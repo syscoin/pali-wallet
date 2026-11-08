@@ -8,6 +8,8 @@ import {
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
 import {
+  compareEvmDappFees,
+  type EvmDappFeeComparison,
   selectEvmDappFees,
   selectEvmDappGasLimit,
 } from './evmDappFeePolicy.ts';
@@ -46,6 +48,7 @@ export type EvmDappPreparedQuote = Readonly<{
   balanceUnits: string;
   coveredFeeUnits: string;
   expiresAtMonotonicMilliseconds: number;
+  feeComparison: EvmDappFeeComparison;
   maximumFeeUnits: string;
   maximumTotalUnits: string;
   transaction: PreparedEvmTransaction;
@@ -283,6 +286,37 @@ export async function prepareEvmDappQuote<Sample extends NonceSample>(
   check();
   const coveredFee = getEvmCoveredFee(approval, coverage);
   return Object.freeze({
+    feeComparison: compareEvmDappFees(
+      {
+        type: request.type,
+        ...(request.gasLimit === undefined
+          ? {}
+          : { gasLimit: BigInt(request.gasLimit) }),
+        ...(request.gasPrice === undefined
+          ? {}
+          : { gasPrice: BigInt(request.gasPrice) }),
+        ...(request.maxFeePerGas === undefined
+          ? {}
+          : { maxFeePerGas: BigInt(request.maxFeePerGas) }),
+        ...(request.maxPriorityFeePerGas === undefined
+          ? {}
+          : { maxPriorityFeePerGas: BigInt(request.maxPriorityFeePerGas) }),
+      },
+      transaction.type === 0
+        ? {
+            type: 0,
+            gasLimit: BigInt(transaction.gasLimit),
+            gasPrice: BigInt(transaction.gasPrice),
+          }
+        : {
+            type: 2,
+            gasLimit: BigInt(transaction.gasLimit),
+            maxFeePerGas: BigInt(transaction.maxFeePerGas),
+            maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas),
+          },
+      executionGas,
+      fees
+    ),
     transaction,
     balanceUnits: balance.toString(),
     maximumFeeUnits: approval.maximumFeeUnits,

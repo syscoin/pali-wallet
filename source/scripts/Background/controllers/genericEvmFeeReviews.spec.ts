@@ -51,6 +51,7 @@ function fixture(
     if (!live) throw new Error('retired');
   };
   const review: EvmDappReview<IEvmTransactionResponse> = Object.freeze({
+    feeComparison: { recommendationOnly: true },
     transaction,
     maximumFeeUnits: '180000',
     maximumTotalUnits: '180000',

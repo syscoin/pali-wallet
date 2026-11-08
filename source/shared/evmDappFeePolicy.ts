@@ -81,6 +81,70 @@ export function selectEvmDappFees(
   });
 }
 
+export type EvmDappFeeAdjustment = Readonly<{
+  recommended: string;
+  requested: string;
+}>;
+export type EvmDappFeeComparison = Readonly<{
+  gasLimit?: EvmDappFeeAdjustment;
+  gasPrice?: EvmDappFeeAdjustment;
+  maxFeePerGas?: EvmDappFeeAdjustment;
+  maxPriorityFeePerGas?: EvmDappFeeAdjustment;
+  recommendationOnly: boolean;
+}>;
+
+/** Compare the app request with the same network sample used for its quote. */
+export function compareEvmDappFees(
+  request: EvmDappFeeRequest & Readonly<{ gasLimit?: bigint }>,
+  selected: EvmDappFeeSelection & Readonly<{ gasLimit: bigint }>,
+  estimate: bigint,
+  network: Readonly<{
+    gasPrice: bigint;
+    maxFeePerGas: bigint;
+    maxPriorityFeePerGas: bigint;
+  }>
+): EvmDappFeeComparison {
+  const difference = (requested: bigint | undefined, recommended: bigint) => {
+    uint256(recommended);
+    if (requested === undefined) return undefined;
+    uint256(requested);
+    return requested < recommended
+      ? Object.freeze({
+          requested: requested.toString(),
+          recommended: recommended.toString(),
+        })
+      : undefined;
+  };
+  const gasLimit =
+    request.gasLimit !== undefined && request.gasLimit < estimate
+      ? difference(request.gasLimit, selected.gasLimit)
+      : undefined;
+  return Object.freeze({
+    gasLimit,
+    gasPrice:
+      selected.type === 0
+        ? difference(request.gasPrice, network.gasPrice)
+        : undefined,
+    maxFeePerGas:
+      selected.type === 2
+        ? difference(request.maxFeePerGas, network.maxFeePerGas)
+        : undefined,
+    maxPriorityFeePerGas:
+      selected.type === 2
+        ? difference(request.maxPriorityFeePerGas, network.maxPriorityFeePerGas)
+        : undefined,
+    recommendationOnly:
+      (request.gasLimit === undefined || request.gasLimit >= estimate) &&
+      (selected.type === 0
+        ? request.gasPrice === undefined ||
+          selected.gasPrice === request.gasPrice
+        : (request.maxFeePerGas === undefined ||
+            selected.maxFeePerGas === request.maxFeePerGas) &&
+          (request.maxPriorityFeePerGas === undefined ||
+            selected.maxPriorityFeePerGas === request.maxPriorityFeePerGas)),
+  });
+}
+
 /** Initial recommendation only. Final admission checks the exact reviewed limit. */
 export function selectEvmDappGasLimit(
   estimate: bigint,

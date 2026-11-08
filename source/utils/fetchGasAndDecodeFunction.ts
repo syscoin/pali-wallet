@@ -1,4 +1,6 @@
 import {
+  compareEvmDappFees,
+  type EvmDappFeeAdjustment,
   selectEvmDappFees,
   selectEvmDappGasLimit,
 } from '../shared/evmDappFeePolicy';
@@ -449,51 +451,42 @@ export const fetchGasAndDecodeFunction = async (
     assertCurrentContext();
   }
 
+  const comparison = compareEvmDappFees(
+    {
+      ...(providedValue ? { gasLimit: providedValue.toBigInt() } : {}),
+      ...(dappGasPrice ? { gasPrice: dappGasPrice.toBigInt() } : {}),
+      ...(dappMaxFeePerGas
+        ? { maxFeePerGas: dappMaxFeePerGas.toBigInt() }
+        : {}),
+      ...(dappMaxPriorityFeePerGas
+        ? { maxPriorityFeePerGas: dappMaxPriorityFeePerGas.toBigInt() }
+        : {}),
+    },
+    { ...selectedFees, gasLimit: formTx.gasLimit.toBigInt() },
+    estimatedGasLimit.toBigInt(),
+    {
+      gasPrice: networkGasPrice.toBigInt(),
+      maxFeePerGas: networkMaxFeePerGas.toBigInt(),
+      maxPriorityFeePerGas: networkMaxPriorityFeePerGas.toBigInt(),
+    }
+  );
+  const presentation = (
+    value: EvmDappFeeAdjustment | undefined,
+    divisor: number
+  ) =>
+    value && {
+      requested: Number(value.requested) / divisor,
+      recommended: Number(value.recommended) / divisor,
+    };
   return {
     feeDetails,
     feeSafety: {
-      gasLimit:
-        providedValue && providedValue.lt(estimatedGasLimit)
-          ? {
-              requested: parseInt(providedValue.toString(), 10),
-              recommended: parseInt(formTx.gasLimit.toString(), 10),
-            }
-          : undefined,
-      gasPrice:
-        isLegacyTransaction && dappGasPrice && dappGasPrice.lt(networkGasPrice)
-          ? {
-              requested: toGweiNumber(dappGasPrice),
-              recommended: toGweiNumber(networkGasPrice),
-            }
-          : undefined,
-      maxFeePerGas:
-        !isLegacyTransaction &&
-        dappMaxFeePerGas &&
-        dappMaxFeePerGas.lt(networkMaxFeePerGas)
-          ? {
-              requested: toGweiNumber(dappMaxFeePerGas),
-              recommended: toGweiNumber(networkMaxFeePerGas),
-            }
-          : undefined,
-      maxPriorityFeePerGas:
-        !isLegacyTransaction &&
-        dappMaxPriorityFeePerGas &&
-        dappMaxPriorityFeePerGas.lt(networkMaxPriorityFeePerGas)
-          ? {
-              requested: toGweiNumber(dappMaxPriorityFeePerGas),
-              recommended: toGweiNumber(networkMaxPriorityFeePerGas),
-            }
-          : undefined,
+      gasLimit: presentation(comparison.gasLimit, 1),
+      gasPrice: presentation(comparison.gasPrice, 1e9),
+      maxFeePerGas: presentation(comparison.maxFeePerGas, 1e9),
+      maxPriorityFeePerGas: presentation(comparison.maxPriorityFeePerGas, 1e9),
     },
-    // Never call a preserved app request "raised" merely because a wallet
-    // recommendation is higher. Suggested miner tips are not proven floors.
-    recommendationOnly:
-      (!providedValue || providedValue.gte(estimatedGasLimit)) &&
-      (isLegacyTransaction
-        ? !dappGasPrice || legacyGasPrice.eq(dappGasPrice)
-        : (!dappMaxFeePerGas || maxFeePerGas.eq(dappMaxFeePerGas)) &&
-          (!dappMaxPriorityFeePerGas ||
-            maxPriorityFeePerGas.eq(dappMaxPriorityFeePerGas))),
+    recommendationOnly: comparison.recommendationOnly,
     formTx,
     nonce,
     isInvalidTxData,

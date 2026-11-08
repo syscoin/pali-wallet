@@ -1,9 +1,24 @@
-jest.mock('scripts/Background/controllers/controllerEmitter', () => ({
-  controllerEmitter: jest.fn(),
+jest.mock('../scripts/Background', () => ({
+  getController: jest.fn(),
+  notificationManager: {},
+}));
+jest.mock(
+  '../scripts/Background/controllers/providers/patchFetchWithPaliHeaders',
+  () => ({
+    patchFetchWithPaliHeaders: jest.fn(),
+  })
+);
+jest.mock('@sidhujag/sysweb3-keyring', () => ({
+  KeyringManager: jest.fn(),
+  CustomJsonRpcProvider: jest.fn(),
+  PsbtUtils: {},
 }));
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: jest.fn() },
+}));
+jest.mock('utils/navigationState', () => ({
+  getWalletNavigationScope: () => ({ account: 'owner', network: 'network' }),
 }));
 
 // Each host has its own TypeScript target; run the actual mobile modules here.
@@ -16,13 +31,29 @@ const { EvmTransferReadRpc } = jest.requireActual(
 const { createNativeNetwork } = jest.requireActual(
   '../../apps/mobile/src/custody/networkContext'
 );
-import { fetchGasAndDecodeFunction } from '../utils/fetchGasAndDecodeFunction';
-import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import { webcrypto } from 'crypto';
+
+import MainController from '../scripts/Background/controllers/MainController';
 import store from 'state/store';
 import { KeyringAccountType, type INetwork } from 'types/network';
-import { BigNumber } from 'utils/ethersV6Compat';
 
 import { NATIVE_EVM_FEE_FUNDING } from './evmFeeApproval';
+
+const originalRandomUUID = Object.getOwnPropertyDescriptor(
+  globalThis.crypto,
+  'randomUUID'
+);
+beforeAll(() =>
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    configurable: true,
+    value: () => webcrypto.randomUUID(),
+  })
+);
+afterAll(() => {
+  if (originalRandomUUID)
+    Object.defineProperty(globalThis.crypto, 'randomUUID', originalRandomUUID);
+  else delete (globalThis.crypto as Partial<Crypto>).randomUUID;
+});
 
 const FROM = `0x${'11'.repeat(20)}`;
 const TO = `0x${'22'.repeat(20)}`;
@@ -163,24 +194,42 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
   };
   const extensionEstimates: unknown[] = [],
     nativeEstimates: unknown[] = [];
-  (controllerEmitter as jest.Mock).mockImplementation(async (path, args) => {
-    if (path.join('.') === 'wallet.getRecommendedEvmNonce') return 9;
-    if (
-      path.join('.') ===
-      'wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas'
-    )
-      return {
-        gasPrice: BigNumber.from(4),
-        maxFeePerGas: BigNumber.from(7),
-        maxPriorityFeePerGas: BigNumber.from(2),
-      };
-    if (args[0] === 'eth_getBlockByNumber') return header;
-    if (args[0] === 'eth_call') return '0x';
-    if (args[0] === 'eth_estimateGas') {
-      extensionEstimates.push(args[1][0]);
-      return BigNumber.from(fixture.estimate);
-    }
-    throw new Error('Unexpected extension RPC');
+  const provider = {
+    signal: new AbortController().signal,
+    verifyConfiguredChainId: jest.fn(async () => undefined),
+    getGasPrice: async () => BigInt(4),
+    async send(method: string, params: readonly unknown[]) {
+      if (method === 'eth_getBlockByNumber')
+        return {
+          ...header,
+          gasLimit: `0x${blockLimit.toString(16)}`,
+          baseFeePerGas: '0x2',
+        };
+      if (method === 'eth_getBalance') return '1000000000000000000000000000000';
+      if (method === 'eth_maxPriorityFeePerGas') return '2';
+      if (method === 'eth_estimateGas') {
+        extensionEstimates.push(params[0]);
+        return `0x${fixture.estimate.toString(16)}`;
+      }
+      throw new Error(`Unexpected extension RPC ${method}`);
+    },
+  };
+  const wallet: any = Object.create(MainController.prototype);
+  wallet.smartAccount = { assertExpectedExecutionContext: jest.fn() };
+  wallet.assertWalletReadyForSigning = jest.fn();
+  wallet.getActiveKeyring = () => ({
+    ethereumTransaction: { web3Provider: provider },
+  });
+  wallet.captureFreshEvmRead = () => ({
+    assertCurrent: jest.fn(),
+    overrides: {},
+    run: (operation: (rpc: typeof provider) => unknown) => operation(provider),
+  });
+  wallet.inspectOrdinaryEvmNonce = async () => ({
+    nonce: 9,
+    canonicalBlock: { number: header.number, hash: header.hash },
+    balanceState: 'pending',
+    nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
   });
   const read = new EvmTransferReadRpc(registration, {
     monotonicMilliseconds: () => 1,
@@ -225,7 +274,19 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
     value: '0x0',
     ...fixture.fields,
   };
-  const extension = fetchGasAndDecodeFunction(input, network);
+  const extension = wallet.reviewDappEvmFee(
+    input,
+    {
+      account: { id: 0, type: KeyringAccountType.HDAccount, address: FROM },
+      chainId,
+      rpcUrl: network.url,
+      slip44: 60,
+      sessionGeneration: 1,
+    },
+    { nonce: 9, source: 'automatic' },
+    jest.fn(),
+    {}
+  );
   const native = prepareNativeConnectionTransaction(input, {
     funding: NATIVE_EVM_FEE_FUNDING,
     network: registration,
@@ -254,24 +315,42 @@ it.each(cases)('shares initial quote policy for $name', async (fixture) => {
     return;
   }
   const [ext, mobile] = await Promise.all([extension, native]);
-  expect(ext.formTx.gasLimit.toString()).toBe(fixture.gas);
+  expect(ext.transaction.gasLimit).toBe(fixture.gas);
   expect(mobile.transaction.gasLimit).toBe(fixture.gas);
   if ('gasPrice' in fixture) {
-    expect(ext.formTx.gasPrice).toBe(fixture.gasPrice);
+    expect(ext.transaction.gasPrice).toBe(fixture.gasPrice);
     expect(mobile.transaction.type === 0 && mobile.transaction.gasPrice).toBe(
       fixture.gasPrice
     );
   } else {
-    expect(ext.formTx.maxFeePerGas.toString()).toBe(fixture.maxFee);
+    expect(ext.transaction.maxFeePerGas).toBe(fixture.maxFee);
     expect(
       mobile.transaction.type === 2 && mobile.transaction.maxFeePerGas
     ).toBe(fixture.maxFee);
     expect(
       mobile.transaction.type === 2 && mobile.transaction.maxPriorityFeePerGas
-    ).toBe(ext.formTx.maxPriorityFeePerGas.toString());
+    ).toBe(ext.transaction.maxPriorityFeePerGas);
   }
   expect(nativeEstimates).toEqual(extensionEstimates);
   if (input.to === null) expect(nativeEstimates[0]).not.toHaveProperty('to');
-  expect(nativeEstimates[0]).not.toHaveProperty('gasPrice');
-  expect(nativeEstimates[0]).not.toHaveProperty('maxFeePerGas');
+  expect(nativeEstimates[0]).not.toHaveProperty('gas');
+  expect(nativeEstimates[0]).not.toHaveProperty('gasLimit');
+  expect(mobile.feeComparison).toEqual(ext.feeComparison);
+  if (mobile.transaction.type === 0) {
+    expect(nativeEstimates[0]).toHaveProperty(
+      'gasPrice',
+      `0x${BigInt(mobile.transaction.gasPrice).toString(16)}`
+    );
+    expect(nativeEstimates[0]).not.toHaveProperty('maxFeePerGas');
+  } else {
+    expect(nativeEstimates[0]).toHaveProperty(
+      'maxFeePerGas',
+      `0x${BigInt(mobile.transaction.maxFeePerGas).toString(16)}`
+    );
+    expect(nativeEstimates[0]).toHaveProperty(
+      'maxPriorityFeePerGas',
+      `0x${BigInt(mobile.transaction.maxPriorityFeePerGas).toString(16)}`
+    );
+    expect(nativeEstimates[0]).not.toHaveProperty('gasPrice');
+  }
 });

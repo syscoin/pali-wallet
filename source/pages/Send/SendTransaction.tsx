@@ -70,8 +70,10 @@ import {
 import { EditApprovedAllowanceValueModal } from './EditApprovedAllowanceValueModal';
 import { EditPriorityModal } from './EditPriority';
 import { tabComponents, tabElements } from './mockedComponentsData/mockedTabs';
+import type { EvmDappFeeComparison } from '../../shared/evmDappFeePolicy';
 
 type GenericFeeQuote = Readonly<{
+  feeComparison: EvmDappFeeComparison;
   id: string;
   maximumFeeUnits: string;
   maximumTotalUnits: string;
@@ -319,6 +321,15 @@ export const SendTransaction = () => {
     maxFeePerGas: 0,
     gasPrice: 0,
   });
+  const [genericFeeChoice, setGenericFeeChoice] = useState<{
+    fields: {
+      gasLimit: string;
+      gasPrice?: string;
+      maxFeePerGas?: string;
+      maxPriorityFeePerGas?: string;
+    };
+    requestKey: string;
+  }>();
   const [feeSafetyAdjustment, setFeeSafetyAdjustment] =
     useState<FeeSafetyAdjustment>({});
   const [acceptedDappFeeRequest, setAcceptedDappFeeRequest] =
@@ -372,7 +383,10 @@ export const SendTransaction = () => {
     approvalActionRef.current === 'ready' &&
     !editingDisabledRef.current;
   const updateCustomFee: typeof setCustomFee = (value) => {
-    if (canEditTransaction()) setCustomFee(value);
+    if (canEditTransaction()) {
+      setGenericFeeChoice(undefined);
+      setCustomFee(value);
+    }
   };
   const updateCustomNonce: typeof setCustomNonce = (value) => {
     if (canEditTransaction()) setCustomNonce(value);
@@ -445,8 +459,48 @@ export const SendTransaction = () => {
     );
   }, [customFee, fee, isLegacyTransaction]);
 
+  const applyGenericFeeChoice = (recommended: boolean) => {
+    const current = genericFeeView;
+    if (
+      !canEditTransaction() ||
+      !current ||
+      current !== genericFeeRef.current ||
+      current.key !== genericFeeKeyRef.current
+    )
+      return;
+    const transaction = current.quote.transaction;
+    const comparison = current.quote.feeComparison;
+    const selected = (
+      field: { recommended: string; requested: string } | undefined,
+      fallback: string
+    ) => (field ? field[recommended ? 'recommended' : 'requested'] : fallback);
+    setGenericFeeChoice({
+      requestKey: genericFeeRequestKey,
+      fields: {
+        gasLimit: selected(comparison.gasLimit, transaction.gasLimit),
+        ...(transaction.type === 0
+          ? { gasPrice: selected(comparison.gasPrice, transaction.gasPrice) }
+          : {
+              maxFeePerGas: selected(
+                comparison.maxFeePerGas,
+                transaction.maxFeePerGas
+              ),
+              maxPriorityFeePerGas: selected(
+                comparison.maxPriorityFeePerGas,
+                transaction.maxPriorityFeePerGas
+              ),
+            }),
+      },
+    });
+    setAcceptedDappFeeRequest(true);
+  };
+
   const handleUseDappFeeRequest = () => {
     if (!canEditTransaction() || !fee) return;
+    if (!activeAccount.isSmartAccount) {
+      applyGenericFeeChoice(false);
+      return;
+    }
 
     if (isLegacyTransaction) {
       setCustomFee({
@@ -480,6 +534,10 @@ export const SendTransaction = () => {
 
   const handleUseNetworkFeeSuggestion = () => {
     if (!canEditTransaction() || !fee) return;
+    if (!activeAccount.isSmartAccount) {
+      applyGenericFeeChoice(true);
+      return;
+    }
     setCustomFee({
       isCustom: true,
       gasLimit: feeSafetyAdjustment.gasLimit?.recommended ?? fee.gasLimit,
@@ -577,12 +635,23 @@ export const SendTransaction = () => {
     [validatedDataTxWithoutType, toAddressForProvider, effectiveApprovalData]
   );
   const isSmartAccountApproval = Boolean(activeAccount.isSmartAccount);
-  const genericFeeKey = JSON.stringify([
+  const genericFeeRequestKey = JSON.stringify([
     approvedContext,
     currentApprovalWalletContextKey,
     txForEstimation,
     customFee,
     customNonce,
+  ]);
+  useEffect(() => {
+    setGenericFeeChoice(undefined);
+  }, [genericFeeRequestKey]);
+  const currentGenericFeeChoice =
+    genericFeeChoice?.requestKey === genericFeeRequestKey
+      ? genericFeeChoice.fields
+      : undefined;
+  const genericFeeKey = JSON.stringify([
+    genericFeeRequestKey,
+    currentGenericFeeChoice,
   ]);
   const genericFeeKeyRef = React.useRef(genericFeeKey);
   genericFeeKeyRef.current = genericFeeKey;
@@ -1290,11 +1359,16 @@ export const SendTransaction = () => {
           const request = {
             ...txForEstimation,
             ...custom,
+            ...currentGenericFeeChoice,
             nonce,
             from: approvedContext.account.address,
             chainId: approvedContext.chainId,
           };
-          if (customFee.isCustom && customFee.gasLimit > 0) delete request.gas;
+          if (
+            (customFee.isCustom && customFee.gasLimit > 0) ||
+            currentGenericFeeChoice
+          )
+            delete request.gas;
           const quote = (await controllerEmitter(
             ['wallet', 'reviewDappEvmFee'],
             [request]
@@ -1367,9 +1441,24 @@ export const SendTransaction = () => {
                   )
                 ),
           });
-          setFeeSafetyAdjustment({});
-          setAcceptedDappFeeRequest(false);
-          setFeeRecommendationOnly(false);
+          const comparison = prepared.feeComparison;
+          const display = (
+            value: { recommended: string; requested: string } | undefined,
+            divisor: number
+          ) =>
+            value && {
+              requested: Number(value.requested) / divisor,
+              recommended: Number(value.recommended) / divisor,
+            };
+          // Display numbers never become fee-choice inputs; those retain exact base units.
+          setFeeSafetyAdjustment({
+            gasLimit: display(comparison.gasLimit, 1),
+            gasPrice: display(comparison.gasPrice, 1e9),
+            maxFeePerGas: display(comparison.maxFeePerGas, 1e9),
+            maxPriorityFeePerGas: display(comparison.maxPriorityFeePerGas, 1e9),
+          });
+          setAcceptedDappFeeRequest(Boolean(currentGenericFeeChoice));
+          setFeeRecommendationOnly(comparison.recommendationOnly);
           quotedApprovalDataRef.current = txForEstimation.data;
           setHasGasError(false);
           setHasTxDataError(false);
@@ -1802,7 +1891,13 @@ export const SendTransaction = () => {
         </div>
       ) : tx?.from ? (
         <div className="flex flex-col w-full h-screen">
-          <div className="flex-1 overflow-y-auto pb-20 remove-scrollbar">
+          <div
+            className="flex-1 overflow-y-auto pb-20 remove-scrollbar"
+            style={{
+              paddingBottom:
+                'max(5rem, calc(var(--pali-toast-footer-clearance, 0px) + 1rem))',
+            }}
+          >
             {isApproval ? (
               // Approval-specific UI
               <div className="flex flex-col items-center justify-center w-full divide-bkg-3 divide-dashed divide-y">

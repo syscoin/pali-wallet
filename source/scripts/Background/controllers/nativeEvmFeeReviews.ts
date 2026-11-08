@@ -254,6 +254,7 @@ export function issueGenericEvmFeeReview(
   return Object.freeze({
     id,
     transaction: review.transaction,
+    feeComparison: review.feeComparison,
     maximumFeeUnits: review.maximumFeeUnits,
     maximumTotalUnits: review.maximumTotalUnits,
     validForMs: review.expiresAtMonotonicMilliseconds - now,

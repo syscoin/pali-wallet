@@ -1826,6 +1826,123 @@ it('SendTransaction cancellation stays terminal after a storage read failure', a
   expect(mockClose).toHaveBeenCalledTimes(1);
 });
 
+it('requotes a network fee choice using exact base units before a new confirmation', async () => {
+  const requested = '9007199254740993';
+  const recommended = '9007199254740995';
+  mockQuery.tx.gasPrice = requested;
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path, args, ...rest) => {
+    const result = await invoke(path, args, ...rest);
+    return path[1] === 'reviewDappEvmFee'
+      ? {
+          ...result,
+          feeComparison: {
+            gasPrice: { requested, recommended },
+            recommendationOnly: true,
+          },
+        }
+      : result;
+  });
+  await prepare();
+  expect(screen.getByText('send.customFeeBelowEstimateWarning')).toBeDefined();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'send.useNetworkFeeSuggestion' })
+  );
+  await waitFor(() => {
+    const calls = mockEmitter.mock.calls.filter(
+      ([path]) => path[1] === 'reviewDappEvmFee'
+    );
+    expect(calls.at(-1)?.[1][0].gasPrice).toBe(recommended);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false);
+  });
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )
+  ).toBe(false);
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  const submitted = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  )![1];
+  expect(submitted[0].gasPrice).toBe(recommended);
+  expect(submitted[4].genericReviewId).toBe('lifetime-fee-2');
+});
+
+it.each(['manual-edit', 'network-round-trip'] as const)(
+  'retires a captured fee choice after %s',
+  async (change) => {
+    mockQuery.tx.gasPrice = '1000000000';
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation(async (path, args, ...rest) => {
+      const result = await invoke(path, args, ...rest);
+      return path[1] === 'reviewDappEvmFee'
+        ? {
+            ...result,
+            feeComparison: {
+              gasPrice: { requested: '1000000000', recommended: '2000000000' },
+              recommendationOnly: true,
+            },
+          }
+        : result;
+    });
+    const view = await prepare();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'send.useNetworkFeeSuggestion' })
+    );
+    await waitFor(() => {
+      expect(
+        mockEmitter.mock.calls
+          .filter(([path]) => path[1] === 'reviewDappEvmFee')
+          .at(-1)?.[1][0].gasPrice
+      ).toBe('2000000000');
+    });
+    if (change === 'manual-edit') {
+      act(() =>
+        mockEditHandlers.fee!({
+          isCustom: true,
+          gasLimit: 25200,
+          gasPrice: 1,
+          maxFeePerGas: 0,
+          maxPriorityFeePerGas: 0,
+        })
+      );
+    } else {
+      act(() => {
+        mockState.vault.activeNetwork = {
+          ...mockState.vault.activeNetwork,
+          url: 'https://other.example',
+        };
+        view.rerender(<SendTransaction />);
+      });
+      await act(async () => undefined);
+      act(() => {
+        mockState.vault.activeNetwork = {
+          ...mockState.vault.activeNetwork,
+          url: 'https://rpc.example',
+        };
+        view.rerender(<SendTransaction />);
+      });
+    }
+    await waitFor(() => {
+      const request = mockEmitter.mock.calls
+        .filter(([path]) => path[1] === 'reviewDappEvmFee')
+        .at(-1)?.[1][0];
+      expect(BigInt(request.gasPrice)).toBe(BigInt(1000000000));
+    });
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(false);
+  }
+);
+
 it('an unchanged SendTransaction approval still submits and closes after cleanup', async () => {
   jest.useFakeTimers();
   try {

@@ -1,5 +1,7 @@
 import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
+import { compareEvmDappFees } from '../../../shared/evmDappFeePolicy';
+
 /** Public quote DTO for rendering tests. Signing and transport are never invoked. */
 export function reviewedDappFeeFixture(
   input: Record<string, any>,
@@ -46,6 +48,42 @@ export function reviewedDappFeeFixture(
   ).toString();
   return {
     id: 'rendered-fee-review',
+    feeComparison: compareEvmDappFees(
+      {
+        ...(input.gasLimit === undefined && input.gas === undefined
+          ? {}
+          : { gasLimit: BigInt(input.gasLimit ?? input.gas) }),
+        ...(input.gasPrice === undefined
+          ? {}
+          : { gasPrice: BigInt(input.gasPrice) }),
+        ...(input.maxFeePerGas === undefined
+          ? {}
+          : { maxFeePerGas: BigInt(input.maxFeePerGas) }),
+        ...(input.maxPriorityFeePerGas === undefined
+          ? {}
+          : { maxPriorityFeePerGas: BigInt(input.maxPriorityFeePerGas) }),
+      },
+      transaction.type === 0
+        ? {
+            type: 0,
+            gasLimit: BigInt(transaction.gasLimit),
+            gasPrice: BigInt(transaction.gasPrice),
+          }
+        : {
+            type: 2,
+            gasLimit: BigInt(transaction.gasLimit),
+            maxFeePerGas: BigInt(transaction.maxFeePerGas),
+            maxPriorityFeePerGas: BigInt(transaction.maxPriorityFeePerGas),
+          },
+      BigInt(options.gasLimit?.toString() ?? 21000),
+      {
+        gasPrice: BigInt(options.gasPrice?.toString() ?? '2000000000'),
+        maxFeePerGas: BigInt(options.maxFeePerGas?.toString() ?? '3000000000'),
+        maxPriorityFeePerGas: BigInt(
+          options.maxPriorityFeePerGas?.toString() ?? '1000000000'
+        ),
+      }
+    ),
     transaction,
     maximumFeeUnits,
     maximumTotalUnits: (

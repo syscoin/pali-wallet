@@ -87,6 +87,7 @@ function fixture(failure: Error) {
     authorizeDapp = () => undefined;
   let id = '';
   const review: EvmDappReview<IEvmTransactionResponse> = Object.freeze({
+    feeComparison: { recommendationOnly: true },
     transaction,
     maximumFeeUnits: '180000',
     maximumTotalUnits: '180000',

@@ -5,6 +5,7 @@ import {
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
 import { normalizeDappTransaction } from './dappTransaction.ts';
+import type { EvmDappFeeComparison } from './evmDappFeePolicy.ts';
 import type {
   EvmDappPreparedQuote,
   EvmDappTransactionRequest,
@@ -24,6 +25,7 @@ export type EvmDappDispatchValidation<NonceContext> = (
 export type EvmDappReview<Result = string> = Readonly<{
   coveredFeeUnits: string;
   expiresAtMonotonicMilliseconds: number;
+  feeComparison: EvmDappFeeComparison;
   maximumFeeUnits: string;
   maximumTotalUnits: string;
   submit(
@@ -141,6 +143,7 @@ export async function prepareEvmDappReview<NonceContext, Result>(
   );
   let consumed = false;
   return Object.freeze({
+    feeComparison: quote.feeComparison,
     transaction: quote.transaction,
     maximumFeeUnits: quote.maximumFeeUnits,
     coveredFeeUnits: quote.coveredFeeUnits,
