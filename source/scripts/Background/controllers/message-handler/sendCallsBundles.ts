@@ -1,15 +1,15 @@
 import { ethErrors } from 'helpers/errors';
 
+import {
+  assertSmartAccountCallsIdentity,
+  getSmartAccountCallsOutcome,
+} from '../../../../shared/dappCallsStatus.ts';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
   CALLS_STATUS_PENDING,
   computeCallsStatusCode,
   ISendCallsBatchDescriptor,
 } from 'utils/sendCallsBatch';
-import {
-  getPaliEntryPointAddress,
-  paliEntryPointInterface,
-} from 'utils/smartAccount';
 
 // ---------------------------------------------------------------------------
 // EIP-5792 bundle registry + status resolution.
@@ -34,6 +34,7 @@ interface IStoredSendCallsBundle extends ISendCallsBatchDescriptor {
   // True while the id is reserved but the batch has not been broadcast yet.
   pending?: boolean;
   reservationId?: string;
+  sender?: string;
   submissionId?: string;
   // Persisted before invoking a sender. A missing hash cannot prove that an
   // interrupted popup failed to broadcast, including after a worker restart.
@@ -114,6 +115,7 @@ export const getStoredSendCallsBundle = async (
     chainId: bundle.chainId,
     failed: bundle.failed,
     smartAccount: bundle.smartAccount,
+    smartAccountIdentity: bundle.smartAccountIdentity,
     submissionCompleted: bundle.submissionCompleted,
     submissionStarted: bundle.submissionStarted,
     txHashes: bundle.txHashes,
@@ -152,10 +154,16 @@ const evictAndWrite = async (
 export const reserveSendCallsBundle = (
   host: string,
   id: string,
-  descriptor: Omit<ISendCallsBatchDescriptor, 'txHashes'>,
-  reservationId: string
+  descriptor: Omit<
+    ISendCallsBatchDescriptor,
+    'txHashes' | 'smartAccountIdentity'
+  >,
+  reservationId: string,
+  sender: string
 ): Promise<boolean> =>
   withStoreLock(async () => {
+    if (typeof sender !== 'string' || !/^0x[0-9a-f]{40}$/i.test(sender))
+      throw new Error('Invalid calls sender');
     const storeData = await readBundleStore();
     const now = Date.now();
     const hostBundles = storeData[host] || {};
@@ -174,6 +182,7 @@ export const reserveSendCallsBundle = (
       throw new Error('Too many unresolved sendCalls bundles for this app');
     hostBundles[id] = {
       ...descriptor,
+      sender: sender.toLowerCase(),
       txHashes: [],
       createdAt: now,
       pending: true,
@@ -205,7 +214,33 @@ export const recordSendCallsBundle = (
       throw new Error('sendCalls bundle reservation is unavailable');
     if (existing.chainId !== descriptor.chainId)
       throw new Error('sendCalls bundle network changed');
+    if (
+      existing.smartAccount !== descriptor.smartAccount ||
+      existing.atomic !== descriptor.atomic
+    )
+      throw new Error('sendCalls bundle context changed');
+    if (descriptor.smartAccountIdentity !== undefined) {
+      if (!descriptor.submissionStarted || !existing.smartAccount)
+        throw new Error('Unexpected smart account calls identity');
+      assertSmartAccountCallsIdentity(
+        descriptor.smartAccountIdentity,
+        existing.chainId
+      );
+      if (descriptor.smartAccountIdentity.sender !== existing.sender)
+        throw new Error('Smart account calls sender changed');
+    }
     if (descriptor.submissionStarted) {
+      if (existing.smartAccount && !descriptor.smartAccountIdentity)
+        throw new Error('Smart account calls identity is required');
+      if (
+        existing.smartAccountIdentity &&
+        JSON.stringify(existing.smartAccountIdentity) !==
+          JSON.stringify(descriptor.smartAccountIdentity) &&
+        (existing.submissionId === descriptor.submissionId ||
+          existing.submissionStarted ||
+          existing.txHashes.length > 0)
+      )
+        throw new Error('Smart account calls identity changed');
       if (!descriptor.submissionId)
         throw new Error('sendCalls submission identity is unavailable');
       if (descriptor.submissionId !== existing.submissionId) {
@@ -213,11 +248,17 @@ export const recordSendCallsBundle = (
           throw new Error('sendCalls submission changed');
         hostBundles[id] = {
           ...existing,
+          smartAccountIdentity: descriptor.smartAccountIdentity,
           submissionId: descriptor.submissionId,
           submissionStarted: true,
           submissionCompleted: false,
         };
-      } else hostBundles[id] = { ...existing, submissionStarted: true };
+      } else
+        hostBundles[id] = {
+          ...existing,
+          smartAccountIdentity: descriptor.smartAccountIdentity,
+          submissionStarted: true,
+        };
       await evictAndWrite(storeData, host, hostBundles, now);
       return;
     }
@@ -234,6 +275,8 @@ export const recordSendCallsBundle = (
     } else {
       hostBundles[id] = {
         ...descriptor,
+        smartAccountIdentity: existing.smartAccountIdentity,
+        sender: existing.sender,
         failed: existing.submissionCompleted
           ? existing.failed
           : descriptor.failed,
@@ -320,39 +363,6 @@ export const resolveSendCallsBundleDescriptor = (
 ): Promise<ISendCallsBatchDescriptor | null> =>
   getStoredSendCallsBundle(host, id);
 
-// The outer EntryPoint.handleOps transaction can mine successfully even when
-// the inner user operation reverted, so for smart-account batches the
-// UserOperationEvent.success flag is the source of truth. Returns undefined
-// when no UserOperationEvent was found in any receipt.
-const aggregateUserOperationSuccess = (
-  receipts: any[],
-  chainId: number
-): boolean | undefined => {
-  const userOpEventTopic =
-    paliEntryPointInterface.getEvent('UserOperationEvent')!.topicHash;
-  const entryPoint = getPaliEntryPointAddress(chainId).toLowerCase();
-  let found = false;
-  let allSucceeded = true;
-  for (const receipt of receipts) {
-    for (const log of receipt?.logs || []) {
-      if (
-        String(log.address || '').toLowerCase() !== entryPoint ||
-        log.topics?.[0] !== userOpEventTopic
-      ) {
-        continue;
-      }
-      try {
-        const parsed = paliEntryPointInterface.parseLog(log);
-        found = true;
-        allSucceeded = allSucceeded && Boolean(parsed.args.success);
-      } catch (error) {
-        // Ignore logs that do not decode as UserOperationEvent.
-      }
-    }
-  }
-  return found ? allSucceeded : undefined;
-};
-
 // EIP-5792 v2.0.0 wallet_getCallsStatus: resolves a bundle id into the status
 // object by fetching transaction receipts. Receipts are queried on the
 // bundle's own chain (the descriptor carries its chainId), not the active
@@ -409,23 +419,13 @@ export const resolveCallsStatus = async (
     receipt ? (receipt.status === 0 ? '0x0' : '0x1') : null
   ) as Array<'0x0' | '0x1' | null>;
 
-  let smartAccountInnerSuccess: boolean | undefined;
-  if (descriptor.smartAccount) {
-    smartAccountInnerSuccess = aggregateUserOperationSuccess(
-      receipts,
-      descriptor.chainId
-    );
-    if (
-      smartAccountInnerSuccess === undefined &&
-      receipts.every((receipt) => receipt !== null)
-    ) {
-      // Mined but no UserOperationEvent decoded (unexpected for Pali batches):
-      // fall back to the outer receipt status instead of reporting pending.
-      smartAccountInnerSuccess = receipts.every(
-        (receipt) => receipt && receipt.status !== 0
-      );
-    }
-  }
+  const smartAccountInnerSuccess = descriptor.smartAccount
+    ? getSmartAccountCallsOutcome(
+        descriptor.smartAccountIdentity,
+        descriptor.chainId,
+        receipts
+      )
+    : undefined;
 
   const status =
     descriptor.submissionStarted && !descriptor.submissionCompleted

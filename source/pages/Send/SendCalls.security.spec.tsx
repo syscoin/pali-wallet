@@ -176,7 +176,9 @@ describe('sendCalls submission lifecycle', () => {
       return undefined;
     });
     mockSmartSubmit.mockReset().mockImplementation(async (params) => {
-      await params.onBeforeSubmit();
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context',
+      });
       return { hash: HASH };
     });
   });
@@ -451,7 +453,9 @@ describe('sendCalls submission lifecycle', () => {
   it('keeps a smart-account submission unknown after the sender boundary', async () => {
     makeSmart();
     mockSmartSubmit.mockImplementation(async (params) => {
-      await params.onBeforeSubmit();
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context',
+      });
       throw new Error('RPC response lost after broadcast');
     });
     await signButton(await initialize()).props.onClick();
@@ -546,7 +550,9 @@ describe('sendCalls submission lifecycle', () => {
   it('blocks smart-account retry when an acknowledged hash completion write fails', async () => {
     makeSmart();
     mockSmartSubmit.mockImplementation(async (params) => {
-      await params.onBeforeSubmit();
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context',
+      });
       throw Object.assign(new Error('Saved response failed'), {
         transactionHash: HASH,
         transactionNotBroadcast: true,

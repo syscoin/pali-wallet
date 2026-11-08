@@ -9,6 +9,8 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import { captureSmartAccountCallsIdentity } from '../../shared/dappCallsStatus';
+import { buildSmartAccountUserOperation } from '../../utils/smartAccount/account';
 import {
   recordSendCallsBundle,
   reserveSendCallsBundle,
@@ -122,7 +124,9 @@ beforeEach(() => {
     return undefined;
   });
   mockSmartSubmit.mockReset().mockImplementation(async (params) => {
-    await params.onBeforeSubmit();
+    await params.onBeforeSubmit({
+      executionContextId: 'prepared-smart-context',
+    });
     return { hash: HASH_A };
   });
   mockRecordGate = () => undefined;
@@ -179,13 +183,26 @@ const prepare = async (
     mockQuery.host,
     mockQuery.bundleId,
     { atomic: smart, smartAccount: smart, chainId: 1 },
-    mockQuery.reservationId
+    mockQuery.reservationId,
+    mockQuery.approvedContext.account.address
   );
   mockEmitter.mockImplementation(async (path, args) => {
     if (path[1] === 'getRecommendedNonceForBatch') return 5 + sends().length;
     if (path[1] === 'recordSendCallsBundle') {
       await mockRecordGate(args[2]);
-      return recordSendCallsBundle(...(args as [string, string, any]));
+      const { smartAccountExecutionContextId, ...record } = args[2];
+      if (record.smartAccount && record.submissionStarted) {
+        expect(smartAccountExecutionContextId).toBe('prepared-smart-context');
+        record.smartAccountIdentity = captureSmartAccountCallsIdentity(
+          buildSmartAccountUserOperation({
+            sender: mockQuery.approvedContext.account.address,
+            nonce: '0',
+            callData: '0x',
+          }),
+          1
+        );
+      }
+      return recordSendCallsBundle(args[0], args[1], record);
     }
     if (path[1] === 'sendAndSaveEthTransaction') return send(count++);
     throw new Error(

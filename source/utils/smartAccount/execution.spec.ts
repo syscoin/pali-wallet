@@ -163,6 +163,10 @@ describe('signAndSubmitSmartAccountExecutions', () => {
           expect.objectContaining({ executionContextId: 'prepared-context' })
         );
       expect(beforeSubmit).toHaveBeenCalledTimes(expectedCheck === 3 ? 1 : 0);
+      if (expectedCheck === 3)
+        expect(beforeSubmit).toHaveBeenCalledWith({
+          executionContextId: 'prepared-context',
+        });
       expect(
         emitter.mock.calls.some(
           ([[, method]]) => method === 'submitSmartAccountExecution'

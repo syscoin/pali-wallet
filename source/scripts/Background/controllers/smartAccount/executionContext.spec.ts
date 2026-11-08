@@ -636,6 +636,24 @@ describe('smart-account execution approval context', () => {
     );
   });
 
+  it('derives batch outcome identity from the issued operation context', async () => {
+    const prepared = await prepare();
+    const captured = controller.getPreparedCallsIdentity(
+      prepared.executionContextId
+    );
+    expect(captured).toMatchObject({
+      chainId: 1,
+      sender: ADDRESS.toLowerCase(),
+      userOpHash: prepared.actionHash.toLowerCase(),
+    });
+    expect(Object.isFrozen(captured)).toBe(true);
+    expect(() => controller.getPreparedCallsIdentity('unknown')).toThrow();
+    generation++;
+    expect(() =>
+      controller.getPreparedCallsIdentity(prepared.executionContextId)
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+  });
+
   it('binds the background signing token to its exact locally derived digest', async () => {
     const prepared = await prepare();
     expect(() =>

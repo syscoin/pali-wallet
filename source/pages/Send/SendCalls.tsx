@@ -396,7 +396,9 @@ export const SendCalls = () => {
   // popup is closed mid-flight. The registry record is an idempotent
   // overwrite; the final all-success pass rewrites it with failed: false.
   const lastRecordedBundleRef = React.useRef<string>('');
-  const markSubmissionStarted = async () => {
+  const markSubmissionStarted = async (
+    smartAccountExecutionContextId?: string
+  ) => {
     try {
       const submissionId = uuidv4();
       await controllerEmitter(
@@ -414,6 +416,7 @@ export const SendCalls = () => {
             previousSubmissionId: lastStartedSubmissionRef.current,
             submissionId,
             submissionStarted: true,
+            smartAccountExecutionContextId,
             txHashes: [],
           },
         ]
@@ -761,7 +764,7 @@ export const SendCalls = () => {
                 setIsPqSigning(true);
               }
             },
-            onBeforeSubmit: async () => {
+            onBeforeSubmit: async ({ executionContextId }) => {
               if (
                 !mountedRef.current ||
                 settlementStartedRef.current ||
@@ -773,7 +776,7 @@ export const SendCalls = () => {
                     transactionNotBroadcast: true,
                   }
                 );
-              await markSubmissionStarted();
+              await markSubmissionStarted(executionContextId);
               if (!mountedRef.current)
                 throw Object.assign(
                   new Error(EVM_TRANSACTION_CONTEXT_CHANGED),

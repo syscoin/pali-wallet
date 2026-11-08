@@ -350,7 +350,8 @@ describe('wallet_sendCalls capability admission', () => {
         'https://batch.example',
         '0x1234',
         { atomic, chainId: 1, smartAccount: smartChainId === 1 },
-        '0x1234'
+        '0x1234',
+        CONNECTED_ADDRESS
       );
     }
   );

@@ -278,7 +278,9 @@ it.each([undefined, false, true])(
   'does not turn a post-publication same-message error into a fee refresh (%s)',
   async (transactionNotBroadcast) => {
     mockSubmit.mockImplementation(async (params) => {
-      await params.onBeforeSubmit();
+      await params.onBeforeSubmit({
+        executionContextId: 'prepared-smart-context',
+      });
       throw Object.assign(new Error('PALI_SMART_ACCOUNT_FEE_QUOTE_CHANGED'), {
         transactionNotBroadcast,
       });

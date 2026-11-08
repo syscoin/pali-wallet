@@ -12,6 +12,9 @@ jest.mock('./request-pipeline', () => ({
   },
 }));
 
+import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus';
+import { buildSmartAccountUserOperation } from '../../../../utils/smartAccount/account';
+import { paliEntryPointInterface } from '../../../../utils/smartAccount/contracts';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 
@@ -79,7 +82,8 @@ describe('sendCalls reservation submission boundary', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
-  const reserve = () => reserveSendCallsBundle(host, id, descriptor, token);
+  const reserve = () =>
+    reserveSendCallsBundle(host, id, descriptor, token, payer);
   const begin = (reservationId = token) =>
     recordSendCallsBundle(host, id, {
       ...descriptor,
@@ -168,7 +172,7 @@ describe('sendCalls reservation submission boundary', () => {
   it('rejects delayed begin/progress and ignores cleanup from a replaced reservation', async () => {
     await reserve();
     await releaseSendCallsBundleReservation(host, id, token);
-    await reserveSendCallsBundle(host, id, descriptor, 'attempt-b');
+    await reserveSendCallsBundle(host, id, descriptor, 'attempt-b', payer);
     await expect(begin()).rejects.toThrow('reservation is unavailable');
     await expect(
       recordSendCallsBundle(host, id, {
@@ -225,7 +229,7 @@ describe('sendCalls reservation submission boundary', () => {
   it('never expires or evicts an unknown submission to admit another request', async () => {
     for (let index = 0; index < 50; index += 1) {
       const bundleId = `0x${index.toString(16)}`;
-      await reserveSendCallsBundle(host, bundleId, descriptor, token);
+      await reserveSendCallsBundle(host, bundleId, descriptor, token, payer);
       await recordSendCallsBundle(host, bundleId, {
         ...descriptor,
         reservationId: token,
@@ -235,11 +239,11 @@ describe('sendCalls reservation submission boundary', () => {
       });
     }
     persisted[host]['0x0'].createdAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
-    expect(await reserveSendCallsBundle(host, '0x0', descriptor, 'new')).toBe(
-      false
-    );
+    expect(
+      await reserveSendCallsBundle(host, '0x0', descriptor, 'new', payer)
+    ).toBe(false);
     await expect(
-      reserveSendCallsBundle(host, '0xffff', descriptor, 'new')
+      reserveSendCallsBundle(host, '0xffff', descriptor, 'new', payer)
     ).rejects.toThrow('Too many unresolved');
     expect(Object.keys(persisted[host])).toHaveLength(50);
     expect(persisted[host]['0x0'].submissionStarted).toBe(true);
@@ -274,7 +278,13 @@ describe('sendCalls reservation submission boundary', () => {
     });
     persisted[host][id].createdAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
     for (let index = 0; index < 60; index += 1)
-      await reserveSendCallsBundle(host, `0xff${index}`, descriptor, token);
+      await reserveSendCallsBundle(
+        host,
+        `0xff${index}`,
+        descriptor,
+        token,
+        payer
+      );
     expect(persisted[host][id].txHashes).toEqual([hash]);
     expect(await reserve()).toBe(false);
     const provider = {
@@ -310,7 +320,7 @@ describe('sendCalls reservation submission boundary', () => {
     );
     expect(persisted[host][id].failed).toBe(false);
     persisted[host][id].createdAt = Date.now() - 8 * 24 * 60 * 60 * 1000;
-    await reserveSendCallsBundle(host, '0xffff', descriptor, token);
+    await reserveSendCallsBundle(host, '0xffff', descriptor, token, payer);
     expect(persisted[host][id]).toBeUndefined();
   });
 
@@ -346,6 +356,105 @@ describe('sendCalls reservation submission boundary', () => {
       txHashes: [hash],
       submissionStarted: true,
     });
+  });
+
+  it('preserves the exact smart operation through progress, restart and completion', async () => {
+    const smart = { ...descriptor, atomic: true, smartAccount: true };
+    const identity = captureSmartAccountCallsIdentity(
+      buildSmartAccountUserOperation({
+        sender: payer,
+        nonce: '0',
+        callData: '0x',
+      }),
+      1
+    );
+    await reserveSendCallsBundle(host, id, smart, token, payer);
+    await expect(
+      recordSendCallsBundle(host, id, {
+        ...smart,
+        reservationId: token,
+        submissionId,
+        submissionStarted: true,
+        txHashes: [],
+      })
+    ).rejects.toThrow('identity is required');
+    await expect(
+      recordSendCallsBundle(host, id, {
+        ...smart,
+        reservationId: token,
+        submissionId,
+        submissionStarted: true,
+        smartAccountIdentity: { ...identity, sender: `0x${'76'.repeat(20)}` },
+        txHashes: [],
+      })
+    ).rejects.toThrow('sender changed');
+    await recordSendCallsBundle(host, id, {
+      ...smart,
+      reservationId: token,
+      submissionId,
+      submissionStarted: true,
+      smartAccountIdentity: identity,
+      txHashes: [],
+    });
+    await recordSendCallsBundle(host, id, {
+      ...smart,
+      reservationId: token,
+      submissionId,
+      txHashes: [hash],
+    });
+    expect(persisted[host][id].smartAccountIdentity).toEqual(identity);
+    await expect(
+      recordSendCallsBundle(host, id, {
+        ...smart,
+        reservationId: token,
+        submissionId,
+        submissionStarted: true,
+        smartAccountIdentity: {
+          ...identity,
+          userOpHash: `0x${'89'.repeat(32)}`,
+        },
+        txHashes: [],
+      })
+    ).rejects.toThrow('identity changed');
+    await recordSendCallsBundle(host, id, {
+      ...smart,
+      reservationId: token,
+      submissionId,
+      submissionCompleted: true,
+      txHashes: [hash],
+    });
+    const log = paliEntryPointInterface.encodeEventLog(
+      paliEntryPointInterface.getEvent('UserOperationEvent')!,
+      [identity.userOpHash, payer, `0x${'00'.repeat(20)}`, 0, true, 1, 1]
+    );
+    const provider = {
+      getTransactionReceipt: async () => ({
+        status: 1,
+        blockNumber: 1,
+        gasUsed: 1,
+        hash,
+        logs: [{ address: identity.entryPoint, ...log }],
+      }),
+    };
+    expect((await resolveCallsStatus(() => provider, host, id)).status).toBe(
+      200
+    );
+    const reverted = {
+      getTransactionReceipt: async () => ({
+        status: 0,
+        blockNumber: 1,
+        gasUsed: 1,
+        hash,
+        logs: [],
+      }),
+    };
+    expect((await resolveCallsStatus(() => reverted, host, id)).status).toBe(
+      500
+    );
+    delete persisted[host][id].smartAccountIdentity;
+    expect((await resolveCallsStatus(() => provider, host, id)).status).toBe(
+      100
+    );
   });
 
   it('reopens only a fresh submission and rejects stale begin, rejection and completion messages', async () => {
