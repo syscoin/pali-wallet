@@ -1153,6 +1153,15 @@ export const signAndSubmitSmartAccountExecutions = async (
       ],
       300000
     )) as any;
+    if (
+      !Number.isSafeInteger(prepared.accountId) ||
+      prepared.accountId < 0 ||
+      !prepared.executionContextId ||
+      (accountId !== undefined && prepared.accountId !== accountId)
+    )
+      throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
+        transactionNotBroadcast: true,
+      });
     if (maximumUserOpFeeWei !== undefined) {
       if (
         !/^\d+$/.test(maximumUserOpFeeWei) ||
@@ -1180,7 +1189,7 @@ export const signAndSubmitSmartAccountExecutions = async (
     await assertContext();
 
     const signature = await signSmartAccountActionHash({
-      accountId,
+      accountId: prepared.accountId,
       actionHash: prepared.actionHash,
       executionContextId: prepared.executionContextId,
       allowReservedSLHDSASignature: canUseReservedSLHDSASignature({
@@ -1205,7 +1214,7 @@ export const signAndSubmitSmartAccountExecutions = async (
         {
           executionCalldata: prepared.executionCalldata,
           executions: prepared.executions,
-          accountId,
+          accountId: prepared.accountId,
           executionContextId: prepared.executionContextId,
           expectedContext,
           gasPayer: prepared.gasPayer,

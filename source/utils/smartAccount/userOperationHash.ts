@@ -1,7 +1,7 @@
-import { TypedDataEncoder } from 'utils/ethersV6Compat';
+import { TypedDataEncoder } from '../ethersV6Compat.ts';
 
 import type { SmartAccountPackedUserOperation } from './account';
-import { getPaliEntryPointAddress } from './contracts';
+import { getPaliEntryPointAddress } from './contracts.ts';
 
 // EntryPoint v0.9 uses this EIP-712 type, not the v0.7 abi.encode hash.
 // Keep the signing intent local: an RPC getUserOpHash response is not trusted

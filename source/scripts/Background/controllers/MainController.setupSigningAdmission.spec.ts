@@ -118,6 +118,27 @@ describe('wallet setup signing capability admission', () => {
     wallet.resetRateLimit = jest.fn(async () => undefined);
   });
 
+  it.each([async () => undefined, () => true, false])(
+    'rejects non-synchronous smart-account approval guards before delegation',
+    async (guard) => {
+      const submit = jest.fn();
+      wallet.smartAccount = { submitSmartAccountExecution: submit };
+      await expect(
+        wallet.submitSmartAccountExecution({}, guard)
+      ).rejects.toThrow(/guard (must be synchronous|is not a function)/);
+      await expect(
+        wallet.signSmartAccountActionDigestInternal(
+          [],
+          { id: 0, type: 'HDAccount' },
+          undefined,
+          guard
+        )
+      ).rejects.toThrow(/guard (must be synchronous|is not a function)/);
+      expect(submit).not.toHaveBeenCalled();
+      expect(keyring.ethereumTransaction.ethSign).not.toHaveBeenCalled();
+    }
+  );
+
   it('rejects an old approval while initialization exposes an unlocked keyring before commit', async () => {
     const initialized = deferred();
     const commit = deferred();

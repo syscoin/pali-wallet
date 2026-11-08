@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
+import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeApproval';
 import {
   IEvmTransactionResponse,
   ISysTransaction,
@@ -19,7 +20,6 @@ import { getAddress } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
-import { hexConcat } from 'utils/ethersV6Compat';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -46,28 +46,19 @@ import {
   getPaliErc7739PersonalSignHash,
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
-  buildSmartAccountUserOperation,
   encodeCompositeValidatorInitData,
   encodeEcdsaValidatorInitData,
   encodeGuardianRecoveryInitData,
-  encodeSmartAccountGasLimits,
   CustomValidatorPreflightResult,
-  estimateSmartAccountUserOpGas,
   getConfiguredAuthenticatorAddress,
   preflightCustomValidatorInstall,
   getPaliSmartAccountFactoryAddress,
   getPaliSmartAccountDescriptor,
   getSmartAccountGasUnitsReserve,
-  getSmartAccountUserOpGasFees,
-  getSmartAccountUserOpHash,
-  getSmartAccountUserOpRequiredPrefund,
-  getSmartAccountValidatorProfile,
-  getZkSysGasTankAddress,
   PaliAuthConfig,
   PaliRecoveryTarget,
   PALI_SMART_ACCOUNT_VERSION,
   PaliSmartAccountAuthenticatorSetup,
-  SMART_ACCOUNT_ZERO_GAS_FEES,
   ERC7579_MODULE_TYPE_VALIDATOR,
   ERC7579_MODULE_TYPE_EXECUTOR,
   PALI_ENTRYPOINT_V09_ABI,
@@ -100,6 +91,30 @@ import {
   SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
   type SmartAccountInfrastructureObservation,
 } from 'utils/smartAccount/infrastructureObservation';
+import {
+  hasGuardianRecoveryNotReadyRevert,
+  hasGuardianRecoveryAlreadyScheduledRevert,
+  hasGuardianRecoveryExpiredRevert,
+  hasNativeGasFailure,
+} from 'utils/smartAccount/operationErrors';
+import {
+  getSmartAccountGasPayerCandidates,
+  selectSmartAccountGasPayer,
+  readSmartAccountNativeBalances,
+  canUseSmartAccountGasTank,
+  assertSmartAccountGasTankCredit,
+  ensureSmartAccountDeploymentPrefund,
+} from 'utils/smartAccount/payerPolicy';
+import {
+  getExplicitSmartAccountGasPrice,
+  prepareSmartAccountOperation,
+  requireSmartAccountAuthenticator,
+} from 'utils/smartAccount/prepareOperation';
+import { signSmartAccountEcdsaOperation } from 'utils/smartAccount/signOperation';
+import {
+  submitSmartAccountOperation,
+  type SmartAccountSubmitParams,
+} from 'utils/smartAccount/submitOperation';
 import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import {
@@ -132,7 +147,7 @@ export interface ISmartAccountControllerDependencies {
     targetAccount?: { id: number; type: PaliKeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
-      assertBeforeSign?: () => void;
+      assertBeforeSign: () => void;
       assertCurrentContext?: () => void;
       clearNavigation?: boolean;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
@@ -192,23 +207,17 @@ type SmartAccountInfrastructureStatus =
   };
 
 const GUARDIAN_RECOVERY_NOT_READY_ERROR = 'PALI_GUARDIAN_RECOVERY_NOT_READY';
-const GUARDIAN_RECOVERY_NOT_READY_SELECTOR = '0x201b632a';
+
 // RecoveryAlreadyScheduled(bytes32) on the guardian recovery module.
 const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_ERROR =
   'PALI_GUARDIAN_RECOVERY_ALREADY_SCHEDULED';
-const GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR = '0x684d1639';
+
 // RecoveryExpired(bytes32) on the guardian recovery module.
 const GUARDIAN_RECOVERY_EXPIRED_ERROR = 'PALI_GUARDIAN_RECOVERY_EXPIRED';
-const GUARDIAN_RECOVERY_EXPIRED_SELECTOR = '0x80ba2533';
+
 const NATIVE_GAS_REQUIRED_ERROR = 'PALI_NATIVE_GAS_REQUIRED';
-const SMART_ACCOUNT_SIGNATURE_ERROR = 'PALI_SMART_ACCOUNT_SIGNATURE_ERROR';
-const ENTRYPOINT_FAILED_OP_SELECTOR = '0x220266b6';
-const AA21_PREFUND_REASON_HEX =
-  '41413231206469646e2774207061792070726566756e64';
 const HYDRATED_METADATA_TTL_MS = 30_000;
 const PROVIDER_UNAVAILABLE_ERROR = 'Web3 provider not available';
-const INVALID_LEGACY_GAS_PRICE_ERROR = 'Invalid smart-account legacy gas price';
-const ZKSYS_GAS_TANK_REQUIRED_ERROR = 'PALI_ZKSYS_GAS_TANK_REQUIRED';
 const INFRASTRUCTURE_TIMEOUT_ERROR =
   'Infrastructure RPC timed out. Refresh status before retrying.';
 const INFRASTRUCTURE_CODE_ERROR =
@@ -221,13 +230,7 @@ const DEPLOYMENT_NONCE_ERROR = 'Invalid deployment nonce response';
 const GUARDIAN_POLICY_ERROR =
   'Guardian policy editing is handled by module templates';
 const GUARDIAN_MODULE_ERROR = 'Guardian recovery module is not configured';
-const ZKSYS_GAS_TANK_ABI = [
-  'function creditOf(address account) view returns (uint256)',
-] as const;
 const toCompatBigNumber = (value: any): BigNumber => BigNumber.from(value);
-// Conservative cover for outer transaction overhead not represented by the
-// inner UserOp gas limits.
-const SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER = 50_000;
 
 const randomBytes32Hex = () => {
   const bytes = new Uint8Array(32);
@@ -235,148 +238,6 @@ const randomBytes32Hex = () => {
   return `0x${Array.from(bytes, (byte) =>
     byte.toString(16).padStart(2, '0')
   ).join('')}`;
-};
-
-const stringifyError = (error: unknown): string => {
-  if (!error || typeof error !== 'object') {
-    return '';
-  }
-
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return '';
-  }
-};
-
-const getErrorText = (error: unknown, depth = 0): string => {
-  if (!error || depth > 4) {
-    return '';
-  }
-  if (typeof error === 'string') {
-    try {
-      return [error, getErrorText(JSON.parse(error), depth + 1)]
-        .filter(Boolean)
-        .join(' ');
-    } catch {
-      return error;
-    }
-  }
-  if (typeof error !== 'object') {
-    return String(error);
-  }
-
-  const errorRecord = error as Record<string, unknown>;
-  const directParts = [
-    errorRecord.message,
-    errorRecord.reason,
-    errorRecord.code,
-    errorRecord.data,
-    errorRecord.error,
-    errorRecord.body,
-    errorRecord.response,
-    errorRecord.info,
-    errorRecord.transaction,
-    errorRecord.tx,
-  ];
-  const ownPropertyParts = Object.getOwnPropertyNames(error)
-    .filter((key) => key !== 'stack')
-    .map((key) => errorRecord[key]);
-  const parts = [
-    ...directParts,
-    ...ownPropertyParts,
-    stringifyError(error),
-  ].flatMap((value) => (value ? [getErrorText(value, depth + 1)] : []));
-
-  return parts.filter(Boolean).join(' ');
-};
-
-const hasGuardianRecoveryNotReadyRevert = (error: unknown): boolean =>
-  getErrorText(error).includes(GUARDIAN_RECOVERY_NOT_READY_SELECTOR);
-
-const hasGuardianRecoveryAlreadyScheduledRevert = (error: unknown): boolean =>
-  getErrorText(error).includes(GUARDIAN_RECOVERY_ALREADY_SCHEDULED_SELECTOR);
-
-const hasGuardianRecoveryExpiredRevert = (error: unknown): boolean =>
-  getErrorText(error).includes(GUARDIAN_RECOVERY_EXPIRED_SELECTOR);
-
-const getEntryPointFailedOpReason = (error: unknown): string => {
-  const message = getErrorText(error);
-  const match = message.match(
-    new RegExp(`${ENTRYPOINT_FAILED_OP_SELECTOR}[0-9a-fA-F]*`)
-  );
-  if (!match) {
-    return '';
-  }
-
-  try {
-    const [, reason] = defaultAbiCoder.decode(
-      ['uint256', 'string'],
-      `0x${match[0].slice(10)}`
-    );
-    return String(reason);
-  } catch {
-    return '';
-  }
-};
-
-const hasNativeGasFailure = (error: unknown): boolean => {
-  const message = getErrorText(error);
-  const failedOpReason = getEntryPointFailedOpReason(error);
-  const normalized = message.toLowerCase();
-  const normalizedFailedOpReason = failedOpReason.toLowerCase();
-
-  return (
-    message.includes('OutOfNativeResourcesDuringValidation') ||
-    normalized.includes(AA21_PREFUND_REASON_HEX) ||
-    normalizedFailedOpReason.includes('aa21') ||
-    normalizedFailedOpReason.includes("didn't pay prefund") ||
-    normalizedFailedOpReason.includes('did not pay prefund') ||
-    normalizedFailedOpReason.includes('prefund') ||
-    normalized.includes('lackoffund') ||
-    normalized.includes('lack of fund') ||
-    normalized.includes('insufficient funds') ||
-    normalized.includes('insufficient balance') ||
-    (normalized.includes('maxfee') && normalized.includes('fund')) ||
-    normalized.includes('not enough native') ||
-    normalized.includes('gas required exceeds allowance')
-  );
-};
-
-const hasSmartAccountSignatureFailure = (error: unknown): boolean => {
-  const message = getErrorText(error);
-  const failedOpReason = getEntryPointFailedOpReason(error);
-
-  return failedOpReason.includes('AA24') || message.includes('AA24');
-};
-
-const getExplicitSmartAccountGasPrice = (fees?: {
-  gasPrice?: string;
-  maxFeePerGas?: string;
-  maxPriorityFeePerGas?: string;
-}): string | undefined => {
-  if (fees?.gasPrice === null || fees?.gasPrice === undefined) return undefined;
-  try {
-    if (
-      (fees.maxFeePerGas !== null && fees.maxFeePerGas !== undefined) ||
-      (fees.maxPriorityFeePerGas !== null &&
-        fees.maxPriorityFeePerGas !== undefined)
-    )
-      throw new Error('Legacy gasPrice cannot be combined with EIP-1559 fees');
-    const price = BigNumber.from(fees.gasPrice);
-    if (price.lt(0) || price.gte(BigNumber.from(2).pow(128)))
-      throw new Error(INVALID_LEGACY_GAS_PRICE_ERROR);
-    return price.toString();
-  } catch (error) {
-    throw Object.assign(
-      error instanceof Error
-        ? error
-        : new Error(INVALID_LEGACY_GAS_PRICE_ERROR),
-      {
-        transactionNotBroadcast: true,
-      }
-    );
-  }
 };
 
 class SmartAccountController {
@@ -979,6 +840,7 @@ class SmartAccountController {
             {
               clearNavigation: false,
               persist: true,
+              assertBeforeSign: () => this.assertInfrastructureContext(context),
               assertCurrentContext: () =>
                 this.assertInfrastructureContext(context),
               onBroadcast: async (broadcast) => {
@@ -1238,7 +1100,8 @@ class SmartAccountController {
     try {
       const context = this.infrastructureContext();
       const assertCurrent = () => {
-        assertApprovalCurrent?.();
+        if (assertApprovalCurrent !== undefined)
+          assertSynchronousEvmFeeGuard(assertApprovalCurrent);
         try {
           this.assertInfrastructureContext(context);
           if (params.expectedContext) {
@@ -1760,162 +1623,41 @@ class SmartAccountController {
       await this.assertInfrastructureSupported(snapshot, assertContext);
       assertContext();
     }
-    const accountContract = new Contract(
-      active.account.address,
-      paliSmartAccountInterface,
-      provider
-    );
-    const auth = this.requireAuthenticator(active.metadata);
-    const deploySalt =
-      active.metadata.descriptor?.deploymentSalt ||
-      active.metadata.deploymentSalt;
-    if (!deploySalt) {
-      throw new Error('Smart account deployment salt is required');
-    }
-    const smartAccount = await toPaliSmartAccount({
-      address: active.account.address,
-      auth,
-      chainId: active.metadata.chainId,
-      deploySalt,
-      factoryAddress:
-        active.metadata.factoryAddress ||
-        getPaliSmartAccountFactoryAddress(active.metadata.chainId),
+    const prepared = await prepareSmartAccountOperation({
+      account: { ...active.account, smartAccount: active.metadata },
+      chainId: snapshot.chainId,
+      executions: params,
+      feeOverrides,
+      knownDeployed: useDeployedCachedMetadata,
       provider,
+      assertCurrent: assertContext,
+      selectGasPayer: async (gasEstimate, maxFeePerGas) => {
+        const primaryGasPayer = this.getWalletGasPayerCandidates(
+          active.metadata.deploymentGasPayer
+        )[0];
+        const useGasTank = primaryGasPayer
+          ? await this.canUseZkSysGasTankForSmartAccountTx({
+              chainId: active.metadata.chainId,
+              gasEstimate,
+              gasPayerAddress: primaryGasPayer.address,
+              maxFeePerGas,
+            })
+          : false;
+        assertContext();
+        const gasPayer = useGasTank
+          ? {
+              address: primaryGasPayer.address,
+              id: primaryGasPayer.id,
+              type: primaryGasPayer.type,
+            }
+          : await this.getWalletGasPayerAccount(
+              active.metadata.deploymentGasPayer
+            );
+        assertContext();
+        return { gasPayer, useGasTank };
+      },
     });
-    assertContext();
-    const prepared = smartAccount.encodeExecutions(params);
-    const validator = auth.validator;
-    const nonceKey = smartAccount.getNonceKey();
-    const entryPointAddress = getPaliEntryPointAddress(active.metadata.chainId);
-    const entryPoint = new Contract(
-      entryPointAddress,
-      PALI_ENTRYPOINT_V09_ABI,
-      provider
-    );
-    const code = useDeployedCachedMetadata
-      ? 'cached-deployed'
-      : await provider.getCode(active.account.address);
-    assertContext();
-    const deployment =
-      code === '0x'
-        ? requireSmartAccountAddressIdentity(active.account, snapshot.chainId)
-        : null;
-    if (code !== '0x' && !useDeployedCachedMetadata) {
-      await this.assertSmartAccountExecutionModeSupported(
-        accountContract,
-        prepared.mode
-      );
-      assertContext();
-    }
-    const nonce = (
-      await entryPoint.getNonce(active.account.address, nonceKey)
-    ).toString();
-    assertContext();
-    const callData = smartAccount.encodeCalls(params);
-    const feeData = await provider.getFeeData();
-    assertContext();
-    // A recommendation is not a minimum. Only a known protocol base fee can
-    // reject the selected legacy price here; the outer preflight remains authoritative.
-    if (
-      legacyGasPrice !== undefined &&
-      feeData.lastBaseFeePerGas !== null &&
-      feeData.lastBaseFeePerGas !== undefined &&
-      BigNumber.from(legacyGasPrice).lt(feeData.lastBaseFeePerGas)
-    ) {
-      throw Object.assign(
-        new Error(
-          'Legacy gas price is below the current base fee. Refresh the app quote.'
-        ),
-        {
-          transactionNotBroadcast: true,
-        }
-      );
-    }
-    // Estimate tight limits: callGasLimit via eth_estimateGas with a margin
-    // under the v0.9 unused-gas penalty threshold; verificationGasLimit from
-    // the per-validator table (limits are inside the signed hash).
-    const validatorProfile = getSmartAccountValidatorProfile(active.metadata);
-    const gasEstimate = await estimateSmartAccountUserOpGas(provider, {
-      callData,
-      childValidatorCount: validatorProfile.childValidatorCount,
-      entryPointAddress,
-      isDeployed: code !== '0x',
-      sender: active.account.address,
-      slhDsaChildCount: validatorProfile.slhDsaChildCount,
-      validatorKind: validatorProfile.validatorKind,
-    });
-    assertContext();
-    const hasOuterEip1559FeeParams =
-      legacyGasPrice === undefined &&
-      ((feeOverrides.maxFeePerGas !== null &&
-        feeOverrides.maxFeePerGas !== undefined &&
-        feeOverrides.maxPriorityFeePerGas !== null &&
-        feeOverrides.maxPriorityFeePerGas !== undefined) ||
-        (feeData.maxFeePerGas !== null &&
-          feeData.maxFeePerGas !== undefined &&
-          feeData.maxPriorityFeePerGas !== null &&
-          feeData.maxPriorityFeePerGas !== undefined));
-    const maxFeePerGas = BigNumber.from(
-      legacyGasPrice ??
-        feeOverrides.maxFeePerGas ??
-        feeData.maxFeePerGas ??
-        feeData.gasPrice ??
-        0
-    );
-    const maxPriorityFeePerGas = BigNumber.from(
-      legacyGasPrice ??
-        feeOverrides.maxPriorityFeePerGas ??
-        feeData.maxPriorityFeePerGas ??
-        0
-    );
-    const primaryGasPayer = this.getWalletGasPayerCandidates(
-      active.metadata.deploymentGasPayer
-    )[0];
-    const primaryGasPayerUsesTank = primaryGasPayer
-      ? await this.canUseZkSysGasTankForSmartAccountTx({
-          chainId: active.metadata.chainId,
-          gasEstimate,
-          gasPayerAddress: primaryGasPayer.address,
-          maxFeePerGas,
-        })
-      : false;
-    assertContext();
-    const gasPayer = primaryGasPayerUsesTank
-      ? {
-          address: primaryGasPayer.address,
-          id: primaryGasPayer.id,
-          type: primaryGasPayer.type,
-        }
-      : await this.getWalletGasPayerAccount(active.metadata.deploymentGasPayer);
-    assertContext();
-    const useZkSysGasTank = primaryGasPayerUsesTank;
-    const gasFees = getSmartAccountUserOpGasFees({
-      maxFeePerGas: maxFeePerGas.toString(),
-      maxPriorityFeePerGas: maxPriorityFeePerGas.toString(),
-      useZkSysGasTank,
-    });
-    const unsignedUserOperation = buildSmartAccountUserOperation({
-      accountGasLimits: encodeSmartAccountGasLimits({
-        callGasLimit: gasEstimate.callGasLimit,
-        verificationGasLimit: gasEstimate.verificationGasLimit,
-      }),
-      callData,
-      gasFees,
-      initCode: deployment
-        ? hexConcat([deployment.factory, deployment.factoryData])
-        : '0x',
-      nonce,
-      preVerificationGas: String(gasEstimate.preVerificationGas),
-      sender: active.account.address,
-    });
-    // In verified tank mode, the outer transaction pays at the bootloader
-    // layer, so the inner UserOp must not reimburse the submitter in SYS.
-    const userOperation = unsignedUserOperation;
-    const actionHash = getSmartAccountUserOpHash(
-      userOperation,
-      active.metadata.chainId
-    );
-
+    const { actionHash, userOperation } = prepared;
     assertContext();
     for (const [id, context] of this.executionContexts)
       if (context.expiresAt <= Date.now()) this.executionContexts.delete(id);
@@ -1928,31 +1670,9 @@ class SmartAccountController {
       expiresAt: Date.now() + 15 * 60 * 1000,
       gasPrice: legacyGasPrice,
       snapshot,
-      userOperation: { ...userOperation },
+      userOperation: Object.freeze({ ...userOperation }),
     });
-    const executions = prepared.executions.map((execution) => ({
-      ...execution,
-      nonce,
-    }));
-
-    return {
-      actionHash,
-      executionContextId,
-      execution: executions[0],
-      executionCalldata: prepared.executionCalldata,
-      executions,
-      gasPayer,
-      gasPrice: legacyGasPrice,
-      maxFeePerGas:
-        legacyGasPrice === undefined ? maxFeePerGas.toString() : undefined,
-      maxPriorityFeePerGas: hasOuterEip1559FeeParams
-        ? maxPriorityFeePerGas.toString()
-        : undefined,
-      mode: prepared.mode,
-      smartAccount: active.metadata,
-      userOperation,
-      validator,
-    };
+    return { ...prepared, accountId: active.account.id, executionContextId };
   }
 
   private async assertSmartAccountExecutionTargetsAllowed(
@@ -2008,429 +1728,74 @@ class SmartAccountController {
     );
   }
 
-  private async assertSmartAccountExecutionModeSupported(
-    accountContract: Contract,
-    mode: string
-  ): Promise<void> {
-    const supported = await accountContract.supportsExecutionMode(mode);
-    if (!supported) {
-      throw new Error(
-        'This smart account does not support the requested execution mode'
-      );
-    }
-  }
-
   public async submitSmartAccountExecution(
-    params: {
-      accountId?: number;
-      executionCalldata?: string;
-      executionContextId?: string;
-      executions?: SmartAccountExecution[];
-      expectedContext?: IEvmTransactionContext;
-      gasPayer?: {
-        address: string;
-        id: number;
-        type: PaliKeyringAccountType;
-      };
-      gasPrice?: string;
-      maxFeePerGas?: string;
-      maxPriorityFeePerGas?: string;
-      mode?: string;
-      signature: string;
-      skipRapidPolling?: boolean;
-      userOperation?: SmartAccountPackedUserOperation;
-      validator?: string;
-      waitForConfirmation?: boolean;
-    },
+    params: SmartAccountSubmitParams,
     assertApprovalCurrent?: () => void
   ) {
-    // The call may first fund a counterfactual account, then submit handleOps.
-    // Only failures before either sender is entered are definitely read-only.
-    let financialSubmissionAttempted = false;
-    let prefundAcknowledged = false;
-    let handleOpsStarted = false;
-    let acknowledgedHandleOpsHash: string | undefined;
-    try {
-      const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
-      const assertContext = () => {
-        if (params.expectedContext) {
-          this.assertExpectedExecutionContext(
-            params.expectedContext,
-            params.accountId
-          );
-          if (!params.executionContextId)
-            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-              transactionNotBroadcast: true,
-            });
-        }
-        if (params.executionContextId) {
-          this.assertSmartAccountExecutionContext(params.executionContextId);
-          const context = this.executionContexts.get(
-            params.executionContextId
-          )!;
-          if (
-            (params.accountId !== undefined &&
-              params.accountId !== context.accountId) ||
-            !params.userOperation ||
-            !context.userOperation ||
-            params.gasPrice !== context.gasPrice ||
-            Object.entries(context.userOperation).some(
-              ([key, value]) => params.userOperation[key] !== value
-            )
-          )
-            throw Object.assign(new Error(EVM_TRANSACTION_CONTEXT_CHANGED), {
-              transactionNotBroadcast: true,
-            });
-        }
-      };
-      const assertCurrent = () => {
-        assertApprovalCurrent?.();
-        assertContext();
-      };
-      assertCurrent();
-      const active = Number.isInteger(params.accountId)
-        ? this.getSmartAccountById(params.accountId as number)
-        : this.getActiveSmartAccount();
-      if (!params.userOperation) {
-        throw new Error(
-          'Signed ERC-4337 UserOperation is required for smart account execution'
-        );
-      }
-      if (
-        getAddress(params.userOperation.sender) !==
-        getAddress(active.account.address)
-      ) {
-        throw new Error(
-          'Signed UserOperation does not match the active smart account'
-        );
-      }
-      const initCode = params.userOperation.initCode;
-      if (initCode && initCode !== '0x') {
-        if (!params.executionContextId)
-          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-        const deployment = requireSmartAccountAddressIdentity(
-          active.account,
-          store.getState().vault.activeNetwork.chainId
-        );
-        if (
-          initCode.toLowerCase() !==
-          hexConcat([deployment.factory, deployment.factoryData]).toLowerCase()
-        )
-          throw new Error(
-            'Signed UserOperation deployment does not match the smart account'
-          );
-      }
-      const gasPayer = await this.getWalletGasPayerAccount(
-        params.gasPayer || active.metadata.deploymentGasPayer,
-        undefined,
-        { requirePreferred: Boolean(params.gasPayer) }
-      );
-      assertCurrent();
-      const entryPointAddress = getPaliEntryPointAddress(
-        active.metadata.chainId
-      );
-      const entryPoint = new Contract(
-        entryPointAddress,
-        PALI_ENTRYPOINT_V09_ABI
-      );
-      const signedUserOperation: SmartAccountPackedUserOperation = {
-        ...params.userOperation,
-        signature: params.signature,
-      };
-      const callData = entryPoint.interface.encodeFunctionData('handleOps', [
-        [signedUserOperation],
-        gasPayer.address,
-      ]);
-      const recipientAccounts = this.getLocalNativeExecutionRecipients(
-        params.executions || []
-      );
-
-      const requiredPrefund =
-        getSmartAccountUserOpRequiredPrefund(signedUserOperation);
-      const usesZkSysGasTank =
-        Boolean(getZkSysGasTankAddress(active.metadata.chainId)) &&
-        signedUserOperation.gasFees === SMART_ACCOUNT_ZERO_GAS_FEES;
-      let outerGasLimit: BigNumber | undefined;
-      if (usesZkSysGasTank) {
-        outerGasLimit = await this.assertZkSysGasTankCoversTransaction({
-          chainId: active.metadata.chainId,
-          gasPayerAddress: gasPayer.address,
-          gasPrice: legacyGasPrice,
-          maxFeePerGas: legacyGasPrice ?? params.maxFeePerGas,
-          transaction: {
-            data: callData,
-            to: entryPointAddress,
-            value: '0x0',
-          },
-        });
-        assertCurrent();
-      }
-      // Self-funded first-UserOp deployment: an op carrying initCode validates
-      // before anything executes, so the counterfactual account must already
-      // cover the EntryPoint prefund.
-      if (
-        signedUserOperation.initCode &&
-        signedUserOperation.initCode !== '0x' &&
-        !requiredPrefund.isZero()
-      ) {
-        await this.ensureSmartAccountDeploymentPrefund(
-          active.account.address,
-          signedUserOperation,
-          entryPointAddress,
-          gasPayer,
-          active.metadata.chainId,
-          {
-            assertBeforeSign: assertApprovalCurrent,
-            assertCurrentContext: assertContext,
-            onSubmissionAttempt() {
-              financialSubmissionAttempted = true;
-            },
-            onAcknowledged() {
-              prefundAcknowledged = true;
-            },
-          }
-        );
-        assertCurrent();
-      }
-      // A supplied legacy price must reach the actual handleOps preflight;
-      // estimation must not validate a different fee model from publication.
-      // Existing EIP-1559 estimation stays fee-less. Tank mode reuses its exact
-      // preflight, and the resolved gas limit avoids a second signer estimate.
-      if (!outerGasLimit) {
-        const provider = this.ethereumTransaction?.web3Provider;
-        if (!provider) {
-          throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-        }
-        outerGasLimit = toCompatBigNumber(
-          await provider.estimateGas({
-            data: callData,
-            from: gasPayer.address,
-            ...(legacyGasPrice !== undefined
-              ? { gasPrice: legacyGasPrice }
-              : {}),
-            to: entryPointAddress,
-            value: '0x0',
-          })
-        );
-        assertCurrent();
-      }
-      assertCurrent();
-      financialSubmissionAttempted = true;
-      handleOpsStarted = true;
-      const response = await this.deps.sendAndSaveEthTransaction(
-        {
-          chainId: active.metadata.chainId,
-          data: callData,
-          from: gasPayer.address,
-          gasLimit: outerGasLimit.toString(),
-          ...(legacyGasPrice !== undefined
-            ? { gasPrice: legacyGasPrice }
-            : params.maxFeePerGas && params.maxPriorityFeePerGas
-            ? {
-                maxFeePerGas: params.maxFeePerGas,
-                maxPriorityFeePerGas: params.maxPriorityFeePerGas,
-              }
-            : {}),
-          to: entryPointAddress,
-          value: '0x0',
+    const captured = this.infrastructureContext();
+    const assertCurrent = () => {
+      this.assertInfrastructureContext(captured);
+      this.assertSmartAccountExecutionContext(params.executionContextId);
+      if (assertApprovalCurrent !== undefined)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    };
+    assertCurrent();
+    return submitSmartAccountOperation(
+      params,
+      {
+        chainId: store.getState().vault.activeNetwork.chainId,
+        provider: this.ethereumTransaction?.web3Provider,
+        assertExpectedExecutionContext: (context, id) =>
+          this.assertExpectedExecutionContext(context, id),
+        assertSmartAccountExecutionContext: (id) =>
+          this.assertSmartAccountExecutionContext(id),
+        getExecutionContext: (id) => {
+          const context = this.executionContexts.get(id);
+          return context?.userOperation
+            ? { ...context, userOperation: context.userOperation }
+            : undefined;
         },
-        legacyGasPrice !== undefined,
-        { id: gasPayer.id, type: gasPayer.type },
-        {
-          smartAccountExecution: true,
-          smartAccountExecutionFrom: active.account.address,
-          // SYSCOIN: The outer handleOps recipient is not the affected token.
-          balanceRefreshTokenAddresses: (params.executions || []).map(
-            (execution) => execution.target
-          ),
-          balanceRefreshNativeAddresses: [
-            gasPayer.address,
-            ...(!requiredPrefund.isZero() ||
-            (params.executions || []).some(
-              (execution) => !BigNumber.from(execution.value || '0').isZero()
-            )
-              ? [active.account.address]
-              : []),
-            ...(params.executions || [])
-              .filter(
-                (execution) => !BigNumber.from(execution.value || '0').isZero()
-              )
-              .map((execution) => execution.target),
-          ],
-        },
-        {
-          assertBeforeSign: assertApprovalCurrent,
-          assertCurrentContext: assertContext,
-          clearNavigation: true,
-          async onBroadcast(broadcast) {
-            acknowledgedHandleOpsHash = broadcast.hash;
-          },
-          persist: true,
-          skipRapidPolling: params.skipRapidPolling,
-          transactionAccounts: [
-            {
-              id: active.account.id,
-              type: PaliKeyringAccountType.SmartAccount,
-            },
-            ...recipientAccounts,
-          ],
-        }
-      );
-      acknowledgedHandleOpsHash = response.hash;
-      // Executions may install/uninstall modules or rotate the active
-      // validator; drop the cached hydrated metadata for this account.
-      this.invalidateHydratedMetadata(active.account.address);
-      if (params.waitForConfirmation) {
-        await response.wait();
-      }
-      return response;
-    } catch (error) {
-      const normalizedMessage = hasNativeGasFailure(error)
-        ? NATIVE_GAS_REQUIRED_ERROR
-        : hasSmartAccountSignatureFailure(error)
-        ? SMART_ACCOUNT_SIGNATURE_ERROR
-        : undefined;
-      const acknowledged =
-        typeof acknowledgedHandleOpsHash === 'string' &&
-        /^0x[0-9a-fA-F]{64}$/.test(acknowledgedHandleOpsHash);
-      const reportedHash = handleOpsStarted
-        ? error?.transactionHash
-        : undefined;
-      const transactionHash = acknowledged
-        ? acknowledgedHandleOpsHash
-        : typeof reportedHash === 'string' &&
-          /^0x[0-9a-fA-F]{64}$/.test(reportedHash)
-        ? reportedHash
-        : undefined;
-      const transactionNotBroadcast =
-        acknowledged || prefundAcknowledged
-          ? false
-          : financialSubmissionAttempted
-          ? error?.transactionNotBroadcast
-          : true;
-      if (normalizedMessage) {
-        const normalizedError = new Error(normalizedMessage);
-        // Keep trusted submission facts when replacing provider text with a
-        // UI sentinel. Losing false could permit an unsafe retry; losing true
-        // would strand a definite rejection as an unknown submission.
-        if (typeof transactionNotBroadcast === 'boolean')
-          Object.assign(normalizedError, {
-            transactionNotBroadcast,
-          });
-        if (transactionHash)
-          Object.assign(normalizedError, { transactionHash });
-        throw normalizedError;
-      }
-      if (!financialSubmissionAttempted) {
-        // Do not mutate a frozen provider error or forward arbitrary fields.
-        // After a prefund/send attempt, retain its existing outcome instead.
-        const preflightError = new Error(
-          typeof error?.message === 'string'
-            ? error.message
-            : 'Smart account preflight failed'
-        );
-        if (typeof error?.code === 'number')
-          Object.assign(preflightError, { code: error.code });
-        throw Object.assign(preflightError, { transactionNotBroadcast: true });
-      }
-      if (
-        (acknowledged && transactionHash !== error?.transactionHash) ||
-        ((acknowledged || prefundAcknowledged) &&
-          error?.transactionNotBroadcast !== false) ||
-        (!handleOpsStarted && error?.transactionHash !== undefined)
-      ) {
-        // A wait failure does not undo an acknowledged POST. The funding hash
-        // can never stand in for the separate handleOps transaction.
-        const failure = new Error(
-          error?.message || 'Smart account execution did not complete',
-          { cause: error }
-        );
-        if (typeof transactionNotBroadcast === 'boolean')
-          Object.assign(failure, { transactionNotBroadcast });
-        if (transactionHash) Object.assign(failure, { transactionHash });
-        throw failure;
-      }
-      throw error;
-    }
+        getSmartAccountById: (id) => this.getSmartAccountById(id),
+        getWalletGasPayerAccount: (preferred, transaction, options) =>
+          this.getWalletGasPayerAccount(preferred, transaction, options),
+        getLocalNativeExecutionRecipients: (executions) =>
+          this.getLocalNativeExecutionRecipients(executions),
+        assertGasTankCoversTransaction: (request) =>
+          this.assertZkSysGasTankCoversTransaction(request),
+        ensureDeploymentPrefund: (...args) =>
+          this.ensureSmartAccountDeploymentPrefund(...args),
+        sendTransaction: (...args) =>
+          this.deps.sendAndSaveEthTransaction(...args),
+        invalidateMetadata: (address) =>
+          this.invalidateHydratedMetadata(address),
+      },
+      assertCurrent
+    );
   }
 
-  private async canUseZkSysGasTankForSmartAccountTx({
-    chainId,
-    gasEstimate,
-    gasPayerAddress,
-    maxFeePerGas,
-  }: {
+  private async canUseZkSysGasTankForSmartAccountTx(params: {
     chainId: number;
     gasEstimate: SmartAccountUserOpGasEstimate;
     gasPayerAddress: string;
     maxFeePerGas: BigNumber;
-  }): Promise<boolean> {
-    if (maxFeePerGas.isZero()) {
-      return false;
-    }
-    const tankAddress = getZkSysGasTankAddress(chainId);
-    if (!tankAddress) {
-      return false;
-    }
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      return false;
-    }
-    try {
-      const tank = new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider);
-      const credit = toCompatBigNumber(await tank.creditOf(gasPayerAddress));
-      const requiredCredit = BigNumber.from(
-        gasEstimate.totalGasUnits + SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER
-      ).mul(maxFeePerGas);
-      return credit.gte(requiredCredit);
-    } catch {
-      return false;
-    }
+  }) {
+    return canUseSmartAccountGasTank(
+      this.ethereumTransaction?.web3Provider,
+      params
+    );
   }
 
-  private async assertZkSysGasTankCoversTransaction({
-    chainId,
-    gasPrice,
-    gasPayerAddress,
-    maxFeePerGas,
-    transaction,
-  }: {
+  private async assertZkSysGasTankCoversTransaction(params: {
     chainId: number;
     gasPayerAddress: string;
     gasPrice?: string;
     maxFeePerGas?: string;
     transaction: { data?: string; to: string; value?: string };
-  }): Promise<BigNumber> {
-    const provider = this.ethereumTransaction?.web3Provider;
-    const tankAddress = getZkSysGasTankAddress(chainId);
-    if (!provider || !tankAddress) {
-      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
-    }
-    const [gasLimit, rawCredit, feeData] = await Promise.all([
-      provider.estimateGas({
-        data: transaction.data || '0x',
-        from: gasPayerAddress,
-        ...(gasPrice !== undefined ? { gasPrice } : {}),
-        to: transaction.to,
-        value: transaction.value || '0x0',
-      }),
-      new Contract(tankAddress, ZKSYS_GAS_TANK_ABI, provider).creditOf(
-        gasPayerAddress
-      ),
-      maxFeePerGas ? Promise.resolve(null) : provider.getFeeData(),
-    ]);
-    const credit = toCompatBigNumber(rawCredit);
-    const estimatedGasLimit = toCompatBigNumber(gasLimit);
-    const resolvedMaxFeePerGas = BigNumber.from(
-      maxFeePerGas || feeData?.maxFeePerGas || feeData?.gasPrice || 0
+  }) {
+    return assertSmartAccountGasTankCredit(
+      this.ethereumTransaction?.web3Provider,
+      params
     );
-    const requiredCredit = estimatedGasLimit
-      .add(SMART_ACCOUNT_GAS_TANK_OUTER_GAS_BUFFER)
-      .mul(resolvedMaxFeePerGas);
-    if (credit.lt(requiredCredit)) {
-      throw new Error(ZKSYS_GAS_TANK_REQUIRED_ERROR);
-    }
-    return estimatedGasLimit;
   }
 
   /**
@@ -2447,62 +1812,22 @@ class SmartAccountController {
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
     options: {
-      assertBeforeSign?: () => void;
+      assertBeforeSign: () => void;
       assertCurrentContext: () => void;
       onAcknowledged: () => void;
       onSubmissionAttempt: () => void;
     }
   ): Promise<void> {
-    const assertCurrent = () => {
-      options.assertBeforeSign?.();
-      options.assertCurrentContext();
-    };
-    assertCurrent();
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-    }
-    const entryPoint = new Contract(
+    return ensureSmartAccountDeploymentPrefund(
+      this.ethereumTransaction?.web3Provider,
+      (...args) => this.deps.sendAndSaveEthTransaction(...args),
+      accountAddress,
+      userOperation,
       entryPointAddress,
-      PALI_ENTRYPOINT_V09_ABI,
-      provider
+      gasPayer,
+      chainId,
+      options
     );
-    const [balance, rawDeposit] = await Promise.all([
-      provider.getBalance(accountAddress),
-      entryPoint.balanceOf(accountAddress),
-    ]);
-    assertCurrent();
-    const deposit = toCompatBigNumber(rawDeposit);
-    const required = getSmartAccountUserOpRequiredPrefund(userOperation);
-    const shortfall = required.sub(balance).sub(deposit);
-    if (shortfall.lte(0)) {
-      return;
-    }
-    options.onSubmissionAttempt();
-    const response = await this.deps.sendAndSaveEthTransaction(
-      {
-        chainId,
-        from: gasPayer.address,
-        to: getAddress(accountAddress),
-        value: shortfall.toHexString(),
-      },
-      false,
-      { id: gasPayer.id, type: gasPayer.type },
-      {
-        smartAccountAddress: getAddress(accountAddress),
-        smartAccountDeploymentPrefund: true,
-      },
-      {
-        assertBeforeSign: options.assertBeforeSign,
-        assertCurrentContext: options.assertCurrentContext,
-        clearNavigation: false,
-        onBroadcast: async () => options.onAcknowledged(),
-        persist: true,
-        skipRapidPolling: true,
-      }
-    );
-    await response.wait();
-    assertCurrent();
   }
 
   private getLocalNativeExecutionRecipients(
@@ -2599,11 +1924,9 @@ class SmartAccountController {
     throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
-  public async submitSmartAccountGuardianPolicyTransaction(params: {
-    execution: SmartAccountExecution;
-    signature: string;
-  }) {
-    return this.submitSmartAccountExecution(params);
+  public async submitSmartAccountGuardianPolicyTransaction(params: unknown) {
+    void params;
+    throw new Error(GUARDIAN_POLICY_ERROR);
   }
 
   public async submitSmartAccountGuardianStartRecovery(params: {
@@ -2781,6 +2104,7 @@ class SmartAccountController {
         {
           clearNavigation: false,
           persist: true,
+          assertBeforeSign: assertCurrent,
           assertCurrentContext: assertCurrent,
         }
       );
@@ -2851,6 +2175,7 @@ class SmartAccountController {
         {
           clearNavigation: false,
           persist: true,
+          assertBeforeSign: assertCurrent,
           assertCurrentContext: assertCurrent,
         }
       );
@@ -3104,45 +2429,30 @@ class SmartAccountController {
   private async signActionHashWithLocalEcdsaOwners(
     metadata: ISmartAccountMetadata,
     actionHash: string,
-    executionContextId?: string,
+    executionContextId: string,
     assertApprovalCurrent?: () => void
   ): Promise<string> {
-    assertApprovalCurrent?.();
-    const moduleId = metadata.auth?.module || metadata.auth?.scheme;
-    if (moduleId !== 'ecdsa' || !metadata.auth?.data) {
-      throw new Error(
-        'Smart account registration requires an interactive signature for this validator. Submit any transaction from the account to deploy it.'
-      );
-    }
-    const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
-      ['address[]', 'uint64'],
-      metadata.auth.data
-    ) as [string[], { toString: () => string }];
-    const owners = decodedOwners.map((owner) => getAddress(owner));
-    const threshold = Math.max(1, Number(decodedThreshold.toString()) || 1);
-    const localOwners = owners.filter((owner) =>
-      this.findLocalSigningAccount(owner)
-    );
-    if (localOwners.length < threshold) {
-      throw new Error(
-        'Smart account registration requires the configured ECDSA owner keys in this wallet.'
-      );
-    }
-    const signatures = await Promise.all(
-      localOwners
-        .slice(0, threshold)
-        .map((owner) =>
-          this.deps.signSmartAccountActionDigestInternal(
-            [owner, actionHash],
-            this.getLocalSigningAccount(owner),
-            executionContextId,
-            assertApprovalCurrent
-          )
-        )
-    );
-    return threshold === 1
-      ? signatures[0]
-      : defaultAbiCoder.encode(['bytes[]'], [signatures]);
+    const captured = this.infrastructureContext();
+    const assertCurrent = () => {
+      this.assertInfrastructureContext(captured);
+      this.assertSmartAccountExecutionContext(executionContextId, actionHash);
+      if (assertApprovalCurrent !== undefined)
+        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    };
+    assertCurrent();
+    return signSmartAccountEcdsaOperation({
+      metadata,
+      actionHash,
+      assertCurrent,
+      findOwner: (address) => this.findLocalSigningAccount(address),
+      signOwner: (address, hash, owner) =>
+        this.deps.signSmartAccountActionDigestInternal(
+          [address, hash],
+          owner,
+          executionContextId,
+          assertCurrent
+        ),
+    });
   }
 
   private findLocalSigningAccount(address: string): {
@@ -3766,32 +3076,7 @@ class SmartAccountController {
   private requireAuthenticator(
     metadata: ISmartAccountMetadata
   ): PaliAuthConfig {
-    const auth = metadata.auth;
-    if (!auth) {
-      throw new Error(
-        'This smart account was recovered by address only. Configure or recover an authenticator before signing.'
-      );
-    }
-    const module = auth.module || auth.scheme;
-    if (!module) {
-      throw new Error(
-        'Smart account authenticator module metadata is required'
-      );
-    }
-    // Custom (bring-your-own) validators have no Pali-native signer; those
-    // flows must go through the external-signature drivers instead. The
-    // lockout guard prevents activating a custom validator, so reaching this
-    // implies out-of-band state (e.g. external rotation).
-    if (module === 'custom') {
-      throw new Error(
-        'The active validator is a custom module Pali cannot sign with. Switch to a Pali-signable validator first.'
-      );
-    }
-    return {
-      data: auth.data,
-      module,
-      validator: auth.validator,
-    };
+    return requireSmartAccountAuthenticator(metadata);
   }
 
   private getNextRecoverableAccountIndex(chainId: number): number {
@@ -3848,105 +3133,12 @@ class SmartAccountController {
     id: number;
     type: PaliKeyringAccountType;
   }> {
-    const provider = this.ethereumTransaction?.web3Provider;
-    const gasPayers = this.getWalletGasPayerCandidates(preferred);
-
-    const toGasPayer = ({
-      address,
-      id,
-      type,
-    }: {
-      address: string;
-      id: number;
-      type: PaliKeyringAccountType;
-    }) => ({ address, id, type });
-
-    if (options.requirePreferred) {
-      const selected = gasPayers[0];
-      if (
-        !preferred ||
-        !selected ||
-        selected.id !== preferred.id ||
-        selected.type !== preferred.type ||
-        getAddress(selected.address) !== getAddress(preferred.address)
-      ) {
-        throw new Error(
-          'The selected gas payer is no longer available for this smart-account transaction'
-        );
-      }
-      return toGasPayer(selected);
-    }
-
-    if (provider) {
-      if (transaction) {
-        // Shared lookups hoisted out of the candidate loop: one fee-data call
-        // and one batched balance fetch instead of repeating both per
-        // candidate. Gas estimation stays per candidate because it depends on
-        // the `from` address.
-        const [feeData, balances] = await Promise.all([
-          provider.getFeeData(),
-          this.getNativeBalances(
-            provider,
-            gasPayers.map((candidate) => candidate.address)
-          ),
-        ]);
-        const maxFeePerGas = BigNumber.from(
-          feeData.maxFeePerGas || feeData.gasPrice || 0
-        );
-        for (let index = 0; index < gasPayers.length; index += 1) {
-          const gasPayer = toGasPayer(gasPayers[index]);
-          const balance = balances[index];
-          try {
-            const gasLimit = toCompatBigNumber(
-              await provider.estimateGas({
-                data: transaction.data || '0x',
-                from: gasPayer.address,
-                to: transaction.to,
-                value: transaction.value || '0x0',
-              })
-            );
-            const requiredBalance = gasLimit
-              .mul(maxFeePerGas)
-              .add(BigNumber.from(transaction.value || '0x0'));
-            if (balance.gte(requiredBalance)) {
-              return gasPayer;
-            }
-          } catch (error) {
-            if (hasGuardianRecoveryNotReadyRevert(error)) {
-              throw error;
-            }
-            if (!hasNativeGasFailure(error)) {
-              throw error;
-            }
-          }
-        }
-        throw new Error(NATIVE_GAS_REQUIRED_ERROR);
-      }
-
-      const cachedFundedGasPayer = gasPayers.find(({ account }) =>
-        this.hasCachedNativeBalance(account)
-      );
-      if (cachedFundedGasPayer) {
-        return toGasPayer(cachedFundedGasPayer);
-      }
-
-      const balances = await this.getNativeBalances(
-        provider,
-        gasPayers.map((candidate) => candidate.address)
-      );
-      for (let index = 0; index < gasPayers.length; index += 1) {
-        if (!balances[index].isZero()) {
-          return toGasPayer(gasPayers[index]);
-        }
-      }
-    }
-
-    if (gasPayers[0]) {
-      return toGasPayer(gasPayers[0]);
-    }
-
-    throw new Error(
-      'A local EVM account is required to submit ERC-4337 operations'
+    return selectSmartAccountGasPayer(
+      store.getState().vault,
+      this.ethereumTransaction?.web3Provider,
+      preferred,
+      transaction,
+      options
     );
   }
 
@@ -3960,95 +3152,14 @@ class SmartAccountController {
     id: number;
     type: PaliKeyringAccountType;
   }> {
-    const { accounts, activeAccount } = store.getState().vault;
-    const candidates: Array<{ id: number; type: PaliKeyringAccountType }> = [];
-    if (
-      preferred?.type &&
-      preferred.type !== PaliKeyringAccountType.SmartAccount
-    ) {
-      candidates.push({ id: preferred.id, type: preferred.type });
-    }
-    if (activeAccount.type !== PaliKeyringAccountType.SmartAccount) {
-      candidates.push({ id: activeAccount.id, type: activeAccount.type });
-    }
-    candidates.push({ id: 0, type: PaliKeyringAccountType.HDAccount });
-    candidates.push(
-      ...Object.keys(accounts[PaliKeyringAccountType.Imported] || {}).map(
-        (id) => ({
-          id: Number(id),
-          type: PaliKeyringAccountType.Imported,
-        })
-      )
-    );
-
-    const seen = new Set<string>();
-    const gasPayers: Array<{
-      account: any;
-      address: string;
-      id: number;
-      type: PaliKeyringAccountType;
-    }> = [];
-
-    for (const candidate of candidates) {
-      const candidateKey = `${candidate.type}:${candidate.id}`;
-      if (seen.has(candidateKey)) {
-        continue;
-      }
-      seen.add(candidateKey);
-      const account = accounts[candidate.type]?.[candidate.id];
-      if (account?.address) {
-        if (
-          preferred &&
-          candidate.id === preferred.id &&
-          candidate.type === preferred.type &&
-          getAddress(account.address) !== getAddress(preferred.address)
-        ) {
-          continue;
-        }
-        gasPayers.push({
-          account,
-          address: getAddress(account.address),
-          id: candidate.id,
-          type: candidate.type,
-        });
-      }
-    }
-    return gasPayers;
+    return getSmartAccountGasPayerCandidates(store.getState().vault, preferred);
   }
 
   private async getNativeBalances(
     provider: any,
     addresses: string[]
   ): Promise<BigNumber[]> {
-    if (addresses.length === 0) {
-      return [];
-    }
-    if (addresses.length > 1 && typeof provider.sendBatch === 'function') {
-      try {
-        const results = await provider.sendBatch(
-          'eth_getBalance',
-          addresses.map((address) => [address, 'latest'])
-        );
-        return results.map((result: string) => BigNumber.from(result || 0));
-      } catch {
-        // Fall back to individual calls below.
-      }
-    }
-    // Individual ethers-v6 reads return bigint, unlike the batch hex path.
-    // Keep this helper's numeric type stable for all gas-payer checks.
-    return Promise.all(
-      addresses.map(async (address) =>
-        toCompatBigNumber(await provider.getBalance(address))
-      )
-    );
-  }
-
-  private hasCachedNativeBalance(account: any): boolean {
-    const balance = account?.balances?.[INetworkType.Ethereum];
-    if (balance === undefined || balance === null) {
-      return false;
-    }
-    return Number(balance) > 0;
+    return readSmartAccountNativeBalances(provider, addresses);
   }
 }
 
