@@ -40,6 +40,7 @@ function fixture() {
       events.push('connect');
     },
     disconnect: () => disconnect(),
+    retire: async () => { await disconnect(); return () => undefined; },
     getStatus: () => ({ connected: true }),
     beginDeviceSelection: () => accept,
     evm: {

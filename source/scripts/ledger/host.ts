@@ -91,8 +91,8 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
     if (!active && Date.now() - lastActivity >= 300000) shutdown();
     else port.postMessage({ type: 'heartbeat' });
   }, 20000);
-  const shutdown = () => {
-    if (!alive) return;
+  const stop = () => {
+    if (!alive) return false;
     alive = false;
     portLifetime.abort();
     clearInterval(statusTimer);
@@ -103,8 +103,12 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
     consent = undefined;
     review.hidden = true;
     details.textContent = '';
-    void host.disconnect();
     setStatus('disconnected');
+    return true;
+  };
+  const shutdown = () => {
+    if (!stop()) return;
+    void host.disconnect();
     port.disconnect();
   };
   port.onDisconnect.addListener(shutdown);
@@ -138,6 +142,27 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
     }
     if (message.type === 'attached') {
       connect.disabled = false;
+      return;
+    }
+    if (message.type === 'retire' && Number.isSafeInteger(message.id)) {
+      stop();
+      let retired = false;
+      try {
+        const assertRetired = await host.retire();
+        const result: unknown = assertRetired();
+        if (result !== undefined) {
+          void Promise.resolve(result).catch(() => undefined);
+          throw new Error('Invalid Ledger retirement proof');
+        }
+        retired = true;
+      } catch {
+        // A failed cleanup cannot authorize transferring the wallet session.
+      }
+      try {
+        port.postMessage({ type: 'retired', id: message.id, ok: retired });
+      } catch {
+        port.disconnect();
+      }
       return;
     }
     if (message.type !== 'request' || !Number.isSafeInteger(message.id)) return;

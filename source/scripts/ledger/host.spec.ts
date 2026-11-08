@@ -13,6 +13,10 @@ const mockHost = {
   disconnect: jest.fn(async () => {
     mockConnected = false;
   }),
+  retire: jest.fn(async () => {
+    mockConnected = false;
+    return () => undefined;
+  }),
   getStatus: () => ({ connected: mockConnected }),
   evm: { getAddress: jest.fn(async () => ({ address: 'public' })) },
   utxo: { signPsbt: jest.fn() },
@@ -162,3 +166,69 @@ it('preserves current status when delayed localization arrives after cancellatio
   );
   expect(button('connect').disabled).toBe(true);
 });
+
+it('acknowledges retirement only after shared cleanup and prevents late responses', async () => {
+  let finish!: () => void;
+  mockHost.retire.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = () => resolve(() => undefined);
+      })
+  );
+  let signed!: () => void;
+  mockHost.evm.getAddress.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        signed = () => resolve({ address: 'late' });
+      })
+  );
+  const request = mockListeners[0]({
+    type: 'request',
+    id: 20,
+    method: 'evm.getAddress',
+    request: {},
+  });
+  const retiring = mockListeners[0]({ type: 'retire', id: 21 });
+  expect(button('connect').disabled).toBe(true);
+  expect(mockPort.postMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'retired' })
+  );
+  signed();
+  await request;
+  expect(mockPort.postMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ id: 20 })
+  );
+  finish();
+  await retiring;
+  expect(mockPort.postMessage).toHaveBeenCalledWith({
+    type: 'retired',
+    id: 21,
+    ok: true,
+  });
+  await mockListeners[0]({
+    type: 'request',
+    id: 22,
+    method: 'evm.getAddress',
+    request: {},
+  });
+  expect(mockHost.evm.getAddress).toHaveBeenCalledTimes(1);
+});
+
+it.each(['cleanup', 'proof', 'async-proof'] as const)(
+  'rejects a failed %s retirement',
+  async (mode) => {
+    mockHost.retire.mockImplementationOnce(async () => {
+      if (mode === 'cleanup') throw new Error('Cleanup failed');
+      if (mode === 'async-proof') return (async () => undefined) as () => void;
+      return () => {
+        throw new Error('Reopened');
+      };
+    });
+    await mockListeners[0]({ type: 'retire', id: 31 });
+    expect(mockPort.postMessage).toHaveBeenCalledWith({
+      type: 'retired',
+      id: 31,
+      ok: false,
+    });
+  }
+);

@@ -42,6 +42,7 @@ jest.mock(
 );
 
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
+import { createTrezorWebExtensionHost } from '@sidhujag/sysweb3-keyring/cjs/trezor/webextension-host';
 import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
@@ -271,6 +272,15 @@ describe.each(['Trezor', 'Ledger'] as const)(
       manager = new KeyringManager(
         createBrowserKeyringHost(chrome.storage.local),
         {
+          trezorHost: createTrezorWebExtensionHost({
+            manifest: {
+              appName: 'Pali Wallet',
+              appUrl: 'https://paliwallet.com/',
+              email: 'support@syscoin.org',
+            },
+            debug: false,
+            coreMode: 'auto',
+          }),
           captureEvmSubmission: () => {
             throw new Error('EVM submission is outside this fixture');
           },

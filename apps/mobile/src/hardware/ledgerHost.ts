@@ -1,4 +1,5 @@
-import { ledgerHostError } from '@sidhujag/sysweb3-keyring/cjs/ledger/host-types.js';
+import { ledgerCancelledError, ledgerHostError } from '@sidhujag/sysweb3-keyring/cjs/ledger/host-types.js';
+import { assertHardwareOperationCurrent } from '@sidhujag/sysweb3-keyring/cjs/hardware-transaction-authority.js';
 import type { LedgerHost } from '@sidhujag/sysweb3-keyring/cjs/ledger/host-types';
 import type { NativeLedgerTransport } from './ownedLedgerTransport.ts';
 
@@ -22,6 +23,15 @@ export function createNativeLedgerHost(
     },
     disconnect: async () => {
       await current()?.dispose();
+    },
+    retire: async () => {
+      const transport = current();
+      await transport?.dispose();
+      const assertRetired = transport ? await transport.host.retire() : () => undefined;
+      return () => {
+        if (current() !== transport) throw ledgerCancelledError();
+        assertHardwareOperationCurrent(assertRetired);
+      };
     },
     evm: {
       getAddress: (...args) => requireHost().evm.getAddress(...args),

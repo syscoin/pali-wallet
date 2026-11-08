@@ -110,8 +110,8 @@
     }
   },
   "paliKeyringPatch": {
-    "sourceCommit": "eaddf2a53709057b6b1dc219b5cc11869324d5e6",
-    "manifestSha256": "7237fb1ef7651ea58eac2ec7461eb4bb56092367c62252b9460c592f457b9cfe"
+    "sourceCommit": "6206418f234d8ca6039d55014359d0f0b7a8d91f",
+    "manifestSha256": "fd92af9d29cda87f0e76ff34f848becadf91efb85720333fb37b262861c5736b"
   },
   "paliWalletConnectPatch": "core.9a6890ed312e22696246d1c971674816158bc289.utils.7e48b0453db3f3c7f2d417ef3823fc5c218f21bf.sha256.03ce9132174333bdb653e3b0d8da3e87fad27532fdc0c2f6ab1b0c528f1b0180"
 }

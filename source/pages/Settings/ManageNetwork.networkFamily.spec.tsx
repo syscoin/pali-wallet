@@ -387,9 +387,15 @@ beforeEach(async () => {
     const keyring: any = {
       unlocked: slip44 === 57,
       isUnlocked: () => keyring.unlocked,
-      transferSessionTo: (target: any) => {
-        target.unlocked = true;
-      },
+      prepareSessionTransfer: async (
+        target: any,
+        assertCurrent: () => void
+      ) => ({
+        transfer() {
+          assertCurrent();
+          target.unlocked = true;
+        },
+      }),
       lockWallet: async () => {
         keyring.unlocked = false;
       },

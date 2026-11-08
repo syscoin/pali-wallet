@@ -16,7 +16,8 @@ import {
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/hardware-psbt';
 import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core';
 import { TrezorKeyring } from '@sidhujag/sysweb3-keyring/cjs/trezor';
-import TrezorTransport from '@sidhujag/sysweb3-keyring/cjs/trezor/connect';
+import { createTrezorConnection } from '@sidhujag/sysweb3-keyring/cjs/trezor/connect';
+import { createTrezorWebExtensionHost } from '@sidhujag/sysweb3-keyring/cjs/trezor/webextension-host';
 import http from 'http';
 import https from 'https';
 import { utils as sys } from 'syscoinjs-lib';
@@ -57,6 +58,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
     let softwareSigner: jest.Mock;
     let sessionCurrent: boolean;
     let manager: any;
+    let trezorTransport: ReturnType<typeof createTrezorConnection> | undefined;
     let trezorAdapter: any;
 
     const request = () => JSON.parse(JSON.stringify(fixture.single));
@@ -83,13 +85,16 @@ describe.each(['Ledger', 'Trezor'] as const)(
         windows: { getCurrent: jest.fn() },
       });
       if (kind === 'Trezor') {
-        await TrezorTransport.init({
-          manifest: {
-            appName: 'Pali public fixture',
-            appUrl: 'https://paliwallet.com',
-            email: 'test@example.invalid',
-          },
-        });
+        trezorTransport = createTrezorConnection(
+          createTrezorWebExtensionHost({
+            manifest: {
+              appName: 'Pali public fixture',
+              appUrl: 'https://paliwallet.com',
+              email: 'test@example.invalid',
+            },
+          })
+        );
+        await trezorTransport.init();
       }
       jest.spyOn(console, 'log').mockImplementation(() => undefined);
       jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -174,6 +179,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
       const trezor: any = Object.create(TrezorKeyring.prototype);
       trezorAdapter = trezor;
       trezor.initialized = true;
+      trezor.connection = trezorTransport;
       trezor.hardwareWalletManager = manager;
       trezor.paths = {};
       (TrezorConnect.signTransaction as jest.Mock).mockImplementation(
@@ -205,7 +211,9 @@ describe.each(['Ledger', 'Trezor'] as const)(
         });
     });
 
-    afterEach(() => {
+    afterEach(async () => {
+      await trezorTransport?.retire();
+      trezorTransport = undefined;
       expect(softwareSigner).not.toHaveBeenCalled();
       for (const spy of networkSpies) expect(spy).not.toHaveBeenCalled();
       jest.restoreAllMocks();

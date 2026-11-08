@@ -4,10 +4,10 @@ interface IFixtureKeyring {
   fixtureUnlock: () => void;
   isUnlocked: () => boolean;
   lockWallet: jest.Mock;
+  prepareSessionTransfer: jest.Mock;
   setSignerNetwork: jest.Mock;
   setStorage: jest.Mock;
   setVaultStateGetter: jest.Mock;
-  transferSessionTo: jest.Mock;
 }
 
 let mockSdkInstances: IFixtureKeyring[] = [];
@@ -30,8 +30,13 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
       fixtureUnlock: () => {
         unlocked = true;
       },
-      transferSessionTo: jest.fn((target: IFixtureKeyring) =>
-        target.fixtureUnlock()
+      prepareSessionTransfer: jest.fn(
+        async (target: IFixtureKeyring, assertCurrent: () => void) => ({
+          transfer() {
+            assertCurrent();
+            target.fixtureUnlock();
+          },
+        })
       ),
       lockWallet: jest.fn(async () => {
         unlocked = false;
@@ -273,8 +278,9 @@ it('does not reuse Imported0 after a complete switch into another UTXO vault', a
   await wallet.setActiveNetwork(TARGET);
   expect(store.getState().vaultGlobal.activeSlip44).toBe(57);
   expect(mockSdkInstances).toHaveLength(2);
-  expect(mockSdkInstances[0].transferSessionTo).toHaveBeenCalledWith(
-    mockSdkInstances[1]
+  expect(mockSdkInstances[0].prepareSessionTransfer).toHaveBeenCalledWith(
+    mockSdkInstances[1],
+    expect.any(Function)
   );
   expect(mockSdkInstances[0].isUnlocked()).toBe(false);
   expect(mockSdkInstances[1].setSignerNetwork).toHaveBeenCalledWith(TARGET);

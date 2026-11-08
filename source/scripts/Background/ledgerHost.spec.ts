@@ -4,8 +4,12 @@ const event = () => {
   const listeners: ((...args: any[]) => void)[] = [];
   return {
     addListener: jest.fn((listener) => listeners.push(listener)),
+    removeListener: jest.fn((listener) => {
+      const index = listeners.indexOf(listener);
+      if (index >= 0) listeners.splice(index, 1);
+    }),
     emit: (...args: any[]) =>
-      listeners.forEach((listener) => listener(...args)),
+      [...listeners].forEach((listener) => listener(...args)),
   };
 };
 
@@ -723,5 +727,164 @@ describe('Ledger authority host broker', () => {
     });
     active.abort();
     await rejected;
+  });
+});
+
+describe('Ledger broker retirement', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  async function ready() {
+    const f = fixture();
+    const connecting = f.broker.host.connect();
+    const port = f.port();
+    await flush();
+    port.onMessage.emit({ type: 'ready' });
+    await connecting;
+    return { ...f, port };
+  }
+
+  it('joins exact remote retirement and revokes posted operations before closing', async () => {
+    const f = await ready();
+    const pending = f.broker.host.evm.getAddress({ accountIndex: 0 });
+    const cancelled = expect(pending).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    await flush();
+    const request = f.port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'request'
+    )[0];
+    const retirement = f.broker.host.retire();
+    expect(f.broker.host.retire()).toBe(retirement);
+    const message = f.port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'retire'
+    )[0];
+    expect(f.broker.host.getStatus().connected).toBe(false);
+    expect(f.port.disconnect).not.toHaveBeenCalled();
+    await expect(f.broker.host.connect()).rejects.toMatchObject({
+      code: 'HARDWARE_SIGNER_BUSY',
+    });
+    f.port.onMessage.emit({
+      id: request.id,
+      ok: true,
+      value: { address: 'late' },
+    });
+    f.port.onMessage.emit({ type: 'retired', id: message.id + 1, ok: true });
+    await flush();
+    expect(f.api.windows.remove).not.toHaveBeenCalled();
+    f.port.onMessage.emit({ type: 'retired', id: message.id, ok: true });
+    const guard = await retirement;
+    await cancelled;
+    expect(f.port.disconnect).toHaveBeenCalledTimes(1);
+    expect(f.api.windows.remove).toHaveBeenCalledWith(41);
+    expect(() => guard()).not.toThrow();
+    const reopening = f.broker.host.connect();
+    const rejected = expect(reopening).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    expect(() => guard()).toThrow();
+    await f.broker.disconnect();
+    await rejected;
+  });
+
+  it('joins late window creation after fast disconnect before returning a proof', async () => {
+    const f = fixture();
+    let created!: (window: { id: number }) => void;
+    f.api.windows.create.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          created = resolve;
+        })
+    );
+    const connecting = f.broker.host.connect();
+    const cancelled = expect(connecting).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    await f.broker.disconnect();
+    await cancelled;
+    let retired = false;
+    const retirement = f.broker.host.retire().then((guard) => {
+      retired = true;
+      return guard;
+    });
+    await flush();
+    expect(retired).toBe(false);
+    created({ id: 73 });
+    const guard = await retirement;
+    expect(f.api.windows.remove).toHaveBeenCalledWith(73);
+    expect(() => guard()).not.toThrow();
+  });
+
+  it.each(['failure', 'timeout', 'disconnect'] as const)(
+    'refuses a proof after remote %s',
+    async (mode) => {
+      const f = await ready();
+      const retirement = f.broker.host.retire();
+      const rejected = expect(retirement).rejects.toMatchObject({
+        code: 'HARDWARE_REQUEST_CANCELLED',
+      });
+      const message = f.port.postMessage.mock.calls.find(
+        ([value]) => value.type === 'retire'
+      )[0];
+      if (mode === 'failure')
+        f.port.onMessage.emit({ type: 'retired', id: message.id, ok: false });
+      if (mode === 'timeout') jest.advanceTimersByTime(300000);
+      if (mode === 'disconnect') f.port.onDisconnect.emit();
+      await rejected;
+      expect(f.api.windows.remove).toHaveBeenCalledWith(41);
+    }
+  );
+
+  it('allows a fresh retirement only after a failed acknowledgement finishes closing its exact window', async () => {
+    const f = await ready();
+    let closed!: () => void;
+    f.api.windows.remove.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          closed = resolve;
+        })
+    );
+    const retirement = f.broker.host.retire();
+    const rejected = expect(retirement).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    const message = f.port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'retire'
+    )[0];
+    f.port.onMessage.emit({ type: 'retired', id: message.id, ok: false });
+    await flush();
+    expect(f.broker.host.retire()).toBe(retirement);
+    expect(f.api.windows.remove).toHaveBeenCalledWith(41);
+    closed();
+    await rejected;
+    const guard = await f.broker.host.retire();
+    expect(() => guard()).not.toThrow();
+    expect(f.api.windows.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a proof if the captured window cannot be closed', async () => {
+    const f = await ready();
+    f.api.windows.remove.mockRejectedValueOnce(new Error('Removal failed'));
+    const retirement = f.broker.host.retire();
+    const rejected = expect(retirement).rejects.toThrow('Removal failed');
+    const message = f.port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'retire'
+    )[0];
+    f.port.onMessage.emit({ type: 'retired', id: message.id, ok: true });
+    await rejected;
+    await expect(f.broker.host.retire()).rejects.toThrow('Removal failed');
+  });
+
+  it('accepts a window already confirmed removed by the browser', async () => {
+    const f = await ready();
+    const retirement = f.broker.host.retire();
+    const message = f.port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'retire'
+    )[0];
+    f.onRemoved.emit(41);
+    f.port.onMessage.emit({ type: 'retired', id: message.id, ok: true });
+    const guard = await retirement;
+    expect(f.api.windows.remove).not.toHaveBeenCalled();
+    expect(() => guard()).not.toThrow();
   });
 });
