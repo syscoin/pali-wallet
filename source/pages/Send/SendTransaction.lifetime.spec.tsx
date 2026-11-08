@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import { normalizeDappTransaction } from '../../shared/dappTransaction';
 import {
   BigNumber,
   formatUnits,
@@ -331,6 +332,132 @@ beforeEach(() => {
   mockHandleTransactionError.mockReturnValue(false);
 });
 afterEach(() => jest.restoreAllMocks());
+
+it.each([false, true])(
+  're-quotes an edited gas limit without retaining the original gas alias (legacy %s)',
+  async (legacy) => {
+    mockQuery.tx.gas = '0x5208';
+    if (legacy) mockQuery.tx.gasPrice = '0x77359400';
+    const invoke = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path, args) => {
+      if (path[1] === 'reviewDappEvmFee') normalizeDappTransaction(args[0]);
+      return invoke(path, args);
+    });
+    await prepare();
+    act(() =>
+      mockEditHandlers.fee!({
+        isCustom: true,
+        gasLimit: 30000,
+        gasPrice: legacy ? 3 : 0,
+        maxFeePerGas: legacy ? 0 : 3,
+        maxPriorityFeePerGas: legacy ? 0 : 1,
+      })
+    );
+    await waitFor(() =>
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'buttons.confirm',
+          }) as HTMLButtonElement
+        ).disabled
+      ).toBe(false)
+    );
+    const review = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'reviewDappEvmFee'
+    )![1][0];
+    expect(review.gasLimit).toBe('0x7530');
+    expect(review).not.toHaveProperty('gas');
+    expect(mockQuery.tx.gas).toBe('0x5208');
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(false);
+    await act(async () => mockButtonHandlers['buttons.confirm']());
+    const sent = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'sendAndSaveEthTransaction'
+    )![1];
+    expect(sent[0].gasLimit).toBe('30000');
+    expect(sent[4].genericReviewId).toBe('lifetime-fee-2');
+  }
+);
+
+it('restoring the proposed gas request discards superseded custom quotes before a new confirmation', async () => {
+  mockQuery.tx.gas = '0x5208';
+  const invoke = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation((path, args) => {
+    if (path[1] === 'reviewDappEvmFee') normalizeDappTransaction(args[0]);
+    return invoke(path, args);
+  });
+  await prepare();
+  const pending: { resolve: (value: any) => void; transaction: any }[] = [];
+  mockFee.mockImplementation(
+    (transaction) =>
+      new Promise((resolve) => pending.push({ transaction, resolve }))
+  );
+  for (const gasLimit of [30000, 40000, 0]) {
+    act(() =>
+      mockEditHandlers.fee!({
+        isCustom: gasLimit !== 0,
+        gasLimit,
+        gasPrice: 0,
+        maxFeePerGas: 3,
+        maxPriorityFeePerGas: 1,
+      })
+    );
+    await waitFor(() =>
+      expect(pending).toHaveLength(
+        gasLimit === 30000 ? 1 : gasLimit === 40000 ? 2 : 3
+      )
+    );
+  }
+  expect(pending[0].transaction.gasLimit).toBe('0x7530');
+  expect(pending[1].transaction.gasLimit).toBe('0x9c40');
+  expect(pending[0].transaction).not.toHaveProperty('gas');
+  expect(pending[1].transaction).not.toHaveProperty('gas');
+  expect(pending[2].transaction.gas).toBe('0x5208');
+  expect(pending[2].transaction).not.toHaveProperty('gasLimit');
+  const settle = (index: number) =>
+    pending[index].resolve({
+      feeDetails: { gasLimit: 21000, maxFeePerGas: 3, maxPriorityFeePerGas: 1 },
+      formTx: pending[index].transaction,
+      nonce: 0,
+      isInvalidTxData: false,
+      gasLimitError: false,
+    });
+  for (const index of [0, 1]) {
+    await act(async () => settle(index));
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(false);
+  }
+  await act(async () => settle(2));
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'buttons.confirm',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  await act(async () => mockButtonHandlers['buttons.confirm']());
+  const sent = mockEmitter.mock.calls.find(
+    ([path]) => path[1] === 'sendAndSaveEthTransaction'
+  )![1];
+  expect(sent[0].gasLimit).toBe('21000');
+  expect(sent[4].genericReviewId).toBe('lifetime-fee-4');
+});
 
 it.each(
   [undefined, 0, 7].flatMap((editedNonce) =>
