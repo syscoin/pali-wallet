@@ -14,6 +14,8 @@ const reviewErrors = {
   BLOCKED_SITE: 'This website is on a known phishing list.',
   SITE_MISMATCH: 'The requesting website does not match the app’s claimed address.',
   DELIVERY_UNCERTAIN: 'The signature was handed to WalletConnect. Delivery could not be confirmed. Check the requesting app before trying again.',
+  INVALID_TRANSACTION: 'The app sent an invalid request.',
+  TRANSACTION_UNAVAILABLE: 'This request could not be prepared.',
 } as const;
 
 const orderWarnings = {
@@ -28,10 +30,10 @@ export function NativeMessageReviewScreen({ review, controller }: {
 }) {
   const [acceptance, setAcceptance] = useState<{ revision: number; checked: boolean } | null>(null);
   const acknowledged = acceptance?.revision === review.revision && acceptance.checked;
-  const reject = () => { void controller.rejectMessage(review.id).catch(() => undefined); };
+  const reject = () => { void controller.rejectRequest(review.id).catch(() => undefined); };
   useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      void controller.rejectMessage(review.id).catch(() => undefined);
+      void controller.rejectRequest(review.id).catch(() => undefined);
       return true;
     });
     return () => subscription.remove();
@@ -43,8 +45,8 @@ export function NativeMessageReviewScreen({ review, controller }: {
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
   const perform = () => {
     const action = review.needsAccountSwitch
-      ? controller.activateMessageAccount(review.id, review.revision)
-      : controller.approveMessage(review.id, review.revision, acknowledged);
+      ? controller.activateRequestAccount(review.id, review.revision)
+      : controller.approveRequest(review.id, review.revision, acknowledged);
     void action.catch(() => undefined);
   };
 

@@ -1,3 +1,8 @@
+import {
+  selectEvmDappFees,
+  selectEvmDappGasLimit,
+} from '../shared/evmDappFeePolicy';
+import { evmCallRequest } from '../shared/evmEstimateRequest';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import store from 'state/store';
 import { INetwork, KeyringAccountType } from 'types/network';
@@ -13,9 +18,6 @@ import {
   prepareSmartAccountFeeQuote,
   type SmartAccountFeeOverrides,
 } from './smartAccount/execution';
-
-const maxBigNumber = (left: BigNumber, right: BigNumber) =>
-  left.gte(right) ? left : right;
 
 const toGweiNumber = (value: BigNumber) => Number(value.toString()) / 1e9;
 const rpcHex = (value: BigNumber) =>
@@ -207,27 +209,37 @@ export const fetchGasAndDecodeFunction = async (
       ? quantity(dataTx.gasPrice, 'dApp gasPrice')
       : null;
 
-  // Recommendations (including miner-tip suggestions) are not universal
-  // admission floors. Keep structurally valid app fees by default whenever
-  // they cover the pending base fee, and warn separately about suggestions.
-  const maxPriorityFeePerGas = dappMaxPriorityFeePerGas
-    ? dappMaxPriorityFeePerGas
-    : networkMaxPriorityFeePerGas;
-  const sufficientMaxFee = maxBigNumber(
-    baseFee || BigNumber.from(0),
-    maxPriorityFeePerGas
+  const selectedFees = selectEvmDappFees(
+    {
+      ...(dataTx.type === undefined
+        ? {}
+        : { type: Number(BigInt(dataTx.type)) as 0 | 2 }),
+      ...(dappGasPrice === null ? {} : { gasPrice: dappGasPrice.toBigInt() }),
+      ...(dappMaxFeePerGas === null
+        ? {}
+        : { maxFeePerGas: dappMaxFeePerGas.toBigInt() }),
+      ...(dappMaxPriorityFeePerGas === null
+        ? {}
+        : { maxPriorityFeePerGas: dappMaxPriorityFeePerGas.toBigInt() }),
+      hasAccessList: dataTx.accessList !== undefined,
+    },
+    {
+      gasPrice: networkGasPrice.toBigInt(),
+      maxFeePerGas: networkMaxFeePerGas.toBigInt(),
+      maxPriorityFeePerGas: networkMaxPriorityFeePerGas.toBigInt(),
+      ...(baseFee === null ? {} : { baseFeePerGas: baseFee.toBigInt() }),
+    }
   );
-  const maxFeePerGas = dappMaxFeePerGas
-    ? dappMaxFeePerGas.gte(sufficientMaxFee)
-      ? dappMaxFeePerGas
-      : maxBigNumber(networkMaxFeePerGas, sufficientMaxFee)
-    : maxBigNumber(networkMaxFeePerGas, sufficientMaxFee);
-  const requiredLegacyMinimum = baseFee || BigNumber.from(0);
-  const legacyGasPrice = dappGasPrice
-    ? dappGasPrice.gte(requiredLegacyMinimum)
-      ? dappGasPrice
-      : maxBigNumber(networkGasPrice, requiredLegacyMinimum)
-    : networkGasPrice;
+  const isLegacyTransaction = selectedFees.type === 0;
+  const legacyGasPrice = BigNumber.from(
+    selectedFees.type === 0 ? selectedFees.gasPrice : networkGasPrice
+  );
+  const maxFeePerGas = BigNumber.from(
+    selectedFees.type === 2 ? selectedFees.maxFeePerGas : legacyGasPrice
+  );
+  const maxPriorityFeePerGas = BigNumber.from(
+    selectedFees.type === 2 ? selectedFees.maxPriorityFeePerGas : legacyGasPrice
+  );
 
   const nonce =
     dataTx.nonce !== undefined
@@ -237,21 +249,6 @@ export const fetchGasAndDecodeFunction = async (
           [dataTx.from]
         )) as number);
   assertCurrentContext();
-  const isLegacyTransaction =
-    dataTx.type === '0x0' ||
-    (dataTx.type !== '0x2' &&
-      dataTx.gasPrice !== undefined &&
-      dataTx.maxFeePerGas === undefined) ||
-    (!baseFee && dataTx.type === undefined);
-  if (!isLegacyTransaction && !baseFee)
-    throw new Error('EIP-1559 fees are unavailable on this network');
-  if (
-    dappMaxPriorityFeePerGas &&
-    dappMaxFeePerGas &&
-    dappMaxPriorityFeePerGas.gt(dappMaxFeePerGas)
-  )
-    throw new Error('Invalid dApp priority fee exceeds fee cap');
-
   // Preserve the transaction type based on what dApp sent
   const formTx: {
     accessList?: ITransactionParams['accessList'];
@@ -297,21 +294,16 @@ export const fetchGasAndDecodeFunction = async (
     formTx.maxFeePerGas = maxFeePerGas;
   }
 
-  const baseTx = {
-    ...(dataTx.accessList !== undefined
-      ? { accessList: dataTx.accessList }
-      : {}),
+  const baseTx = evmCallRequest({
+    ...(dataTx.accessList === undefined
+      ? {}
+      : { accessList: dataTx.accessList }),
     from: dataTx.from,
-    to: dataTx.to,
-    value: rpcHex(formTx.value),
+    to: dataTx.to || null,
+    value: formTx.value.toString(),
     data: dataTx.data,
-    nonce: rpcHex(BigNumber.from(nonce)),
-    // Estimate gas units without injecting fee caps into the RPC's omitted-
-    // gas affordability ceiling (zkSYS otherwise may reject a feasible call
-    // against that ceiling). This is not proof of miner-fee acceptance or a
-    // full UserOp quote. Selected prices remain exact in formTx; the normal
-    // signer/AA controller checks the actual payer and maximum fees.
-  } as any;
+    nonce: String(nonce),
+  });
   // Check if dataTx.gas or dataTx.gasLimit is provided and is a valid non-zero value
   let providedValue: BigNumber | null = null;
 
@@ -380,19 +372,14 @@ export const fetchGasAndDecodeFunction = async (
   }
   assertCurrentContext();
 
-  if (
-    estimatedGasLimit.isZero() ||
-    estimatedGasLimit.gt(blockGasLimit) ||
-    (providedValue && providedValue.gt(blockGasLimit))
-  )
-    throw new Error('Invalid transaction gas limit');
-  const recommendedGasLimit = estimatedGasLimit.mul(120).add(99).div(100);
-  formTx.gasLimit =
-    providedValue && providedValue.gte(estimatedGasLimit)
-      ? providedValue
-      : recommendedGasLimit.lte(blockGasLimit)
-      ? recommendedGasLimit
-      : blockGasLimit;
+  formTx.gasLimit = BigNumber.from(
+    selectEvmDappGasLimit(
+      estimatedGasLimit.toBigInt(),
+      providedValue?.toBigInt(),
+      BigInt(expectedContext.chainId),
+      blockGasLimit.toBigInt()
+    )
+  );
 
   // Check if this is a legacy transaction
 

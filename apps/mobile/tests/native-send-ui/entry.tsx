@@ -10,6 +10,7 @@ import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { NativeConnectionsFixture } from './nativeConnectionsFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
+import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
 import { registerRootComponent } from 'expo';
 import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -369,7 +370,9 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('message-review') ? (
+      {new URLSearchParams(window.location.search).has('transaction-review') ? (
+        <NativeTransactionReviewFixture />
+      ) : new URLSearchParams(window.location.search).has('message-review') ? (
         <NativeMessageReviewFixture />
       ) : new URLSearchParams(window.location.search).has('connections') ? (
         <NativeConnectionsFixture />

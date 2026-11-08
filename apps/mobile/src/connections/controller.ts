@@ -1,4 +1,4 @@
-import { createDappMessageApproval } from '../../../../source/wallet/dappMessageApproval.ts';
+import { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import {
   isDappMessageMethod,
   readDappMessageRequest,
@@ -6,7 +6,9 @@ import {
 } from '../../../../source/shared/dappMessageRequest.ts';
 import { assertDappTypedDataValid } from '../../../../source/shared/dappTypedDataValidation.ts';
 import { getPersonalSignReview } from '../../../../source/utils/personalSignReview.ts';
-import { reviewDappMessageAdvisories } from '../../../../source/shared/dappMessageAdvisories.ts';
+import { reviewDappMessageAdvisories, reviewDappAddressAdvisories } from '../../../../source/shared/dappMessageAdvisories.ts';
+import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
+import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import { getTypedOrderReview } from '../../../../source/utils/typedOrderReview.ts';
 import { createDappSessions } from '../../../../source/wallet/dappSessions.ts';
@@ -29,6 +31,8 @@ import {
 import type {
   NativeConnectionError,
   NativeMessageReview,
+  NativeSigningReview,
+  NativeTransactionReview,
   NativeMessageReviewError,
   NativeConnectionsSnapshot,
   NativeConnectionsView,
@@ -39,6 +43,7 @@ const METHODS = Object.freeze([
   'net_version',
   'eth_accounts',
   'eth_requestAccounts',
+  'eth_sendTransaction',
   'personal_sign',
   'eth_signTypedData',
   'eth_signTypedData_v3',
@@ -51,22 +56,28 @@ type Source = {
 };
 type Engine = ReturnType<typeof createDappSessions>;
 type Connected = { id: string; session: WalletConnectSession; engine: Engine };
-type MessageApproval = ReturnType<typeof createDappMessageApproval>;
-type PendingMessage = {
+type MessageApproval = ReturnType<typeof createDappSigningApproval>;
+type TransactionRequest = Readonly<{
+  method: 'eth_sendTransaction';
+  transaction: ReturnType<typeof normalizeDappTransaction>;
+}>;
+type PrivateSigningReview =
+  | Omit<NativeMessageReview, 'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'>
+  | Omit<NativeTransactionReview, 'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'>;
+type PendingSigning = {
   id: string;
   wire: WalletConnectRequest;
   connection: Connected;
   session: WalletConnectSession;
-  request: DappMessageRequest;
+  request: DappMessageRequest | TransactionRequest;
   accountId: string;
   networkId: string;
   networkFingerprint: string;
   accountXpub: string;
   approval: MessageApproval | undefined;
-  review: Omit<
-    NativeMessageReview,
-    'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
-  >;
+  review: PrivateSigningReview;
+  prepared?: Awaited<ReturnType<NativeConnectionHost['prepareTransaction']>>;
+  broadcastHash?: string;
   sourceRevision: number;
   timer: ReturnType<typeof setTimeout>;
   busy: boolean;
@@ -121,7 +132,7 @@ export class NativeConnectionsController {
   private error: NativeConnectionError | null = null;
   private readonly connections = new Map<string, Connected>();
   private readonly proposals = new Map<number, WalletConnectProposal>();
-  private readonly messages = new Map<string, PendingMessage>();
+  private readonly requests = new Map<string, PendingSigning>();
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private snapshot: NativeConnectionsSnapshot;
@@ -144,25 +155,25 @@ export class NativeConnectionsController {
         this.perform(() => this.approve(id, accountId, networkId, revision)),
       reject: (id) => this.perform(() => this.reject(id)),
       disconnect: (id) => this.perform(() => this.disconnect(id)),
-      approveMessage: (id, revision, acknowledgeWarning) =>
+      approveRequest: (id, revision, acknowledgeWarning) =>
         this.perform(
-          () => this.approveMessage(id, revision, acknowledgeWarning),
-          { owner: this.messages.get(id) }
+          () => this.approveRequest(id, revision, acknowledgeWarning),
+          { owner: this.requests.get(id) }
         ),
-      rejectMessage: (id) =>
-        this.perform(() => this.rejectMessage(id), {
-          owner: this.messages.get(id),
+      rejectRequest: (id) =>
+        this.perform(() => this.rejectRequest(id), {
+          owner: this.requests.get(id),
         }),
-      activateMessageAccount: (id, revision) =>
-        this.perform(() => this.activateMessageAccount(id, revision), {
-          owner: this.messages.get(id),
+      activateRequestAccount: (id, revision) =>
+        this.perform(() => this.activateRequestAccount(id, revision), {
+          owner: this.requests.get(id),
         }),
       cancel: () => this.cancel(),
     });
     this.unsubscribe = options.source.subscribe(() => {
       const phase = options.source.getSnapshot().phase;
       if (phase !== 'ready' && (this.action || this.pairing)) this.cancel();
-      this.revalidateMessages();
+      this.revalidateSigningRequests();
       const previous = this.publishedScope;
       const current = this.publicScope();
       this.publishedScope = current;
@@ -313,7 +324,7 @@ export class NativeConnectionsController {
             )
           : []
       ),
-      messageReview: ready ? this.messageReview() : null,
+      signingReview: ready ? this.signingReview() : null,
       error: ready ? this.error : null,
     });
   }
@@ -501,8 +512,8 @@ export class NativeConnectionsController {
           this.connections.delete(key);
         }
     } else if (event.type === 'request-expired') {
-      for (const message of this.messages.values())
-        if (message.wire.id === event.id) this.retireMessage(message, false);
+      for (const message of this.requests.values())
+        if (message.wire.id === event.id) this.retireRequest(message, false);
     } else if (event.type === 'request')
       void this.respond(event.request).catch(() => {
         try {
@@ -512,12 +523,12 @@ export class NativeConnectionsController {
         }
       });
     else if (event.type === 'unavailable') this.unavailable();
-    this.revalidateMessages();
+    this.revalidateSigningRequests();
     this.publish();
   }
   private async perform(
     operation: () => Promise<void>,
-    messageScope?: Readonly<{ owner: PendingMessage | undefined }>
+    messageScope?: Readonly<{ owner: PendingSigning | undefined }>
   ): Promise<void> {
     let epoch = this.actionEpoch;
     try {
@@ -531,7 +542,7 @@ export class NativeConnectionsController {
         !this.disposed &&
         (!messageScope ||
           (messageScope.owner !== undefined &&
-            this.messages.get(messageScope.owner.id) === messageScope.owner))
+            this.requests.get(messageScope.owner.id) === messageScope.owner))
       ) {
         this.error =
           error instanceof ConnectionActionError
@@ -760,8 +771,8 @@ export class NativeConnectionsController {
       (value) => value.id === id
     );
     if (!connected) return;
-    for (const message of [...this.messages.values()])
-      if (message.connection === connected) void this.retireMessage(message);
+    for (const message of [...this.requests.values()])
+      if (message.connection === connected) void this.retireRequest(message);
     await connected.engine.revoke(connected.session.binding.origin, {
       allowAlreadyDisconnected: true,
     });
@@ -797,8 +808,8 @@ export class NativeConnectionsController {
       )
         failure('CONTEXT_CHANGED');
     };
-    if (isDappMessageMethod(request.method)) {
-      await this.queueMessage(request);
+    if (isDappMessageMethod(request.method) || request.method === 'eth_sendTransaction') {
+      await this.queueSigningRequest(request);
       return;
     }
     let result: unknown, error: { code: number; message: string } | undefined;
@@ -827,9 +838,9 @@ export class NativeConnectionsController {
       () => undefined
     );
   }
-  private messageReview(): NativeMessageReview | null {
-    const message = this.messages.values().next().value as
-      | PendingMessage
+  private signingReview(): NativeSigningReview | null {
+    const message = this.requests.values().next().value as
+      | PendingSigning
       | undefined;
     if (!message) return null;
     try {
@@ -845,7 +856,7 @@ export class NativeConnectionsController {
       return null;
     }
   }
-  private messageConnectionCurrent(message: PendingMessage): boolean {
+  private requestConnectionCurrent(message: PendingSigning): boolean {
     const context = this.host?.context();
     const account = context?.accounts.find(
       (entry) => entry.id === message.accountId
@@ -857,7 +868,7 @@ export class NativeConnectionsController {
       JSON.stringify(context.network) === message.networkFingerprint &&
       account?.address === message.review.address &&
       account.xpub === message.accountXpub &&
-      this.messages.get(message.id) === message &&
+      this.requests.get(message.id) === message &&
       this.connections.get(sessionKey(message.session)) ===
         message.connection &&
       message.connection.session === message.session &&
@@ -866,7 +877,7 @@ export class NativeConnectionsController {
       Date.now() < message.review.expiresAt
     );
   }
-  private captureMessageApproval(message: PendingMessage): MessageApproval {
+  private captureSigningApproval(message: PendingSigning): MessageApproval {
     const host = this.host!;
     message.sourceRevision = this.options.source.getSnapshot().revision;
     const readScope = () => {
@@ -899,7 +910,7 @@ export class NativeConnectionsController {
         };
       }
     };
-    const approval = createDappMessageApproval({
+    const approval = createDappSigningApproval({
       readScope,
       signal: this.lifetime.signal,
       subscribe: (changed) => this.options.source.subscribe(() => changed()),
@@ -908,7 +919,7 @@ export class NativeConnectionsController {
       approval.bindSigner(
         'native-connection-request',
         () =>
-          this.messageConnectionCurrent(message) &&
+          this.requestConnectionCurrent(message) &&
           message.sourceRevision === this.options.source.getSnapshot().revision
       );
       return approval;
@@ -917,28 +928,28 @@ export class NativeConnectionsController {
       throw error;
     }
   }
-  private revalidateMessages() {
-    for (const message of [...this.messages.values()]) {
+  private revalidateSigningRequests() {
+    for (const message of [...this.requests.values()]) {
       try {
-        if (!this.messageConnectionCurrent(message))
+        if (!this.requestConnectionCurrent(message))
           throw Error('Stale request');
         if (!message.switching && !message.dispatched)
           message.approval?.assertCurrent();
       } catch {
-        void this.retireMessage(message);
+        void this.retireRequest(message);
       }
     }
   }
-  private retireMessage(
-    message: PendingMessage,
+  private retireRequest(
+    message: PendingSigning,
     respond = true
   ): Promise<void> {
-    if (this.messages.get(message.id) !== message) return Promise.resolve();
-    this.messages.delete(message.id);
+    if (this.requests.get(message.id) !== message) return Promise.resolve();
+    this.requests.delete(message.id);
     message.approval?.dispose();
     clearTimeout(message.timer);
     this.publish();
-    if (!respond || message.dispatched || this.disposed || !this.transport)
+    if (!respond || message.dispatched || message.broadcastHash || this.disposed || !this.transport)
       return Promise.resolve();
     const guard = () => {
       this.check();
@@ -958,7 +969,7 @@ export class NativeConnectionsController {
       )
       .catch(() => undefined);
   }
-  private async queueMessage(wire: WalletConnectRequest) {
+  private async queueSigningRequest(wire: WalletConnectRequest) {
     const connection = this.connections.get(sessionKey(wire.session));
     const context = this.host!.context();
     const origin = wire.session.binding.origin;
@@ -999,28 +1010,34 @@ export class NativeConnectionsController {
     );
     if (!permitted) return reject(4100, 'Method or account is not authorized');
     if (
-      this.messages.size >= DAPP_REQUEST_LIMITS.pendingRequests ||
-      [...this.messages.values()].filter(
+      this.requests.size >= DAPP_REQUEST_LIMITS.pendingRequests ||
+      [...this.requests.values()].filter(
         (entry) => entry.connection === connection
       ).length >= DAPP_REQUEST_LIMITS.requestsPerOrigin
     )
       return reject(-32005, 'Too many requests');
     if (
-      [...this.messages.values()].some(
+      [...this.requests.values()].some(
         (entry) =>
           entry.wire.id === wire.id &&
           entry.session.binding.topic === wire.session.binding.topic
       )
     )
       return;
-    let request: DappMessageRequest | undefined;
+    let request: DappMessageRequest | TransactionRequest | undefined;
     try {
-      assertDappTypedDataValid(wire.method, wire.params);
-      request = readDappMessageRequest(
-        wire.method,
-        wire.params,
-        account.address
-      );
+      if (wire.method === 'eth_sendTransaction') {
+        if (!Array.isArray(wire.params) || wire.params.length !== 1) throw new Error('Invalid transaction parameters');
+        const transaction = normalizeDappTransaction(wire.params[0]);
+        if (transaction.from !== undefined && transaction.from.toLowerCase() !== account.address.toLowerCase())
+          throw new Error('Transaction signer does not match account');
+        if (transaction.chainId !== undefined && BigInt(transaction.chainId) !== BigInt(context.network.chainId))
+          throw new Error('Transaction chain does not match session');
+        request = { method: 'eth_sendTransaction', transaction: { ...transaction, from: account.address } };
+      } else {
+        assertDappTypedDataValid(wire.method, wire.params);
+        request = readDappMessageRequest(wire.method, wire.params, account.address);
+      }
     } catch {
       /* Invalid requests never become signing capabilities. */
     }
@@ -1041,7 +1058,7 @@ export class NativeConnectionsController {
       ? 'INVALID_MESSAGE'
       : null;
     const order =
-      request.method === 'personal_sign' || request.version === 'V1'
+      request.method === 'eth_sendTransaction' || request.method === 'personal_sign' || request.version === 'V1'
         ? null
         : getTypedOrderReview(request.typedData);
     const expiresAt = Math.min(
@@ -1051,8 +1068,8 @@ export class NativeConnectionsController {
     );
     if (!Number.isSafeInteger(expiresAt) || expiresAt <= Date.now())
       return reject(4001, 'Request expired');
-    const id = `message-${++this.serial}`;
-    const message: PendingMessage = {
+    const id = `request-${++this.serial}`;
+    const message: PendingSigning = {
       id,
       wire,
       connection,
@@ -1069,7 +1086,6 @@ export class NativeConnectionsController {
       dispatched: false,
       review: Object.freeze({
         id,
-        method: request.method,
         appName: wire.session.metadata.name,
         origin,
         verification: wire.verification,
@@ -1078,28 +1094,33 @@ export class NativeConnectionsController {
         networkLabel: context.networkLabel,
         chainId: String(context.network.chainId),
         expiresAt,
-        message: personal?.message ?? null,
-        typedData:
-          request.method === 'personal_sign'
-            ? null
-            : JSON.stringify(request.typedData, null, 2),
-        order: order
-          ? Object.freeze({
-              ...order,
-              warnings: Object.freeze([...order.warnings]),
-            })
-          : null,
         error,
         advisories: Object.freeze([]),
         requiresWarningAcknowledgement: false,
+        ...(request.method === 'eth_sendTransaction' ? {
+          kind: 'transaction' as const,
+          method: request.method,
+          transaction: null,
+          maximumFeeUnits: null,
+          maximumTotalUnits: null,
+          symbol: context.network.currency,
+          decimals: 18,
+          broadcastHash: null,
+        } : {
+          kind: 'message' as const,
+          method: request.method,
+          message: personal?.message ?? null,
+          typedData: request.method === 'personal_sign' ? null : JSON.stringify(request.typedData, null, 2),
+          order: order ? Object.freeze({ ...order, warnings: Object.freeze([...order.warnings]) }) : null,
+        }),
       }),
       timer: setTimeout(() => {
-        void this.retireMessage(message);
+        void this.retireRequest(message);
       }, Math.max(0, expiresAt - Date.now())),
     };
-    this.messages.set(id, message);
+    this.requests.set(id, message);
     try {
-      message.approval = this.captureMessageApproval(message);
+      message.approval = this.captureSigningApproval(message);
       this.publish();
       const site = await this.options.checkSite(origin);
       message.approval.assertCurrent();
@@ -1108,6 +1129,13 @@ export class NativeConnectionsController {
           ...message.review,
           error: 'BLOCKED_SITE',
         });
+      if (request.method === 'eth_sendTransaction') {
+        if (context.activeAccountId === account.id && !message.review.error)
+          await this.prepareTransactionReview(message);
+        message.busy = false;
+        this.publish();
+        return;
+      }
       const advisories = await reviewDappMessageAdvisories({
         method: request.method,
         typedData:
@@ -1146,19 +1174,75 @@ export class NativeConnectionsController {
       message.busy = false;
       this.publish();
     } catch {
-      await this.retireMessage(message);
+      if (message.request.method === 'eth_sendTransaction' && this.requestConnectionCurrent(message)) {
+        message.prepared = undefined;
+        message.busy = false;
+        message.review = Object.freeze({ ...message.review, error: 'TRANSACTION_UNAVAILABLE' });
+        this.publish();
+        return;
+      }
+      await this.retireRequest(message);
     }
   }
-  private async approveMessage(
+  private async prepareTransactionReview(message: PendingSigning) {
+    if (message.request.method !== 'eth_sendTransaction' || message.review.kind !== 'transaction')
+      throw new Error('Invalid transaction request');
+    const approval = message.approval;
+    if (!approval) throw new Error('Missing request approval');
+    approval.assertCurrent();
+    const prepared = await this.host!.prepareTransaction({
+      accountId: message.accountId,
+      networkId: message.networkId,
+      transaction: message.request.transaction,
+      approval,
+    }, approval.assertCurrent);
+    approval.assertCurrent();
+    const remaining = prepared.expiresAtMonotonicMilliseconds - Math.floor(performance.now());
+    if (remaining <= 0) throw new Error('Transaction fee review expired');
+    const advisories = await reviewDappAddressAdvisories({
+      targets: getBlacklistTargetsForEvmCall({
+        data: prepared.transaction.data,
+        to: prepared.transaction.to ?? undefined,
+      }).map(({ address, type, method }) => ({ address, field: method ?? type })),
+      checkAddress: this.options.checkAddress,
+      assertCurrent: approval.assertCurrent,
+      onWarning: (warning) => {
+        message.review = Object.freeze({
+          ...message.review,
+          advisories: Object.freeze([warning]),
+          requiresWarningAcknowledgement: true,
+        });
+        this.publish();
+      },
+    });
+    approval.assertCurrent();
+    if (prepared.expiresAtMonotonicMilliseconds <= Math.floor(performance.now()))
+      throw new Error('Transaction fee review expired');
+    const expiresAt = Math.min(message.review.expiresAt,
+      Date.now() + Math.max(0, prepared.expiresAtMonotonicMilliseconds - Math.floor(performance.now())));
+    message.prepared = prepared;
+    message.review = Object.freeze({
+      ...message.review,
+      transaction: prepared.transaction,
+      maximumFeeUnits: prepared.maximumFeeUnits,
+      maximumTotalUnits: prepared.maximumTotalUnits,
+      expiresAt,
+      advisories: Object.freeze(advisories.addresses),
+      requiresWarningAcknowledgement: Boolean(advisories.warning),
+    });
+    clearTimeout(message.timer);
+    message.timer = setTimeout(() => { void this.retireRequest(message); }, Math.max(0, expiresAt - Date.now()));
+  }
+  private async approveRequest(
     id: string,
     revision: number,
     acknowledgeWarning: boolean
   ) {
-    const message = this.messages.get(id);
+    const message = this.requests.get(id);
     if (
       !message ||
       revision !== this.revision ||
-      this.messages.values().next().value !== message
+      this.requests.values().next().value !== message
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -1176,30 +1260,41 @@ export class NativeConnectionsController {
     message.busy = true;
     this.publish();
     try {
-      const signature = await this.host!.signMessage({
-        accountId: message.accountId,
-        networkId: message.networkId,
-        request: message.request,
-        approval,
-      });
+      let result: string;
+      if (message.request.method === 'eth_sendTransaction') {
+        if (!message.prepared) return failure('REQUEST_EXPIRED');
+        result = await message.prepared.submit(approval.assertCurrent, (hash) => {
+          message.broadcastHash = hash;
+          if (message.review.kind === 'transaction')
+            message.review = Object.freeze({ ...message.review, broadcastHash: hash });
+          this.publish();
+        });
+      } else {
+        result = await this.host!.signMessage({
+          accountId: message.accountId,
+          networkId: message.networkId,
+          request: message.request,
+          approval,
+        });
+      }
       approval.assertCurrent();
       await this.transport!.respond(
         message.session.binding,
         message.wire.id,
-        { result: signature },
+        { result },
         approval.assertCurrent,
         () => {
           message.dispatched = true;
           queueMicrotask(() => {
-            if (this.messages.get(message.id) === message) this.publish();
+            if (this.requests.get(message.id) === message) this.publish();
           });
         }
       );
-      await this.retireMessage(message, false);
+      await this.retireRequest(message, false);
     } catch (error) {
-      if (message.dispatched) {
+      if (message.dispatched || message.broadcastHash) {
         approval.dispose();
-        if (this.messages.get(message.id) === message) {
+        if (this.requests.get(message.id) === message) {
           message.busy = false;
           message.review = Object.freeze({
             ...message.review,
@@ -1209,23 +1304,23 @@ export class NativeConnectionsController {
         }
         return failure('DELIVERY_UNCERTAIN');
       }
-      await this.retireMessage(message);
+      await this.retireRequest(message);
       throw error;
     }
   }
-  private rejectMessage(id: string): Promise<void> {
-    const message = this.messages.get(id);
+  private rejectRequest(id: string): Promise<void> {
+    const message = this.requests.get(id);
     if (!message) return Promise.resolve();
     if (message.dispatched && this.error === 'DELIVERY_UNCERTAIN')
       this.error = null;
-    return this.retireMessage(message);
+    return this.retireRequest(message);
   }
-  private async activateMessageAccount(id: string, revision: number) {
-    const message = this.messages.get(id);
+  private async activateRequestAccount(id: string, revision: number) {
+    const message = this.requests.get(id);
     if (
       !message ||
       revision !== this.revision ||
-      this.messages.values().next().value !== message
+      this.requests.values().next().value !== message
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -1235,7 +1330,7 @@ export class NativeConnectionsController {
     const guard = () => {
       this.check();
       if (
-        !this.messageConnectionCurrent(message) ||
+        !this.requestConnectionCurrent(message) ||
         message.connection.engine.get(message.session.binding.origin) !== grant
       )
         failure('CONTEXT_CHANGED');
@@ -1245,14 +1340,16 @@ export class NativeConnectionsController {
     message.approval?.dispose();
     this.publish();
     try {
-      await this.host!.activateMessageAccount(message.accountId, guard);
+      await this.host!.activateRequestAccount(message.accountId, guard);
       guard();
-      message.approval = this.captureMessageApproval(message);
+      message.approval = this.captureSigningApproval(message);
       message.switching = false;
+      if (message.request.method === 'eth_sendTransaction')
+        await this.prepareTransactionReview(message);
       message.busy = false;
       this.publish();
     } catch (error) {
-      await this.retireMessage(message);
+      await this.retireRequest(message);
       throw error;
     }
   }
@@ -1287,8 +1384,8 @@ export class NativeConnectionsController {
   }
   async dispose(): Promise<void> {
     if (this.closing) return this.closing;
-    for (const message of [...this.messages.values()])
-      this.retireMessage(message, false);
+    for (const message of [...this.requests.values()])
+      this.retireRequest(message, false);
     this.disposed = true;
     this.lifetime.abort();
     this.action?.abort();

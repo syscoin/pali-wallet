@@ -71,6 +71,26 @@ export async function reviewDappMessageAdvisories({
   for (const field of ['to', 'recipient', 'operator', 'approved', 'delegate'])
     add(field, message[field]);
 
+  return reviewDappAddressAdvisories({
+    targets,
+    checkAddress,
+    assertCurrent,
+    onWarning,
+  });
+}
+
+export async function reviewDappAddressAdvisories({
+  targets,
+  checkAddress,
+  assertCurrent,
+  onWarning,
+}: {
+  assertCurrent: () => void;
+  checkAddress: (address: string) => Promise<IBlacklistCheckResult>;
+  onWarning: (warning: DappAddressAdvisory) => void;
+  targets: readonly Readonly<{ address: string; field: string }>[];
+}): Promise<DappMessageAdvisories> {
+  assertCurrent();
   const addresses: DappAddressAdvisory[] = [];
   let warning: DappAddressAdvisory | undefined;
   for (const target of targets) {

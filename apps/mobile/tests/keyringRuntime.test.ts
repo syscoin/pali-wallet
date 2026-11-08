@@ -18,7 +18,7 @@ import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
 import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import type { DappGrant } from '../../../source/shared/dappTypes.ts';
-import { createDappMessageApproval } from '../../../source/wallet/dappMessageApproval.ts';
+import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import { recoverPersonalSignature, recoverTypedSignature, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
@@ -29,7 +29,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void) {
+function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActive?: () => void, connectionFetch?: KeyringRuntimeDependencies['connectionFetch']) {
   const records = new Map<string, unknown>();
   let confirmation: string | undefined;
   let failures = 0;
@@ -150,7 +150,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   }); };
   const factory = createKeyringRuntimeFactory({ readEvmRetirement: null, ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
-  }, openStorage: open, loadSdk, assertActive });
+  }, openStorage: open, loadSdk, assertActive, connectionFetch });
   return {
     clearFixtureIdentity() { identity = null; }, fixtureIdentity: () => identity,
     records, factory, signedBundles, signedValue: () => [...signedBundles.values()][0],
@@ -502,8 +502,8 @@ test('lost catalogue acknowledgement quarantines authority but close and fresh-r
 });
 
 
-async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
-  const disk = memoryDisk(loadSdk); disk.denyNetwork();
+async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk'], connectionFetch?: KeyringRuntimeDependencies['connectionFetch']) {
+  const disk = memoryDisk(loadSdk, undefined, connectionFetch); disk.denyNetwork();
   let runtime!: KeyringRuntime;
   const authority = new NativeCustodyAuthority({ async open() { runtime = await disk.factory.open() as KeyringRuntime; return runtime; } });
   await authority.initialize();
@@ -531,7 +531,7 @@ function approveRuntimeMessage(
     date: 1,
     host: 'https://approved-message.example',
   };
-  const approval = createDappMessageApproval({
+  const approval = createDappSigningApproval({
     readScope: () => {
       const context = host.context();
       const account = context.accounts.find((value) => value.id === accountId);
@@ -633,7 +633,7 @@ test('message signing requires an explicit account switch and a new approval aft
     await assert.rejects(host.signMessage(old), /INVALID_INPUT/);
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
     const generation = host.sessionGeneration();
-    await host.activateMessageAccount('hd:60:0', () => undefined);
+    await host.activateRequestAccount('hd:60:0', () => undefined);
     assert(host.sessionGeneration() > generation);
     assert.throws(old.approval.assertCurrent);
     assert.throws(() => host.signMessage(old), { code: 4001 });
@@ -2408,4 +2408,75 @@ test('two real submissions remain in local Activity after offline cold reopen', 
     assert.equal(after.locals.length,2);
     assert(!JSON.stringify(after).includes(network.broadcasts[0]!));
   } finally {transfers.dispose();await reopened?.dispose();await f.authority.dispose().catch(()=>undefined);f.disk.restoreNetwork();}
+});
+
+
+test('connection transactions use real SDK signing and durable shared submission for calls, creation and nonce queueing', async () => {
+  const { inspectEvmSignedBundle } = await import('../../../source/wallet/evmSignedRecords.ts');
+  const { evmSubmissionFailure } = await import('@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js');
+  const submitted: string[] = [];
+  const reported: string[] = [];
+  let loseResponse = false, pendingNonce = '0x0';
+  let f!: Awaited<ReturnType<typeof readyAccounts>>;
+  const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async (_url, init) => {
+    const { id, method, params } = JSON.parse(String(init?.body));
+    let result: unknown;
+    if (method === 'eth_chainId') result = '0x1';
+    else if (method === 'eth_getTransactionCount') result = params[1] === 'pending' ? pendingNonce : '0x0';
+    else if (method === 'eth_getBalance') result = '0x10000000000000000';
+    else if (method === 'eth_getBlockByNumber') result = { number: params[0] === 'latest' ? '0x10' : params[0], hash: `0x${'aa'.repeat(32)}`, gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+    else if (method === 'eth_gasPrice' || method === 'eth_maxPriorityFeePerGas') result = '0x2';
+    else if (method === 'eth_estimateGas') result = '0x10000';
+    else if (method === 'eth_getTransactionByHash') {
+      const raw = submitted.find(value => keccak256(value) === params[0]);
+      const tx = raw && Transaction.from(raw);
+      result = tx ? { hash: tx.hash, from: tx.from, nonce: `0x${tx.nonce.toString(16)}`, blockHash: null, blockNumber: null, transactionIndex: null } : null;
+    } else if (method === 'eth_sendRawTransaction') {
+      const raw = params[0] as string, hash = keccak256(raw);
+      assert.equal(reported.at(-1), hash, 'controller learns irreversible dispatch before POST');
+      const identity = f.disk.fixtureIdentity()!;
+      assert(identity.root);
+      assert.equal(inspectEvmSignedBundle(f.disk.signedValue()!, identity.root.profileId).transactions, submitted.length + 1);
+      assert.equal(f.disk.signedValue()!.includes(raw), false, 'the shared journal encrypts raw transaction bytes');
+      submitted.push(raw);
+      if (loseResponse) throw new Error('lost response after POST');
+      result = hash;
+    } else throw new Error(`Unexpected method ${method}`);
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { headers: { 'content-type': 'application/json' } });
+  };
+  f = await readyAccounts(undefined, fetch);
+  try {
+    const host = await f.runtime.openConnectionHost();
+    const submit = async (transaction: object) => {
+      const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
+      const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
+      try {
+        const review = await host.prepareTransaction({ ...scope, transaction }, () => undefined);
+        const hash = await review.submit(() => undefined, value => { reported.push(value); });
+        await assert.rejects(review.submit(() => undefined, () => undefined), /REVIEW_REQUIRED/);
+        return hash;
+      } finally { scope.approval.dispose(); }
+    };
+    await submit({ from: ADDRESS, to: `0x${'22'.repeat(20)}`, data: '0x6000' });
+    await submit({ from: ADDRESS, to: null, data: '0x60006000', accessList: [{ address: `0x${'33'.repeat(20)}`, storageKeys: [`0x${'44'.repeat(32)}`] }] });
+    assert.deepEqual(submitted.map(raw => Transaction.from(raw).nonce), [0, 1], 'shared acknowledgement advances the automatic nonce despite a lagging RPC');
+    assert.equal(Transaction.from(submitted[1]!).to, null);
+    assert.equal(Transaction.from(submitted[1]!).accessList?.[0]?.storageKeys[0], `0x${'44'.repeat(32)}`);
+    const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
+    const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
+    const revoked = await host.prepareTransaction({ ...scope, transaction: { from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' } }, () => undefined);
+    f.authority.lock();
+    await assert.rejects(revoked.submit(() => undefined, () => assert.fail('Revoked review cannot dispatch')));
+    assert.equal(submitted.length, 2);
+    scope.approval.dispose();
+    await f.authority.unlock(PASSWORD);
+    loseResponse = true; pendingNonce = '0x6';
+    await assert.rejects(submit({ from: ADDRESS, to: `0x${'55'.repeat(20)}`, nonce: '0x4', data: '0x6000' }), error => {
+      const failure = evmSubmissionFailure(error);
+      assert.equal(failure.transactionNotBroadcast, false);
+      assert.equal(failure.signedTransactionHash, keccak256(submitted[2]!));
+      return true;
+    });
+    assert.deepEqual(submitted.map(raw => Transaction.from(raw).nonce), [0, 1, 4]);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });

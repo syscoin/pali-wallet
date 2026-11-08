@@ -6,6 +6,7 @@ import { Text } from '../../src/ui';
 const query = new URLSearchParams(window.location.search);
 const warning = query.has('warning');
 const initialReview: NativeMessageReview = {
+  kind: 'message',
   id: 'message-1',
   revision: 7,
   method: query.has('typed') ? 'eth_signTypedData_v4' : 'personal_sign',
@@ -54,17 +55,17 @@ export function NativeMessageReviewFixture() {
     async reject() { throw new Error('Pairing is outside this fixture'); },
     async disconnect() { throw new Error('Connections are outside this fixture'); },
     cancel() { throw new Error('Connections are outside this fixture'); },
-    async activateMessageAccount(...args) {
-      calls.push({ method: 'activateMessageAccount', args });
+    async activateRequestAccount(...args) {
+      calls.push({ method: 'activateRequestAccount', args });
       setReview((current) => current && { ...current, revision: current.revision + 1, needsAccountSwitch: false });
     },
-    async approveMessage(...args) {
-      calls.push({ method: 'approveMessage', args });
+    async approveRequest(...args) {
+      calls.push({ method: 'approveRequest', args });
       if (query.has('pending')) setReview((current) => current && { ...current, busy: true, dispatched: query.has('dispatched') });
       else setReview(null);
     },
-    async rejectMessage(...args) {
-      calls.push({ method: 'rejectMessage', args });
+    async rejectRequest(...args) {
+      calls.push({ method: 'rejectRequest', args });
       setReview(null);
     },
   };

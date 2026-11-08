@@ -12,7 +12,7 @@ test('shows complete typed data and reachable signing controls on a narrow large
   await page.getByRole('button', { name: 'Sign typed data', exact: true }).click();
   await expect(page.getByText('Request completed')).toBeVisible();
   expect(await page.evaluate(() => window.__nativeMessageReviewFixture.calls()))
-    .toEqual([{ method: 'approveMessage', args: ['message-1', 7, false] }]);
+    .toEqual([{ method: 'approveRequest', args: ['message-1', 7, false] }]);
 });
 
 test('keeps invalid requests blocked and rejection available', async ({ page }) => {
@@ -21,7 +21,7 @@ test('keeps invalid requests blocked and rejection available', async ({ page }) 
   await expect(page.getByText('The app is asking for a signature from a different account.')).toBeVisible();
   await page.getByRole('button', { name: 'Reject', exact: true }).click();
   expect(await page.evaluate(() => window.__nativeMessageReviewFixture.calls()))
-    .toEqual([{ method: 'rejectMessage', args: ['message-1'] }]);
+    .toEqual([{ method: 'rejectRequest', args: ['message-1'] }]);
 });
 
 test('switches the requested account before offering a separate signing action', async ({ page }) => {
@@ -30,12 +30,12 @@ test('switches the requested account before offering a separate signing action',
   await page.getByRole('button', { name: 'Switch account', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Sign message', exact: true })).toBeEnabled();
   expect(await page.evaluate(() => window.__nativeMessageReviewFixture.calls()))
-    .toEqual([{ method: 'activateMessageAccount', args: ['message-1', 7] }]);
+    .toEqual([{ method: 'activateRequestAccount', args: ['message-1', 7] }]);
   await page.getByRole('button', { name: 'Sign message', exact: true }).click();
   expect(await page.evaluate(() => window.__nativeMessageReviewFixture.calls()))
     .toEqual([
-      { method: 'activateMessageAccount', args: ['message-1', 7] },
-      { method: 'approveMessage', args: ['message-1', 8, false] },
+      { method: 'activateRequestAccount', args: ['message-1', 7] },
+      { method: 'approveRequest', args: ['message-1', 8, false] },
     ]);
 });
 
@@ -53,7 +53,7 @@ test('requires fresh warning acknowledgement after the review changes', async ({
   await acknowledgement.click();
   await sign.click();
   expect(await page.evaluate(() => window.__nativeMessageReviewFixture.calls()))
-    .toEqual([{ method: 'approveMessage', args: ['message-1', 8, true] }]);
+    .toEqual([{ method: 'approveRequest', args: ['message-1', 8, true] }]);
 });
 
 test('keeps rejection available while signing is pending', async ({ page }) => {

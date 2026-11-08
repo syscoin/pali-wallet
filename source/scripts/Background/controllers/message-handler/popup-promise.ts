@@ -12,7 +12,7 @@ import {
 import {
   bindMessageSignApproval,
   captureMessageSignApproval,
-  messageSignApprovalExpired,
+  dappSigningApprovalExpired,
 } from '../../handlers/messageSignApproval';
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
@@ -571,7 +571,7 @@ const openApprovalPopup = async (
         submissionStarted
           ? cancellationError()
           : messageSignApproval
-          ? messageSignApprovalExpired()
+          ? dappSigningApprovalExpired()
           : requestCancelledError()
       );
     };

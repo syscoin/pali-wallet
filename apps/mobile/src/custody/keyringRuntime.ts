@@ -1,3 +1,8 @@
+import { prepareNativeConnectionTransaction } from '../connections/transactionRuntime.ts';
+import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
+import { walletFetch } from '../platform/http.ts';
+import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
+import { serializePreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import type { NativeConnectionHost } from '../connections/host.ts';
 import { matchesDappMessageRequest, readDappMessageRequest } from '../../../../source/shared/dappMessageRequest.ts';
 import { openNativeConnectionRepository, type NativeConnectionRepository } from '../connections/storage.ts';
@@ -37,7 +42,7 @@ import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { NativeTransferError, type NativeTransferDispatchValidation, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
-import { assertSpeedUpEnvelope } from './transferRpc.ts';
+import { NativeTransferRpc, assertSpeedUpEnvelope } from './transferRpc.ts';
 import { snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry, snapshotSavedCollectible } from '../portfolio/tokenRegistry.ts';
@@ -72,6 +77,7 @@ export class KeyringRuntimeError extends CustodyRuntimeError {
 
 export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
+  connectionFetch?: typeof walletFetch;
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
   assertActive?: () => void;
@@ -1223,7 +1229,7 @@ export function createKeyringRuntimeFactory(
                 assertOwner();
                 return generation;
               },
-              async activateMessageAccount(accountId, assertRequestCurrent) {
+              async activateRequestAccount(accountId, assertRequestCurrent) {
                 assertOwner();
                 checkGuard(assertRequestCurrent);
                 if (!keyring.isUnlocked() || !catalogueSnapshot)
@@ -1233,6 +1239,69 @@ export function createKeyringRuntimeFactory(
                   catalogueSnapshot.revision
                 );
                 await selection.execute(assertRequestCurrent);
+              },
+              async prepareTransaction(input, assertRequestCurrent) {
+                assertOwner(); checkGuard(assertRequestCurrent);
+                const snapshot = catalogueSnapshot, ring = keyring, captured = generation, approval = input.approval;
+                if (!ring.isUnlocked() || !snapshot || active || reserved) throw new KeyringRuntimeError('NOT_READY');
+                const selected = snapshot.accounts.find(account => account.id === snapshot.active.accountId);
+                if (!selected || selected.id !== input.accountId || selected.slip44 !== 60 ||
+                    snapshot.active.networkId !== input.networkId) throw new KeyringRuntimeError('INVALID_INPUT');
+                const account = state.accounts[selected.type][selected.index];
+                const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+                const isCurrent = () => !closed && generation === captured && keyring === ring && ring.isUnlocked() &&
+                  catalogueSnapshot === snapshot && state.activeAccount.id === selected.index &&
+                  state.activeAccount.type === selected.type && state.accounts[selected.type][selected.index] === account &&
+                  account?.address === selected.address && state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
+                  state.activeNetwork.chainId === Number(network.chainId) && state.activeNetwork.url === network.rpcUrl;
+                approval.bindSigner('native-software-transaction', isCurrent);
+                const check = () => {
+                  current(captured); assertOwner(); checkGuard(approval.assertCurrent); checkGuard(assertRequestCurrent);
+                  if (!isCurrent()) throw new KeyringRuntimeError('CANCELLED');
+                };
+                check();
+                const normalized = normalizeDappTransaction(input.transaction);
+                if (normalized.from !== undefined && normalized.from.toLowerCase() !== selected.address.toLowerCase())
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                const fetch = dependencies.connectionFetch ?? walletFetch;
+                const rpc = new EvmTransferReadRpc(network, { fetch });
+                const sender = new NativeTransferRpc({ registration: network, fetch });
+                const planner = createNativeAutomaticNoncePlanner(signedRecords, { keyring: ring, assertCurrent: check },
+                  network.chainId, selected.address, network.rpcUrl);
+                return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
+                  network, rpc, signal: approval.signal, planner, assertCurrent: check,
+                  sign(transaction, assertSigningCurrent) {
+                    return run(async (ownerGeneration) => {
+                      const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
+                      guard();
+                      const signed = ring.signPreparedEvmTransaction({
+                        account: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                        network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
+                        transaction,
+                      }, { assertCurrent: guard });
+                      guard();
+                      return Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash });
+                    });
+                  },
+                  submit(transaction, signed, assertSubmittingCurrent, verifyDispatch, onBroadcast) {
+                    if (active || reserved) return Promise.reject(new KeyringRuntimeError('BUSY'));
+                    const guard = () => { check(); checkGuard(assertSubmittingCurrent); };
+                    guard();
+                    const context: EvmSubmissionContext = {
+                      account: { id: selected.index, type: selected.type, address: selected.address },
+                      network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl },
+                      operation: 'send',
+                    };
+                    const boundary = sdk.captureEvmSubmission(context, guard, () =>
+                      captureSignedSubmission(context, guard, undefined, undefined, verifyDispatch));
+                    const work = sdk.submitSignedEvmTransaction<string>(signed.rawTransaction, ({ rawTransaction, admit }) =>
+                      sender.broadcastDapp(rawTransaction, signed.hash, transaction, approval.signal, admit, guard, onBroadcast),
+                    boundary, undefined, serializePreparedEvmTransaction(transaction));
+                    const pending = work.finally(() => { pendingSubmissions.delete(pending); });
+                    pendingSubmissions.add(pending);
+                    return pending;
+                  },
+                });
               },
               signMessage(input) {
                 assertOwner();

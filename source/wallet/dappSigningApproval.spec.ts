@@ -1,9 +1,9 @@
 import { INetworkType, KeyringAccountType } from '../types/network';
 
 import {
-  createDappMessageApproval,
-  type DappMessageScope,
-} from './dappMessageApproval';
+  createDappSigningApproval,
+  type DappSigningScope,
+} from './dappSigningApproval';
 
 function fixture() {
   const grant = {
@@ -14,7 +14,7 @@ function fixture() {
     date: 1,
     host: 'https://dapp.invalid',
   };
-  let scope: DappMessageScope = {
+  let scope: DappSigningScope = {
     grant,
     account: { id: 0, type: 'HDAccount', address: '0x01', xpub: 'public' },
     network: {
@@ -27,7 +27,7 @@ function fixture() {
     sessionGeneration: 1,
   };
   const listeners = new Set<() => void>();
-  const approval = createDappMessageApproval({
+  const approval = createDappSigningApproval({
     readScope: () => scope,
     subscribe: (listener) => {
       listeners.add(listener);
@@ -42,7 +42,7 @@ function fixture() {
     get scope() {
       return scope;
     },
-    change(next: DappMessageScope) {
+    change(next: DappSigningScope) {
       scope = next;
       for (const listener of listeners) listener();
     },

@@ -2,7 +2,7 @@ import { createDappApprovalLifetime } from '../utils/dappApprovalLifetime.ts';
 
 import type { DappGrant } from '../shared/dappTypes.ts';
 
-export type DappMessageScope = Readonly<{
+export type DappSigningScope = Readonly<{
   account: Readonly<{
     address?: string;
     id: number;
@@ -20,19 +20,19 @@ export type DappMessageScope = Readonly<{
   sessionGeneration: number;
 }>;
 
-export const messageSignApprovalExpired = () =>
+export const dappSigningApprovalExpired = () =>
   Object.assign(
     new Error('This site approval is no longer current. Request it again.'),
     { code: 4001 }
   );
 
-/** One irreversible approval lifetime for both personal messages and typed data. */
-export function createDappMessageApproval({
+/** One irreversible account, network and session approval for dapp signing. */
+export function createDappSigningApproval({
   readScope,
   subscribe,
   signal,
 }: {
-  readScope: () => DappMessageScope;
+  readScope: () => DappSigningScope;
   signal?: AbortSignal;
   subscribe: (changed: () => void) => () => void;
 }) {
@@ -66,7 +66,7 @@ export function createDappMessageApproval({
     );
   }, signal);
   const assertCurrent = () => {
-    if (!lifetime.isCurrent()) throw messageSignApprovalExpired();
+    if (!lifetime.isCurrent()) throw dappSigningApprovalExpired();
   };
   assertCurrent();
   const unsubscribe = subscribe(lifetime.isCurrent);

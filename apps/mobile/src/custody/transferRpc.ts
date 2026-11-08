@@ -1,3 +1,4 @@
+import { serializePreparedEvmTransaction, type PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit, EVM_CANCELLATION_GAS_LIMIT } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { AdmitEvmSignedDispatch } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
@@ -698,6 +699,43 @@ export class NativeTransferRpc {
       }
     });
   }
+  /** Dapp calldata uses the same bounded transport and durable SDK admission. */
+  broadcastDapp(rawTransaction: string, expectedHash: string, transaction: PreparedEvmTransaction,
+    signal: AbortSignal, admit: AdmitEvmSignedDispatch<string>, assertCurrent: () => void,
+    onBroadcast: (hash: string) => void): Promise<string> {
+    const hash = checkedHash(expectedHash);
+    if (typeof admit !== 'function' || typeof onBroadcast !== 'function')
+      return Promise.reject(new NativeTransferRpcError('REVIEW_REQUIRED'));
+    if (typeof rawTransaction !== 'string' || rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2 ||
+        !/^0x(?:[0-9a-f]{2})+$/.test(rawTransaction))
+      return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
+    try {
+      const signed = Transaction.from(rawTransaction);
+      if (!signed.isSigned() || signed.serialized !== rawTransaction || signed.hash !== hash ||
+          signed.chainId !== BigInt(this.context.chainId) || signed.from?.toLowerCase() !== transaction.from.toLowerCase() ||
+          signed.unsignedSerialized !== serializePreparedEvmTransaction(transaction)) return invalid();
+    } catch { return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE')); }
+    return this.operation(signal, async (local) => {
+      let dispatched = false;
+      const check = () => { if (local.aborted) throw new NativeTransferRpcError('CANCELLED'); guardedRead(assertCurrent); };
+      try {
+        return await admit(() => {
+          check();
+          if (dispatched) throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          dispatched = true;
+          guardedRead(() => onBroadcast(hash));
+          return this.call('eth_sendRawTransaction', [rawTransaction], local).then((value) => {
+            if (checkedHash(value) !== hash) return invalid();
+            return hash;
+          });
+        }, async () => { check(); await this.checkChain(local); check(); });
+      } catch (error) {
+        if (!dispatched) throw new PreDispatchRejection(error);
+        throw error;
+      }
+    });
+  }
+
   receipt(
     expected: Readonly<{
       hash: string;

@@ -50,7 +50,8 @@ import { RealTools } from './RealTools';
 import { NativeConnections } from './NativeConnections';
 import type { NativePairingEntry } from '../connections/pairingLinks';
 import { NativeMessageReviewScreen } from './NativeMessageReview';
-import type { NativeConnectionsSnapshot, NativeMessageReview } from '../connections/types';
+import { NativeTransactionReviewScreen } from './NativeTransactionReview';
+import type { NativeConnectionsSnapshot, NativeSigningReview } from '../connections/types';
 import { RealSettings } from './RealSettings';
 import { useRealShell } from './useRealShell';
 
@@ -121,7 +122,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
   const [connectionView, setConnectionView] = useState<Controllers['connections'] | null>(null);
   const [connectionSnapshot, setConnectionSnapshot] = useState<NativeConnectionsSnapshot | null>(null);
-  const [messageReview, setMessageReview] = useState<NativeMessageReview | null>(null);
+  const [signingReview, setSigningReview] = useState<NativeSigningReview | null>(null);
   const [scanIntentExpiresAt, setScanIntentExpiresAt] = useState<number | null>(null);
   const scanStarted = useCallback(() => setScanIntentExpiresAt((previous) => previous && previous > Date.now() ? previous : Date.now() + 5 * 60_000), []);
   const scanFinished = useCallback(() => setScanIntentExpiresAt(null), []);
@@ -238,7 +239,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     if (AppState.currentState !== 'active' || !protectedScreen || busy ||
         snapshot.phase !== 'ready' || stage !== 'choose' || shell.immersive ||
         !connectionView || connectionSnapshot?.status !== 'ready' ||
-        connectionSnapshot.proposals.length || messageReview) return;
+        connectionSnapshot.proposals.length || signingReview) return;
     const current = readyContext();
     if (!current) return;
     const capturedEpoch = epoch.current;
@@ -249,13 +250,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       const scanCurrent = scanIntentExpiresAt !== null && scanIntentExpiresAt > Date.now();
       if ((!linkCurrent && !scanCurrent) || !active || !mounted.current || rootOrigin.current || epoch.current !== capturedEpoch ||
           AppState.currentState !== 'active' || readyContext()?.context !== current.context ||
-          connections.status !== 'ready' || connections.proposals.length || connections.messageReview) return;
+          connections.status !== 'ready' || connections.proposals.length || connections.signingReview) return;
       rootOrigin.current = { tab: shell.tab, stage: 'connections', ...current, epoch: capturedEpoch };
       setStage('connections');
     });
     return () => { active = false; };
   }, [incomingPairing, onPairingHandled, protectedScreen, busy, snapshot.phase, snapshot.revision, stage,
-    shell.immersive, connectionView, connectionSnapshot, messageReview, scanIntentExpiresAt, readyContext, shell.tab]);
+    shell.immersive, connectionView, connectionSnapshot, signingReview, scanIntentExpiresAt, readyContext, shell.tab]);
   const closeStage = () => {
     const origin = rootOrigin.current; rootOrigin.current = null;
     const current = readyContext();
@@ -301,7 +302,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' ? 'choose' : current);
     }
     setCanRemoveWallet(false);
-    setPublicSource(null); setBalanceReader(null); setAccountView(null); setConnectionView(null); setConnectionSnapshot(null); setMessageReview(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setAccountView(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -346,7 +347,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       if (mounted.current && controllers.current === local) {
         const next = local.connections.getSnapshot();
         setConnectionSnapshot(next);
-        setMessageReview(next.messageReview);
+        setSigningReview(next.signingReview);
       }
     };
     const unsubscribeMessages = local.connections.subscribe(updateMessage);
@@ -567,8 +568,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     revoke();
     bridge.current?.onSelectWatch(selection);
   };
-  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && messageReview && connectionView)
-    return <NativeMessageReviewScreen key={messageReview.id} review={messageReview} controller={connectionView} />;
+  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && signingReview && connectionView)
+    return signingReview.kind === 'transaction'
+      ? <NativeTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
+      : <NativeMessageReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />;
   if (stage === 'connections' && snapshot.phase === 'ready' && connectionView)
     return <NativeConnections controller={connectionView} incomingPairing={incomingPairing} onPairingHandled={onPairingHandled}
       initialScan={scanIntentExpiresAt !== null} onScanStarted={scanStarted} onScanFinished={scanFinished} onBack={() => {

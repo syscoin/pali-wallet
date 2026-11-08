@@ -197,7 +197,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
-    connections: { getSnapshot: () => ({ status: 'ready', messageReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    connections: { getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {}, async readRecoveryInventory() { return inventory; },
@@ -256,7 +256,7 @@ async function walletFeedbackFixture() {
         publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
       } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
-    connections: { getSnapshot: () => ({ status: 'ready', messageReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    connections: { getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
@@ -340,7 +340,7 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
       for (const listener of listeners) listener(state);
     };
     const connections = { id, async pair() { assert.equal(connectionClosed, false); },
-      getSnapshot: () => ({ status: 'ready', messageReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} };
+      getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} };
     const bundle = {
       connections,
       markPrepared() { prepared = true; },

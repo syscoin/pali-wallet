@@ -274,14 +274,19 @@ describe('dapp transaction fee preparation', () => {
     ).rejects.toThrow('Invalid transaction gas limit');
   });
 
-  it('keeps the exact largest supported numeric gas limit', async () => {
+  it('rejects exact numeric gas above the active protocol ceiling', async () => {
     estimatedGas = String(Number.MAX_SAFE_INTEGER);
     pendingBlock.gasLimit = estimatedGas;
-    const result = await prepare();
-    expect(result.feeDetails.gasLimit).toBe(Number.MAX_SAFE_INTEGER);
-    expect(result.formTx.gasLimit.toString()).toBe(
-      String(Number.MAX_SAFE_INTEGER)
-    );
+    await expect(prepare()).rejects.toThrow();
+  });
+
+  it('preserves the exact explicit protocol ceiling and rejects either greater bound', async () => {
+    estimatedGas = '14000000';
+    const gas = '16777216';
+    expect((await prepare({ gas })).formTx.gasLimit.toString()).toBe(gas);
+    await expect(prepare({ gas: '16777217' })).rejects.toThrow();
+    pendingBlock.gasLimit = '15000000';
+    await expect(prepare({ gas })).rejects.toThrow();
   });
 
   it('preserves exact calldata, wide values, explicit nonce and ordered duplicate access lists', async () => {
@@ -788,10 +793,10 @@ describe('dapp transaction fee preparation', () => {
     ]);
     expect(rpcCalls('eth_estimateGas')[0][1][1][0]).toMatchObject({
       from: FROM,
-      to: null,
       data,
       nonce: '0x0',
     });
+    expect(rpcCalls('eth_estimateGas')[0][1][1][0]).not.toHaveProperty('to');
   });
 
   it('rejects a requested chain mismatch before any background work', async () => {

@@ -16,7 +16,7 @@ let snapshot: NativeConnectionsSnapshot = {
   network: { id: 'ethereum', label: 'Ethereum', chainId: '1' },
   proposals: [],
   sessions: [],
-  messageReview: null,
+  signingReview: null,
   error: null,
 };
 const calls: { method: string; args: unknown[] }[] = [];
@@ -38,9 +38,9 @@ const controller: NativeConnectionsView = {
   },
   async reject(id) { calls.push({ method: 'reject', args: [id] }); publish({ ...snapshot, proposals: [] }); },
   async disconnect(id) { calls.push({ method: 'disconnect', args: [id] }); publish({ ...snapshot, sessions: [] }); },
-  async approveMessage() { throw new Error('Message signing is outside this fixture'); },
-  async rejectMessage() { throw new Error('Message signing is outside this fixture'); },
-  async activateMessageAccount() { throw new Error('Message signing is outside this fixture'); },
+  async approveRequest() { throw new Error('Message signing is outside this fixture'); },
+  async rejectRequest() { throw new Error('Message signing is outside this fixture'); },
+  async activateRequestAccount() { throw new Error('Message signing is outside this fixture'); },
   cancel() { calls.push({ method: 'cancel', args: [] }); publish({ ...snapshot, status: 'ready', proposals: [] }); },
 };
 

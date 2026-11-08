@@ -58,7 +58,7 @@ function harness(ready = false) {
   };
   let connectionSnapshot: any = {
     status: 'ready',
-    messageReview: null,
+    signingReview: null,
     proposals: [],
   };
   const cells: Cell[] = [],
@@ -283,6 +283,9 @@ function harness(ready = false) {
     './NativeMessageReview': {
       NativeMessageReviewScreen: 'NativeMessageReviewScreen',
     },
+    './NativeTransactionReview': {
+      NativeTransactionReviewScreen: 'NativeTransactionReviewScreen',
+    },
     './NativeSend': { NativeSend: 'NativeSend' },
   });
   const module = {
@@ -446,14 +449,14 @@ for (const expired of [false, true])
     });
   }
 
-test('an incoming pairing never replaces an already active message approval', async () => {
+for (const [kind, screen] of [['message', 'NativeMessageReviewScreen'], ['transaction', 'NativeTransactionReviewScreen']] as const) test(`an incoming pairing never replaces an already active ${kind} approval`, async () => {
   const f = await mounted();
   try {
-    f.connections({ messageReview: { id: 'message-1' } });
+    f.connections({ signingReview: { kind, id: `${kind}-1` } });
     f.ready();
     f.render();
-    assert.equal(f.render().type, 'NativeMessageReviewScreen');
-    f.connections({ messageReview: null });
+    assert.equal(f.render().type, screen);
+    f.connections({ signingReview: null });
     f.render();
     await settle();
     assert.equal(f.render().type, 'NativeConnections');

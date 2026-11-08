@@ -5,9 +5,9 @@ import {
   type DappMessageMethod,
 } from '../../../shared/dappMessageRequest';
 import {
-  createDappMessageApproval,
-  messageSignApprovalExpired,
-} from '../../../wallet/dappMessageApproval';
+  createDappSigningApproval,
+  dappSigningApprovalExpired,
+} from '../../../wallet/dappSigningApproval';
 import { isRequestDocumentLive } from '../controllers/message-handler/request-lifetime';
 import type { IDApp } from 'state/dapp/types';
 import store from 'state/store';
@@ -64,7 +64,7 @@ export const watchConnectedMessageSignGrant = ({
   }, signal);
   const unsubscribe = store.subscribe(lifetime.isCurrent);
   grantReplacements.set(lifetime.signal, (next) => {
-    if (!lifetime.isCurrent()) throw messageSignApprovalExpired();
+    if (!lifetime.isCurrent()) throw dappSigningApprovalExpired();
     successor = next;
   });
   return {
@@ -97,7 +97,7 @@ export const captureMessageSignApproval = ({
     !sender.documentId ||
     matchAttestedDappOrigin(sender.url, sender.origin) !== host
   )
-    throw messageSignApprovalExpired();
+    throw dappSigningApprovalExpired();
 
   const { dapp, vault } = store.getState();
   const grant = dapp.dapps[host];
@@ -111,10 +111,10 @@ export const captureMessageSignApproval = ({
     grant.accountType !== type ||
     !address
   )
-    throw messageSignApprovalExpired();
+    throw dappSigningApprovalExpired();
 
   const request = readDappMessageRequest(method, params, address);
-  const lifetime = createDappMessageApproval({
+  const lifetime = createDappSigningApproval({
     signal,
     subscribe: (changed) => store.subscribe(changed),
     readScope: () => {
@@ -354,7 +354,7 @@ export const requireMessageSignApproval = (
   // Transaction/module flows retain their own reviewed digest entry points.
   // A message document must use its worker-derived message capability instead.
   if (rawDigest && isMessageApprovalDocument(sender))
-    throw messageSignApprovalExpired();
+    throw dappSigningApprovalExpired();
   const smartAccount =
     methods.length === 2 && methods[1] === 'signSmartAccountMessageDigest';
   if (
@@ -365,14 +365,14 @@ export const requireMessageSignApproval = (
   )
     return undefined;
   const binding = sender.documentId && approvals.get(sender.documentId);
-  if (!binding) throw messageSignApprovalExpired();
+  if (!binding) throw dappSigningApprovalExpired();
   const { approval, approverIsLive } = binding;
   approval.assertCurrent();
   const signer = smartAccount
     ? approval.bindSmartAccountSigner(args)
     : undefined;
   if (smartAccount ? !signer : !approval.matches(args, methods[2]))
-    throw messageSignApprovalExpired();
+    throw dappSigningApprovalExpired();
   return {
     signer,
     assertCurrent: approval.assertCurrent,
@@ -381,4 +381,4 @@ export const requireMessageSignApproval = (
   };
 };
 
-export { messageSignApprovalExpired } from '../../../wallet/dappMessageApproval';
+export { dappSigningApprovalExpired } from '../../../wallet/dappSigningApproval';

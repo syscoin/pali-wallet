@@ -11,6 +11,14 @@ import type {
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
 import { openNativeConnectionRepository } from '../src/connections/storage.ts';
+import { captureEvmFeeApproval } from '../../../source/shared/evmFeeApproval.ts';
+import type { NativeSigningReview } from '../src/connections/types.ts';
+import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
+
+const messageText = (review: NativeSigningReview | null) => {
+  assert.ok(review?.kind === 'message');
+  return review.message;
+};
 
 const TOPIC = 'a1'.repeat(32),
   PEER = 'b2'.repeat(32),
@@ -34,7 +42,9 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
   const listeners = new Set<() => void>();
   const rows = new Map<string, unknown>();
   const signatures: unknown[] = [];
+  const transactions: unknown[] = [];
   let signWait: Promise<void> = Promise.resolve();
+  let preparationError: Error | undefined;
   let activationWait: Promise<void> = Promise.resolve();
   let siteBlocked = false;
   let siteWait: Promise<void> = Promise.resolve();
@@ -109,7 +119,7 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
     walletBindingId: 'd4'.repeat(32),
     assertOwner() {},
     sessionGeneration: () => snapshot.revision,
-    async activateMessageAccount(accountId, guard) {
+    async activateRequestAccount(accountId, guard) {
       guard();
       await activationWait;
       guard();
@@ -125,6 +135,33 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
       await signWait;
       input.approval.assertCurrent();
       return '0x' + '12'.repeat(65);
+    },
+    async prepareTransaction(input, check) {
+      check();
+      if (preparationError) throw preparationError;
+      input.approval.assertCurrent();
+      assert.equal(input.accountId, selectedAccountId);
+      const value = input.transaction as Record<string, unknown>;
+      const transaction = snapshotPreparedEvmTransaction({
+        from: ADDRESS, to: value.to ?? null, chainId: '1', value: BigInt(value.value as string ?? '0').toString(),
+        data: String(value.data ?? '0x'), nonce: BigInt(value.nonce as string ?? '0').toString(), gasLimit: '50000',
+        type: 2, accessList: value.accessList ?? [], maxFeePerGas: '10', maxPriorityFeePerGas: '1',
+      });
+      const fee = captureEvmFeeApproval(transaction, 'fixture', Math.floor(performance.now()) + 60000);
+      return {
+        transaction,
+        maximumFeeUnits: fee.maximumFeeUnits,
+        maximumTotalUnits: fee.maximumTotalUnits,
+        expiresAtMonotonicMilliseconds: fee.expiresAtMonotonicMilliseconds,
+        async submit(guard, onBroadcast) {
+          guard();
+          input.approval.assertCurrent();
+          transactions.push(fee.transaction);
+          const hash = '0x' + '34'.repeat(32);
+          onBroadcast(hash);
+          return hash;
+        },
+      };
     },
     context: () => ({
       network: network as ReturnType<
@@ -177,6 +214,7 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
         methods: [
           'eth_accounts',
           'eth_chainId',
+          'eth_sendTransaction',
           'personal_sign',
           'eth_signTypedData',
           'eth_signTypedData_v3',
@@ -199,6 +237,7 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
         methods: [
           'eth_accounts',
           'eth_chainId',
+          'eth_sendTransaction',
           'personal_sign',
           'eth_signTypedData',
           'eth_signTypedData_v3',
@@ -313,6 +352,8 @@ function fixture({ secondAccount = false }: { secondAccount?: boolean } = {}) {
       dispatchFailure = undefined;
     },
     signatures,
+    transactions,
+    failTransactionPreparation() { preparationError = new Error('Estimate unavailable'); },
     blockSite() {
       siteBlocked = true;
     },
@@ -452,7 +493,7 @@ test('locking cancels disclosure while retaining durable grants and transport li
   }
 });
 
-test('unsupported transaction methods remain unavailable and cancel affects only the new pairing', async () => {
+test('unsupported raw signing remains unavailable and cancel affects only the new pairing', async () => {
   const f = fixture();
   await settle();
   await f.view.pair('wc:fixture');
@@ -461,7 +502,7 @@ test('unsupported transaction methods remain unavailable and cancel affects only
       type: 'proposal',
       proposal: {
         ...f.proposal,
-        requiredNamespaces: { eip155: { methods: ['eth_sendTransaction'] } },
+        requiredNamespaces: { eip155: { methods: ['eth_signTransaction'] } },
       },
     });
     assert.equal(f.view.getSnapshot().proposals[0]?.canApprove, false);
@@ -807,8 +848,74 @@ async function messageRequest(
     },
   });
   await settle();
-  return f.view.getSnapshot().messageReview;
+  return f.view.getSnapshot().signingReview;
 }
+
+test('a dapp transaction stays unsigned until its exact review is approved', async () => {
+  const f = await connectedFixture();
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [{
+      from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x7', nonce: '0x4',
+      data: '0x12345678', accessList: [{ address: '0x' + '33'.repeat(20), storageKeys: [] }],
+    }]);
+    assert.ok(review?.kind === 'transaction');
+    assert.equal(review.transaction?.value, '7');
+    assert.equal(review.transaction?.nonce, '4');
+    assert.equal(review.maximumFeeUnits, '500000');
+    assert.equal(f.transactions.length, 0);
+    await f.view.approveRequest(review.id, review.revision, false);
+    assert.equal(f.transactions.length, 1);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: '0x' + '34'.repeat(32) } });
+    assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally { await f.controller.dispose(); }
+});
+
+test('a dapp transaction cannot choose a different signer or chain', async () => {
+  const f = await connectedFixture();
+  try {
+    for (const transaction of [{ from: '0x' + '22'.repeat(20) }, { chainId: '0x2' }]) {
+      const review = await messageRequest(f, 'eth_sendTransaction', [transaction]);
+      assert.equal(review, null);
+      assert.deepEqual(f.responses.at(-1), { id: 10, result: { error: { code: -32602, message: 'Invalid signing request' } } });
+    }
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('a transaction estimate failure remains visible without authorizing or reporting user rejection', async () => {
+  const f = await connectedFixture();
+  try {
+    f.failTransactionPreparation();
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    assert.ok(review?.kind === 'transaction');
+    assert.equal(review.error, 'TRANSACTION_UNAVAILABLE');
+    assert.equal(review.busy, false);
+    assert.equal(f.transactions.length, 0);
+    assert.equal(f.responses.length, 0);
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+    await f.view.rejectRequest(review.id);
+    assert.equal(f.responses.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('uncertain dapp transaction delivery keeps its hash and cannot send a later rejection', async () => {
+  const f = await connectedFixture();
+  try {
+    const review = await messageRequest(f, 'eth_sendTransaction', [{ data: '0x6000' }]);
+    assert.ok(review?.kind === 'transaction');
+    assert.equal(review.transaction?.to, null);
+    f.failDispatch();
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+    const uncertain = f.view.getSnapshot().signingReview;
+    assert.ok(uncertain?.kind === 'transaction');
+    assert.equal(uncertain.broadcastHash, '0x' + '34'.repeat(32));
+    assert.equal(uncertain.error, 'DELIVERY_UNCERTAIN');
+    const count = f.responses.length;
+    await f.view.rejectRequest(review.id);
+    assert.equal(f.responses.length, count);
+    assert.equal(f.transactions.length, 1);
+  } finally { await f.controller.dispose(); }
+});
 
 test('leaving the connection screen preserves its incoming message review', async () => {
   const f = await connectedFixture();
@@ -817,10 +924,10 @@ test('leaving the connection screen preserves its incoming message review', asyn
     assert.ok(review);
     // NativeConnections unmounts when NativeWallet presents this review.
     f.view.cancel();
-    const current = f.view.getSnapshot().messageReview;
+    const current = f.view.getSnapshot().signingReview;
     assert.equal(current?.id, review.id);
     assert.equal(f.responses.length, 0);
-    await f.view.approveMessage(current!.id, current!.revision, false);
+    await f.view.approveRequest(current!.id, current!.revision, false);
     assert.equal((f.responses.at(-1) as any).id, 10);
     assert.equal((f.responses.at(-1) as any).result.result, '0x' + '12'.repeat(65));
   } finally {
@@ -864,13 +971,13 @@ for (const [method, payload] of [
       assert.equal(f.signatures.length, 0);
       assert.equal(JSON.stringify(review).includes(PEER), false);
       assert.equal(JSON.stringify(review).includes(TOPIC), false);
-      await f.view.approveMessage(review.id, review.revision, false);
+      await f.view.approveRequest(review.id, review.revision, false);
       assert.equal(f.signatures.length, 1);
       assert.deepEqual(f.responses.at(-1), {
         id: 10,
         result: { result: '0x' + '12'.repeat(65) },
       });
-      assert.equal(f.view.getSnapshot().messageReview, null);
+      assert.equal(f.view.getSnapshot().signingReview, null);
     } finally {
       await f.controller.dispose();
     }
@@ -884,7 +991,7 @@ test('personal-sign review preserves its captured bytes after the source array c
     const review = await messageRequest(f, 'personal_sign', params);
     assert.ok(review);
     params[0] = 'Different payload';
-    await f.view.approveMessage(review.id, review.revision, false);
+    await f.view.approveRequest(review.id, review.revision, false);
     assert.equal(
       (f.signatures[0] as { message: string }).message,
       'Hello Pali'
@@ -909,16 +1016,16 @@ for (const transition of [
       assert.ok(review);
       if (transition === 'lock') f.lock();
       else if (transition === 'revision') f.refresh();
-      else if (transition === 'reject') await f.view.rejectMessage(review.id);
+      else if (transition === 'reject') await f.view.rejectRequest(review.id);
       else if (transition === 'expiry')
         f.event({ type: 'request-expired', id: 10 });
       else if (transition === 'disconnect')
         await f.view.disconnect(f.view.getSnapshot().sessions[0]!.id);
       else f.event({ type: 'session', session: { ...f.session } });
       await settle();
-      assert.equal(f.view.getSnapshot().messageReview, null);
+      assert.equal(f.view.getSnapshot().signingReview, null);
       await assert.rejects(
-        f.view.approveMessage(review.id, review.revision, false)
+        f.view.approveRequest(review.id, review.revision, false)
       );
       assert.equal(f.signatures.length, 0);
       assert.equal(
@@ -943,7 +1050,7 @@ for (const delayed of ['signer', 'response'] as const) {
       });
       if (delayed === 'signer') f.setSignWait(wait);
       else f.setResponseWait(wait);
-      const signing = f.view.approveMessage(review.id, review.revision, false);
+      const signing = f.view.approveRequest(review.id, review.revision, false);
       const rejected = assert.rejects(signing);
       await settle();
       f.lock();
@@ -973,16 +1080,16 @@ test('a granted non-active account requires an explicit switch before its fresh 
     assert.ok(review);
     assert.equal(review.needsAccountSwitch, true);
     await assert.rejects(
-      f.view.approveMessage(review.id, review.revision, false)
+      f.view.approveRequest(review.id, review.revision, false)
     );
-    await f.view.activateMessageAccount(
+    await f.view.activateRequestAccount(
       review.id,
       f.view.getSnapshot().revision
     );
-    const switched = f.view.getSnapshot().messageReview;
+    const switched = f.view.getSnapshot().signingReview;
     assert.ok(switched);
     assert.equal(switched.needsAccountSwitch, false);
-    await f.view.approveMessage(switched.id, switched.revision, false);
+    await f.view.approveRequest(switched.id, switched.revision, false);
     assert.equal(f.signatures.length, 1);
   } finally {
     await f.controller.dispose();
@@ -1021,7 +1128,7 @@ for (const malicious of [
       if (review) {
         assert.ok(review.error);
         await assert.rejects(
-          f.view.approveMessage(review.id, review.revision, false)
+          f.view.approveRequest(review.id, review.revision, false)
         );
       }
       assert.equal(f.signatures.length, 0);
@@ -1053,11 +1160,11 @@ test('typed address advisories require fresh explicit acknowledgment before sign
     assert.equal(review.advisories[0]?.address, typed.message.to);
     assert.equal(review.advisories[0]?.severity, 'high');
     await assert.rejects(
-      f.view.approveMessage(review.id, review.revision, false)
+      f.view.approveRequest(review.id, review.revision, false)
     );
     assert.equal(f.signatures.length, 0);
-    const current = f.view.getSnapshot().messageReview!;
-    await f.view.approveMessage(current.id, current.revision, true);
+    const current = f.view.getSnapshot().signingReview!;
+    await f.view.approveRequest(current.id, current.revision, true);
     assert.equal(f.signatures.length, 1);
   } finally {
     await f.controller.dispose();
@@ -1077,12 +1184,12 @@ test('a pending site check cannot enable signing or publish after lock', async (
     assert.ok(review);
     assert.equal(review.busy, true);
     await assert.rejects(
-      f.view.approveMessage(review.id, review.revision, false)
+      f.view.approveRequest(review.id, review.revision, false)
     );
     f.lock();
     release();
     await settle();
-    assert.equal(f.view.getSnapshot().messageReview, null);
+    assert.equal(f.view.getSnapshot().signingReview, null);
     assert.equal(f.signatures.length, 0);
   } finally {
     release?.();
@@ -1109,7 +1216,7 @@ test('the same reported origin on an unapproved peer cannot use a saved grant', 
       },
     });
     await settle();
-    assert.equal(f.view.getSnapshot().messageReview, null);
+    assert.equal(f.view.getSnapshot().signingReview, null);
     assert.equal(f.signatures.length, 0);
     assert.equal((f.responses.at(-1) as any).result.error.code, 4100);
   } finally {
@@ -1133,15 +1240,15 @@ test('expired requests never produce a review and queued messages advance after 
       },
     });
     await settle();
-    assert.equal(f.view.getSnapshot().messageReview, null);
+    assert.equal(f.view.getSnapshot().signingReview, null);
     const first = await messageRequest(f);
     assert.ok(first);
     await messageRequest(f, 'personal_sign', ['Next', ADDRESS], 11);
-    assert.equal(f.view.getSnapshot().messageReview?.id, first.id);
-    await f.view.rejectMessage(first.id);
-    assert.equal(f.view.getSnapshot().messageReview?.message, 'Next');
+    assert.equal(f.view.getSnapshot().signingReview?.id, first.id);
+    await f.view.rejectRequest(first.id);
+    assert.equal(messageText(f.view.getSnapshot().signingReview), 'Next');
     f.lock();
-    assert.equal(f.view.getSnapshot().messageReview, null);
+    assert.equal(f.view.getSnapshot().signingReview, null);
     assert.equal(f.signatures.length, 0);
   } finally {
     await f.controller.dispose();
@@ -1165,13 +1272,13 @@ test('cancelling an account switch cannot recreate the retired message review', 
         release = resolve;
       })
     );
-    const switching = f.view.activateMessageAccount(review.id, review.revision);
+    const switching = f.view.activateRequestAccount(review.id, review.revision);
     const rejected = assert.rejects(switching);
     await settle();
-    await f.view.rejectMessage(review.id);
+    await f.view.rejectRequest(review.id);
     release();
     await rejected;
-    assert.equal(f.view.getSnapshot().messageReview, null);
+    assert.equal(f.view.getSnapshot().signingReview, null);
     assert.equal(f.signatures.length, 0);
   } finally {
     release?.();
@@ -1188,26 +1295,26 @@ test('only the displayed message can be signed and double approval is refused', 
     await messageRequest(f, 'personal_sign', ['Second', ADDRESS], 11);
     const current = f.view.getSnapshot();
     await assert.rejects(
-      f.view.approveMessage('message-3', current.revision, false)
+      f.view.approveRequest('request-3', current.revision, false)
     );
     f.setSignWait(
       new Promise<void>((resolve) => {
         release = resolve;
       })
     );
-    const signing = f.view.approveMessage(
+    const signing = f.view.approveRequest(
       first.id,
       f.view.getSnapshot().revision,
       false
     );
     await settle();
     await assert.rejects(
-      f.view.approveMessage(first.id, f.view.getSnapshot().revision, false)
+      f.view.approveRequest(first.id, f.view.getSnapshot().revision, false)
     );
     release();
     await signing;
     assert.equal(f.signatures.length, 1);
-    assert.equal(f.view.getSnapshot().messageReview?.message, 'Second');
+    assert.equal(messageText(f.view.getSnapshot().signingReview), 'Second');
   } finally {
     release?.();
     await f.controller.dispose();
@@ -1279,7 +1386,7 @@ for (const verification of [
         verification.isScam ? 'BLOCKED_SITE' : 'SITE_MISMATCH'
       );
       await assert.rejects(
-        f.view.approveMessage(review.id, review.revision, false)
+        f.view.approveRequest(review.id, review.revision, false)
       );
       assert.equal(f.signatures.length, 0);
     } finally {
@@ -1312,13 +1419,13 @@ for (const afterDispatch of ['lock', 'reject', 'expiry'] as const) {
           release = resolve;
         })
       );
-      const signing = f.view.approveMessage(review.id, review.revision, false);
+      const signing = f.view.approveRequest(review.id, review.revision, false);
       await settle();
       assert.equal(f.handedOff.length, 1);
-      assert.equal(f.view.getSnapshot().messageReview?.dispatched, true);
+      assert.equal(f.view.getSnapshot().signingReview?.dispatched, true);
       if (afterDispatch === 'lock') f.lock();
       else if (afterDispatch === 'reject')
-        await f.view.rejectMessage(review.id);
+        await f.view.rejectRequest(review.id);
       else f.event({ type: 'request-expired', id: 10 });
       release();
       await signing;
@@ -1340,17 +1447,17 @@ test('an acknowledgment failure after dispatch reports uncertainty without retry
     assert.ok(review);
     f.failDispatch();
     await assert.rejects(
-      f.view.approveMessage(review.id, review.revision, false),
+      f.view.approveRequest(review.id, review.revision, false),
       { message: 'DELIVERY_UNCERTAIN' }
     );
     assert.equal(f.handedOff.length, 1);
     assert.equal(
-      f.view.getSnapshot().messageReview?.error,
+      f.view.getSnapshot().signingReview?.error,
       'DELIVERY_UNCERTAIN'
     );
-    assert.equal(f.view.getSnapshot().messageReview?.dispatched, true);
+    assert.equal(f.view.getSnapshot().signingReview?.dispatched, true);
     await assert.rejects(
-      f.view.approveMessage(review.id, f.view.getSnapshot().revision, false)
+      f.view.approveRequest(review.id, f.view.getSnapshot().revision, false)
     );
     assert.equal(f.handedOff.length, 1);
   } finally {
@@ -1370,21 +1477,21 @@ test('a queued message stays unsigned while the displayed response is still bein
         release = resolve;
       })
     );
-    const delivering = f.view.approveMessage(
+    const delivering = f.view.approveRequest(
       first.id,
       f.view.getSnapshot().revision,
       false
     );
     await settle();
-    assert.equal(f.view.getSnapshot().messageReview?.id, first.id);
-    assert.equal(f.view.getSnapshot().messageReview?.dispatched, true);
+    assert.equal(f.view.getSnapshot().signingReview?.id, first.id);
+    assert.equal(f.view.getSnapshot().signingReview?.dispatched, true);
     await assert.rejects(
-      f.view.approveMessage('message-3', f.view.getSnapshot().revision, false)
+      f.view.approveRequest('request-3', f.view.getSnapshot().revision, false)
     );
     assert.equal(f.signatures.length, 1);
     release();
     await delivering;
-    assert.equal(f.view.getSnapshot().messageReview?.message, 'Queued');
+    assert.equal(messageText(f.view.getSnapshot().signingReview), 'Queued');
   } finally {
     release?.();
     await f.controller.dispose();
@@ -1402,10 +1509,10 @@ test('Reject prevents a held signing completion from changing a later message re
         release = resolve;
       })
     );
-    const signing = f.view.approveMessage(first.id, first.revision, false);
+    const signing = f.view.approveRequest(first.id, first.revision, false);
     const rejected = assert.rejects(signing);
     await settle();
-    await f.view.rejectMessage(first.id);
+    await f.view.rejectRequest(first.id);
     const later = await messageRequest(
       f,
       'personal_sign',
@@ -1418,8 +1525,8 @@ test('Reject prevents a held signing completion from changing a later message re
     await rejected;
     assert.equal(f.view.getSnapshot(), beforeCompletion);
     assert.equal(f.view.getSnapshot().error, null);
-    assert.equal(f.view.getSnapshot().messageReview?.id, later.id);
-    await f.view.approveMessage(later.id, later.revision, false);
+    assert.equal(f.view.getSnapshot().signingReview?.id, later.id);
+    await f.view.approveRequest(later.id, later.revision, false);
     assert.equal((f.responses.at(-1) as any).id, 11);
   } finally {
     release?.();
@@ -1438,11 +1545,11 @@ test('Close prevents a dispatched failure from overwriting a later message revie
         release = resolve;
       })
     );
-    const signing = f.view.approveMessage(first.id, first.revision, false);
+    const signing = f.view.approveRequest(first.id, first.revision, false);
     const rejected = assert.rejects(signing, { message: 'DELIVERY_UNCERTAIN' });
     await settle();
-    assert.equal(f.view.getSnapshot().messageReview?.dispatched, true);
-    await f.view.rejectMessage(first.id);
+    assert.equal(f.view.getSnapshot().signingReview?.dispatched, true);
+    await f.view.rejectRequest(first.id);
     const later = await messageRequest(
       f,
       'personal_sign',
@@ -1456,10 +1563,10 @@ test('Close prevents a dispatched failure from overwriting a later message revie
     await rejected;
     assert.equal(f.view.getSnapshot(), beforeCompletion);
     assert.equal(f.view.getSnapshot().error, null);
-    assert.equal(f.view.getSnapshot().messageReview?.id, later.id);
+    assert.equal(f.view.getSnapshot().signingReview?.id, later.id);
     assert.equal(f.handedOff.length, 1);
     f.clearDispatchFailure();
-    await f.view.approveMessage(later.id, later.revision, false);
+    await f.view.approveRequest(later.id, later.revision, false);
     assert.equal((f.responses.at(-1) as any).id, 11);
   } finally {
     release?.();
@@ -1472,7 +1579,7 @@ test('actions on an absent old message ID cannot overwrite the next review', asy
   try {
     const first = await messageRequest(f);
     assert.ok(first);
-    await f.view.rejectMessage(first.id);
+    await f.view.rejectRequest(first.id);
     const later = await messageRequest(
       f,
       'personal_sign',
@@ -1482,19 +1589,19 @@ test('actions on an absent old message ID cannot overwrite the next review', asy
     assert.ok(later);
     const current = f.view.getSnapshot();
     await assert.rejects(
-      f.view.approveMessage(first.id, current.revision, false),
+      f.view.approveRequest(first.id, current.revision, false),
       { message: 'REQUEST_EXPIRED' }
     );
     assert.equal(f.view.getSnapshot(), current);
     await assert.rejects(
-      f.view.activateMessageAccount(first.id, current.revision),
+      f.view.activateRequestAccount(first.id, current.revision),
       { message: 'REQUEST_EXPIRED' }
     );
     assert.equal(f.view.getSnapshot(), current);
-    await f.view.rejectMessage(first.id);
+    await f.view.rejectRequest(first.id);
     assert.equal(f.view.getSnapshot(), current);
     assert.equal(f.view.getSnapshot().error, null);
-    await f.view.approveMessage(later.id, later.revision, false);
+    await f.view.approveRequest(later.id, later.revision, false);
     assert.equal((f.responses.at(-1) as any).id, 11);
   } finally {
     await f.controller.dispose();

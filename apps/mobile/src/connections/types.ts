@@ -1,5 +1,6 @@
 import type { WalletConnectVerification } from './walletConnect.ts';
 import type { DappMessageMethod } from '../../../../source/shared/dappMessageRequest.ts';
+import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
 export type NativeConnectionError =
   | 'INVALID_LINK'
@@ -19,12 +20,13 @@ export type NativeMessageReviewError =
   | 'INVALID_TYPED_DATA'
   | 'BLOCKED_SITE'
   | 'SITE_MISMATCH'
-  | 'DELIVERY_UNCERTAIN';
+  | 'DELIVERY_UNCERTAIN'
+  | 'INVALID_TRANSACTION'
+  | 'TRANSACTION_UNAVAILABLE';
 
-export type NativeMessageReview = Readonly<{
+type NativeSigningReviewBase = Readonly<{
   id: string;
   revision: number;
-  method: DappMessageMethod;
   appName: string;
   origin: string;
   verification: WalletConnectVerification;
@@ -33,13 +35,6 @@ export type NativeMessageReview = Readonly<{
   networkLabel: string;
   chainId: string;
   expiresAt: number;
-  message: string | null;
-  typedData: string | null;
-  order: Readonly<{
-    protocol: '0x' | 'Seaport';
-    status: 'recognized' | 'unrecognized';
-    warnings: readonly ('send.nftOrderZeroPayment' | 'send.nftOrderNoReturn')[];
-  }> | null;
   error: NativeMessageReviewError | null;
   needsAccountSwitch: boolean;
   busy: boolean;
@@ -52,6 +47,31 @@ export type NativeMessageReview = Readonly<{
   }>[];
   requiresWarningAcknowledgement: boolean;
 }>;
+
+export type NativeMessageReview = NativeSigningReviewBase & Readonly<{
+  kind: 'message';
+  method: DappMessageMethod;
+  message: string | null;
+  typedData: string | null;
+  order: Readonly<{
+    protocol: '0x' | 'Seaport';
+    status: 'recognized' | 'unrecognized';
+    warnings: readonly ('send.nftOrderZeroPayment' | 'send.nftOrderNoReturn')[];
+  }> | null;
+}>;
+
+export type NativeTransactionReview = NativeSigningReviewBase & Readonly<{
+  kind: 'transaction';
+  method: 'eth_sendTransaction';
+  transaction: PreparedEvmTransaction | null;
+  maximumFeeUnits: string | null;
+  maximumTotalUnits: string | null;
+  symbol: string;
+  decimals: number;
+  broadcastHash: string | null;
+}>;
+
+export type NativeSigningReview = NativeMessageReview | NativeTransactionReview;
 
 export type NativeConnectionsSnapshot = Readonly<{
   revision: number;
@@ -74,7 +94,7 @@ export type NativeConnectionsSnapshot = Readonly<{
     accountLabel: string;
     networkLabel: string;
   }>[];
-  messageReview: NativeMessageReview | null;
+  signingReview: NativeSigningReview | null;
   error: NativeConnectionError | null;
 }>;
 
@@ -91,12 +111,12 @@ export type NativeConnectionsView = Readonly<{
   ): Promise<void>;
   reject(proposalId: number): Promise<void>;
   disconnect(connectionId: string): Promise<void>;
-  approveMessage(
+  approveRequest(
     id: string,
     revision: number,
     acknowledgeWarning: boolean
   ): Promise<void>;
-  rejectMessage(id: string): Promise<void>;
-  activateMessageAccount(id: string, revision: number): Promise<void>;
+  rejectRequest(id: string): Promise<void>;
+  activateRequestAccount(id: string, revision: number): Promise<void>;
   cancel(): void;
 }>;
