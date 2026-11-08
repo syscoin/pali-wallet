@@ -47,8 +47,6 @@ import {
   buildSmartAccountValidatorSwitchPlan,
   clearStaleGuardianRecoveryOperation,
   encodeEcdsaValidatorInitData,
-  encodeGuardianRecoveryInitData,
-  ERC7579_MODULE_TYPE_EXECUTOR,
   encodeSmartAccountAuthenticatorSignature,
   getAvailablePaliModules,
   getConfiguredAuthenticatorAddress,
@@ -57,7 +55,6 @@ import {
   getGuardianRecoveryDelayOptions,
   isGuardianRecoveryDelayAllowed,
   SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
-  paliSmartAccountInterface,
   signAndSubmitSmartAccountExecutions,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
@@ -67,6 +64,7 @@ import type {
   SmartAccountAuthenticatorBuildResult,
   SmartAccountGuardianRecoveryDigestContext,
 } from 'utils/smartAccount';
+import { buildGuardianPolicyExecutions } from 'utils/smartAccount/guardianPolicy';
 import {
   getGuardianRecoveryOperationId,
   GuardianRecoveryObservation,
@@ -1883,38 +1881,21 @@ const SmartAccountPolicy = () => {
     setLoading(true);
     setModuleActionKey('guardian-recovery:update');
     try {
-      const installExecution = {
-        data: paliSmartAccountInterface.encodeFunctionData('installModule', [
-          ERC7579_MODULE_TYPE_EXECUTOR,
-          guardianRecoveryModule,
-          encodeGuardianRecoveryInitData({
-            delaySeconds: guardianDelaySeconds,
-            expirationSeconds: guardianDelaySeconds * 2,
-            guardians: [normalizedGuardianAddress],
-            threshold: 1,
-          }),
-        ]),
-        target: account.address,
-        value: '0x0',
+      const configuration = {
+        accountAddress: account.address,
+        chainId: activeNetwork.chainId,
+        delaySeconds: guardianDelaySeconds,
+        guardian: normalizedGuardianAddress,
       };
-      const executions =
+      const executions = buildGuardianPolicyExecutions(
         hasGuardianRecovery && installedGuardianRecovery
-          ? [
-              {
-                data: paliSmartAccountInterface.encodeFunctionData(
-                  'uninstallModule',
-                  [
-                    ERC7579_MODULE_TYPE_EXECUTOR,
-                    installedGuardianRecovery.address,
-                    '0x',
-                  ]
-                ),
-                target: account.address,
-                value: '0x0',
-              },
-              installExecution,
-            ]
-          : [installExecution];
+          ? {
+              ...configuration,
+              kind: 'update',
+              previousModuleAddress: installedGuardianRecovery.address,
+            }
+          : { ...configuration, kind: 'install' }
+      );
 
       await submitModuleExecutions(executions, {
         useCachedMetadata: true,
@@ -2180,16 +2161,11 @@ const SmartAccountPolicy = () => {
         throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
       }
       await submitModuleExecutions(
-        [
-          {
-            data: paliSmartAccountInterface.encodeFunctionData(
-              'uninstallModule',
-              [ERC7579_MODULE_TYPE_EXECUTOR, target.moduleAddress, '0x']
-            ),
-            target: target.accountAddress,
-            value: '0x0',
-          },
-        ],
+        buildGuardianPolicyExecutions({
+          accountAddress: target.accountAddress,
+          kind: 'remove',
+          moduleAddress: target.moduleAddress,
+        }),
         {
           approval: target.approval,
           onBeforeSubmit: () => {

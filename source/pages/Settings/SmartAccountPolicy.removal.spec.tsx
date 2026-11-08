@@ -816,3 +816,59 @@ test('unreadable cleanup after a failed retry cannot overwrite a newer window ma
   await screen.findByRole('button', { name: CHECK });
   expect(localStorage.getItem(removalKey)).toBe(newer);
 });
+
+test.each(['install', 'update'] as const)(
+  'the live guardian %s action uses the shared configured executor and current approval',
+  async (kind) => {
+    mockMetadata = metadata(57057, kind === 'update');
+    mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata;
+    render(<SmartAccountPolicy />);
+    const guardian = await screen.findByPlaceholderText(
+      'settings.smartAccountGuardianAddress'
+    );
+    fireEvent.change(guardian, { target: { value: OWNER } });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'settings.smartAccountGuardianRecoveryDelayThreeDays',
+      })
+    );
+    const action = await screen.findByRole('button', {
+      name:
+        kind === 'install'
+          ? 'settings.smartAccountGuardianRecoveryConnect'
+          : 'settings.smartAccountGuardianRecoveryUpdate',
+    });
+    await waitFor(() =>
+      expect((action as HTMLButtonElement).disabled).toBe(false)
+    );
+    fireEvent.click(action);
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    const submission = mockSubmit.mock.calls[0][0];
+    expect(submission.expectedContext).toMatchObject({
+      account: { id: 1, type: 'SmartAccount', address: ACCOUNT },
+      chainId: 57057,
+      sessionGeneration: 7,
+    });
+    expect(submission.waitForConfirmation).toBe(true);
+    expect(submission.executions).toHaveLength(kind === 'install' ? 1 : 2);
+    const install = submission.executions.at(-1);
+    expect(install.target).toBe(ACCOUNT);
+    const [moduleType, moduleAddress] =
+      paliSmartAccountInterface.decodeFunctionData(
+        'installModule',
+        install.data
+      );
+    expect(Number(moduleType)).toBe(2);
+    expect(moduleAddress.toLowerCase()).toBe(
+      getPaliModuleAddress(57057, 'guardian-recovery').toLowerCase()
+    );
+    if (kind === 'update') {
+      const removal = paliSmartAccountInterface.decodeFunctionData(
+        'uninstallModule',
+        submission.executions[0].data
+      );
+      expect(Number(removal[0])).toBe(2);
+      expect(removal[1]).toBe(MODULE);
+    }
+  }
+);

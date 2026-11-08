@@ -45,7 +45,6 @@ import {
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
   encodeEcdsaValidatorInitData,
-  encodeGuardianRecoveryInitData,
   CustomValidatorPreflightResult,
   getConfiguredAuthenticatorAddress,
   preflightCustomValidatorInstall,
@@ -80,6 +79,7 @@ import {
   hasUsableSmartAccountAuthMetadata,
   readSmartAccountValidatorMetadata,
 } from 'utils/smartAccount/executionMetadata';
+import { projectGuardianPolicyModule } from 'utils/smartAccount/guardianPolicy';
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 import {
@@ -2731,23 +2731,7 @@ class SmartAccountController {
       chainId
     );
     if (guardianStatus) {
-      installedModules.push({
-        address: getAddress(guardianStatus.moduleAddress),
-        config: {
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        },
-        data: encodeGuardianRecoveryInitData({
-          delaySeconds: guardianStatus.delaySeconds,
-          expirationSeconds: guardianStatus.expirationSeconds,
-          guardians: guardianStatus.guardians,
-          threshold: guardianStatus.threshold,
-        }),
-        id: 'guardian-recovery',
-        type: 'executor',
-      });
+      installedModules.push(projectGuardianPolicyModule(guardianStatus));
     }
 
     assertCurrent();
