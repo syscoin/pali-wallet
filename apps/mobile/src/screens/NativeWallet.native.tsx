@@ -277,6 +277,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const closeStage = () => {
     const origin = rootOrigin.current; rootOrigin.current = null;
     const current = readyContext();
+    if (stage === 'smart-deploy') setCatalogue(controllers.current?.authority.getCatalogue() ?? null);
     setSendDraft(null);
     setStage('choose');
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
@@ -818,7 +819,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
   else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountDeploymentRoute
-    open={openSmartDeployment} onBack={() => { setCatalogue(controllers.current?.authority.getCatalogue() ?? null); closeStage(); }} />;
+    open={openSmartDeployment} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
     ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined}
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}

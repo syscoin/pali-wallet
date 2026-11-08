@@ -130,7 +130,7 @@ function harness(ready = false, smartAccount = false) {
       return entry.value;
     },
   };
-  const catalogue = {
+  let catalogue = {
     revision: 1,
     active: {
       accountId: smartAccount ? 'smart:60:0' : 'hd:60:0',
@@ -353,6 +353,16 @@ function harness(ready = false, smartAccount = false) {
       return hardwareBack();
     },
     exits: () => exits,
+    completeDeployment() {
+      catalogue = {
+        ...catalogue,
+        revision: catalogue.revision + 1,
+        accounts: catalogue.accounts.map((account) => ({
+          ...account,
+          smartAccount: { ...account.smartAccount, isDeployed: true },
+        })),
+      };
+    },
     ready: () => change('ready'),
     selectionCalls: () => selectionCalls,
     consume() {
@@ -499,20 +509,32 @@ for (const [kind, screen] of [
     }
   });
 
-test('Android Back closes smart deployment into the wallet without exiting or locking', async () => {
-  const f = await mounted(true, true);
-  try {
-    const portfolio = find(
-      f.render(),
-      (node) => node.type === 'NativePortfolio'
-    );
-    assert(portfolio);
-    portfolio.props.onDeploySmartAccount();
-    assert.equal(f.render().type, 'NativeSmartAccountDeploymentRoute');
-    assert.equal(f.hardwareBack(), true);
-    assert(find(f.render(), (node) => node.type === 'NativePortfolio'));
-    assert.equal(f.exits(), 0);
-  } finally {
-    f.dispose();
-  }
-});
+for (const back of ['Android', 'screen'] as const)
+  test(`${back} Back refreshes the completed smart deployment without exiting or locking`, async () => {
+    const f = await mounted(true, true);
+    try {
+      const portfolio = find(
+        f.render(),
+        (node) => node.type === 'NativePortfolio'
+      );
+      assert(portfolio);
+      assert.equal(portfolio.props.smartAccount.isDeployed, false);
+      portfolio.props.onDeploySmartAccount();
+      const route = f.render();
+      assert.equal(route.type, 'NativeSmartAccountDeploymentRoute');
+      // The runtime committed new metadata without an authority phase change.
+      f.completeDeployment();
+      if (back === 'Android') assert.equal(f.hardwareBack(), true);
+      else route.props.onBack();
+      const refreshed = find(
+        f.render(),
+        (node) => node.type === 'NativePortfolio'
+      );
+      assert(refreshed);
+      assert.equal(refreshed.props.smartAccount.isDeployed, true);
+      assert.equal(refreshed.props.onDeploySmartAccount, undefined);
+      assert.equal(f.exits(), 0);
+    } finally {
+      f.dispose();
+    }
+  });
