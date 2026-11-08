@@ -237,7 +237,7 @@ export function createNativeWalletControllers() {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openSmartAccountDeployment(assertCurrent));
   };
-  const openSmartAccountSend = async (recipient: string, amount: string, assertOwner: () => void) => {
+  const openSmartAccountSend = async (recipient: string, amount: Parameters<KeyringRuntime['openSmartAccountSend']>[1], assertOwner: () => void) => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openSmartAccountSend(recipient, amount, assertCurrent));
   };

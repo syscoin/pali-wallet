@@ -3,7 +3,7 @@ import { blacklistService } from '../../../../source/utils/security/blacklistSer
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { createNativeSmartOperation } from '../smartAccount/runtime.ts';
-import type { NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
+import type { NativeSmartAccountAmount, NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import { loadNativeKeyringSdk, type NativeKeyringSdk } from './keyringSdk.ts';
 import { createNativeLedgerHost } from '../hardware/ledgerHost.ts';
 import type { NativeLedgerTransport, NativeLedgerOwner } from '../hardware/ownedLedgerTransport.ts';
@@ -153,7 +153,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   readonly ledger: NativeLedgerRuntime;
   openConnectionHost(): Promise<NativeConnectionHost>;
   openSmartAccountDeployment(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
-  openSmartAccountSend(recipient: string, amount: string, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  openSmartAccountSend(recipient: string, amount: NativeSmartAccountAmount, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   readonly readUtxoBalance?: (id: UtxoNetworkId, address: string, signal: AbortSignal) => Promise<UtxoBalance>;
   /** Owns the private Blockbook identifier; a screen receives only projected rows. */
   withUtxoActivityRead<T>(
@@ -1732,8 +1732,11 @@ export function createKeyringRuntimeFactory(
           async openSmartAccountSend(recipient, amount, assertOwner) {
             let intent: NativeSmartAccountIntent;
             try {
-              intent = Object.freeze({ kind: 'native-transfer', recipient: normalizePublicAddress(recipient, 'ethereum'),
-                amountUnits: parseDecimalAmount(amount, 18).toString() });
+              const target = normalizePublicAddress(recipient, 'ethereum');
+              if (amount.kind === 'maximum') intent = Object.freeze({ kind: 'native-max', recipient: target });
+              else if (amount.kind === 'exact') intent = Object.freeze({ kind: 'native-transfer', recipient: target,
+                amountUnits: parseDecimalAmount(amount.amount, 18).toString() });
+              else throw new KeyringRuntimeError('INVALID_INPUT');
             } catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
             return openSmartAccountOperation(intent, assertOwner);
           },

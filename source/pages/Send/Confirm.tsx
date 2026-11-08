@@ -1,3 +1,4 @@
+import { prepareSmartAccountNativeMaximum } from 'utils/smartAccount/nativeMaximum';
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
 import currency from 'currency.js';
 import React, {
@@ -88,7 +89,6 @@ import { useConfirmSubmission } from './useConfirmSubmission';
 import { openWalletTokenReview } from './walletTokenReviewPort';
 import type { WalletTokenReviewPayload } from '../../shared/walletTokenReview';
 
-const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NON_SOFTWARE_MAX_SEND_RESERVE_WEI = parseUnits(
   '0.000001',
   'ether'
@@ -894,9 +894,12 @@ export const SendConfirm = () => {
                 );
         }
       }
-      const quoteExecution = (candidate: typeof execution) => {
+      const assertQuoteCurrent = () => {
         if (cancelled || !submission.isActive())
           throw new Error('Smart account confirmation is no longer active');
+      };
+      const quoteExecution = (candidate: typeof execution) => {
+        assertQuoteCurrent();
         return prepareSmartAccountFeeQuote({
           accountAddress: activeAccount.address,
           accountId: activeAccountMeta.id,
@@ -910,29 +913,26 @@ export const SendConfirm = () => {
         transactionType === TransactionType.NATIVE_ETH &&
         basicTxValues.isMax
       ) {
-        const balance = (await controllerEmitter(
-          ['wallet', 'refreshActiveAccountBalances'],
-          [{ includeAssets: false }]
-        )) as { nativeBalance: string };
-        const balanceWei = parseUnits(
-          String(removeScientificNotation(balance.nativeBalance)),
-          18
-        );
-        // Discovery is read-only. Only an exact final net execution is approved.
-        execution = { ...execution, value: '0x1' };
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          quote = await quoteExecution(execution);
-          const net = balanceWei
-            .sub(quote.maximumFeeWei)
-            .sub(SMART_ACCOUNT_MAX_SEND_BUFFER_WEI);
-          if (net.lte(0))
-            throw new Error('Insufficient funds for smart account fee');
-          if (net.eq(execution.value)) break;
-          execution = { ...execution, value: net.toHexString() };
-          quote = undefined;
-        }
-        if (!quote)
-          throw new Error('Smart account maximum amount did not stabilize');
+        const maximum = await prepareSmartAccountNativeMaximum({
+          target,
+          assertCurrent: assertQuoteCurrent,
+          async readBalance() {
+            const balance = (await controllerEmitter(
+              ['wallet', 'refreshActiveAccountBalances'],
+              [{ includeAssets: false }]
+            )) as { nativeBalance: string };
+            return parseUnits(
+              String(removeScientificNotation(balance.nativeBalance)),
+              18
+            ).toString();
+          },
+          async quote(candidate) {
+            const quote = await quoteExecution(candidate);
+            return { quote, maximumFeeUnits: quote.maximumFeeWei };
+          },
+        });
+        execution = { ...maximum.execution };
+        quote = maximum.quote;
       } else quote = await quoteExecution(execution);
       if (!cancelled && submission.isActive())
         setSmartAccountQuote({

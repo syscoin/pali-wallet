@@ -63,7 +63,7 @@ function fixture() {
       async prepare() {
         prepares++;
         await held;
-        return { kind: 'authorization', operation: prepared };
+        return { kind: 'authorization', intent: { kind: 'deploy' }, operation: prepared };
       },
       async sign(value) {
         assert.equal(value, prepared);
@@ -204,7 +204,7 @@ for (const event of ['cancel', 'expiry'] as const)
         network: getNativeNetwork('ethereum'),
         assertCurrent() {},
         async prepare() {
-          return { kind: 'authorization', operation: prepared };
+          return { kind: 'authorization', intent: { kind: 'deploy' }, operation: prepared };
         },
         async sign() {
           return '0xsignature';

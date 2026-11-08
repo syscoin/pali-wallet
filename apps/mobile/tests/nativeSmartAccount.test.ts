@@ -441,7 +441,7 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     f.fundedSmart(); f.holdReceipts();
     if (alreadyDeployed) f.deployed();
     const recipient = '0x2222222222222222222222222222222222222222';
-    operation = await f.runtime.openSmartAccountSend(recipient, '0.000000000000000009', () => undefined);
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
     await operation.prepare();
     const ready = operation.getSnapshot();
     assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
@@ -480,9 +480,9 @@ test('smart native sends reject invalid input and blocked recipients before auth
   try {
     await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
     for (const [recipient, amount] of [['bad', '1'], ['0x2222222222222222222222222222222222222222', '1e2'], ['0x2222222222222222222222222222222222222222', '0']])
-      await assert.rejects(f.runtime.openSmartAccountSend(recipient!, amount!, () => undefined), { code: 'INVALID_INPUT' });
+      await assert.rejects(f.runtime.openSmartAccountSend(recipient!, { kind: 'exact', amount: amount! }, () => undefined), { code: 'INVALID_INPUT' });
     f.blockRecipient();
-    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '1', () => undefined);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '1' }, () => undefined);
     await operation.prepare();
     assert.equal(operation.getSnapshot().phase, 'failed');
     assert.equal(operation.getSnapshot().authorization, null);
@@ -497,7 +497,7 @@ test('locking a native Smart send at payer review retires its signed operation w
   try {
     await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
     f.fundedSmart();
-    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '0.01', () => undefined);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.01' }, () => undefined);
     await operation.prepare();
     const pending = operation.authorize(operation.getSnapshot().revision);
     for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
@@ -526,7 +526,7 @@ test('fresh absent code overrides saved deployed metadata for a Smart send', asy
     assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!.smartAccount!.isDeployed, true);
     deployment.dispose(); deployment = undefined;
     f.undeployed(); f.fundedSmart();
-    send = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '0.1', () => undefined);
+    send = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.1' }, () => undefined);
     await send.prepare();
     assert.equal(send.getSnapshot().phase, 'authorize', JSON.stringify(send.getSnapshot()));
     assert.notEqual(send.getSnapshot().authorization!.initCode, '0x');
@@ -568,7 +568,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     const payer = f.owner.getSnapshot().account!.address;
     await f.change({ kind: 'create-smart', label: 'Activity sender', password: PASSWORD });
     f.fundedSmart(); f.deployed(); f.holdReceipts();
-    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '0.000000000000000009', () => undefined);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
     await operation.prepare();
     const sending = operation.authorize(operation.getSnapshot().revision);
     for (let i = 0; i < 300 && !operation.getSnapshot().payerReview; i++) await new Promise(resolve => setTimeout(resolve, 5));
@@ -622,5 +622,38 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
     const afterRestart = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
     assert.equal(afterRestart.saved.archived[0]!.phase, 'submitted');
     assert.equal(afterRestart.saved.archived[0]!.smartAccount!.operationHash, row.smartAccount!.operationHash);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+
+for (const sponsored of [false, true]) test(`Smart native MAX uses the shared reserve and exact final approval (${sponsored ? 'gas credit' : 'payer fees'})`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    if (sponsored) await f.selectNetwork('zksys-testnet');
+    await f.change({ kind: 'create-smart', label: 'MAX sender', password: PASSWORD });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    if (sponsored) f.gasSponsored();
+    const recipient = '0x2222222222222222222222222222222222222222';
+    operation = await f.runtime.openSmartAccountSend(recipient, { kind: 'maximum' }, () => undefined);
+    await operation.prepare();
+    const ready = operation.getSnapshot();
+    assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+    assert.equal(ready.intent.kind, 'native-transfer');
+    if (ready.intent.kind !== 'native-transfer') assert.fail('MAX did not resolve to an exact transfer');
+    const expected = BigInt('0x1000000000000000') - BigInt(ready.maximumPrefundUnits!) - 1000000000000n;
+    assert.equal(ready.intent.amountUnits, expected.toString());
+    assert.equal(f.submitted.length, 0);
+    const sending = operation.authorize(ready.revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    const payer = operation.getSnapshot().payerReview!;
+    assert(payer, JSON.stringify(operation.getSnapshot()));
+    operation.confirmPayer(payer.id);
+    await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+    const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[0]!).data);
+    const [, execution] = paliSmartAccountInterface.decodeFunctionData('execute', operations[0].callData);
+    assert.equal(BigInt('0x' + execution.slice(42, 106)), expected);
+    assert.equal(ready.maximumPrefundUnits === '0', sponsored);
   } finally { operation?.dispose(); await f.close(); }
 });
