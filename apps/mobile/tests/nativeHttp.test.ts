@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { createSecurityTestFixture } from './idleComponentFixture.ts';
 import {
   createNativeHttpFetch,
@@ -325,6 +326,16 @@ test('native factory explicitly wires one owned transport to all network consume
       createNativeDeviceUnlockCapability: () => ({
         prompt: { cancel() { retired.push('authentication'); } },
       }),
+    },
+    '../hardware/trezorTransport.native': {
+      createNativeTrezorSessions: (options: { randomBytes(length: number): Uint8Array }) => createTrezorSessions({
+        ...options,
+        loadClient: async () => assert.fail('unexpected Trezor SDK load in native factory fixture'),
+        openURL: async () => assert.fail('unexpected Trezor handoff in native factory fixture'),
+      }),
+    },
+    '../crypto/sentryPublicKey.native': {
+      createNativeSentryPublicKeyDeriver: () => () => assert.fail('unexpected Sentry derivation in native factory fixture'),
     },
     '../custody/ledgerAccounts.ts': { NativeLedgerAccounts: capture('ledger') },
     '../../../../source/utils/security/blacklistService': {

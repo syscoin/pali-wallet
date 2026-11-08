@@ -16,7 +16,9 @@ const { importedEvidence } = createRequire(import.meta.url)('../qualification/im
 
 const root = fileURLToPath(new NodeURL('../', import.meta.url));
 const { readQualificationSdkPin } = createRequire(import.meta.url)('../scripts/qualification-sdk.cjs');
-const sdkVersion = readQualificationSdkPin(root).identity;
+const sdkPin = readQualificationSdkPin(root);
+const sdkVersion = sdkPin.identity;
+const { CHECKS } = createRequire(import.meta.url)('../qualification/simulator-contract.cjs');
 const erc20Evidence = (phase = 'create') => ({
   nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
   erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
@@ -190,8 +192,14 @@ test('native report validation requires the generated mnemonic entropy evidence'
   }) as (text: string, phase: string, scenario: string) => unknown;
   const report = { version: 1, status: 'passed', phase: 'create', scenario: 'generate', platform: 'ios',
     networkCalls: 0, nativeBridgeExercised: true, sdkVersion, nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64),
+    ...(sdkPin.quickCryptoIdentity ? { quickCryptoIdentity: sdkPin.quickCryptoIdentity } : {}),
+    checks: CHECKS.map((name: string) => ({ name, durationMs: 1 })),
     cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() };
   assert.doesNotThrow(() => validate(JSON.stringify(report), 'create', 'generate'));
+  if (sdkPin.quickCryptoIdentity) {
+    assert.throws(() => validate(JSON.stringify({ ...report, quickCryptoIdentity: undefined }), 'create', 'generate'));
+    assert.throws(() => validate(JSON.stringify({ ...report, checks: report.checks.slice(0, -1) }), 'create', 'generate'));
+  }
   assert.throws(() => validate(JSON.stringify({ ...report, selectedAccountId: 'hd:60:0' }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, journalContainerVersion: 2 }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, nativeSigningVerified: false }), 'create', 'generate'));

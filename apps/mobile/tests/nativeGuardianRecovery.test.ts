@@ -4,6 +4,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { CustodyOperationError } from '../src/custody/authority.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
@@ -43,7 +44,8 @@ async function fixture(smart = true) {
     ],
   };
   const listeners = new Set<() => void>();
-  let runtime: any = { catalogue: { getSnapshot: () => catalogue } };
+  const trezor = { subscribe: () => () => undefined };
+  let runtime: any = { catalogue: { getSnapshot: () => catalogue }, trezor };
   let locks = 0;
   class Authority {
     private readonly factory: { open(): Promise<unknown> };
@@ -89,6 +91,16 @@ async function fixture(smart = true) {
       },
     },
     '../connections/controller.ts': { NativeConnectionsController: Passive },
+    '../hardware/trezorTransport.native': {
+      createNativeTrezorSessions: (options: { randomBytes(length: number): Uint8Array }) => createTrezorSessions({
+        ...options,
+        loadClient: async () => assert.fail('unexpected Trezor SDK load in native factory fixture'),
+        openURL: async () => assert.fail('unexpected Trezor handoff in native factory fixture'),
+      }),
+    },
+    '../crypto/sentryPublicKey.native': {
+      createNativeSentryPublicKeyDeriver: () => () => assert.fail('unexpected Sentry derivation in native factory fixture'),
+    },
     '../custody/ledgerAccounts.ts': { NativeLedgerAccounts: Passive },
     '../../../../source/utils/security/blacklistService': {
       blacklistService: {},
@@ -184,7 +196,7 @@ async function fixture(smart = true) {
             if (failure === 'stale') snapshot = { ...snapshot, revision: snapshot.revision + 1 };
             if (failure === 'old-runtime') {
               const replacement = catalogue;
-              runtime = { catalogue: { getSnapshot: () => replacement } };
+              runtime = { catalogue: { getSnapshot: () => replacement }, trezor };
               await controllers.authority.initialize();
               catalogue = null;
             }

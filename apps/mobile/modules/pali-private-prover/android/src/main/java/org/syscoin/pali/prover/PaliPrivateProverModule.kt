@@ -356,7 +356,7 @@ class PaliPrivateProverModule : Module() {
     Function("createHost") {
       try {
         check(Build.VERSION.SDK_INT >= 26)
-        ProofAdmission.acquire(checkNotNull(appContext.reactContext))
+        ProofAdmission.acquire(checkNotNull(appContext.reactContext as? ReactContext))
       }
       catch (_: Exception) { throw ProofException() }
     }
