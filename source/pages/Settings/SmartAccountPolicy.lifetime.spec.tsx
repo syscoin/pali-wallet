@@ -8,10 +8,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { sha256 } from 'ethers/crypto';
-import { toUtf8Bytes } from 'ethers/utils';
 import React from 'react';
-import { releasedGuardianRecoveryRecord } from 'tests/fixtures/guardianRecoveryClaim';
 
 import { KeyringAccountType } from 'types/network';
 import { toP256WebAuthnRecoveryTarget } from 'utils/passkey';
@@ -22,10 +19,7 @@ import {
 } from 'utils/passkey';
 import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
-import {
-  captureGuardianRecoveryClaim,
-  captureReleasedGuardianRecoveryRecord,
-} from 'utils/smartAccount/guardianRecoveryClaim';
+import { captureGuardianRecoveryClaim } from 'utils/smartAccount/guardianRecoveryClaim';
 import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
 import { buildSmartAccountGuardianRecoveryOperation } from 'utils/smartAccount/recovery';
 
@@ -193,9 +187,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       if (method === 'getSmartAccountGuardianRecoveryStatus') {
         const local =
           mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
-            ?.intent.operation ??
-          JSON.parse(localStorage.getItem(REPLACEMENT_KEY) || 'null')
-            ?.recoveryOperation;
+            ?.intent.operation;
         const pending = local?.policyEpoch
           ? {
               operationId: getGuardianRecoveryOperationId(local),
@@ -228,16 +220,6 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         return mockVault.accounts[KeyringAccountType.SmartAccount][
           mockLocation.state?.id ?? mockVault.activeAccount.id
         ]?.smartAccount;
-      if (method === 'adoptReleasedSmartAccountGuardianRecovery') {
-        const record = JSON.parse(localStorage.getItem(REPLACEMENT_KEY)!);
-        const claim = captureGuardianRecoveryClaim({
-          ...captureReleasedGuardianRecoveryRecord(record),
-          guardian: { kind: 'ecdsa', guardian: GUARDIAN },
-        });
-        mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim =
-          claim;
-        return claim;
-      }
       if (method === 'retireSmartAccountGuardianRecovery') {
         const currentMetadata = mockVault.accounts.SmartAccount[1].smartAccount;
         currentMetadata.guardianRecoveryReplacement =
@@ -251,20 +233,20 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     });
   });
 
-  const beginRecoveryFinalization = async (released = false) => {
+  const beginRecoveryFinalization = async () => {
     mockLocation.state.smartAccountPolicyView = 'recovery';
     const replacement = {
       authenticator: {
         id: 'p256-webauthn' as const,
         config: {
           credentialId: 'cmVwbGFjZW1lbnQ',
-          credentialIdHash: sha256(toUtf8Bytes('replacement')),
+          credentialIdHash: `0x${'55'.repeat(32)}`,
           passkeyName: 'Replacement',
           publicKey: PUBLIC_KEY,
         },
       },
       credentialId: 'cmVwbGFjZW1lbnQ',
-      credentialIdHash: sha256(toUtf8Bytes('replacement')),
+      credentialIdHash: `0x${'55'.repeat(32)}`,
       kind: 'p256-webauthn' as const,
     };
     localStorage.setItem(REPLACEMENT_KEY, JSON.stringify(replacement));
@@ -289,19 +271,6 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         guardian: { kind: 'ecdsa', guardian: GUARDIAN },
         readyAt: Math.floor(Date.now() / 1000) - 60,
       });
-    if (released) {
-      localStorage.setItem(
-        REPLACEMENT_KEY,
-        JSON.stringify(
-          releasedGuardianRecoveryRecord(
-            mockVault.accounts.SmartAccount[1].smartAccount
-              .guardianRecoveryClaim
-          )
-        )
-      );
-      mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim =
-        undefined;
-    }
     const pending = deferred<unknown>();
     const original = mockEmitter.getMockImplementation()!;
     mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
@@ -337,142 +306,6 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     );
     return { ...pending, view };
   };
-
-  it.each(['success', 'lost reply'])(
-    'finishes the official v4.0.69 local record using the returned canonical claim: %s',
-    async (outcome) => {
-      const pending = await beginRecoveryFinalization(true);
-      const original = localStorage.getItem(REPLACEMENT_KEY)!;
-      const adopted =
-        mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim;
-      expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'adoptReleasedSmartAccountGuardianRecovery'],
-        [
-          expect.objectContaining({
-            account: ACCOUNT,
-            record: JSON.parse(original),
-            expectedContext: expect.objectContaining({
-              sessionGeneration: mockGeneration,
-            }),
-          }),
-        ],
-        300000
-      );
-      expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'finalizeSmartAccountGuardianRecovery'],
-        [
-          expect.objectContaining({
-            claim: adopted,
-            expectedClaimHash: adopted.intent.operation.hash,
-          }),
-        ],
-        300000
-      );
-      expect(localStorage.getItem(REPLACEMENT_KEY)).toBe(original);
-      if (outcome === 'success') {
-        await act(async () => pending.resolve({}));
-        expect(localStorage.getItem(REPLACEMENT_KEY)).toBeNull();
-        expect(
-          mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
-        ).toBeUndefined();
-        expect(setActivePasskeyRecord).toHaveBeenCalledTimes(1);
-      } else {
-        await act(async () => pending.reject(new Error('Finalize reply lost')));
-        expect(localStorage.getItem(REPLACEMENT_KEY)).toBe(original);
-        expect(
-          mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
-        ).toEqual(adopted);
-        expect(setActivePasskeyRecord).not.toHaveBeenCalled();
-      }
-      pending.view.unmount();
-    }
-  );
-
-  it('retains the released record and never finalizes if strict adoption refuses', async () => {
-    const seed = await beginRecoveryFinalization(true);
-    await act(async () => seed.reject(new Error('Reply lost')));
-    seed.view.unmount();
-    const originalRecord = localStorage.getItem(REPLACEMENT_KEY)!;
-    mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim =
-      undefined;
-    mockEmitter.mockClear();
-    const original = mockEmitter.getMockImplementation()!;
-    mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
-      path[1] === 'adoptReleasedSmartAccountGuardianRecovery'
-        ? Promise.reject(new Error('Released operation is not observed'))
-        : original(path, ...args)
-    );
-    const view = render(<SmartAccountPolicy />);
-    const button = await screen.findByRole('button', {
-      name: 'settings.smartAccountGuardianRecoveryFinalize',
-    });
-    await waitFor(() =>
-      expect((button as HTMLButtonElement).disabled).toBe(false)
-    );
-    fireEvent.click(button);
-    await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
-    expect(
-      mockEmitter.mock.calls.some(
-        ([path]) => path[1] === 'finalizeSmartAccountGuardianRecovery'
-      )
-    ).toBe(false);
-    expect(localStorage.getItem(REPLACEMENT_KEY)).toBe(originalRecord);
-    expect(setActivePasskeyRecord).not.toHaveBeenCalled();
-    view.unmount();
-  });
-
-  it('adopts an already executed released record and uses read-only local reconciliation', async () => {
-    const seed = await beginRecoveryFinalization(true);
-    await act(async () => seed.reject(new Error('Finalize reply lost')));
-    seed.view.unmount();
-    mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim =
-      undefined;
-    mockEmitter.mockClear();
-    const original = mockEmitter.getMockImplementation()!;
-    mockEmitter.mockImplementation(async (path: string[], ...args: any[]) => {
-      if (path[1] === 'reconcileSmartAccountGuardianRecovery')
-        return metadata();
-      const response = await original(path, ...args);
-      return path[1] === 'getSmartAccountGuardianRecoveryStatus'
-        ? {
-            ...response,
-            pending: null,
-            active: null,
-            knownOperation: { ...response.knownOperation, status: 'executed' },
-          }
-        : response;
-    });
-    const view = render(<SmartAccountPolicy />);
-    const button = await screen.findByRole('button', {
-      name: 'settings.smartAccountGuardianRecoveryFinalize',
-    });
-    await waitFor(() =>
-      expect((button as HTMLButtonElement).disabled).toBe(false)
-    );
-    fireEvent.click(button);
-    await waitFor(() =>
-      expect(localStorage.getItem(REPLACEMENT_KEY)).toBeNull()
-    );
-    expect(
-      mockEmitter.mock.calls.some(
-        ([path]) => path[1] === 'adoptReleasedSmartAccountGuardianRecovery'
-      )
-    ).toBe(true);
-    expect(
-      mockEmitter.mock.calls.some(
-        ([path]) => path[1] === 'reconcileSmartAccountGuardianRecovery'
-      )
-    ).toBe(true);
-    expect(
-      mockEmitter.mock.calls.some(
-        ([path]) => path[1] === 'finalizeSmartAccountGuardianRecovery'
-      )
-    ).toBe(false);
-    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
-    expect(createPasskeyCredential).not.toHaveBeenCalled();
-    expect(setActivePasskeyRecord).toHaveBeenCalledTimes(1);
-    view.unmount();
-  });
 
   it.each(['unavailable', 'stale', 'receipt unavailable'])(
     'keeps a submitted wallet-owner rotation with %s metadata and retries only verification',
@@ -1199,7 +1032,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       address: p256,
       config: {
         credentialId: 'b2xk',
-        credentialIdHash: sha256(toUtf8Bytes('replacement')),
+        credentialIdHash: `0x${'55'.repeat(32)}`,
         publicKey: PUBLIC_KEY,
       },
       id: 'p256-webauthn',

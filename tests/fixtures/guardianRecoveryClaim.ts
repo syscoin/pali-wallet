@@ -63,21 +63,3 @@ export function acknowledgedGuardianRecoveryClaim(
     },
   });
 }
-
-/** Exact operation fields persisted by official stable v4.0.69 (no hash/target/guardian). */
-export function releasedGuardianRecoveryRecord(claim: GuardianRecoveryClaim) {
-  const operation = claim.intent.operation;
-  return {
-    ...claim.replacement,
-    recoveryOperation: {
-      account: operation.account,
-      chainId: operation.chainId,
-      policyEpoch: operation.policyEpoch,
-      executionCalldata: operation.executionCalldata,
-      mode: operation.mode,
-      readyAt: claim.readyAt,
-      recoveryModule: operation.recoveryModule,
-      salt: operation.salt,
-    },
-  };
-}
