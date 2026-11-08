@@ -6,7 +6,13 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import {
+  BackHandler,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   getGuardianRecoveryDelayOptions,
@@ -42,6 +48,22 @@ type Observation = Extract<
   { status: 'observed' }
 >['observation'];
 
+type PolicyOwner = {
+  live: boolean;
+  returning: boolean;
+  busy: boolean;
+  abort: AbortController;
+  operation: NativeSmartAccountOperation | null;
+  opening?: Promise<void>;
+  disposing?: Promise<void>;
+};
+function disposePolicy(owner: PolicyOwner): Promise<void> {
+  owner.disposing ??= Promise.resolve(owner.opening)
+    .catch(() => undefined)
+    .then(() => owner.operation?.dispose());
+  return owner.disposing;
+}
+
 export function NativeGuardianPolicy({
   action,
   address,
@@ -50,6 +72,7 @@ export function NativeGuardianPolicy({
   manage,
   lifetime,
   onBack,
+  registerBack,
 }: {
   action: 'set' | 'remove';
   address: string;
@@ -58,6 +81,7 @@ export function NativeGuardianPolicy({
   manage: NativeGuardianPolicyTool;
   lifetime: AbortSignal;
   onBack(): void;
+  registerBack?(handler: () => void): () => void;
 }) {
   const [port] = useState(manage);
   const [inspection, setInspection] =
@@ -76,37 +100,82 @@ export function NativeGuardianPolicy({
   const [busy, setBusy] = useState(false);
   const [operation, setOperation] =
     useState<NativeSmartAccountOperation | null>(null);
-  const owner = useRef({
-    live: true,
-    busy: false,
-    operation: null as NativeSmartAccountOperation | null,
-  });
+  const [closing, setClosing] = useState(false);
+  const callbacks = useRef({ onBack });
   useLayoutEffect(() => {
+    callbacks.current = { onBack };
+  }, [onBack]);
+  const owner = useRef<PolicyOwner>({
+    live: true,
+    returning: false,
+    busy: false,
+    abort: new AbortController(),
+    operation: null,
+  });
+  const back = useCallback(() => {
     const current = owner.current;
-    current.live = !lifetime.aborted;
+    if (!current.live) return;
+    current.live = false;
+    current.returning = true;
+    current.abort.abort();
+    const close = callbacks.current.onBack;
+    setClosing(true);
+    void disposePolicy(current)
+      .catch(() => undefined)
+      .then(() => {
+        if (owner.current === current && current.returning) close();
+      });
+  }, []);
+  useLayoutEffect(() => registerBack?.(back), [registerBack, back]);
+  useLayoutEffect(() => {
+    const current: PolicyOwner = {
+      live: !lifetime.aborted,
+      returning: false,
+      busy: false,
+      abort: new AbortController(),
+      operation: null,
+    };
+    owner.current = current;
     const retire = () => {
       current.live = false;
-      current.operation?.dispose();
+      current.returning = false;
+      current.abort.abort();
+      void disposePolicy(current).catch(() => undefined);
     };
     lifetime.addEventListener('abort', retire, { once: true });
     if (lifetime.aborted) retire();
+    const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
+      back();
+      return true;
+    });
     return () => {
       lifetime.removeEventListener('abort', retire);
       retire();
+      hardware.remove();
     };
-  }, [lifetime]);
+  }, [back, lifetime]);
   const inspect = useCallback(async () => {
     const current = owner.current;
     if (!current.live || current.busy) return;
     current.busy = true;
     setBusy(true);
     const check = () => {
-      if (!current.live || lifetime.aborted) throw new Error('CANCELLED');
+      if (
+        owner.current !== current ||
+        !current.live ||
+        current.abort.signal.aborted ||
+        lifetime.aborted
+      )
+        throw new Error('CANCELLED');
     };
     try {
-      const next = await port.inspectRemoval(lifetime, check);
-      check();
-      setInspection(next);
+      current.opening = port
+        .inspectRemoval(current.abort.signal, check)
+        .then((next) => {
+          check();
+          setInspection(next);
+        });
+      await current.opening;
     } catch {
       if (current.live)
         setInspection({ status: 'unknown', transactions: [], totalPending: 0 });
@@ -151,16 +220,25 @@ export function NativeGuardianPolicy({
     setBusy(true);
     setError('');
     const check = () => {
-      if (!current.live || lifetime.aborted) throw new Error('CANCELLED');
+      if (
+        owner.current !== current ||
+        !current.live ||
+        current.abort.signal.aborted ||
+        lifetime.aborted
+      )
+        throw new Error('CANCELLED');
     };
     try {
-      const next = await port.open(draft, lifetime, check);
-      if (!current.live || lifetime.aborted) {
-        next.dispose();
-        return;
-      }
-      current.operation = next;
-      setOperation(next);
+      current.opening = port
+        .open(draft, current.abort.signal, check)
+        .then((next) => {
+          current.operation = next;
+          if (current.live) {
+            check();
+            setOperation(next);
+          }
+        });
+      await current.opening;
     } catch {
       if (current.live)
         setError(
@@ -171,12 +249,17 @@ export function NativeGuardianPolicy({
       if (current.live) setBusy(false);
     }
   };
+  if (closing)
+    return (
+      <SafeAreaView style={s.safe}>
+        <Screen>
+          <Text>Closing guardian review…</Text>
+        </Screen>
+      </SafeAreaView>
+    );
   if (operation)
     return (
-      <NativeSmartAccountOperationScreen
-        controller={operation}
-        onBack={onBack}
-      />
+      <NativeSmartAccountOperationScreen controller={operation} onBack={back} />
     );
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
@@ -194,7 +277,7 @@ export function NativeGuardianPolicy({
                 : 'Set guardian'
             }
             subtitle={networkLabel}
-            onBack={onBack}
+            onBack={back}
           />
           <Card style={s.card}>
             <Text style={s.label}>Smart account · Chain ID {port.chainId}</Text>
@@ -386,7 +469,7 @@ export function NativeGuardianPolicy({
               }}
             />
           )}
-          <Button title="Cancel" variant="quiet" onPress={onBack} />
+          <Button title="Cancel" variant="quiet" onPress={back} />
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -1,3 +1,4 @@
+import { NativeOperationDrain } from './operationDrain.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
 import type { IPrivateNoteStatus } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import type {
@@ -7,7 +8,14 @@ import type {
 } from '../../../../source/utils/privacy/transactionTypes.ts';
 
 export type NativePrivateDepositSnapshot = Readonly<{
-  phase: 'idle' | 'preparing' | 'review' | 'submitting' | 'submitted' | 'unknown' | 'failed';
+  phase:
+    | 'idle'
+    | 'preparing'
+    | 'review'
+    | 'submitting'
+    | 'submitted'
+    | 'unknown'
+    | 'failed';
   review: IPrivacyDepositReview | null;
   result: IPrivacyDepositSubmission | null;
   status: IPrivateNoteStatus | null;
@@ -25,7 +33,10 @@ function failureCode(error: unknown): NativePrivateDepositSnapshot['error'] {
   const message = error instanceof Error ? error.message : '';
   if (message === 'privacy_deposit_intent_expired') return 'expired';
   if (message === 'privacy_deposit_attempt_exists') return 'pending';
-  if (message === 'privacy_wrong_chain' || message === 'privacy_deposit_unsupported_account')
+  if (
+    message === 'privacy_wrong_chain' ||
+    message === 'privacy_deposit_unsupported_account'
+  )
     return 'unavailable';
   return 'failed';
 }
@@ -40,11 +51,12 @@ export class NativePrivateDeposit {
     checking: false,
     error: null,
   });
-  private readonly listeners = new Set<(snapshot: NativePrivateDepositSnapshot) => void>();
+  private readonly listeners = new Set<
+    (snapshot: NativePrivateDepositSnapshot) => void
+  >();
   private busy = false;
   private disposed = false;
-  private closing: Promise<void> | undefined;
-  private activeOperation: Promise<void> | undefined;
+  private readonly drain = new NativeOperationDrain();
   private readonly host: Host;
   private readonly signal: AbortSignal;
   constructor(host: Host, signal: AbortSignal) {
@@ -57,7 +69,8 @@ export class NativePrivateDeposit {
     void this.dispose().catch(() => undefined);
   };
   private check() {
-    if (this.disposed || this.signal.aborted) throw new Error('privacy_cancelled');
+    if (this.disposed || this.signal.aborted)
+      throw new Error('privacy_cancelled');
     assertSynchronousEvmFeeGuard(this.host.assertCurrent);
   }
   getSnapshot = () => this.snapshot;
@@ -85,17 +98,6 @@ export class NativePrivateDeposit {
       }
     }
   }
-  private trackOperation(): () => void {
-    let settled!: () => void;
-    const operation = new Promise<void>((resolve) => {
-      settled = resolve;
-    });
-    this.activeOperation = operation;
-    return () => {
-      if (this.activeOperation === operation) this.activeOperation = undefined;
-      settled();
-    };
-  }
   async prepare(
     request: Parameters<IPrivacyTransactionsController['prepareDeposit']>[0]
   ): Promise<void> {
@@ -104,7 +106,7 @@ export class NativePrivateDeposit {
     const previous = this.snapshot;
     const capturedRequest = { ...request };
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({
       phase: 'preparing',
       review: null,
@@ -142,7 +144,7 @@ export class NativePrivateDeposit {
     this.check();
     const review = this.snapshot.review;
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({ phase: 'submitting', error: null });
     let result: IPrivacyDepositSubmission | undefined;
     try {
@@ -163,7 +165,11 @@ export class NativePrivateDeposit {
           ? { phase: 'failed', error: failureCode(error) }
           : {
               phase: 'unknown',
-              result: result ?? { intentId, noteId: review.noteId, phase: 'unknown' },
+              result: result ?? {
+                intentId,
+                noteId: review.noteId,
+                phase: 'unknown',
+              },
             }
       );
     } finally {
@@ -175,9 +181,10 @@ export class NativePrivateDeposit {
     if (this.busy || this.disposed || !this.snapshot.review) return;
     this.check();
     const { review, result } = this.snapshot;
-    if (!result) return this.prepare({ poolId: review.poolId, noteId: review.noteId });
+    if (!result)
+      return this.prepare({ poolId: review.poolId, noteId: review.noteId });
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({ error: null, checking: true });
     try {
       this.check();
@@ -194,33 +201,10 @@ export class NativePrivateDeposit {
     }
   }
   dispose(): Promise<void> {
-    if (this.closing) return this.closing;
-    let resolve!: () => void;
-    let reject!: (error: unknown) => void;
-    this.closing = new Promise<void>((accept, fail) => {
-      resolve = accept;
-      reject = fail;
-    });
-    this.disposed = true;
-    this.signal.removeEventListener('abort', this.onAbort);
-    this.listeners.clear();
-    const invoke = (action: () => void | Promise<void>) => {
-      try {
-        return Promise.resolve(action());
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    };
-    const work = [
-      this.activeOperation ?? Promise.resolve(),
-      invoke(() => this.host.transactions.close()),
-      invoke(() => this.host.close()),
-    ];
-    void Promise.allSettled(work).then((results) => {
-      const failure = results.find((result) => result.status === 'rejected');
-      if (failure?.status === 'rejected') reject(failure.reason);
-      else resolve();
-    });
-    return this.closing;
+    return this.drain.close(() => {
+      this.disposed = true;
+      this.signal.removeEventListener('abort', this.onAbort);
+      this.listeners.clear();
+    }, [() => this.host.transactions.close(), () => this.host.close()]);
   }
 }

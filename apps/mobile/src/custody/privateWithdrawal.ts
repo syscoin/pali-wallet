@@ -1,3 +1,4 @@
+import { NativeOperationDrain } from './operationDrain.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeApproval.ts';
 import type { IPrivateNoteStatus } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
@@ -85,8 +86,7 @@ export class NativePrivateWithdrawal {
   private readonly withdrawals: IPrivacyWithdrawalsController;
   private busy = false;
   private disposed = false;
-  private closing: Promise<void> | undefined;
-  private activeOperation: Promise<void> | undefined;
+  private readonly drain = new NativeOperationDrain();
   private readonly host: Host;
   private readonly signal: AbortSignal;
 
@@ -152,17 +152,6 @@ export class NativePrivateWithdrawal {
     };
   };
 
-  private trackOperation(): () => void {
-    let settled!: () => void;
-    const operation = new Promise<void>((resolve) => {
-      settled = resolve;
-    });
-    this.activeOperation = operation;
-    return () => {
-      if (this.activeOperation === operation) this.activeOperation = undefined;
-      settled();
-    };
-  }
   async prepare(request: Request): Promise<void> {
     if (this.busy || this.disposed) return;
     this.check();
@@ -173,7 +162,7 @@ export class NativePrivateWithdrawal {
     const previous = this.snapshot.review;
     const capturedRequest = { ...request };
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({
       phase: 'preparing',
       review: null,
@@ -209,7 +198,7 @@ export class NativePrivateWithdrawal {
       return;
     this.check();
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({ phase: 'submitting', error: null });
     let result: IPrivacyWithdrawalSubmission | undefined;
     try {
@@ -246,7 +235,7 @@ export class NativePrivateWithdrawal {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({ checking: true, error: null });
     try {
       this.check();
@@ -274,7 +263,7 @@ export class NativePrivateWithdrawal {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({ checking: true, error: null });
     try {
       this.check();
@@ -302,7 +291,7 @@ export class NativePrivateWithdrawal {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
-    const finish = this.trackOperation();
+    const finish = this.drain.begin();
     this.publish({ checking: true, error: null });
     try {
       this.check();
@@ -320,34 +309,11 @@ export class NativePrivateWithdrawal {
   }
 
   dispose(): Promise<void> {
-    if (this.closing) return this.closing;
-    let resolve!: () => void;
-    let reject!: (error: unknown) => void;
-    this.closing = new Promise<void>((accept, fail) => {
-      resolve = accept;
-      reject = fail;
-    });
-    this.disposed = true;
-    this.signal.removeEventListener('abort', this.onAbort);
-    this.listeners.clear();
-    const invoke = (action: () => void | Promise<void>) => {
-      try {
-        return Promise.resolve(action());
-      } catch (error) {
-        return Promise.reject(error);
-      }
-    };
-    const work = [
-      this.activeOperation ?? Promise.resolve(),
-      invoke(() => this.withdrawals.close()),
-      invoke(() => this.host.close()),
-    ];
-    void Promise.allSettled(work).then((results) => {
-      const failure = results.find((result) => result.status === 'rejected');
-      if (failure?.status === 'rejected') reject(failure.reason);
-      else resolve();
-    });
-    return this.closing;
+    return this.drain.close(() => {
+      this.disposed = true;
+      this.signal.removeEventListener('abort', this.onAbort);
+      this.listeners.clear();
+    }, [() => this.withdrawals.close(), () => this.host.close()]);
   }
 }
 

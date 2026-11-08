@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import React from 'react';
 
@@ -15,6 +16,7 @@ import {
   setActivePasskeyRecord,
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
+import { encodeEcdsaValidatorInitData } from 'utils/smartAccount/account';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 import { getGuardianRecoveryOperationId } from 'utils/smartAccount/guardianStatus';
 
@@ -269,6 +271,169 @@ describe('SmartAccountPolicy async UI lifetime', () => {
     );
     return { ...pending, view };
   };
+
+  it.each(['unavailable', 'stale', 'receipt unavailable'])(
+    'keeps a submitted wallet-owner rotation with %s metadata and retries only verification',
+    async (mode) => {
+      const priorOwner = '0x4444444444444444444444444444444444444444';
+      const initial = metadata();
+      initial.auth.data = encodeEcdsaValidatorInitData([priorOwner], 1);
+      Object.assign(initial.installedModules[0]!, {
+        data: initial.auth.data,
+        config: { owners: [priorOwner], threshold: 1 },
+      });
+      mockVault.accounts[KeyringAccountType.HDAccount][1] = {
+        id: 1,
+        address: priorOwner,
+      };
+      mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
+        initial;
+      const applied = metadata();
+      applied.auth.data = encodeEcdsaValidatorInitData([OWNER], 1);
+      Object.assign(applied.installedModules[0]!, { data: applied.auth.data });
+      const original = mockEmitter.getMockImplementation()!;
+      const hash = `0x${'99'.repeat(32)}`;
+      const waitForReceipt = jest.fn(async () => {
+        throw new Error('Receipt unavailable after acknowledgement');
+      });
+      let submitted = false,
+        available = false;
+      mockEmitter.mockImplementation(async (path: string[], params: any[]) => {
+        if (path[1] === 'hydrateSmartAccount' && submitted) {
+          if (!available) {
+            if (mode !== 'stale') throw Error('Public metadata unavailable');
+            return initial;
+          }
+          return applied;
+        }
+        if (path[1] === 'prepareSmartAccountExecutions')
+          return {
+            accountId: 1,
+            actionHash: `0x${'77'.repeat(32)}`,
+            executionContextId: 'wallet-owner-change',
+            executions: params[0],
+            smartAccount: initial,
+          };
+        if (
+          path[1] === 'assertSmartAccountExecutionContext' ||
+          path[1] === 'assertSmartAccountPreparedNonce'
+        )
+          return;
+        if (path[1] === 'signSmartAccountActionDigestInternal')
+          return `0x${'88'.repeat(65)}`;
+        if (path[1] === 'submitSmartAccountExecution') {
+          expect(params[0].waitForConfirmation).toBe(false);
+          submitted = true;
+          return { hash, wait: waitForReceipt };
+        }
+        return original(path, params);
+      });
+      const view = render(<SmartAccountPolicy />);
+      await act(async () => undefined);
+      const card = screen
+        .getByText(OWNER, { exact: true })
+        .closest('div.rounded-2xl')!;
+      fireEvent.click(
+        within(card as HTMLElement).getByRole('button', {
+          name: 'settings.useSmartAccountValidator',
+        })
+      );
+      await screen.findByText('notifications.submitted');
+      expect(screen.getByText(hash)).toBeTruthy();
+      const count = (method: string) =>
+        mockEmitter.mock.calls.filter(([path]) => path[1] === method).length;
+      expect(count('signSmartAccountActionDigestInternal')).toBe(1);
+      expect(count('submitSmartAccountExecution')).toBe(1);
+      expect(mockAlert.success).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'header.refresh' }));
+      await act(async () => undefined);
+      expect(screen.getByText(hash)).toBeTruthy();
+      expect(count('signSmartAccountActionDigestInternal')).toBe(1);
+      expect(count('submitSmartAccountExecution')).toBe(1);
+      expect(waitForReceipt).not.toHaveBeenCalled();
+      available = true;
+      fireEvent.click(screen.getByRole('button', { name: 'header.refresh' }));
+      await waitFor(() =>
+        expect(mockAlert.success).toHaveBeenCalledWith(
+          'settings.smartAccountAuthenticatorConfigured'
+        )
+      );
+      expect(screen.queryByText('notifications.submitted')).toBeNull();
+      expect(count('signSmartAccountActionDigestInternal')).toBe(1);
+      expect(count('submitSmartAccountExecution')).toBe(1);
+      view.unmount();
+    }
+  );
+
+  it.each(['owner', 'session', 'route'])(
+    'refuses wallet-owner signing after %s changes during preparation',
+    async (changed) => {
+      const priorOwner = '0x4444444444444444444444444444444444444444';
+      const initial = metadata();
+      initial.auth.data = encodeEcdsaValidatorInitData([priorOwner], 1);
+      Object.assign(initial.installedModules[0]!, {
+        data: initial.auth.data,
+        config: { owners: [priorOwner], threshold: 1 },
+      });
+      mockVault.accounts[KeyringAccountType.HDAccount][1] = {
+        id: 1,
+        address: priorOwner,
+      };
+      mockVault.accounts[KeyringAccountType.SmartAccount][1].smartAccount =
+        initial;
+      const pending = deferred<any>();
+      const original = mockEmitter.getMockImplementation()!;
+      mockEmitter.mockImplementation(async (path: string[], params: any[]) => {
+        if (path[1] === 'prepareSmartAccountExecutions') return pending.promise;
+        return original(path, params);
+      });
+      const view = render(<SmartAccountPolicy />);
+      await act(async () => undefined);
+      const card = screen
+        .getByText(OWNER, { exact: true })
+        .closest('div.rounded-2xl')!;
+      fireEvent.click(
+        within(card as HTMLElement).getByRole('button', {
+          name: 'settings.useSmartAccountValidator',
+        })
+      );
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.some(
+            ([path]) => path[1] === 'prepareSmartAccountExecutions'
+          )
+        ).toBe(true)
+      );
+      const preparation = mockEmitter.mock.calls.find(
+        ([path]) => path[1] === 'prepareSmartAccountExecutions'
+      )!;
+      if (changed === 'owner') {
+        mockVault.accounts[KeyringAccountType.HDAccount][0].address = GUARDIAN;
+        view.rerender(<SmartAccountPolicy />);
+      } else if (changed === 'session') mockGeneration++;
+      else depart('route', view);
+      await act(async () =>
+        pending.resolve({
+          accountId: 1,
+          actionHash: `0x${'77'.repeat(32)}`,
+          executionContextId: 'wallet-owner-change',
+          executions: preparation[1][0],
+          smartAccount: initial,
+        })
+      );
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+        )
+      ).toBe(false);
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'submitSmartAccountExecution'
+        )
+      ).toBe(false);
+      view.unmount();
+    }
+  );
 
   const depart = (reason: string, view: ReturnType<typeof render>) => {
     if (reason === 'unmount') view.unmount();

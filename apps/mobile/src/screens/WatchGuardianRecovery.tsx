@@ -26,8 +26,8 @@ const OPERATION_LABELS = {
   unknown: 'Recovery status unavailable',
 } as const;
 
-export function WatchGuardianRecovery({ address, networkLabel, read, manage, recovery, initialRecovery, lifetime, onBack }:
-  Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; initialRecovery?: boolean; onBack(): void }) {
+export function WatchGuardianRecovery({ address, networkLabel, read, manage, recovery, initialRecovery, lifetime, onBack, registerBack }:
+  Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; initialRecovery?: boolean; onBack(): void; registerBack?(handler: () => void): () => void }) {
   const [state, setState] = useState<State>({ status: 'idle' });
   const [editing, setEditing] = useState<'set' | 'remove' | 'recover' | null>(initialRecovery && recovery?.hasIntent ? 'recover' : null);
   const owner = useRef<AbortController | null>(null);
@@ -70,7 +70,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, rec
   }
   if (editing && editing !== 'recover' && manage && observation) {
     return <NativeGuardianPolicy key={editing} action={editing} address={address} networkLabel={networkLabel}
-      observation={observation} manage={manage} lifetime={lifetime} onBack={onBack} />;
+      observation={observation} manage={manage} lifetime={lifetime} onBack={onBack} registerBack={registerBack} />;
   }
 
   return <SafeAreaView edges={['top']} style={styles.container}><Screen>

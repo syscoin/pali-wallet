@@ -1,4 +1,5 @@
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
+import { assertPaliWalletValidatorSwitchApplied, buildPaliWalletValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import { NativePrivateWithdrawal } from './privateWithdrawal.ts';
 import { createPrivacyWithdrawalsController, PRIVACY_WITHDRAWAL_GAS } from '../../../../source/wallet/privacyWithdrawals.ts';
 import { capturePrivateWithdrawalAttempt, privateWithdrawalUnsignedBytes } from '../../../../source/utils/privacy/withdrawalMetadata.ts';
@@ -248,6 +249,8 @@ export interface KeyringRuntime extends CustodyRuntime {
   readonly ledger: NativeLedgerRuntime;
   openConnectionHost(): Promise<NativeConnectionHost>;
   openSmartAccountDeployment(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  openWalletAuthenticator(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  canUseWalletAuthenticator(): boolean;
   openSmartAccountSend(recipient: string, amount: NativeSmartAccountAmount, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   refreshSmartAccountMetadata(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRecoveryObservation | null>;
   getGuardianRecoveryIntent(): NativeGuardianRecoveryIntent | null;
@@ -3171,6 +3174,9 @@ export function createKeyringRuntimeFactory(
                 snapshot = catalogueSnapshot!;
                 selected = selectedAccount();
                 account = state.accounts.SmartAccount[selected.index]!;
+                if (intent.kind === 'wallet-authenticator') {
+                  assertPaliWalletValidatorSwitchApplied(intent.command, account.smartAccount!);
+                }
                 if (intent.kind === 'guardian-policy') {
                   if (intent.command.kind === 'remove') {
                     if (!observation || observation.exists) throw new Error('Guardian removal metadata has not caught up');
@@ -3248,6 +3254,44 @@ export function createKeyringRuntimeFactory(
             return openSmartAccountOperation({ kind: 'guardian-policy', command }, assertOwner, undefined, assertPolicy);
           },
           openSmartAccountDeployment: (assertOwner) => openSmartAccountOperation({ kind: 'deploy' }, assertOwner),
+          canUseWalletAuthenticator: () => {
+            if (!canManageGuardianPolicy()) return false;
+            const selected = selectedAccount();
+            return state.accounts.SmartAccount[selected.index]?.smartAccount?.isDeployed === true;
+          },
+          async openWalletAuthenticator(signal, assertOwner) {
+            const captured = generation, before = catalogueSnapshot;
+            if (!before || !canManageGuardianPolicy()) throw new KeyringRuntimeError('NOT_READY');
+            const address = selectedAccount().address;
+            const check = () => {
+              current(captured); checkGuard(assertOwner);
+              if (signal.aborted || catalogueSnapshot?.active.accountId !== before.active.accountId ||
+                  catalogueSnapshot.active.networkId !== before.active.networkId || selectedAccount().address !== address)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            await refreshSmartAccountMetadata(signal, check);
+            check();
+            if (!canManageGuardianPolicy()) throw new KeyringRuntimeError('NOT_READY');
+            const selected = selectedAccount();
+            const account = state.accounts.SmartAccount[selected.index];
+            if (!account?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
+            const hdOwner = state.accounts.HDAccount[0] ?? Object.values(state.accounts.HDAccount)[0];
+            const ownerType = hdOwner ? 'HDAccount' as const : 'Imported' as const;
+            const owner = hdOwner ?? Object.values(state.accounts.Imported)[0];
+            if (!owner || owner.isSmartAccount || owner.isLedgerWallet || owner.isTrezorWallet)
+              throw new KeyringRuntimeError('NOT_READY');
+            const ownerId = owner.id, ownerAddress = owner.address;
+            const command = buildPaliWalletValidatorSwitch({ accountAddress: account.address,
+              chainId: account.smartAccount.chainId, metadata: account.smartAccount, ownerAddress });
+            const checkOwner = () => {
+              check();
+              const currentOwner = state.accounts[ownerType][ownerId];
+              if (!currentOwner || currentOwner.address.toLowerCase() !== ownerAddress.toLowerCase() ||
+                  currentOwner.isSmartAccount || currentOwner.isLedgerWallet || currentOwner.isTrezorWallet)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            return openSmartAccountOperation({ kind: 'wallet-authenticator', command }, checkOwner);
+          },
           async openSmartAccountSend(recipient, amount, assertOwner) {
             let intent: NativeSmartAccountIntent;
             try {

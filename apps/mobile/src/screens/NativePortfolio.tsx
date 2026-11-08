@@ -28,6 +28,7 @@ type Props = {
   source: PublicCustodySource;
   smartAccount?: NativeCatalogueAccount['smartAccount'];
   onDeploySmartAccount?(): void;
+  onUseWalletAuthenticator?(): void;
   onExit(): void;
   onLock(): void;
   onViewRecovery(): void;
@@ -48,16 +49,16 @@ type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ source, smartAccount, onDeploySmartAccount, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
+export function NativePortfolio({ source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch, registrations: () => source.getCatalogue?.()?.networks }), [reader, source]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendSysx={onSendSysx} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
+  return <NativePortfolioContent smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendSysx={onSendSysx} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ model, snapshot, smartAccount, onDeploySmartAccount, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
+function NativePortfolioContent({ model, snapshot, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot; accountLabel: string;
 }) {
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
@@ -180,7 +181,8 @@ function NativePortfolioContent({ model, snapshot, smartAccount, onDeploySmartAc
         </View>
         {smartAccount && <Card><Text style={s.label}>SMART ACCOUNT</Text>
           <Text style={styles.muted}>Managed by {smartAccount.managementAddress}</Text>
-          <Text style={styles.muted}>{smartAccount.isDeployed ? 'Deployment recorded. Smart account signing is not yet available in this build.' : 'Ready to receive. Deployment is required before this account can send.'}</Text>
+          <Text style={styles.muted}>{smartAccount.isDeployed ? smartAccount.localEcdsa ? 'This account uses ECDSA approval.' : 'Deployment recorded. Smart account signing is not yet available in this build.' : 'Ready to receive. Deployment is required before this account can send.'}</Text>
+          {onUseWalletAuthenticator && <Button title="Use Pali wallet" variant="secondary" onPress={() => { if (account && model.isCurrent(account)) onUseWalletAuthenticator(); }} />}
         </Card>}
         {snapshot.status === 'error' && <Notice title="Could not load your balance" body={canReceive ? `Your ${networkName} address is still available. Refresh to try again.` : 'Refresh to try again.'} tone="amber" />}
         {!canSend && !smartAccount && <Notice title={canReceive ? network.testnet ? 'Test network · Balance and receive only' : 'Balance and receive only' : 'Balance only'} body="Sending is not available for this account in this build." />}
