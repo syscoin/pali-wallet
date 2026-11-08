@@ -426,7 +426,7 @@ describe('wallet reset durable cleanup', () => {
     expect(records).toEqual({});
     expect(reset).toHaveBeenCalledWith([host]);
     expect(dapp.getAll()).toEqual({});
-    expect(() => dapp.hasWindow(host)).toThrow();
+    expect(dapp.hasWindow(host)).toBe(false);
     const notifications = injectedNotices();
     expect(notifications).toHaveLength(3);
     expect(notifications[0]).toEqual({
@@ -501,7 +501,10 @@ describe('wallet reset durable cleanup', () => {
 
   it('does not carry a forgotten wallet permission into a new account in the same slot', async () => {
     const { host } = seedOldPermission();
-    const dapp = DAppController(() => true);
+    const dapp = DAppController(
+      () => true,
+      () => 0
+    );
     await wallet.forgetWallet('synthetic password');
     const afterForget = Object.keys(store.getState().dapp.dapps);
     // Use the same clean-vault/account reducers as createWalletExclusive.
@@ -545,7 +548,12 @@ describe('wallet reset durable cleanup', () => {
     );
     expect(outcome).toBe('synthetic storage removal failure');
     expect(records).toEqual(originalRecords);
-    expect(DAppController(() => true).getAccount(host)?.address).toBe(address);
+    expect(
+      DAppController(
+        () => true,
+        () => 0
+      ).getAccount(host)?.address
+    ).toBe(address);
     expect(Object.keys(store.getState().dapp.dapps)).toEqual([host]);
   });
 
@@ -751,7 +759,7 @@ describe('wallet reset durable cleanup', () => {
       expect(wallet.resetRateLimit).toHaveBeenCalledTimes(1);
       expect(reset).toHaveBeenCalledWith([host]);
       expect(dapp.getAll()).toEqual({});
-      expect(() => dapp.hasWindow(host)).toThrow();
+      expect(dapp.hasWindow(host)).toBe(false);
       expect(injectedNotices()).toHaveLength(3);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'wallet_forgotten',
@@ -899,7 +907,7 @@ describe('wallet reset durable cleanup', () => {
       expect(wallet.recoveryJournalPending).toBe(false);
       expect(reset).toHaveBeenCalledWith([host]);
       expect(dapp.getAll()).toEqual({});
-      expect(() => dapp.hasWindow(host)).toThrow();
+      expect(dapp.hasWindow(host)).toBe(false);
       expect(injectedNotices()).toHaveLength(3);
       expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
         type: 'wallet_forgotten',

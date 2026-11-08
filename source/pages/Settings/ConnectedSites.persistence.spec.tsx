@@ -6,14 +6,12 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 
+import { commitDappPermissionGrant } from '../../wallet/dappSessions';
 import DAppController from 'scripts/Background/controllers/DAppController';
 import { PaliEvents } from 'scripts/Background/controllers/message-handler/types';
 import { addDApp, rehydrate as rehydrateDapps } from 'state/dapp';
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
-import store, {
-  persistDappPermissionGrant,
-  persistMainStateStrict,
-} from 'state/store';
+import store, { dappPermissionPort, persistMainStateStrict } from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -174,8 +172,10 @@ beforeEach(async () => {
   );
   controller.setup({ url: HOST, origin: HOST } as chrome.runtime.MessageSender);
   mockEmitter.mockImplementation((methods: string[], params: any[]) => {
-    expect(methods).toEqual(['dapp', 'disconnect']);
-    return controller.disconnect(...(params as [string, boolean?, any?]));
+    expect(methods).toEqual(['dapp', 'revoke']);
+    return controller.revoke(
+      ...(params as [string, { allowAlreadyDisconnected: boolean }])
+    );
   });
 });
 afterEach(() => {
@@ -208,7 +208,10 @@ const removeFromSettings = async (waitForWrite = true) => {
 const restorePersistedPermissions = async () => {
   const saved = await loadState();
   await act(async () => store.dispatch(rehydrateDapps(saved.dapp)));
-  return DAppController(() => true);
+  return DAppController(
+    () => true,
+    () => 0
+  );
 };
 
 const holdNextStateWrite = () => {
@@ -343,9 +346,7 @@ it.each(['success', 'failure', 'cancel'] as const)(
       () => ({ ok: false })
     );
     if (outcome === 'cancel') {
-      await controller.disconnect(HOST, false, {
-        allowAlreadyDisconnected: true,
-      });
+      await controller.retireForTransaction(HOST);
     }
     failedStateWritesRemaining = outcome === 'failure' ? 2 : 1;
     await act(async () => {
@@ -416,11 +417,17 @@ it('never lets a restored predecessor replace an original nonempty predecessor',
   const replacement = { ...original, date: 3 };
   store.dispatch(addDApp(replacement));
   await expect(
-    persistDappPermissionGrant(
-      { ...grant, date: 4 },
-      original,
-      () => true,
-      () => replacement
+    commitDappPermissionGrant(
+      dappPermissionPort,
+      {
+        grant: { ...grant, date: 4 },
+        previous: original,
+        isCurrent: () => true,
+        isSameWallet: () => true,
+        restoredPrevious: () => replacement,
+        isPreviousRetired: () => false,
+      },
+      () => undefined
     )
   ).rejects.toThrow('Permission grant context changed');
   expect(controller.get(HOST)).toBe(replacement);
@@ -431,11 +438,17 @@ it('captures a restored predecessor once and refuses an equal-fields clone durin
   const original = controller.get(HOST)!;
   const held = holdNextStateWrite();
   let restored = original;
-  const writing = persistDappPermissionGrant(
-    { ...grant, date: 4 },
-    undefined,
-    () => true,
-    () => restored
+  const writing = commitDappPermissionGrant(
+    dappPermissionPort,
+    {
+      grant: { ...grant, date: 4 },
+      previous: undefined,
+      isCurrent: () => true,
+      isSameWallet: () => true,
+      restoredPrevious: () => restored,
+      isPreviousRetired: () => false,
+    },
+    () => undefined
   );
   const rejected = expect(writing).rejects.toThrow(
     'Permission grant context changed'

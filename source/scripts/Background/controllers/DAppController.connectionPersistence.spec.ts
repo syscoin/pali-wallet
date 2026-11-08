@@ -129,7 +129,10 @@ beforeEach(async () => {
   (chrome.runtime as any).id = 'test-extension';
   (chrome as any).tabs = { query: jest.fn((_query, reply) => reply([])) };
   (chrome as any).scripting = { executeScript: jest.fn(async () => []) };
-  controller = DAppController(() => true);
+  controller = DAppController(
+    () => true,
+    () => 0
+  );
   mockStorageSet.mockImplementation(async (_key, value) => {
     disk = clone(value);
   });
@@ -149,7 +152,7 @@ it('publishes a normal connection only after durable storage and restores it aft
   expect(chrome.tabs.query).not.toHaveBeenCalled();
   finish();
   await request;
-  expect(mockStorageSet).toHaveBeenCalledTimes(1);
+  expect(mockStorageSet).toHaveBeenCalledTimes(2);
   expect(disk.dapp.dapps[host]).toEqual(details());
   expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
     host,
@@ -157,7 +160,12 @@ it('publishes a normal connection only after durable storage and restores it aft
   );
   expect(chrome.tabs.query).toHaveBeenCalledTimes(1);
   store.dispatch(rehydrate(clone(disk.dapp)));
-  expect(DAppController(() => true).getAccount(host).address).toBe(address);
+  expect(
+    DAppController(
+      () => true,
+      () => 0
+    ).getAccount(host).address
+  ).toBe(address);
 });
 
 it('publishes an existing account change only after its durable write', async () => {
@@ -173,9 +181,12 @@ it('publishes an existing account change only after its durable write', async ()
   await change;
   expect(controller.get(host)?.accountId).toBe(1);
   store.dispatch(rehydrate(clone(disk.dapp)));
-  expect(DAppController(() => true).getAccount(host).address).toBe(
-    store.getState().vault.accounts[type][1].address
-  );
+  expect(
+    DAppController(
+      () => true,
+      () => 0
+    ).getAccount(host).address
+  ).toBe(store.getState().vault.accounts[type][1].address);
 });
 
 it('continues a connected request through its exact durable account-selection successor only', async () => {
@@ -252,10 +263,7 @@ it('does not republish an account change revoked while its storage write is pend
   const change = controller.changeAccount(host, 1, type, context(1));
   const rejected = expect(change).rejects.toThrow('context changed');
   const finish = await waitForWrite();
-  const revoke = controller.disconnect(host, true, {
-    allowAlreadyDisconnected: true,
-    propagateErrors: true,
-  });
+  const revoke = controller.revoke(host, { allowAlreadyDisconnected: true });
   finish();
   await Promise.all([rejected, revoke]);
   expect(controller.isConnected(host)).toBe(false);
@@ -273,7 +281,7 @@ it.each([false, true])(
     mockStorageSet.mockRejectedValueOnce(new Error('Storage unavailable'));
     await expect(connect()).rejects.toThrow('Storage unavailable');
     expect(controller.get(host)).toBe(previous);
-    expect(disk.dapp).toEqual(previousDisk);
+    expect(disk.dapp).toEqual({ ...previousDisk, pendingOrigins: [] });
     expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
     expect(chrome.tabs.query).not.toHaveBeenCalled();
     await connect();
@@ -359,9 +367,8 @@ it('does not publish a pending connection revoked before its write completes', a
   const pending = connect();
   const rejected = expect(pending).rejects.toThrow('context changed');
   const finish = await waitForWrite();
-  const revocation = controller.disconnect(host, true, {
+  const revocation = controller.revoke(host, {
     allowAlreadyDisconnected: true,
-    propagateErrors: true,
   });
   finish();
   await Promise.all([rejected, revocation]);
@@ -654,7 +661,7 @@ describe('connected personal-sign approval authority', () => {
                   outcome: { value: 'continued' },
                   diskAccount: selected.id,
                   publicAddress: selected.address,
-                  writes: 1,
+                  writes: 2,
                   published: [[selected.address]],
                 }
           );
@@ -666,7 +673,7 @@ describe('connected personal-sign approval authority', () => {
   it('does not call the signer or return a signature after same-document grant revocation', async () => {
     await connect();
     const approval = await openApproval();
-    await controller.disconnect(host, true, { propagateErrors: true });
+    await controller.revoke(host, { allowAlreadyDisconnected: false });
     expect(controller.isConnected(host)).toBe(false);
     expect(disk.dapp.dapps[host]).toBeUndefined();
     const value = await approval.approve();
@@ -773,7 +780,7 @@ describe('connected personal-sign approval authority', () => {
     async (revoked) => {
       const { approval, runtime, args } = await openSmartApproval();
       if (revoked) {
-        await controller.disconnect(host, true, { propagateErrors: true });
+        await controller.revoke(host, { allowAlreadyDisconnected: false });
         expect(disk.dapp.dapps[host]).toBeUndefined();
       }
       const result = await runtime.signActionHash(args);
@@ -908,7 +915,7 @@ describe('connected personal-sign approval authority', () => {
     await expect(runtime.signActionHash(args)).resolves.toBe(
       'synthetic-owner-signature'
     );
-    await controller.disconnect(host, true, { propagateErrors: true });
+    await controller.revoke(host, { allowAlreadyDisconnected: false });
     await expect(runtime.signActionHash(args)).resolves.toMatchObject({
       success: false,
     });
@@ -929,7 +936,7 @@ describe('connected personal-sign approval authority', () => {
     });
     const response = runtime.signActionHash(args);
     await signing;
-    await controller.disconnect(host, true, { propagateErrors: true });
+    await controller.revoke(host, { allowAlreadyDisconnected: false });
     finishSigner();
     const result = await response;
     expect(result).toMatchObject({ success: false });
@@ -1129,7 +1136,7 @@ describe('connected personal-sign approval authority', () => {
           () => false
         );
         await started;
-        await controller.disconnect(host, true, { propagateErrors: true });
+        await controller.revoke(host, { allowAlreadyDisconnected: false });
         expect(await fixture.approval.outcome).toEqual({ code: 4001 });
         expect(disk.dapp.dapps[host]).toBeUndefined();
         endHold();
@@ -1314,7 +1321,7 @@ describe('connected personal-sign approval authority', () => {
     await connect();
     await controller.connect({ ...details(), host: other }, context());
     const approval = await openApproval();
-    await controller.disconnect(other, true, { propagateErrors: true });
+    await controller.revoke(other, { allowAlreadyDisconnected: false });
     expect(controller.isConnected(host)).toBe(true);
     await expect(
       approval.approve(message, 'another-popup')
@@ -1339,11 +1346,11 @@ describe('connected personal-sign approval authority', () => {
       if (restore === 'durable rollback') {
         mockStorageSet.mockRejectedValueOnce(Error('Storage unavailable'));
         await expect(
-          controller.disconnect(host, true, { propagateErrors: true })
+          controller.revoke(host, { allowAlreadyDisconnected: false })
         ).rejects.toThrow('Storage unavailable');
         expect(controller.get(host)).toBe(grant);
       } else {
-        await controller.disconnect(host, true, { propagateErrors: true });
+        await controller.revoke(host, { allowAlreadyDisconnected: false });
         await connect();
       }
       expect(controller.isConnected(host)).toBe(true);
@@ -1410,7 +1417,7 @@ describe('connected personal-sign approval authority', () => {
     });
     const response = approval.approve();
     await checking;
-    await controller.disconnect(host, true, { propagateErrors: true });
+    await controller.revoke(host, { allowAlreadyDisconnected: false });
     finish();
     await expect(response).resolves.toMatchObject({ success: false });
     expect(await approval.outcome).toEqual({ code: 4001 });
@@ -1430,7 +1437,7 @@ describe('connected personal-sign approval authority', () => {
     const approval = await openApproval();
     const response = approval.approve();
     await invoked;
-    await controller.disconnect(host, true, { propagateErrors: true });
+    await controller.revoke(host, { allowAlreadyDisconnected: false });
     finish('signature completed after revocation');
     await expect(response).resolves.toMatchObject({ success: false });
     expect(await approval.outcome).toEqual({ code: 4001 });

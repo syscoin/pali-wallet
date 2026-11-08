@@ -1,11 +1,6 @@
 import { INetworkType } from 'types/network';
 
-import reducer, {
-  addDApp,
-  removeDApp,
-  updateDAppAccount,
-  initialState,
-} from '.';
+import reducer, { addDApp, removeDApp, initialState, rehydrate } from '.';
 import { IDApp } from './types';
 
 /*  ----- Tests ----- */
@@ -35,19 +30,12 @@ describe('dapp store actions', () => {
     expect(newState.dapps).toEqual(initialState.dapps);
   });
 
-  //* updateDAppAccount
-  it('should update the dapp account', () => {
-    const payload = {
-      host: FAKE_DAPP.host,
-      accountId: 1,
-      accountType: 'HDAccount' as any,
-      date: Date.now(),
+  it('preserves pending-origin markers in live state synchronization', () => {
+    const frame = {
+      dapps: { [FAKE_DAPP.host]: FAKE_DAPP },
+      pendingOrigins: [FAKE_DAPP.host],
     };
-
-    const customState = reducer(initialState, addDApp(FAKE_DAPP));
-    const newState = reducer(customState, updateDAppAccount(payload));
-
-    const dapp = newState.dapps[FAKE_DAPP.host];
-    expect(dapp.accountId).toEqual(payload.accountId);
+    const newState = reducer(initialState, rehydrate(frame));
+    expect(newState).toEqual(frame);
   });
 });

@@ -1,8 +1,8 @@
 let mockState: any;
 let mockWalletStateGeneration: number;
 const mockDispatch = jest.fn();
-const mockPersistGrant = jest.fn();
-const mockPersistStrict = jest.fn();
+const mockWrite = jest.fn();
+let mockPersistenceQueue: Promise<unknown> = Promise.resolve();
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
@@ -10,8 +10,21 @@ jest.mock('state/store', () => ({
     dispatch: (action: any) => mockDispatch(action),
   },
   saveMainState: jest.fn(async () => true),
-  persistMainStateStrict: (...args: any[]) => mockPersistStrict(...args),
-  persistDappPermissionGrant: (...args: any[]) => mockPersistGrant(...args),
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    exclusive: (operation: () => Promise<unknown>) => {
+      const result = mockPersistenceQueue.then(operation);
+      mockPersistenceQueue = result.catch(() => undefined);
+      return result;
+    },
+    read: () => ({
+      dapps: mockState.dapp.dapps,
+      pendingOrigins: mockState.dapp.pendingOrigins ?? [],
+    }),
+    write: (...args: any[]) => mockWrite(...args),
+    publish: (frame: any) =>
+      mockDispatch({ type: 'dapp/rehydrate', payload: frame }),
+  },
 }));
 jest.mock('../notification-manager', () => ({
   notificationManager: { notifyDappConnection: jest.fn() },
@@ -46,7 +59,8 @@ const grant = (expected = context()) =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockWalletStateGeneration = 0;
-  mockPersistStrict.mockReset().mockResolvedValue(undefined);
+  mockWrite.mockReset().mockResolvedValue(undefined);
+  mockPersistenceQueue = Promise.resolve();
   mockState = {
     dapp: { dapps: {} },
     vault: {
@@ -67,11 +81,6 @@ beforeEach(() => {
   };
   mockDispatch.mockImplementation((action) => {
     mockState = { ...mockState, dapp: dappReducer(mockState.dapp, action) };
-  });
-  mockPersistGrant.mockImplementation(async (next, previous, isCurrent) => {
-    if (!isCurrent() || mockState.dapp.dapps[next.host] !== previous)
-      throw new Error('Permission grant context changed');
-    mockDispatch({ type: 'dapp/addDApp', payload: next });
   });
   (chrome.runtime as any).id = 'pali';
   (chrome as any).tabs = { query: jest.fn((_query, reply) => reply([])) };
@@ -132,7 +141,9 @@ it.each(['missing', 'wrong-family', 'wrong-smart-chain', 'wrong-utxo-slip44'])(
     }
     mockDispatch.mockClear();
     (chrome.tabs.query as jest.Mock).mockClear();
-    expect(() => controller.requestPermissions(host, 1, type)).toThrow();
+    expect(() =>
+      controller.requestPermissions(host, 1, type, context())
+    ).toThrow();
     expect(mockDispatch).not.toHaveBeenCalled();
     expect(chrome.tabs.query).not.toHaveBeenCalled();
     expect(controller.get(host)).toEqual(previous);
@@ -166,17 +177,13 @@ const holdGrant = () => {
     finish = resolve;
     fail = reject;
   });
-  const persist = mockPersistGrant.getMockImplementation()!;
-  mockPersistGrant.mockImplementationOnce(async (...args) => {
-    await pending;
-    return persist(...args);
-  });
+  mockWrite.mockImplementationOnce(() => pending);
   return { finish, fail };
 };
 
 const holdRevocation = () => {
   let finish!: () => void;
-  mockPersistStrict.mockImplementationOnce(
+  mockWrite.mockImplementationOnce(
     () => new Promise<void>((resolve) => (finish = resolve))
   );
   return () => finish();
@@ -186,6 +193,7 @@ it('does not admit a pre-reset permission after the same account identity is res
   const held = holdGrant();
   const pending = grant();
   const rejected = expect(pending).rejects.toThrow('context changed');
+  await new Promise(setImmediate);
   // A real reset invalidates this lifetime even if seed recovery or rollback
   // later restores the same address, xpub, network and empty permission set.
   mockWalletStateGeneration += 1;
@@ -221,6 +229,7 @@ it('leaves no grant on storage failure and permits a fresh retry', async () => {
   const held = holdGrant();
   const result = grant();
   const rejected = expect(result).rejects.toThrow('Storage unavailable');
+  await new Promise(setImmediate);
   held.fail(new Error('Storage unavailable'));
   await rejected;
   expect(controller.isConnected(host)).toBe(false);
@@ -229,26 +238,24 @@ it('leaves no grant on storage failure and permits a fresh retry', async () => {
   expect(controller.isConnected(host)).toBe(true);
 });
 
-it('waits for strict persistence when revoking an unpublished grant', async () => {
+it('waits for the staged grant repair before persisting revocation', async () => {
   const held = holdGrant();
   const rejected = expect(grant()).rejects.toThrow('context changed');
-  const finishRevocation = holdRevocation();
+  await new Promise(setImmediate);
+  const finishRepair = holdRevocation();
   let settled = false;
   const revocation = controller
-    .disconnect(host, true, {
-      allowAlreadyDisconnected: true,
-      propagateErrors: true,
-    })
+    .revoke(host, { allowAlreadyDisconnected: true })
     .then(() => (settled = true));
+  expect(mockWrite).toHaveBeenCalledTimes(1);
+  held.finish();
   await new Promise(setImmediate);
-  try {
-    expect(mockPersistStrict).toHaveBeenCalledTimes(1);
-    expect(settled).toBe(false);
-  } finally {
-    held.finish();
-    if (mockPersistStrict.mock.calls.length) finishRevocation();
-    await Promise.all([rejected, revocation]);
-  }
+  expect(mockWrite).toHaveBeenCalledTimes(2);
+  expect(settled).toBe(false);
+  finishRepair();
+  await Promise.all([rejected, revocation]);
+  expect(mockWrite).toHaveBeenCalledTimes(3);
+  expect(controller.isConnected(host)).toBe(false);
 });
 
 it('queues canceled-grant revocation after an older revocation in flight', async () => {
@@ -266,64 +273,63 @@ it('queues canceled-grant revocation after an older revocation in flight', async
       network: mockState.vault.activeNetwork,
     }
   );
-  const options = { allowAlreadyDisconnected: true, propagateErrors: true };
+  mockWrite.mockClear();
   const finishFirst = holdRevocation();
-  const first = controller.disconnect(host, true, options);
+  const first = controller.revoke(host, { allowAlreadyDisconnected: true });
   await new Promise(setImmediate);
-  const held = holdGrant();
   const rejected = expect(grant()).rejects.toThrow('context changed');
   const finishSecond = holdRevocation();
   let settled = false;
   const second = controller
-    .disconnect(host, true, options)
+    .revoke(host, { allowAlreadyDisconnected: true })
     .then(() => (settled = true));
   finishFirst();
   await first;
+  await rejected;
   await new Promise(setImmediate);
-  try {
-    expect(mockPersistStrict).toHaveBeenCalledTimes(2);
-    expect(settled).toBe(false);
-  } finally {
-    held.finish();
-    if (mockPersistStrict.mock.calls.length === 2) finishSecond();
-    await Promise.all([rejected, second]);
-  }
+  expect(mockWrite).toHaveBeenCalledTimes(2);
+  expect(settled).toBe(false);
+  finishSecond();
+  await second;
+  expect(controller.isConnected(host)).toBe(false);
 });
 
 it('retries a failed strict revocation of an unpublished grant', async () => {
-  const errorSpy = jest.spyOn(console, 'error').mockImplementation();
   const held = holdGrant();
   const rejected = expect(grant()).rejects.toThrow('context changed');
-  const options = { allowAlreadyDisconnected: true, propagateErrors: true };
-  mockPersistStrict.mockRejectedValueOnce(new Error('Storage unavailable'));
-  try {
-    await expect(controller.disconnect(host, true, options)).rejects.toThrow(
-      'Storage unavailable'
-    );
-  } finally {
-    held.finish();
-    await rejected;
-    errorSpy.mockRestore();
-  }
+  await new Promise(setImmediate);
+  mockWrite.mockResolvedValueOnce(undefined); // Repair the canceled stage.
+  mockWrite.mockRejectedValueOnce(new Error('Storage unavailable'));
+  const revocation = controller.revoke(host, {
+    allowAlreadyDisconnected: true,
+  });
+  const failed = expect(revocation).rejects.toThrow('Storage unavailable');
+  held.finish();
+  await Promise.all([rejected, failed]);
   await expect(
-    controller.disconnect(host, true, options)
+    controller.revoke(host, { allowAlreadyDisconnected: true })
   ).resolves.toBeUndefined();
-  expect(mockPersistStrict).toHaveBeenCalledTimes(2);
+  expect(mockWrite).toHaveBeenCalledTimes(4);
+  expect(controller.isConnected(host)).toBe(false);
 });
 
-it('preserves a distinct later grant while canceled-grant revocation is pending', async () => {
+it('preserves a distinct later grant queued behind canceled-grant revocation', async () => {
   const held = holdGrant();
   const rejected = expect(grant()).rejects.toThrow('context changed');
-  const finishRevocation = holdRevocation();
-  const revocation = controller.disconnect(host, true, {
-    allowAlreadyDisconnected: true,
-    propagateErrors: true,
-  });
   await new Promise(setImmediate);
-  await expect(grant()).resolves.toEqual(expect.any(Array));
+  mockWrite.mockResolvedValueOnce(undefined); // Repair the canceled stage.
+  const finishRevocation = holdRevocation();
+  const revocation = controller.revoke(host, {
+    allowAlreadyDisconnected: true,
+  });
+  const later = grant();
   held.finish();
+  await rejected;
+  await new Promise(setImmediate);
+  expect(controller.isConnected(host)).toBe(false);
   finishRevocation();
-  await Promise.all([rejected, revocation]);
+  await revocation;
+  await expect(later).resolves.toEqual(expect.any(Array));
   expect(controller.getAccount(host).address).toBe(address);
 });
 
@@ -333,10 +339,11 @@ it.each(['revoke', 'replace-address', 'replace-xpub', 'incompatible-network'])(
     const held = holdGrant();
     const result = grant();
     const rejected = expect(result).rejects.toThrow('context changed');
-    if (change === 'revoke')
-      await controller.disconnect(host, false, {
-        allowAlreadyDisconnected: true,
-      });
+    await new Promise(setImmediate);
+    const revocation =
+      change === 'revoke'
+        ? controller.revoke(host, { allowAlreadyDisconnected: true })
+        : undefined;
     if (change === 'replace-address')
       mockState.vault.accounts.HDAccount[1].address = `0x${'3'.repeat(40)}`;
     if (change === 'replace-xpub')
@@ -345,6 +352,7 @@ it.each(['revoke', 'replace-address', 'replace-xpub', 'incompatible-network'])(
       mockState.vault.activeNetwork.kind = INetworkType.Syscoin;
     held.finish();
     await rejected;
+    await revocation;
     expect(controller.isConnected(host)).toBe(false);
   }
 );
@@ -352,6 +360,7 @@ it.each(['revoke', 'replace-address', 'replace-xpub', 'incompatible-network'])(
 it('persists an admitted identity after a compatible EVM network switch', async () => {
   const held = holdGrant();
   const result = grant();
+  await new Promise(setImmediate);
   mockState.vault.activeNetwork = {
     ...mockState.vault.activeNetwork,
     chainId: 2,
@@ -363,11 +372,11 @@ it('persists an admitted identity after a compatible EVM network switch', async 
 });
 
 it('does not report success or emit after revocation immediately following publication', async () => {
-  mockPersistGrant.mockImplementationOnce(async (next) => {
-    mockDispatch({ type: 'dapp/addDApp', payload: next });
-    await controller.disconnect(host, false, {
-      allowAlreadyDisconnected: true,
-    });
+  const dispatch = mockDispatch.getMockImplementation()!;
+  mockDispatch.mockImplementation((action) => {
+    dispatch(action);
+    if (action.type === 'dapp/rehydrate' && action.payload.dapps[host])
+      controller.retireForTransaction(host);
   });
   await expect(grant()).rejects.toThrow('context changed');
   expect(controller.isConnected(host)).toBe(false);

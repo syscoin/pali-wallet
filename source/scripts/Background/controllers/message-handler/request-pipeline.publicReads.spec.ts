@@ -27,6 +27,26 @@ jest.mock('state/store', () => ({
     dispatch: (action: any) => mockStore.dispatch(action),
     subscribe: (listener: () => void) => mockStore.subscribe(listener),
   },
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    exclusive: (operation: () => Promise<unknown>) =>
+      jest
+        .requireActual('utils/asyncMutex')
+        .walletPersistenceMutex.runExclusive(operation),
+    read: () => ({
+      dapps: mockStore.getState().dapp.dapps,
+      pendingOrigins: mockStore.getState().dapp.pendingOrigins ?? [],
+    }),
+    write: jest.fn().mockResolvedValue(undefined),
+    publish: (frame: any) =>
+      mockStore.dispatch({
+        type: 'dapp/rehydrate',
+        payload: {
+          dapps: { ...frame.dapps },
+          pendingOrigins: [...frame.pendingOrigins],
+        },
+      }),
+  },
 }));
 jest.mock('scripts/Background', () => ({
   getController: () => mockController,
@@ -148,7 +168,10 @@ beforeEach(() => {
       isUnlocked: () => unlocked,
       ethereumTransaction: { web3Provider: { send: transport } },
     },
-    dapp: DAppController(() => unlocked),
+    dapp: DAppController(
+      () => unlocked,
+      () => 0
+    ),
   };
 });
 

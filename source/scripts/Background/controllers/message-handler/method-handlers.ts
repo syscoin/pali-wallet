@@ -449,10 +449,7 @@ export class WalletMethodHandler implements IMethodHandler {
           if (Object.keys(permissionsToRevoke).length > 0) {
             // Revoking an already absent permission is a successful no-op.
             // Actual persistence failures must still reject the request.
-            await dapp.disconnect(host, true, {
-              allowAlreadyDisconnected: true,
-              propagateErrors: true,
-            });
+            await dapp.revoke(host, { allowAlreadyDisconnected: true });
           }
 
           // Return null per EIP-2255 spec

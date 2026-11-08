@@ -1,5 +1,5 @@
+import { matchesDappAccountReference } from '../../shared/dappTypes';
 import { ISlip44State } from 'state/vault/types';
-import { INetworkType } from 'types/network';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 import { IDApp } from './types';
@@ -13,16 +13,7 @@ export const resolveDappAccount = (
   const account = accounts[grant.accountType]?.[grant.accountId];
   if (!canPublishAccountAddress(account, grant.accountType, network.chainId))
     return undefined;
-  const scope = grant.utxoAccount;
-  // Older unbound UTXO grants need consent again; never infer their identity
-  // from the currently loaded vault. Receive-address rotation is allowed.
-  return network.kind !== INetworkType.Syscoin ||
-    (scope &&
-      Number.isSafeInteger(scope.slip44) &&
-      scope.slip44 === (network.slip44 ?? 57) &&
-      typeof scope.xpub === 'string' &&
-      scope.xpub.length > 0 &&
-      scope.xpub === account?.xpub)
+  return matchesDappAccountReference(grant, account, network)
     ? account
     : undefined;
 };

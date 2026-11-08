@@ -61,7 +61,13 @@ describe('authoritative Ethereum preference before tab enumeration', () => {
     };
     wallet = Object.create(MainController.prototype);
     wallet.ethPropertyMutex = new AsyncMutex();
-    const controller = { wallet, dapp: DAppController() };
+    const controller = {
+      wallet,
+      dapp: DAppController(
+        () => false,
+        () => 0
+      ),
+    };
     (getController as jest.Mock).mockReturnValue(controller);
     resetListenersFlag();
     handleListeners(controller as any);

@@ -6,17 +6,8 @@ import { IDApp } from 'state/dapp/types';
 import { IOmmitedAccount } from 'state/vault/types';
 import { KeyringAccountType, INetwork } from 'types/network';
 
-export interface IDAppDisconnectOptions {
-  allowAlreadyDisconnected?: boolean;
-  propagateErrors?: boolean;
-}
-
-/** Public identity reviewed by an account-permission approval. */
-export interface IDAppAccountSelectionContext {
-  address: string;
-  network: Pick<INetwork, 'chainId' | 'kind' | 'slip44' | 'url'>;
-  xpub?: string;
-}
+export type { DappAccountSelection as IDAppAccountSelectionContext } from '../shared/dappTypes';
+import type { DappAccountSelection } from '../shared/dappTypes';
 
 export interface IDAppController {
   /** Internal retirement of the sessions captured for one removed account. */
@@ -32,7 +23,7 @@ export interface IDAppController {
     host: string,
     accountId: number,
     accountType: KeyringAccountType,
-    expectedContext?: IDAppAccountSelectionContext,
+    expectedContext: DappAccountSelection,
     stageReplacement?: (grant: IDApp) => void
   ) => Promise<void>;
   /**
@@ -41,16 +32,7 @@ export interface IDAppController {
    */
   connect: (
     dapp: IDApp,
-    expectedContext: IDAppAccountSelectionContext
-  ) => Promise<void>;
-  /**
-   * Removes a connection with a DApp
-   * @emits disconnect
-   */
-  disconnect: (
-    host: string,
-    persist?: boolean,
-    options?: IDAppDisconnectOptions
+    expectedContext: DappAccountSelection
   ) => Promise<void>;
   /**
    * Retrieves a DApp
@@ -59,7 +41,7 @@ export interface IDAppController {
   /**
    * Retrieves the connected account
    */
-  getAccount: (host: string) => IOmmitedAccount;
+  getAccount: (host: string) => IOmmitedAccount | null;
   getAll: () => { [host: string]: IDApp };
   getNetwork: () => INetwork;
   getState: () => any;
@@ -71,7 +53,6 @@ export interface IDAppController {
     id: PaliSyscoinEvents,
     data: { method: string; params: any }
   ) => Promise<void>;
-
   /**
    * Update state and emit events to all connected dApps
    * @emits PaliEvents
@@ -84,6 +65,7 @@ export interface IDAppController {
    * Checks if DApp has an open popup
    */
   hasWindow: (host: string) => boolean;
+
   /**
    * Checks if DApp is listed
    */
@@ -96,10 +78,20 @@ export interface IDAppController {
     host: string,
     accountId: number,
     accountType: KeyringAccountType,
-    expectedContext?: IDAppAccountSelectionContext
+    expectedContext: DappAccountSelection
   ) => Promise<any[]>;
   /** Clear runtime sessions and notify prior origins after a committed forget. */
   resetSessions: (previousOrigins: string[]) => Promise<void>;
+  /** The owning account/network transaction persists this permission removal. */
+  retireForTransaction: (host: string) => void;
+  /**
+   * Removes a connection with a DApp
+   * @emits disconnect
+   */
+  revoke: (
+    host: string,
+    options: Readonly<{ allowAlreadyDisconnected: boolean }>
+  ) => Promise<void>;
   /**
    * Sets whether a DApp has an open popup
    */
@@ -108,15 +100,6 @@ export interface IDAppController {
    * Setup communication
    */
   setup: (sender: chrome.runtime.MessageSender) => void;
-
-  /**
-   * Synchronizes persisted and in-memory dApp account state without emitting provider events.
-   */
-  syncAccountSession: (
-    host: string,
-    accountId: number,
-    accountType: KeyringAccountType
-  ) => void;
 }
 
 export interface IEventData {

@@ -1,11 +1,10 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
-import { KeyringAccountType } from 'types/network';
-
 import { IDAppState, IDApp } from './types';
 
 export const initialState: IDAppState = {
   dapps: {},
+  pendingOrigins: [],
 };
 
 const DAppState = createSlice({
@@ -20,25 +19,6 @@ const DAppState = createSlice({
       state.dapps[action.payload.host] = action.payload;
     },
 
-    updateDAppAccount(
-      state: IDAppState,
-      action: PayloadAction<{
-        accountId: number;
-        accountType: KeyringAccountType;
-        date: number;
-        host: string;
-      }>
-    ) {
-      const { host, accountId, accountType, date } = action.payload;
-
-      if (!state.dapps[host])
-        throw new Error('Unable to update account. DApp does not exist');
-
-      state.dapps[host].accountId = accountId;
-      state.dapps[host].accountType = accountType;
-      state.dapps[host].date = date;
-    },
-
     removeDApp(state: IDAppState, action: PayloadAction<string>) {
       delete state.dapps[action.payload];
     },
@@ -50,7 +30,6 @@ const DAppState = createSlice({
   },
 });
 
-export const { addDApp, removeDApp, updateDAppAccount, rehydrate } =
-  DAppState.actions;
+export const { addDApp, removeDApp, rehydrate } = DAppState.actions;
 
 export default DAppState.reducer;

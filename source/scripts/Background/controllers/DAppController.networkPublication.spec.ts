@@ -25,13 +25,20 @@ jest.mock('scripts/Background/notification-manager', () => ({
 }));
 // These tests cover in-memory publication after a successfully admitted switch,
 // not storage durability or network discovery, which are separate boundaries.
-jest.mock('state/store', () => ({
-  ...jest.requireActual('state/store'),
-  __esModule: true,
-  persistCommittedWalletState: jest.fn().mockResolvedValue(undefined),
-  persistMainStateStrict: jest.fn().mockResolvedValue(undefined),
-  saveMainState: jest.fn().mockResolvedValue(undefined),
-}));
+jest.mock('state/store', () => {
+  const actual = jest.requireActual('state/store');
+  return {
+    ...actual,
+    __esModule: true,
+    dappPermissionPort: {
+      ...actual.dappPermissionPort,
+      write: jest.fn().mockResolvedValue(undefined),
+    },
+    persistCommittedWalletState: jest.fn().mockResolvedValue(undefined),
+    persistMainStateStrict: jest.fn().mockResolvedValue(undefined),
+    saveMainState: jest.fn().mockResolvedValue(undefined),
+  };
+});
 
 import { getController } from 'scripts/Background';
 import DAppController from 'scripts/Background/controllers/DAppController';
@@ -477,10 +484,7 @@ it('revocation during pending publication clears only that origin account, not R
   const disconnected = jest.fn();
   provider.on('disconnect', disconnected);
   await wallet.setActiveNetwork(network(2));
-  await dapp.disconnect(HOST, true, {
-    propagateErrors: true,
-    allowAlreadyDisconnected: true,
-  });
+  await dapp.revoke(HOST, { allowAlreadyDisconnected: true });
   await deliver(2);
   expect(provider.selectedAddress).toBe(null);
   expect(provider.isConnected()).toBe(true);

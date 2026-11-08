@@ -240,7 +240,13 @@ const disableProvider = async () => {
 const coldState = async () => {
   const stored = await loadState();
   await act(async () => store.dispatch(rehydrateDapps(stored.dapp)));
-  return { stored, controller: DAppController(() => true) };
+  return {
+    stored,
+    controller: DAppController(
+      () => true,
+      () => 0
+    ),
+  };
 };
 
 it('persists provider disablement and healthy namespace disconnection through the actual UI', async () => {
@@ -347,15 +353,11 @@ it('keeps earlier durable revocations when a later host fails, then retries only
   mockEmitter.mockClear();
   await disableProvider();
   expect(
-    mockEmitter.mock.calls.filter(([methods]) => methods[1] === 'disconnect')
+    mockEmitter.mock.calls.filter(([methods]) => methods[1] === 'revoke')
   ).toEqual([
     [
-      ['dapp', 'disconnect'],
-      [
-        secondHost,
-        true,
-        { propagateErrors: true, allowAlreadyDisconnected: true },
-      ],
+      ['dapp', 'revoke'],
+      [secondHost, { allowAlreadyDisconnected: true }],
     ],
   ]);
   expect(records.state.dapp.dapps).toEqual({});
@@ -439,11 +441,11 @@ it('does not revoke a newly approved origin outside the requested disconnect sna
   expect(records.state.dapp.dapps[newHost]).toBeDefined();
   expect(records.state.vaultGlobal.hasEthProperty).toBe(false);
   expect(
-    mockEmitter.mock.calls.filter(([methods]) => methods[1] === 'disconnect')
+    mockEmitter.mock.calls.filter(([methods]) => methods[1] === 'revoke')
   ).toEqual([
     [
-      ['dapp', 'disconnect'],
-      [HOST, true, { propagateErrors: true, allowAlreadyDisconnected: true }],
+      ['dapp', 'revoke'],
+      [HOST, { allowAlreadyDisconnected: true }],
     ],
   ]);
 });
@@ -473,8 +475,8 @@ it('finishes disabling when another view already durably disconnected a later re
     screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
-  const otherView = dapp.disconnect(secondHost, true, {
-    propagateErrors: true,
+  const otherView = dapp.revoke(secondHost, {
+    allowAlreadyDisconnected: false,
   });
   await act(async () => {
     release();
@@ -521,28 +523,41 @@ it('still revokes a newly approved permission for a host in the clicked global d
     screen.getByRole('button', { name: 'Disable Pali’s Ethereum provider' })
   );
   await writeStarted;
-  let approvedPermission: any;
-  const approval = dapp
-    .requestPermissions(secondHost, 0, KeyringAccountType.HDAccount, {
+  let committedGrant: ReturnType<typeof dapp.get>;
+  const unsubscribe = store.subscribe(() => {
+    const current = dapp.get(secondHost);
+    if (current && current.date !== oldDate) committedGrant = current;
+  });
+  const approval = dapp.requestPermissions(
+    secondHost,
+    0,
+    KeyringAccountType.HDAccount,
+    {
       address: ADDRESS,
       xpub: 'public-synthetic-account',
       network: store.getState().vault.activeNetwork,
-    })
-    .then((permissions) => {
-      approvedPermission = permissions[0];
-    });
+    }
+  );
+  // The disable operation revokes the committed replacement before its response
+  // can be delivered. The caller must not receive stale approval success.
+  const rejected = expect(approval).rejects.toThrow(
+    'Permission grant context changed'
+  );
   await act(async () => {
     release();
-    await approval;
+    await rejected;
   });
+  unsubscribe();
   await screen.findByRole('dialog');
-  expect(approvedPermission.date).not.toBe(oldDate);
-  expect(approvedPermission.caveats).toEqual([
-    { type: 'restrictReturnedAccounts', value: [ADDRESS] },
-  ]);
+  expect(committedGrant).toMatchObject({
+    host: secondHost,
+    accountId: 0,
+    accountType: KeyringAccountType.HDAccount,
+  });
+  expect(committedGrant?.date).not.toBe(oldDate);
   expect(
     stateWrites.some(
-      (state) => state.dapp.dapps[secondHost]?.date === approvedPermission.date
+      (state) => state.dapp.dapps[secondHost]?.date === committedGrant?.date
     )
   ).toBe(true);
   expect(dapp.isConnected(secondHost)).toBe(false);

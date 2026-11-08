@@ -627,7 +627,7 @@ it.each([false, true])(
     await new Promise(setImmediate);
     expect(dapp.get(HOST)).toBeUndefined();
     expect(records.state.dapp.dapps[HOST]).toBeUndefined();
-    expect(() => dapp.hasWindow(HOST)).toThrow();
+    expect(dapp.hasWindow(HOST)).toBe(false);
     expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
       HOST,
       false
@@ -704,10 +704,7 @@ it('retires a grant restored after failed revoke without cancelling its queued r
     })
     .mockImplementation(set);
   await expect(
-    dapp.disconnect(HOST, true, {
-      allowAlreadyDisconnected: true,
-      propagateErrors: true,
-    })
+    dapp.revoke(HOST, { allowAlreadyDisconnected: true })
   ).rejects.toMatchObject({ message: 'Permission storage unavailable' });
   expect(dapp.get(HOST)).toBe(previous);
   expect(dapp.getAccount(HOST)?.address).toBe(TARGET);
@@ -841,7 +838,14 @@ it('keeps a newer live grant and session after an in-flight grant-identity chang
     'Account permissions changed'
   );
   await write.entered;
-  dapp.syncAccountSession(HOST, 0, KeyringAccountType.HDAccount);
+  store.dispatch(
+    addDApp({
+      ...dapp.get(HOST)!,
+      accountId: 0,
+      accountType: KeyringAccountType.HDAccount,
+    })
+  );
+  dapp.setup({ url: HOST, origin: HOST } as chrome.runtime.MessageSender);
   write.release();
   await rejected;
   expect(dapp.getAccount(HOST)?.address).toBe(ANCHOR);

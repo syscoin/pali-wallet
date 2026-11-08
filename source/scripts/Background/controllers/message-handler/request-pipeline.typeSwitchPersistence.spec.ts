@@ -14,8 +14,8 @@ jest.mock('hooks/useController', () => ({
     controllerEmitter: (methods: string[], args: any[] = []) => {
       if (methods[0] === 'wallet' && methods[1] === 'setActiveNetwork')
         return mockController.wallet.setActiveNetwork(...args);
-      if (methods[0] === 'dapp' && methods[1] === 'disconnect')
-        return mockController.dapp.disconnect(...args);
+      if (methods[0] === 'dapp' && methods[1] === 'revoke')
+        return mockController.dapp.revoke(...args);
       throw new Error(`Unexpected UI controller call ${methods.join('.')}`);
     },
   }),
@@ -595,8 +595,8 @@ describe.each([true, false])(
       });
       await jest.advanceTimersByTimeAsync(0);
       expect(notices()).toEqual([]);
-      await mockController.dapp.disconnect(HOST, true, {
-        propagateErrors: true,
+      await mockController.dapp.revoke(HOST, {
+        allowAlreadyDisconnected: false,
       });
       expect(mockController.dapp.get(HOST)).toBeUndefined();
       expect((await loadState()).dapp.dapps[HOST]).toBeUndefined();
@@ -788,35 +788,41 @@ describe.each([true, false])(
       expect(popupPromise).toHaveBeenCalledTimes(1);
     });
 
-    it('lets the real scheduled save repair a refused disconnect after canceled reconnect', async () => {
+    it('retains the source grant when durable revocation fails before target consent', async () => {
       refuseDisconnect = true;
       reconnect = 'reject';
       await expect(runRequest()).resolves.toMatchObject({ error: {} });
       await finishScheduledSave();
       expect(writes.filter((write) => write.refused)).toHaveLength(1);
       expect(mockController.dapp.isConnected(HOST)).toBe(false);
-      expect((await loadState()).dapp.dapps[HOST]).toBeUndefined();
-      // Retain the real write order for the before/final evidence, not a mock
-      // replacement of the network save or a claim that the old grant survives it.
+      expect((await loadState()).dapp.dapps[HOST].chain).toBe(
+        sourceNetwork.kind
+      );
+      expect(popupPromise).toHaveBeenCalledTimes(1);
+      // Failed revocation restores the source grant. The target account still
+      // requires fresh approval, so a scheduled save may preserve only that grant.
       expect(writes.find((write) => write.refused)?.previousHasGrant).toBe(
         true
       );
-      expect(writes.at(-1)).toMatchObject({ hasGrant: false, refused: false });
+      expect(writes.at(-1)).toMatchObject({ hasGrant: true, refused: false });
       store.dispatch(rehydrateDapps((await loadState()).dapp));
-      const coldDapp = DAppController(() => wallet.isUnlocked());
+      const coldDapp = DAppController(
+        () => wallet.isUnlocked(),
+        () => 0
+      );
       expect(coldDapp.isConnected(HOST)).toBe(false);
       await expect(coldAccountRead()).resolves.toEqual([]);
     });
 
-    it('does not restore access to the unapproved target account when disconnect and its repair both fail', async () => {
+    it('stops before target consent during revocation failure and permits a healthy retry', async () => {
       storageOutage = true;
       reconnect = 'reject';
       await expect(runRequest()).resolves.toMatchObject({ error: {} });
       await finishScheduledSave();
-      expect(popupPromise).toHaveBeenCalledTimes(2);
+      expect(popupPromise).toHaveBeenCalledTimes(1);
       expect(
         writes.filter((write) => write.refused).length
-      ).toBeGreaterThanOrEqual(2);
+      ).toBeGreaterThanOrEqual(1);
       expect(mockController.dapp.isConnected(HOST)).toBe(false);
       expect((await loadState()).dapp.dapps[HOST].chain).toBe(
         sourceNetwork.kind
@@ -826,7 +832,7 @@ describe.each([true, false])(
       );
       storageOutage = false;
       await expect(coldAccountRead()).resolves.toEqual([]);
-      expect(popupPromise).toHaveBeenCalledTimes(2);
+      expect(popupPromise).toHaveBeenCalledTimes(1);
       // The Ethereum-only permission read is applicable on the EVM target.
       if (fromUtxo) {
         const permissions = await onMessage(

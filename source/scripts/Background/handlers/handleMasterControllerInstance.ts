@@ -1,3 +1,4 @@
+import { readStoredDappPermissions } from '../../../shared/dappTypes';
 import {
   walletBackendUrls,
   walletHttpIdentity,
@@ -70,7 +71,17 @@ export const handleMasterControllerInstance = async () => {
       persistenceMutex: walletPersistenceMutex,
       readPresence: readWalletPresence,
       rehydrate: (state) =>
-        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44, false),
+        rehydrateStore(
+          store,
+          {
+            ...state,
+            ...(state.dapp
+              ? { dapp: readStoredDappPermissions(state.dapp) }
+              : {}),
+          },
+          state.vaultGlobal?.activeSlip44,
+          false
+        ),
     });
     // Another cold initializer may already have restored this journal. Never
     // migrate the state captured before reconciliation, even on a false result.
@@ -78,6 +89,11 @@ export const handleMasterControllerInstance = async () => {
   }
 
   if (storageState) {
+    if (storageState.dapp)
+      storageState = {
+        ...storageState,
+        dapp: readStoredDappPermissions(storageState.dapp),
+      };
     // Run migrations before rehydrating state
     console.log('[handleMasterControllerInstance] Running migrations...');
     await MigrationController(storageState);

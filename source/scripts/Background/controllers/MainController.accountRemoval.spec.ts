@@ -103,7 +103,10 @@ describe('account removal delivery context', () => {
       getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
     });
     jest.spyOn(chromeStorage, 'getItems').mockResolvedValue({});
-    const dapp = DAppController(() => true);
+    const dapp = DAppController(
+      () => true,
+      () => 0
+    );
     captureSessions = jest.spyOn(dapp, 'captureAccountSessionRetirement');
     jest.mocked(getController).mockReturnValue({ dapp } as any);
     writes = jest.spyOn(chromeStorage, 'setItems').mockResolvedValue(undefined);

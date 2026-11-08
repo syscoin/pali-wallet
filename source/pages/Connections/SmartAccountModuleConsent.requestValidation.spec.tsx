@@ -31,6 +31,26 @@ jest.mock('state/store', () => ({
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    exclusive: (operation: () => Promise<unknown>) =>
+      jest
+        .requireActual('utils/asyncMutex')
+        .walletPersistenceMutex.runExclusive(operation),
+    read: () => ({
+      dapps: mockStore.getState().dapp.dapps,
+      pendingOrigins: mockStore.getState().dapp.pendingOrigins ?? [],
+    }),
+    write: jest.fn().mockResolvedValue(undefined),
+    publish: (frame: any) =>
+      mockStore.dispatch({
+        type: 'dapp/rehydrate',
+        payload: {
+          dapps: { ...frame.dapps },
+          pendingOrigins: [...frame.pendingOrigins],
+        },
+      }),
+  },
 }));
 jest.mock('scripts/Background', () => ({
   getController: () => mockController,
@@ -184,7 +204,13 @@ beforeEach(() => {
   });
   const wallet = Object.create(MainController.prototype);
   Object.assign(wallet, { walletSessionGeneration: 1, isUnlocked: () => true });
-  mockController = { wallet, dapp: DAppController(() => true) };
+  mockController = {
+    wallet,
+    dapp: DAppController(
+      () => true,
+      () => 0
+    ),
+  };
   mockEmitter.mockImplementation(async (method: string[]) => {
     if (method[1] === 'hydrateSmartAccount') return metadata;
     if (method[1] === 'preflightSmartAccountCustomValidator')
