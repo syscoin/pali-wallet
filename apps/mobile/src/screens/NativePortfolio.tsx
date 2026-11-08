@@ -181,7 +181,7 @@ function NativePortfolioContent({ model, snapshot, smartAccount, onExit, onLock,
           <Text style={styles.muted}>{smartAccount.isDeployed ? 'Deployment recorded. Smart account signing is not yet available in this build.' : 'Ready to receive. Deployment is required before this account can send.'}</Text>
         </Card>}
         {snapshot.status === 'error' && <Notice title="Could not load your balance" body={canReceive ? `Your ${networkName} address is still available. Refresh to try again.` : 'Refresh to try again.'} tone="amber" />}
-        {!canSend && !smartAccount && <Notice title={canReceive ? network.testnet ? 'Test network · Balance and receive only' : 'Balance and receive only' : 'Balance only'} body="Sending is not available on this network yet." />}
+        {!canSend && !smartAccount && <Notice title={canReceive ? network.testnet ? 'Test network · Balance and receive only' : 'Balance and receive only' : 'Balance only'} body="Sending is not available for this account in this build." />}
         <View style={[s.actions, stackActions && s.stackedActions]}>
           {canSend && <Button title="Send" icon="arrow-up-right" style={actionStyle} onPress={() => { if (account && model.isCurrent(account)) onSend?.(); }} />}
           {canReceive && <Button title="Receive" variant={canSend ? 'secondary' : 'primary'} icon="arrow-down-left" style={actionStyle} testID="native-portfolio-receive" onPress={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}

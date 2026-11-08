@@ -1,3 +1,4 @@
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
@@ -311,14 +312,14 @@ test('backup uses fresh SDK authentication and a wallet-bound storage receipt', 
 });
 
 async function controlledSdk() {
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   let entered = () => {};
   let release = Promise.resolve();
   let holding = false;
   let unlockCalls = 0;
   let hydrations = 0;
-  class ControlledKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class ControlledKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => { hydrations++; return hydrate(...args); };
@@ -333,7 +334,7 @@ async function controlledSdk() {
     }
   }
   return {
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ControlledKeyring }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: ControlledKeyring }),
     get hydrations() { return hydrations; },
     get unlockCalls() { return unlockCalls; },
     hold() {
@@ -651,11 +652,11 @@ test('message signing requires an explicit account switch and a new approval aft
 });
 
 test('a message signature completing after lock is discarded and shares the privileged-operation mutex', async () => {
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   const entered = deferredAccount(),
     release = deferredAccount();
-  class HeldMessageKeyring extends sdk.SoftwareKeyring {
-    constructor(...args: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class HeldMessageKeyring extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...args);
       const sign = this.ethereumTransaction.signPersonalMessage;
       this.ethereumTransaction.signPersonalMessage = async (params) => {
@@ -668,7 +669,7 @@ test('a message signature completing after lock is discarded and shares the priv
   }
   const f = await readyAccounts(async () => ({
     ...sdk,
-    SoftwareKeyring: HeldMessageKeyring,
+    HostKeyring: HeldMessageKeyring,
   }));
   try {
     const host = await f.runtime.openConnectionHost();
@@ -859,7 +860,7 @@ const deferredAccount = () => {
   return { promise, resolve };
 };
 async function raceSdk() {
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   let gate: { phase: string; entered: ReturnType<typeof deferredAccount>; released: ReturnType<typeof deferredAccount> } | undefined;
   let signingHook: (() => void) | undefined;
   let exportResult: string | undefined;
@@ -874,8 +875,8 @@ async function raceSdk() {
     if (gate?.phase !== phase) return;
     const current = gate; current.entered.resolve(); await current.released.promise;
   };
-  class RaceKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class RaceKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
       const allocate = this.addNewAccount.bind(this);
       this.addNewAccount = async (...args) => {
@@ -908,7 +909,7 @@ async function raceSdk() {
     async unlock(password: string) { unlocks++; const result = super.unlock(password); await hold('password'); return result; }
   }
   return {
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: RaceKeyring }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: RaceKeyring }),
     onSign(hook?: () => void) { signingHook = hook; },
     get exports() { return exports; },
     get imports() { return imports; },

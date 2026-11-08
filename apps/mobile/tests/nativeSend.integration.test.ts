@@ -1,3 +1,4 @@
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -198,7 +199,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
 });
 
 async function cancellationFixture(type: 0 | 2 = 2) {
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-send-cancel-'));
   const file = path.join(directory, 'wallet.sqlite');
   let storage!: SqliteWalletStorage;
@@ -206,7 +207,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
   let signatures = 0;
   let authentications = 0;
   let hydrations = 0;
-  const sdkInstances: InstanceType<typeof sdk.SoftwareKeyring>[] = [];
+  const sdkInstances: InstanceType<typeof sdk.HostKeyring>[] = [];
   let journalGate: {
     phase: 'signed' | 'submitted' | 'confirmed';
     written: boolean;
@@ -227,8 +228,8 @@ async function cancellationFixture(type: 0 | 2 = 2) {
   };
   // Keep the real SDK signer; pause only storage/RPC boundaries that still exist
   // in the unlocked-session flow. There is no per-send password or hydration.
-  class ControlledKeyring extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  class ControlledKeyring extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
       sdkInstances.push(this);
       const hydrate = this.createFirstAccount;
@@ -245,7 +246,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
     }
     signPreparedEvmTransaction(
       ...args: Parameters<
-        InstanceType<typeof sdk.SoftwareKeyring>['signPreparedEvmTransaction']
+        InstanceType<typeof sdk.HostKeyring>['signPreparedEvmTransaction']
       >
     ) {
       signatures++;
@@ -308,7 +309,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       );
       return storage;
     },
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ControlledKeyring }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: ControlledKeyring }),
   });
   const createAuthority = () =>
     new NativeCustodyAuthority({

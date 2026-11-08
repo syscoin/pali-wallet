@@ -322,6 +322,7 @@ describe('composite submission and SLH reserve policy', () => {
     jest.fn(async ([, method]: string[], payload: any[]) => {
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: 7,
           actionHash: ACTION_HASH,
           executionContextId: 'composite-background-context',
           executions: payload[0],

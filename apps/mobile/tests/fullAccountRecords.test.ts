@@ -1,3 +1,4 @@
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -22,13 +23,13 @@ const PHRASE =
 const PASSWORD = 'Public full SDK records fixture 1!';
 
 async function fixture() {
-  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const sdk = await loadNativeKeyringSdk();
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-full-records-'));
   const file = path.join(directory, 'wallet.sqlite');
   const calls = { first: 0, derive: 0, imports: 0, adds: 0 };
-  const keyrings: InstanceType<typeof sdk.SoftwareKeyring>[] = [];
-  class Counted extends sdk.SoftwareKeyring {
-    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+  const keyrings: InstanceType<typeof sdk.HostKeyring>[] = [];
+  class Counted extends sdk.HostKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options); keyrings.push(this);
       const first = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
@@ -43,17 +44,27 @@ async function fixture() {
     }
     async deriveEvmHdRuntimeAccount(
       ...args: Parameters<
-        typeof sdk.SoftwareKeyring.prototype.deriveEvmHdRuntimeAccount
+        typeof sdk.HostKeyring.prototype.deriveEvmHdRuntimeAccount
       >
     ) {
       calls.derive++;
       return super.deriveEvmHdRuntimeAccount(...args);
     }
     async importAccount(
-      ...args: Parameters<typeof sdk.SoftwareKeyring.prototype.importAccount>
+      ...args: Parameters<typeof sdk.HostKeyring.prototype.importAccount>
     ) {
       calls.imports++;
       return super.importAccount(...args);
+    }
+  }
+  class CountedSoftware extends sdk.SoftwareKeyring {
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
+      const first = this.createFirstAccount;
+      this.createFirstAccount = async (...args) => {
+        calls.first++;
+        return first(...args);
+      };
     }
   }
   let runtime!: KeyringRuntime;
@@ -72,7 +83,7 @@ async function fixture() {
       );
       return storage;
     },
-    loadSdk: async () => ({ ...sdk, SoftwareKeyring: Counted }),
+    loadSdk: async () => ({ ...sdk, HostKeyring: Counted, SoftwareKeyring: CountedSoftware }),
   });
   const open = () =>
     new NativeCustodyAuthority({

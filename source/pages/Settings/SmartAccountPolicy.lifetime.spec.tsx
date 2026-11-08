@@ -863,6 +863,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
 
   describe('policy approval lifetime before signing', () => {
     const prepared = (executions: unknown) => ({
+      accountId: 1,
       actionHash: `0x${'77'.repeat(32)}`,
       executionContextId: 'policy-operation',
       executions,

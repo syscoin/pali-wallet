@@ -353,6 +353,7 @@ script with the matching fixed scenario:
 
 ```sh
 npm ci --ignore-scripts
+node ../../scripts/apply-keyring-ledger.cjs
 CI=true PALI_NATIVE_QUALIFICATION=1 \
   PALI_PHYSICAL_QUALIFICATION=import GITHUB_SHA="$PALI_REVIEWED_COMMIT" \
   node scripts/configure-native-qualification.cjs

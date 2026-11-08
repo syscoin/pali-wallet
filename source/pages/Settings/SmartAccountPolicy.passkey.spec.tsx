@@ -233,6 +233,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
         return { hasNativeGas: true };
       if (method === 'prepareSmartAccountExecutions')
         return {
+          accountId: 1,
           actionHash: `0x${'77'.repeat(32)}`,
           executionContextId: 'policy-operation',
           smartAccount: metadata,

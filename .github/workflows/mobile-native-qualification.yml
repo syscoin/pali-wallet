@@ -10,6 +10,8 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
+      - 'scripts/apply-keyring-ledger.cjs'
+      - 'scripts/keyring-ledger-2.1.7.json'
       - 'scripts/apply-walletconnect-terminal.cjs'
       - 'scripts/walletconnect-terminal.json'
       - 'apps/mobile/src/**'
@@ -111,6 +113,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-keyring-ledger.cjs
       - run: node ../../scripts/apply-walletconnect-terminal.cjs
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - run: xcodebuild -version
@@ -203,6 +206,7 @@ jobs:
           echo "$PALI_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           echo "$PALI_SDK_ROOT/emulator" >> "$GITHUB_PATH"
       - run: npm ci --ignore-scripts
+      - run: node ../../scripts/apply-keyring-ledger.cjs
       - run: node ../../scripts/apply-walletconnect-terminal.cjs
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - name: Install pinned native toolchain

@@ -8,11 +8,14 @@ jest.mock('utils/ethersV6Compat', () => ({
   ...jest.requireActual('utils/ethersV6Compat'),
   Contract: jest.fn(),
 }));
-jest.mock('utils/smartAccount', () => ({
-  ...jest.requireActual('utils/smartAccount'),
+jest.mock('utils/smartAccount/gas', () => ({
+  ...jest.requireActual('utils/smartAccount/gas'),
   estimateSmartAccountUserOpGas: jest.fn(),
+}));
+jest.mock('utils/smartAccount/adapter', () => ({
+  ...jest.requireActual('utils/smartAccount/adapter'),
   toPaliSmartAccount: jest.fn(
-    jest.requireActual('utils/smartAccount').toPaliSmartAccount
+    jest.requireActual('utils/smartAccount/adapter').toPaliSmartAccount
   ),
 }));
 
@@ -111,11 +114,30 @@ describe('smart-account execution approval context', () => {
       assertCurrent
     );
 
+  it.each([async () => undefined, () => true, false])(
+    'rejects non-synchronous optional guards in submission and local signing facades',
+    async (guard) => {
+      const prepared = await prepare();
+      await expect(submit(prepared, {}, guard as never)).rejects.toThrow(
+        /guard (must be synchronous|is not a function)/
+      );
+      await expect(
+        controller.signActionHashWithLocalEcdsaOwners(
+          metadata,
+          prepared.actionHash,
+          prepared.executionContextId,
+          guard
+        )
+      ).rejects.toThrow(/guard (must be synchronous|is not a function)/);
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
   beforeEach(() => {
     jest
       .mocked(toPaliSmartAccount)
       .mockImplementation(
-        jest.requireActual('utils/smartAccount').toPaliSmartAccount
+        jest.requireActual('utils/smartAccount/adapter').toPaliSmartAccount
       );
     generation = 9;
     state = {
@@ -258,6 +280,7 @@ describe('smart-account execution approval context', () => {
         metadata: registeredMetadata,
       }));
       controller.prepareSmartAccountExecutions = jest.fn(async () => ({
+        accountId: 0,
         actionHash: HASH,
         executions: calls,
         executionContextId: 'registration-fixture',
@@ -751,6 +774,7 @@ describe('smart-account execution approval context', () => {
         payer,
         1,
         {
+          assertBeforeSign: () => undefined,
           assertCurrentContext: () => undefined,
           onAcknowledged: () => undefined,
           onSubmissionAttempt,

@@ -416,7 +416,11 @@ function QualificationApp() {
               // Capture only this first dependency evaluation, before any SDK
               // instance, wallet phrase or session can exist. No retry on failure.
               // eslint-disable-next-line @typescript-eslint/no-require-imports
-              () => require('@sidhujag/sysweb3-keyring/cjs/software.js') as typeof import('@sidhujag/sysweb3-keyring/cjs/software.js'),
+              () => ({
+                ...require('@sidhujag/sysweb3-keyring/cjs/software.js'),
+                HostKeyring: require('@sidhujag/sysweb3-keyring/cjs/host-keyring.js').HostKeyring,
+                createLedgerHardware: require('@sidhujag/sysweb3-keyring/cjs/ledger-hardware.js').createLedgerHardware,
+              }) as import('../src/custody/keyringSdk.ts').NativeKeyringSdk,
               async (text) => {
                 if (!FileSystem.documentDirectory) throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
                 await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}pali-native-qualification-sdk-load-error.json`, text);
