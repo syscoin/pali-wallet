@@ -447,9 +447,9 @@ it.each([
     await rejected;
     expect(fetcher).not.toHaveBeenCalled();
     expect((await vault.getNotes()).notes[0]).toMatchObject({
-      phase: 'waiting',
-      withdrawal: { mode: 'relayed', phase: 'unknown' },
+      phase: 'verified',
     });
+    expect((await vault.getNotes()).notes[0].withdrawal).toBeUndefined();
     expect((await run.wallet.getPrivateVaultNotes()).notes[0].phase).toBe(
       'verified'
     );

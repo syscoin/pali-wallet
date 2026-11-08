@@ -329,8 +329,8 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-// Establish a real encrypted unknown journal whose write completed before its
-// old session was invalidated; no sender or relayer is entered.
+// Establish a real encrypted unknown journal whose immediate cleanup failed
+// after its old session was invalidated; no sender or relayer is entered.
 async function pendingRecovery() {
   const { createPrivateVaultController } = await import('./privateVault');
   const ActualKeyring = jest.requireActual(
@@ -378,6 +378,9 @@ async function pendingRecovery() {
   run.wallet.getPrivateVaultController.mockResolvedValue(vault);
   await vault.importNote(NOTE);
   const review = await prepare(run.wallet);
+  jest
+    .spyOn(vault, 'clearUnbroadcastWithdrawalAttempt')
+    .mockRejectedValueOnce(new Error('synthetic interrupted cleanup'));
   const written = deferred(),
     release = deferred();
   const write = storage.setItem.getMockImplementation()!;
