@@ -1253,7 +1253,7 @@ export function createKeyringRuntimeFactory(
                   canSign,
                   restored,
                   noteId,
-                poolId,
+                  poolId,
                   createWithdrawals(onProgress) {
                     return createPrivacyWithdrawalsController(
                       {
@@ -2979,7 +2979,7 @@ export function createKeyringRuntimeFactory(
                       smartAccountRecoveryAccount: account.address,
                     },
                     NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }
+                    { kind: 'estimate' }
                   );
                   check();
                   return Object.freeze({
