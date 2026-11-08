@@ -35,6 +35,7 @@ let mockScope: any;
 let mockResponse: any;
 let mockRead: () => Promise<any>;
 let mockConnected = true;
+let mockSessionGeneration = 7;
 const mockEmitter = jest.fn();
 const mockControllerEmitter = async (
   path: string[],
@@ -144,6 +145,7 @@ const OP = `0x${'33'.repeat(32)}`;
 const TIME = Math.floor(Date.now() / 1000);
 const STORAGE = `pali-smart-account-recovery-replacement:57057:${ACCOUNT}`;
 const FINALIZE = 'settings.smartAccountGuardianRecoveryFinalize';
+const CLEAR_TRACKING = 'settings.smartAccountGuardianRecoveryClearTracking';
 const connected = 'settings.smartAccountGuardianRecoveryConnectedStatus';
 const external = 'settings.smartAccountGuardianExternalPending';
 const unavailable = 'settings.smartAccountGuardianStatusUnavailable';
@@ -192,6 +194,7 @@ const local = () => ({
 
 beforeEach(() => {
   mockConnected = true;
+  mockSessionGeneration = 7;
   jest.clearAllMocks();
   localStorage.clear();
   mockScope = { account: 'account:1', network: 'network:57057' };
@@ -241,7 +244,7 @@ beforeEach(() => {
   mockRead = async () => mockResponse;
   mockEmitter.mockImplementation(async ([, method]: string[]) => {
     if (method === 'hydrateSmartAccount') return mockMetadata;
-    if (method === 'getWalletSessionGeneration') return 7;
+    if (method === 'getWalletSessionGeneration') return mockSessionGeneration;
     if (method === 'getSLHDSASmartAccountSetupStatus') return null;
     if (method === 'getSmartAccountGuardianRecoveryStatus') return mockRead();
     if (method === 'retireSmartAccountGuardianRecovery') return {};
@@ -1379,6 +1382,39 @@ test.each(['replacement active', 'owner changed after execution'])(
       expect(
         mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
       ).toEqual(claim);
+      const currentIdentity = JSON.parse(JSON.stringify(mockMetadata.auth));
+      fireEvent.click(
+        await screen.findByRole('button', { name: CLEAR_TRACKING })
+      );
+      await waitFor(() =>
+        expect(mockMetadata.guardianRecoveryClaim).toBeUndefined()
+      );
+      expect(mockMetadata.guardianRecoveryReplacement).toEqual(
+        claim.replacement
+      );
+      expect(mockMetadata.auth).toEqual(currentIdentity);
+      expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+      const clear = mockEmitter.mock.calls.find(
+        (call) => call[0][1] === 'retireSmartAccountGuardianRecovery'
+      )![1][0];
+      expect(clear.expectedClaimHash).toBe(claim.intent.operation.hash);
+      expect(clear.expectedContext.sessionGeneration).toBe(7);
+      expect(clear.expectedContext.chainId).toBe(57057);
+      cleanup();
+      mockResponse = observation();
+      let restarted = false;
+      installRecoveryTransport(async () => {
+        restarted = true;
+        return {};
+      });
+      render(<SmartAccountPolicy />);
+      await showStart();
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'settings.smartAccountGuardianRecoveryStart',
+        })
+      );
+      await waitFor(() => expect(restarted).toBe(true));
     }
     expect(finalizeCalls).toBe(1);
     expect(
@@ -1388,5 +1424,199 @@ test.each(['replacement active', 'owner changed after execution'])(
     ).toHaveLength(1);
     expect(createPasskeyCredential).not.toHaveBeenCalled();
     expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+  }
+);
+
+const showCompletedTracking = async (retainedHash: string | null = null) => {
+  const claim = executedPasskeyClaim();
+  mockVault.accounts.SmartAccount[1].smartAccount = mockMetadata = {
+    ...mockMetadata,
+    guardianRecoveryClaim: claim,
+  };
+  mockResponse = {
+    ...observation(),
+    knownOperation: {
+      ...pending(getGuardianRecoveryOperationId(claim.intent.operation)),
+      status: 'executed',
+    },
+    recoveryTransactionHash: retainedHash,
+  };
+  const view = render(<SmartAccountPolicy />);
+  await showSaved();
+  await waitFor(() =>
+    expect(
+      (
+        screen.getByRole('button', {
+          name: CLEAR_TRACKING,
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  );
+  return { view, claim };
+};
+
+test.each([
+  'pending',
+  'unknown',
+  'wrong account',
+  'wrong chain',
+  'wrong module',
+  'wrong operation',
+  'unavailable observation',
+])(
+  'completed tracking cannot retire from a fresh %s observation',
+  async (axis) => {
+    const { view, claim } = await showCompletedTracking();
+    const response = {
+      ...mockResponse,
+      knownOperation: { ...mockResponse.knownOperation },
+    };
+    if (axis === 'pending' || axis === 'unknown')
+      response.knownOperation.status = axis;
+    if (axis === 'wrong account') response.account = OWNER;
+    if (axis === 'wrong chain') response.chainId = 1;
+    if (axis === 'wrong module') response.moduleAddress = OWNER;
+    if (axis === 'wrong operation') response.knownOperation.operationId = OP;
+    mockRead = async () => {
+      if (axis === 'unavailable observation')
+        throw new Error('Retained observation incomplete');
+      return response;
+    };
+    fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+    await waitFor(() => expect(mockAlert.error).toHaveBeenCalled());
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+      )
+    ).toBe(false);
+    expect(mockMetadata.guardianRecoveryClaim).toEqual(claim);
+    expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+    view.unmount();
+  }
+);
+
+test('verified execution can clear tracking while duplicate signed bytes remain retained', async () => {
+  const { view, claim } = await showCompletedTracking(OP);
+  const before = JSON.stringify(claim.replacement);
+  fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+  await waitFor(() =>
+    expect(mockMetadata.guardianRecoveryClaim).toBeUndefined()
+  );
+  expect(JSON.stringify(mockMetadata.guardianRecoveryReplacement)).toBe(before);
+  expect(mockResponse.recoveryTransactionHash).toBe(OP);
+  expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+  expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+  view.unmount();
+});
+
+test.each(['session', 'account', 'network'])(
+  'a %s change during the held completed-status read cannot retire the originating claim',
+  async (axis) => {
+    const { view, claim } = await showCompletedTracking();
+    const snapshot = mockResponse;
+    let release!: (status: any) => void;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    mockRead = () => held as Promise<any>;
+    const reads = statusCalls().length;
+    fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+    await waitFor(() => expect(statusCalls().length).toBeGreaterThan(reads));
+    mockRead = async () => mockResponse;
+    if (axis === 'session') mockSessionGeneration++;
+    if (axis === 'account') {
+      mockScope = { ...mockScope, account: 'account:other' };
+      mockVault.activeAccount = { id: 0, type: 'HDAccount' };
+    }
+    if (axis === 'network') {
+      mockScope = { ...mockScope, network: 'network:1' };
+      mockVault.activeNetwork = { ...mockVault.activeNetwork, chainId: 1 };
+    }
+    view.rerender(<SmartAccountPolicy />);
+    await act(async () => release(snapshot));
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+      )
+    ).toBe(false);
+    expect(
+      mockVault.accounts.SmartAccount[1].smartAccount.guardianRecoveryClaim
+    ).toEqual(claim);
+    expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+    view.unmount();
+  }
+);
+
+test.each(['acknowledged', 'rejected', 'session changed'])(
+  'clear keeps the exact claim until the captured-context retirement is %s',
+  async (outcome) => {
+    const { view, claim } = await showCompletedTracking();
+    const currentIdentity = JSON.parse(JSON.stringify(mockMetadata.auth));
+    let resolve!: (status: any) => void, reject!: (error: Error) => void;
+    const held = new Promise((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    const original = mockEmitter.getMockImplementation()!;
+    mockEmitter.mockImplementation((path: string[], ...args: any[]) =>
+      path[1] === 'retireSmartAccountGuardianRecovery'
+        ? held
+        : original(path, ...args)
+    );
+    fireEvent.click(screen.getByRole('button', { name: CLEAR_TRACKING }));
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+        )
+      ).toBe(true)
+    );
+    const request = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'retireSmartAccountGuardianRecovery'
+    )![1][0];
+    expect(request.expectedContext.sessionGeneration).toBe(7);
+    expect(request.expectedClaimHash).toBe(claim.intent.operation.hash);
+    expect(mockMetadata.guardianRecoveryClaim).toEqual(claim);
+    expect(
+      (
+        screen.getByRole('button', {
+          name: CLEAR_TRACKING,
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true);
+    if (outcome === 'acknowledged') {
+      await act(async () => resolve({}));
+      await waitFor(() =>
+        expect(mockMetadata.guardianRecoveryClaim).toBeUndefined()
+      );
+      expect(mockMetadata.guardianRecoveryReplacement).toEqual(
+        claim.replacement
+      );
+    } else {
+      if (outcome === 'session changed') mockSessionGeneration++;
+      await act(async () =>
+        reject(
+          new Error(
+            outcome === 'session changed'
+              ? 'PALI_TRANSACTION_CONTEXT_CHANGED'
+              : 'Retirement not persisted'
+          )
+        )
+      );
+      expect(mockMetadata.guardianRecoveryClaim).toEqual(claim);
+      expect(mockAlert.success).not.toHaveBeenCalled();
+    }
+    expect(mockMetadata.auth).toEqual(currentIdentity);
+    expect(setActivePasskeyRecord).not.toHaveBeenCalled();
+    expect(createPasskeyCredential).not.toHaveBeenCalled();
+    expect(signP256WebAuthnActionHash).not.toHaveBeenCalled();
+    expect(
+      mockEmitter.mock.calls.some(([path]) =>
+        /^(submit|finalize)/.test(path[1])
+      )
+    ).toBe(false);
+    view.unmount();
   }
 );

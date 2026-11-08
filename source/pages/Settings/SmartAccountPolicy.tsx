@@ -2944,6 +2944,64 @@ const SmartAccountPolicy = () => {
     }
   };
 
+  const clearCompletedGuardianRecovery = async () => {
+    const isCurrentUi = createUiGuard();
+    if (
+      !durableGuardianClaim ||
+      !localRecoveryExecuted ||
+      guardianActionLoading
+    )
+      return;
+    setGuardianLoading(true);
+    try {
+      const claim = captureGuardianRecoveryClaim(durableGuardianClaim);
+      const approval = await capturePolicyApproval(false);
+      const operationId = getGuardianRecoveryOperationId(
+        claim.intent.operation
+      );
+      const current = await readGuardianStatus({
+        knownOperationId: operationId,
+      });
+      await assertApprovalSession(approval);
+      if (
+        !current.observedBlock ||
+        current.knownOperation?.operationId !== operationId ||
+        current.knownOperation.status !== 'executed' ||
+        !guardianRecoveryIntentResolved(
+          claim.intent.operation,
+          current,
+          current.recoveryTransactionHash
+        )
+      )
+        throw new Error(t('settings.smartAccountGuardianStatusUnavailable'));
+      setGuardianStatus(current);
+      await controllerEmitter(
+        ['wallet', 'retireSmartAccountGuardianRecovery'],
+        [
+          {
+            account: claim.intent.operation.account,
+            expectedClaimHash: claim.intent.operation.hash,
+            expectedContext: approval.expectedContext,
+          },
+        ]
+      );
+      // Retirement retains replacement refs and does not adopt an obsolete signer.
+      await assertApprovalSession(approval);
+      if (isCurrentUi())
+        alert.success(
+          t('settings.smartAccountGuardianRecoveryTrackingCleared')
+        );
+    } catch (error: any) {
+      if (!isCurrentUi()) return;
+      if (!handleWalletLockedError(error))
+        alert.error(
+          t('settings.smartAccountGuardianRecoveryClearTrackingFailed')
+        );
+    } finally {
+      if (isCurrentUi(false)) setGuardianLoading(false);
+    }
+  };
+
   const finalizeGuardianRecovery = async () => {
     const isCurrentUi = createUiGuard();
     if (!smartAccountAddress || !activeGuardianReplacement?.recoveryOperation) {
@@ -3450,6 +3508,20 @@ const SmartAccountPolicy = () => {
               {t('settings.smartAccountGuardianRecoveryFinalize')}
             </button>
           </div>
+          {localRecoveryExecuted && localRecoveryResolved && (
+            <button
+              type="button"
+              className="self-start rounded-full border border-alpha-whiteAlpha300 px-3 py-2 text-xs font-medium text-white transition-all duration-200 hover:bg-alpha-whiteAlpha100 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={
+                guardianActionLoading ||
+                guardianStatusLoading ||
+                Boolean(guardianDisablePending)
+              }
+              onClick={clearCompletedGuardianRecovery}
+            >
+              {t('settings.smartAccountGuardianRecoveryClearTracking')}
+            </button>
+          )}
         </div>
       </div>
     );
