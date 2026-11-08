@@ -1,3 +1,6 @@
+import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum.ts';
+import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
+import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
@@ -59,7 +62,8 @@ export type NativeSmartOperationPorts = Readonly<{
     payer: SmartAccountGasPayer,
     signal: AbortSignal,
     guard: () => void,
-    metadata: Readonly<Record<string, unknown>>
+    metadata: Readonly<Record<string, unknown>>,
+    funding: EvmFeeFunding
   ): Promise<NativePreparedConnectionTransaction>;
   waitForReceipt(
     hash: string,
@@ -107,7 +111,7 @@ export function createNativeSmartOperation(
         signal,
         assertCurrent
       );
-      if (intent.kind === 'native-transfer') {
+      if (intent.kind !== 'deploy') {
         await assertSmartAccountTargetsAllowed(
           getBlacklistTargetsForEvmCall({ to: intent.recipient, data: '0x' }),
           ports.checkAddress,
@@ -127,7 +131,7 @@ export function createNativeSmartOperation(
         return { kind: 'already-deployed' };
       }
       if (
-        intent.kind === 'native-transfer' &&
+        intent.kind !== 'deploy' &&
         state === 'deployed' &&
         (!metadata.isDeployed || !hasUsableSmartAccountAuthMetadata(metadata))
       ) {
@@ -143,57 +147,91 @@ export function createNativeSmartOperation(
         throw new Error(
           'This authenticator is not available for native transfers'
         );
-      issued = await prepareSmartAccountOperation({
-        account: { ...account, smartAccount: metadata },
-        chainId,
-        provider,
-        knownDeployed:
-          intent.kind === 'native-transfer' &&
-          state === 'deployed' &&
-          metadata.isDeployed &&
-          hasUsableSmartAccountAuthMetadata(metadata),
-        executions:
-          intent.kind === 'deploy'
-            ? [{ target: account.address, data: '0x', value: '0x0' }]
-            : [
-                {
-                  target: intent.recipient,
-                  data: '0x',
-                  value: intent.amountUnits,
-                },
-              ],
-        assertCurrent,
-        async selectGasPayer(gasEstimate, maxFeePerGas) {
-          const primary = getSmartAccountGasPayerCandidates(
-            ports.wallet,
-            metadata.deploymentGasPayer
-          )[0];
-          const useGasTank = primary
-            ? await canUseSmartAccountGasTank(provider, {
-                chainId,
-                gasEstimate,
-                maxFeePerGas,
-                gasPayerAddress: primary.address,
-              })
-            : false;
-          assertCurrent();
-          const gasPayer = useGasTank
-            ? {
-                address: primary!.address,
-                id: primary!.id,
-                type: primary!.type,
-              }
-            : await selectSmartAccountGasPayer(
-                ports.wallet,
-                provider,
-                metadata.deploymentGasPayer
-              );
-          assertCurrent();
-          return { gasPayer, useGasTank };
-        },
-      });
+      const prepare = (
+        executions: Array<{ target: string; data: string; value: string }>
+      ) =>
+        prepareSmartAccountOperation({
+          account: { ...account, smartAccount: metadata },
+          chainId,
+          provider,
+          knownDeployed:
+            intent.kind !== 'deploy' &&
+            state === 'deployed' &&
+            metadata.isDeployed &&
+            hasUsableSmartAccountAuthMetadata(metadata),
+          executions,
+          assertCurrent,
+          async selectGasPayer(gasEstimate, maxFeePerGas) {
+            const primary = getSmartAccountGasPayerCandidates(
+              ports.wallet,
+              metadata.deploymentGasPayer
+            )[0];
+            const useGasTank = primary
+              ? await canUseSmartAccountGasTank(provider, {
+                  chainId,
+                  gasEstimate,
+                  maxFeePerGas,
+                  gasPayerAddress: primary.address,
+                })
+              : false;
+            assertCurrent();
+            const gasPayer = useGasTank
+              ? {
+                  address: primary!.address,
+                  id: primary!.id,
+                  type: primary!.type,
+                }
+              : await selectSmartAccountGasPayer(
+                  ports.wallet,
+                  provider,
+                  metadata.deploymentGasPayer
+                );
+            assertCurrent();
+            return { gasPayer, useGasTank };
+          },
+        });
+      if (intent.kind === 'native-max') {
+        const maximum = await prepareSmartAccountNativeMaximum({
+          target: intent.recipient,
+          assertCurrent,
+          async readBalance() {
+            return (await provider.getBalance(account.address)).toString();
+          },
+          async quote(execution) {
+            const quote = await prepare([{ ...execution }]);
+            return {
+              quote,
+              maximumFeeUnits: getSmartAccountUserOpRequiredPrefund(
+                quote.userOperation
+              ).toString(),
+            };
+          },
+        });
+        issued = maximum.quote;
+        assertCurrent();
+        return {
+          kind: 'authorization',
+          operation: issued,
+          intent: {
+            kind: 'native-transfer',
+            recipient: intent.recipient,
+            amountUnits: BigInt(maximum.execution.value).toString(),
+          },
+        };
+      }
+      issued = await prepare(
+        intent.kind === 'deploy'
+          ? [{ target: account.address, data: '0x', value: '0x0' }]
+          : [
+              {
+                target: intent.recipient,
+                data: '0x',
+                value: intent.amountUnits,
+              },
+            ]
+      );
       assertCurrent();
-      return { kind: 'authorization', operation: issued };
+      return { kind: 'authorization', operation: issued, intent };
     },
     async sign(prepared, assertCurrent) {
       if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
@@ -238,7 +276,8 @@ export function createNativeSmartOperation(
           !target ||
           !options ||
           typeof options.assertBeforeSign !== 'function' ||
-          typeof options.assertCurrentContext !== 'function'
+          typeof options.assertCurrentContext !== 'function' ||
+          !options.feeFunding
         )
           throw new Error('SMART_OPERATION_EXPIRED');
         const payer = getSmartAccountGasPayerCandidates(
@@ -259,15 +298,23 @@ export function createNativeSmartOperation(
           assertSynchronousEvmFeeGuard(options.assertBeforeSign);
           assertSynchronousEvmFeeGuard(options.assertCurrentContext);
         };
-        const quote = await ports.preparePayer(request, payer, signal, guard, {
-          ...transactionMetadata,
-          smartAccountOperationHash: prepared.actionHash,
-        });
+        const quote = await ports.preparePayer(
+          request,
+          payer,
+          signal,
+          guard,
+          {
+            ...transactionMetadata,
+            smartAccountOperationHash: prepared.actionHash,
+          },
+          options.feeFunding
+        );
         guard();
         await reviewPayer(
           {
             transaction: quote.transaction,
             maximumFeeUnits: quote.maximumFeeUnits,
+            coveredFeeUnits: quote.coveredFeeUnits,
             maximumTotalUnits: quote.maximumTotalUnits,
             purpose: transactionMetadata?.smartAccountDeploymentPrefund
               ? 'fund-account'

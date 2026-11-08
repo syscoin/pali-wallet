@@ -170,7 +170,7 @@ test('deployment screen separates exact account authorization from payer confirm
     payerReview: {
       id: 8,
       purpose: 'submit-operation',
-      maximumFeeUnits: '42000',
+      coveredFeeUnits: '0', maximumFeeUnits: '42000',
       maximumTotalUnits: '42000',
       transaction: {
         chainId: '1',

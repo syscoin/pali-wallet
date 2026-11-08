@@ -1,7 +1,11 @@
+import { prepareSmartAccountNativeMaximum } from '../../../../source/utils/smartAccount/nativeMaximum';
 import React, { useState } from 'react';
 import { NativeSmartAccountSend } from '../../src/screens/NativeSmartAccountSend';
 import { NativeSmartAccountOperation } from '../../src/smartAccount/operation';
-import type { PreparedSmartAccountOperation } from '../../src/smartAccount/operation';
+import type {
+  NativeSmartAccountAmount,
+  PreparedSmartAccountOperation,
+} from '../../src/smartAccount/operation';
 import {
   getNativeNetwork,
   getNativeSendContext,
@@ -37,23 +41,51 @@ const reader: BalanceReader = {
     return { chainId: 1, units: '5000000000000000000' };
   },
 };
-function open(recipient: string, amount: string, assertCurrent: () => void) {
+function open(
+  recipient: string,
+  amount: NativeSmartAccountAmount,
+  assertCurrent: () => void
+) {
   try {
     recipient = normalizePublicAddress(recipient, 'ethereum');
-    const amountUnits = parseDecimalAmount(amount, 18).toString();
-    calls.push({ method: 'open', value: amountUnits });
+    const amountUnits =
+      amount.kind === 'exact'
+        ? parseDecimalAmount(amount.amount, 18).toString()
+        : null;
+    calls.push({ method: 'open', value: amountUnits ?? 'maximum' });
     return Promise.resolve(
       new NativeSmartAccountOperation({
         account,
         network,
-        intent: { kind: 'native-transfer', recipient, amountUnits },
+        intent:
+          amountUnits === null
+            ? { kind: 'native-max', recipient }
+            : { kind: 'native-transfer', recipient, amountUnits },
         assertCurrent,
         async prepare() {
           if (query.has('prepare-unavailable'))
             throw new Error('Fixture unavailable');
+          const maximum =
+            amountUnits === null
+              ? await prepareSmartAccountNativeMaximum({
+                  target: recipient,
+                  assertCurrent,
+                  readBalance: async () => '5000000000000000000',
+                  quote: async (execution) => ({
+                    quote: execution.value,
+                    maximumFeeUnits: '210000000000000',
+                  }),
+                })
+              : null;
+          const value = maximum
+            ? BigInt(maximum.execution.value).toString()
+            : amountUnits!;
           return {
             kind: 'authorization',
+            intent: { kind: 'native-transfer', recipient, amountUnits: value },
             operation: {
+              execution: { target: recipient, data: '0x', value },
+              executions: [{ target: recipient, data: '0x', value }],
               actionHash: hash,
               userOperation: {
                 nonce: '7',
@@ -89,6 +121,7 @@ function open(recipient: string, amount: string, assertCurrent: () => void) {
           await review(
             {
               purpose: 'submit-operation',
+              coveredFeeUnits: '0',
               maximumFeeUnits: '420000000000000',
               maximumTotalUnits: '420000000000000',
               transaction: {

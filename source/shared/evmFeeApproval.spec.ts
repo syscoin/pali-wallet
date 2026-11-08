@@ -5,6 +5,7 @@ import {
   assertEvmFeeRefreshApproved,
   bufferEvmFeeEstimate,
   captureEvmFeeApproval,
+  captureNativeEvmFeeCoverage,
   EvmFeeEnvelope,
   snapshotEvmFeeEnvelope,
 } from './evmFeeApproval';
@@ -164,41 +165,51 @@ it('rechecks exact final affordability and estimate without raising the approved
   const approval = capture();
   const balance = BigInt(approval.maximumTotalUnits);
   expect(() =>
-    assertEvmFeeEstimateApproved(approval, { ...observation, balance }, 10)
+    assertEvmFeeEstimateApproved(
+      approval,
+      { ...observation, balance },
+      10,
+      captureNativeEvmFeeCoverage(approval)
+    )
   ).not.toThrow();
   expect(() =>
     assertEvmFeeEstimateApproved(
       approval,
       { ...observation, balance: balance - BigInt(1) },
-      10
+      10,
+      captureNativeEvmFeeCoverage(approval)
     )
   ).toThrow('Insufficient funds');
   expect(() =>
     assertEvmFeeEstimateApproved(
       approval,
       { ...observation, estimatedGas: BigInt(25201) },
-      10
+      10,
+      captureNativeEvmFeeCoverage(approval)
     )
   ).toThrow('gas limit');
   expect(() =>
     assertEvmFeeEstimateApproved(
       approval,
       { ...observation, sampledBlockGasLimit: BigInt(25199) },
-      10
+      10,
+      captureNativeEvmFeeCoverage(approval)
     )
   ).toThrow();
   expect(() =>
     assertEvmFeeEstimateApproved(
       approval,
       { ...observation, baseFeePerGas: BigInt('9007199254741000') },
-      10
+      10,
+      captureNativeEvmFeeCoverage(approval)
     )
   ).toThrow('base fee');
   expect(() =>
     assertEvmFeeEstimateApproved(
       approval,
       { ...observation, balance: undefined as never },
-      10
+      10,
+      captureNativeEvmFeeCoverage(approval)
     )
   ).toThrow();
 });
@@ -239,9 +250,49 @@ it.each([21000, 22000, 25200])(
           estimatedGas: BigInt(estimatedGas),
           sampledBlockGasLimit: BigInt(25200),
         },
-        10
+        10,
+        captureNativeEvmFeeCoverage(approval)
       )
     ).not.toThrow();
     expect(approval.transaction.gasLimit).toBe('25200');
   }
 );
+
+it('applies verified coverage to gas only and binds it to the exact approval', async () => {
+  const { createOwnedEvmFeeFunding, resolveEvmFeeFunding } = await import(
+    './evmFeeApproval'
+  );
+  const approval = capture();
+  const funding = createOwnedEvmFeeFunding(async (current) =>
+    BigInt(current.maximumFeeUnits)
+  );
+  const coverage = await resolveEvmFeeFunding(
+    funding,
+    approval,
+    () => undefined
+  );
+  expect(() =>
+    assertEvmFeeEstimateApproved(
+      approval,
+      { ...observation, balance: BigInt(envelope.value) },
+      10,
+      coverage
+    )
+  ).not.toThrow();
+  expect(() =>
+    assertEvmFeeEstimateApproved(
+      approval,
+      { ...observation, balance: BigInt(envelope.value) - BigInt(1) },
+      10,
+      coverage
+    )
+  ).toThrow('Insufficient');
+  expect(() =>
+    assertEvmFeeEstimateApproved(capture(), observation, 10, coverage)
+  ).toThrow('does not match');
+  expect(() =>
+    assertEvmFeeEstimateApproved(approval, observation, 10, {
+      coveredFeeUnits: approval.maximumFeeUnits,
+    })
+  ).toThrow('does not match');
+});

@@ -46,8 +46,12 @@ for (const width of [390, 320]) {
       page.getByText('0.000000000000000009', { exact: true })
     ).toBeVisible();
     await contained(page);
-    await page.getByRole('heading', { name: 'Review transfer', exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: test.info().outputPath(`smart-send-review-${width}.png`) });
+    await page
+      .getByRole('heading', { name: 'Review transfer', exact: true })
+      .scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: test.info().outputPath(`smart-send-review-${width}.png`),
+    });
     const authorize = page.getByRole('button', {
       name: 'Authorize transfer',
       exact: true,
@@ -69,12 +73,19 @@ for (const width of [390, 320]) {
     ).toBeVisible();
     const close = page.getByRole('button', { name: 'Close', exact: true });
     await close.scrollIntoViewIfNeeded();
-    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+        )
+    );
     await expect(close).toBeInViewport({ ratio: 0.999 });
     await expect(confirm).toBeInViewport({ ratio: 0.999 });
     const closeBounds = await close.boundingBox();
     expect(closeBounds!.y).toBeGreaterThanOrEqual(0);
-    expect(closeBounds!.y + closeBounds!.height).toBeLessThanOrEqual(width === 320 ? 568 : 844);
+    expect(closeBounds!.y + closeBounds!.height).toBeLessThanOrEqual(
+      width === 320 ? 568 : 844
+    );
     expect(closeBounds!.height).toBeGreaterThanOrEqual(44);
     await contained(page);
     await page.screenshot({
@@ -158,4 +169,63 @@ test('unavailable balance and preparation preserve readable failure states', asy
   await page.screenshot({
     path: test.info().outputPath('smart-send-unavailable-preparation.png'),
   });
+});
+
+test('MAX keeps the exact refined amount in the narrow authorization screen', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto('/?smart-currency=1');
+  await expect(
+    page.getByRole('button', { name: 'MAX', exact: true })
+  ).toBeEnabled();
+  await page.getByLabel('Recipient address', { exact: true }).fill(recipient);
+  await page.getByRole('button', { name: 'MAX', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'MAX selected', exact: true })
+  ).toBeVisible();
+  await page
+    .getByRole('button', { name: 'Review transfer', exact: true })
+    .click();
+  await expect(page.getByText('4.999789', { exact: true })).toBeVisible();
+  await expect(page.getByText(recipient, { exact: true })).toBeVisible();
+  await contained(page);
+  await page.screenshot({
+    path: test.info().outputPath('smart-max-review-320.png'),
+  });
+  const authorize = page.getByRole('button', {
+    name: 'Authorize transfer',
+    exact: true,
+  });
+  await authorize.scrollIntoViewIfNeeded();
+  await expect(authorize).toBeInViewport();
+  expect((await authorize.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  expect(
+    await page.evaluate(() => window.__nativeSmartCurrencyFixture.calls())
+  ).toEqual([{ method: 'open', value: 'maximum' }]);
+  await authorize.click();
+  const confirm = page.getByRole('button', {
+    name: 'Confirm transfer',
+    exact: true,
+  });
+  const close = page.getByRole('button', { name: 'Close', exact: true });
+  await expect(confirm).toBeEnabled();
+  await close.scrollIntoViewIfNeeded();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+      )
+  );
+  await expect(close).toBeInViewport({ ratio: 0.999 });
+  await expect(confirm).toBeInViewport({ ratio: 0.999 });
+  expect((await close.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+  await contained(page);
+  await page.screenshot({
+    path: test.info().outputPath('smart-max-payer-320.png'),
+  });
+  await confirm.click();
+  await expect(
+    page.getByText('Transfer submitted', { exact: true })
+  ).toBeVisible();
 });

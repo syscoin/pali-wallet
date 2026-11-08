@@ -7,13 +7,20 @@ import {
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/smartAccount/account.ts';
 
-export type NativeSmartAccountIntent =
+export type NativeSmartAccountResolvedIntent =
   | Readonly<{ kind: 'deploy' }>
   | Readonly<{
       kind: 'native-transfer';
       recipient: string;
       amountUnits: string;
     }>;
+
+export type NativeSmartAccountAmount =
+  | Readonly<{ kind: 'exact'; amount: string }>
+  | Readonly<{ kind: 'maximum' }>;
+export type NativeSmartAccountIntent =
+  | NativeSmartAccountResolvedIntent
+  | Readonly<{ kind: 'native-max'; recipient: string }>;
 
 export type PreparedSmartAccountOperation = Awaited<
   ReturnType<typeof prepareSmartAccountOperation>
@@ -22,6 +29,7 @@ export type SmartAccountOperationPreparation =
   | Readonly<{ kind: 'already-deployed' }>
   | Readonly<{
       kind: 'authorization';
+      intent: NativeSmartAccountResolvedIntent;
       operation: PreparedSmartAccountOperation;
     }>;
 
@@ -29,6 +37,7 @@ export type SmartAccountPayerReview = Readonly<{
   id: number;
   transaction: PreparedEvmTransaction;
   maximumFeeUnits: string;
+  coveredFeeUnits: string;
   maximumTotalUnits: string;
   purpose: 'fund-account' | 'submit-operation';
 }>;
@@ -186,9 +195,27 @@ export class NativeSmartAccountOperation {
         return;
       }
       const prepared = result.operation;
+      const intent = result.intent;
+      if (intent.kind === 'native-transfer') {
+        const requested = this.host.intent;
+        const execution = prepared.executions?.[0];
+        if (
+          requested.kind === 'deploy' ||
+          requested.recipient !== intent.recipient ||
+          (requested.kind === 'native-transfer' &&
+            requested.amountUnits !== intent.amountUnits) ||
+          prepared.executions.length !== 1 ||
+          execution?.target.toLowerCase() !== intent.recipient.toLowerCase() ||
+          execution.data !== '0x' ||
+          BigInt(execution.value) !== BigInt(intent.amountUnits)
+        )
+          throw new Error('Smart transfer review changed');
+      } else if (this.host.intent.kind !== 'deploy')
+        throw new Error('Smart transfer review changed');
       this.prepared = prepared;
       this.publish({
         phase: 'authorize',
+        intent: Object.freeze({ ...result.intent }),
         maximumPrefundUnits: getSmartAccountUserOpRequiredPrefund(
           prepared.userOperation
         ).toString(),

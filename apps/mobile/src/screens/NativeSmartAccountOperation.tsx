@@ -96,8 +96,7 @@ export function NativeSmartAccountOperationScreen({
     return () => controller.dispose();
   }, [controller]);
   const payer = state.payerReview;
-  const transfer =
-    state.intent.kind === 'native-transfer' ? state.intent : null;
+  const transfer = state.intent.kind !== 'deploy' ? state.intent : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
     state.phase
   );
@@ -132,7 +131,11 @@ export function NativeSmartAccountOperationScreen({
               {transfer.recipient}
             </Text>
             <Text style={s.label}>Amount</Text>
-            {amount(transfer.amountUnits)}
+            {transfer.kind === 'native-max' ? (
+              <Text style={s.label}>Calculating maximum…</Text>
+            ) : (
+              amount(transfer.amountUnits)
+            )}
           </Card>
         )}
         {state.phase === 'authorize' && (
@@ -221,9 +224,17 @@ export function NativeSmartAccountOperationScreen({
               </Text>
               <Text style={s.label}>Amount</Text>
               {amount(payer.transaction.value)}
-              <Text style={s.label}>Maximum network fee</Text>
+              <Text style={s.label}>
+                {payer.coveredFeeUnits !== '0'
+                  ? 'Maximum network fee · gas tank'
+                  : 'Maximum network fee'}
+              </Text>
               {amount(payer.maximumFeeUnits)}
-              <Text style={s.label}>Maximum total</Text>
+              <Text style={s.label}>
+                {payer.coveredFeeUnits !== '0'
+                  ? 'Maximum from paying account'
+                  : 'Maximum total'}
+              </Text>
               {amount(payer.maximumTotalUnits)}
             </Card>
             <Button

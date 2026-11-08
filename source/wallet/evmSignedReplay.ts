@@ -19,9 +19,10 @@ import {
   type EvmRetainedSignedRecord,
   type EvmSignedRecordSummary,
 } from './evmSignedRecords.ts';
-import type {
-  EvmObservationRequest,
-  EvmTransactionObservation,
+import {
+  getObservedEvmTerminalPhase,
+  type EvmObservationRequest,
+  type EvmTransactionObservation,
 } from '../shared/evmTransactionObservation.ts';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 
@@ -231,12 +232,7 @@ export async function observeRetainedEvmTransaction(
   const { entry, revision } = saved;
   const observation = await read(request(entry));
   current();
-  const terminalPhase =
-    observation.status === 'mined'
-      ? observation.outcome
-      : BigInt(observation.latestNonce) > BigInt(entry.nonce)
-      ? 'nonce-consumed'
-      : null;
+  const terminalPhase = getObservedEvmTerminalPhase(observation, entry.nonce);
   const phase =
     terminalPhase ??
     (['confirmed', 'reverted', 'nonce-consumed'].includes(entry.phase)

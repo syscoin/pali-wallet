@@ -18,7 +18,10 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { NativeSmartAccountOperation } from '../smartAccount/operation';
+import type {
+  NativeSmartAccountAmount,
+  NativeSmartAccountOperation,
+} from '../smartAccount/operation';
 import type { NativeSendContext } from '../custody/networkContext';
 import { NativeSendInput, nativeTransferFailure } from './NativeSend';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
@@ -34,7 +37,7 @@ export function NativeSmartAccountSend({
 }: {
   open(
     recipient: string,
-    amount: string,
+    amount: NativeSmartAccountAmount,
     assertCurrent: () => void
   ): Promise<NativeSmartAccountOperation>;
   context: NativeSendContext;
@@ -55,6 +58,7 @@ export function NativeSmartAccountSend({
   useLayoutEffect(() => portfolio.connect(), [portfolio]);
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
+  const [maximum, setMaximum] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [controller, setController] =
@@ -82,7 +86,11 @@ export function NativeSmartAccountSend({
       if (!current.active) throw new Error('SMART_OPERATION_EXPIRED');
     };
     try {
-      const operation = await open(recipient, amount, check);
+      const operation = await open(
+        recipient,
+        maximum ? { kind: 'maximum' } : { kind: 'exact', amount },
+        check
+      );
       if (!current.active) {
         operation.dispose();
         return;
@@ -134,9 +142,28 @@ export function NativeSmartAccountSend({
           <NativeSendInput
             label={`Amount (${context.symbol})`}
             value={amount}
-            onChange={setAmount}
+            onChange={(value) => {
+              setMaximum(false);
+              setAmount(value);
+            }}
             busy={busy}
             keyboardType="decimal-pad"
+          />
+          <Button
+            title={maximum ? 'MAX selected' : 'MAX'}
+            variant="quiet"
+            disabled={
+              busy ||
+              balance.status !== 'available' ||
+              !balance.units ||
+              BigInt(balance.units) <= BigInt(0)
+            }
+            onPress={() => {
+              if (!busy && balance.units) {
+                setMaximum(true);
+                setAmount(formatBaseUnits(balance.units, context.decimals));
+              }
+            }}
           />
           {error ? (
             <Notice title="Check transfer" body={error} tone="amber" />

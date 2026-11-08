@@ -1,7 +1,7 @@
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
 import { snapshotEvmAccessList, snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
-import { captureEvmFeeApproval, assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved } from '../../../../source/shared/evmFeeApproval.ts';
+import { type EvmFeeFunding, captureEvmFeeApproval, assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved } from '../../../../source/shared/evmFeeApproval.ts';
 import { guardedRead } from '../custody/evmFeeContracts.ts';
 import type { EvmTransferReadRpc, EvmDappTransactionRequest, NativeAutomaticNoncePlanner } from '../custody/evmTransferReadRpc.ts';
 import type { NativeTransferDispatchValidation } from '../custody/transfers.ts';
@@ -12,6 +12,7 @@ import { decodeApprovalData, summarizeApproval, type ApprovalContractMetadata, t
 export type NativePreparedConnectionTransaction = Readonly<{
   transaction: PreparedEvmTransaction;
   maximumFeeUnits: string;
+  coveredFeeUnits: string;
   maximumTotalUnits: string;
   expiresAtMonotonicMilliseconds: number;
   approval: ApprovalSummary | null;
@@ -21,6 +22,7 @@ export type NativePreparedConnectionTransaction = Readonly<{
 type SignedTransaction = Readonly<{ rawTransaction: string; hash: string }>;
 type Ports = Readonly<{
   network: NativeNetworkRegistration;
+  funding: EvmFeeFunding;
   rpc: EvmTransferReadRpc;
   signal: AbortSignal;
   planner: NativeAutomaticNoncePlanner;
@@ -68,7 +70,7 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
     if (ports.signal.aborted) throw new Error('CANCELLED');
   };
   check();
-  const quote = await ports.rpc.prepareDapp(request, ports.signal, check, ports.planner);
+  const quote = await ports.rpc.prepareDapp(request, ports.signal, check, ports.planner, undefined, ports.funding);
   check();
   const approved = captureEvmFeeApproval(quote.transaction, ports.network.registrationHash, quote.expiresAtMonotonicMilliseconds);
   const contract = quote.transaction.to;
@@ -80,6 +82,7 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
   return Object.freeze({
     transaction: quote.transaction,
     maximumFeeUnits: quote.maximumFeeUnits,
+    coveredFeeUnits: quote.coveredFeeUnits,
     maximumTotalUnits: quote.maximumTotalUnits,
     expiresAtMonotonicMilliseconds: quote.expiresAtMonotonicMilliseconds,
     approval,
@@ -90,7 +93,7 @@ export async function prepareNativeConnectionTransaction(input: unknown, ports: 
       const refresh = async (planner: NativeAutomaticNoncePlanner, assertDispatchCurrent: () => void) => {
         const guard = () => { current(); guardedRead(assertDispatchCurrent); };
         guard();
-        const latest = await ports.rpc.prepareDapp(request, ports.signal, guard, planner, quote);
+        const latest = await ports.rpc.prepareDapp(request, ports.signal, guard, planner, quote, ports.funding);
         guard();
         assertEvmFeeRefreshApproved(approved, captureEvmFeeApproval(latest.transaction,
           ports.network.registrationHash, latest.expiresAtMonotonicMilliseconds), now());

@@ -179,9 +179,9 @@ test('Smart send form displays the shared balance and binds exact fields to its 
     f.edit('Amount (ETH)', '0.000000000000000009');
     f.press();
     await tick();
-    assert.deepEqual(requests[0]!.slice(0, 2), [
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[0]!.slice(0, 2))), [
       '0x2222222222222222222222222222222222222222',
-      '0.000000000000000009',
+      { kind: 'exact', amount: '0.000000000000000009' },
     ]);
     assert.equal(f.render().type, 'Operation');
     assert.equal(f.render().props.controller, operation);
@@ -240,3 +240,20 @@ for (const message of ['INVALID_INPUT', 'NOT_READY'])
       f.close();
     }
   });
+
+
+for (const editAmount of [false, true]) test(`MAX selection ${editAmount ? 'clears when amount is edited' : 'uses the explicit maximum request'}`, async () => {
+  let selected: any;
+  const f = fixture(async (_recipient, amount) => { selected = amount; return { dispose() {} }; });
+  try {
+    f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
+    const maximum = all(f.render()).find(node => node.type === 'Button' && node.props.title === 'MAX')!;
+    assert.equal(maximum.props.disabled, false);
+    maximum.props.onPress();
+    assert(all(f.render()).some(node => node.type === 'Button' && node.props.title === 'MAX selected'));
+    if (editAmount) f.edit('Amount (ETH)', '1');
+    f.press(); await tick();
+    assert.equal(selected.kind, editAmount ? 'exact' : 'maximum');
+    if (editAmount) assert.equal(selected.amount, '1');
+  } finally { f.close(); }
+});
