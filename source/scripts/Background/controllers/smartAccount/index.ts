@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 
+import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeApproval';
 import {
   IEvmTransactionResponse,
@@ -416,6 +417,17 @@ class SmartAccountController {
         transactionNotBroadcast: true,
       });
     }
+  }
+
+  public getPreparedCallsIdentity(executionContextId: string) {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    if (!context.userOperation)
+      throw new Error('Prepared smart account operation is required');
+    return captureSmartAccountCallsIdentity(
+      context.userOperation,
+      context.snapshot.chainId
+    );
   }
 
   private recoveryApprovalContext(expected?: IEvmTransactionContext) {

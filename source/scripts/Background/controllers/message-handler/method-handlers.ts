@@ -194,7 +194,8 @@ export class WalletMethodHandler implements IMethodHandler {
             chainId: activeNetwork?.chainId,
             smartAccount: Boolean(smartAccountAtomicSupported),
           },
-          reservationId
+          reservationId,
+          account.address
         );
         if (!reserved) {
           throw cleanErrorStack(

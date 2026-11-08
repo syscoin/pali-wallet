@@ -9618,6 +9618,7 @@ class MainController {
       previousSubmissionId?: string;
       reservationId: string;
       smartAccount: boolean;
+      smartAccountExecutionContextId?: string;
       submissionCompleted?: boolean;
       submissionId?: string;
       submissionNotBroadcast?: boolean;
@@ -9625,7 +9626,17 @@ class MainController {
       txHashes: string[];
     }
   ): Promise<void> {
-    return recordSendCallsBundle(host, id, bundle);
+    const { smartAccountExecutionContextId, ...record } = bundle;
+    const smartAccountIdentity =
+      record.submissionStarted && record.smartAccount
+        ? this.smartAccount.getPreparedCallsIdentity(
+            smartAccountExecutionContextId!
+          )
+        : undefined;
+    return recordSendCallsBundle(host, id, {
+      ...record,
+      smartAccountIdentity,
+    });
   }
 
   /** Capture token and collectible intent and the host-owned nonce before submission. */

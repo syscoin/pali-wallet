@@ -365,7 +365,9 @@ export type SubmitSmartAccountExecutionsParams = {
   onAssertionResolved?: () => void;
   onAuthenticatorSigningResolved?: SmartAccountAuthenticatorSigningCallback;
   onAuthenticatorSigningStarted?: SmartAccountAuthenticatorSigningCallback;
-  onBeforeSubmit?: () => Promise<void>;
+  onBeforeSubmit?: (
+    prepared: Readonly<{ executionContextId: string }>
+  ) => Promise<void>;
   onPrepared?: () => void;
   skipRapidPolling?: boolean;
   smartAccount: ISmartAccountMetadata;
@@ -1205,7 +1207,11 @@ export const signAndSubmitSmartAccountExecutions = async (
     await assertContext();
     onAssertionResolved?.();
 
-    await onBeforeSubmit?.();
+    await onBeforeSubmit?.(
+      Object.freeze({
+        executionContextId: prepared.executionContextId,
+      })
+    );
     await assertContext();
     submissionStarted = true;
     return controllerEmitter(

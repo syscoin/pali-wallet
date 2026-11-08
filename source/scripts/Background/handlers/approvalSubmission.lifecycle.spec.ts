@@ -472,7 +472,8 @@ describe('transaction approval submission lifetime', () => {
           data.host,
           batch.bundleId,
           descriptor,
-          batch.reservationId
+          batch.reservationId,
+          approvedContext.account.address
         );
         await recordSendCallsBundle(data.host, batch.bundleId, {
           ...descriptor,

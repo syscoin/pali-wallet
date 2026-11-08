@@ -215,7 +215,8 @@ beforeEach(async () => {
     HOST,
     ID,
     { chainId: 1, atomic: false, smartAccount: false },
-    'reservation'
+    'reservation',
+    ADDRESS
   );
   await recordSendCallsBundle(HOST, ID, {
     chainId: 1,
