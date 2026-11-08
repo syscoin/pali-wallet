@@ -69,6 +69,9 @@ function fixture(input: unknown = request) {
       events.push(['persist', hash]);
       saved.push(hash);
     },
+    async persistStopped() {
+      return undefined;
+    },
     async recordNotBroadcast() {
       events.push('not-broadcast');
       return true;
@@ -214,6 +217,40 @@ it('stops after an unknown send and refuses any retry', async () => {
   );
 });
 
+it('records a stopped attempt only after the sender settles, with its reviewed envelope', async () => {
+  const f = fixture();
+  const held = deferred();
+  const stopped = jest.fn(async () => undefined);
+  const sending = jest.fn(async () => {
+    await held.promise;
+    throw Object.assign(new Error('response lost'), {
+      signedTransactionHash: hashes[0],
+      transactionNotBroadcast: false,
+    });
+  });
+  const running = f.sequence.run({
+    ...f.ports,
+    send: sending,
+    persistStopped: stopped,
+  });
+  while (!sending.mock.calls.length) await Promise.resolve();
+  expect(stopped).not.toHaveBeenCalled();
+  held.resolve();
+  expect(await running).toMatchObject({ status: 'unknown' });
+  expect(stopped).toHaveBeenCalledTimes(1);
+  expect(stopped).toHaveBeenCalledWith({
+    failed: true,
+    hash: hashes[0],
+    transaction: expect.objectContaining({
+      from,
+      to,
+      nonce: '5',
+      gasLimit: '65000',
+    }),
+  });
+  await expect(f.sequence.run(f.ports)).rejects.toThrow('unresolved');
+});
+
 it('retains an acknowledged hash and stops if its persistence fails', async () => {
   const f = fixture();
   const ports = {
@@ -285,6 +322,9 @@ it('requires explicit synchronous ownership and every side-effect port', async (
   const f = fixture();
   await expect(
     f.sequence.run({ ...f.ports, begin: undefined } as any)
+  ).rejects.toThrow('explicit host ports');
+  await expect(
+    f.sequence.run({ ...f.ports, persistStopped: undefined } as any)
   ).rejects.toThrow('explicit host ports');
   await expect(
     f.sequence.run({ ...f.ports, assertCurrent: async () => undefined })

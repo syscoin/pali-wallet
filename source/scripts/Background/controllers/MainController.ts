@@ -97,6 +97,7 @@ import {
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
+import { readRetainedEoaCall } from '../../../wallet/dappCallsBundles.ts';
 import {
   createEvmSignedRecordLifecycle,
   EVM_SIGNED_RECORD_PREFIX,
@@ -426,7 +427,10 @@ import {
   recheckReviewedNativeEvmTransfer,
 } from './freshNativeGasEstimate';
 import { clearProviderCache } from './message-handler/requests';
-import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
+import {
+  recordSendCallsBundle,
+  recordStoppedEoaAttempt,
+} from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 import {
   bindGenericEvmFeeDispatch,
@@ -469,6 +473,7 @@ import {
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
+import type { EoaCallsStopped } from '../../../wallet/evmCallsSequence.ts';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
 import type {
   EvmReplacementFeeApproval,
@@ -10245,6 +10250,37 @@ class MainController {
       ...record,
       smartAccountIdentity,
     });
+  }
+
+  public async recordStoppedEoaCalls(
+    host: string,
+    id: string,
+    reservationId: string,
+    submissionId: string,
+    input: EoaCallsStopped,
+    assertCurrent: () => void
+  ): Promise<void> {
+    const transaction = snapshotPreparedEvmTransaction(input.transaction);
+    const attempt = Object.freeze({ ...input, transaction });
+    const keyring = this.getActiveKeyring();
+    const assertUnlocked = keyring.captureUnlockedSessionGuard();
+    const check = () => {
+      assertSynchronousEvmFeeGuard(assertCurrent);
+      assertUnlocked();
+      if (this.getActiveKeyring() !== keyring)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    const records = this.getRetainedEvmRecords();
+    const session = records.captureSession({ keyring, assertCurrent: check });
+    await recordStoppedEoaAttempt(
+      host,
+      id,
+      reservationId,
+      submissionId,
+      attempt,
+      () => readRetainedEoaCall(records, session, attempt)
+    );
   }
 
   /** Capture token and collectible intent and the host-owned nonce before submission. */

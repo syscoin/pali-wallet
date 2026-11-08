@@ -7,6 +7,7 @@ import type { DappMessageRequest } from '../../../../source/shared/dappMessageRe
 import type { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 import type { DappCallsRequest } from '../../../../source/shared/dappCalls.ts';
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
+import type { EoaCallsStopped } from '../../../../source/wallet/evmCallsSequence.ts';
 
 export type NativeConnectionMessageSigning = Readonly<{
   accountId: string;
@@ -52,6 +53,13 @@ export type NativeConnectionHost = Readonly<{
     id: string,
     assertCurrent: () => void
   ): Promise<CallsBundleStatus>;
+  recordStoppedEoaCalls(input: Readonly<{
+    origin: string;
+    bundleId: string;
+    reservationId: string;
+    submissionId: string;
+    attempt: EoaCallsStopped;
+  }>): Promise<void>;
   prepareCalls(
     input: Readonly<{
       accountId: string;

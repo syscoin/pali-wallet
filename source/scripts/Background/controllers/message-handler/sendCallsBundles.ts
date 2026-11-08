@@ -91,6 +91,9 @@ export const recordSendCallsBundle = (
     ReturnType<typeof createCallsBundleRegistry>['recordSendCallsBundle']
   >
 ) => ownedRegistry().registry.recordSendCallsBundle(...args);
+export const recordStoppedEoaAttempt = (
+  ...args: Parameters<Registry['recordStoppedEoaAttempt']>
+) => ownedRegistry().registry.recordStoppedEoaAttempt(...args);
 export const releaseSendCallsBundleReservation = (
   ...args: Parameters<
     ReturnType<
@@ -121,7 +124,18 @@ export const resolveCallsStatus = (
   return owned.registry.resolveCallsStatus(
     {
       assertCurrent: owned.assertCurrent,
-      forChain: getProviderForChain,
+      forChain: (chainId) => {
+        const provider = getProviderForChain(chainId);
+        return provider
+          ? {
+              getTransactionReceipt: (hash: string) =>
+                provider.getTransactionReceipt(hash),
+              async getBlockHash(blockNumber: string) {
+                return (await provider.getBlock(blockNumber))?.hash ?? null;
+              },
+            }
+          : null;
+      },
     },
     host,
     id

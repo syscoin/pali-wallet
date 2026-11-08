@@ -673,6 +673,76 @@ describe('document-bound dapp nonce dispatch', () => {
       )
     );
 
+  it('binds a stopped EOA attempt to the current approval and replaces renderer guards', async () => {
+    const recordStoppedEoaCalls = jest.fn<Promise<void>, any[]>(
+      async () => undefined
+    );
+    const review = evmReview({
+      batch: {
+        host: 'test.invalid',
+        id: 'bundle',
+        reservationId: 'reservation',
+      },
+    });
+    handleMasterControllerResponses({
+      wallet: { recordStoppedEoaCalls },
+    } as any);
+    const add = chrome.runtime.onMessage.addListener as jest.Mock;
+    const listener = add.mock.calls[add.mock.calls.length - 1][0];
+    const stop = watchApprovalSubmission(documentId, jest.fn(), review);
+    const attempt = { transaction: { nonce: '4' }, failed: false };
+    const forgedGuard = jest.fn();
+    const logging = jest.spyOn(console, 'error').mockImplementation();
+    try {
+      await invoke(
+        listener,
+        ['wallet', 'recordStoppedEoaCalls'],
+        [
+          'test.invalid',
+          'bundle',
+          'reservation',
+          'submission',
+          attempt,
+          forgedGuard,
+        ]
+      );
+      expect(recordStoppedEoaCalls).toHaveBeenCalledTimes(1);
+      expect(recordStoppedEoaCalls.mock.calls[0]).toEqual([
+        'test.invalid',
+        'bundle',
+        'reservation',
+        'submission',
+        attempt,
+        expect.any(Function),
+      ]);
+      expect(recordStoppedEoaCalls.mock.calls[0][5]).not.toBe(forgedGuard);
+      recordStoppedEoaCalls.mock.calls[0][5]();
+      expect(review.assertCurrent).toHaveBeenCalled();
+      for (const params of [
+        ['foreign.invalid', 'bundle', 'reservation', 'submission', attempt],
+        ['test.invalid', 'foreign', 'reservation', 'submission', attempt],
+        ['test.invalid', 'bundle', 'foreign', 'submission', attempt],
+      ]) {
+        expect(
+          await invoke(listener, ['wallet', 'recordStoppedEoaCalls'], params)
+        ).toEqual(expect.objectContaining({ success: false }));
+      }
+      expect(recordStoppedEoaCalls).toHaveBeenCalledTimes(1);
+      stop();
+      expect(
+        await invoke(
+          listener,
+          ['wallet', 'recordStoppedEoaCalls'],
+          ['test.invalid', 'bundle', 'reservation', 'submission', attempt]
+        )
+      ).toEqual(expect.objectContaining({ success: false }));
+      expect(recordStoppedEoaCalls).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+      logging.mockRestore();
+    }
+  });
+
   it('stamps the actual background quote and discards a forged renderer nonce capability', async () => {
     const send = jest.fn<Promise<{ hash: string }>, unknown[]>(async () => ({
       hash: '0x1234',

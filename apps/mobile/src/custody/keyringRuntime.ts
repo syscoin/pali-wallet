@@ -1,3 +1,4 @@
+import { readRetainedEoaCall } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
 import { NativePrivateWithdrawal } from './privateWithdrawal.ts';
 import { createPrivacyWithdrawalsController, PRIVACY_WITHDRAWAL_GAS } from '../../../../source/wallet/privacyWithdrawals.ts';
@@ -3408,6 +3409,29 @@ export function createKeyringRuntimeFactory(
               repository,
               walletBindingId,
               assertOwner,
+              async recordStoppedEoaCalls(input) {
+                assertOwner();
+                const ring = keyring;
+                const check = () => {
+                  assertOwner();
+                  if (keyring !== ring || !ring.isUnlocked())
+                    throw new KeyringRuntimeError('CANCELLED');
+                };
+                check();
+                const session = signedRecords.captureSession({
+                  keyring: ring,
+                  assertCurrent: check,
+                });
+                await repository.calls.recordStoppedEoaAttempt(
+                  input.origin,
+                  input.bundleId,
+                  input.reservationId,
+                  input.submissionId,
+                  input.attempt,
+                  () =>
+                    readRetainedEoaCall(signedRecords, session, input.attempt)
+                );
+              },
               sessionGeneration() {
                 assertOwner();
                 return generation;
@@ -3436,6 +3460,23 @@ export function createKeyringRuntimeFactory(
                         fetch: dependencies.connectionFetch ?? walletFetch,
                       });
                       return {
+                        async getBlockHash(blockNumber) {
+                          const signal = (contextReadLifetime ??=
+                            new AbortController()).signal;
+                          await rpc.verifyNetwork(signal, guard);
+                          const block = await rpc.retirementRead(
+                            'eth_getBlockByNumber',
+                            [blockNumber, false],
+                            signal,
+                            guard
+                          );
+                          await rpc.verifyNetwork(signal, guard);
+                          return block &&
+                            typeof block === 'object' &&
+                            'hash' in block
+                            ? String(block.hash)
+                            : null;
+                        },
                         async getTransactionReceipt(hash) {
                           const signal = (contextReadLifetime ??= new AbortController())
                             .signal;

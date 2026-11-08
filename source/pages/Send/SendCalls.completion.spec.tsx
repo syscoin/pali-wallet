@@ -7,12 +7,14 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { Transaction, Wallet } from 'ethers';
 import React from 'react';
 
 import { captureSmartAccountCallsIdentity } from '../../shared/dappCallsStatus';
 import { buildSmartAccountUserOperation } from '../../utils/smartAccount/account';
 import {
   recordSendCallsBundle,
+  recordStoppedEoaAttempt,
   reserveSendCallsBundle,
   resolveCallsStatus,
 } from 'scripts/Background/controllers/message-handler/sendCallsBundles';
@@ -33,6 +35,7 @@ let mockRecordGate: (descriptor: any) => Promise<void> | void;
 let mockStored: any;
 let mockFeeGate: (transaction: any) => any;
 let mockFeeId = 0;
+let mockStoppedRaw: string | undefined;
 const HASH_A = '0x' + 'a'.repeat(64);
 const HASH_B = '0x' + 'b'.repeat(64);
 const mockFeeReview = (transaction: any) => ({
@@ -137,6 +140,7 @@ beforeEach(() => {
     calls: [{ to: `0x${'2'.repeat(40)}` }],
   };
   mockFeeId = 0;
+  mockStoppedRaw = undefined;
   mockFeeGate = mockFeeReview;
   mockCleanup.mockResolvedValue(undefined);
   mockEmitter.mockReset().mockImplementation(async ([, method], args) => {
@@ -200,7 +204,9 @@ const pending = () => {
 };
 const prepare = async (
   smart = false,
-  send: (index: number) => any = (index) => ({ hash: index ? HASH_B : HASH_A }),
+  send: (index: number, transaction: any) => any = (index) => ({
+    hash: index ? HASH_B : HASH_A,
+  }),
   waitForReview = true
 ) => {
   let count = 0;
@@ -235,7 +241,16 @@ const prepare = async (
       }
       return recordSendCallsBundle(args[0], args[1], record);
     }
-    if (path[1] === 'sendAndSaveEthTransaction') return send(count++);
+    if (path[1] === 'recordStoppedEoaCalls')
+      return recordStoppedEoaAttempt(
+        args[0],
+        args[1],
+        args[2],
+        args[3],
+        args[4],
+        async () => mockStoppedRaw
+      );
+    if (path[1] === 'sendAndSaveEthTransaction') return send(count++, args[0]);
     throw new Error(
       'Unexpected controller or irreversible method ' + path.join('.')
     );
@@ -288,6 +303,7 @@ const status = async () =>
   (
     await resolveCallsStatus(
       () => ({
+        getBlock: async () => ({ hash: HASH_A }),
         getTransactionReceipt: async (hash) => ({
           hash,
           status: 1,
@@ -456,6 +472,67 @@ it('does not return an earlier known hash as completion after a later unknown se
   await close();
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
 });
+
+it.each([
+  [0, 0, 500],
+  [0, 1, 600],
+  [1, 0, 600],
+  [1, 1, 200],
+])(
+  'reconciles stopped call %s with canonical receipt %s as status %s',
+  async (lostAt, receiptStatus, expectedStatus) => {
+    const wallet = new Wallet('0x' + '01'.repeat(32));
+    mockState.vault.accounts.HDAccount[0].address = wallet.address;
+    mockQuery.approvedContext.account.address = wallet.address;
+    const hashes: string[] = [];
+    await prepare(false, async (index, transaction) => {
+      const raw = await wallet.signTransaction({
+        ...transaction,
+        nonce: Number(transaction.nonce),
+      });
+      const hash = Transaction.from(raw).hash!;
+      hashes.push(hash);
+      if (index === lostAt) {
+        mockStoppedRaw = raw;
+        throw Object.assign(new Error('Lost response after submission'), {
+          signedTransactionHash: hash,
+          transactionNotBroadcast: false,
+        });
+      }
+      return { hash };
+    });
+    await approve();
+    expect(mockStored[mockQuery.host][mockQuery.bundleId]).toEqual(
+      expect.objectContaining({
+        stoppedTransactionHash: hashes[lostAt],
+        submissionCompleted: false,
+      })
+    );
+    const result = await resolveCallsStatus(
+      () => ({
+        async getTransactionReceipt(hash) {
+          return {
+            hash,
+            status: hash === hashes[lostAt] ? receiptStatus : 1,
+            blockHash: HASH_A,
+            blockNumber: 1,
+            gasUsed: 21000,
+            logs: [],
+          };
+        },
+        async getBlock() {
+          return { hash: HASH_A };
+        },
+      }),
+      mockQuery.host,
+      mockQuery.bundleId
+    );
+    expect(result.status).toBe(expectedStatus);
+    await act(async () => mockApprove());
+    expect(sends()).toHaveLength(lostAt + 1);
+    expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  }
+);
 
 it('cannot complete from an acknowledged hash whose persistence failed', async () => {
   mockRecordGate = (descriptor) => {

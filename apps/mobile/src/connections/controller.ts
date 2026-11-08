@@ -1811,6 +1811,14 @@ export class NativeConnectionsController {
       expiresAt: message.requestExpiresAt, registry: this.host!.calls,
       assertCurrent: approval.assertCurrent,
       onBroadcast: (hash) => { message.broadcastHash = hash; },
+      persistStopped: (submissionId, attempt) =>
+        this.host!.recordStoppedEoaCalls({
+          origin: message.session.binding.origin,
+          bundleId: request.bundleId,
+          reservationId: request.reservationId,
+          submissionId,
+          attempt,
+        }),
       prepare: async (transaction) => {
         approval.assertCurrent();
         advisories = [];
