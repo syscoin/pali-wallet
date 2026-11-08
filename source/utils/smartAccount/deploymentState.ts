@@ -2,6 +2,14 @@ import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeApproval.ts';
 
 import { requireSmartAccountAddressIdentity } from './addressIdentity.ts';
 
+export function smartAccountDeploymentStateFromCode(
+  code: unknown
+): 'deployed' | 'undeployed' {
+  if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code))
+    throw new Error('Invalid smart account code response');
+  return code === '0x' ? 'undeployed' : 'deployed';
+}
+
 /** Observe the same canonical account before choosing deployment or refresh. */
 export async function readSmartAccountDeploymentState({
   account,
@@ -18,7 +26,5 @@ export async function readSmartAccountDeploymentState({
   const identity = requireSmartAccountAddressIdentity(account, chainId);
   const code = await provider.getCode(identity.address);
   assertSynchronousEvmFeeGuard(assertCurrent);
-  if (typeof code !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(code))
-    throw new Error('Invalid smart account code response');
-  return code === '0x' ? 'undeployed' : 'deployed';
+  return smartAccountDeploymentStateFromCode(code);
 }

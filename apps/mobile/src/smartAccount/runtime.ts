@@ -335,6 +335,11 @@ export function createNativeSmartOperation(
             ]
       );
       assertCurrent();
+      if (intent.kind === 'deploy' && issued.userOperation.initCode === '0x') {
+        await ports.markDeployed(assertCurrent);
+        assertCurrent();
+        return { kind: 'already-deployed' };
+      }
       return { kind: 'authorization', operation: issued, intent };
     },
     async sign(prepared, assertCurrent) {

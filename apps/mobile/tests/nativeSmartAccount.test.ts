@@ -155,6 +155,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const smartAddress = runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase();
           if (to === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
             result = coder.encode(['uint256'], [gasCredit]);
+          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('supportsExecutionMode')!.selector)) {
+            result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
           } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
             const args = paliSmartAccountInterface.decodeFunctionData('isModuleInstalled', data);
             result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase()]);
@@ -620,6 +622,63 @@ test('fresh absent code overrides saved deployed metadata for a Smart send', asy
   } finally { send?.dispose(); deployment?.dispose(); await f.close(); }
 });
 
+for (const change of ['deployed', 'malformed', 'account', 'network'] as const) test(`a deployment observed between preparation reads is handled without a self-call (${change})`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  let reads = 0;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Deployment race', password: PASSWORD });
+    f.fundedSmart();
+    f.onSmartCodeRead(async () => {
+      reads++;
+      if (reads === 1) f.deployed(change === 'malformed' ? '0x0' : '0x6000');
+      if (reads === 2 && change === 'account') await f.change({ kind: 'select', id: 'hd:60:0' });
+      if (reads === 2 && change === 'network') await f.selectNetwork('zksys-testnet');
+    });
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined);
+    await operation.prepare();
+    assert.equal(reads, 2);
+    assert.equal(operation.getSnapshot().phase, change === 'deployed' ? 'complete' : 'failed');
+    assert.equal(operation.getSnapshot().authorization, null);
+    assert.equal(operation.getSnapshot().maximumPrefundUnits, null);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    if (change === 'deployed') {
+      const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
+      assert.equal(smart.smartAccount!.isDeployed, true);
+      await f.reopen(); await f.owner.unlock(PASSWORD);
+      assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!.smartAccount!.isDeployed, true);
+    }
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+for (const point of ['before-commit', 'lost-ack'] as const) test(`deployment race requires acknowledged owned persistence (${point})`, async () => {
+  let armed = false;
+  const fail: SqlHook = (kind, sql) => {
+    if (armed && kind === 'exec' && sql === 'COMMIT') { armed = false; throw Error('interrupted deployment metadata'); }
+  };
+  const f = await fixture(point === 'before-commit' ? { before: fail } : { after: fail }, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  let reads = 0;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Deployment persistence', password: PASSWORD });
+    f.fundedSmart();
+    f.onSmartCodeRead(() => {
+      if (++reads === 1) { f.deployed(); armed = true; }
+    });
+    operation = await f.runtime.openSmartAccountDeployment(() => undefined);
+    await operation.prepare();
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(operation.getSnapshot().authorization, null);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.submitted.length, 0);
+    assert.equal(f.owner.getCatalogue(), null);
+    operation.dispose(); operation = undefined;
+    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!.smartAccount!.isDeployed, point === 'lost-ack');
+  } finally { armed = false; operation?.dispose(); await f.close(); }
+});
+
 
 for (const loseCredit of [false, true]) test(`gas-tank deployment with zero payer balance preserves fee coverage (${loseCredit ? 'credit-lost' : 'funded'})`, async () => {
   const f = await fixture();
@@ -860,7 +919,7 @@ test('Smart NFT requests cannot replace the owned contract, standard, fixed ID o
   } finally { await f.close(); }
 });
 
-for (const data of ['0x', '0x12345678']) test(`real Smart dapp zero-value call ${data} preserves exact execution and Activity after restart`, async () => {
+for (const [data, self] of [['0x', false], ['0x12345678', false], ['0x', true]] as const) test(`real Smart dapp zero-value call ${data} preserves exact execution and Activity after restart (self ${self})`, async () => {
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   let approval: ReturnType<typeof createDappSigningApproval> | undefined;
@@ -875,7 +934,7 @@ for (const data of ['0x', '0x12345678']) test(`real Smart dapp zero-value call $
       account: { id: selected.index, type: selected.type, address: selected.address, xpub: selected.xpub },
       grant, network: host.context().network, isBitcoinBased: false, sessionGeneration: host.sessionGeneration(),
     }), subscribe: (changed) => f.owner.subscribe(() => { changed(); }) });
-    const recipient = '0x2222222222222222222222222222222222222222';
+    const recipient = self ? selected.address : '0x2222222222222222222222222222222222222222';
     const request = { from: selected.address, to: recipient, value: '0x0', data, maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' };
     const prepared = await host.prepareTransaction({ accountId: selected.id, networkId: 'ethereum', transaction: request, approval }, () => undefined);
     assert('operation' in prepared); operation = prepared.operation;
@@ -891,7 +950,7 @@ for (const data of ['0x', '0x12345678']) test(`real Smart dapp zero-value call $
     assert.equal(f.submitted.length, 1);
     const [ops] = paliEntryPointInterface.decodeFunctionData('handleOps', Transaction.from(f.submitted[0]!).data);
     const [, execution] = paliSmartAccountInterface.decodeFunctionData('execute', ops[0].callData);
-    assert.equal('0x' + execution.slice(2, 42), recipient);
+    assert.equal('0x' + execution.slice(2, 42), recipient.toLowerCase());
     assert.equal(BigInt('0x' + execution.slice(42, 106)), 0n);
     assert.equal('0x' + execution.slice(106), data);
     operation.dispose(); approval.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
