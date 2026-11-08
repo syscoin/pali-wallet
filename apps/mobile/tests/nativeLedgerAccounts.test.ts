@@ -26,6 +26,7 @@ function fixture() {
     state = { phase, revision: state.revision + 1 };
     for (const listener of listeners) listener(state);
   };
+  let scanCount = 0;
   let closeCount = 0,
     imports = 0;
   let scanWait: Promise<void> = Promise.resolve(),
@@ -56,6 +57,7 @@ function fixture() {
   } as unknown as NativeCustodyAuthority;
   const runtime: NativeLedgerRuntime = {
     async scan(ownerSignal, check, onDevices, onError) {
+      scanCount++;
       scanError = onError;
       signal = ownerSignal;
       await scanWait;
@@ -83,6 +85,9 @@ function fixture() {
     publish,
     get signal() {
       return signal;
+    },
+    get scanCount() {
+      return scanCount;
     },
     get closeCount() {
       return closeCount;
@@ -277,4 +282,29 @@ test('a failed selection cannot overwrite a subscriber-started replacement scan'
   assert.equal(f.view.getSnapshot().error, null);
   off();
   await f.view.dispose();
+});
+
+test('a disposed hardware view cannot restart or import with a still-ready authority', async () => {
+  const f = fixture();
+  await f.view.dispose();
+  await assert.rejects(f.view.start(), /CANCELLED/);
+  await assert.rejects(f.view.select('1:0'), /CANCELLED/);
+  await assert.rejects(f.view.importAccount('Ledger'), /CANCELLED/);
+  assert.equal(f.scanCount, 0);
+});
+
+test('terminal disposal retires a restart waiting for previous native cleanup', async () => {
+  const f = fixture(),
+    wait = deferred<void>();
+  await f.view.start();
+  f.closeWait(wait.promise);
+  const close = f.view.close();
+  const restarting = f.view.start();
+  void restarting.catch(() => undefined);
+  const disposed = f.view.dispose();
+  wait.resolve();
+  await close;
+  await disposed;
+  await assert.rejects(restarting, /CANCELLED/);
+  assert.equal(f.scanCount, 1);
 });
