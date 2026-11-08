@@ -366,6 +366,15 @@ test('official test dapp: isolated standard provider conformance', async () => {
       let requestId: number | undefined;
       try {
         if (walletQuoteFault) await wallet.context.route('**/*', faultRoute);
+        if (replayWalletEstimate) {
+          // Seed the replay fault from a real earlier call independently of
+          // whether the wallet's fee planner needs a simulation call.
+          await providerRequest(page, 'eth_call', [
+            { from: address, data: expectedData },
+            'latest',
+          ]);
+          await Promise.all(pendingEstimates);
+        }
         if (kind === 'erc20') await page.locator('#tokenDecimals').fill('4');
         await expect(page.locator(`#${fixture.button}`)).toBeEnabled();
         await page.locator(`#${fixture.button}`).click();
@@ -399,12 +408,15 @@ test('official test dapp: isolated standard provider conformance', async () => {
           .getByRole('button', { name: /(?:^|\s)(reject|cancel)$/i })
           .first();
         if (invalidWalletEstimate) {
-          const closed = popup.waitForEvent('close', { timeout: 7000 });
           await expect(popup.locator('body')).toContainText(
-            enTranslations.send.txWillFail,
+            enTranslations.send.unableToCalculateFees,
             { timeout: 2500 }
           );
           await expect(confirm).toBeHidden();
+          await expect(reject).toBeEnabled();
+          await expect(
+            popup.getByRole('button', { name: /^retry$/i })
+          ).toBeEnabled();
           const approvalBody = await popup.locator('body').innerText();
           await popup.screenshot({
             path: path.join(
@@ -412,8 +424,11 @@ test('official test dapp: isolated standard provider conformance', async () => {
               'official-erc20-invalid-wallet-estimate.png'
             ),
           });
-          await closed;
-          const rejected = await settle(page, requestId!, 5000);
+          const rejected = await dismissRejectedApproval({
+            click: () => reject.click(),
+            isClosed: () => popup.isClosed(),
+            settle: () => settle(page, requestId!, 5000),
+          });
           expect(typeof rejected.error?.code).toBe('number');
           expect(rejected.result).toBeUndefined();
           expect(injectedEstimate).toBeDefined();
@@ -663,7 +678,17 @@ test('official test dapp: isolated standard provider conformance', async () => {
           });
         }
         expect(forbidden).toEqual([]);
-        if (replayWalletEstimate) expect(matchingEstimates).toBe(3);
+        if (replayWalletEstimate) {
+          // The recovered initial quote is revalidated before signing and
+          // again at dispatch. Only the initial fault gets a transport retry.
+          expect(matchingEstimates).toBe(5);
+          expect(
+            estimateAttempts.slice(3).map((attempt) => attempt.request.params)
+          ).toEqual([
+            estimateAttempts[2].request.params,
+            estimateAttempts[2].request.params,
+          ]);
+        }
         expect(errors.filter((error) => error.type === 'pageerror')).toEqual(
           []
         );
