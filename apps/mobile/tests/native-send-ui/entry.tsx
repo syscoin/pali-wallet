@@ -1,4 +1,5 @@
 import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
+import { NativeNoteImportFixture } from './nativeNoteImportFixture';
 import { NativeSmartDappFixture } from './nativeSmartDappFixture';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
@@ -381,6 +382,8 @@ function Fixture() {
     <SafeAreaProvider>
       {new URLSearchParams(window.location.search).has('smart-dapp') ? (
         <NativeSmartDappFixture />
+      ) : new URLSearchParams(window.location.search).has('note-import') ? (
+        <NativeNoteImportFixture />
       ) : new URLSearchParams(window.location.search).has('smart-currency') ? (
         <NativeSmartCurrencyFixture />
       ) : new URLSearchParams(window.location.search).has('smart-deployment') ? (

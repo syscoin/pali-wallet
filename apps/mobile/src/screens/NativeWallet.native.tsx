@@ -20,6 +20,7 @@ import { NativeNoteRestore, NoteRestoreUnconfirmedNotice } from './NativeNoteRes
 import { NativeNoteCapacity } from './NativeNoteCapacity';
 import { NativeNoteExport, NativeNoteFilesMenu } from './NativeNoteExport';
 import { NativeNoteInventory } from './NativeNoteInventory';
+import { NativeNoteImport } from './NativeNoteImport';
 import { useNativeNoteBackup } from './useNativeNoteBackup';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
@@ -71,7 +72,7 @@ type SendTarget = Readonly<
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-capacity' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'smart-deploy';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-capacity' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'smart-deploy';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null) {
@@ -150,6 +151,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [saveIdle, setSaveIdle] = useState<IdlePreferenceSave | null>(null);
   const [openNoteCapacity, setOpenNoteCapacity] = useState<Controllers['openNoteCapacity'] | null>(null);
   const [readNoteInventory, setReadNoteInventory] = useState<Controllers['readNoteInventory'] | null>(null);
+  const [openNoteImport, setOpenNoteImport] = useState<Controllers['openNoteImport'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
   const [utxoActivityView, setUtxoActivityView] = useState<Controllers['utxoActivity'] | null>(null);
   const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; utxoAddressTypes?: readonly UtxoImportAddressType[]; token: number; imports: NativeImportView } | null>(null);
@@ -307,7 +309,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         }
         closeStage(); return true;
       }
-      if (stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory') && snapshot.phase === 'ready' ||
+      if (stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory' || stage === 'note-import') && snapshot.phase === 'ready' ||
           stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'ledger' && ledgerView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
@@ -371,13 +373,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }
       if (['locked', 'unavailable', 'disposed'].includes(state.phase)) {
         rootOrigin.current = null;
-        setStage((current) => current === 'note-inventory' ? 'choose' : current);
+        setStage((current) => current === 'note-inventory' || current === 'note-import' ? 'choose' : current);
       }
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
     };
     setSaveIdle(() => (expected: Parameters<IdlePreferenceSave>[0], minutes: number, password: string, check: () => void) => local.authority.saveIdlePreference(expected, minutes, password, check));
     setOpenNoteCapacity(() => local.openNoteCapacity ?? null);
     setReadNoteInventory(() => local.readNoteInventory ?? null);
+    setOpenNoteImport(() => local.openNoteImport ?? null);
     const unsubscribe = local.authority.subscribe(update);
     update(local.authority.getSnapshot());
     const updateMessage = () => {
@@ -687,6 +690,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'private-notes' && snapshot.phase === 'ready') return <NativeNoteFilesMenu onBack={closeStage}
     onExport={() => { if (noteRestore.begin('export')) setStage('backup-notes'); }}
     onRestore={() => { if (noteRestore.begin('restore')) setStage('restore-notes'); }}
+    onImport={openNoteImport ? () => {
+      if (AppState.currentState === 'active' && readyContext()) setStage('note-import');
+    } : undefined}
     onInventory={readNoteInventory ? () => {
       if (AppState.currentState === 'active' && readyContext()) setStage('note-inventory');
     } : undefined}
@@ -695,6 +701,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     } : undefined} />;
   if (stage === 'note-inventory' && snapshot.phase === 'ready' && protectedScreen && readNoteInventory) return <NativeNoteInventory
     key={snapshot.revision} readInventory={readNoteInventory} onBack={() => setStage('private-notes')} onLock={revoke} />;
+  if (stage === 'note-import' && snapshot.phase === 'ready' && protectedScreen && openNoteImport) return <NativeNoteImport
+    key={snapshot.revision} openImport={openNoteImport} onBack={() => setStage('private-notes')} />;
   if (stage === 'note-capacity' && snapshot.phase === 'ready' && openNoteCapacity) return <NativeNoteCapacity
     key={snapshot.revision} openCapacity={openNoteCapacity} onBack={() => setStage('private-notes')} />;
   if (stage === 'restore-notes' && snapshot.phase === 'ready') return <NativeNoteRestore

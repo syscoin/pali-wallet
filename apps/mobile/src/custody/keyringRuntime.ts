@@ -81,6 +81,9 @@ import type { NativeImportRuntime } from './importedAccounts.ts';
 import { stageInitialWallet, type RecoveryAccountGroup } from '../../../../source/wallet/accountRecovery.ts';
 import type { IPrivateVaultSession } from '../../../../source/wallet/privateVault.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
+import { createNativeNoteImport, type NativeNoteImportRuntime } from './noteImport.ts';
+import type { createNativePrivacyPoolSync } from '../privacy/nativePrivacyPoolSync.ts';
+import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import type { NativeUtxoSend } from './utxoSend.ts';
 
 type SoftwareSdk = NativeKeyringSdk;
@@ -102,6 +105,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
   createLedgerTransport?: (owner: NativeLedgerOwner) => Promise<NativeLedgerTransport>;
+  openPrivacyPool?: (network: NativeNetworkRegistration, poolId: PrivacyPoolId, signal: AbortSignal, assertCurrent: () => void) => Promise<ReturnType<typeof createNativePrivacyPoolSync>>;
   assertActive?: () => void;
   deviceUnlock?: Pick<Parameters<typeof createDeviceUnlockEnrollment>[0], 'credentials' | 'randomId'>;
   readEvmRetirement: ((network: NativeNetworkRegistration, method: EvmSignedRetirementReadMethod,
@@ -183,6 +187,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
   readNoteInventory?(assertCurrent: () => void): Promise<NativeNoteInventory>;
+  openNoteImport?(assertCurrent: () => void): Promise<NativeNoteImportRuntime>;
   /** Internal removal authorization. The protected snapshot never reaches a screen. */
   authorizeWalletRemoval?(password: string, assertCurrent: () => void, beforeSnapshot: (assertCurrent: () => void) => Promise<void>): Promise<Readonly<{
     snapshot: RecoveryStorageSnapshot;
@@ -932,6 +937,20 @@ export function createKeyringRuntimeFactory(
           openNotes(assertOwner, (notes, session) => notes.bindCapacity(session));
         const readNoteInventory: NonNullable<KeyringRuntime['readNoteInventory']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => notes.readInventory(session));
+        const openNoteImport: NonNullable<KeyringRuntime['openNoteImport']> = (assertOwner) =>
+          openNotes(assertOwner, (notes, session) => {
+            const openPool = dependencies.openPrivacyPool;
+            if (!openPool || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
+            const network = catalogueSnapshot.networks.find((entry) => entry.id === catalogueSnapshot!.active.networkId);
+            if (!network) throw new Error('privacy_wrong_chain');
+            const signal = (contextReadLifetime ??= new AbortController()).signal;
+            return createNativeNoteImport({
+              signal,
+              assertCurrent: session.assertCurrent,
+              openPool: (poolId, owner) => openPool(network, poolId, owner, session.assertCurrent),
+              importNote: (note, readNote, assertCurrent) => notes.importNote(session, note, readNote, assertCurrent),
+            });
+          });
         const authorizeWalletRemoval: NonNullable<KeyringRuntime['authorizeWalletRemoval']> = (password, assertOwner, beforeSnapshot) => runNote(async (captured) => {
           if (typeof beforeSnapshot !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
           const recovery = storage.recovery;
@@ -2103,7 +2122,8 @@ export function createKeyringRuntimeFactory(
             catch (error) { revokeGeneration(); return task.then(() => { throw error; }); }
             return task;
           },
-          ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory } : {}),
+          ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory,
+            ...(dependencies.openPrivacyPool ? { openNoteImport } : {}) } : {}),
           ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
           accounts,
           security: {
