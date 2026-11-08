@@ -104,6 +104,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     '../core/amounts': { formatBaseUnits },
     '../../../../source/shared/erc20': { formatTokenUnits, parseErc20Units },
     '../../../../source/utils/nftTokenId': { normalizeNftTokenId },
+    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum' },
     './NativeSend': {
       NativeSendInput: 'Input',
       nativeTransferFailure: (error: Error) =>
@@ -137,6 +138,7 @@ function fixture(open: (...args: any[]) => Promise<any>, token?: Erc20Metadata, 
     index = 0;
     return module.exports.NativeSmartAccountSend({
       open,
+      account: { address: '0x1111111111111111111111111111111111111111', network: 'ethereum', revision: 1 },
       context: getNativeSendContext('ethereum'),
       accountLabel: 'Smart account',
       source: {},
@@ -272,7 +274,7 @@ test('Smart token form presents the selected contract and routes exact decimal i
   const f = fixture(async (_recipient, amount) => { request = amount; return { dispose() {} }; }, token);
   try {
     assert(all(f.render()).some(node => node.children.includes(token.contractAddress)));
-    assert.equal(all(f.render()).filter(node => node.type === 'Button' && String(node.props.title).startsWith('MAX')).length, 0);
+    assert(all(f.render()).some(node => node.type === 'TokenMaximum'));
     f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
     const amount = '0.' + '0'.repeat(254) + '9';
     f.edit('Amount (EXACT)', amount);
@@ -311,5 +313,21 @@ test('invalid NFT identifiers stay in the form with a specific field message', a
     f.edit('Token ID', '-1'); f.press(); await tick();
     assert.equal(calls, 0);
     assert.equal(all(f.render()).find(node => node.type === 'Notice')!.props.body, 'Enter a valid token ID.');
+  } finally { f.close(); }
+});
+
+for (const editAmount of [false, true]) test(`Smart token MAX remains an exact ERC20 request${editAmount ? ' after editing' : ''}`, async () => {
+  const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 255, name: 'Exact token', symbol: 'EXACT' };
+  let request: any;
+  const f = fixture(async (_recipient, amount) => { request = amount; return { dispose() {} }; }, token);
+  try {
+    f.edit('Recipient address', '0x2222222222222222222222222222222222222222');
+    const maximum = all(f.render()).find(node => node.type === 'TokenMaximum')!;
+    maximum.props.onSelect(formatTokenUnits('1', 255));
+    assert(all(f.render()).find(node => node.type === 'TokenMaximum')!.props.selected);
+    if (editAmount) f.edit('Amount (EXACT)', formatTokenUnits('2', 255));
+    assert.equal(all(f.render()).find(node => node.type === 'TokenMaximum')!.props.selected, !editAmount);
+    f.press(); await tick(); assert.equal(request.kind, 'erc20');
+    assert.equal(request.amount, formatTokenUnits(editAmount ? '2' : '1', 255));
   } finally { f.close(); }
 });

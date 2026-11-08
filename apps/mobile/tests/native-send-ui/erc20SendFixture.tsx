@@ -28,8 +28,9 @@ const token = Object.freeze({
   contractAddress: '0x3333333333333333333333333333333333333333',
   name: 'Public fixture token',
   symbol: 'FIX',
-  decimals: 6,
+  decimals: new URLSearchParams(window.location.search).has('max-token-dust') ? 255 : 6,
 });
+const tokenUnits = new URLSearchParams(window.location.search).has('max-token-dust') ? '1' : (10n ** 40n).toString();
 let runtimeToken: Erc20Metadata = token;
 let state: CustodySnapshot = Object.freeze<CustodySnapshot>({
   phase: 'ready',
@@ -116,7 +117,7 @@ const rpc = new NativeTransferRpc({
         data === '0x313ce567'
           ? word(runtimeToken.decimals)
           : data.startsWith('0x70a08231')
-          ? word(10n ** 40n)
+          ? word(BigInt(tokenUnits))
           : word(1);
     } else if (request.method === 'eth_getBlockByNumber')
       result = block(
@@ -323,6 +324,13 @@ window.__erc20SendFixture = {
     publish();
   },
 };
+const tokenSnapshot = Object.freeze({
+  account: { address: wallet.address, network: 'ethereum', revision: 1 },
+  status: 'ready' as const, items: [{ metadata: token, status: 'available' as const, units: tokenUnits, updatedAt: 1 }],
+  preview: null, previewStatus: 'idle' as const, discovery: null, busy: false, error: null,
+});
+const tokenView = { getSnapshot: () => tokenSnapshot, subscribe: () => () => {}, connect: () => () => {} };
+
 export function Erc20SendFixture() {
   const snapshot = useSyncExternalStore(
     source.subscribe,
@@ -346,10 +354,12 @@ export function Erc20SendFixture() {
     }} />
   </> : <Text>Wallet closed</Text>;
   return <NativeSend
+    account={{ address: wallet.address, network: 'ethereum', revision: state.revision }}
     key={snapshot.revision}
     controller={controller.view}
     context={getNativeSendContext('ethereum')}
     token={token}
+    tokenView={tokenView}
     savedHash={route.hash}
     onBack={() => setRoute({ revision: snapshot.revision, open: false })}
   />;

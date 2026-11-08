@@ -9,9 +9,10 @@ import { normalizeErc20Address, parseErc20Metadata } from './erc20Metadata.ts';
 import { createErc20Reader, Erc20ReadError, type Erc20Reader } from './erc20ReadRpc.ts';
 import type { NativeTokenInventory, SavedCollectible } from './tokenRegistry.ts';
 import { NativeTokenRegistryError, snapshotSavedCollectible } from './tokenRegistry.ts';
-import type {
-  NativePortfolioAccount,
-  PublicCustodySource,
+import {
+  sameNativePortfolioAccount,
+  type NativePortfolioAccount,
+  type PublicCustodySource,
 } from './nativePortfolio.ts';
 import { getNativeNetwork, getNativeSendContext, type NativeSendContext } from '../custody/networkContext.ts';
 import type {
@@ -131,18 +132,6 @@ const initial = (
     busy: false,
     error: null,
   });
-const same = (
-  a: NativePortfolioAccount | null,
-  b: NativePortfolioAccount | null
-) =>
-  a === b ||
-  Boolean(
-    a &&
-      b &&
-      a.address === b.address &&
-      a.network === b.network &&
-      a.revision === b.revision
-  );
 function bounded<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) {
     void promise.catch(() => undefined);
@@ -300,7 +289,7 @@ export class NativeTokens {
     const apiUrl = scope?.apiUrl ?? '';
     const canCheckCollectible = scope?.canCheckCollectible ? true : undefined;
     if (
-      !same(account, this.state.account) ||
+      !sameNativePortfolioAccount(account, this.state.account) ||
       registrationHash !== this.registrationHash ||
       apiUrl !== this.discoveryApi ||
       canCheckCollectible !== this.state.canCheckCollectible
@@ -412,7 +401,7 @@ export class NativeTokens {
     this.synchronize(true);
     const connection = this.connection;
     const account = this.state.account;
-    if (!connection || !account || !same(expected, account)) return null;
+    if (!connection || !account || !sameNativePortfolioAccount(expected, account)) return null;
     this.cancel();
     const request = {
       kind,
@@ -430,7 +419,7 @@ export class NativeTokens {
       this.request === request &&
       this.connection === request.connection &&
       this.epoch === request.epoch &&
-      same(this.state.account, request.account)
+      sameNativePortfolioAccount(this.state.account, request.account)
     );
   }
   private guard(request: Request): void {
@@ -864,7 +853,7 @@ export class NativeTokens {
   };
   confirmPreview = async (): Promise<void> => {
     const account = this.state.account;
-    if (this.synchronize(true) || !same(account, this.state.account)) return;
+    if (this.synchronize(true) || !sameNativePortfolioAccount(account, this.state.account)) return;
     const preview = this.state.preview;
     if (
       !preview ||
@@ -879,7 +868,7 @@ export class NativeTokens {
   };
   remove = async (contract: string): Promise<void> => {
     const account = this.state.account;
-    if (this.synchronize(true) || !same(account, this.state.account)) return;
+    if (this.synchronize(true) || !sameNativePortfolioAccount(account, this.state.account)) return;
     if (
       this.state.busy ||
       this.state.status !== 'ready' ||
