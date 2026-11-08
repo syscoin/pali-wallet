@@ -16,6 +16,7 @@ import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
 import { httpBuild, type HttpLaunch } from './http-contract.ts';
 import { withWalletConnectQualificationScope } from './walletconnect-scope.ts';
+import type { WalletConnectQualificationDiagnostic } from './walletconnect-native.ts';
 import { makePublicPoolFailure, PUBLIC_POOL_FAILURE_FILE, publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -120,6 +121,7 @@ function QualificationApp() {
       let authority: NativeCustodyAuthority | undefined;
       let backup: SeedBackupFlow | undefined;
       let cryptoEvidence: FullCryptoQualification | undefined;
+      let walletConnectDiagnostic: WalletConnectQualificationDiagnostic | undefined;
       let fullCryptoCase: CryptoFullCase | undefined;
       let qualificationLoadDiagnostic: CryptoLoadDiagnostic | undefined;
       const storageDiagnostic = createStorageQualificationDiagnostic();
@@ -349,17 +351,25 @@ function QualificationApp() {
               if (typeof candidateIdentity !== 'string') throw Error('WALLETCONNECT_NATIVE_BUILD_INVALID');
               stage = 'native WalletConnect lifecycle';
               const { http: launch, phase, scenario } = parameters;
-              const connectionEvidence = await withWalletConnectQualificationScope({
-                crypto: nativeCrypto, WebSocket: NativeWebSocket, launch,
-                onForbidden() { networkCalls++; throw Error('QUALIFICATION_NETWORK_FORBIDDEN'); },
-              }, async () => {
-                const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
-                await prepareWalletConnectRuntime();
-                const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
-                return qualifyNativeWalletConnect({ launch, build,
-                  candidateIdentity, walletFetch, phase, scenario,
-                  platform: Platform.OS as 'ios' | 'android', sessionId: Constants.sessionId });
-              });
+              let connectionEvidence;
+              try {
+                connectionEvidence = await withWalletConnectQualificationScope({
+                  crypto: nativeCrypto, WebSocket: NativeWebSocket, launch,
+                  onForbidden() { networkCalls++; throw Error('QUALIFICATION_NETWORK_FORBIDDEN'); },
+                }, async () => {
+                  const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
+                  await prepareWalletConnectRuntime();
+                  const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
+                  return qualifyNativeWalletConnect({ launch, build,
+                    candidateIdentity, walletFetch, phase, scenario,
+                    platform: Platform.OS as 'ios' | 'android', sessionId: Constants.sessionId });
+                });
+              } catch (error) {
+                const { WalletConnectQualificationError } = await import('./walletconnect-native.ts');
+                walletConnectDiagnostic = error instanceof WalletConnectQualificationError
+                  ? error.diagnostic : new WalletConnectQualificationError('init', error).diagnostic;
+                throw error;
+              }
               const connectionDestination = `${FileSystem.documentDirectory}pali-native-walletconnect-${parameters.http.token}.json`;
               await FileSystem.writeAsStringAsync(`${connectionDestination}.tmp`, JSON.stringify(connectionEvidence));
               await FileSystem.moveAsync({ from: `${connectionDestination}.tmp`, to: connectionDestination });
@@ -671,6 +681,7 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          ...(walletConnectDiagnostic ? { walletConnectDiagnostic } : {}),
           ...(cryptoEvidence ? { cryptoEvidence, nativeBridgeExercised: true } : {}),
           storageDiagnostic: storageDiagnostic.report(),
           cryptoDiagnostic: { bootstrap: qualificationLoadDiagnostic ? 'quick-crypto-load' : nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...((qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()) ? { load: qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic() } : {}) },
