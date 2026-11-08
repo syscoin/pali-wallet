@@ -366,6 +366,7 @@ export function createNativeWalletControllers() {
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, connections: connections.view, keyExport, imports,
     canManageGuardianPolicy: () => false,
+    canUseWalletAuthenticator: () => false,
     async resetActivity(check: () => void) {
       check();
       events.push('activity:reset:start');
