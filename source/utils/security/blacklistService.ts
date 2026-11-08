@@ -32,7 +32,7 @@ class BlacklistService {
 
   private lastFetch: number = 0;
   private REFETCH_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
-  private isFetching = false;
+  private fetchPromise: Promise<void> | undefined;
 
   // Cache axios instances with proper headers
   private axiosInstance = axios.create({
@@ -91,22 +91,25 @@ class BlacklistService {
     await this.ensureDataLoaded();
   }
 
-  private async ensureDataLoaded() {
+  private async ensureDataLoaded(waitForRefresh = true) {
     // Check if we need to fetch data
     const now = Date.now();
     const dataExpired = now - this.lastFetch > this.REFETCH_INTERVAL;
     const noData =
       this.addressBlacklist.size === 0 && this.urlBlacklist.size === 0;
 
-    if ((dataExpired || noData) && !this.isFetching) {
-      await this.fetchAllBlacklists();
+    if ((dataExpired || noData) && !this.fetchPromise) {
+      this.fetchPromise = this.fetchAllBlacklists().finally(() => {
+        this.fetchPromise = undefined;
+      });
     }
+
+    // Every cold-cache caller joins the same load. Existing data can still be
+    // used by checks while its background refresh runs.
+    if (noData || waitForRefresh) await this.fetchPromise;
   }
 
   private async fetchAllBlacklists() {
-    if (this.isFetching) return;
-    this.isFetching = true;
-
     console.log('[BlacklistService] Fetching blacklists from sources');
 
     try {
@@ -248,8 +251,6 @@ class BlacklistService {
       this.lastFetch = Date.now();
     } catch (error) {
       console.error('[BlacklistService] Error fetching blacklists:', error);
-    } finally {
-      this.isFetching = false;
     }
   }
 
@@ -296,10 +297,7 @@ class BlacklistService {
   }
 
   async checkAddress(address: string): Promise<IBlacklistCheckResult> {
-    // Trigger data loading in background without waiting
-    this.ensureDataLoaded().catch((err) =>
-      console.error('[BlacklistService] Background fetch failed:', err)
-    );
+    await this.ensureDataLoaded(false);
 
     const normalized = address.toLowerCase();
     const comment = this.addressBlacklist.get(normalized);
@@ -319,10 +317,7 @@ class BlacklistService {
   }
 
   async checkUrl(url: string): Promise<IBlacklistCheckResult> {
-    // Trigger data loading in background without waiting
-    this.ensureDataLoaded().catch((err) =>
-      console.error('[BlacklistService] Background fetch failed:', err)
-    );
+    await this.ensureDataLoaded(false);
 
     const normalized = this.normalizeUrl(url);
     if (!normalized) return { isBlacklisted: false, severity: 'low' };

@@ -3,6 +3,7 @@ import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCa
 import { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import axios from 'axios';
 import { NativeConnectionsController } from '../src/connections/controller.ts';
 import type { NativeConnectionHost } from '../src/connections/host.ts';
 import type {
@@ -51,6 +52,7 @@ function fixture(
     openFailures?: number;
     inventoryFailures?: number;
     loadSdk?: Parameters<typeof openWalletConnectTransport>[0]['loadSdk'];
+    checkSite?: ConstructorParameters<typeof NativeConnectionsController>[0]['checkSite'];
   } = {}
 ) {
   const { secondAccount = false, smart = false, smartMessages = false } = options;
@@ -413,10 +415,10 @@ function fixture(
     },
     openHost: async () => { const repository = await restoredRepository; return { ...host, repository, calls: repository.calls }; },
     preparePlatform: async () => undefined,
-    checkSite: async () => {
+    checkSite: options.checkSite ?? (async () => {
       await siteWait;
       return { isBlacklisted: siteBlocked };
-    },
+    }),
     checkAddress: async () => ({
       isBlacklisted: blacklistedAddress,
       severity: blacklistedAddress ? 'high' : 'low',
@@ -2317,6 +2319,79 @@ test('proposal approval checks the same blacklist before disclosing the account'
     await f.controller.dispose();
   }
 });
+
+for (const outcome of ['blocked', 'allowed', 'locked', 'unavailable'] as const) {
+  test(`cold blacklist initialization gates native approval: ${outcome}`, async () => {
+    let release!: () => void;
+    const feed = new Promise<void>((resolve) => { release = resolve; });
+    let fetched = 0;
+    const originalAdapter = axios.defaults.adapter;
+    // Exercise the real shared service with deferred feeds and no network.
+    axios.defaults.adapter = async (config) => {
+      fetched++;
+      await feed;
+      if (outcome === 'unavailable') throw new Error('Feed unavailable');
+      const data = config.url?.endsWith('urls-darklist.json') && outcome === 'blocked'
+        ? [{ id: new URL(ORIGIN).hostname, comment: 'Known phishing site' }]
+        : config.url?.endsWith('addresses-darklist.json')
+          ? [{ address: ADDRESS, comment: 'Known malicious address' }]
+          : [];
+      return { data, status: 200, statusText: 'OK', headers: {}, config };
+    };
+    let blacklist: typeof import('../../../source/utils/security/blacklistService.ts');
+    try {
+      // Each case starts with the same empty caches as a fresh native process.
+      const source = new URL('../../../source/utils/security/blacklistService.ts', import.meta.url);
+      blacklist = await import(`${source.href}?native-admission=${outcome}`);
+    } finally {
+      axios.defaults.adapter = originalAdapter;
+    }
+    const service = blacklist.blacklistService;
+    const f = fixture({
+      checkSite: (origin) => service.checkUrl(origin),
+    });
+    try {
+      await settle();
+      await f.view.pair('wc:fixture');
+      f.event({ type: 'proposal', proposal: f.proposal });
+      const approval = f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision)
+        .then(() => null, (error: Error) => error);
+      await settle();
+      let initialized = false;
+      const initialization = service.initialize().then(() => { initialized = true; });
+      let addressChecked = false;
+      const address = service.checkAddress(ADDRESS.toUpperCase()).then((result) => {
+        addressChecked = true;
+        return result;
+      });
+      await settle();
+      assert.equal(fetched, 5);
+      assert.equal(f.approved(), 0);
+      assert.equal(f.view.getSnapshot().sessions.length, 0);
+      assert.equal(initialized, false);
+      assert.equal(addressChecked, false);
+      if (outcome === 'locked') f.lock();
+      release();
+      await initialization;
+      assert.equal((await address).isBlacklisted, outcome !== 'unavailable');
+      const error = await approval;
+      if (outcome === 'allowed' || outcome === 'unavailable') {
+        assert.equal(error, null);
+        assert.equal(f.approved(), 1);
+        assert.equal(f.view.getSnapshot().sessions.length, 1);
+      } else {
+        assert.match(error?.message ?? '', outcome === 'blocked' ? /BLOCKED_SITE/ : /CANCELLED|CONTEXT_CHANGED|LOCKED/);
+        assert.equal(f.approved(), 0);
+        assert.equal(f.view.getSnapshot().sessions.length, 0);
+      }
+      assert.equal(fetched, 5);
+      assert.equal((await service.checkUrl('https://metmask.com')).isBlacklisted, true);
+    } finally {
+      release();
+      await f.controller.dispose();
+    }
+  });
+}
 
 for (const verification of [
   { validation: 'INVALID', isScam: false },
