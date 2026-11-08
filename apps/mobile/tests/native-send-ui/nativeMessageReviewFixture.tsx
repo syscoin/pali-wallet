@@ -53,6 +53,7 @@ export function NativeMessageReviewFixture() {
     async approve() { throw new Error('Pairing is outside this fixture'); },
     async reject() { throw new Error('Pairing is outside this fixture'); },
     async disconnect() { throw new Error('Connections are outside this fixture'); },
+    async retry() { throw new Error('Connections are outside this fixture'); },
     cancel() { throw new Error('Connections are outside this fixture'); },
     async activateMessageAccount(...args) {
       calls.push({ method: 'activateMessageAccount', args });
