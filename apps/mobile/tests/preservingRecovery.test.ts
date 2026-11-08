@@ -39,6 +39,7 @@ import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { createSentryKeyVault } from '../../../source/wallet/sentryKeyVault.ts';
 import { SENTRY_SLOT_KEYS } from '../src/storage/sentryKeyDomain.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
+import { parseSentrySettingsStorageKey } from '../../../source/shared/sentrySettings.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const WRONG = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
@@ -1557,6 +1558,11 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     assert.deepEqual(await manager.list(), saved);
     assert(!JSON.stringify(saved).includes(secret));
     assert(!mainRow()!.value.includes(secret));
+    const encryptedKeysBeforeSettings = mainRow()!.value;
+    const settings = { serviceUrl: 'https://sentry.example', maxFeeSatoshis: '250000' };
+    assert.deepEqual(await manager.saveSettings(settings, OLD, guard), settings);
+    assert.deepEqual(await manager.getSettings(guard), settings);
+    assert.equal(mainRow()!.value, encryptedKeysBeforeSettings);
     const { vaultId } = JSON.parse(mainRow()!.value);
     const identity = (await f.store.recovery.readIdentity())!;
     const vault = createSentryKeyVault({
@@ -1707,6 +1713,68 @@ test('Sentry approval retired before SQLite COMMIT leaves the vault unchanged', 
     gate.release();
     await f.close();
   }
+});
+
+test('Sentry public settings preserve each network through cold unlock and password recovery', async () => {
+  const f = await fixture(undefined, true, undefined, undefined, undefined, async () => { throw Error('Unexpected key derivation'); });
+  const guard = () => undefined;
+  let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    for (const [network, serviceUrl, fee] of [
+      ['syscoin', 'https://sentry-main.example', '200000'],
+      ['utxo:5700', 'http://127.0.0.1:8800', '300000'],
+    ] as const) {
+      await selectNetwork(f, network);
+      const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, guard);
+      assert.deepEqual(await manager.getSettings(guard), {
+        serviceUrl: network === 'syscoin' ? 'https://sysnode.info' : '', maxFeeSatoshis: '100000',
+      });
+      await assert.rejects(manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, NEXT, guard), { code: 'INVALID_CREDENTIAL' });
+      assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, network === 'syscoin' ? 0 : 1);
+      await manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, OLD, guard);
+      manager.dispose();
+    }
+    const saved = f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key));
+    assert.equal(saved.length, 2);
+    assert.equal((await readRecoveryInventory(f.store)).status, 'needs-matching-phrase-verification');
+    await f.reopen();
+    await f.owner.unlock(OLD);
+    assert.deepEqual(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)), saved);
+    f.owner.lock();
+    recovery = f.coordinator();
+    const proof = await recovery.prepare(PHRASE, NEXT, guard);
+    assert.equal(await recovery.commit(proof), 'committed-locked');
+    await f.reopen();
+    await f.owner.unlock(NEXT);
+    assert.deepEqual(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)), saved);
+    const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, guard);
+    assert.deepEqual(await manager.getSettings(guard), { serviceUrl: 'http://127.0.0.1:8800', maxFeeSatoshis: '300000' });
+    manager.dispose();
+  } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('Sentry service settings cancelled while SQL waits never commit', async () => {
+  const f = await fixture(undefined, true, undefined, undefined, undefined, async () => { throw Error('Unexpected key derivation'); });
+  const gate = latch();
+  let live = true;
+  const guard = () => { if (!live) throw Error('CANCELLED'); };
+  try {
+    await selectNetwork(f, 'syscoin');
+    const manager = await f.runtime.openSentryKeyManagement!(new AbortController().signal, () => undefined);
+    f.setAfter(async (kind, sql) => {
+      if (kind === 'run' && sql.startsWith('INSERT INTO keyring_records')) { gate.enter(); await gate.gate; }
+    });
+    const saving = manager.saveSettings({ serviceUrl: 'https://sentry.example', maxFeeSatoshis: '200000' }, OLD, guard);
+    const refused = assert.rejects(saving, { code: 'CANCELLED' });
+    await gate.reached;
+    const before = f.dispatched.length;
+    live = false;
+    gate.release();
+    await refused;
+    assert(!f.dispatched.slice(before).includes('COMMIT'));
+    assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, 0);
+    manager.dispose();
+  } finally { live = false; gate.release(); await f.close(); }
 });
 
 test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable until confirmed', async () => {

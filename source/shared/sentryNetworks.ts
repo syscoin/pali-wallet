@@ -22,6 +22,12 @@ export const SENTRY_NETWORKS = {
 
 export type SentryNetwork = keyof typeof SENTRY_NETWORKS;
 
+export const validateSentryFeeLimit = (value: string): string => {
+  if (!/^[1-9]\d{0,7}$/.test(value) || Number(value) > 10000000)
+    throw new Error('Maximum fee must be between 1 and 10000000 satoshis');
+  return value;
+};
+
 /** Only trusted wallet settings may choose a service origin. */
 export const normalizeSentryServiceUrl = (value: string): string => {
   const url = new URL(value);

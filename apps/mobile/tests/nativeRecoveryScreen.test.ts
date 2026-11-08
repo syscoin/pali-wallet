@@ -587,6 +587,7 @@ test('actual native Sentry surface reviews once, copies only public data and ret
   const copied: string[] = [];
   const view = evaluate(load('NativeSentryKeys'), {
     ...common,
+    './NativeSentrySettings': { NativeSentrySettings: () => null },
     './NoteBackupPasswordField': secure,
     '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
     '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey, parseSentryKeyBatch },
@@ -603,6 +604,8 @@ test('actual native Sentry surface reviews once, copies only public data and ret
   let removeReview: Awaited<ReturnType<NativeSentryKeyManagement['prepareRemoval']>>;
   let hold: Promise<void> | undefined, busyConfirmation: Promise<void> | undefined;
   const manager: NativeSentryKeyManagement = {
+    async getSettings() { return { serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }; },
+    async saveSettings(settings) { return settings; },
     async list() { return keys; },
     async prepareImport(input, role, scheme) {
       previewCount++;
@@ -757,12 +760,15 @@ test('Sentry batch paste reviews ordered public keys and rejects duplicates, ove
   let clipboard = '', pendingClipboard: Promise<string> | undefined, confirmed = 0;
   const view = evaluate(load('NativeSentryKeys'), {
     ...common,
+    './NativeSentrySettings': { NativeSentrySettings: () => null },
     './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
     '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
     '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey },
     'expo-clipboard': { getStringAsync: () => pendingClipboard ?? Promise.resolve(clipboard), setStringAsync: async () => true },
   }).NativeSentryKeys as (props: object) => Element;
   const manager: NativeSentryKeyManagement = {
+    async getSettings() { return { serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }; },
+    async saveSettings(settings) { return settings; },
     list: async () => [],
     async prepareImport(input, _role, scheme) {
       const parsed = parseSentryKeyBatch(input, scheme);
@@ -815,5 +821,171 @@ test('Sentry batch paste reviews ordered public keys and rejects duplicates, ove
     assert(!text(tree).includes('One'));
     assert.equal(all(tree).filter((node) => node.type === 'TextInput').length, 0);
     assert.equal(confirmed, 1);
+  } finally { f.dispose(); }
+});
+
+for (const parentLast of [false, true]) test(`Sentry settings Android Back drains its read before the parent returns (${parentLast ? 'parent-last' : 'child-last'})`, async () => {
+  const parent = setup(), child = setup();
+  child.native.BackHandler = parent.back;
+  child.native.AppState = parent.native.AppState;
+  const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
+  const common = (f: ReturnType<typeof setup>) => ({
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header', Row: 'Row' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  });
+  const settingsView = evaluate(load('NativeSentrySettings'), {
+    ...common(child), './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common(child)),
+  }).NativeSentrySettings as (props: object) => Element;
+  const parentView = evaluate(load('NativeSentryKeys'), {
+    ...common(parent), './NativeSentrySettings': { NativeSentrySettings: 'SettingsChild' },
+    './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common(parent)),
+    '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
+    '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey },
+    'expo-clipboard': {},
+  }).NativeSentryKeys as (props: object) => Element;
+  const held = Promise.withResolvers<void>();
+  let readGuard!: () => void, cancelled = 0, closed = 0;
+  const unused = async () => { throw Error('Unexpected key operation'); };
+  const manager: NativeSentryKeyManagement = {
+    async getSettings(check) {
+      readGuard = check;
+      await held.promise;
+      check();
+      return { serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' };
+    },
+    saveSettings: unused, list: async () => [], prepareImport: unused, confirmImport: unused,
+    prepareRemoval: unused, confirmRemoval: unused, cancel() { cancelled++; }, dispose() {},
+  };
+  const props = { networkLabel: 'Syscoin', open: async () => manager, onBack() { closed++; } };
+  const renderParent = () => parent.expand(parent.renderOwner(parentView, props)) as Element;
+  let settingsProps!: object;
+  const renderChild = () => child.expand(child.renderOwner(settingsView, settingsProps)) as Element;
+  const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    renderParent(); await tick();
+    press(button(renderParent(), 'Service settings'));
+    const selected = renderParent();
+    assert.equal(selected.type, 'SettingsChild');
+    settingsProps = selected.props;
+    renderChild(); await tick();
+    if (parentLast) {
+      props.onBack = () => { closed++; };
+      renderParent();
+    }
+    parent.hardware();
+    assert.match(text(renderChild()), /Closing service settings/);
+    assert.equal(renderParent().type, 'SettingsChild');
+    assert.throws(readGuard, /CANCELLED/);
+    assert.equal(cancelled, 0);
+    assert.equal(closed, 0);
+    assert.equal(parent.defaults(), 0);
+    if (parentLast) held.reject(Error('Held read failed'));
+    else held.resolve();
+    await tick();
+    assert.equal(cancelled, 1);
+    assert.equal(closed, 0);
+    assert.ok(button(renderParent(), 'Import key'));
+  } finally { held.resolve(); child.dispose(); parent.dispose(); }
+});
+
+test('Sentry settings Back cannot return a replacement owner after its old read fails', async () => {
+  const f = setup();
+  const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
+  const common = {
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  };
+  const view = evaluate(load('NativeSentrySettings'), {
+    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
+  }).NativeSentrySettings as (props: object) => Element;
+  const held = Promise.withResolvers<{ serviceUrl: string; maxFeeSatoshis: string }>();
+  let oldReturns = 0, newReturns = 0;
+  const saveSettings = async () => { throw Error('Unexpected save'); };
+  let props = { manager: { getSettings: async () => held.promise, saveSettings }, assertCurrent() {},
+    networkLabel: 'Syscoin', onBack() { oldReturns++; } };
+  const render = () => f.expand(f.renderOwner(view, props)) as Element;
+  const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    render(); await tick();
+    press(button(render(), 'Cancel'));
+    assert.match(text(render()), /Closing service settings/);
+    props = { ...props, manager: { getSettings: async () => ({ serviceUrl: 'https://new.example', maxFeeSatoshis: '200000' }), saveSettings },
+      onBack() { newReturns++; } };
+    render(); await tick();
+    held.reject(Error('Old read failed'));
+    await tick();
+    assert.equal(oldReturns, 0);
+    assert.equal(newReturns, 0);
+    assert.equal(field(render(), 'Sentry service origin').props.value, 'https://new.example');
+  } finally { held.reject(Error('Cleanup')); f.dispose(); }
+});
+
+test('Sentry settings repeated Save keeps Back joined to the original operation', async () => {
+  const f = setup();
+  const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
+  const common = {
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  };
+  const view = evaluate(load('NativeSentrySettings'), {
+    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
+  }).NativeSentrySettings as (props: object) => Element;
+  const held = Promise.withResolvers<void>();
+  let saves = 0, returned = 0, writes = 0;
+  const props = { manager: {
+    getSettings: async () => ({ serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }),
+    async saveSettings(settings: { serviceUrl: string; maxFeeSatoshis: string }, _password: string, check: () => void) {
+      saves++;
+      if (saves > 1) throw Error('BUSY');
+      await held.promise;
+      check();
+      writes++;
+      return settings;
+    },
+  }, assertCurrent() {}, networkLabel: 'Syscoin', onBack() { returned++; } };
+  const render = () => f.expand(f.renderOwner(view, props)) as Element;
+  const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+  try {
+    render(); await tick();
+    (field(render(), 'Confirm wallet password').props.onChangeText as (value: string) => void)('Fixture password 1!');
+    const tree = render(), save = button(tree, 'Save settings');
+    press(save); press(save);
+    press(button(tree, 'Cancel'));
+    await tick();
+    assert.equal(saves, 1);
+    assert.equal(returned, 0);
+    assert.match(text(render()), /Closing service settings/);
+    held.resolve(); await tick();
+    assert.equal(writes, 0);
+    assert.equal(returned, 1);
+  } finally { held.resolve(); f.dispose(); }
+});
+
+test('Sentry settings handles a synchronous stale-at-open failure without a read', async () => {
+  const f = setup();
+  const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
+  const common = {
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  };
+  const view = evaluate(load('NativeSentrySettings'), {
+    ...common, './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
+  }).NativeSentrySettings as (props: object) => Element;
+  let writes = 0;
+  const props = { manager: {
+    getSettings(): Promise<never> { throw Error('CANCELLED'); },
+    async saveSettings() { writes++; throw Error('Unexpected save'); },
+  }, assertCurrent() {}, networkLabel: 'Syscoin', onBack() {} };
+  try {
+    assert.doesNotThrow(() => f.renderOwner(view, props));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const tree = f.expand(f.renderOwner(view, props)) as Element;
+    assert.match(text(tree), /Could not load service settings/);
+    assert.equal(button(tree, 'Save settings').props.disabled, true);
+    assert.equal(writes, 0);
   } finally { f.dispose(); }
 });

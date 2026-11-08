@@ -3,6 +3,112 @@ test.use({
   baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
 });
 const secret = '13'.repeat(32);
+
+test('Sentry service settings are a secondary authenticated form with exact fee units', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 360 });
+  await page.goto('/?sentry=1');
+  await page
+    .getByRole('button', { name: 'Service settings', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Service settings', exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByLabel('Sentry service origin', { exact: true })
+  ).toHaveValue('https://sysnode.info');
+  await page
+    .getByLabel('Sentry service origin', { exact: true })
+    .fill('https://sentry.example/');
+  await page
+    .getByLabel('Maximum Sentry fee in satoshis', { exact: true })
+    .fill('10000000');
+  const password = page.getByLabel('Confirm wallet password', { exact: true });
+  await password.scrollIntoViewIfNeeded();
+  await expect(password).toBeInViewport({ ratio: 1 });
+  await expect(password).toHaveAttribute('type', 'password');
+  await password.fill('Fixture password 1!');
+  const save = page.getByRole('button', { name: 'Save settings', exact: true });
+  await reachable(save);
+  await contained(page);
+  await page.screenshot({
+    path: test.info().outputPath('sentry-service-settings-320.png'),
+  });
+  await save.click();
+  await expect(password).toHaveValue('');
+  await expect(
+    page.getByText('Service settings saved.', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByLabel('Sentry service origin', { exact: true })
+  ).toHaveValue('https://sentry.example');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Sentry keys', exact: true })
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__nativeSentryFixture.calls())
+  ).toEqual([{ method: 'saveSettings' }]);
+});
+
+for (const stage of ['read', 'auth', 'write']) {
+  test(`Sentry settings Cancel drains a held ${stage} before returning to keys`, async ({
+    page,
+  }) => {
+    await page.goto(`/?sentry=1&settingsHold=${stage}`);
+    await page
+      .getByRole('button', { name: 'Service settings', exact: true })
+      .click();
+    if (stage !== 'read') {
+      await page
+        .getByLabel('Confirm wallet password', { exact: true })
+        .fill('Fixture password 1!');
+      await page
+        .getByRole('button', { name: 'Save settings', exact: true })
+        .click();
+    }
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__nativeSentryFixture.heldSettingsStage())
+      )
+      .toBe(stage);
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(
+      page.getByText('Closing service settings…', { exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Import key', exact: true })
+    ).toHaveCount(0);
+    await expect(
+      page.getByLabel('Confirm wallet password', { exact: true })
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(() => window.__nativeSentryFixture.pendingSettings())
+    ).toBe(1);
+    await page.evaluate(() => window.__nativeSentryFixture.releaseSettings());
+    await expect(
+      page.getByRole('heading', { name: 'Sentry keys', exact: true })
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => window.__nativeSentryFixture.pendingSettings())
+    ).toBe(0);
+    expect(
+      await page.evaluate(() => window.__nativeSentryFixture.calls())
+    ).toEqual([]);
+    await page.getByRole('button', { name: 'Import key', exact: true }).click();
+    await page.getByLabel('Key label', { exact: true }).fill('After settings');
+    await page.getByLabel('Private key', { exact: true }).fill(secret);
+    await page.getByRole('button', { name: 'Review key', exact: true }).click();
+    await expect(
+      page.getByText('39'.repeat(48), { exact: true })
+    ).toBeVisible();
+    expect(
+      await page.evaluate(() => window.__nativeSentryFixture.calls())
+    ).toEqual([{ method: 'prepareImport', count: 1 }]);
+  });
+}
+
 async function reachable(button: Locator) {
   await button.scrollIntoViewIfNeeded();
   await expect(button).toBeInViewport({ ratio: 0.999 });

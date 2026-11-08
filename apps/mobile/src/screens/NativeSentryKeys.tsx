@@ -1,3 +1,4 @@
+import { NativeSentrySettings } from './NativeSentrySettings';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -29,6 +30,11 @@ type Role = SentryKeySummary['role'];
 type Key = Readonly<SentryKeySummary>;
 type Step =
   | { kind: 'list' }
+  | {
+      kind: 'settings';
+      manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings'>;
+      assertCurrent(): void;
+    }
   | { kind: 'draft'; multiple: boolean }
   | { kind: 'detail'; key: Key }
   | { kind: 'import'; review: SentryKeyImportReview }
@@ -281,6 +287,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   }, [clearFields, current, navigate, onBack, retire]);
   useLayoutEffect(() => {
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (ownerRef.current?.step.kind === 'settings') return false;
       back();
       return true;
     });
@@ -480,6 +487,16 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       ? 'Remove Sentry key'
       : 'Sentry keys';
   const canRetry = keys === null && active;
+  if (step.kind === 'settings' && active) {
+    return (
+      <NativeSentrySettings
+        manager={step.manager}
+        assertCurrent={step.assertCurrent}
+        networkLabel={networkLabel}
+        onBack={back}
+      />
+    );
+  }
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
       <KeyboardAvoidingView
@@ -517,6 +534,29 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               )}
               {keys !== null && (
                 <>
+                  <Button
+                    title="Service settings"
+                    variant="secondary"
+                    disabled={busy}
+                    onPress={() => {
+                      const owner = editable();
+                      if (owner?.manager) {
+                        const next: Step = {
+                          kind: 'settings',
+                          manager: {
+                            getSettings: owner.manager.getSettings,
+                            saveSettings: owner.manager.saveSettings,
+                          },
+                          assertCurrent() {
+                            if (!current(owner) || owner.step !== next)
+                              throw new Error('CANCELLED');
+                          },
+                        };
+                        clearFields();
+                        navigate(owner, next);
+                      }
+                    }}
+                  />
                   <Button
                     title="Import key"
                     disabled={busy}

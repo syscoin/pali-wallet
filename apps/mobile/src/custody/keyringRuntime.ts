@@ -1,3 +1,4 @@
+import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
 import { NativePrivateWithdrawal } from './privateWithdrawal.ts';
 import { createPrivacyWithdrawalsController, PRIVACY_WITHDRAWAL_GAS } from '../../../../source/wallet/privacyWithdrawals.ts';
 import { capturePrivateWithdrawalAttempt, privateWithdrawalUnsignedBytes } from '../../../../source/utils/privacy/withdrawalMetadata.ts';
@@ -1066,8 +1067,26 @@ export function createKeyringRuntimeFactory(
               session.assertCurrent
             );
             retireSentryKeys();
+            const settingsKey = sentrySettingsStorageKey(vaultId, network);
             sentryKeys = createNativeSentryKeyManagement({
               assertCurrent: session.assertCurrent,
+              async readSettings() {
+                session.assertCurrent();
+                const saved = await storage.keyringStorage.get(settingsKey);
+                session.assertCurrent();
+                return saved;
+              },
+              async writeSettings(settings, assertCurrent) {
+                const check = () => { session.assertCurrent(); checkGuard(assertCurrent); session.assertCurrent(); };
+                check();
+                const expected = await storage.keyringStorage.get(settingsKey);
+                check();
+                const saved = await storage.keyringStorage.compareAndSetMany([
+                  { key: settingsKey, expected, value: settings },
+                ], check);
+                check();
+                if (!saved) throw new KeyringRuntimeError('CANCELLED');
+              },
               async authenticate(password, assertCurrent) {
                 const authenticated = await authenticateVerifiedOwner(password, {
                   ...session,

@@ -6,6 +6,7 @@ import type { SentryNetwork } from './types';
 export {
   normalizeSentryServiceUrl,
   SENTRY_NETWORKS,
+  validateSentryFeeLimit,
 } from '../../shared/sentryNetworks';
 
 export const getSentryNetwork = (network: {
@@ -17,10 +18,4 @@ export const getSentryNetwork = (network: {
   if (network.chainId === SENTRY_NETWORKS.mainnet.chainId) return 'mainnet';
   if (network.chainId === SENTRY_NETWORKS.testnet.chainId) return 'testnet';
   throw new Error('This Syscoin network does not support Sentry management');
-};
-
-export const validateSentryFeeLimit = (value: string): string => {
-  if (!/^[1-9]\d{0,7}$/.test(value) || Number(value) > 10000000)
-    throw new Error('Maximum fee must be between 1 and 10000000 satoshis');
-  return value;
 };
