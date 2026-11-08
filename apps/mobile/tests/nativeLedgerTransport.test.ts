@@ -28,7 +28,14 @@ function fixture() {
     events.push('select');
     return void candidate;
   };
+  const statusListeners = new Set<() => void>();
   const sharedHost: LedgerDmkHost = {
+    subscribeStatus(listener) {
+      statusListeners.add(listener);
+      return () => {
+        statusListeners.delete(listener);
+      };
+    },
     connect: async () => {
       events.push('connect');
     },
@@ -73,6 +80,10 @@ function fixture() {
     events,
     signal,
     devices,
+    status() {
+      for (const listener of statusListeners) listener();
+    },
+    statusListeners: () => statusListeners.size,
     revoke: () => {
       current = false;
     },
@@ -248,4 +259,27 @@ test('close before the scan microtask prevents discovery from starting', async (
   await assert.rejects(scanning, /cancel/i);
   await f.transport.dispose();
   assert.equal(f.devices.observed, false);
+});
+
+test('status forwarding ends on unsubscribe, authority retirement and transport disposal', async () => {
+  const f = fixture();
+  let updates = 0;
+  const unsubscribe = f.transport.host.subscribeStatus(() => {
+    updates++;
+  });
+  f.status();
+  assert.equal(updates, 1);
+  unsubscribe();
+  f.status();
+  assert.equal(updates, 1);
+  f.transport.host.subscribeStatus(() => {
+    updates++;
+  });
+  f.revoke();
+  f.status();
+  assert.equal(updates, 1);
+  await f.transport.dispose();
+  assert.equal(f.statusListeners(), 0);
+  f.status();
+  assert.equal(updates, 1);
 });

@@ -231,10 +231,20 @@ export function createKeyringRuntimeFactory(
         let ledgerCleanup: Promise<void> | undefined;
         let ledgerOpening: { retire(): Promise<void> } | undefined;
         let ledgerScanOrdinal = 0;
+        let unsubscribeLedgerStatus: (() => void) | undefined;
+        const ledgerStatusListeners = new Set<() => void>();
+        const publishLedgerStatus = () => {
+          for (const listener of ledgerStatusListeners) {
+            try { listener(); } catch { /* Observation cannot change custody. */ }
+          }
+        };
         const retireLedger = () => {
           const previous = ledgerTransport;
           ledgerTransport = undefined;
           ledgerVerified = undefined;
+          unsubscribeLedgerStatus?.();
+          unsubscribeLedgerStatus = undefined;
+          publishLedgerStatus();
           ledgerLifetime?.abort();
           ledgerLifetime = undefined;
           preparedLedger = undefined;
@@ -1276,6 +1286,10 @@ export function createKeyringRuntimeFactory(
           return task;
         };
         const ledger: NativeLedgerRuntime = {
+          subscribeStatus(listener) {
+            ledgerStatusListeners.add(listener);
+            return () => { ledgerStatusListeners.delete(listener); };
+          },
           isConnected() {
             const verified = ledgerVerified;
             return (
@@ -1380,6 +1394,11 @@ export function createKeyringRuntimeFactory(
             }
             ledgerTransport = transport;
             try {
+              unsubscribeLedgerStatus = transport.host.subscribeStatus(() => {
+                if (ledgerTransport !== transport) return;
+                if (!transport.host.getStatus().connected) ledgerVerified = undefined;
+                publishLedgerStatus();
+              });
               const selection = transport.host.beginDeviceSelection(signal);
               const ordinal = ++ledgerScanOrdinal;
               const candidates = new Map<
@@ -1522,6 +1541,7 @@ export function createKeyringRuntimeFactory(
                     snapshot: before!,
                     transport,
                   };
+                  publishLedgerStatus();
                 },
                 async close() {
                   if (handedOff) {

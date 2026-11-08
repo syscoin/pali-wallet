@@ -33,6 +33,7 @@ export function ownLedgerTransport(
   let disposed = false;
   let disposal: Promise<void> | undefined;
   let discovery: { stop(): Promise<void> } | undefined;
+  const statusSubscriptions = new Set<() => void>();
   let stopping: Promise<void> = Promise.resolve();
   const assertCurrent = () => {
     if (disposed || owner.signal.aborted) throw ledgerCancelledError();
@@ -61,6 +62,27 @@ export function ownLedgerTransport(
       connected:
         !disposed && !owner.signal.aborted && sharedHost.getStatus().connected,
     }),
+    subscribeStatus(listener) {
+      assertCurrent();
+      let active = true;
+      const remove = sharedHost.subscribeStatus(() => {
+        if (!active) return;
+        try {
+          assertCurrent();
+        } catch {
+          return;
+        }
+        listener();
+      });
+      const unsubscribe = () => {
+        active = false;
+        remove();
+        statusSubscriptions.delete(unsubscribe);
+      };
+      statusSubscriptions.add(unsubscribe);
+      if (disposed || owner.signal.aborted) unsubscribe();
+      return unsubscribe;
+    },
     beginDeviceSelection: (signal) => {
       assertCurrent();
       return guard(sharedHost.beginDeviceSelection(signal));
@@ -86,6 +108,7 @@ export function ownLedgerTransport(
   const dispose = () => {
     if (disposal) return disposal;
     disposed = true;
+    for (const unsubscribe of [...statusSubscriptions]) unsubscribe();
     owner.signal.removeEventListener('abort', onAbort);
     // Revoke the semantic session immediately, before native teardown awaits.
     const disconnect = sharedHost.disconnect();

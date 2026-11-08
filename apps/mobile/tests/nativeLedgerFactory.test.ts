@@ -67,6 +67,7 @@ test('native construction uses official adapters, defers permission and retires 
   state.dmk = { stopDiscovering: async () => undefined, close() {} };
   state.host = {
     disconnect: async () => undefined,
+    subscribeStatus: () => () => {},
     evm: {},
     utxo: {},
   };

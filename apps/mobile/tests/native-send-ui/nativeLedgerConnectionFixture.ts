@@ -1,69 +1,81 @@
-import type {
-  NativeLedgerConnectionView,
-  NativeLedgerSnapshot,
+import {
+  NativeLedgerAccounts,
+  type NativeLedgerRuntime,
 } from '../../src/custody/ledgerAccounts';
+import type { NativeCustodyAuthority } from '../../src/custody/authority';
 
 export function createLedgerConnectionFixture(address: string) {
   let connected = false;
-  let handedOff = false;
   let complete: (() => void) | undefined;
   const calls: string[] = [];
   const listeners = new Set<() => void>();
-  let snapshot: NativeLedgerSnapshot = {
-    phase: 'idle',
-    networkId: 'fixture',
-    networkLabel: 'Selected network',
-    address,
-    devices: [],
-    selectedName: null,
-    error: null,
-  };
-  const publish = (next: Partial<NativeLedgerSnapshot>) => {
-    snapshot = Object.freeze({ ...snapshot, ...next });
+  const changed = () => {
     for (const listener of listeners) listener();
   };
-  const controller: NativeLedgerConnectionView = {
-    purpose: 'connect',
+  const snapshot = { phase: 'ready', revision: 1 };
+  const catalogue = {
+    revision: 1,
+    active: { accountId: 'ledger:60:0', networkId: 'fixture' },
+    accounts: [{ id: 'ledger:60:0', address }],
+    networks: [{ id: 'fixture', name: 'Selected network' }],
+    utxoNetworks: [],
+  };
+  const authority = {
     getSnapshot: () => snapshot,
+    getCatalogue: () => catalogue,
+    subscribe: () => () => {},
+    cancelAccountOperation() {},
+  } as unknown as NativeCustodyAuthority;
+  const runtime: NativeLedgerRuntime = {
     isConnected: () => connected,
-    subscribe(listener) {
+    subscribeStatus(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => {
+        listeners.delete(listener);
+      };
     },
-    async start() {
+    async scan(_request, _signal, check, onDevices) {
       calls.push('start');
-      handedOff = false;
-      publish({
-        phase: 'scanning',
-        devices: [{ id: 'fixture-device', name: 'My Ledger', model: 'Nano X' }],
-      });
-    },
-    async select(id) {
-      calls.push(`select:${id}`);
-      publish({ phase: 'connected', selectedName: 'My Ledger', address });
-    },
-    async finishConnection() {
-      calls.push('finish');
-      if (new URLSearchParams(window.location.search).has('hold-connection'))
-        await new Promise<void>((resolve) => {
-          complete = resolve;
-        });
-      handedOff = true;
-      connected = true;
-      publish({ phase: 'idle', devices: [] });
-    },
-    async close() {
-      calls.push('close');
-      if (!handedOff) connected = false;
+      let handedOff = false;
+      check();
+      onDevices([{ id: 'fixture-device', name: 'My Ledger', model: 'Nano X' }]);
+      return {
+        async select(id) {
+          check();
+          calls.push(`select:${id}`);
+          return { name: 'My Ledger', address };
+        },
+        handoff() {
+          check();
+          calls.push('finish');
+          handedOff = true;
+          connected = true;
+          changed();
+        },
+        async close() {
+          calls.push('close');
+          if (!handedOff) connected = false;
+          else if (
+            new URLSearchParams(window.location.search).has('hold-connection')
+          )
+            await new Promise<void>((resolve) => {
+              complete = resolve;
+            });
+        },
+      };
     },
   };
+  const controller = new NativeLedgerAccounts(
+    authority,
+    () => runtime,
+    'connect'
+  );
   window.__nativeLedgerSigningFixture = {
     calls: () => calls,
     complete: () => complete?.(),
     disconnect() {
       connected = false;
-      handedOff = false;
-      publish({ phase: 'idle' });
+      changed();
     },
   };
   return controller;
