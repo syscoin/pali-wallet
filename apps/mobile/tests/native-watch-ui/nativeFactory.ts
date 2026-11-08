@@ -386,7 +386,8 @@ export function createNativeWalletControllers() {
       const unused = async () => { throw Error('Synthetic route fixture does not sign'); };
       return { cancel() {}, async list() { return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
     } } : {}),
-    disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
+    disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose(),
+    async disposeConnections() { events.push('connections:dispose'); } };
 }
 /** This adapter tests real UI ownership, not the already tested storage protocol. */
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
