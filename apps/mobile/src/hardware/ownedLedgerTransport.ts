@@ -1,0 +1,152 @@
+import { ledgerCancelledError } from '@sidhujag/sysweb3-keyring/cjs/ledger/host-types.js';
+
+import type {
+  DeviceManagementKit,
+  DiscoveredDevice,
+} from '@ledgerhq/device-management-kit';
+import type { LedgerDmkHost } from '@sidhujag/sysweb3-keyring/esm/ledger/dmk-selected-host';
+
+export type NativeLedgerOwner = Readonly<{
+  signal: AbortSignal;
+  assertCurrent(): void;
+}>;
+
+export type NativeLedgerTransport = Readonly<{
+  host: LedgerDmkHost;
+  observeDevices(
+    onDevices: (devices: readonly DiscoveredDevice[]) => void,
+    onError: (error: unknown) => void
+  ): Promise<() => Promise<void>>;
+  dispose(): Promise<void>;
+}>;
+
+/** Own native resources; all device selection and signing stay in the shared SDK. */
+export function ownLedgerTransport(
+  owner: NativeLedgerOwner,
+  dmk: Pick<
+    DeviceManagementKit,
+    'listenToAvailableDevices' | 'stopDiscovering' | 'close'
+  >,
+  sharedHost: LedgerDmkHost,
+  closeNative: () => Promise<void>
+): NativeLedgerTransport {
+  let disposed = false;
+  let disposal: Promise<void> | undefined;
+  let discovery: { stop(): Promise<void> } | undefined;
+  let stopping: Promise<void> = Promise.resolve();
+  const assertCurrent = () => {
+    if (disposed || owner.signal.aborted) throw ledgerCancelledError();
+    owner.assertCurrent();
+  };
+  assertCurrent();
+  const guard =
+    <Args extends unknown[], Result>(
+      operation: (...args: Args) => Promise<Result>
+    ) =>
+    async (...args: Args): Promise<Result> => {
+      assertCurrent();
+      try {
+        const result = await operation(...args);
+        assertCurrent();
+        return result;
+      } catch (error) {
+        assertCurrent();
+        throw error;
+      }
+    };
+  const host: LedgerDmkHost = {
+    connect: guard((...args) => sharedHost.connect(...args)),
+    disconnect: () => sharedHost.disconnect(),
+    getStatus: () => ({
+      connected:
+        !disposed && !owner.signal.aborted && sharedHost.getStatus().connected,
+    }),
+    beginDeviceSelection: (signal) => {
+      assertCurrent();
+      return guard(sharedHost.beginDeviceSelection(signal));
+    },
+    evm: {
+      getAddress: guard((...args) => sharedHost.evm.getAddress(...args)),
+      signTransaction: guard((...args) =>
+        sharedHost.evm.signTransaction(...args)
+      ),
+      signPersonalMessage: guard((...args) =>
+        sharedHost.evm.signPersonalMessage(...args)
+      ),
+      signTypedData: guard((...args) => sharedHost.evm.signTypedData(...args)),
+    },
+    utxo: {
+      getXpub: guard((...args) => sharedHost.utxo.getXpub(...args)),
+      getAddress: guard((...args) => sharedHost.utxo.getAddress(...args)),
+      getAccount: guard((...args) => sharedHost.utxo.getAccount(...args)),
+      signMessage: guard((...args) => sharedHost.utxo.signMessage(...args)),
+      signPsbt: guard((...args) => sharedHost.utxo.signPsbt(...args)),
+    },
+  };
+  const dispose = () => {
+    if (disposal) return disposal;
+    disposed = true;
+    owner.signal.removeEventListener('abort', onAbort);
+    // Revoke the semantic session immediately, before native teardown awaits.
+    const disconnect = sharedHost.disconnect();
+    disposal = (async () => {
+      const results = await Promise.allSettled([
+        disconnect,
+        discovery ? discovery.stop() : stopping,
+      ]);
+      try {
+        dmk.close();
+      } finally {
+        await closeNative();
+      }
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure?.status === 'rejected') throw failure.reason;
+    })();
+    return disposal;
+  };
+  const onAbort = () => {
+    void dispose().catch(() => undefined);
+  };
+  owner.signal.addEventListener('abort', onAbort, { once: true });
+  return {
+    host,
+    async observeDevices(onDevices, onError) {
+      assertCurrent();
+      await stopping;
+      assertCurrent();
+      if (discovery) throw new Error('Ledger discovery is already active');
+      const subscription = dmk.listenToAvailableDevices({}).subscribe({
+        next(devices) {
+          if (disposed || owner.signal.aborted) return;
+          try {
+            assertCurrent();
+          } catch {
+            return;
+          }
+          onDevices(devices);
+        },
+        error(error) {
+          if (!disposed && !owner.signal.aborted) onError(error);
+        },
+      });
+      let cleanup: Promise<void> | undefined;
+      const current = {
+        stop() {
+          if (cleanup) return cleanup;
+          subscription.unsubscribe();
+          if (discovery === current) discovery = undefined;
+          cleanup = stopping.then(
+            () => dmk.stopDiscovering(),
+            () => dmk.stopDiscovering()
+          );
+          stopping = cleanup;
+          return cleanup;
+        },
+      };
+      discovery = current;
+      if (disposed || owner.signal.aborted) await current.stop();
+      return current.stop;
+    },
+    dispose,
+  };
+}

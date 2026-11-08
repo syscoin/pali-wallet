@@ -69,7 +69,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
           <IdlePressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
-            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : entry.selection.kind === 'smart' ? 'Smart account' : (() => {
+            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : entry.selection.kind === 'smart' ? 'Smart account' : entry.selection.kind === 'ledger' ? 'Ledger hardware wallet' : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
               const network = getNetwork(Object.keys(watched.addresses)[0] as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks);
               return network.kind === 'utxo' ? `Watch-only · ${network.name}` : 'Watch-only · Public EVM address';
