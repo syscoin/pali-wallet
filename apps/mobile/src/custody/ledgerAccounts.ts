@@ -75,6 +75,7 @@ const empty = (): NativeLedgerSnapshot =>
 
 export class NativeLedgerAccounts implements NativeLedgerView {
   private snapshot = empty();
+  private disposed = false;
   private session: Session | undefined;
   private closing: Promise<void> = Promise.resolve();
   private readonly listeners = new Set<() => void>();
@@ -129,19 +130,24 @@ export class NativeLedgerAccounts implements NativeLedgerView {
     )
       throw new Error('CANCELLED');
   }
+  private assertActive() {
+    if (this.disposed) throw new Error('CANCELLED');
+  }
   private async fail(session: Session, message: string) {
-    if (this.session !== session) return;
+    if (this.disposed || this.session !== session) return;
     const closing = this.close();
     try {
       await closing;
     } finally {
-      if (!this.session && this.closing === closing)
+      if (!this.disposed && !this.session && this.closing === closing)
         this.publish({ phase: 'error', error: message });
     }
   }
   async start() {
+    this.assertActive();
     if (this.session) throw new Error('BUSY');
     await this.closing;
+    this.assertActive();
     if (this.session) throw new Error('BUSY');
     const snapshot = this.authority.getSnapshot(),
       catalogue = this.authority.getCatalogue(),
@@ -195,6 +201,7 @@ export class NativeLedgerAccounts implements NativeLedgerView {
     }
   }
   async select(id: string) {
+    this.assertActive();
     const session = this.session;
     if (!session?.scan || this.snapshot.phase !== 'scanning')
       throw new Error('NOT_READY');
@@ -217,6 +224,7 @@ export class NativeLedgerAccounts implements NativeLedgerView {
     }
   }
   async importAccount(label: string) {
+    this.assertActive();
     const session = this.session;
     if (!session || this.snapshot.phase !== 'connected')
       throw new Error('NOT_READY');
@@ -263,6 +271,7 @@ export class NativeLedgerAccounts implements NativeLedgerView {
     return this.closing;
   }
   async dispose() {
+    this.disposed = true;
     this.unsubscribe();
     await this.close();
     this.listeners.clear();
