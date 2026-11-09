@@ -150,7 +150,14 @@ beforeEach(() => {
     network: { kind: 'syscoin', chainId: 57, url: 'https://blockbook.test' },
   };
   getSeed = jest.fn().mockResolvedValue('synthetic-seed');
-  controller = new SentryController({ captureScope: () => scope, getSeed });
+  controller = new SentryController({
+    captureScope: () => scope,
+    getSeed,
+    hasWalletAuthority: async () => false,
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
+    resolveWalletAuthority: async () => undefined,
+  });
   (listSentryKeys as jest.Mock).mockResolvedValue([summary]);
   (loadSentryKey as jest.Mock).mockResolvedValue({
     ...summary,
@@ -215,7 +222,14 @@ it('persists approved registration protection before signing and exposes it afte
   await expect(sign(id)).resolves.toEqual(signedResponse);
   expect(signingCalls()).toHaveLength(1);
   expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
-  controller = new SentryController({ captureScope: () => scope, getSeed });
+  controller = new SentryController({
+    captureScope: () => scope,
+    getSeed,
+    hasWalletAuthority: async () => false,
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
+    resolveWalletAuthority: async () => undefined,
+  });
   expect((await controller.getSettings()).collateral).toEqual([reservation]);
 });
 

@@ -76,6 +76,10 @@ let settingsReads: number;
 let writeBarrier: ReturnType<typeof deferred> | undefined;
 const makeController = () =>
   new SentryController({
+    hasWalletAuthority: async () => false,
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
+    resolveWalletAuthority: async () => undefined,
     captureScope: () => ({
       identity: currentIdentity,
       rootPublicIdentity: 'synthetic-public-root',

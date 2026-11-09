@@ -143,6 +143,10 @@ beforeEach(async () => {
       network: mockState.vault.activeNetwork,
     }),
     getSeed: authenticate,
+    hasWalletAuthority: async () => false,
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
+    resolveWalletAuthority: async () => undefined,
   });
   mockEmitter.mockReset().mockImplementation((method, params) => {
     if (method[1] === 'getSentrySettings') return controller.getSettings();
