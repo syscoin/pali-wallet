@@ -22,7 +22,11 @@ it('calls the actual adapter port with only the fixed public fixture and verifie
     return encodePrivacyProof(fixture.proof, fixture.publicSignals);
   });
   const assertCurrent = jest.fn();
-  const report = await qualifyNativePrivateProof({ assertCurrent });
+  const onDiagnostic = jest.fn();
+  const report = await qualifyNativePrivateProof({
+    assertCurrent,
+    onDiagnostic,
+  });
   expect(run.mock.calls[0][0]).toEqual(fixture.input);
   expect(report).toEqual({
     version: 1,
@@ -56,6 +60,27 @@ it('calls the actual adapter port with only the fixed public fixture and verifie
   expect(assertCurrent).toHaveBeenCalled();
   expect(report).not.toHaveProperty('proof');
   expect(report).not.toHaveProperty('input');
+  expect(onDiagnostic.mock.calls).toEqual([
+    ['proof-before-cancel', 'start'],
+    ['proof-before-cancel', 'artifacts'],
+    ['proof-before-cancel', 'witness'],
+    ['proof-before-cancel', 'proving'],
+    ['proof-before-cancel', 'verifying'],
+    ['proof-before-cancel', 'result-check'],
+    ['proof-before-cancel', 'case-complete'],
+    ['cancel-while-proving', 'start'],
+    ['cancel-while-proving', 'artifacts'],
+    ['cancel-while-proving', 'witness'],
+    ['cancel-while-proving', 'proving'],
+    ['cancel-while-proving', 'case-complete'],
+    ['proof-after-cancel', 'start'],
+    ['proof-after-cancel', 'artifacts'],
+    ['proof-after-cancel', 'witness'],
+    ['proof-after-cancel', 'proving'],
+    ['proof-after-cancel', 'verifying'],
+    ['proof-after-cancel', 'result-check'],
+    ['proof-after-cancel', 'case-complete'],
+  ]);
 });
 
 it('awaits the cancelled proof disposal before admitting the final proof', async () => {
@@ -68,7 +93,10 @@ it('awaits the cancelled proof disposal before admitting the final proof', async
     if (run.mock.calls.length === 2) return cancelled;
     return encodePrivacyProof(fixture.proof, fixture.publicSignals);
   });
-  const task = qualifyNativePrivateProof({ assertCurrent: jest.fn() });
+  const task = qualifyNativePrivateProof({
+    assertCurrent: jest.fn(),
+    onDiagnostic: jest.fn(),
+  });
   await Promise.resolve();
   await Promise.resolve();
   expect(run).toHaveBeenCalledTimes(2);
@@ -83,7 +111,10 @@ it('refuses a successful result from the cancellation case', async () => {
     return encodePrivacyProof(fixture.proof, fixture.publicSignals);
   });
   await expect(
-    qualifyNativePrivateProof({ assertCurrent: jest.fn() })
+    qualifyNativePrivateProof({
+      assertCurrent: jest.fn(),
+      onDiagnostic: jest.fn(),
+    })
   ).rejects.toThrow('PRIVATE_PROOF_CANCELLATION_NOT_OBSERVED');
 });
 
@@ -93,7 +124,10 @@ it('rejects a structurally valid but false proof and a changed public signal', a
     publicSignals: fixture.publicSignals,
   });
   await expect(
-    qualifyNativePrivateProof({ assertCurrent: jest.fn() })
+    qualifyNativePrivateProof({
+      assertCurrent: jest.fn(),
+      onDiagnostic: jest.fn(),
+    })
   ).rejects.toThrow('PRIVATE_PROOF_RESULT_INVALID');
   const result = encodePrivacyProof(fixture.proof, fixture.publicSignals);
   run.mockResolvedValue({
@@ -101,6 +135,34 @@ it('rejects a structurally valid but false proof and a changed public signal', a
     publicSignals: ['0', ...result.publicSignals.slice(1)],
   });
   await expect(
-    qualifyNativePrivateProof({ assertCurrent: jest.fn() })
+    qualifyNativePrivateProof({
+      assertCurrent: jest.fn(),
+      onDiagnostic: jest.fn(),
+    })
   ).rejects.toThrow('PRIVATE_PROOF_RESULT_INVALID');
+});
+
+it('requires the diagnostic observer before invoking the native adapter', async () => {
+  await expect(
+    qualifyNativePrivateProof({ assertCurrent: jest.fn() })
+  ).rejects.toThrow('PRIVATE_PROOF_DIAGNOSTIC_REQUIRED');
+  expect(run).not.toHaveBeenCalled();
+});
+
+it('retains the exact failed public case and progress boundary without consuming an error', async () => {
+  const onDiagnostic = jest.fn();
+  const error = new Error(
+    'private worker error must not be copied to a checkpoint'
+  );
+  run.mockImplementation(async (...args) => {
+    args[1].onProgress({ stage: 'witness' });
+    throw error;
+  });
+  await expect(
+    qualifyNativePrivateProof({ assertCurrent: jest.fn(), onDiagnostic })
+  ).rejects.toBe(error);
+  expect(onDiagnostic.mock.calls).toEqual([
+    ['proof-before-cancel', 'start'],
+    ['proof-before-cancel', 'witness'],
+  ]);
 });

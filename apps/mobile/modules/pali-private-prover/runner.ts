@@ -22,6 +22,7 @@ import type {
   IPrivacyProofOptions,
   IPrivacyProofResult,
 } from '../../../../source/utils/privacy/proverTypes';
+import { nativeBridgeExecutionError, nativeExecutionError } from '../../../../source/scripts/privacyProver/nativeExecutionDiagnostic.ts';
 
 interface NativeResourceContext {
   close(): void;
@@ -133,9 +134,19 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
         revoke(privacyProofAbortError(error));
       }
     }, 250);
-    timer = setTimeout(() => revoke(privacyProofAbortError(undefined)), 120000);
+    timer = setTimeout(() => revoke(nativeExecutionError('privacy_proof_cancelled', { nativeExecutionCode: 'job-timeout' })), 120000);
     check();
-    const pending = plan.run(context, id, input.json);
+    const pending = plan.run(context, id, input.json).catch(error => {
+      // Retain the existing fixed pending outcome without inspecting native
+      // accessors or forwarding arbitrary exception messages.
+      let verificationPending = false;
+      try {
+        const message = error instanceof Error && Object.getOwnPropertyDescriptor(error, 'message');
+        verificationPending = !!message && 'value' in message && message.value === 'privacy_verification_pending';
+      } catch { /* Unknown native failures retain the generic refusal. */ }
+      const guarded = privacyProofGuardError(verificationPending ? new Error('privacy_verification_pending') : undefined);
+      throw nativeBridgeExecutionError(guarded.message === 'privacy_verification_pending' ? 'privacy_verification_pending' : 'privacy_proof_failed', error);
+    });
     input.json = '';
     input.erase();
     const json = await Promise.race([pending, cancellation]);
@@ -145,7 +156,9 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
       throw new Error('privacy_proof_failed');
     result = message.result;
   } catch (error) {
-    throw revoked ? revocationError : privacyProofGuardError(error);
+    if (revoked) throw revocationError;
+    const guarded = privacyProofGuardError(error);
+    throw nativeExecutionError(guarded.message === 'privacy_verification_pending' ? 'privacy_verification_pending' : 'privacy_proof_failed', error);
   } finally {
     clearTimeout(timer);
     clearInterval(poll);
@@ -166,9 +179,9 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
       } finally {
         await context?.dispose();
       }
-    } catch {
+    } catch (error) {
       retirementFailed = true;
-      throw new Error('privacy_proof_unavailable');
+      throw nativeBridgeExecutionError('privacy_proof_unavailable', error);
     } finally {
       active = false;
     }

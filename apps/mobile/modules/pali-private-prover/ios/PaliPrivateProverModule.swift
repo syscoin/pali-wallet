@@ -4,7 +4,16 @@ import Foundation
 import UIKit
 import WebKit
 
+fileprivate enum ProofFailure: String {
+  case readinessTimeout = "ERR_PALI_NATIVE_READINESS_TIMEOUT"
+  case jobTimeout = "ERR_PALI_NATIVE_JOB_TIMEOUT"
+  case disposalTimeout = "ERR_PALI_NATIVE_DISPOSAL_TIMEOUT"
+}
+
 private final class ProofException: Exception {
+  private let failure: ProofFailure?
+  init(_ failure: ProofFailure? = nil) { self.failure = failure; super.init() }
+  override var code: String { failure?.rawValue ?? super.code }
   override var reason: String { "privacy_proof_unavailable" }
 }
 
@@ -251,6 +260,7 @@ final class PaliProofHost: SharedObject {
   private var retirementRequested = false
   private var finished: Bool?
   private var deadline: DispatchWorkItem?
+  private var executionFailure: ProofFailure?
 
   private var isRevoked: Bool { mutex.lock(); defer { mutex.unlock() }; return revoked }
 
@@ -284,7 +294,10 @@ final class PaliProofHost: SharedObject {
         let document = try ProofDocument(owner: self, id: id)
         self.document = document
         document.view.load(URLRequest(url: document.url))
-        let timeout = DispatchWorkItem { [weak self] in self?.fail() }
+        let timeout = DispatchWorkItem { [weak self] in
+          guard let self else { return }
+          self.fail(self.submitted ? .jobTimeout : .readinessTimeout)
+        }
         self.deadline = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: timeout)
       } catch { self.fail() }
@@ -299,7 +312,7 @@ final class PaliProofHost: SharedObject {
   func dispose(_ promise: Promise) {
     close()
     DispatchQueue.main.async {
-      if let clean = self.finished { clean ? promise.resolve() : promise.reject(ProofException()) }
+      if let clean = self.finished { clean ? promise.resolve() : promise.reject(ProofException(self.executionFailure)) }
       else { self.disposals.append(promise) }
     }
   }
@@ -331,8 +344,9 @@ final class PaliProofHost: SharedObject {
     } else { fail() }
   }
 
-  fileprivate func fail() {
-    pending?.reject(ProofException()); pending = nil; input = nil
+  fileprivate func fail(_ failure: ProofFailure? = nil) {
+    executionFailure = failure ?? executionFailure
+    pending?.reject(ProofException(executionFailure)); pending = nil; input = nil
     close()
   }
 
@@ -343,7 +357,7 @@ final class PaliProofHost: SharedObject {
 
   private func requestRetirement(contentProcessTerminated: Bool = false) {
     guard finished == nil else { return }
-    pending?.reject(ProofException()); pending = nil; input = nil
+    pending?.reject(ProofException(executionFailure)); pending = nil; input = nil
     if document == nil { finish(clean: true); return }
     if document?.retiring == true {
       if contentProcessTerminated { document?.retire(contentProcessTerminated: true) }
@@ -352,7 +366,11 @@ final class PaliProofHost: SharedObject {
     if !retirementRequested {
       retirementRequested = true
       deadline?.cancel()
-      let timeout = DispatchWorkItem { [weak self] in self?.finish(clean: false) }
+      let timeout = DispatchWorkItem { [weak self] in
+        guard let self, self.finished == nil else { return }
+        self.executionFailure = .disposalTimeout
+        self.finish(clean: false)
+      }
       deadline = timeout
       DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: timeout)
     }
@@ -364,11 +382,11 @@ final class PaliProofHost: SharedObject {
   fileprivate func finish(clean: Bool) {
     guard finished == nil else { return }
     finished = clean; deadline?.cancel(); deadline = nil
-    input = nil; pending?.reject(ProofException()); pending = nil
+    input = nil; pending?.reject(ProofException(executionFailure)); pending = nil
     document?.detach(); document = nil
     ProofAdmission.release(self, clean: clean)
     let callbacks = disposals; disposals.removeAll()
-    callbacks.forEach { clean ? $0.resolve() : $0.reject(ProofException()) }
+    callbacks.forEach { clean ? $0.resolve() : $0.reject(ProofException(executionFailure)) }
   }
 
   override func sharedObjectDidRelease() { close() }

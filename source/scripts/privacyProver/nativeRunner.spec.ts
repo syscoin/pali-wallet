@@ -8,6 +8,8 @@ import { NativePrivateWithdrawal } from '../../../apps/mobile/src/custody/privat
 import fixture from '../../utils/privacy/prover.fixture.json';
 import { encodePrivacyProof } from '../../utils/privacy/proverCore';
 
+import { readNativeExecutionCode } from './nativeExecutionDiagnostic';
+
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 beforeAll(() =>
   Object.defineProperty(globalThis, 'crypto', {
@@ -22,10 +24,12 @@ afterAll(() => {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 const options = () => ({ assertCurrent: jest.fn() });
 function setup() {
@@ -372,6 +376,122 @@ it('refuses a proof-domain result for a Sentry job and drains retirement', async
   await flush();
   host.disposed.resolve();
   await expect(task).rejects.toThrow('privacy_proof_failed');
+});
+
+it.each([
+  ['ERR_PALI_NATIVE_READINESS_TIMEOUT', 'readiness-timeout'],
+  ['ERR_PALI_NATIVE_JOB_TIMEOUT', 'job-timeout'],
+])(
+  'retains %s through a failed native execution and acknowledged disposal',
+  async (code, expected) => {
+    const host = setup();
+    const task = runSentryJob(
+      host.native,
+      { type: 'validateVote', request: {} },
+      options()
+    );
+    const outcome = task.catch((error) => error);
+    host.pending.reject(Object.assign(Error('private native input'), { code }));
+    await flush();
+    await flush();
+    expect(host.context.dispose).toHaveBeenCalledTimes(1);
+    await expect(
+      runProof(host.native, structuredClone(fixture.input), options())
+    ).rejects.toThrow('privacy_proof_busy');
+    host.disposed.resolve();
+    const error = await outcome;
+    expect(error.message).toBe('privacy_proof_failed');
+    expect(readNativeExecutionCode(error)).toBe(expected);
+    expect(error).not.toHaveProperty('code');
+    expect(error).not.toHaveProperty('cause');
+  }
+);
+
+it('preserves asynchronous native verification-pending rejection through disposal', async () => {
+  const host = setup();
+  const task = runProof(host.native, structuredClone(fixture.input), options());
+  const outcome = task.catch((error) => error);
+  host.pending.reject(new Error('privacy_verification_pending'));
+  await flush();
+  await flush();
+  expect(host.context.dispose).toHaveBeenCalledTimes(1);
+  host.disposed.resolve();
+  const error = await outcome;
+  expect(error.message).toBe('privacy_verification_pending');
+  expect(readNativeExecutionCode(error)).toBeUndefined();
+});
+
+it('keeps unknown native code getters inert and refuses the result', async () => {
+  const host = setup(),
+    getter = jest.fn(() => {
+      throw Error('private getter');
+    });
+  const task = runSentryJob(
+    host.native,
+    { type: 'validateVote', request: {} },
+    options()
+  );
+  const outcome = task.catch((error) => error);
+  host.pending.reject(
+    Object.defineProperty(Error('private input'), 'code', { get: getter })
+  );
+  await flush();
+  await flush();
+  host.disposed.resolve();
+  const error = await outcome;
+  expect(error.message).toBe('privacy_proof_failed');
+  expect(readNativeExecutionCode(error)).toBeUndefined();
+  expect(getter).not.toHaveBeenCalled();
+});
+
+it('classifies the unchanged JS watchdog while preserving cancellation and the disposal drain', async () => {
+  jest.useFakeTimers();
+  const host = setup();
+  try {
+    const task = runSentryJob(
+      host.native,
+      { type: 'validateVote', request: {} },
+      options()
+    );
+    const outcome = task.catch((error) => error);
+    jest.advanceTimersByTime(120000);
+    await flush();
+    expect(host.context.close).toHaveBeenCalled();
+    await expect(
+      runProof(host.native, structuredClone(fixture.input), options())
+    ).rejects.toThrow('privacy_proof_busy');
+    host.disposed.resolve();
+    const error = await outcome;
+    expect(error.message).toBe('privacy_proof_cancelled');
+    expect(readNativeExecutionCode(error)).toBe('job-timeout');
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('retains disposal timeout evidence while poisoning its isolated admission', async () => {
+  let isolated!: typeof import('../../../apps/mobile/modules/pali-private-prover/runner');
+  jest.isolateModules(() => {
+    isolated = jest.requireActual(
+      '../../../apps/mobile/modules/pali-private-prover/runner'
+    );
+  });
+  const host = setup();
+  host.context.dispose.mockImplementation(async () => {
+    throw Object.assign(Error('private input'), {
+      code: 'ERR_PALI_NATIVE_DISPOSAL_TIMEOUT',
+    });
+  });
+  const outcome = isolated
+    .runProof(host.native, structuredClone(fixture.input), options())
+    .catch((error) => error);
+  host.pending.resolve('malformed private native error');
+  const error = await outcome;
+  expect(error.message).toBe('privacy_proof_unavailable');
+  expect(readNativeExecutionCode(error)).toBe('disposal-timeout');
+  await expect(
+    isolated.runProof(host.native, structuredClone(fixture.input), options())
+  ).rejects.toThrow('privacy_proof_unavailable');
 });
 
 it('poisons subsequent admission when document retirement cannot be established', async () => {

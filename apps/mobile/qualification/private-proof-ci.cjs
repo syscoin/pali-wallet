@@ -10,9 +10,11 @@ const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('..
 const { decodeNativeReport } = require('./report-validation.cjs');
 const { CHECKS } = require('./simulator-contract.cjs');
 const { SENTRY_ISOLATED_CHECK } = require('./native-sentry-isolated.ts');
+const { PRIVATE_PROOF_CHECK, readPrivateProofDiagnostic } = require('./private-proof-diagnostics.ts');
+const { readSentryIsolatedDiagnostic } = require('./sentry-isolated-diagnostics.ts');
 const FAILURE_INPUT_BYTES = 100000;
 const FAILURE_OUTPUT_BYTES = 8192;
-const FAILURE_STAGES = new Set(['parameters', 'private proof host', ...CHECKS, SENTRY_ISOLATED_CHECK]);
+const FAILURE_STAGES = new Set(['parameters', 'private proof host', ...CHECKS, SENTRY_ISOLATED_CHECK, PRIVATE_PROOF_CHECK]);
 
 function readJson(file) {
   const descriptor = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW);
@@ -76,6 +78,8 @@ function preserveUnexpectedFailure(platform, output, names, readFailure) {
         failedStage: FAILURE_STAGES.has(report.failedStage) ? report.failedStage : 'unrecognized', completedCheckCount: report.checks.length, completedChecks,
         isolatedSentryQualified: completedChecks.some(check => check.name === SENTRY_ISOLATED_CHECK), networkCalls: report.networkCalls,
         nativeBridgeExercised: report.nativeBridgeExercised === true,
+        ...(report.privateProofDiagnostic ? { privateProofDiagnostic: readPrivateProofDiagnostic(report.privateProofDiagnostic) } : {}),
+        ...(report.sentryIsolatedDiagnostic ? { sentryIsolatedDiagnostic: readSentryIsolatedDiagnostic(report.sentryIsolatedDiagnostic) } : {}),
         ...(report.cryptoDiagnostic ? { cryptoDiagnostic: report.cryptoDiagnostic } : {}), storageDiagnostic: report.storageDiagnostic };
     } catch { return { filePhase, availability: 'invalid' }; }
   });

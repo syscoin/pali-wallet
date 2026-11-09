@@ -19,6 +19,9 @@ import { withWalletConnectQualificationScope } from './walletconnect-scope.ts';
 import type { WalletConnectQualificationDiagnostic } from './walletconnect-native.ts';
 import { makePublicPoolFailure, PUBLIC_POOL_FAILURE_FILE, publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
 import { parsePrivateProofReport, privateProofReportName } from './private-proof-contract.ts';
+import { createPrivateProofDiagnostic, PRIVATE_PROOF_CHECK } from './private-proof-diagnostics.ts';
+import { createSentryIsolatedDiagnostic } from './sentry-isolated-diagnostics.ts';
+import { SENTRY_ISOLATED_CHECK } from './native-sentry-isolated.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -129,6 +132,8 @@ function QualificationApp() {
       let fullCryptoCase: CryptoFullCase | undefined;
       let qualificationLoadDiagnostic: CryptoLoadDiagnostic | undefined;
       const storageDiagnostic = createStorageQualificationDiagnostic();
+      const privateProofDiagnostic = createPrivateProofDiagnostic();
+      const sentryIsolatedDiagnostic = createSentryIsolatedDiagnostic(Date.now);
       const mnemonicEntropy: Uint8Array[] = [];
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
@@ -193,11 +198,13 @@ function QualificationApp() {
             assertCurrent();
             await ensureNativeCryptoReady();
             const { runNativeSentryCrypto } = await import('../modules/pali-private-prover');
-            const { qualifyNativeSentryIsolated, SENTRY_ISOLATED_CHECK } = await import('./native-sentry-isolated.ts');
-            await check(SENTRY_ISOLATED_CHECK, () => qualifyNativeSentryIsolated(owner.signal, runNativeSentryCrypto));
+            const { qualifyNativeSentryIsolated } = await import('./native-sentry-isolated.ts');
+            await check(SENTRY_ISOLATED_CHECK, () => qualifyNativeSentryIsolated(owner.signal, runNativeSentryCrypto, sentryIsolatedDiagnostic.observe));
+            stage = PRIVATE_PROOF_CHECK;
+            privateProofDiagnostic.observe('proof-before-cancel', 'start');
             assertCurrent();
             const { qualifyNativePrivateProof } = await import('./native-private-proof.ts');
-            const result = await qualifyNativePrivateProof({ assertCurrent, signal: owner.signal });
+            const result = await qualifyNativePrivateProof({ assertCurrent, signal: owner.signal, onDiagnostic: privateProofDiagnostic.observe });
             assertCurrent();
             expect(networkCalls === 0);
             const expected = { ...build, token, sdkVersion: paliQualificationSdkIdentity, sdkPackageVersion: installedVersion,
@@ -207,7 +214,9 @@ function QualificationApp() {
               kind: 'native-private-proof', status: 'passed', platform: Platform.OS, sessionId: Constants.sessionId,
               jsNetworkCalls: networkCalls, nativeNetworkObservation: 'unmeasured', sentryQualified: true, result,
             });
+            privateProofDiagnostic.observe('proof-after-cancel', 'report-check');
             parsePrivateProofReport(text, expected);
+            privateProofDiagnostic.observe('proof-after-cancel', 'report-write');
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, text);
             assertCurrent();
             await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
@@ -732,6 +741,8 @@ function QualificationApp() {
         await writeReport(parameters.phase, report);
         setStatus('QUALIFICATION PASSED');
       } catch (error) {
+        if (stage === PRIVATE_PROOF_CHECK) privateProofDiagnostic.capture(error);
+        if (stage === SENTRY_ISOLATED_CHECK) sentryIsolatedDiagnostic.capture(error);
         observingGeneration = false;
         mnemonicEntropy.forEach((bytes) => bytes.fill(0));
         mnemonicEntropy.length = 0;
@@ -758,6 +769,8 @@ function QualificationApp() {
           checks,
           networkCalls,
           failedStage: stage,
+          ...(privateProofDiagnostic.report() ? { privateProofDiagnostic: privateProofDiagnostic.report() } : {}),
+          ...(sentryIsolatedDiagnostic.report() ? { sentryIsolatedDiagnostic: sentryIsolatedDiagnostic.report() } : {}),
           ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),
           ...(walletConnectDiagnostic ? { walletConnectDiagnostic } : {}),
           ...(cryptoEvidence ? { cryptoEvidence, nativeBridgeExercised: true } : {}),
