@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const webpack = require('webpack');
+const TerserPlugin = require('terser-webpack-plugin');
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'source/scripts/privacyProver');
@@ -75,7 +76,19 @@ async function build() {
           },
         ],
       },
-      optimization: { splitChunks: false, runtimeChunk: false },
+      optimization: {
+        splitChunks: false,
+        runtimeChunk: false,
+        // Preserve dependency notices inline, without per-chunk license assets
+        // expanding the native host's fixed manifest entry budget.
+        minimizer: [new TerserPlugin({
+          extractComments: false,
+          terserOptions: { format: { comments: /@license|@preserve|^!/ } },
+        })],
+      },
+      // Proof and Sentry workers use fixed entries in the same pinned package.
+      // Keep lazy SDK crypto chunks within the native manifest's existing cap.
+      plugins: [new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 8 })],
       performance: false,
     };
     const compiler = webpack(config);

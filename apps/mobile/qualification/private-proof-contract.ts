@@ -72,6 +72,7 @@ export function parsePrivateProofReport(
       'sessionId',
       'jsNetworkCalls',
       'nativeNetworkObservation',
+      'sentryQualified',
       'result',
     ]) ||
     value.version !== 1 ||
@@ -79,6 +80,7 @@ export function parsePrivateProofReport(
     value.status !== 'passed' ||
     value.jsNetworkCalls !== 0 ||
     value.nativeNetworkObservation !== 'unmeasured' ||
+    value.sentryQualified !== true ||
     Object.entries(expected).some(([key, entry]) => value[key] !== entry) ||
     !/^[0-9a-f]{40}$/.test(expected.sourceRevision) ||
     !/^[0-9a-f]{64}$/.test(expected.lockfileSha256) ||

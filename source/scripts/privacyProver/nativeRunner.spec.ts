@@ -1,6 +1,9 @@
 import { webcrypto } from 'crypto';
 
-import { runProof } from '../../../apps/mobile/modules/pali-private-prover/runner';
+import {
+  runProof,
+  runSentryJob,
+} from '../../../apps/mobile/modules/pali-private-prover/runner';
 import { NativePrivateWithdrawal } from '../../../apps/mobile/src/custody/privateWithdrawal';
 import fixture from '../../utils/privacy/prover.fixture.json';
 import { encodePrivacyProof } from '../../utils/privacy/proverCore';
@@ -30,6 +33,9 @@ function setup() {
   const disposed = deferred<void>();
   const context = {
     run: jest.fn<Promise<string>, [string, string]>(() => pending.promise),
+    runSentry: jest.fn<Promise<string>, [string, string]>(
+      () => pending.promise
+    ),
     close: jest.fn(),
     dispose: jest.fn(() => disposed.promise),
     addListener: jest.fn<
@@ -245,7 +251,9 @@ it('drains cancelled model preparation through final native document disposal', 
   const close = jest.fn(async () => undefined);
   const model = new NativePrivateWithdrawal(
     {
-      assertCurrent() {},
+      assertCurrent() {
+        return undefined;
+      },
       canSign: true,
       restored: false,
       noteId: 'owned-note',
@@ -254,7 +262,9 @@ it('drains cancelled model preparation through final native document disposal', 
         return {
           close: () => abort.abort(),
           cancelPreparation: () => abort.abort(),
-          async discardWithdrawal() {},
+          async discardWithdrawal() {
+            return undefined;
+          },
           async prepareWithdrawal() {
             await runProof(host.native, structuredClone(fixture.input), {
               ...options(),
@@ -276,7 +286,9 @@ it('drains cancelled model preparation through final native document disposal', 
       async readNoteStatus() {
         return { phase: 'waiting' };
       },
-      async reviewRestored() {},
+      async reviewRestored() {
+        return undefined;
+      },
       close,
     },
     new AbortController().signal
@@ -303,6 +315,63 @@ it('drains cancelled model preparation through final native document disposal', 
   expect(disposed).toBe(true);
   expect(publications).toBe(0);
   expect(model.getSnapshot().review).toBeNull();
+});
+
+it('shares global admission and acknowledged disposal between SDK and proof jobs', async () => {
+  const host = setup();
+  const job = {
+    type: 'import' as const,
+    role: 'voting' as const,
+    scheme: 'secp256k1' as const,
+    secretKey: '02'.padStart(64, '0'),
+  };
+  const task = runSentryJob(host.native, job, options());
+  const [id, json] = host.context.runSentry.mock.calls[0];
+  expect(host.context.run).not.toHaveBeenCalled();
+  expect(JSON.parse(json)).toEqual({ version: 1, kind: 'sentry', job });
+  const key = {
+    role: job.role,
+    scheme: job.scheme,
+    secretKey: job.secretKey,
+    publicKey:
+      '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5',
+  };
+  host.pending.resolve(
+    JSON.stringify({
+      version: 1,
+      kind: 'sentry',
+      id,
+      type: 'success',
+      result: key,
+    })
+  );
+  await flush();
+  await expect(
+    runProof(host.native, structuredClone(fixture.input), options())
+  ).rejects.toThrow('privacy_proof_busy');
+  host.disposed.resolve();
+  await expect(task).resolves.toEqual(key);
+});
+
+it('refuses a proof-domain result for a Sentry job and drains retirement', async () => {
+  const host = setup();
+  const task = runSentryJob(
+    host.native,
+    { type: 'validateVote', request: {} },
+    options()
+  );
+  const id = host.context.runSentry.mock.calls[0][0];
+  host.pending.resolve(
+    JSON.stringify({
+      version: 1,
+      id,
+      type: 'success',
+      result: encodePrivacyProof(fixture.proof, fixture.publicSignals),
+    })
+  );
+  await flush();
+  host.disposed.resolve();
+  await expect(task).rejects.toThrow('privacy_proof_failed');
 });
 
 it('poisons subsequent admission when document retirement cannot be established', async () => {

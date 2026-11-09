@@ -12,7 +12,7 @@ const { readHttpSidecar } = require('./post-sidecar.cjs');
 const expected = { sourceRevision: 'a'.repeat(40), lockfileSha256: crypto.createHash('sha256').update('{}').digest('hex'),
   sdkVersion: '3.9.7', sdkPackageVersion: '3.9.7', platform: 'ios', token: 'b'.repeat(32) };
 const report = () => ({ version: 1, ...expected, kind: 'native-private-proof', status: 'passed',
-  sessionId: '11111111-2222-4333-8444-555555555555', jsNetworkCalls: 0, nativeNetworkObservation: 'unmeasured',
+  sessionId: '11111111-2222-4333-8444-555555555555', jsNetworkCalls: 0, nativeNetworkObservation: 'unmeasured', sentryQualified: true,
   result: { version: 1, provingKeySha256: '8e2d2f22beafb5a9666daebca57b13f8029c3656c65fcfbcc86e2418fa16a3af',
     cases: PRIVATE_PROOF_CASES.map((name, index) => ({ name, outcome: index === 1 ? 'cancelled' : 'verified', durationMs: 100,
       rejectedPublicSignalMutations: index === 1 ? 0 : 6,
@@ -24,6 +24,7 @@ test('proof report admits only exact current identity and complete ordered proof
     value => { value.token = 'c'.repeat(32); }, value => { value.sourceRevision = 'd'.repeat(40); },
     value => { value.sdkVersion = 'other'; }, value => { value.lockfileSha256 = 'e'.repeat(64); },
     value => { value.status = 'failed'; }, value => { value.sessionId = ''; },
+    value => { delete value.sentryQualified; }, value => { value.sentryQualified = false; },
     value => { value.extra = 'private'; }, value => { value.result.extra = true; },
     value => { value.result.cases.pop(); }, value => { value.result.cases.push(value.result.cases[0]); },
     value => { value.result.cases.reverse(); }, value => { value.result.cases[1].outcome = 'verified'; },

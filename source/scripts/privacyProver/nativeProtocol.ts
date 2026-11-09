@@ -7,8 +7,8 @@ import type {
 } from '../../utils/privacy/proverTypes';
 
 export const PRIVATE_PROOF_MESSAGE_LIMIT = 8192;
-export const PRIVATE_PROOF_JOB =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export { PRIVATE_PROOF_JOB } from './nativeJobId.ts';
+import { PRIVATE_PROOF_JOB } from './nativeJobId.ts';
 const inputKeys = [
   'fee',
   'nullifier',
