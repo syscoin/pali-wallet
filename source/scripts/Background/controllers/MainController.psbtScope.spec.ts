@@ -1543,7 +1543,7 @@ describe('PSBT approval context', () => {
   });
 
   it('serializes signed PSBT disclosure with a concurrent collateral reservation', async () => {
-    jest.spyOn(chromeStorage, 'getItem').mockResolvedValue(undefined);
+    jest.spyOn(chromeStorage, 'getItems').mockResolvedValue({});
     state.vault.accounts.HDAccount[0].xpub = 'signature-release-first';
     const reservationScope = {
       walletIdentity: 'signature-release-first',
@@ -1598,7 +1598,7 @@ describe('PSBT approval context', () => {
   });
 
   it('refuses signed PSBT disclosure when collateral was reserved while the signer ran', async () => {
-    jest.spyOn(chromeStorage, 'getItem').mockResolvedValue(undefined);
+    jest.spyOn(chromeStorage, 'getItems').mockResolvedValue({});
     jest.spyOn(chromeStorage, 'setItem').mockResolvedValue(undefined);
     state.vault.accounts.HDAccount[0].xpub = 'signature-reservation-first';
     const reservationScope = {
@@ -1646,7 +1646,7 @@ describe('PSBT approval context', () => {
   });
 
   it('does not release a signature or invalidate approvals when the final protection read fails', async () => {
-    jest.spyOn(chromeStorage, 'getItem').mockResolvedValue(undefined);
+    jest.spyOn(chromeStorage, 'getItems').mockResolvedValue({});
     jest.spyOn(chromeStorage, 'setItem').mockResolvedValue(undefined);
     state.vault.accounts.HDAccount[0].xpub = 'signature-protection-read-failed';
     const reservationScope = {
