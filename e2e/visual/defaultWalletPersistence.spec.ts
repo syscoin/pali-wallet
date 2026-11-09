@@ -211,7 +211,10 @@ test('a refused default-wallet permission write stays visible and retries withou
         await disable.click();
         await expect(page.getByRole('dialog')).toBeVisible();
         await expect(
-          page.getByText(en.settings.paliProviderDisabled, { exact: true })
+          page.getByRole('dialog').getByRole('heading', {
+            name: en.settings.paliProviderDisabled,
+            exact: true,
+          })
         ).toBeVisible();
         await expect(
           footer.getByRole('alert', { includeHidden: true })

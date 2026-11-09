@@ -926,7 +926,7 @@ test('failed SDK initialization cleanup blocks Retry and lock-unlock admission',
       requestExpirySeconds: { min: 60, max: 300 },
       createCore: ({ storage }) => ({
         storage,
-        history: { values: [], get: async () => undefined },
+        history: { values: [], records: new Map(), get: async () => undefined },
         pairing: {
           pairings: { getAll: () => [] },
           disconnect: async () => undefined,

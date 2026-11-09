@@ -131,7 +131,9 @@ function fixture() {
   } satisfies Omit<NativeConnectionRepository, 'calls'>;
   const core: ReturnType<WalletConnectSdk['createCore']> = {
     storage: repository.transport,
-    history: { values: history, get: async (_topic, id) => history.find(value => (value as { id?: number }).id === id) },
+    history: { values: history,
+      get records() { return new Map(history.map(value => [(value as { id: number }).id, value])); },
+      get: async (_topic, id) => history.find(value => (value as { id?: number }).id === id) },
     pairing: {
       pairings: { getAll: () => [{ topic: PAIRING }] },
       async disconnect() {
@@ -1192,6 +1194,48 @@ test('a new adapter cannot manufacture pending admission from an SDK store entry
     const session = (await transport.sessions())[0]!;
     assert.equal(await transport.pending(session.binding, 1, () => {}), null);
   } finally { await transport.close(); }
+});
+
+for (const operation of ['pending', 'respond'] as const) for (const change of ['missing', 'id', 'topic', 'method', 'params', 'response', 'lookup-error'] as const)
+  test(`${operation} refuses ${change} history after fresh request admission`, async () => {
+    const f = fixture(), transport = await openWalletConnectTransport(f.options);
+    try {
+      f.request(); await settle(); const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+      const wire = event.request;
+      const historical = structuredClone(f.history[0]) as { id: number; topic: string; request: { method: string; params: unknown }; response?: unknown };
+      if (change === 'missing') f.core.history.get = async () => undefined;
+      else if (change === 'lookup-error') f.core.history.get = async () => { throw Error('SDK lookup failed'); };
+      else {
+        if (change === 'id') historical.id++;
+        else if (change === 'topic') historical.topic = 'e5'.repeat(32);
+        else if (change === 'method') historical.request.method = 'wc_sessionPing';
+        else if (change === 'params') historical.request.params = {};
+        else historical.response = { error: { code: -32602, message: 'SDK answered' } };
+        f.core.history.get = async () => historical;
+      }
+      let dispatched = false;
+      if (operation === 'pending') assert.equal(await transport.pending(wire.session.binding, wire.id, () => {}), null);
+      else await assert.rejects(transport.respond(wire.session.binding, wire.id, { result: 'must not escape' }, () => {}, () => { dispatched = true; }));
+      assert.equal(dispatched, false); assert.deepEqual(f.responders, []);
+      assert.equal((await transport.sessions()).length, 1);
+      // A failed check retires only this captured request, without closing a healthy session.
+      f.request(2); await settle(); assert(f.events.some(value => value.type === 'request' && value.request.id === 2));
+    } finally { await transport.close(); }
+  });
+
+test('response rechecks captured pending/session identity after the history await', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options), held = deferred(), entered = deferred();
+  try {
+    f.request(); await settle(); const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    const wire = event.request, get = f.core.history.get;
+    f.core.history.get = async (topic, id) => { const value = await get(topic, id); entered.release(); await held.promise; return value; };
+    let dispatched = false;
+    const response = transport.respond(wire.session.binding, wire.id, { result: 'must not escape' }, () => {}, () => { dispatched = true; });
+    const refused = assert.rejects(response); await entered.promise;
+    const raw = structuredClone(rawSession); raw.namespaces.eip155.methods = ['eth_chainId']; f.sessions.set(TOPIC, raw);
+    held.release(); await refused;
+    assert.equal(dispatched, false); assert.deepEqual(f.responders, []);
+  } finally { held.release(); await transport.close(); }
 });
 
 

@@ -77,7 +77,7 @@ export type WalletConnectResponse = Readonly<
 interface CoreClient {
   dispose(): Promise<void>;
   storage: NativeConnectionRepository['transport'];
-  history: { readonly values: unknown[]; get(topic: string, id: number): Promise<unknown> };
+  history: { readonly values: unknown[]; readonly records: ReadonlyMap<number, unknown>; get(topic: string, id: number): Promise<unknown> };
   pairing: {
     pairings: { getAll(): unknown[] };
     disconnect(input: { topic: string }): Promise<void>;
@@ -556,6 +556,40 @@ export async function openWalletConnectTransport(options: {
       return fail();
     return current;
   };
+  const unresolvedHistoryMatches = (historical: unknown, topic: string, id: number, params: unknown) => {
+    try {
+      if (historical === undefined || historical !== core!.history.records.get(id)) return false;
+      const priorRequest = record(ownField(historical, 'request')),
+        response = Object.getOwnPropertyDescriptor(record(historical), 'response');
+      return checkedId(ownField(historical, 'id')) === id &&
+        ownField(historical, 'topic') === topic &&
+        ownField(priorRequest, 'method') === 'wc_sessionRequest' &&
+        JSON.stringify(copy(ownField(priorRequest, 'params'), DAPP_REQUEST_LIMITS.bytes + 1024)) === JSON.stringify(params) &&
+        (!response || ('value' in response && response.value === undefined));
+    } catch { return false; }
+  };
+  const readHistory = async (topic: string, id: number, assertCurrent: () => void) => {
+    guard(); guard(assertCurrent);
+    let historical: unknown;
+    try { historical = await owned(core!.history.get(topic, id)); }
+    catch { /* A failed lookup never proves an unresolved request. */ }
+    guard(); guard(assertCurrent);
+    return historical;
+  };
+  type AdmittedRequest = NonNullable<ReturnType<typeof requests.get>>;
+  const matchesPending = (binding: NativeConnectionBinding, id: number, admitted: AdmittedRequest) => {
+    const key = `${binding.topic}:${id}`;
+    if (requests.get(key) !== admitted || dispatchedRequests.has(key) || admitted.wire.expiresAt <= Date.now()) return false;
+    try {
+      const current = readSession(binding), pending = record(client!.pendingRequest.get(id));
+      return JSON.stringify(current) === admitted.session && pending.topic === binding.topic &&
+        JSON.stringify({ params: copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024),
+          verification: readVerification(pending.verifyContext, current.metadata.url) }) === admitted.serialized;
+    } catch { return false; }
+  };
+  const retireRequest = (key: string, admitted: AdmittedRequest) => {
+    if (requests.get(key) === admitted && !dispatchedRequests.has(key)) requests.delete(key);
+  };
   const readProposal = (
     raw: unknown
   ): Omit<WalletConnectProposal, 'verification'> => {
@@ -710,21 +744,9 @@ export async function openWalletConnectTransport(options: {
               MAX_PENDING_REQUEST_BYTES
           )
             return fail();
-          let historical: unknown;
-          try { historical = await core!.history.get(current.binding.topic, id); }
-          catch { /* A failed SDK lookup supplies no positive freshness proof. */ }
-          guard();
+          const historical = await readHistory(current.binding.topic, id, options.assertOwner);
           if (JSON.stringify(readSession(current.binding)) !== JSON.stringify(current)) return fail();
-          let currentHistoryMatches = false;
-          try {
-            const priorRequest = record(ownField(historical, 'request')),
-              response = Object.getOwnPropertyDescriptor(record(historical), 'response');
-            currentHistoryMatches = checkedId(ownField(historical, 'id')) === id &&
-              ownField(historical, 'topic') === current.binding.topic &&
-              ownField(priorRequest, 'method') === 'wc_sessionRequest' &&
-              JSON.stringify(copy(ownField(priorRequest, 'params'), DAPP_REQUEST_LIMITS.bytes + 1024)) === JSON.stringify(payload) &&
-              (!response || ('value' in response && response.value === undefined));
-          } catch { /* Missing/mismatched history cannot prove a fresh hardware request. */ }
+          const currentHistoryMatches = unresolvedHistoryMatches(historical, current.binding.topic, id, payload);
           const wire: WalletConnectRequest = Object.freeze({
               freshness: replayProofUnavailable || seenRequest || !currentHistoryMatches ||
                 (startupTopics.has(current.binding.topic) && request.expiryTimestamp === undefined)
@@ -999,22 +1021,9 @@ export async function openWalletConnectTransport(options: {
           if (!handedOff) assertRequestCurrent();
         };
         return run(async () => {
-          const current = readSession(binding);
           const key = `${binding.topic}:${checkedId(id)}`;
-          const pending = record(client!.pendingRequest.get(id));
-          if (
-            pending.topic !== binding.topic ||
-            !requests.has(key) ||
-            dispatchedRequests.has(key) ||
-            JSON.stringify({
-              params: copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024),
-              verification: readVerification(
-                pending.verifyContext,
-                current.metadata.url
-              ),
-            }) !== requests.get(key)?.serialized
-          )
-            return fail();
+          const admitted = requests.get(key);
+          if (!admitted || !matchesPending(binding, id, admitted)) return fail();
           const result = copy(response, DAPP_REQUEST_LIMITS.bytes);
           const names = Object.keys(record(result));
           if (names.length !== 1 || !['result', 'error'].includes(names[0]!))
@@ -1026,6 +1035,12 @@ export async function openWalletConnectTransport(options: {
               result.error.message.length > 256)
           )
             return fail();
+          const historical = await readHistory(binding.topic, id, assertRequestCurrent);
+          if (!unresolvedHistoryMatches(historical, binding.topic, id, JSON.parse(admitted.serialized).params) ||
+              !matchesPending(binding, id, admitted)) {
+            retireRequest(key, admitted);
+            return fail();
+          }
           guard(assertRequestCurrent);
           dispatchedRequests.add(key);
           const dispatchResult = onDispatch();
@@ -1038,8 +1053,10 @@ export async function openWalletConnectTransport(options: {
             topic: binding.topic,
             response: { ...result, id, jsonrpc: '2.0' },
           });
-          requests.delete(key);
-          dispatchedRequests.delete(key);
+          if (requests.get(key) === admitted) {
+            requests.delete(key);
+            dispatchedRequests.delete(key);
+          }
         }, assertBeforeHandoff);
       },
       disconnect: (binding: NativeConnectionBinding) =>
@@ -1082,16 +1099,8 @@ export async function openWalletConnectTransport(options: {
       },
       pending: (binding: NativeConnectionBinding, id: number, assertCurrent: () => void) => {
         const key = `${binding.topic}:${checkedId(id)}`;
-        let admitted: Readonly<{ serialized: string; wire: WalletConnectRequest; session: string }> | undefined;
-        const matches = () => {
-          if (!admitted || requests.get(key) !== admitted || dispatchedRequests.has(key) || admitted.wire.expiresAt <= Date.now()) return false;
-          try {
-            const current = readSession(binding), pending = record(client!.pendingRequest.get(id));
-            return JSON.stringify(current) === admitted.session && pending.topic === binding.topic &&
-              JSON.stringify({ params: copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024),
-                verification: readVerification(pending.verifyContext, current.metadata.url) }) === admitted.serialized;
-          } catch { return false; }
-        };
+        let admitted: AdmittedRequest | undefined;
+        const matches = () => !!admitted && matchesPending(binding, id, admitted);
         const check = () => { guard(assertCurrent); if (admitted && !matches()) fail(); };
         return run(async () => {
           // A queued session/expiry event must settle before a restore decision.
@@ -1100,7 +1109,22 @@ export async function openWalletConnectTransport(options: {
           admitted = requests.get(key);
           if (!matches()) { admitted = undefined; return null; }
           return admitted!.wire;
-        }, check); // Recheck SDK identity after the outer durable-storage barrier too.
+        }, check).then(async wire => {
+          if (!wire || !admitted) return null;
+          // History is independent of pendingRequest: SDK sendError can answer
+          // a duplicate id while leaving the original pending row untouched.
+          // Read after run's final storage barrier, then repeat the sync scope checks.
+          const captured = admitted;
+          const historical = await readHistory(binding.topic, id, check);
+          if (!unresolvedHistoryMatches(historical, binding.topic, id, JSON.parse(captured.serialized).params) || !matches()) {
+            retireRequest(key, captured);
+            return null;
+          }
+          return wire;
+        }).catch(() => {
+          if (!closed && ownerOrStorageFailed()) signalUnavailable();
+          return fail();
+        });
       },
       sessions: () =>
         run(async () => Object.freeze(client!.session.getAll().map(session))),
