@@ -151,8 +151,16 @@ private final class ProofDocument: NSObject, WKScriptMessageHandler, WKNavigatio
   var retiring = false
   private var documentRetired = false
   private var readsDrained = false
+  private weak var hostingWindow: UIWindow?
+  private weak var hostingScene: UIWindowScene?
 
   init(owner: PaliProofHost, id: String) throws {
+    let windows = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .filter { $0.activationState == .foregroundActive }
+      .flatMap { $0.windows }
+      .filter { $0.isKeyWindow && !$0.isHidden && $0.alpha > 0 && $0.rootViewController?.viewIfLoaded != nil }
+    guard windows.count == 1, let window = windows.first, let scene = window.windowScene else { throw ProofException() }
     self.owner = owner
     resources = try ProofResources(host: id)
     url = URL(string: "pali-private-prover://\(id)/index.html")!
@@ -160,11 +168,32 @@ private final class ProofDocument: NSObject, WKScriptMessageHandler, WKNavigatio
     configuration.websiteDataStore = .nonPersistent()
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
     configuration.setURLSchemeHandler(resources, forURLScheme: "pali-private-prover")
-    view = WKWebView(frame: .zero, configuration: configuration)
+    view = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
     super.init()
+    hostingWindow = window; hostingScene = scene
     view.isInspectable = false
+    view.isUserInteractionEnabled = false
+    view.accessibilityElementsHidden = true
+    view.isOpaque = false
+    view.backgroundColor = .clear
+    view.scrollView.backgroundColor = .clear
     view.navigationDelegate = self; view.uiDelegate = self
     view.configuration.userContentController.add(self, name: "PaliPrivateProver")
+    // WebKit's iOS activity state requires an actual window. Keep this empty,
+    // noninteractive carrier behind the wallet UI through retirement and reads.
+    window.insertSubview(view, at: 0)
+    guard ownsForegroundWindow else { detach(); throw ProofException() }
+  }
+
+  var ownsForegroundWindow: Bool {
+    guard let window = hostingWindow, let scene = hostingScene else { return false }
+    return UIApplication.shared.applicationState == .active && scene.activationState == .foregroundActive &&
+      window.windowScene === scene && window.isKeyWindow && !window.isHidden && window.alpha > 0 && view.window === window
+  }
+
+  func load() throws {
+    guard ownsForegroundWindow else { throw ProofException() }
+    view.load(URLRequest(url: url))
   }
 
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -206,6 +235,9 @@ private final class ProofDocument: NSObject, WKScriptMessageHandler, WKNavigatio
                initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) { completionHandler(nil) }
 
   func invoke(_ operation: String, arguments: [String: Any]) {
+    if operation == "start" || operation == "startSentry" {
+      guard ownsForegroundWindow else { owner?.fail(); return }
+    }
     // Fixed program text. Private input is an argument, never evaluated source.
     let program = operation == "start" ? "globalThis.PaliPrivacyProof.start(id, input)" :
       operation == "startSentry" ? "globalThis.PaliPrivacyProof.startSentry(id, input)" :
@@ -293,7 +325,7 @@ final class PaliProofHost: SharedObject {
       do {
         let document = try ProofDocument(owner: self, id: id)
         self.document = document
-        document.view.load(URLRequest(url: document.url))
+        try document.load()
         let timeout = DispatchWorkItem { [weak self] in
           guard let self else { return }
           self.fail(self.submitted ? .jobTimeout : .readinessTimeout)
@@ -332,6 +364,7 @@ final class PaliProofHost: SharedObject {
       workerRetired = true; requestRetirement(); return
     }
     guard !isRevoked else { return }
+    guard document?.ownsForegroundWindow == true else { fail(); return }
     if type == "ready" && keys == ["version", "id", "type"], !submitted, let input {
       submitted = true; self.input = nil
       document?.invoke(sentry ? "startSentry" : "start", arguments: ["id": id, "input": input])
