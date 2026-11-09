@@ -417,6 +417,7 @@ function operationState(): NativeSmartAccountOperationSnapshot {
     },
     payerReview: null,
     transactionHash: null,
+    userOperationSubmissionStarted: false,
     error: null,
   };
 }

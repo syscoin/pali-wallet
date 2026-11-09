@@ -21,7 +21,7 @@ function fixture() {
     assertCurrent() { assert(live, 'owner changed'); },
     async prepare() { return { kind: 'authorization', intent, operation: prepared }; },
     async sign() { signed++; return '0xsigned'; },
-    async submit(_prepared, _signature, _signal, guard, _payer, broadcast) { guard(); submitted++; broadcast(hash); return hash; },
+    async submit(_prepared, _signature, _signal, guard, _payer, broadcast) { guard(); submitted++; broadcast(hash, 'submit-operation'); return hash; },
     async refreshMetadata(_signal, guard) { guard(); refreshed++; if (failRefresh) throw Error('read unavailable'); },
   };
   return { model: new NativeSmartAccountOperation(host), host, counts: () => ({ signed, submitted, refreshed }),

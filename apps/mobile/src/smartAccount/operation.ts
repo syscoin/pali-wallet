@@ -123,6 +123,7 @@ export type NativeSmartAccountOperationSnapshot = Readonly<{
   }> | null;
   payerReview: SmartAccountPayerReview | null;
   transactionHash: string | null;
+  userOperationSubmissionStarted: boolean;
   metadataRefresh?: 'refreshing' | 'failed' | 'complete';
   error: string | null;
 }>;
@@ -152,7 +153,7 @@ export type NativeSmartAccountOperationHost = Readonly<{
       review: Omit<SmartAccountPayerReview, 'id'>,
       authorize: () => void
     ) => Promise<void>,
-    onBroadcast: (hash: string) => void
+    onBroadcast: (hash: string, purpose: SmartAccountPayerReview['purpose']) => void
   ): Promise<string>;
 }>;
 
@@ -201,6 +202,7 @@ export class NativeSmartAccountOperation {
       authorization: null,
       payerReview: null,
       transactionHash: null,
+      userOperationSubmissionStarted: false,
       error: null,
     });
     this.expiry = setTimeout(
@@ -457,12 +459,16 @@ export class NativeSmartAccountOperation {
         this.lifetime.signal,
         this.check,
         (review, authorize) => this.reviewPayer(review, authorize),
-        (hash) => {
+        (hash, purpose) => {
+          const userOperationSubmissionStarted =
+            this.snapshot.userOperationSubmissionStarted ||
+            purpose === 'submit-operation';
           if (this.lifetime.signal.aborted) {
-            this.publish({ transactionHash: hash });
+            this.publish({ transactionHash: hash, userOperationSubmissionStarted });
           } else {
             this.publish({
               transactionHash: hash,
+              userOperationSubmissionStarted,
               phase: 'waiting',
               payerReview: null,
             });
