@@ -7,9 +7,12 @@ import type { NativePsbtReview as Review } from '../connections/psbtRequests';
 import type { NativeConnectionsView } from '../connections/types';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
+import { useDappLedgerConnection } from './useDappLedgerConnection';
 
 /** Only the common engine's verified public review enters this screen. */
-export function NativePsbtReview({ review, controller }: { review: Review; controller: Pick<NativeConnectionsView, 'approvePsbt' | 'rejectPsbt'> }) {
+export function NativePsbtReview({ review, controller, ledgerConnection }: { review: Review; controller: Pick<NativeConnectionsView, 'approvePsbt' | 'rejectPsbt' | 'getSnapshot'>; ledgerConnection?: NativeLedgerConnectionView }) {
+  const ledger = useDappLedgerConnection({ review, controller, ledgerConnection });
   const { t } = useNativeTranslation();
   const identity = `${review.id}:${review.expiresAt}`, details = review.details;
   const [retired, setRetired] = useState<string | null>(null);
@@ -39,9 +42,9 @@ export function NativePsbtReview({ review, controller }: { review: Review; contr
     };
   }, [controller, review.id, review.expiresAt, reject]);
   const unavailable = !details || !!review.error || retired === identity;
-  const blocked = unavailable || review.busy || review.attempted || submitting === identity;
+  const blocked = unavailable || ledger.blocked || review.busy || review.attempted || submitting === identity;
   const approve = async () => {
-    if (blocked || busy.current || !owner.current.active || owner.current.identity !== identity || owner.current.details !== details ||
+    if (blocked || !ledger.canApprove() || busy.current || !owner.current.active || owner.current.identity !== identity || owner.current.details !== details ||
         Date.now() >= review.expiresAt || AppState.currentState !== 'active') return;
     const ticket = {}; attempt.current = ticket; busy.current = true;
     setSubmitting(identity); setFailed(null);
@@ -61,6 +64,7 @@ export function NativePsbtReview({ review, controller }: { review: Review; contr
     ? { title: t('mobile.connections.psbt.submissionTitle'), body: t('mobile.connections.psbt.submissionBody') }
     : { title: t('mobile.connections.psbt.unavailableTitle'), body: t('mobile.connections.psbt.unavailableBody') };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}><Screen footer={<>
+    {ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" onPress={ledger.connect} />}
     <Button title={review.busy || submitting === identity ? t('send.signing') : action} disabled={blocked} onPress={approve} testID="native-psbt-approve" />
     <Button title={review.attempted ? t('buttons.close') : t('buttons.reject')} variant="quiet" onPress={reject} />
   </>}>
@@ -113,7 +117,7 @@ export function NativePsbtReview({ review, controller }: { review: Review; contr
     {(review.error && review.error !== 'BLOCKED_SITE' && review.error !== 'SITE_MISMATCH' || failed === identity && !review.error) && <Notice
       title={errorText.title} body={errorText.body} />}
     {review.txid && <Text selectable style={s.value}>{review.txid}</Text>}
-  </Screen></SafeAreaView>;
+  </Screen>{ledger.modal}</SafeAreaView>;
 }
 const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 20, gap: 10 },
   heading: { fontSize: 18, fontWeight: '700' }, muted: { color: colors.muted }, body: { marginVertical: 12 },

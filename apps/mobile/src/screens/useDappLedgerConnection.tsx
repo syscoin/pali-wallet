@@ -1,21 +1,29 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
+import type { NativePsbtReview } from '../connections/psbtRequests';
 import type { NativeConnectionsView, NativeSigningReview } from '../connections/types';
 import { NativeLedgerConnectionModal } from './NativeLedger';
 
+type Review = NativeSigningReview | NativePsbtReview;
+const kind = (review: Review) => 'attempted' in review ? 'psbt' : review.kind;
+const availableReview = (review: Review) => !review.busy && !review.error && ('attempted' in review
+  ? !review.attempted && !!review.details
+  : !review.dispatched && !review.needsAccountSwitch);
+
 /** A device connection belongs to this review; connecting never approves it. */
 export function useDappLedgerConnection({ review, controller, ledgerConnection }: {
-  review: NativeSigningReview;
+  review: Review;
   controller: Pick<NativeConnectionsView, 'getSnapshot'>;
   ledgerConnection?: NativeLedgerConnectionView;
 }) {
   const identity = `${review.id}:${review.revision}:${review.expiresAt}`;
   const [expiredIdentity, setExpiredIdentity] = useState<string | null>(null);
   const expired = expiredIdentity === identity;
-  const available = !expired && !review.busy && !review.dispatched && !review.error && !review.needsAccountSwitch;
+  const available = !expired && availableReview(review);
+  const reviewKind = kind(review);
   const scope = useMemo(() => ({ controller, ledgerConnection, id: review.id, revision: review.revision,
-    expiresAt: review.expiresAt, kind: review.kind, available }),
-  [controller, ledgerConnection, review.id, review.revision, review.expiresAt, review.kind, available]);
+    expiresAt: review.expiresAt, kind: reviewKind, available }),
+  [controller, ledgerConnection, review.id, review.revision, review.expiresAt, reviewKind, available]);
   type Picker = { scope: typeof scope; source: NativeLedgerConnectionView; controller: NativeLedgerConnectionView };
   const owner = useRef<typeof scope | null>(scope), held = useRef<Picker | null>(null);
   const [picker, setPicker] = useState<Picker | null>(null);
@@ -48,9 +56,10 @@ export function useDappLedgerConnection({ review, controller, ledgerConnection }
   const isCurrent = () => {
     if (owner.current !== scope || !scope.available || Date.now() >= scope.expiresAt) return false;
     try {
-      const current = controller.getSnapshot().signingReview;
+      const snapshot = controller.getSnapshot();
+      const current = scope.kind === 'psbt' ? snapshot.psbtReview : snapshot.signingReview;
       return current?.id === scope.id && current.revision === scope.revision && current.expiresAt === scope.expiresAt &&
-        current.kind === scope.kind && !current.busy && !current.dispatched && !current.error && !current.needsAccountSwitch;
+        kind(current) === scope.kind && availableReview(current);
     } catch { return false; }
   };
   const activePicker = picker?.scope === scope && available ? picker : null;
