@@ -5,7 +5,7 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
 type LedgerState = ReturnType<typeof useDappLedgerConnection>;
-function fixture(kind: 'message' | 'transaction' = 'message') {
+function fixture(kind: 'message' | 'transaction' | 'psbt' = 'message') {
   let clock = 100, connected = false, closes = 0, timerId = 0, current: object | null;
   const timers = new Map<number, () => void>(), approvals: unknown[][] = [], deviceActions: string[] = [];
   const review: any = { kind, id: 'exact-request', revision: 7, expiresAt: 1000, busy: false, dispatched: false,
@@ -15,8 +15,9 @@ function fixture(kind: 'message' | 'transaction' = 'message') {
     method: kind === 'message' ? 'personal_sign' : 'eth_sendTransaction', message: 'Exact message', order: null,
     transaction: { from: `0x${'12'.repeat(20)}`, to: `0x${'34'.repeat(20)}`, value: '1', data: '0x', nonce: '3' },
     maximumFeeUnits: '1', maximumTotalUnits: '2', feeChoice: null, feeComparison: null, approval: null, broadcastHash: null };
+  if (kind === 'psbt') Object.assign(review, { attempted: false, details: {} });
   current = review;
-  const controller: any = { getSnapshot: () => ({ signingReview: current }),
+  const controller: any = { getSnapshot: () => ({ signingReview: kind === 'psbt' ? null : current, psbtReview: kind === 'psbt' ? current : null }),
     async approveRequest(...args: unknown[]) { approvals.push(args); }, async rejectRequest() {}, async activateRequestAccount() {} };
   const ledgerConnection: any = { purpose: 'connect', subscribe: () => () => {}, isConnected: () => connected,
     async close() { closes++; }, async start() { deviceActions.push('start'); },
@@ -109,4 +110,15 @@ for (const field of ['busy', 'dispatched', 'needsAccountSwitch', 'error'] as con
 test('unmount closes its original picker and makes held handlers inert', () => {
   const f = fixture(), old = f.state(); old.connect(); const picker = modal(f.state()); f.close();
   old.connect(); picker.props.onFinished(); assert.equal(f.closes(), 1); assert(!old.canApprove());
+});
+
+test('PSBT connection is review-owned, needs a fresh approval after connect and retires on attempted signing', () => {
+  const f = fixture('psbt');
+  try {
+    const original = f.state(); assert(original.showConnect); assert(!original.canApprove()); original.connect();
+    const picker = modal(f.state()); f.connect(); assert(f.state().blocked); assert.deepEqual(f.approvals, []);
+    picker.props.onFinished(); assert(f.state().canApprove()); assert.deepEqual(f.approvals, []);
+    f.review.attempted = true; const retired = f.state(); assert(!retired.canApprove()); assert(!retired.showConnect);
+    original.connect(); assert.equal(f.state().modal, null);
+  } finally { f.close(); }
 });

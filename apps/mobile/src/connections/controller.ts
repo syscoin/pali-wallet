@@ -487,9 +487,9 @@ export class NativeConnectionsController {
     const scope = this.host && this.options.source.getSnapshot().phase === 'ready' ? this.chainScope() : undefined;
     return METHODS.filter((method) => {
       const hardware = accountType === 'Ledger' || accountType === 'Trezor';
-      if (hardware && (scope?.kind === 'syscoin' || method === 'eth_signTypedData')) return false;
+      if (hardware && (scope?.kind === 'syscoin' && accountType !== 'Ledger' || method === 'eth_signTypedData')) return false;
       if (scope?.kind === 'syscoin') {
-        if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
+        if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return !hardware && Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
         return isDappSyscoinRead(method) || (DAPP_MODE_METHODS as readonly string[]).includes(method) || isDappPermissionMethod(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method);
       }
       if (isDappSyscoinRead(method) || (SENTRY_DAPP_METHODS as readonly string[]).includes(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method)) return false;
@@ -542,7 +542,7 @@ export class NativeConnectionsController {
     const scope = this.chainScope(context), chain = dappCaipChain(scope), family = dappNamespace(scope);
     const account = context.accounts.find((value) => value.id === accountId);
     if (accountId && !account) return false;
-    if (scope.kind === 'syscoin' && (account?.type === 'Ledger' || account?.type === 'Trezor')) return false;
+    if (scope.kind === 'syscoin' && account?.type === 'Trezor') return false;
     const supported = this.supportedMethods(account?.type, account?.id);
     return Object.entries(proposal.requiredNamespaces).every(([name, raw]) => {
       const requirement = raw as {
@@ -1279,7 +1279,7 @@ export class NativeConnectionsController {
     if (!connection || connection.session.binding.origin !== origin || !grant || grant.chain !== 'syscoin' || !account || !context.unlocked || context.activeAccountId !== account.id || this.options.source.getSnapshot().phase !== 'ready') return reject(4100, 'Account is unavailable');
     const scope = this.chainScope(context);
     if (scope.kind !== 'syscoin' || scope.chainId !== grant.chainId || grant.utxoAccount?.slip44 !== scope.slip44 || grant.utxoAccount.xpub !== account.xpub || !this.permits(connection, wire, account, scope)) return reject(4100, 'Method or account is not authorized');
-    if ((account.type !== 'HDAccount' && account.type !== 'Imported') || !this.supportedMethods(account.type, account.id).includes(wire.method)) return reject(4200, 'PSBT signing is unavailable for this account');
+    if ((account.type !== 'HDAccount' && account.type !== 'Imported' && account.type !== 'Ledger') || !this.supportedMethods(account.type, account.id).includes(wire.method)) return reject(4200, 'PSBT signing is unavailable for this account');
     if (this.hasPendingWire(wire)) return;
     if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return reject(-32005, 'Too many requests');
     const selectedNetwork = this.host!.syscoin.registration(), network = JSON.stringify(selectedNetwork);

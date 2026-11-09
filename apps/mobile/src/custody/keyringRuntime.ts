@@ -179,6 +179,7 @@ import { createNativeSentryWalletAuthority } from './sentryWalletAuthority.ts';
 import type { RunSentryCrypto } from '../../../../source/wallet/sentryCryptoJobs.ts';
 import { createNativeHardwareDappSigning, type NativeHardwareDappAccount, type NativeHardwareDappSigning } from '../hardware/dappSigning.ts';
 import { createOwnedKeyringTransfer } from '../hardware/ownedKeyringTransfer.ts';
+import { withOwnedLedgerConnection } from '../hardware/withOwnedLedgerConnection.ts';
 import type { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 
 type SoftwareSdk = NativeKeyringSdk;
@@ -3950,23 +3951,11 @@ export function createKeyringRuntimeFactory(
                   if (requested.id !== selected.id || requested.index !== selected.index || requested.type !== selected.type ||
                       requested.address !== selected.address) throw new KeyringRuntimeError('CANCELLED');
                   if (requested.type === 'Ledger') {
-                    const transport = ledgerTransport, ring = binding.current();
-                    if (!transport || !ring.ledgerSigner || !ledger.isConnected()) throw new KeyringRuntimeError('NOT_READY');
-                    const guard = () => {checkGuard(assertSigningCurrent); if (ledgerTransport !== transport || !ledger.isConnected()) throw new KeyringRuntimeError('CANCELLED');};
-                    let retirement: Promise<void> | undefined;
-                    const retire = () => {
-                      retirement ??= ledgerTransport === transport ? Promise.resolve(retireLedger()) : transport.dispose();
-                      void retirement.catch(() => undefined);
-                    };
-                    approval.signal.addEventListener('abort', retire, {once: true});
-                    try {
-                      guard();
-                      const result = await operation({kind: 'Ledger', signer: ring.ledgerSigner, transactions: ring.ethereumTransaction});
-                      guard(); return result;
-                    } finally {
-                      approval.signal.removeEventListener('abort', retire);
-                      await retirement;
-                    }
+                    const ring = binding.current(), signer = ring.ledgerSigner;
+                    if (!signer) throw new KeyringRuntimeError('NOT_READY');
+                    return withOwnedLedgerConnection({ signal: approval.signal, assertCurrent: assertSigningCurrent,
+                      connected: () => ledger.isConnected(), current: () => ledgerTransport, retire: retireLedger,
+                    }, () => operation({kind: 'Ledger', signer, transactions: ring.ethereumTransaction}));
                   }
                   if (pendingTrezor || trezorSession) throw new KeyringRuntimeError('NOT_READY');
                   const captured = generation, admittedEpoch = trezorEpoch;
@@ -4985,12 +4974,14 @@ export function createKeyringRuntimeFactory(
             const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
             const selected = selectedAccount(), network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
             if (!dependencies.utxoFetch || !utxoRecords || !network ||
-                (selected.type !== 'HDAccount' && selected.type !== 'Imported') || !supportsUtxoSoftwareCustody(network))
+                (selected.type !== 'HDAccount' && selected.type !== 'Imported' && selected.type !== 'Ledger') ||
+                (selected.type !== 'Ledger' && !supportsUtxoSoftwareCustody(network)))
               throw new KeyringRuntimeError('NOT_READY');
             const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
             const { xpub } = account;
             if (selected.type === 'Imported') checkedUtxoImport(account, network);
-            const guard = () => {
+            let assertSigningCurrent = () => undefined as void;
+            const assertContext = () => {
               current(captured); checkGuard(assertOwner); current(captured);
               const actual = state.activeNetwork, live = state.accounts[selected.type][selected.index];
               if (signal.aborted || ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
@@ -5002,6 +4993,7 @@ export function createKeyringRuntimeFactory(
                 throw new KeyringRuntimeError('CANCELLED');
               if (active || reserved) throw new KeyringRuntimeError('BUSY');
             };
+            const guard = () => { assertContext(); checkGuard(assertSigningCurrent); };
             guard(); await dataBinding(captured, guard); guard();
             const profileId = await ring.getPrivateRecordProfileId(); guard();
             const collateral = getSentryKeyNetwork()
@@ -5013,7 +5005,15 @@ export function createKeyringRuntimeFactory(
                 account: { address: selected.address, id: selected.index, type: selected.type, xpub },
                 network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
                   genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url } },
-              session: { keyring: ring, assertCurrent: guard }, sdk: ring.syscoinTransaction,
+              session: { keyring: ring, assertCurrent: guard }, sdk: {
+                decodeRawTransaction: (...args) => ring.syscoinTransaction.decodeRawTransaction(...args),
+                sendTransaction: (...args) => ring.syscoinTransaction.sendTransaction(...args),
+                signPSBT: (input, read) => selected.type === 'Ledger'
+                  ? withOwnedLedgerConnection({ signal, assertCurrent: assertContext,
+                      connected: () => ledger.isConnected(), current: () => ledgerTransport, retire: retireLedger,
+                    }, check => { assertSigningCurrent = check; return ring.syscoinTransaction.signPSBT(input, read); })
+                  : ring.syscoinTransaction.signPSBT(input, read),
+              },
               records: utxoRecords, fetch: dependencies.utxoFetch, collateral, sentry: sentryApprovals?.operations ?? null,
             });
             try { guard(); approval.assertCurrent(); } catch (cause) { approval.dispose(); throw cause; }

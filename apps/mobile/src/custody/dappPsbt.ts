@@ -11,13 +11,12 @@ import type { createNativeSentryCollateral } from './sentryNodeManagement.ts';
 import type { UtxoSignedScope } from '../../../../source/wallet/utxoSignedBinding.ts';
 import type { UtxoRecordSession, UtxoSignedRecords } from '../../../../source/wallet/utxoSignedRecords.ts';
 import type { NativeSentryApprovals } from './sentryApprovals.ts';
-import type { ISyscoinTransactions } from '@sidhujag/sysweb3-keyring';
 
 type Ports = Readonly<{
   network: UtxoNetwork;
   scope: UtxoSignedScope;
   session: UtxoRecordSession;
-  sdk: ISyscoinTransactions;
+  sdk: PsbtApprovalHost['sdk'];
   records: UtxoSignedRecords;
   fetch: typeof globalThis.fetch;
   collateral: ReturnType<typeof createNativeSentryCollateral> | null;
@@ -75,7 +74,9 @@ export async function prepareNativeDappPsbt(request: NativePsbtRequest, lifetime
     sdk: sender,
     assertCurrent: check,
     assertSoftwareSpend(inputs, outputs) {
-      check(); assertUtxoSoftwareSpend(scope.network, [...inputs, ...outputs.map(output => output.script)]);
+      check();
+      if (scope.account.type !== 'Ledger' && scope.account.type !== 'Trezor')
+        assertUtxoSoftwareSpend(scope.network, [...inputs, ...outputs.map(output => output.script)]);
     },
     async withRead(current, signal, operation) {
       const controller = new AbortController();

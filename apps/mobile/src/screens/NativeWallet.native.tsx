@@ -856,7 +856,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     bridge.current?.onSelectWatch(selection);
   };
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.psbtReview && connectionView)
-    return <NativePsbtReview key={connectionSnapshot.psbtReview.id} review={connectionSnapshot.psbtReview} controller={connectionView} />;
+    return <NativePsbtReview key={connectionSnapshot.psbtReview.id} review={connectionSnapshot.psbtReview} controller={connectionView} ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.sentryReview && connectionView)
     return <NativeSentryReview key={connectionSnapshot.sentryReview.id} review={connectionSnapshot.sentryReview} controller={connectionView} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.controlReview && connectionView)

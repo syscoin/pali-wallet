@@ -28,11 +28,12 @@ function fixture(method: 'sys_sign' | 'sys_signAndSend' = 'sys_sign') {
       outputs: [{ index: 0, address: 'bc1qrecipient', scriptHex: '0014' + '11'.repeat(20), valueSatoshis: '877',
         assets: [{ assetGuid: '123456', amount: '1.25', rawAmount: '125000000', symbol: 'SYSX', isBurn: false }] }] } };
   let approveWait = Promise.resolve();
-  const controller = { async approvePsbt(...args: unknown[]) { approvals.push(args); await approveWait; },
+  const controller = { getSnapshot: () => ({ psbtReview: review }), async approvePsbt(...args: unknown[]) { approvals.push(args); await approveWait; },
     async rejectPsbt(id: string) { rejections.push(id); } };
   const screen = screenFixture(new NodeURL('../src/screens/NativePsbtReview.tsx', import.meta.url), 'NativePsbtReview', {
     'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+    './useDappLedgerConnection': { useDappLedgerConnection: () => ({ blocked: false, canApprove: () => true, showConnect: false, modal: null }) },
     './DappSiteStatus': { DappSiteStatus: 'Site' }, '../core/amounts': { formatBaseUnits },
     '../platform/localization': { useNativeTranslation: () => ({ t: translation }) },
   }, { Date: { now: () => clock }, setTimeout: (fn: () => void) => { timers.set(++serial, fn); return serial; }, clearTimeout: (id: number) => timers.delete(id) });

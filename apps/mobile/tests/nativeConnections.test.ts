@@ -75,6 +75,8 @@ function fixture(
 ) {
   const { secondAccount = false, smart = false, smartMessages = false } = options;
   const firstAccountType = options.hardware ?? (smart ? 'SmartAccount' : options.imported ? 'Imported' : 'HDAccount');
+  const utxoAccountType = options.hardware ?? 'HDAccount';
+  const utxoAccountId = options.hardware ? `${options.hardware.toLowerCase()}:57:0` : 'hd:57:0';
   const firstAccountId = options.hardware ? `${options.hardware.toLowerCase()}:60:0` : smart ? 'smart:60:0' : options.imported ? 'imported:60:0' : 'hd:60:0';
   let snapshot: CustodySnapshot = {
     phase: 'ready',
@@ -112,7 +114,7 @@ function fixture(
   let siteBlocked = false;
   let siteWait: Promise<void> = Promise.resolve();
   let blacklistedAddress = false;
-  let selectedAccountId = options.utxo ? 'hd:57:0' : firstAccountId;
+  let selectedAccountId = options.utxo ? utxoAccountId : firstAccountId;
   const responses: unknown[] = [],
     emissions: unknown[] = [],
     emissionScopes: string[] = [],
@@ -225,7 +227,7 @@ function fixture(
       context: () => snapshot.phase === 'ready' ? ({ revision: snapshot.revision, catalogueRevision: snapshot.revision, activeAccountId: selectedAccountId, networkId: selectedUtxo ? 'syscoin' : 'ethereum', networkLabel: selectedUtxo ? 'Syscoin' : 'Ethereum', accounts: [
         { id: firstAccountId, index: 0, type: firstAccountType, address: ADDRESS, slip44: 60, label: 'Account 1' },
         ...(secondAccount ? [{ id: 'hd:60:1', index: 1, type: 'HDAccount' as const, address: '0x' + '22'.repeat(20), slip44: 60, label: 'Account 2' }] : []),
-        { id: 'hd:57:0', index: 0, type: 'HDAccount' as const, address: receivingAddress, slip44: 57, label: 'Syscoin account' },
+        { id: utxoAccountId, index: 0, type: utxoAccountType, address: receivingAddress, slip44: 57, label: 'Syscoin account' },
       ] }) : null,
       async prepare(request, _owner, signal, check) {
         const chain = selectedChainId;
@@ -241,7 +243,7 @@ function fixture(
             if (controlFailure) throw controlFailure;
             controlCommits.push(request);
             if (request.method === 'wallet_switchEthereumChain' || 'kind' in request) {
-              selectedChainId = request.chainId; selectedUtxo = 'kind' in request && request.kind === 'syscoin'; selectedAccountId = selectedUtxo ? 'hd:57:0' : defaultEvmAccountId;
+              selectedChainId = request.chainId; selectedUtxo = 'kind' in request && request.kind === 'syscoin'; selectedAccountId = selectedUtxo ? utxoAccountId : defaultEvmAccountId;
               snapshot = { ...snapshot, revision: snapshot.revision + 1 };
               for (const listener of listeners) listener();
               onNetworkCommitted();
@@ -380,7 +382,7 @@ function fixture(
       unlocked: ['ready', 'authenticating'].includes(snapshot.phase),
       accounts:
         ['ready', 'authenticating'].includes(snapshot.phase)
-          ? selectedUtxo ? [{ id: 'hd:57:0', index: 0, type: 'HDAccount' as const, address: receivingAddress, xpub: 'stable-utxo-public-account', label: 'Syscoin account' }] : [
+          ? selectedUtxo ? [{ id: utxoAccountId, index: 0, type: utxoAccountType, address: receivingAddress, xpub: 'stable-utxo-public-account', label: 'Syscoin account' }] : [
               {
                 id: firstAccountId,
                 index: 0,
@@ -726,7 +728,7 @@ function fixture(
     },
     selectDisplayAccount(id: string) { selectedAccountId = id; defaultEvmAccountId = id; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
     selectEvm() { selectedUtxo = false; selectedAccountId = defaultEvmAccountId; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
-    selectUtxo() { selectedUtxo = true; selectedAccountId = 'hd:57:0'; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
+    selectUtxo() { selectedUtxo = true; selectedAccountId = utxoAccountId; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
     selectChain(chainId: number) {
       selectedChainId = chainId;
       snapshot = { ...snapshot, revision: snapshot.revision + 1 };
@@ -1594,7 +1596,7 @@ async function connectedFixture(
   });
   await f.view.approve(
     3,
-    options.accountId ?? (options.utxo ? 'hd:57:0' : 'hd:60:0'),
+    options.accountId ?? (options.utxo ? options.hardware ? `${options.hardware.toLowerCase()}:57:0` : 'hd:57:0' : 'hd:60:0'),
     options.utxo ? 'syscoin' : 'ethereum',
     f.view.getSnapshot().revision
   );
@@ -4281,4 +4283,38 @@ test('a legacy fee choice stays legacy through the native reprepare and submissi
   } finally {
     await f.controller.dispose();
   }
+});
+
+for (const method of PSBT_DAPP_METHODS) test(`Ledger ${method} negotiates bip122 and requires one fresh original-request approval`, async () => {
+  const f = await connectedFixture({ utxo: true, hardware: 'Ledger' });
+  try {
+    const methods = f.session.namespaces.bip122!.methods;
+    assert(methods.includes(method)); assert(!methods.some(value => (SENTRY_DAPP_METHODS as readonly string[]).includes(value)));
+    await syscoinRequest(f, method, [EXTERNAL_PSBT]);
+    const review = f.view.getSnapshot().psbtReview; assert(review?.details);
+    assert.equal(f.psbtApprovals.length, 0);
+    await assert.rejects(f.view.approvePsbt(review.id, review.revision - 1));
+    assert.equal(f.psbtApprovals.length, 0);
+    await f.view.approvePsbt(review.id, review.revision);
+    assert.deepEqual(f.psbtApprovals, [{ method, origin: ORIGIN, psbt: EXTERNAL_PSBT }]);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: method === 'sys_sign' ? EXTERNAL_PSBT : { txid: 'ef'.repeat(32) } } });
+  } finally { await f.controller.dispose(); }
+});
+for (const change of ['lock', 'network', 'session', 'revoke', 'expiry'] as const) test(`Ledger external PSBT cannot disclose a late result after ${change}`, async () => {
+  const f = await connectedFixture({ utxo: true, hardware: 'Ledger' }), held = Promise.withResolvers<void>(), readNow = Date.now;
+  let now = readNow(); Date.now = () => now;
+  try {
+    await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT]);
+    const review = f.view.getSnapshot().psbtReview; assert(review?.details);
+    f.setPsbtSignWait(held.promise);
+    const signing = f.view.approvePsbt(review.id, review.revision), rejected = assert.rejects(signing);
+    await settle();
+    if (change === 'lock') f.lock(); else if (change === 'network') f.selectChain(5700);
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'revoke') await syscoinRequest(f, 'wallet_revokePermissions', [{ eth_accounts: {} }], 11);
+    else now += 300001;
+    held.resolve(); await rejected; await settle();
+    assert(!f.responses.some(value => (value as { id: number }).id === 10));
+    assert.equal(f.view.getSnapshot().psbtReview, null);
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
 });
