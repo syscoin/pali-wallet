@@ -1,4 +1,4 @@
-import { getAddress } from '../ethersV6Compat.ts';
+import { AddressZero, getAddress } from '../ethersV6Compat.ts';
 import { toP256PasskeyAuthConfig } from '../passkey/account.ts';
 import {
   SLH_DSA_SIGNATURE_LIMIT,
@@ -6,12 +6,14 @@ import {
 } from '../slhDsa/constants.ts';
 
 import {
+  encodeEcdsaValidatorInitData,
   encodeSLHDSAValidatorInitData,
   getConfiguredAuthenticatorAddress,
   type PaliAuthConfig,
 } from './account.ts';
 import type {
   ISmartAccountMetadata,
+  SmartAccountEcdsaConfig,
   SmartAccountP256WebAuthnConfig,
   SmartAccountSLHDSAConfig,
 } from '../../types/network.ts';
@@ -19,6 +21,35 @@ import type {
 export type SmartAccountAuthenticatorBuildResult = {
   auth: PaliAuthConfig;
   metadata: Partial<ISmartAccountMetadata>;
+};
+
+export const buildECDSAAuthenticator = ({
+  chainId,
+  config,
+}: {
+  chainId: number;
+  config: SmartAccountEcdsaConfig;
+}): SmartAccountAuthenticatorBuildResult => {
+  const validator = getAddress(
+    getConfiguredAuthenticatorAddress(chainId, 'ecdsa')
+  );
+  const owners = config.owners.map((owner) => getAddress(owner));
+  if (owners.includes(AddressZero)) throw new Error('Invalid ECDSA owner');
+  const data = encodeEcdsaValidatorInitData(owners, config.threshold);
+  return {
+    auth: { data, module: 'ecdsa', validator },
+    metadata: {
+      installedModules: [
+        {
+          address: validator,
+          config: { owners, threshold: config.threshold },
+          data,
+          id: 'ecdsa',
+          type: 'validator',
+        },
+      ],
+    },
+  };
 };
 
 export const buildP256WebAuthnAuthenticator = ({
