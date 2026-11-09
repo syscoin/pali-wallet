@@ -45,8 +45,20 @@ describe('runtime provider request boundary', () => {
           release = resolve;
         });
       });
-      const sender = {
-        tab: { id: 17 },
+      const sender: chrome.runtime.MessageSender = {
+        tab: {
+          id: 17,
+          index: 0,
+          pinned: false,
+          highlighted: true,
+          windowId: 1,
+          active: true,
+          incognito: false,
+          selected: true,
+          discarded: false,
+          autoDiscardable: true,
+          groupId: -1,
+        },
         url: 'https://example.com/page',
         origin: 'https://example.com',
         documentId: 'public-read-document',

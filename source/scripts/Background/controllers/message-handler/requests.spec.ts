@@ -24,8 +24,23 @@ describe('public read lifetime propagation through actual method admission', () 
   ])(
     '%s retains the exact producer signal in its enhanced pipeline context',
     async (method) => {
-      const lifetime = new AbortController(),
-        sender = { tab: { id: 17 }, documentId: 'public-read-document' };
+      const lifetime = new AbortController();
+      const sender: chrome.runtime.MessageSender = {
+        tab: {
+          id: 17,
+          index: 0,
+          pinned: false,
+          highlighted: true,
+          windowId: 1,
+          active: true,
+          incognito: false,
+          selected: true,
+          discarded: false,
+          autoDiscardable: true,
+          groupId: -1,
+        },
+        documentId: 'public-read-document',
+      };
       const execute = jest
         .spyOn(getPipelineInstance()!, 'execute')
         .mockResolvedValueOnce(null);

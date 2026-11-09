@@ -19,8 +19,6 @@ jest.mock(
 );
 jest.mock('utils/ethUtil', () => ({ decodeTransactionData: jest.fn() }));
 
-import { createNativeDappRpcReadHost } from '../../../apps/mobile/src/custody/dappRpcReads';
-import { createNativeNetwork } from '../../../apps/mobile/src/custody/networkContext';
 import { normalizeDappRpcRequest } from '../../shared/dappRpcReads';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
@@ -39,6 +37,16 @@ import { decodeTransactionData } from 'utils/ethUtil';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 
 import { EthProvider } from './EthProvider';
+
+// Exercise the actual native adapter at runtime without compiling the native
+// application under the extension's separate target/dependency configuration.
+// The mobile typecheck validates these modules with their native host types.
+const { createNativeDappRpcReadHost } = jest.requireActual(
+  '../../../apps/mobile/src/custody/dappRpcReads'
+);
+const { createNativeNetwork } = jest.requireActual(
+  '../../../apps/mobile/src/custody/networkContext'
+);
 
 const FROM = `0x${'11'.repeat(20)}`;
 const TO = `0x${'22'.repeat(20)}`;
