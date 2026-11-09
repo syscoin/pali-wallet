@@ -2,6 +2,7 @@ import { NativeGuardianRecoveryFixture } from './nativeGuardianRecoveryFixture';
 import { NativeGuardianPolicyFixture } from './nativeGuardianPolicyFixture';
 import { NativeEoaBatchFixture } from './nativeEoaBatchFixture';
 import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
+import { NativeSentryNodesFixture } from './nativeSentryNodesFixture';
 import { NativeSentryFixture } from './nativeSentryFixture';
 import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
 import { NativeNoteImportFixture } from './nativeNoteImportFixture';
@@ -396,6 +397,8 @@ function Fixture() {
         <NativeEoaBatchFixture />
       ) : new URLSearchParams(window.location.search).has('smart-batch') ? (
         <NativeSmartBatchFixture />
+      ) : new URLSearchParams(window.location.search).has('sentry-nodes') ? (
+        <NativeSentryNodesFixture />
       ) : new URLSearchParams(window.location.search).has('sentry') ? (
         <NativeSentryFixture />
       ) : new URLSearchParams(window.location.search).has('smart-dapp') ? (

@@ -1,3 +1,4 @@
+import { createSentryCollateralCoordinator, createSentryCollateralRegistry, type SentryCollateralReservation } from '../../../source/wallet/sentryCollateral.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -229,6 +230,15 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
         });
       throw new Error(`Unexpected offline fixture route ${path}`);
     };
+    let protectedCollateral:SentryCollateralReservation[] = [];
+    const collateralScope={walletIdentity:'fixture-owner',genesisHash:network.genesisHash};
+    const collateralRegistry=createSentryCollateralRegistry({
+      keyFor:async()=>`fixture:${network.genesisHash}`,
+      read:async()=>protectedCollateral,
+      write:async(_key,next,check,expected)=>{check();assert.equal(expected,protectedCollateral);protectedCollateral=next;},
+    },createSentryCollateralCoordinator());
+    const protection=Object.values(SENTRY_NETWORKS).some(item=>item.chainId===network.chainId&&item.genesisHash===network.genesisHash)
+      ? {scope:collateralScope,registry:collateralRegistry} : null;
     const openSend = (assertOwner: () => void, currentNetwork = network) => createNativeUtxoSend(
       currentNetwork,
       {
@@ -252,9 +262,38 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       ring.syscoinTransaction,
       records,
       fetcher,
-      ring.getAddress
+      ring.getAddress,
+      protection
     );
     const send = openSend(assertCurrent);
+    const protectFunding=async()=>{
+      const admission=await collateralRegistry.captureSentryCollateralAdmission(collateralScope);
+      await collateralRegistry.reserveSentryCollateral({...collateralScope,admission,assertCurrent:currentPostAuthority,
+        reservation:{txid:previousId,vout:0,proTxHash:'ab'.repeat(32)}});
+    };
+    const releaseFunding=()=>collateralRegistry.releaseSentryCollateral({...collateralScope,assertCurrent:currentPostAuthority,
+      reservation:{txid:previousId,vout:0,proTxHash:'ab'.repeat(32)}});
+    if(protection){
+      const draft={amount:asset?'0.12345678':'0.0005',recipient,...(asset?{asset}: {})};
+      const sign=t.mock.method(ring.syscoinTransaction,'signPSBT');
+      const quote=ring.syscoinTransaction.getEstimateSysTransactionFee.bind(ring.syscoinTransaction);
+      await protectFunding();
+      const excluded=t.mock.method(ring.syscoinTransaction,'getEstimateSysTransactionFee',(...args:Parameters<typeof quote>)=>{
+        assert(args[0].excludedOutpoints?.some(point=>point.txid===previousId&&point.vout===0));return quote(...args);
+      });
+      await assert.rejects(send.prepare(draft));excluded.mock.restore();await releaseFunding();
+      const stale=await send.prepare(draft);await protectFunding();
+      await assert.rejects(send.confirm(stale),/protected Sentry Node collateral/);
+      assert.equal(sign.mock.callCount(),0);assert.deepEqual(posted,[]);await releaseFunding();
+      const signOriginal=ring.syscoinTransaction.signPSBT.bind(ring.syscoinTransaction);sign.mock.restore();
+      const hold=t.mock.method(ring.syscoinTransaction,'signPSBT',async(...args:Parameters<typeof signOriginal>)=>{
+        const signed=await signOriginal(...args);await protectFunding();return signed;
+      });
+      const signedBeforeLink=await send.prepare(draft);
+      await assert.rejects(send.confirm(signedBeforeLink),/protected Sentry Node collateral/);
+      assert.equal(hold.mock.callCount(),1);assert.deepEqual(posted,[]);assert.deepEqual(await send.list(),[]);
+      hold.mock.restore();await releaseFunding();calls.length=0;
+    }
     if (asset) {
       const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
       const quote = ring.syscoinTransaction.getEstimateSysTransactionFee.bind(ring.syscoinTransaction);
@@ -375,7 +414,14 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       const afterRestart = calls.length;
       assert.deepEqual(await reopened.list(), [{ txid: signed.getId(), accepted: false }]);
       await assert.rejects(reopened.confirm(review), /NOT_READY/);
-      const retry = await reopened.prepareRetry(signed.getId());
+      let retry = await reopened.prepareRetry(signed.getId());
+      if(protection){
+        await protectFunding();
+        await assert.rejects(reopened.confirm(retry),/protected Sentry Node collateral/);
+        assert.equal(posted.length,1);assert.equal(freshSign.mock.callCount(),0);
+        await assert.rejects(reopened.prepareRetry(signed.getId()),/protected Sentry Node collateral/);
+        await releaseFunding();retry=await reopened.prepareRetry(signed.getId());
+      }
       assert.deepEqual(retry.outputs, review.outputs);
       assert.equal(retry.feeSatoshis, review.feeSatoshis);
       await reopened.confirm(retry);

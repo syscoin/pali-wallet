@@ -51,7 +51,7 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
         setPane({ kind: 'guardian', scope: guardianRecovery.scope, lifetime: new AbortController() })
       } last={!onPrivateNotes && watchOnly} />}
       {onPrivateNotes && <Row title="Private notes" subtitle="View, back up or restore notes" icon="lock" onPress={onPrivateNotes} last={watchOnly} /> }
-      {!watchOnly && <Row title="Sentry keys" subtitle={onSentryKeys ? "Manage Syscoin authority keys" : "Unavailable in this build"} icon="shield" onPress={onSentryKeys} last />}</Card>
+      {!watchOnly && <Row title="Sentry" subtitle={onSentryKeys ? "Manage nodes, collateral and authority keys" : "Unavailable in this build"} icon="shield" onPress={onSentryKeys} last />}</Card>
     {watchOnly && <Notice title="Public address tools" body="These tools manage saved public addresses. They cannot sign transactions or recover their wallets." />}
     <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 22 }}>Receive and any supported testnet faucet are available on Wallet.</Text>
   </Screen></SafeAreaView>;

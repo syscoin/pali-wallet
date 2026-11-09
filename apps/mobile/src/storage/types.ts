@@ -1,3 +1,4 @@
+import type { SentryNodeStorage } from './sentryNodeDomain.ts';
 import type { DeviceUnlockEnrollmentPort } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { UtxoRecordStorage } from '../../../../source/wallet/utxoSignedRecords.ts';
@@ -116,6 +117,7 @@ export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
   readonly utxoSignedRecords?: UtxoRecordStorage;
+  readonly sentryNodes?: Readonly<{ bind(scope: SentryStorageScope, assertCurrent: () => void): SentryNodeStorage }>;
   readonly sentryKeys?: Readonly<{
     bind(
       scope: SentryStorageScope,
