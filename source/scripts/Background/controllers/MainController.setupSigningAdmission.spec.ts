@@ -13,7 +13,13 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
-  PsbtUtils: { toPali: jest.fn((psbt) => psbt) },
+  PsbtUtils: {
+    toPali: jest.fn((psbt) =>
+      jest
+        .requireActual('@sidhujag/sysweb3-keyring/cjs/utils/psbt.js')
+        .PsbtUtils.toPali(psbt)
+    ),
+  },
   readPublicSyscoinFee: jest.fn(async () => 0.000001),
 }));
 jest.mock('./walletRecovery', () => ({
@@ -38,6 +44,7 @@ jest.mock('state/store', () => ({
 }));
 
 import { webcrypto } from 'crypto';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { getController } from '..';
 import { AsyncMutex } from 'utils/asyncMutex';
@@ -78,6 +85,7 @@ describe('wallet setup signing capability admission', () => {
           kind: 'syscoin',
           chainId: 57,
           slip44: 57,
+          currency: 'sys',
           url: 'https://example.invalid',
         },
       },
@@ -140,6 +148,33 @@ describe('wallet setup signing capability admission', () => {
   );
 
   it('rejects an old approval while initialization exposes an unlocked keyring before commit', async () => {
+    // Public bytes only: the custody signer remains mocked, while SDK envelope
+    // conversion and the shared pre/post-signing review guards run normally.
+    const psbt = new syscoinUtils.bitcoinjs.Psbt();
+    const script = Buffer.from('0014' + '11'.repeat(20), 'hex');
+    psbt.addInput({
+      hash: Buffer.alloc(32, 1),
+      index: 0,
+      witnessUtxo: { script, value: BigInt(10000) },
+    });
+    psbt.addOutput({ script, value: BigInt(9000) });
+    const envelope = jest
+      .requireActual('@sidhujag/sysweb3-keyring/cjs/utils/psbt.js')
+      .PsbtUtils.toPali(psbt);
+    wallet.verifySyscoinPsbt.mockResolvedValue({
+      psbt,
+      summary: { inputScripts: [script], feeSatoshis: '1000' },
+    });
+    keyring.syscoinTransaction.signPSBT.mockImplementation(
+      async (
+        _params: unknown,
+        read: { assertCurrent(): void; signal: AbortSignal }
+      ) => {
+        expect(read.signal.aborted).toBe(false);
+        read.assertCurrent();
+        return envelope;
+      }
+    );
     const initialized = deferred();
     const commit = deferred();
     jest.mocked(runWalletSetup).mockImplementation(async () => {
@@ -157,19 +192,28 @@ describe('wallet setup signing capability admission', () => {
     expect(wallet.isUnlocked()).toBe(true);
     expect(wallet.getWalletSetupStatus()).toBe('busy');
     try {
-      await expect(
-        wallet.signSyscoinPsbt({ psbt: 'stale approval fixture' })
-      ).rejects.toThrow('Wallet setup');
+      await expect(wallet.signSyscoinPsbt({ psbt: envelope })).rejects.toThrow(
+        'Wallet setup'
+      );
       expect(wallet.verifySyscoinPsbt).not.toHaveBeenCalled();
       expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
     } finally {
       commit.resolve();
       await recovery;
     }
-    await expect(
-      wallet.signSyscoinPsbt({ psbt: 'fresh approval fixture' })
-    ).resolves.toBe('signed fixture');
+    await expect(wallet.signSyscoinPsbt({ psbt: envelope })).resolves.toEqual(
+      envelope
+    );
+    expect(wallet.verifySyscoinPsbt).toHaveBeenCalledTimes(1);
+    const read = wallet.verifySyscoinPsbt.mock.calls[0][1];
+    expect(wallet.verifySyscoinPsbt).toHaveBeenCalledWith(envelope, read);
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledWith(
+      { psbt: envelope },
+      read
+    );
+    expect(read.signal.aborted).toBe(true);
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
   });
 
   it.each(['isCreatingWallet', 'isResettingWallet', 'recoveryJournalPending'])(
