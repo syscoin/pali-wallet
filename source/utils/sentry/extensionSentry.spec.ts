@@ -38,6 +38,7 @@ function fixture() {
   );
   const manager = createExtensionSentryNodeManagement({
     captureScope: () => scope,
+    captureLinkScope: () => ({ scope, assertCurrent: () => undefined }),
     assertCurrent(captured) {
       if (captured !== scope) throw new Error('Wallet session changed');
     },

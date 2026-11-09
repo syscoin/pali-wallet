@@ -6,6 +6,7 @@ import type { NativeNetworkView } from './networkView.ts';
 import type { NativeNetworkSelection } from './walletCatalogue.ts';
 import type { NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { UtxoNetwork } from '../core/utxoNetworks.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 type Ports = Readonly<{
   networks: NativeNetworkView; context(): NativeDappControlContext | null;
   utxoNetworks(): readonly UtxoNetwork[];
@@ -45,13 +46,19 @@ export function prepareNativeDappModeControl(ports: Ports, request: DappModeRequ
   const abort = () => { if (committing) ports.networks.cancel(); };
   signal.addEventListener('abort', abort, { once: true });
   return Object.freeze({ details: Object.freeze({ kind: 'network-switch', name: target.name, chainId: target.chainId, symbol: target.symbol, rpcUrl: target.rpcUrl }), assertCurrent: check,
-    async commit(guard) {
+    async commit(guard, onNetworkCommitted) {
+      if (typeof onNetworkCommitted !== 'function') return fail();
       check(); guard(); committing = true;
       let receipt: NativeNetworkSelectionReceipt | undefined;
-      try { if (shouldSwitch) receipt = await ports.networks.select(target.id, captured.revision, initial.revision); }
+      try { if (shouldSwitch) receipt = await ports.networks.select(target.id, captured.revision, initial.revision, proof => {
+        proof.assertCurrent();
+        if (proof.sourceCatalogueRevision !== initial.revision || proof.selection.networkId !== target.id || JSON.stringify(proof.target) !== JSON.stringify(targetRegistration)) return fail();
+        assertSynchronousEvmFeeGuard(onNetworkCommitted);
+      }); }
       finally { committing = false; }
-      const post = () => {
-        guard(); const current = checkBase(), catalogue = ports.networks.getSnapshot();
+      const proveSelection = () => {
+        const current = ports.context(), catalogue = ports.networks.getSnapshot();
+        if (!current || !current.accounts.some(account => account.id === owner.accountId && account.address === owner.address) || JSON.stringify(ports.utxoNetworks()) !== registration) return fail();
         let expected: NativeNetworkSelection | typeof unchanged;
         if (shouldSwitch) {
           if (!receipt) return fail();
@@ -61,6 +68,7 @@ export function prepareNativeDappModeControl(ports: Ports, request: DappModeRequ
         } else expected = unchanged;
         if (current.revision !== captured.revision + Number(shouldSwitch) || current.catalogueRevision !== initial.revision + Number(shouldSwitch) || current.activeAccountId !== expected.accountId || current.networkId !== expected.networkId || !current.accounts.some(account => account.id === expected.accountId && account.address === expected.address) || catalogue?.revision !== current.catalogueRevision || catalogue.selectedId !== expected.networkId) fail();
       };
+      const post = () => { guard(); checkBase(); proveSelection(); };
       post(); return Object.freeze({ result: null, assertCurrent: post });
     },
     dispose() { abort(); disposed = true; signal.removeEventListener('abort', abort); },

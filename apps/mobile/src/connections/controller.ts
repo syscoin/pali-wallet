@@ -106,6 +106,15 @@ type Source = {
 };
 type Engine = ReturnType<typeof createDappSessions>;
 type Connected = { id: string; session: WalletConnectSession; engine: Engine };
+type ModeOwner = {
+  connection: Connected;
+  grant: NonNullable<ReturnType<Engine['get']>>;
+  key: string;
+  origin: string;
+  sourceFamily: 'ethereum' | 'syscoin';
+  targetFamily: 'ethereum' | 'syscoin';
+  cleanup?: Promise<boolean>;
+};
 type MessageApproval = ReturnType<typeof createDappSigningApproval>;
 type TransactionRequest = Readonly<{
   method: 'eth_sendTransaction';
@@ -247,7 +256,7 @@ export class NativeConnectionsController {
   private readonly sentry: NativeSentryRequests;
   private readonly reads = new Map<string, { wire: WalletConnectRequest; connection: Connected; lifetime: AbortController; check(): void }>();
   private readonly permissionRequests = new Map<string, Connected>();
-  private readonly modeFamilies = new WeakMap<WalletConnectRequest, 'ethereum' | 'syscoin'>();
+  private readonly modeOwners = new WeakMap<WalletConnectRequest, ModeOwner>();
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private snapshot: NativeConnectionsSnapshot;
@@ -261,30 +270,10 @@ export class NativeConnectionsController {
       foreground: order => order < Math.min(this.requests.values().next().value?.queueOrder ?? Infinity, this.sentry?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
-      respond: async (wire, response, check) => {
-        const previous = this.modeFamilies.get(wire);
-        this.modeFamilies.delete(wire);
-        const key = sessionKey(wire.session), origin = wire.session.binding.origin;
-        const connection = 'result' in response && previous && normalizeDappModeRequest(wire.method, wire.params).kind !== previous
-          ? this.connections.get(key) : undefined;
-        const grant = connection?.engine.get(origin);
-        let cleanup: Promise<boolean> | undefined;
-        const retireCommittedMode = () => {
-          if (cleanup || !connection || !grant || this.connections.get(key) !== connection || connection.session.binding.origin !== origin || connection.engine.get(origin) !== grant) return;
-          cleanup = this.retireConnection(connection).catch(cause => { this.unavailable(); throw cause; });
-          // Handoff is synchronous; join cleanup below without an unhandled
-          // rejection while the transport is still awaiting acknowledgment.
-          void cleanup.catch(() => undefined);
-        };
-        try {
-          await this.transport!.respond(wire.session.binding, wire.id, response, check, retireCommittedMode);
-        } finally {
-          // A known committed family switch retires its old authority even if
-          // delivery fails before handoff. Failed commits only send an error.
-          retireCommittedMode();
-          if (await cleanup && connection) this.notifyRetiredConnection(connection);
-        }
-      },
+      respond: (wire, response, check) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => {
+        if ('result' in response) this.startModeRetirement(wire);
+      }),
+      retireCommitted: wire => this.finishModeRetirement(wire),
     });
     this.sentry = new NativeSentryRequests({
       host: () => this.host!.sentry,
@@ -1161,8 +1150,8 @@ export class NativeConnectionsController {
     if (await this.retireConnection(connected)) this.notifyRetiredConnection(connected);
   }
   private async retireConnection(connected: Connected): Promise<boolean> {
-    this.check();
     const session = connected.session, key = sessionKey(session);
+    if (this.connections.get(key) !== connected) return false;
     for (const message of [...this.requests.values()])
       if (message.connection === connected) void this.retireRequest(message);
     const revoking = connected.engine.revoke(session.binding.origin, {
@@ -1178,6 +1167,20 @@ export class NativeConnectionsController {
   private notifyRetiredConnection(connected: Connected) {
     if (this.disposed || this.connections.has(sessionKey(connected.session)) || connected.engine.get(connected.session.binding.origin)) return;
     this.notifyRemoteDisconnect(connected);
+  }
+  private startModeRetirement(wire: WalletConnectRequest) {
+    const owner = this.modeOwners.get(wire);
+    if (!owner || owner.cleanup || owner.sourceFamily === owner.targetFamily || this.connections.get(owner.key) !== owner.connection || owner.connection.session.binding.origin !== owner.origin || owner.connection.engine.get(owner.origin) !== owner.grant) return;
+    owner.cleanup = this.retireConnection(owner.connection).catch(cause => { this.unavailable(); throw cause; });
+    void owner.cleanup.catch(() => undefined);
+  }
+  private async finishModeRetirement(wire: WalletConnectRequest) {
+    const owner = this.modeOwners.get(wire);
+    if (!owner) return;
+    try {
+      this.startModeRetirement(wire);
+      if (await owner.cleanup) this.notifyRetiredConnection(owner.connection);
+    } finally { this.modeOwners.delete(wire); }
   }
   private notifyRemoteDisconnect(connected: Connected) {
     const epoch = this.actionEpoch;
@@ -1248,9 +1251,9 @@ export class NativeConnectionsController {
         assertCurrent(); return this.transport!.respond(wire.session.binding, wire.id, { result: null }, assertCurrent, () => {});
       }
     }
-    if (mode) { const family = host.context().network.kind; if (family === 'ethereum' || family === 'syscoin') this.modeFamilies.set(wire, family); }
     const networkFamily = host.context().network.kind;
     if (networkFamily !== 'ethereum' && networkFamily !== 'syscoin') return reject(4100, 'Account is unavailable');
+    if ('kind' in request) this.modeOwners.set(wire, { connection, grant, origin, key: sessionKey(session), sourceFamily: networkFamily, targetFamily: request.kind });
     this.controls.enqueue(wire, request, { networkFamily, order: ++this.serial, accountId: account.id, networkId: context.networkId, accountLabel: account.label, address: account.address, networkLabel: context.networkLabel, chainId: String(grant.chainId), assertCurrent, assertSessionCurrent });
   }
   private async queueSentryRequest(wire: WalletConnectRequest) {

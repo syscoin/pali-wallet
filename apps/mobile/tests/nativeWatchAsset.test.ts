@@ -226,7 +226,7 @@ for (const type of ['ERC721', 'ERC1155', 'ERC20'] as const) {
       'OBSERVED'
     );
     assert.equal('tokenId' in prepared.details, type === 'ERC1155');
-    const result = await prepared.commit(f.check);
+    const result = await prepared.commit(f.check, () => assert.fail('Asset admission must not commit a network switch'));
     result.assertCurrent();
     assert.equal(result.result, true);
     const saved = await f.registry.load(f.scope, () => undefined);
@@ -252,7 +252,7 @@ for (const type of ['ERC721', 'ERC1155', 'ERC20'] as const) {
         f.calls.some((name) => name === 'balanceOf' || name === 'ownerOf'),
         false
       );
-    await assert.rejects(prepared.commit(f.check), /CANCELLED/);
+    await assert.rejects(prepared.commit(f.check, () => assert.fail('Asset admission must not commit a network switch')), /CANCELLED/);
     prepared.dispose();
   });
 }
@@ -264,7 +264,7 @@ test('wrong standard and changed metadata never authorize a saved collection', a
   f.setType('ERC721');
   const prepared = await f.prepare();
   f.setSymbol('CHANGED');
-  await assert.rejects(prepared.commit(f.check), /metadata changed/);
+  await assert.rejects(prepared.commit(f.check, () => assert.fail('Asset admission must not commit a network switch')), /metadata changed/);
   assert.equal(
     await f.storage.keyringStorage.get(NATIVE_TOKEN_REGISTRY_KEY),
     undefined
@@ -280,7 +280,7 @@ for (const change of ['account', 'registration', 'request', 'abort'] as const) {
     if (change === 'registration') f.changeRegistration();
     if (change === 'request') f.expire();
     if (change === 'abort') f.signal.abort();
-    await assert.rejects(prepared.commit(f.check));
+    await assert.rejects(prepared.commit(f.check, () => assert.fail('Asset admission must not commit a network switch')));
     assert.equal(
       await f.storage.keyringStorage.get(NATIVE_TOKEN_REGISTRY_KEY),
       undefined
@@ -293,7 +293,7 @@ test('the original dapp guard reaches the real SQLite COMMIT boundary', async (t
   t.after(() => f.close());
   const prepared = await f.prepare();
   f.beforeWrite(f.expire);
-  await assert.rejects(prepared.commit(f.check));
+  await assert.rejects(prepared.commit(f.check, () => assert.fail('Asset admission must not commit a network switch')));
   assert.equal(
     await f.storage.keyringStorage.get(NATIVE_TOKEN_REGISTRY_KEY),
     undefined
@@ -312,7 +312,7 @@ test('a competing registry revision is preserved rather than overwritten', async
     decimals: 18,
   };
   await f.runtime.add(0, other, () => undefined);
-  await assert.rejects(prepared.commit(f.check), /CHANGED/);
+  await assert.rejects(prepared.commit(f.check, () => assert.fail('Asset admission must not commit a network switch')), /CHANGED/);
   assert.deepEqual((await f.registry.load(f.scope, () => undefined)).items, [
     other,
   ]);

@@ -152,6 +152,10 @@ beforeEach(() => {
   getSeed = jest.fn().mockResolvedValue('synthetic-seed');
   controller = new SentryController({
     captureScope: () => scope,
+    captureApprovalScope: () => ({
+      ...scope,
+      assertRequestCurrent: () => undefined,
+    }),
     getSeed,
     hasWalletAuthority: async () => false,
     ownsCollateral: async () => false,
@@ -224,6 +228,10 @@ it('persists approved registration protection before signing and exposes it afte
   expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
   controller = new SentryController({
     captureScope: () => scope,
+    captureApprovalScope: () => ({
+      ...scope,
+      assertRequestCurrent: () => undefined,
+    }),
     getSeed,
     hasWalletAuthority: async () => false,
     ownsCollateral: async () => false,

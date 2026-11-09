@@ -1248,18 +1248,18 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
       await popupStep(
         wallet,
         popup,
-        'close the pending approval and retain its uncertain outcome',
+        'close during the pre-submit balance refresh and verify cancellation',
         async () => {
           await popup.close();
           releaseBalance();
           await Promise.all(heldReads);
           const rejected = await settle(dapp, request);
           expect(rejected.error).toEqual({
-            code: -32603,
-            message:
-              'Transaction submission outcome is unknown. Check the wallet activity and chain before submitting again.',
+            code: 4001,
+            message: 'User closed popup window',
           });
           expect(rejected.result).toBeUndefined();
+          expect(observedSubmissions).toEqual([]);
         }
       );
     } finally {

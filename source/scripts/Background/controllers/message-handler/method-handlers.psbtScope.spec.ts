@@ -21,6 +21,7 @@ jest.mock('./request-pipeline', () => ({
 }));
 
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { assertSentryDappResponseCurrent } from 'utils/sentry/approvalLifetime';
 
 import { SysMethodHandler } from './method-handlers';
 import { popupPromise } from './popup-promise';
@@ -171,5 +172,121 @@ describe('extension-owned PSBT approval context', () => {
     await expect(pending).rejects.toMatchObject({ code: 4001 });
     expect(popupPromise).not.toHaveBeenCalled();
     expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
+  });
+
+  describe('Sentry request and response lifetime', () => {
+    const methods = [
+      [
+        'sys_signSentryOperation',
+        'prepareSentryOperation',
+        'cancelSentryApproval',
+      ],
+      ['sys_signSentryVote', 'prepareSentryVote', 'cancelSentryVoteApproval'],
+      ['sys_linkSentryNode', 'prepareSentryLink', 'cancelSentryLink'],
+    ];
+    const request = (method: string) =>
+      ({
+        originalRequest: {
+          host: 'site.example',
+          method,
+          params: [{ version: 1 }],
+          sender: {},
+        },
+        methodConfig: {
+          hasPopup: true,
+          popupRoute: 'sentry',
+          popupEventName: method,
+        },
+      } as any);
+    beforeEach(() => {
+      const { wallet, dapp } = mockController();
+      wallet.getWalletSessionGeneration = () => 1;
+      dapp.captureApproval = () => {
+        const captured = currentGrant;
+        return () => {
+          if (!captured || currentGrant !== captured)
+            throw new Error('Grant retired');
+        };
+      };
+      for (const [, prepare, cancel] of methods) {
+        wallet[prepare] = jest.fn().mockResolvedValue('approval-id');
+        wallet[cancel] = jest.fn().mockResolvedValue(undefined);
+      }
+    });
+    it.each(methods)(
+      'keeps %s original authority through final delivery',
+      async (method, prepare, cancel) => {
+        const result = { version: 1, transactionHex: '0102' };
+        (popupPromise as jest.Mock).mockResolvedValue(result);
+        const response = await new SysMethodHandler().handle(request(method));
+        expect(response).toBe(result);
+        expect(mockController().wallet[prepare]).toHaveBeenCalledWith(
+          { version: 1 },
+          'site.example'
+        );
+        expect(mockController().wallet[cancel]).toHaveBeenCalledWith(
+          'approval-id'
+        );
+        expect(popupPromise).toHaveBeenCalledWith(
+          expect.objectContaining({
+            signal: expect.any(AbortSignal),
+            data: { sentryApprovalId: 'approval-id' },
+          })
+        );
+        expect(() =>
+          assertSentryDappResponseCurrent(method, response)
+        ).not.toThrow();
+        expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
+      }
+    );
+    it.each(methods)(
+      'cancels %s admission when revocation wins its asynchronous preparation',
+      async (method, prepare, cancel) => {
+        let release!: (id: string) => void;
+        mockController().wallet[prepare].mockReturnValue(
+          new Promise<string>((resolve) => {
+            release = resolve;
+          })
+        );
+        const pending = new SysMethodHandler().handle(request(method));
+        currentGrant = undefined;
+        mockSubscribe.mock.calls[0][0]();
+        currentGrant = grant;
+        release('late-id');
+        await expect(pending).rejects.toMatchObject({ code: 4001 });
+        expect(popupPromise).not.toHaveBeenCalled();
+        expect(mockController().wallet[cancel]).toHaveBeenCalledWith('late-id');
+        expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
+      }
+    );
+    it.each(methods)(
+      'blocks %s already produced response when revoke occurs during final cleanup',
+      async (method, _prepare, cancel) => {
+        let finish!: () => void;
+        let entered!: () => void;
+        const enteredCleanup = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        mockController().wallet[cancel].mockImplementation(() => {
+          entered();
+          return new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+        });
+        const result = { version: 1, transactionHex: '0102' };
+        (popupPromise as jest.Mock).mockResolvedValue(result);
+        const pending = new SysMethodHandler().handle(request(method));
+        await enteredCleanup;
+        currentGrant = undefined;
+        mockSubscribe.mock.calls[0][0]();
+        currentGrant = grant;
+        finish();
+        const response = await pending;
+        expect(() => assertSentryDappResponseCurrent(method, response)).toThrow(
+          /no longer current/
+        );
+        expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
+      }
+    );
   });
 });

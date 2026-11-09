@@ -245,6 +245,10 @@ beforeEach(() => {
   getSeed = jest.fn().mockResolvedValue('private-seed');
   controller = new SentryController({
     captureScope: () => scope,
+    captureApprovalScope: () => ({
+      ...scope,
+      assertRequestCurrent: () => undefined,
+    }),
     getSeed,
     hasWalletAuthority: async () => false,
     ownsCollateral: async () => false,
@@ -787,6 +791,7 @@ it('does not treat an imported operator key as owner authority', async () => {
 
 it('requires every authority and collateral port instead of inferring a stored-key-only mode', () => {
   for (const missing of [
+    'captureApprovalScope',
     'hasWalletAuthority',
     'ownsCollateral',
     'resolveVotingAuthority',
@@ -794,6 +799,10 @@ it('requires every authority and collateral port instead of inferring a stored-k
   ]) {
     const host: Record<string, unknown> = {
       captureScope: () => scope,
+      captureApprovalScope: () => ({
+        ...scope,
+        assertRequestCurrent: () => undefined,
+      }),
       getSeed,
       hasWalletAuthority: async () => false,
       ownsCollateral: async () => false,
@@ -813,6 +822,10 @@ it('resolves the selected wallet key only for the exact decoded owner address an
     .mockResolvedValue({ scheme: 'ecdsa', secretKey: '11'.repeat(32) });
   controller = new SentryController({
     captureScope: () => scope,
+    captureApprovalScope: () => ({
+      ...scope,
+      assertRequestCurrent: () => undefined,
+    }),
     getSeed,
     resolveWalletAuthority: resolver,
     hasWalletAuthority: async () => true,
@@ -848,7 +861,10 @@ it('resolves the selected wallet key only for the exact decoded owner address an
   });
   expect(resolver).toHaveBeenCalledWith(
     { address: 'synthetic-owner-address', password: 'pw' },
-    scope
+    expect.objectContaining({
+      ...scope,
+      assertRequestCurrent: expect.any(Function),
+    })
   );
   expect(response).toMatchObject({
     complete: true,
@@ -920,6 +936,10 @@ it('preserves pending collateral before returning registration authorization, wi
 it('does not offer an unrelated active wallet key as owner authority', async () => {
   controller = new SentryController({
     captureScope: () => scope,
+    captureApprovalScope: () => ({
+      ...scope,
+      assertRequestCurrent: () => undefined,
+    }),
     getSeed,
     hasWalletAuthority: async () => false,
     resolveWalletAuthority: jest.fn(),

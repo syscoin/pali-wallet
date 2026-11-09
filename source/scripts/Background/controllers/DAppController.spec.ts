@@ -167,6 +167,51 @@ describe('DAppController idempotent permission revocation', () => {
     ).rejects.toThrow('DApp not connected');
   });
 
+  it('retires a captured approval immediately and cannot revive it through revoke rollback', async () => {
+    const controller = DAppController(
+      () => true,
+      () => 0
+    );
+    await connect(controller, {
+      host,
+      accountId: 0,
+      accountType: KeyringAccountType.HDAccount,
+      date: 1,
+    });
+    const original = controller.get(host);
+    const check = controller.captureApproval(host);
+    const unobserved = controller.captureApproval(host);
+    check();
+    permissionWriteMock.mockRejectedValueOnce(new Error('Storage unavailable'));
+    const revoke = controller.revoke(host, options);
+    expect(() => check()).toThrow(/no longer current/);
+    await expect(revoke).rejects.toThrow('Storage unavailable');
+    expect(controller.get(host)).toBe(original);
+    expect(() => check()).toThrow(/no longer current/);
+    expect(() => unobserved()).toThrow(/no longer current/);
+    // Restored permissions may admit a genuinely new user review.
+    expect(() => controller.captureApproval(host)()).not.toThrow();
+  });
+
+  it('never transfers a captured approval to a fresh grant for the same account', async () => {
+    const controller = DAppController(
+      () => true,
+      () => 0
+    );
+    const grant = {
+      host,
+      accountId: 0,
+      accountType: KeyringAccountType.HDAccount,
+      date: 1,
+    };
+    await connect(controller, grant);
+    const check = controller.captureApproval(host);
+    await controller.revoke(host, options);
+    await connect(controller, grant);
+    expect(() => check()).toThrow(/no longer current/);
+    expect(() => controller.captureApproval(host)()).not.toThrow();
+  });
+
   it('removes and persists a stored connection after worker restart', async () => {
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
     await DAppController(

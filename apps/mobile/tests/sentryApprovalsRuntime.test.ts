@@ -124,7 +124,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
       id,
       authority.getSnapshot().revision,
       authority.getCatalogue()!.revision
-    );
+    , () => {});
   try {
     await authority.initialize();
     await authority.importPhrase(PHRASE, PASSWORD);

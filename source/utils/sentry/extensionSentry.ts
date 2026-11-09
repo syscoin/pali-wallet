@@ -19,6 +19,10 @@ export function createExtensionSentryNodeManagement<
 >(host: {
   assertCurrent(scope: Scope): void;
   authenticate(password: string): Promise<unknown>;
+  captureLinkScope(origin: string): Readonly<{
+    assertCurrent(): void;
+    scope: Scope;
+  }>;
   captureScope(): Scope;
   readSettings(scope: Scope): Promise<SentrySettings>;
   runExclusive<T>(operation: () => Promise<T>): Promise<T>;
@@ -31,6 +35,7 @@ export function createExtensionSentryNodeManagement<
       check();
     },
     captureScope: () => host.captureScope(),
+    captureLinkScope: (origin) => host.captureLinkScope(origin),
     captureAdmission: async (scope, network, check) => {
       check();
       if (getSentryNetwork(scope.network) !== network)

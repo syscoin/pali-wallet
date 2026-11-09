@@ -760,7 +760,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   } });
   let owner = newOwner();
   const current = () => undefined;
-  const selectNetwork = () => owner.selectNetwork(network.id, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+  const selectNetwork = () => owner.selectNetwork(network.id, owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
   const selectAccount = (id: string) => owner.manageAccounts({ kind: 'select', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const removeAccount = (id: string, credential = password) => owner.manageAccounts({ kind: 'remove', id, password: credential }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const preview = (privateKey: string, utxoAddressType?: UtxoImportAddressType) => owner.previewUtxoImport(
@@ -902,7 +902,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       if (target === custom) {
         const beforeIneligibleRequests = calls.length;
         await assert.rejects(removeNetwork(custom.id), { code: 'INVALID_INPUT' });
-        await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+        await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
         const saved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
         const ready = owner.getSnapshot();
         await assert.rejects(removeNetwork(custom.id), { code: 'ACCOUNT_NOT_REMOVABLE' });
@@ -970,7 +970,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           assert.equal(JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY)), before);
 
           const oldContext = owner.getSnapshot().revision, oldCatalogue = owner.getCatalogue()!.revision;
-          await owner.selectNetwork('ethereum', oldContext, oldCatalogue);
+          await owner.selectNetwork('ethereum', oldContext, oldCatalogue, () => {});
           await assert.rejects(owner.importAccount(
             { privateKey: wif, utxoAddressType: script, expectedAddress: address, label: 'Revoked review' },
             password, oldContext, oldCatalogue

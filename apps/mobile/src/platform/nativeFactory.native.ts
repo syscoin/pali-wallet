@@ -190,7 +190,7 @@ export function createNativeWalletControllers() {
       return runtime;
     },
   }, { preferences: securityPreferences, assertActive });
-  const connectionNetworks = createNativeNetworkView(authority, { utxoSendAvailable: true });
+  const connectionNetworks = createNativeNetworkView(authority, { utxoSendAvailable: true, fetch: walletFetch });
   const recipientResolver = createNativeRecipientResolver({ source: authority, fetch: walletFetch });
   const observeWatchAsset = createNativeWatchAssetObserver({ fetch: walletFetch,
     registrations: () => authority.getCatalogue()?.networks ?? [] });

@@ -162,7 +162,10 @@ export function createNativeRecipientResolver(ports: Readonly<{
         provider = new RecipientProvider(request, install);
         if (BigInt(await abortable(provider.send('eth_chainId', []), controller.signal)) !== BigInt(ENS_RESOLUTION_CHAIN_ID)) throw unavailable();
         check();
-        const address = await abortable(resolveEnsRecipientName(input, (name) => provider!.resolveName(name)), controller.signal);
+        const address = await abortable(resolveEnsRecipientName(input, {
+          resolveName: (name) => provider!.resolveName(name),
+          readChainId: () => provider!.send('eth_chainId', []),
+        }), controller.signal);
         check();
         if (!address) throw unavailable();
         const canonical = normalizePublicAddress(address, destination.id);

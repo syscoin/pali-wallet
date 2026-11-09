@@ -63,3 +63,9 @@ export type SentryApprovalScope = Readonly<{
   network: { chainId: number; kind?: string; url: string };
   rootPublicIdentity: string;
 }>;
+
+/** Internal request authority; never included in public reviews or persistence. */
+export type SentryRequestScope = SentryApprovalScope &
+  Readonly<{
+    assertRequestCurrent(): void;
+  }>;

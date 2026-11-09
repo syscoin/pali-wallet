@@ -17,7 +17,7 @@ const resolverAbi = new Interface([
   'error OffchainLookup(address sender,string[] urls,bytes callData,bytes4 callbackFunction,bytes extraData)',
 ]);
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-function fixture(options: { ccip?: boolean; timeoutMs?: number } = {}) {
+function fixture(options: { ccip?: boolean; timeoutMs?: number; lookupChainId?: string } = {}) {
   // Deliberately use a non-default registration ID and endpoint for ENS, while
   // the transfer destination is a different EVM chain.
   const mainnet = createNativeNetwork({ ...getNativeNetwork('ethereum'), id: 'configured-mainnet', rpcUrl: 'https://configured.example/rpc' });
@@ -30,6 +30,9 @@ function fixture(options: { ccip?: boolean; timeoutMs?: number } = {}) {
   const calls: { url: string; init: RequestInit }[] = [];
   let now = 1000, active = true, hold: ((url: string, init: RequestInit) => Promise<Response>) | undefined, holdGatewayOnly = false;
   let gateway = 'https://gateway.example/{data}';
+  let sourceChainId = '0x1';
+  let identityReads = 0;
+  let finalIdentity: ((url: string, id: number) => Promise<Response>) | undefined;
   const response = (url: string, value: unknown, status = 200) => {
     const result = new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
     Object.defineProperty(result, 'url', { value: url });
@@ -46,7 +49,10 @@ function fixture(options: { ccip?: boolean; timeoutMs?: number } = {}) {
     assert.equal(url, mainnet.rpcUrl);
     const wire = JSON.parse(new TextDecoder().decode(init.body as Uint8Array));
     let result: unknown;
-    if (wire.method === 'eth_chainId') result = '0x1';
+    if (wire.method === 'eth_chainId') {
+      if (++identityReads > 1 && finalIdentity) return finalIdentity(url, wire.id);
+      result = sourceChainId;
+    }
     else {
       assert.equal(wire.method, 'eth_call');
       const transaction = wire.params[0];
@@ -57,6 +63,9 @@ function fixture(options: { ccip?: boolean; timeoutMs?: number } = {}) {
       } else {
         assert.equal(transaction.to.toLowerCase(), resolverAddress);
         assert(transaction.data.startsWith(resolverAbi.getFunction('addr')!.selector));
+        // The configured endpoint honestly reports its new chain after the
+        // registry lookup, before answering the final address lookup.
+        if (options.lookupChainId) sourceChainId = options.lookupChainId;
         if (options.ccip) return response(url, { jsonrpc: '2.0', id: wire.id, error: { code: 3, message: 'execution reverted',
           data: resolverAbi.encodeErrorResult('OffchainLookup', [resolverAddress, [gateway], '0xabcd', resolverAbi.getFunction('finish')!.selector, '0x']) } });
         result = resolverAbi.encodeFunctionResult('addr', [recipient]);
@@ -73,6 +82,7 @@ function fixture(options: { ccip?: boolean; timeoutMs?: number } = {}) {
     setGateway: (value: string) => { gateway = value; },
     hold: (value: typeof hold) => { hold = value; },
     holdGateway: (value: typeof hold) => { hold = value; holdGatewayOnly = true; },
+    holdFinalIdentity: (value: NonNullable<typeof finalIdentity>) => { finalIdentity = value; },
     change(kind: 'account' | 'network' | 'lock' | 'registration' | 'request') {
       if (kind === 'account') state = { ...state, revision: 4, account: { address: recipient, network: destination.id } };
       if (kind === 'network') state = { ...state, revision: 4, account: { address, network: mainnet.id } };
@@ -93,8 +103,36 @@ test('shared ENS source selection uses configured mainnet, independently of acti
     assert.equal(ticket.address, recipient); assert.equal(ticket.input, 'recipient.eth');
     assert.equal(ticket.expiresAt, 1000 + ENS_RECIPIENT_TTL_MS); ticket.assertCurrent();
     assert(f.calls.length >= 3); assert(f.calls.every((call) => call.url === f.mainnet.rpcUrl));
+    const methods = f.calls.map(call => JSON.parse(new TextDecoder().decode(call.init.body as Uint8Array)).method);
+    assert.equal(methods[0], 'eth_chainId'); assert.equal(methods.at(-1), 'eth_chainId');
+    assert.equal(methods.filter(method => method === 'eth_chainId').length, 2);
+    const reads = f.calls.length; ticket.assertCurrent(); assert.equal(f.calls.length, reads, 'synchronous lifetime checks cannot query RPC');
     f.advance(); assert.throws(ticket.assertCurrent, /RECIPIENT_EXPIRED/);
   } finally { ticket.dispose(); }
+  assert.equal(f.listenerCount(), 0);
+});
+
+test('an ENS source that changes chain during lookup cannot publish a recipient ticket', async () => {
+  const f = fixture({ lookupChainId: '0x2' });
+  let ticket: Awaited<ReturnType<typeof f.resolve>> | undefined;
+  try {
+    await assert.rejects(f.resolve().then(result => { ticket = result; return result; }), /ENS_UNAVAILABLE/);
+    assert.equal(f.listenerCount(), 0);
+  } finally { ticket?.dispose(); }
+});
+
+for (const kind of ['account', 'request'] as const) test(`${kind} retirement during the final source identity query cannot publish a late ticket`, async () => {
+  const f = fixture();
+  let started!: () => void, complete!: (response: Response) => void, responseId = 0;
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  f.holdFinalIdentity((_url, id) => new Promise(resolve => { responseId = id; complete = resolve; started(); }));
+  const pending = f.resolve();
+  await ready;
+  f.change(kind);
+  await assert.rejects(pending, /RECIPIENT_EXPIRED/);
+  assert.equal(f.calls.at(-1)!.init.signal!.aborted, true);
+  complete(f.response(f.mainnet.rpcUrl, { jsonrpc: '2.0', id: responseId, result: '0x1' }));
+  await tick();
   assert.equal(f.listenerCount(), 0);
 });
 

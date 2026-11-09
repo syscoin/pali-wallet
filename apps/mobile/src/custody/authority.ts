@@ -1,6 +1,7 @@
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
-import type { NativeAccountRequest, NativeNetworkSelectionReceipt } from './accounts.ts';
+import type { NativeAccountRequest, NativeNetworkSelectionProof, NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { NativeImportRequest, NativeUtxoImportDraft } from './importedAccounts.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
@@ -142,7 +143,8 @@ export class NativeCustodyAuthority {
   }
 
   /** Selection revokes outstanding reviews before changing the saved EVM context. */
-  selectNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<NativeNetworkSelectionReceipt> {
+  selectNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number, onCommitted: (proof: NativeNetworkSelectionProof) => void): Promise<NativeNetworkSelectionReceipt> {
+    if (typeof onCommitted !== 'function') return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
     return this.manageContext((runtime) => {
       if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
       const admitted = runtime.networks.reserve(id, expectedCatalogueRevision);
@@ -154,6 +156,9 @@ export class NativeCustodyAuthority {
         const catalogue = runtime.accounts?.getSnapshot(), selected = catalogue?.accounts.find(account => account.id === proof.selection.accountId);
         if (catalogue?.revision !== expectedCatalogueRevision + 1 || catalogue.active.accountId !== proof.selection.accountId || catalogue.active.networkId !== id || selected?.address !== proof.selection.address)
           throw new CustodyRuntimeError('OPERATION_FAILED');
+        // Persistence is acknowledged here. Public state readback may still be
+        // cancelled, so its receipt cannot own committed-transition cleanup.
+        assertSynchronousEvmFeeGuard(() => onCommitted(proof));
         const assertReceipt = () => {
           proof.assertCurrent();
           const current = runtime.accounts?.getSnapshot();

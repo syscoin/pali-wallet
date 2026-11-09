@@ -475,7 +475,7 @@ test('UTXO Ledger import uses the shared SDK network and BIP84 account conversio
       'bitcoin',
       f.owner.getSnapshot().revision,
       f.owner.getCatalogue()!.revision
-    );
+    , () => {});
     await f.view.start();
     await f.view.select(f.view.getSnapshot().devices[0]!.id);
     await f.view.importAccount('Bitcoin Ledger');
@@ -820,7 +820,7 @@ test('Ledger UTXO review uses its saved xpub before connection and the shared si
       'bitcoin',
       f.owner.getSnapshot().revision,
       f.owner.getCatalogue()!.revision
-    );
+    , () => {});
     await f.view.start();
     await f.view.select(f.view.getSnapshot().devices[0]!.id);
     await f.view.importAccount('Bitcoin Ledger');
@@ -1013,7 +1013,7 @@ test('account-group transfer waits for a retired pending native Ledger creation'
         'bitcoin',
         f.owner.getSnapshot().revision,
         f.owner.getCatalogue()!.revision
-      )
+      , () => {})
       .then(() => {
         published = true;
       });

@@ -65,6 +65,9 @@ let enteredWrite: (() => void) | undefined;
 
 const makeController = () =>
   new SentryController({
+    captureApprovalScope: () => {
+      throw new Error('Unexpected dapp request');
+    },
     hasWalletAuthority: async () => false,
     ownsCollateral: async () => false,
     resolveVotingAuthority: async () => undefined,

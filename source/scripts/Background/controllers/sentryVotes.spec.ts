@@ -146,6 +146,10 @@ beforeEach(() => {
   const mutex = new AsyncMutex();
   controller = new SentryVoteController({
     captureScope: () => scope,
+    captureApprovalScope: () => ({
+      ...scope,
+      assertRequestCurrent: () => undefined,
+    }),
     getSeed,
     getSettings: async () => settings,
     hasWalletAuthority: async () => false,
@@ -160,6 +164,10 @@ it('requires explicit wallet-authority ports even for stored-key-only hosts', ()
     () =>
       new SentryVoteController({
         captureScope: () => scope,
+        captureApprovalScope: () => ({
+          ...scope,
+          assertRequestCurrent: () => undefined,
+        }),
         getSeed,
         getSettings: async () => settings,
         readJson,

@@ -188,7 +188,7 @@ test('selection receipt binds the first SDK-created UTXO group before commit and
   try {
     const before = f.authority.getCatalogue()!, revision = f.authority.getSnapshot().revision;
     assert.equal((f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.some(group => group.key === '57'), false);
-    const receipt = await f.authority.selectNetwork('syscoin', revision, before.revision);
+    const receipt = await f.authority.selectNetwork('syscoin', revision, before.revision, () => {});
     receipt.assertCurrent();
     assert.equal(receipt.sourceContextRevision, revision); assert.equal(receipt.sourceCatalogueRevision, before.revision);
     assert.equal(receipt.target.kind, 'utxo');
@@ -197,9 +197,9 @@ test('selection receipt binds the first SDK-created UTXO group before commit and
     const saved = f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
     assert.equal(saved.groups.filter(group => group.key === '57').length, 1);
     assert.equal(saved.groups.find(group => group.key === '57')!.accounts.HDAccount[0]!.address, receipt.selection.address);
-    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     assert.throws(receipt.assertCurrent);
-    const reused = await f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    const reused = await f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     reused.assertCurrent(); assert.deepEqual(reused.selection, receipt.selection);
     assert.equal((f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.filter(group => group.key === '57').length, 1);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
@@ -210,7 +210,7 @@ test('selection receipt cannot escape a lock during first-group admission', asyn
   try {
     const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY));
     f.disk.onIdentity(async () => { if (first) { first = false; entered.resolve(); await held.promise; } });
-    const selecting = f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    const selecting = f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     await entered.promise; f.authority.lock(); held.resolve();
     await assert.rejects(selecting, /CANCELLED|OPERATION_FAILED/);
     assert.notEqual(f.authority.getSnapshot().phase, 'ready');
@@ -225,7 +225,7 @@ test('selection receipt completes the real first-use dapp mode capability withou
     ]);
     const ownerHost = await f.runtime.openConnectionHost(), before = f.authority.getSnapshot(), account = ownerHost.context().accounts[0]!;
     const controls = createNativeDappControlHost({
-      networks: createNativeNetworkView(f.authority, { utxoSendAvailable: true }),
+      networks: createNativeNetworkView(f.authority, { utxoSendAvailable: true, fetch: async () => { throw Error('Mode selection must not fetch peer-provided endpoints'); } }),
       context() {
         const state = f.authority.getSnapshot(), catalogue = f.runtime.catalogue.getControlSnapshot();
         if (state.phase !== 'ready' || !catalogue) return null;
@@ -238,7 +238,9 @@ test('selection receipt completes the real first-use dapp mode capability withou
     });
     const prepared = await controls.prepare(normalizeDappModeRequest('sys_changeUTXOEVM', [{ chainId: 57 }]), { accountId: account.id, address: account.address, networkId: 'ethereum' }, new AbortController().signal, ownerHost.assertOwner);
     assert.equal(f.authority.getSnapshot().revision, before.revision);
-    const result = await prepared.commit(ownerHost.assertOwner); result.assertCurrent();
+    let committed = 0;
+    const result = await prepared.commit(ownerHost.assertOwner, () => { committed++; }); result.assertCurrent();
+    assert.equal(committed, 1);
     assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:57:0');
     assert.equal(f.authority.getCatalogue()!.active.networkId, 'syscoin');
@@ -256,7 +258,7 @@ for (const fault of ['wrong-group', 'missing-receipt'] as const) test(`selection
         return fault === 'missing-receipt' ? null : { ...proof, selection: { ...proof.selection, accountId: 'hd:60:0', address: ADDRESS } };
       } };
     };
-    await assert.rejects(f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /OPERATION_FAILED/);
+    await assert.rejects(f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {}), /OPERATION_FAILED/);
     assert.notEqual(f.authority.getSnapshot().phase, 'ready');
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -317,7 +319,7 @@ test('connection UTXO public reads use the real SDK and reject a retired owner a
   try {
     await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
     await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
-    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     const host = await runtime.openConnectionHost(), account = host.context().accounts.find(value => value.id === host.context().activeAccountId)!;
     assert(account.xpub);
     const scope = { accountId: account.id, xpub: account.xpub }, signal = new AbortController().signal;
@@ -1124,10 +1126,10 @@ test('activity reset retires saved handles and clears only the selected account 
     const ethereum = await sign('1');
     const first = await f.runtime.transfers!.journal(() => undefined);
     await first.saveSigned(ethereum.rawTransaction);
-    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     const base = await sign('8453');
     await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(base.rawTransaction);
-    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     const stale = await f.runtime.transfers!.journal(() => undefined);
     let invalidations = 0;
     await f.runtime.resetActivity(() => undefined, () => { invalidations++; });
@@ -1135,7 +1137,7 @@ test('activity reset retires saved handles and clears only the selected account 
     await assert.rejects(stale.load(), /CANCELLED|CONTEXT_CHANGED/);
     assert.equal(await (await f.runtime.transfers!.journal(() => undefined)).load(), null);
     assert.equal(await f.runtime.session.readSelectedAddress(), ADDRESS);
-    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.hash, base.hash);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -1205,7 +1207,7 @@ test(`${networkId} normal confirmation and exact-byte retry perform no extra aut
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
-    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     const before = { unlocks: sdk.unlocks, hydrations: sdk.hydrations, success: f.disk.successWrites, failure: f.disk.failureWrites };
     await transfers.confirm(await prepareAccountTransfer(transfers));
     await transfers.recover(true);
@@ -1223,7 +1225,7 @@ test(`${networkId} synchronous selection reentrancy from SDK signing is denied b
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
-    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
     let attempted: Promise<void> | undefined;
     const revision = f.authority.getSnapshot().revision;
@@ -1242,7 +1244,7 @@ for (const phase of ['journal-read', 'journal-write', 'broadcast'] as const) {
     const entered = deferredAccount(), release = deferredAccount();
     let broadcastHold: ReturnType<typeof network.holdBroadcast> | undefined;
     try {
-    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
       await f.execute({ kind: 'select', id: 'hd:60:0' });
       const oldRevision = f.authority.getSnapshot().revision;
@@ -1388,7 +1390,7 @@ test('all EVM contexts preserve SDK HD addresses and all valid EVM registrations
   try {
     await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
     const address = f.authority.getSnapshot().account!.address;
-    const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     for (const network of NATIVE_NETWORKS) {
       await select(network.id);
       assert.equal(f.authority.getSnapshot().account!.network, network.id);
@@ -1421,7 +1423,7 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
       nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' });
     const signedByNetwork = new Map<TransferTestNetwork, { rawTransaction: string; hash: string }>();
     for (const networkId of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'] as const) {
-      await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       const chainId = getNativeNetwork(networkId).chainId;
       const wrongChainId = networkId === 'ethereum' ? '57057' : '1';
       await assert.rejects(f.runtime.transfers!.sign(transaction(wrongChainId), { assertCurrent: () => undefined, signal: new AbortController().signal }), /INVALID_INPUT/);
@@ -1442,7 +1444,7 @@ test('installed SDK retains same-address same-nonce Ethereum, NEVM and zkSYS jou
     await reopened.initialize(); await reopened.unlock(PASSWORD);
     assert.equal(reopened.getSnapshot().account?.network, 'zksys-testnet');
     for (const networkId of ['zksys-testnet', 'syscoin-nevm-testnet', 'ethereum'] as const) {
-      await reopened.selectNetwork(networkId, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
+      await reopened.selectNetwork(networkId, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision, () => {});
       assert.equal((await (await runtime.transfers!.journal(() => undefined)).load())!.rawTransaction, signedByNetwork.get(networkId)!.rawTransaction);
     }
     await reopened.manageAccounts({ kind: 'select', id: 'hd:60:0' }, reopened.getSnapshot().revision, reopened.getCatalogue()!.revision);
@@ -1457,7 +1459,7 @@ test(`${networkId} native controller retries exact installed-SDK bytes before it
   const f = await readyAccounts(), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
-    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     const review = await prepareAccountTransfer(transfers);
     assert.equal(transfers.getSnapshot().review!.context.chainId, getNativeNetwork(networkId).chainId);
     assert.equal(transfers.getSnapshot().review!.context.symbol, 'TSYS');
@@ -1482,7 +1484,7 @@ test(`${networkId} A-B-A cancels a pending quote without adopting its late conte
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   const hold = network.holdRead('eth_gasPrice');
   try {
-    const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     await select(networkId);
     const preparing = transfers.prepare(ADDRESS, '0.001'); void preparing.catch(() => undefined);
     await hold.entered;
@@ -1499,11 +1501,11 @@ test(`${networkId} synchronous network reentrancy cannot retarget the current sh
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), network = localTransferRpc(networkId);
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
-    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     let attempted: ReturnType<NativeCustodyAuthority['selectNetwork']> | undefined;
     const revision = f.authority.getSnapshot().revision;
     sdk.onSign(() => {
-      attempted = f.authority.selectNetwork('ethereum', revision, f.authority.getCatalogue()!.revision);
+      attempted = f.authority.selectNetwork('ethereum', revision, f.authority.getCatalogue()!.revision, () => {});
       void attempted.catch(() => undefined);
     });
     await transfers.confirm(await prepareAccountTransfer(transfers));
@@ -1520,7 +1522,7 @@ for (const phase of ['journal-write', 'broadcast'] as const) {
     const entered = deferredAccount(), release = deferredAccount();
     let broadcastHold: ReturnType<typeof network.holdBroadcast> | undefined;
     try {
-      const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       await select(networkId);
       const review = await prepareAccountTransfer(transfers);
       if (phase === 'journal-write') f.disk.onRecord(async (kind, key) => {
@@ -1560,7 +1562,7 @@ for (const expensiveAfterReview of [false, true]) {
     };
     network.setFees({ baseFee: currentBase, priorityFee: 0n, estimateGas: gasFor });
     try {
-      await f.authority.selectNetwork('zksys-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      await f.authority.selectNetwork('zksys-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       const id = await prepareAccountTransfer(transfers);
       const approved = transfers.getSnapshot().review!;
       assert.equal(approved.priorityFeePerGas, '0');
@@ -1608,12 +1610,12 @@ test('network selection rejects unknown identity and active SDK work before chan
     const before = f.authority.getSnapshot();
     await assert.rejects(f.execute({ kind: 'select-network', id: 'base' } as any), /INVALID_INPUT/);
     assert.equal(f.authority.getSnapshot(), before);
-    await assert.rejects(f.authority.selectNetwork('unknown', before.revision, f.authority.getCatalogue()!.revision), /INVALID_INPUT/);
+    await assert.rejects(f.authority.selectNetwork('unknown', before.revision, f.authority.getCatalogue()!.revision, () => {}), /INVALID_INPUT/);
     assert.equal(f.authority.getSnapshot(), before);
     const hold = sdk.hold('password');
     const pending = f.runtime.backup.readPhrase(PASSWORD);
     await hold.entered;
-    await assert.rejects(f.authority.selectNetwork('base', before.revision, f.authority.getCatalogue()!.revision), /BUSY/);
+    await assert.rejects(f.authority.selectNetwork('base', before.revision, f.authority.getCatalogue()!.revision, () => {}), /BUSY/);
     assert.equal(f.authority.getSnapshot(), before);
     hold.release(); await pending;
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
@@ -1623,7 +1625,7 @@ test('lost network-context CAS acknowledgement quarantines and cold reopens its 
   const f = await readyAccounts();
   try {
     f.disk.loseCasAcknowledgement();
-    await assert.rejects(f.authority.selectNetwork('arbitrum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /UNAVAILABLE/);
+    await assert.rejects(f.authority.selectNetwork('arbitrum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {}), /UNAVAILABLE/);
     await assert.rejects(f.authority.dispose(), /CLEANUP_FAILED/);
     const reopened = new NativeCustodyAuthority(f.disk.factory);
     await reopened.initialize(); await reopened.unlock(PASSWORD);
@@ -1643,9 +1645,9 @@ test('network A-B-A cancels held Ethereum journal work without touching its pend
     f.disk.onRecord(async (kind, key) => { if (kind === 'create' && key.startsWith('pali-evm-signed-v1:')) { f.disk.onRecord(); entered.resolve(); await release.promise; } });
     const pending = transfers.confirm(review); void pending.catch(() => undefined);
     await entered.promise;
-    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     assert.equal(f.authority.getSnapshot().account?.network, 'base');
-    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     release.resolve(); await assert.rejects(pending, /CANCELLED/);
     const entry = await (await f.runtime.transfers!.journal(() => undefined)).load();
     assert.equal(entry!.phase, 'signed');
@@ -1663,7 +1665,7 @@ test('account removal checks every chain and keeps all sender-owned signed bytes
     const sign = async (chainId: string) => f.runtime.transfers!.sign({ type: 2, accessList: [], from: address, to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const first = await sign('1'); let journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(first.rawTransaction); await journal.transition(first.hash,'nonce-consumed');
-    await f.authority.selectNetwork('syscoin-nevm',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('syscoin-nevm',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision, () => {});
     const other = await sign('57'); journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(other.rawTransaction); await journal.transition(other.hash,'attempted');
     await f.execute({ kind:'select',id:'hd:60:0' });
@@ -1676,7 +1678,7 @@ test('account removal checks every chain and keeps all sender-owned signed bytes
     await f.execute({kind:'create',label:'Recreated',password:PASSWORD});
     assert.equal(f.authority.getSnapshot().account!.address,address);
     assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.rawTransaction,other.rawTransaction);
-    await f.authority.selectNetwork('ethereum',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('ethereum',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision, () => {});
     assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.rawTransaction,first.rawTransaction);
   } finally { await f.authority.dispose().catch(()=>undefined); f.disk.restoreNetwork(); }
 });
@@ -1814,10 +1816,10 @@ test('native token capability uses authenticated account/network, preserves rest
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     assert.deepEqual((await f.runtime.tokens!.load(() => undefined)).items, [token]);
     const catalogue = f.authority.getCatalogue()!;
-    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, catalogue.revision);
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, catalogue.revision, () => {});
     assert.deepEqual((await f.runtime.tokens!.load(() => undefined)).items, []);
     const base = f.authority.getCatalogue()!;
-    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, base.revision);
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, base.revision, () => {});
     assert.deepEqual((await f.runtime.tokens!.load(() => undefined)).items, [token]);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
@@ -1857,7 +1859,7 @@ test('HD key reveal uses real SDK across registered networks and recreated nonze
     const key0 = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/0").privateKey;
     for (const n of NATIVE_NETWORKS) {
       if (n.id !== f.authority.getCatalogue()!.active.networkId)
-        await f.authority.selectNetwork(n.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+        await f.authority.selectNetwork(n.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       const before = JSON.stringify([...f.disk.records]), shown = await flow.begin(PASSWORD);
       assert.equal(shown.privateKey, key0); assert.equal(shown.address, ADDRESS); assert.equal(shown.accountId, 'hd:60:0');
       assert.equal(Object.isFrozen(shown), true); assert.equal(flow.isCurrent(shown.id), true);
@@ -1880,7 +1882,7 @@ test('UTXO HD reveal returns the selected SDK account key and clears on network 
   try {
     let previous: string | undefined;
     for (const network of UTXO_NETWORKS) {
-      await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       if (previous) assert.equal(flow.isCurrent(previous), false);
       const before = JSON.stringify([...f.disk.records]);
       const shown = await flow.begin(PASSWORD);
@@ -1902,7 +1904,7 @@ test('UTXO HD reveal rejects a valid extended key for a different account', asyn
   const flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
   try {
     const network = UTXO_NETWORKS[0]!;
-    await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     await f.execute({ kind: 'create', label: 'Another account', password: PASSWORD });
     const shown = await flow.begin(PASSWORD);
     assert.equal(shown.accountId, `hd:${network.slip44}:1`);
@@ -1998,8 +2000,8 @@ test('HD key presentation expires on network/account A-B-A, reentrant clear and 
   const unsubscribe = flow.onClear(() => attempts.push(flow.begin(PASSWORD).catch((error: Error) => error.message)));
   try {
     const first = await flow.begin(PASSWORD); assert.deepEqual(await Promise.all(attempts), ['BUSY']); unsubscribe();
-    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
-    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     assert.equal(flow.isCurrent(first.id), false);
     await f.execute({ kind: 'create', label: 'Second', password: PASSWORD }); const second = await flow.begin(PASSWORD);
     await f.execute({ kind: 'select', id: 'hd:60:0' }); await f.execute({ kind: 'select', id: 'hd:60:1' }); assert.equal(flow.isCurrent(second.id), false);
@@ -2113,7 +2115,7 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
     assert.equal(saved.includes('ciphertext'), true);
     assert.equal(JSON.stringify(f.authority.getCatalogue()).includes('ciphertext'), false);
     for (const network of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'] as const) {
-      await f.authority.selectNetwork(network, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      await f.authority.selectNetwork(network, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
       const tx = { type: 2 as const, accessList: [], from: importedAddress(), to: ADDRESS, chainId: getNativeNetwork(network).chainId,
         nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
       const signed = await f.runtime.transfers!.sign(tx, { assertCurrent: () => undefined, signal: new AbortController().signal });
@@ -2285,7 +2287,7 @@ test('imported removal checks every chain, archives terminal rows, and never con
     await importTestKey(f);
     const first = await rawFor(importedAddress(), '1'); let journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(first.rawTransaction); await journal.transition(first.hash, 'nonce-consumed');
-    await f.authority.selectNetwork('syscoin-nevm-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('syscoin-nevm-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision, () => {});
     const second = await rawFor(importedAddress(), '5700'); journal = await f.runtime.transfers!.journal(() => undefined);
     await journal.saveSigned(second.rawTransaction);
     await f.execute({ kind: 'select', id: 'hd:60:0' });
@@ -2295,7 +2297,7 @@ test('imported removal checks every chain, archives terminal rows, and never con
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     await f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD });
     assert.equal(f.disk.records.has('native-evm-transfer-v1:imported:60:0'), false);
-    await f.authority.selectNetwork('ethereum',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision);
+    await f.authority.selectNetwork('ethereum',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision, () => {});
     assert.equal((await (await f.runtime.transfers!.journal(() => undefined)).load())!.hash, hdHash);
     assert.equal(f.disk.signedValue()!.includes(first.hash), true, 'removed-account signed bytes stay retained');
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
@@ -3052,7 +3054,7 @@ for (const failure of ['none', 'retirement', 'cancellation']) test(`Trezor runti
   try {
     await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
     await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
-    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     await runtime.trezor.startImport('Bitcoin Trezor');
     await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
     assert.equal(owner.getCatalogue()!.active.accountId, 'trezor:0:0');
@@ -3112,7 +3114,7 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   try {
     await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
     await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
-    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     await runtime.trezor.startImport('Bitcoin Trezor');
     await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
     const account = owner.getCatalogue()!.accounts.find(account => account.type === 'Trezor')!;
@@ -3240,7 +3242,7 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
   try {
     await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
     await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
-    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     await runtime.trezor.startImport('Bitcoin Trezor');
     await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
     const callCount = methods.length;

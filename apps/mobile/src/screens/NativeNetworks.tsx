@@ -207,7 +207,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     const operation = {};
     working.current = operation;
     setUi({ owner: controller, busy: true, error: '' }); Keyboard.dismiss();
-    try { await controller.select(id, contextRevision, catalogueRevision); }
+    try { await controller.select(id, contextRevision, catalogueRevision, () => {}); }
     catch (cause) {
       // Accepted operations may revoke this screen. Only an unchanged context owns inline feedback.
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&

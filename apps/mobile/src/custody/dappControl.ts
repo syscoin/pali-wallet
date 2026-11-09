@@ -17,6 +17,7 @@ import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { prepareNativeDappModeControl } from './dappModeControl.ts';
 import type { UtxoNetwork } from '../core/utxoNetworks.ts';
 import type { NativeNetworkSelectionReceipt } from './accounts.ts';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 
 export type NativeDappControlPorts = Readonly<{
   networks: NativeNetworkView;
@@ -157,7 +158,8 @@ export function createNativeDappControlHost(
           symbol: reviewed.symbol,
         }),
         assertCurrent: checkCatalogue,
-        async commit(checkRequest) {
+        async commit(checkRequest, onNetworkCommitted) {
+          if (typeof onNetworkCommitted !== 'function') return changed();
           checkCatalogue();
           checkRequest();
           networkCommit = true;
@@ -168,7 +170,12 @@ export function createNativeDappControlHost(
                 receipt = await ports.networks.select(
                   reviewed.id,
                   captured.revision,
-                  initial.revision
+                  initial.revision,
+                  proof => {
+                    proof.assertCurrent();
+                    if (proof.sourceCatalogueRevision !== initial.revision || proof.target.kind !== 'evm' || proof.target.registrationHash !== reviewed.registrationHash || proof.selection.accountId !== expected.accountId || proof.selection.address !== expected.address || proof.selection.networkId !== expected.networkId) return changed();
+                    assertSynchronousEvmFeeGuard(onNetworkCommitted);
+                  }
                 );
             } else if (!exists) {
               if (!ports.networks.save)
@@ -190,14 +197,14 @@ export function createNativeDappControlHost(
             receipt.assertCurrent();
             if (receipt.sourceContextRevision !== captured.revision || receipt.sourceCatalogueRevision !== initial.revision || receipt.contextRevision !== captured.revision + 1 || receipt.catalogueRevision !== initial.revision + 1 || receipt.target.kind !== 'evm' || receipt.target.registrationHash !== reviewed.registrationHash || receipt.selection.accountId !== expected.accountId || receipt.selection.address !== expected.address || receipt.selection.networkId !== expected.networkId) return changed();
           }
-          const committed = assertOwner(),
+          const committed = ports.context(),
             catalogue = ports.networks.getSnapshot();
           const expectedSelected =
             request.method === 'wallet_switchEthereumChain'
               ? reviewed.id
               : selected;
           if (
-            !catalogue ||
+            !committed || !committed.accounts.some(account => account.id === owner.accountId && account.address === owner.address && account.slip44 === 60) || !catalogue ||
             committed.revision !== captured.revision + Number(mutates) ||
             committed.catalogueRevision !== initial.revision + Number(mutates) ||
             committed.activeAccountId !== expected.accountId ||
@@ -212,6 +219,8 @@ export function createNativeDappControlHost(
             )
           )
             return changed();
+          if (mutates && !changesSelection) assertSynchronousEvmFeeGuard(onNetworkCommitted);
+          assertOwner();
           const assertCommitted = () => {
             checkRequest();
             receipt?.assertCurrent();

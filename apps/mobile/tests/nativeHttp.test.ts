@@ -18,6 +18,11 @@ import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
+import { createNativeNetworkView } from '../src/custody/networkView.ts';
+import { createNativeDappControlHost } from '../src/custody/dappControl.ts';
+import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
+import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
+import { normalizeDappWalletControl } from '../../../source/shared/dappWalletControl.ts';
 const require = createRequire(import.meta.url);
 const read = (path: string) =>
   readFileSync(new NodeURL(path, import.meta.url), 'utf8');
@@ -312,8 +317,13 @@ test('native factory explicitly wires one owned transport to all network consume
         retired.push(name);
       }
     };
-  const fetcher: WalletHttpFetch = async () => {
-    throw Error('no HTTP in wiring test');
+  const routes: string[] = [];
+  const fetcher: WalletHttpFetch = async (url, init) => {
+    routes.push('configured');
+    assert.equal(url, 'https://approved-network.example/rpc');
+    const request = JSON.parse(String(init.body));
+    assert.equal(request.method, 'eth_chainId');
+    return Response.json({ jsonrpc: '2.0', id: request.id, result: '0x89' });
   };
   const balance = { readBalance() {} };
   const prepareWalletConnectRuntime = () => {
@@ -328,11 +338,11 @@ test('native factory explicitly wires one owned transport to all network consume
         return unexpectedFeature;
       },
     },
-    '../custody/networkView': { createNativeNetworkView: () => ({
+    '../custody/networkView': { createNativeNetworkView: (...args: unknown[]) => { captures.networks = args; return ({
       getSnapshot: () => null, getContextRevision: unexpectedFeature,
       subscribe: () => () => undefined, select: unexpectedFeature, cancel() {},
-    }) },
-    '../custody/dappControl': { createNativeDappControlHost: () => ({ context: () => null, prepare: unexpectedFeature }) },
+    }); } },
+    '../custody/dappControl': { createNativeDappControlHost: (ports: unknown) => { captures.controls = [ports]; return { context: () => null, prepare: unexpectedFeature }; } },
     '../custody/dappRpcReads': { createNativeDappRpcReadHost: () => ({ read: unexpectedFeature }) },
     '../custody/dappSentry': { createNativeDappSentryHost: () => ({ prepare: unexpectedFeature }) },
     '../custody/dappSyscoin': { createNativeDappSyscoinHost: () => ({ registration: unexpectedFeature, anchor: unexpectedFeature, read: unexpectedFeature }) },
@@ -478,6 +488,47 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(captures.utxoActivity![2], 'utxo-activity-reader');
   assert.equal(bundle.utxoActivity, 'utxo-activity-owner');
   assert.equal(typeof captures.utxoActivityReader![0].fetch, 'function');
+  // Execute both real approval stages using the exact transport ports composed
+  // by the native factory, with only public authority persistence substituted.
+  const address = '0x1111111111111111111111111111111111111111';
+  const account = { id: 'hd:60:0', type: 'HDAccount' as const, index: 0, slip44: 60, address, label: 'Account' };
+  let revision = 1;
+  let catalogue: NativeWalletCatalogueSnapshot = { revision: 1, networks: NATIVE_NETWORKS, utxoNetworks: [],
+    accounts: [account], active: { accountId: account.id, networkId: 'ethereum' } };
+  const authority = {
+    getSnapshot: (): CustodySnapshot => ({ phase: 'ready', revision, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
+    getCatalogue: () => catalogue, subscribe: () => () => undefined,
+    selectNetwork: async () => { throw Error('Unexpected selection'); }, cancelAccountOperation() {},
+    async manageNetwork(request: Parameters<import('../src/custody/authority.ts').NativeCustodyAuthority['manageNetwork']>[0]) {
+      assert.equal(request.kind, 'save-network');
+      if (request.kind !== 'save-network') throw Error('Unexpected mutation');
+      revision++;
+      catalogue = { ...catalogue, revision: catalogue.revision + 1, networks: [...catalogue.networks, request.registration] };
+    },
+  };
+  const networks = createNativeNetworkView(authority, captures.networks![1]);
+  const controls = createNativeDappControlHost({ ...captures.controls![0], networks,
+    context: () => ({ revision, catalogueRevision: catalogue.revision, activeAccountId: account.id,
+      networkId: 'ethereum', networkLabel: 'Ethereum', accounts: catalogue.accounts }),
+  });
+  const ambient = globalThis.fetch;
+  globalThis.fetch = async () => { routes.push('ambient'); throw Error('Ambient HTTP is forbidden'); };
+  try {
+    const prepared = await controls.prepare(normalizeDappWalletControl('wallet_addEthereumChain', [{
+      chainId: '0x89', chainName: 'Approved network', rpcUrls: ['https://approved-network.example/rpc'],
+      nativeCurrency: { name: 'POL', symbol: 'POL', decimals: 18 },
+    }]), { accountId: account.id, networkId: 'ethereum', address }, new AbortController().signal, () => {});
+    try {
+      assert.deepEqual(routes, ['configured']);
+      let committed = 0;
+      const result = await prepared.commit(() => {}, () => { committed++; }).catch(error => error);
+      assert.deepEqual(routes, ['configured', 'configured']);
+      assert.equal(result.result, null);
+      result.assertCurrent();
+      assert.equal(catalogue.networks.at(-1)!.chainId, '137');
+      assert.equal(committed, 1);
+    } finally { prepared.dispose(); }
+  } finally { globalThis.fetch = ambient; }
   factory.createNativeRecoveryCoordinator(bundle);
   const recovery = captures.recovery![0][0];
   assert.equal(recovery.owner, bundle.authority);

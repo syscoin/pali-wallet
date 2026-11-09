@@ -44,7 +44,7 @@ const deferred = () => {
   });
   return { promise, resolve };
 };
-function fixture(wait?: Promise<void>, options: { utxo?: boolean; unexpectedAccount?: boolean; unexpectedRevision?: boolean } = {}) {
+function fixture(wait?: Promise<void>, options: { utxo?: boolean; unexpectedAccount?: boolean; unexpectedRevision?: boolean; afterSelection?: () => void } = {}) {
   let context: NativeDappControlContext = { revision: 1, catalogueRevision: 1, activeAccountId: options.utxo ? 'hd:57:0' : owner.accountId, networkId: options.utxo ? 'syscoin' : owner.networkId, networkLabel: 'Ethereum', accounts: [{ id: owner.accountId, address, index: 0, type: 'HDAccount' as const, slip44: 60, label: 'Account' }, { id: 'hd:60:1', address: `0x${'34'.repeat(20)}`, index: 1, type: 'HDAccount' as const, slip44: 60, label: 'Display default' }] },
     cancelled = false;
   let snapshot: NativeNetworkSnapshot = {
@@ -60,7 +60,7 @@ function fixture(wait?: Promise<void>, options: { utxo?: boolean; unexpectedAcco
     getSnapshot: () => snapshot,
     getContextRevision: () => context.revision,
     subscribe: () => () => {},
-    async select(id, revision, catalogueRevision) {
+    async select(id, revision, catalogueRevision, onCommitted) {
       assert.equal(revision, context.revision);
       assert.equal(catalogueRevision, snapshot.revision);
       calls.select++;
@@ -76,9 +76,12 @@ function fixture(wait?: Promise<void>, options: { utxo?: boolean; unexpectedAcco
       if (!target) throw new Error('Invalid fixture target');
       const accountId = options.utxo ? 'hd:60:1' : owner.accountId;
       const selectedAddress = context.accounts.find(account => account.id === accountId)!.address;
-      return networkSelectionReceiptFixture(target, { accountId, address: selectedAddress, networkId: id }, revision, catalogueRevision, () => {
+      options.afterSelection?.();
+      const receipt = networkSelectionReceiptFixture(target, { accountId, address: selectedAddress, networkId: id }, revision, catalogueRevision, () => {
         if (context.activeAccountId !== accountId || context.revision !== revision + 1 || snapshot.revision !== catalogueRevision + 1 || snapshot.selectedId !== id) throw new Error('CONTEXT_CHANGED');
       });
+      onCommitted(receipt);
+      return receipt;
     },
     async save(value, revision, catalogueRevision) {
       assert.equal(revision, context.revision);
@@ -144,7 +147,7 @@ test('switch capability admits only the saved endpoint and retains a post-transi
       second.rpcUrl
     );
     assert.equal(f.calls.select, 0);
-    const result = await prepared.commit(() => {});
+    const result = await prepared.commit(() => {}, () => {});
     assert.equal(result.result, null);
     result.assertCurrent();
     assert.equal(f.snapshot().selectedId, second.id);
@@ -177,12 +180,33 @@ for (const fault of ['none', 'account', 'revision'] as const) test(`cross-family
   try {
     assert.equal(prepared.details.kind, 'network-switch');
     if (fault === 'none') {
-      const result = await prepared.commit(() => {});
+      const result = await prepared.commit(() => {}, () => {});
       result.assertCurrent();
       assert.equal(f.host.context()?.activeAccountId, 'hd:60:1');
       assert.equal(f.host.context()?.networkId, 'ethereum');
-    } else await assert.rejects(prepared.commit(() => {}), /CONTEXT_CHANGED/);
+    } else await assert.rejects(prepared.commit(() => {}, () => {}), /CONTEXT_CHANGED/);
     assert.equal(f.calls.select, 1);
+  } finally { prepared.dispose(); }
+});
+test('a proven EVM selection notifies before an expired caller postcheck without reporting success', async () => {
+  let expired = false, committed = 0;
+  const f = fixture(undefined, { afterSelection: () => { expired = true; } });
+  const check = () => { if (expired) throw new Error('REQUEST_EXPIRED'); };
+  const prepared = await f.host.prepare(normalizeDappWalletControl('wallet_switchEthereumChain', [{ chainId: '0xa' }]), owner, new AbortController().signal, check);
+  try {
+    await assert.rejects(prepared.commit(check, () => { committed++; }), /REQUEST_EXPIRED/);
+    assert.equal(f.calls.select, 1);
+    assert.equal(f.snapshot().selectedId, second.id);
+    assert.equal(committed, 1);
+  } finally { prepared.dispose(); }
+});
+test('EVM selection refuses an absent required commit notification before mutation', async () => {
+  const f = fixture();
+  const prepared = await f.host.prepare(normalizeDappWalletControl('wallet_switchEthereumChain', [{ chainId: '0xa' }]), owner, new AbortController().signal, () => {});
+  try {
+    await assert.rejects(prepared.commit(() => {}, undefined as never), /CONTEXT_CHANGED/);
+    assert.equal(f.calls.select, 0);
+    assert.equal(f.calls.save, 0); assert.equal(f.calls.fetch, 0);
   } finally { prepared.dispose(); }
 });
 test('adding a known chain never replaces its RPC with the proposed endpoint', async () => {
@@ -200,7 +224,7 @@ test('adding a known chain never replaces its RPC with the proposed endpoint', a
       'rpcUrl' in prepared.details && prepared.details.rpcUrl,
       second.rpcUrl
     );
-    await prepared.commit(() => {});
+    await prepared.commit(() => {}, () => {});
     assert.equal(f.calls.save, 0);
     assert.equal(f.calls.fetch, 0);
     assert.equal(f.snapshot().selectedId, first.id);
@@ -226,7 +250,7 @@ test('new registration verifies the provider before review and uses existing gua
   try {
     assert.equal(f.calls.fetch, 1);
     assert.equal(f.calls.save, 0);
-    const result = await prepared.commit(() => {});
+    const result = await prepared.commit(() => {}, () => {});
     result.assertCurrent();
     assert.equal(f.calls.save, 1);
     assert.equal(f.snapshot().selectedId, first.id);
@@ -251,7 +275,7 @@ test('catalogue replacement or account change invalidates the reviewed capabilit
     try {
       if (change === 'catalogue') f.replace();
       else f.changeAccount();
-      await assert.rejects(prepared.commit(() => {}));
+      await assert.rejects(prepared.commit(() => {}, () => {}));
       assert.equal(f.calls.select, 0);
     } finally {
       prepared.dispose();
@@ -271,7 +295,7 @@ test('request abort cancels its admitted network operation and cannot select lat
     () => {}
   );
   try {
-    const committing = prepared.commit(() => {});
+    const committing = prepared.commit(() => {}, () => {});
     controller.abort();
     wait.resolve();
     await assert.rejects(committing);

@@ -124,7 +124,7 @@ window.__watchFixture = {
   sysx: sysxSendFixture,
   async selectNativeNetwork(id) {
     const authority = latestAuthority!;
-    await authority.selectNetwork(id, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+    await authority.selectNetwork(id, authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
   },
   activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
   removal: { ...walletRemovalFixture, recreate: recreateRemovalWallet },

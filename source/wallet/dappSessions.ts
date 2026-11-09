@@ -217,7 +217,25 @@ export function createDappSessions<Account extends DappPublicAccount>(
   ];
   if (required.some((method) => typeof method !== 'function'))
     throw new TypeError('An explicit dapp session host is required');
-  const permissions = host.permissions;
+  const grantLifetimes = new WeakMap<IDApp, object>();
+  const grantLifetime = (grant: IDApp) => {
+    let lifetime = grantLifetimes.get(grant);
+    if (!lifetime) {
+      lifetime = {};
+      grantLifetimes.set(grant, lifetime);
+    }
+    return lifetime;
+  };
+  const permissions: DappPermissionPort = {
+    ...host.permissions,
+    publish(frame) {
+      for (const [origin, grant] of Object.entries(
+        host.permissions.read().dapps
+      ))
+        if (frame.dapps[origin] !== grant) grantLifetimes.set(grant, {});
+      host.permissions.publish(frame);
+    },
+  };
   const sessions: Record<
     string,
     { activeAddress: string | null; approvalOpen: boolean }
@@ -270,6 +288,34 @@ export function createDappSessions<Account extends DappPublicAccount>(
       : undefined;
   };
   const isConnected = (origin: string) => Boolean(currentConnection(origin));
+  /** An approval cannot inherit a replacement or a restored revoked grant. */
+  const captureApproval = (origin: string) => {
+    const grant = currentConnection(origin);
+    const lifetime = grant && grantLifetime(grant);
+    const generation = host.wallet().generation;
+    let retired = false;
+    const assertCurrent = () => {
+      const wallet = host.wallet();
+      if (
+        retired ||
+        !grant ||
+        grantLifetime(grant) !== lifetime ||
+        !wallet.unlocked ||
+        wallet.generation !== generation ||
+        currentConnection(origin) !== grant
+      ) {
+        retired = true;
+        throw Object.assign(
+          new Error(
+            'This site approval is no longer current. Request it again.'
+          ),
+          { code: 4001 }
+        );
+      }
+    };
+    assertCurrent();
+    return assertCurrent;
+  };
   const getAccount = (origin: string) => resolveAccount(get(origin));
   const setup = (origin: string) => {
     if (
@@ -800,6 +846,7 @@ export function createDappSessions<Account extends DappPublicAccount>(
     revoke,
     retireForTransaction,
     captureAccountSessionRetirement,
+    captureApproval,
     resetSessions,
     handleStateChange,
     handleBlockExplorerChange,

@@ -138,6 +138,7 @@ export function createNativeSentryApprovals(ports: Ports) {
   const scope = Object.freeze({
     ...ports.scope,
     network: Object.freeze({ ...ports.scope.network }),
+    assertRequestCurrent: () => check(),
   });
   const check = () => {
     assertSynchronousEvmFeeGuard(ports.assertCurrent);
@@ -150,6 +151,10 @@ export function createNativeSentryApprovals(ports: Ports) {
   const vault = createSentryKeyVault(ports.vaultHost);
   const host: SentryApprovalHost = {
     captureScope: () => {
+      check();
+      return scope;
+    },
+    captureApprovalScope: () => {
       check();
       return scope;
     },

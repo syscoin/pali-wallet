@@ -48,7 +48,7 @@ const authority = {
   },
   cancelAccountOperation() {},
 };
-const networks = createNativeNetworkView(authority, { utxoSendAvailable: true });
+const networks = createNativeNetworkView(authority, { utxoSendAvailable: true, fetch: async () => { throw Error('Unexpected HTTP in network portfolio fixture'); } });
 const reader: BalanceReader = {
   async readBalance(id) {
     reads.push(id); return { chainId: Number(getNativeNetwork(id).chainId), units: '1234000000000000000' };

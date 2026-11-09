@@ -270,7 +270,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       await owner.manageAccounts(request, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
     },
     async selectNetwork(id: string) {
-      await owner.selectNetwork(id, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+      await owner.selectNetwork(id, owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     },
     async inspectRecovery() {
       const binding = (await storage.recovery.readIdentity())!.walletBindingId;

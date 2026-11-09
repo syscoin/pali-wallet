@@ -219,7 +219,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
     const beforeNetwork = await resolveCollectible(multi, current);
     assert.equal(beforeNetwork.signal.aborted, false);
     const selectNetwork = (networkId: string) =>
-      owner.selectNetwork(networkId, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+      owner.selectNetwork(networkId, owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     const changeNetwork = selectNetwork('base');
     assert.equal(beforeNetwork.signal.aborted, true);
     await changeNetwork;

@@ -22,11 +22,25 @@ export function selectEnsResolutionNetwork<T>(
 /** The provider owns ENS normalization, registry, wildcard and CCIP-read validation. */
 export async function resolveEnsRecipientName(
   name: string,
-  resolveName: (value: string) => Promise<string | null>
+  source: Readonly<{
+    /** A fresh RPC read from the same configured source, never getNetwork(). */
+    readChainId(): Promise<unknown>;
+    resolveName(value: string): Promise<string | null>;
+  }>
 ): Promise<string | null> {
   if (!isEnsRecipientName(name)) return null;
   try {
-    return normalizeEnsResolvedAddress(await resolveName(name));
+    const address = normalizeEnsResolvedAddress(await source.resolveName(name));
+    if (!address) return null;
+    // A static/cached provider network does not detect an endpoint changing
+    // chains during the ENS lookup. Recheck before publishing its result.
+    const chainId = await source.readChainId();
+    return typeof chainId === 'string' &&
+      chainId.length <= 66 &&
+      /^0x[0-9a-f]+$/i.test(chainId) &&
+      BigInt(chainId) === BigInt(ENS_RESOLUTION_CHAIN_ID)
+      ? address
+      : null;
   } catch {
     return null;
   }

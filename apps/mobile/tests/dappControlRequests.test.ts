@@ -23,6 +23,18 @@ const deferred = () => {
   return { promise, resolve };
 };
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+test('control admission rejects a missing required retirement port before opening any host', () => {
+  let opened = 0;
+  for (const missing of [undefined, null, false])
+    assert.throws(() => new NativeDappControlRequests({
+      host() { opened++; assert.fail('No host may open'); },
+      foreground: () => true, changed() {},
+      checkSite: async () => { assert.fail('No site request may start'); },
+      respond: async () => { assert.fail('No response may start'); },
+      retireCommitted: missing as never,
+    }), /Committed control retirement is required/);
+  assert.equal(opened, 0);
+});
 function fixture(
   options: {
     preparation?: Promise<void>;
@@ -32,6 +44,7 @@ function fixture(
     valid?: 'INVALID';
     foreground?: boolean;
     rpcFailure?: boolean;
+    afterMutation?: () => void;
   } = {}
 ) {
   let source = 0,
@@ -73,6 +86,7 @@ function fixture(
     commit: 0,
     dispose: 0,
     responses: [] as { wire: WalletConnectRequest; response: unknown }[],
+    retiredCommits: [] as WalletConnectRequest[],
   };
   const sessionCheck = () => {
     if (!connected || !alive) throw new Error('STALE_SESSION');
@@ -102,12 +116,13 @@ function fixture(
           requestCheck();
           if (signal.aborted || source !== 0) throw new Error('STALE_PREPARED');
         },
-        async commit(commitCheck) {
+        async commit(commitCheck, onNetworkCommitted) {
           calls.commit++;
           commitCheck();
           await options.commit;
           commitCheck();
-          if (options.transition) source = 1;
+          if (options.transition) { source = 1; onNetworkCommitted(); }
+          if (options.afterMutation) { options.afterMutation(); commitCheck(); }
           return {
             result: null,
             assertCurrent() {
@@ -128,6 +143,7 @@ function fixture(
     foreground: () => foreground,
     changed() {},
     checkSite: async () => ({ isBlacklisted: blacklist }),
+    async retireCommitted(wire) { calls.retiredCommits.push(wire); },
     async respond(sent, response, responseCheck) {
       responseCheck();
       calls.responses.push({ wire: sent, response });
@@ -257,6 +273,18 @@ test('normal network transition retains the originating response without extendi
   } finally {
     f.manager.clear();
   }
+});
+test('a known network mutation is retired when its host postcheck expires before returning a receipt', async () => {
+  const readNow = Date.now; let now = readNow(); Date.now = () => now;
+  const f = fixture({ transition: true, afterMutation: () => { now += 60001; } });
+  try {
+    f.enqueue(); await settle();
+    await assert.rejects(f.manager.approve('control-1'), /REQUEST_EXPIRED/);
+    assert.equal(f.calls.commit, 1);
+    assert.deepEqual(f.calls.retiredCommits, [f.wire]);
+    assert.deepEqual(f.calls.responses, []);
+    assert.equal(f.manager.size, 0);
+  } finally { Date.now = readNow; f.manager.clear(); }
 });
 test('context changes before approval revoke its capability', async () => {
   const f = fixture();

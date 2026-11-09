@@ -1,3 +1,6 @@
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
+
+import type { SentryRequestScope } from './sentryApprovalTypes.ts';
 import type {
   SentryManagementContext,
   SentryManagementRequest,
@@ -17,7 +20,7 @@ type FeeAuthorization = {
   expiresAt: number;
   origin: string;
   request: SentryOperationRequest | SentryManagementRequest;
-  scopeIdentity: string;
+  scope: SentryRequestScope;
   serviceUrl: string;
 };
 
@@ -33,13 +36,14 @@ export class SentryFeeAuthorizations {
     for (const [id, entry] of this.entries)
       if (
         entry.expiresAt <= Date.now() ||
-        entry.scopeIdentity !== scopeIdentity
+        entry.scope.identity !== scopeIdentity
       )
         this.entries.delete(id);
   }
 
   public remember(entry: Omit<FeeAuthorization, 'expiresAt'>) {
-    this.prune(entry.scopeIdentity);
+    assertSynchronousEvmFeeGuard(entry.scope.assertRequestCurrent);
+    this.prune(entry.scope.identity);
     for (const [id, previous] of this.entries)
       if (
         previous.origin === entry.origin &&
@@ -60,9 +64,11 @@ export class SentryFeeAuthorizations {
       if (
         entry.request.transactionHex === transactionHex &&
         entry.origin === origin &&
-        entry.scopeIdentity === scopeIdentity
-      )
+        entry.scope.identity === scopeIdentity
+      ) {
+        this.get(id, transactionHex, scopeIdentity);
         return id;
+      }
     throw new Error(
       'SENTRY_FEE_AUTHORIZATION_REQUIRED: Authorize this exact Sentry operation in Pali before signing its network fee.'
     );
@@ -75,7 +81,13 @@ export class SentryFeeAuthorizations {
       throw new Error(
         'SENTRY_FEE_AUTHORIZATION_REQUIRED: The Sentry fee authorization expired or the transaction changed. Authorize the operation again.'
       );
-    return entry;
+    try {
+      assertSynchronousEvmFeeGuard(entry.scope.assertRequestCurrent);
+      return entry;
+    } catch (error) {
+      this.entries.delete(id);
+      throw error;
+    }
   }
 
   public acquire(id: string, transactionHex: string, scopeIdentity: string) {
@@ -84,8 +96,11 @@ export class SentryFeeAuthorizations {
       throw new Error('This Sentry fee authorization is already being signed.');
     entry.busy = true;
     return (disclosed = false) => {
-      if (disclosed) this.entries.delete(id);
-      else entry.busy = false;
+      if (disclosed) {
+        if (this.get(id, transactionHex, scopeIdentity) !== entry)
+          throw new Error('The Sentry fee authorization changed');
+        this.entries.delete(id);
+      } else entry.busy = false;
     };
   }
 }

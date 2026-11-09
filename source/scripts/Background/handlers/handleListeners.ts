@@ -10,6 +10,7 @@ import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
 import type { PrivacyPoolId } from 'utils/privacy/types';
+import { assertSentryDappResponseCurrent } from 'utils/sentry/approvalLifetime';
 import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
 
 import { watchWalletTokenReview } from './approvalSubmission';
@@ -183,6 +184,7 @@ export const handleListeners = (masterController: IMasterController) => {
       // Handle DApp messages using the onMessage handler
       onMessage(message, sender)
         .then((response) => {
+          assertSentryDappResponseCurrent(message.data?.method, response);
           if (response !== undefined) {
             sendResponse(response);
           } else {

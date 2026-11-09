@@ -15,6 +15,8 @@ export interface IDAppController {
     accountId: number,
     accountType: KeyringAccountType
   ) => { grants: IDApp[]; retire: () => void };
+  /** Internal, irreversible ownership of the exact originating grant. */
+  captureApproval: (origin: string) => () => void;
   /**
    * Changes the account
    * @emits accountsChanged

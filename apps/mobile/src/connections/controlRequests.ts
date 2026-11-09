@@ -52,7 +52,8 @@ export type NativeDappControlCommit = Readonly<{
 export type NativePreparedDappControl = Readonly<{
   details: NativeDappControlDetails;
   assertCurrent(): void;
-  commit(assertRequestCurrent: () => void): Promise<NativeDappControlCommit>;
+  /** Notify synchronously after proven network persistence, before request postchecks. */
+  commit(assertRequestCurrent: () => void, onNetworkCommitted: () => void): Promise<NativeDappControlCommit>;
   dispose(): void;
 }>;
 export type NativeDappControlContext = Readonly<{
@@ -96,6 +97,7 @@ type Pending = {
   timer: ReturnType<typeof setTimeout>;
   busy: boolean;
   committing: boolean;
+  networkCommitted: boolean;
   prepared?: NativePreparedDappControl;
   committed?: NativeDappControlCommit;
   error: NativeDappControlReview['error'];
@@ -105,6 +107,8 @@ type Options = {
   foreground(order: number): boolean;
   changed(): void;
   checkSite(origin: string): Promise<Readonly<{ isBlacklisted: boolean }>>;
+  /** Retire only a proven network mutation after its response attempt settles. */
+  retireCommitted(wire: WalletConnectRequest): Promise<void>;
   respond(
     wire: WalletConnectRequest,
     response:
@@ -120,6 +124,7 @@ export class NativeDappControlRequests {
   private closed = false;
   private readonly options: Options;
   constructor(options: Options) {
+    if (typeof options.retireCommitted !== 'function') throw new Error('Committed control retirement is required');
     this.options = options;
   }
   get firstOrder(): number {
@@ -179,6 +184,7 @@ export class NativeDappControlRequests {
       }, expiresAt - Date.now()),
       busy: false,
       committing: false,
+      networkCommitted: false,
       error: wire.verification.isScam
         ? 'BLOCKED_SITE'
         : wire.verification.validation === 'INVALID'
@@ -253,7 +259,7 @@ export class NativeDappControlRequests {
       entry.prepared = prepared;
       if ('kind' in entry.request && !requiresDappModeSwitch(entry.request, entry.owner.networkFamily)) {
         entry.committing = true;
-        entry.committed = await prepared.commit(() => this.check(entry));
+        entry.committed = await prepared.commit(() => this.check(entry), () => { entry.networkCommitted = true; });
         this.check(entry); entry.committed.assertCurrent();
         await this.options.respond(entry.wire, { result: entry.committed.result }, () => { this.check(entry); entry.committed!.assertCurrent(); });
         await this.retire(entry, false);
@@ -282,9 +288,8 @@ export class NativeDappControlRequests {
         } else entry.error = 'CONTROL_UNAVAILABLE';
       }
     } finally {
-      entry.busy = false;
-      finish();
-      this.options.changed();
+      try { if (entry.networkCommitted) await this.options.retireCommitted(entry.wire); }
+      finally { entry.busy = false; finish(); this.options.changed(); }
     }
   }
   async approve(id: string) {
@@ -312,7 +317,7 @@ export class NativeDappControlRequests {
       entry.prepared.assertCurrent();
       if (site.isBlacklisted) throw new Error('BLOCKED_SITE');
       entry.committing = true;
-      entry.committed = await entry.prepared.commit(() => this.check(entry));
+      entry.committed = await entry.prepared.commit(() => this.check(entry), () => { entry.networkCommitted = true; });
       this.check(entry);
       entry.committed.assertCurrent();
       await this.options.respond(
@@ -325,12 +330,11 @@ export class NativeDappControlRequests {
       );
       await this.retire(entry, false);
     } catch (cause) {
-      await this.retire(entry, !entry.committed);
+      await this.retire(entry, !entry.committed && !entry.networkCommitted);
       throw cause;
     } finally {
-      entry.busy = false;
-      finish();
-      this.options.changed();
+      try { if (entry.networkCommitted) await this.options.retireCommitted(entry.wire); }
+      finally { entry.busy = false; finish(); this.options.changed(); }
     }
   }
   async reject(id: string) {

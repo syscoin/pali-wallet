@@ -84,6 +84,7 @@ function fixture(
   const controlCommits: unknown[] = [], externalUrls: string[] = [];
   let controlWait: Promise<void> = Promise.resolve();
   let controlFailure: Error | undefined;
+  let afterControlCommit: (() => void) | undefined;
   let sentryWait: Promise<void> = Promise.resolve();
   let receivingAddress: string = UTXO_ADDRESSES.syscoin;
   const sentryRequests: unknown[] = [], sentryAssents: NativeSentryAssent[] = [];
@@ -215,7 +216,7 @@ function fixture(
             ? { kind: 'watch-asset', type: request.type, address: request.address, name: 'Observed token', symbol: 'OBS', decimals: 18, ...(request.tokenId ? { tokenId: request.tokenId } : {}) }
             : { kind: request.method === 'wallet_switchEthereumChain' || 'kind' in request ? 'network-switch' : 'network-add', chainId: String(request.chainId), name: 'Observed chain', rpcUrl: 'https://observed.example', symbol: 'ETH' },
           assertCurrent: current,
-          async commit(checkRequest) {
+          async commit(checkRequest, onNetworkCommitted) {
             current(); await controlWait; checkRequest();
             if (controlFailure) throw controlFailure;
             controlCommits.push(request);
@@ -223,7 +224,9 @@ function fixture(
               selectedChainId = request.chainId; selectedUtxo = 'kind' in request && request.kind === 'syscoin'; selectedAccountId = selectedUtxo ? 'hd:57:0' : defaultEvmAccountId;
               snapshot = { ...snapshot, revision: snapshot.revision + 1 };
               for (const listener of listeners) listener();
+              onNetworkCommitted();
             }
+            afterControlCommit?.();
             return { result: request.method === 'wallet_watchAsset' ? true : null, assertCurrent: checkRequest };
           },
           dispose() {},
@@ -597,6 +600,7 @@ function fixture(
     failRead(value: Error) { readError = value; },
     setControlWait(value: Promise<void>) { controlWait = value; },
     failControlCommit() { controlFailure = Error('Mode switch failed'); },
+    afterControlCommit(hook: () => void) { afterControlCommit = hook; },
     beforePreparedReturn(hook: () => void) { beforePreparedReturn = hook; },
     smartDisposals: () => smartDisposals,
     view: controller.view,
@@ -1699,6 +1703,45 @@ for (const utxo of [false, true]) for (const committed of [false, true]) for (co
     else assert.equal(response.result.error?.code, 4001, 'a failed switch cannot claim completion');
     assert.equal(f.signatures.length, 0);
   } finally { await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} known mode commit retires its grant when the request expires before response admission`, async () => {
+  const readNow = Date.now;
+  let now = readNow();
+  Date.now = () => now;
+  const f = await connectedFixture({ utxo });
+  try {
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.afterControlCommit(() => { now += 300001; });
+    await assert.rejects(f.view.approveControl(review.id, review.revision), /REQUEST_EXPIRED/);
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.responses.length, 0); assert.equal(f.handedOff.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.signatures.length, 0);
+  } finally { Date.now = readNow; await f.controller.dispose(); }
+});
+test('late known mode commit cleanup retains a newly published successor grant', async () => {
+  const readNow = Date.now; let now = readNow(); Date.now = () => now;
+  const f = await connectedFixture();
+  try {
+    const permission = (await f.repository).permissions(f.session.binding);
+    const frame = permission.read(), original = frame.dapps[ORIGIN]; assert(original);
+    const successor = { ...original, date: original.date + 1 };
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.afterControlCommit(() => {
+      permission.publish({ ...frame, dapps: { ...frame.dapps, [ORIGIN]: successor } });
+      now += 300001;
+    });
+    await assert.rejects(f.view.approveControl(review.id, review.revision), /REQUEST_EXPIRED/);
+    assert.equal(f.controlCommits.length, 1);
+    assert.deepEqual(permission.read().dapps[ORIGIN], successor);
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert.equal(f.remoteDisconnects.length, 0);
+    assert.equal(f.responses.length, 0);
+  } finally { Date.now = readNow; await f.controller.dispose(); }
 });
 for (const utxo of [false, true]) for (const acknowledged of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} committed mode grant retires at handoff while its ${acknowledged ? 'delivered' : 'lost'} acknowledgment is held`, async () => {
   const f = await connectedFixture({ utxo });

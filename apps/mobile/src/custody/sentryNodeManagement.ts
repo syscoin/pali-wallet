@@ -127,6 +127,10 @@ export function createNativeSentryNodeManagement(ports: NodePorts) {
       check();
       return owner;
     },
+    captureLinkScope: () => {
+      check();
+      return { scope: owner, assertCurrent: check };
+    },
     assertCurrent: (captured) => {
       check();
       if (captured !== owner) throw new Error('CANCELLED');

@@ -52,7 +52,7 @@ import { readStoredDappPermissions } from '../../../shared/dappTypes';
 import {
   ENS_RESOLUTION_CHAIN_ID,
   isEnsRecipientName,
-  normalizeEnsResolvedAddress,
+  resolveEnsRecipientName,
   selectEnsResolutionNetwork,
 } from '../../../shared/ensRecipient';
 import {
@@ -2719,6 +2719,35 @@ class MainController {
           ({ SentryController: SentryControllerConstructor }) =>
             new SentryControllerConstructor({
               captureScope: () => this.captureSentryWalletScope(),
+              captureApprovalScope: (origin) => {
+                const assertGrant =
+                  getController().dapp.captureApproval(origin);
+                const scope = this.captureSentryWalletScope();
+                const { vault } = store.getState();
+                const grant = getController().dapp.get(origin);
+                if (
+                  !vault.isBitcoinBased ||
+                  vault.activeNetwork.kind !== INetworkType.Syscoin ||
+                  grant?.accountId !== vault.activeAccount.id ||
+                  grant.accountType !== vault.activeAccount.type
+                )
+                  throw new Error(
+                    'The connected account is no longer selected'
+                  );
+                return {
+                  ...scope,
+                  assertRequestCurrent: () => {
+                    assertGrant();
+                    if (
+                      this.captureSentryWalletScope().identity !==
+                      scope.identity
+                    )
+                      throw new Error(
+                        'Wallet account, network or session changed. Start the Sentry operation again.'
+                      );
+                  },
+                };
+              },
               getSeed: (password) => this.getSeed(password),
               ownsCollateral: (outpoint, scope) =>
                 this.ownsSentryCollateral(outpoint, scope),
@@ -14357,9 +14386,13 @@ class MainController {
     try {
       let resolved: string | null = null;
       try {
-        resolved = normalizeEnsResolvedAddress(
-          await (provider as any).resolveName(name)
-        );
+        resolved = await resolveEnsRecipientName(name, {
+          resolveName: (value) => provider.resolveName(value),
+          readChainId: async () => {
+            await provider.verifyConfiguredChainId(true);
+            return provider.send('eth_chainId', []);
+          },
+        });
       } catch (_) {
         // Unresolvable names do not publish a cache entry.
       }
