@@ -41,7 +41,7 @@ it('dispatches only explicitly allowed semantic methods', async () => {
     });
 });
 
-it('passes local Port ownership explicitly only to the PSBT signer', async () => {
+it('passes local Port ownership explicitly to the PSBT signer', async () => {
   const signPsbt = jest.fn(async () => ({
     fingerprint: '01020304',
     signatures: [],
@@ -56,3 +56,20 @@ it('passes local Port ownership explicitly only to the PSBT signer', async () =>
   });
   expect(signPsbt).toHaveBeenCalledWith(request, portAuthority);
 });
+
+it.each(['evm.signPersonalMessage', 'evm.signTypedData', 'utxo.signMessage'])(
+  'forwards the exact local document authority to %s',
+  async (method) => {
+    const sign = jest.fn(async (_request, authority) => {
+      authority.assertCurrent();
+      return 'signature';
+    });
+    const [group, action] = method.split('.');
+    const host: any = { [group]: { [action]: sign } };
+    const request = { accountIndex: 3, data: { public: true } };
+    await expect(
+      invokeLedgerHost(host, method, request, portAuthority)
+    ).resolves.toBe('signature');
+    expect(sign).toHaveBeenCalledWith(request, portAuthority);
+  }
+);

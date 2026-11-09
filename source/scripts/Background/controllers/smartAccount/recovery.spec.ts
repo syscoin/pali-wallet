@@ -98,7 +98,7 @@ describe('guardian recovery policy freshness', () => {
       getEthereumTransaction: () => transaction,
       getWalletStateGeneration: () => 1,
       sendAndSaveEthTransaction: send,
-      signSmartAccountActionDigestInternal: sign,
+      signSmartAccountRecoveryOwner: sign,
     } as any);
     controller.getGuardianRecoveryStatusForAccount = jest
       .fn()
@@ -296,9 +296,9 @@ describe('guardian recovery policy freshness', () => {
       controller.buildGuardianStartRecoveryOperation
     ).not.toHaveBeenCalled();
     expect(sign).toHaveBeenCalledWith(
-      [GUARDIAN, operation.hash],
+      expect.any(String),
       { id: 1, type: 'HDAccount' },
-      expect.any(String)
+      expect.any(Function)
     );
   });
 

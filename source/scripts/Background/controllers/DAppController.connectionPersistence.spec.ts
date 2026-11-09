@@ -389,7 +389,7 @@ describe('connected personal-sign approval authority', () => {
   const createPopup = jest.fn();
   const signPersonalMessage = jest.fn(async () => 'synthetic-signature');
   const signTypedData = jest.fn(async () => 'synthetic-typed-signature');
-  const signSmartAccountActionDigestInternal = jest.fn(
+  const signSmartAccountMessageOwnerInternal = jest.fn(
     async () => 'synthetic-owner-signature'
   );
   const slhSigningHost = Object.assign(
@@ -405,7 +405,7 @@ describe('connected personal-sign approval authority', () => {
   const wallet = {
     signSLHDSAActionHash:
       MainController.prototype.signSLHDSAActionHash.bind(slhSigningHost),
-    signSmartAccountActionDigestInternal,
+    signSmartAccountMessageOwnerInternal,
     getWalletSessionGeneration: () => sessionGeneration,
     ethereumTransaction: { signPersonalMessage, signTypedData },
   };
@@ -667,7 +667,11 @@ describe('connected personal-sign approval authority', () => {
       expect(signTypedData).toHaveBeenCalledWith(
         address,
         typedData,
-        typedVersion(method)
+        typedVersion(method),
+        expect.objectContaining({
+          assertCurrent: expect.any(Function),
+          signal: expect.any(AbortSignal),
+        })
       );
       await expect(approval.outcome).resolves.toEqual({
         value: 'synthetic-typed-signature',
@@ -738,7 +742,7 @@ describe('connected personal-sign approval authority', () => {
         );
         expect(response).toMatchObject({ success: false });
       }
-      expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+      expect(signSmartAccountMessageOwnerInternal).not.toHaveBeenCalled();
       expect(signTypedData).not.toHaveBeenCalled();
       approval.reply(null);
       await approval.outcome;
@@ -978,11 +982,16 @@ describe('connected personal-sign approval authority', () => {
         ...args,
         actionHash: `0x${'99'.repeat(32)}`,
       });
-      expect(signSmartAccountActionDigestInternal).toHaveBeenCalledWith(
-        [address, args.actionHash],
+      expect(signSmartAccountMessageOwnerInternal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionHash: args.actionHash,
+          representation: 'eip712',
+        }),
         { id: 0, type },
-        undefined,
-        expect.any(Function)
+        expect.objectContaining({
+          assertCurrent: expect.any(Function),
+          signal: expect.any(AbortSignal),
+        })
       );
       approval.reply(result);
       await expect(approval.outcome).resolves.toEqual({
@@ -1003,13 +1012,13 @@ describe('connected personal-sign approval authority', () => {
       approval.reply(result);
       if (revoked) {
         expect(await approval.outcome).toEqual({ code: 4001 });
-        expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+        expect(signSmartAccountMessageOwnerInternal).not.toHaveBeenCalled();
         expect(result).toMatchObject({ success: false });
       } else {
         expect(await approval.outcome).toEqual({
           value: 'synthetic-owner-signature',
         });
-        expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(1);
+        expect(signSmartAccountMessageOwnerInternal).toHaveBeenCalledTimes(1);
       }
     }
   );
@@ -1046,7 +1055,7 @@ describe('connected personal-sign approval authority', () => {
           );
       }
       expect(result).toMatchObject({ success: false });
-      expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+      expect(signSmartAccountMessageOwnerInternal).not.toHaveBeenCalled();
       const fresh = await runtime.signActionHash(args);
       expect(fresh).toBe('synthetic-owner-signature');
       approval.reply(fresh);
@@ -1060,11 +1069,16 @@ describe('connected personal-sign approval authority', () => {
       ...args,
       actionHash: `0x${'ab'.repeat(32)}`,
     });
-    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledWith(
-      [args.owner.address, args.actionHash],
+    expect(signSmartAccountMessageOwnerInternal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actionHash: args.actionHash,
+        representation: 'eip712',
+      }),
       { id: args.owner.id, type: args.owner.type },
-      undefined,
-      expect.any(Function)
+      expect.objectContaining({
+        assertCurrent: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      })
     );
     approval.reply(result);
     expect(await approval.outcome).toEqual({ value: result });
@@ -1074,7 +1088,7 @@ describe('connected personal-sign approval authority', () => {
     const { approval, runtime, args } = await openSmartApproval(true);
     const result = await runtime.signActionHash(args);
     expect(result).toBe('synthetic-owner-signature');
-    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(1);
+    expect(signSmartAccountMessageOwnerInternal).toHaveBeenCalledTimes(1);
     approval.reply(result);
     expect(await approval.outcome).toEqual({ value: result });
   });
@@ -1117,7 +1131,7 @@ describe('connected personal-sign approval authority', () => {
       finishCheck();
       const result = await response;
       expect(result).toMatchObject({ success: false });
-      expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+      expect(signSmartAccountMessageOwnerInternal).not.toHaveBeenCalled();
       approval.reply(result);
       expect(await approval.outcome).toEqual({ code: 4001 });
     }
@@ -1135,7 +1149,7 @@ describe('connected personal-sign approval authority', () => {
     await expect(runtime.signActionHash(args)).resolves.toMatchObject({
       success: false,
     });
-    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(2);
+    expect(signSmartAccountMessageOwnerInternal).toHaveBeenCalledTimes(2);
     expect(await approval.outcome).toEqual({ code: 4001 });
   });
 
@@ -1145,7 +1159,7 @@ describe('connected personal-sign approval authority', () => {
     let finishSigner!: () => void;
     const signing = new Promise<void>((resolve) => (signerStarted = resolve));
     const held = new Promise<void>((resolve) => (finishSigner = resolve));
-    signSmartAccountActionDigestInternal.mockImplementationOnce(async () => {
+    signSmartAccountMessageOwnerInternal.mockImplementationOnce(async () => {
       signerStarted();
       await held;
       return 'signature completed after revocation';
@@ -1157,7 +1171,7 @@ describe('connected personal-sign approval authority', () => {
     const result = await response;
     expect(result).toMatchObject({ success: false });
     expect(await approval.outcome).toEqual({ code: 4001 });
-    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(1);
+    expect(signSmartAccountMessageOwnerInternal).toHaveBeenCalledTimes(1);
   });
 
   const openSlhApproval = async ({

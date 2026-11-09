@@ -98,7 +98,7 @@ describe('smart-account execution approval context', () => {
   const submit = (
     prepared: any,
     changes: any = {},
-    assertCurrent?: () => void
+    assertCurrent: () => void = workerAuthority().assertCurrent
   ) =>
     controller.submitSmartAccountExecution(
       {
@@ -116,7 +116,7 @@ describe('smart-account execution approval context', () => {
     );
 
   it.each([async () => undefined, () => true, false])(
-    'rejects non-synchronous optional guards in submission and local signing facades',
+    'rejects non-synchronous required guards in submission and local signing facades',
     async (guard) => {
       const prepared = await prepare();
       await expect(submit(prepared, {}, guard as never)).rejects.toThrow(
@@ -133,6 +133,17 @@ describe('smart-account execution approval context', () => {
       expect(send).not.toHaveBeenCalled();
     }
   );
+
+  const workerAuthority = () => {
+    const snapshot = controller.infrastructureContext();
+    return {
+      kind: 'worker' as const,
+      signal: new AbortController().signal,
+      assertCurrent() {
+        controller.assertInfrastructureContext(snapshot);
+      },
+    };
+  };
 
   beforeEach(() => {
     jest
@@ -357,7 +368,10 @@ describe('smart-account execution approval context', () => {
       state.vault.accounts.SmartAccount[7].address = TARGET;
       state.vault.accounts.SmartAccount[7].xpub = TARGET;
       await expect(
-        controller.registerSmartAccountOnChain({ accountId: 7 })
+        controller.registerSmartAccountOnChain(
+          { accountId: 7 },
+          workerAuthority()
+        )
       ).rejects.toMatchObject({
         message: 'Smart account address could not be verified',
         transactionNotBroadcast: true,
@@ -371,10 +385,13 @@ describe('smart-account execution approval context', () => {
       'does not sign registration after %s changes during the code read',
       async (axis) => {
         const gate = registration();
-        const operation = controller.registerSmartAccountOnChain({
-          accountId: 7,
-          expectedContext,
-        });
+        const operation = controller.registerSmartAccountOnChain(
+          {
+            accountId: 7,
+            expectedContext,
+          },
+          workerAuthority()
+        );
         const rejected = expect(operation).rejects.toMatchObject({
           transactionNotBroadcast: true,
         });
@@ -394,9 +411,13 @@ describe('smart-account execution approval context', () => {
       const document = new AbortController();
       const operation = controller.registerSmartAccountOnChain(
         { accountId: 7 },
-        () => {
-          if (document.signal.aborted)
-            throw new Error('Approval document changed');
+        {
+          kind: 'document',
+          signal: document.signal,
+          assertCurrent() {
+            if (document.signal.aborted)
+              throw new Error('Approval document changed');
+          },
         }
       );
       const rejected = expect(operation).rejects.toMatchObject({
@@ -430,7 +451,7 @@ describe('smart-account execution approval context', () => {
       );
       const operation = controller.registerSmartAccountOnChain(
         { accountId: 7 },
-        assertCurrent
+        { kind: 'document', assertCurrent, signal: document.signal }
       );
       const rejected = expect(operation).rejects.toMatchObject({
         message: 'Approval document changed',
@@ -444,7 +465,7 @@ describe('smart-account execution approval context', () => {
         expect.any(Object),
         HASH,
         'registration-fixture',
-        assertCurrent
+        expect.objectContaining({ assertCurrent, signal: document.signal })
       );
       document.abort();
       signed.resolve('0x1234');
@@ -455,10 +476,13 @@ describe('smart-account execution approval context', () => {
 
     it('registers the unchanged context and propagates its original approval', async () => {
       const gate = registration();
-      const operation = controller.registerSmartAccountOnChain({
-        accountId: 7,
-        expectedContext,
-      });
+      const operation = controller.registerSmartAccountOnChain(
+        {
+          accountId: 7,
+          expectedContext,
+        },
+        workerAuthority()
+      );
       gate.resolve('0x');
       await expect(operation).resolves.toMatchObject({
         transaction: { hash: HASH },
@@ -470,7 +494,7 @@ describe('smart-account execution approval context', () => {
       );
       expect(controller.submitSmartAccountExecution).toHaveBeenCalledWith(
         expect.objectContaining({ expectedContext }),
-        undefined
+        expect.any(Function)
       );
       expect(store.dispatch).toHaveBeenCalledTimes(1);
     });
@@ -487,7 +511,10 @@ describe('smart-account execution approval context', () => {
       );
       provider.getCode.mockRejectedValueOnce(failure).mockResolvedValue('0x');
       const error = await controller
-        .registerSmartAccountOnChain({ accountId: 7, expectedContext })
+        .registerSmartAccountOnChain(
+          { accountId: 7, expectedContext },
+          workerAuthority()
+        )
         .catch((reason: unknown) => reason);
       expect(error).toBeInstanceOf(Error);
       expect(error).not.toBe(failure);
@@ -502,10 +529,13 @@ describe('smart-account execution approval context', () => {
       expect(controller.prepareSmartAccountExecutions).not.toHaveBeenCalled();
       expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
       await expect(
-        controller.registerSmartAccountOnChain({
-          accountId: 7,
-          expectedContext,
-        })
+        controller.registerSmartAccountOnChain(
+          {
+            accountId: 7,
+            expectedContext,
+          },
+          workerAuthority()
+        )
       ).resolves.toMatchObject({ transaction: { hash: HASH } });
       expect(controller.getSmartAccountById).toHaveBeenCalledWith(7);
       expect(controller.submitSmartAccountExecution).toHaveBeenCalledTimes(1);
@@ -513,12 +543,16 @@ describe('smart-account execution approval context', () => {
 
     it('classifies an unavailable provider before registration as definitely unsent', async () => {
       registration();
+      const authority = workerAuthority();
       transaction.web3Provider = undefined;
       await expect(
-        controller.registerSmartAccountOnChain({
-          accountId: 7,
-          expectedContext,
-        })
+        controller.registerSmartAccountOnChain(
+          {
+            accountId: 7,
+            expectedContext,
+          },
+          authority
+        )
       ).rejects.toMatchObject({
         message: 'Web3 provider not available',
         transactionNotBroadcast: true,
@@ -539,10 +573,13 @@ describe('smart-account execution approval context', () => {
           Object.freeze(new Error('Preflight unavailable'))
         );
         await expect(
-          controller.registerSmartAccountOnChain({
-            accountId: 7,
-            expectedContext,
-          })
+          controller.registerSmartAccountOnChain(
+            {
+              accountId: 7,
+              expectedContext,
+            },
+            workerAuthority()
+          )
         ).rejects.toMatchObject({
           message: 'Preflight unavailable',
           transactionNotBroadcast: true,
@@ -550,10 +587,13 @@ describe('smart-account execution approval context', () => {
         expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
         expect(controller.pendingDeploymentAddresses.has(ADDRESS)).toBe(false);
         await expect(
-          controller.registerSmartAccountOnChain({
-            accountId: 7,
-            expectedContext,
-          })
+          controller.registerSmartAccountOnChain(
+            {
+              accountId: 7,
+              expectedContext,
+            },
+            workerAuthority()
+          )
         ).resolves.toMatchObject({ transaction: { hash: HASH } });
         expect(controller.submitSmartAccountExecution).toHaveBeenCalledTimes(1);
       }
@@ -563,10 +603,13 @@ describe('smart-account execution approval context', () => {
       registration();
       provider.getCode.mockResolvedValue('0x6000');
       await expect(
-        controller.registerSmartAccountOnChain({
-          accountId: 7,
-          expectedContext,
-        })
+        controller.registerSmartAccountOnChain(
+          {
+            accountId: 7,
+            expectedContext,
+          },
+          workerAuthority()
+        )
       ).resolves.toMatchObject({ address: ADDRESS, transaction: null });
       expect(controller.prepareSmartAccountExecutions).not.toHaveBeenCalled();
       expect(
@@ -590,10 +633,13 @@ describe('smart-account execution approval context', () => {
           : controller.deps.saveWalletState
         ).mockRejectedValueOnce(new Error('Refresh unavailable'));
         await expect(
-          controller.registerSmartAccountOnChain({
-            accountId: 7,
-            expectedContext,
-          })
+          controller.registerSmartAccountOnChain(
+            {
+              accountId: 7,
+              expectedContext,
+            },
+            workerAuthority()
+          )
         ).rejects.toMatchObject({
           message: 'Refresh unavailable',
           transactionNotBroadcast: true,
@@ -619,10 +665,13 @@ describe('smart-account execution approval context', () => {
         );
         controller.submitSmartAccountExecution.mockRejectedValueOnce(failure);
         await expect(
-          controller.registerSmartAccountOnChain({
-            accountId: 7,
-            expectedContext,
-          })
+          controller.registerSmartAccountOnChain(
+            {
+              accountId: 7,
+              expectedContext,
+            },
+            workerAuthority()
+          )
         ).rejects.toBe(failure);
         expect(controller.pendingDeploymentAddresses.has(ADDRESS)).toBe(false);
         expect(controller.hydrateSmartAccountMetadata).not.toHaveBeenCalled();
@@ -633,7 +682,10 @@ describe('smart-account execution approval context', () => {
       registration();
       controller.pendingDeploymentAddresses.add(ADDRESS);
       const error = await controller
-        .registerSmartAccountOnChain({ accountId: 7, expectedContext })
+        .registerSmartAccountOnChain(
+          { accountId: 7, expectedContext },
+          workerAuthority()
+        )
         .catch((reason: unknown) => reason);
       expect(error.message).toBe(
         'Smart account registration is already pending.'
@@ -654,10 +706,13 @@ describe('smart-account execution approval context', () => {
           entered.resolve();
           return acknowledged.promise;
         });
-        const operation = controller.registerSmartAccountOnChain({
-          accountId: 7,
-          expectedContext,
-        });
+        const operation = controller.registerSmartAccountOnChain(
+          {
+            accountId: 7,
+            expectedContext,
+          },
+          workerAuthority()
+        );
         code.resolve('0x');
         await entered.promise;
         mutate(axis);
@@ -678,10 +733,13 @@ describe('smart-account execution approval context', () => {
           ? controller.hydrateSmartAccountMetadata
           : controller.deps.saveWalletState
         ).mockRejectedValue(new Error('local refresh failed'));
-        const operation = controller.registerSmartAccountOnChain({
-          accountId: 7,
-          expectedContext,
-        });
+        const operation = controller.registerSmartAccountOnChain(
+          {
+            accountId: 7,
+            expectedContext,
+          },
+          workerAuthority()
+        );
         gate.resolve('0x');
         await expect(operation).resolves.toMatchObject({
           transaction: { hash: HASH },

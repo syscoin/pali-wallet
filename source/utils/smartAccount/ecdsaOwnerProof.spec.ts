@@ -1,8 +1,6 @@
 import { N } from 'ethers/constants';
 import { Signature } from 'ethers/crypto';
-import { hashMessage } from 'ethers/hash';
 import { recoverAddress } from 'ethers/transaction';
-import { getBytes } from 'ethers/utils';
 import { Wallet } from 'ethers/wallet';
 import { createRequire } from 'module';
 
@@ -190,7 +188,7 @@ it('captures the selected owner before a signer can mutate the caller inventory'
   ).rejects.toThrow('owner signature is invalid');
 });
 
-it('rejects actual SDK Ledger personal-prefix output while preserving exact selected Smart and target Ledger context', async () => {
+it('rejects unsupported actual SDK raw Ledger signing before device dispatch without alias fallback', async () => {
   const owner = wallets[0];
   const network = {
     kind: 'ethereum',
@@ -222,7 +220,9 @@ it('rejects actual SDK Ledger personal-prefix output while preserving exact sele
     guard();
     expect(value.expectedAddress).toBe(owner.address);
     expect(value.messageHex).toBe(HASH.slice(2));
-    return owner.signMessage(getBytes('0x' + value.messageHex));
+    throw new Error(
+      'Raw Ledger signing must never reach a personal-message transport'
+    );
   });
   const host = {
     getStatus: () => ({ connected: true }),
@@ -256,9 +256,8 @@ it('rejects actual SDK Ledger personal-prefix output while preserving exact sele
     () => guard,
     null
   );
-  let produced = '';
-  const sign = jest.fn(async ({ owner: selected, actionHash }) => {
-    produced = await sdk.ethSign([selected.address, actionHash], {
+  const sign = jest.fn(async ({ owner: selected, actionHash }) =>
+    sdk.ethSign([selected.address, actionHash], {
       selectedAccount: { id: 0, type: 'SmartAccount', expectedAddress: SMART },
       targetAccount: {
         id: selected.id,
@@ -266,9 +265,9 @@ it('rejects actual SDK Ledger personal-prefix output while preserving exact sele
         expectedAddress: selected.address,
       },
       assertCurrent: guard,
-    });
-    return produced;
-  });
+      signal: new AbortController().signal,
+    })
+  );
   await expect(
     signSmartAccountActionHash(
       request(sign, [
@@ -276,13 +275,9 @@ it('rejects actual SDK Ledger personal-prefix output while preserving exact sele
         { ...owners[0], id: 17 },
       ])
     )
-  ).rejects.toThrow('owner signature is invalid');
-  expect(transport).toHaveBeenCalledTimes(1);
+  ).rejects.toThrow(/raw.*hardware|hardware.*raw|typed.data|unsupported/i);
+  expect(transport).not.toHaveBeenCalled();
   expect(sign).toHaveBeenCalledTimes(1);
-  expect(recoverAddress(hashMessage(getBytes(HASH)), produced)).toBe(
-    owner.address
-  );
-  expect(recoverAddress(HASH, produced)).not.toBe(owner.address);
 });
 
 it.each([false, true])(

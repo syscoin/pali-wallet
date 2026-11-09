@@ -109,11 +109,12 @@ export function createNativeHardwareDappSigning(ports: Ports) {
             ? await transactions.signPersonalMessage([
                 request.address,
                 request.message,
-              ])
+              ], { assertCurrent: check, signal: ports.signal })
             : await transactions.signTypedData(
                 request.address,
                 request.typedData as Parameters<Messages['signTypedData']>[1],
-                request.version as Parameters<Messages['signTypedData']>[2]
+                request.version as Parameters<Messages['signTypedData']>[2],
+                { assertCurrent: check, signal: ports.signal }
               );
         check();
         if (

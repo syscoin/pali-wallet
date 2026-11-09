@@ -61,6 +61,12 @@ export function invokeLedgerHost(
   const approved = snapshotLedgerMessage(request);
   if (method === 'utxo.signPsbt')
     return host.utxo.signPsbt(approved, portAuthority);
+  if (method === 'utxo.signMessage')
+    return host.utxo.signMessage(approved, portAuthority);
+  if (method === 'evm.signPersonalMessage')
+    return host.evm.signPersonalMessage(approved, portAuthority);
+  if (method === 'evm.signTypedData')
+    return host.evm.signTypedData(approved, portAuthority);
   const [group, action] = method.split('.') as ['evm' | 'utxo', string];
   return (host[group][action] as (params: unknown) => Promise<unknown>)(
     approved

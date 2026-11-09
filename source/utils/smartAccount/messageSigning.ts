@@ -9,21 +9,26 @@ import {
   assertPaliErc7739TypedDataV4Method,
   buildPaliErc7739TypedDataRequest,
   encodePaliErc7739TypedDataSignature,
-  getPaliErc7739PersonalSignHash,
-  hashPersonalSignMessage,
+  buildPaliErc7739PersonalSigningIntent,
   type PaliErc7739TypedData,
   type PaliErc7739TypedDataRequest,
 } from './erc7739.ts';
+import type { SmartAccountOwnerSigningIntent } from './ownerSigningIntent.ts';
 import {
   encodeSmartAccountAuthenticatorSignature,
   type SmartAccountAuthenticatorSignature,
 } from './signature.ts';
 
 export type PreparedSmartAccountMessage = Readonly<
-  | { actionHash: string; method: 'personal_sign' }
+  | {
+      actionHash: string;
+      method: 'personal_sign';
+      ownerSigningIntent: SmartAccountOwnerSigningIntent;
+    }
   | {
       actionHash: string;
       method: 'eth_signTypedData_v4';
+      ownerSigningIntent: SmartAccountOwnerSigningIntent;
       proof: Readonly<PaliErc7739TypedDataRequest>;
     }
 >;
@@ -51,15 +56,18 @@ export function prepareSmartAccountMessage(
   );
   if (!request || !Number.isSafeInteger(chainId) || chainId < 1)
     throw new Error('Invalid Smart-account message request');
-  if (request.method === 'personal_sign')
+  if (request.method === 'personal_sign') {
+    const ownerSigningIntent = buildPaliErc7739PersonalSigningIntent({
+      accountAddress,
+      chainId,
+      message: request.message,
+    });
     return Object.freeze({
       method: request.method,
-      actionHash: getPaliErc7739PersonalSignHash({
-        accountAddress,
-        chainId,
-        hash: hashPersonalSignMessage(request.message),
-      }),
+      actionHash: ownerSigningIntent.actionHash,
+      ownerSigningIntent,
     });
+  }
   assertPaliErc7739TypedDataV4Method(request.method);
   if (method === 'personal_sign' || version !== request.version)
     throw new Error('Smart-account typed-data version changed');
@@ -74,6 +82,7 @@ export function prepareSmartAccountMessage(
     method: 'eth_signTypedData_v4',
     actionHash: proof.actionHash,
     proof,
+    ownerSigningIntent: proof.ownerSigningIntent,
   });
 }
 

@@ -98,12 +98,14 @@ import {
   type WalletTokenReviewPayload,
   type WalletTokenReviewRequest,
 } from '../../../shared/walletTokenReview';
+import { createDappApprovalLifetime } from '../../../utils/dappApprovalLifetime.ts';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
+import { signSmartAccountOwnerIntent } from '../../../utils/smartAccount/ownerSigning.ts';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
 import { readRetainedEoaCall } from '../../../wallet/dappCallsBundles.ts';
 import {
@@ -491,12 +493,14 @@ import {
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
+import type { SmartAccountControllerAuthority } from '../../../shared/smartAccountControllerAuthority';
 import type {
   GuardianRecoveryClaim,
   GuardianRecoveryReplacement,
 } from '../../../utils/smartAccount/guardianRecoveryClaim';
 import type { GuardianRecoveryIntent } from '../../../utils/smartAccount/guardianRecoveryIntent';
 import type { GuardianRecoveryTransactionRecords } from '../../../utils/smartAccount/guardianRecoveryLifecycle';
+import type { SmartAccountOwnerSigningIntent } from '../../../utils/smartAccount/ownerSigningIntent.ts';
 import type { EoaCallsStopped } from '../../../wallet/evmCallsSequence.ts';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
 import type { SentryRequestLifetime } from '../../../wallet/sentryApprovalTypes';
@@ -639,6 +643,7 @@ class MainController {
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
+  private smartOwnerInvalidators?: Set<() => void>;
   private utxoWalletReviewKey?: Promise<CryptoKey>;
   private activeUtxoReads?: Set<AbortController>;
   private utxoFeeCache?: { fee: number; observedAt: number; url: string };
@@ -1148,18 +1153,10 @@ class MainController {
         ),
       saveWalletState: (operation, isUserActivity, sync) =>
         this.saveWalletState(operation, isUserActivity, sync),
-      signSmartAccountActionDigestInternal: (
-        params,
-        targetAccount,
-        executionContextId,
-        assertApprovalCurrent
-      ) =>
-        this.signSmartAccountActionDigestInternal(
-          params,
-          targetAccount,
-          executionContextId,
-          assertApprovalCurrent
-        ),
+      signSmartAccountOperationOwner: (id, owner, guard, signal) =>
+        this.signSmartAccountOperationOwnerInternal(id, owner, guard, signal),
+      signSmartAccountRecoveryOwner: (id, owner, guard) =>
+        this.signSmartAccountRecoveryOwnerInternal(id, owner, guard, null),
       signSLHDSARecoveryTargetActionHash: (params) =>
         this.signSLHDSARecoveryTargetActionHash(params),
       sendAndSaveEthTransaction: (
@@ -3159,6 +3156,7 @@ class MainController {
 
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
+    this.smartOwnerInvalidators?.forEach((retire) => retire());
     this.postSwitchHistorySave = undefined;
     this.activeUtxoReads?.forEach((operation) => operation.abort());
     this.utxoFeeCache = undefined;
@@ -5571,17 +5569,16 @@ class MainController {
   }
 
   public async registerSmartAccountOnChain(
-    params: {
-      accountId: number;
-      expectedContext?: IEvmTransactionContext;
-    },
-    assertApprovalCurrent?: () => void
+    params: { accountId: number; expectedContext?: IEvmTransactionContext },
+    authority: SmartAccountControllerAuthority
   ) {
     this.assertWalletReadyForSigning();
-    return this.smartAccount.registerSmartAccountOnChain(
-      params,
-      assertApprovalCurrent
-    );
+    if (authority?.kind !== 'document' || !authority.signal)
+      throw new Error('Owned document authority is required');
+    assertSynchronousEvmFeeGuard(authority.assertCurrent);
+    if (authority.signal.aborted)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return this.smartAccount.registerSmartAccountOnChain(params, authority);
   }
 
   public async hydrateSmartAccount(
@@ -5731,15 +5728,18 @@ class MainController {
 
   public async submitSmartAccountExecution(
     params: SmartAccountSubmitParams,
-    assertApprovalCurrent?: () => void
+    authority: SmartAccountControllerAuthority
   ) {
     this.assertWalletReadyForSigning();
+    if (authority?.kind !== 'document' || !authority.signal)
+      throw new Error('Owned document authority is required');
     const generation = this.walletSessionGeneration;
     const assertCurrent = () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation);
-      if (assertApprovalCurrent !== undefined)
-        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+      assertSynchronousEvmFeeGuard(authority.assertCurrent);
+      if (authority.signal.aborted)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrent();
     return this.smartAccount.submitSmartAccountExecution(params, assertCurrent);
@@ -9544,54 +9544,302 @@ class MainController {
     }
   }
 
-  public async signSmartAccountActionDigestInternal(
-    params: string[],
+  /** Renderer supplies only an opaque prepared context and a configured owner identity. */
+  public async signSmartAccountPreparedOwner(
+    executionContextId: string,
     targetAccount: { id: number; type: KeyringAccountType },
-    executionContextId?: string,
-    assertApprovalCurrent?: () => void
+    sourceAuthority: SmartAccountControllerAuthority
+  ): Promise<string> {
+    this.assertWalletReadyForSigning();
+    if (sourceAuthority?.kind !== 'document' || !sourceAuthority.signal)
+      throw new Error('Owned document authority is required');
+    assertSynchronousEvmFeeGuard(sourceAuthority.assertCurrent);
+    if (sourceAuthority.signal.aborted)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    targetAccount = Object.freeze({ ...targetAccount });
+    const captured =
+      this.smartAccount.captureOwnerSigningIntent(executionContextId);
+    const check = () => {
+      assertSynchronousEvmFeeGuard(sourceAuthority.assertCurrent);
+      if (sourceAuthority.signal.aborted)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      this.assertSmartAccountExecutionContext(
+        executionContextId,
+        captured.intent.actionHash
+      );
+    };
+    if (
+      captured.intent.purpose === 'recovery' &&
+      captured.intent.representation === 'raw-only'
+    )
+      return this.signSmartAccountRecoveryOwnerInternal(
+        executionContextId,
+        targetAccount,
+        check,
+        sourceAuthority.signal
+      );
+    if (
+      captured.intent.purpose === 'user-operation' &&
+      captured.intent.representation === 'eip712'
+    )
+      return this.signSmartAccountOperationOwnerInternal(
+        executionContextId,
+        targetAccount,
+        check,
+        sourceAuthority.signal
+      );
+    throw new Error('Unknown prepared Smart account signing purpose');
+  }
+
+  private async signSmartAccountOperationOwnerInternal(
+    executionContextId: string,
+    targetAccount: { id: number; type: KeyringAccountType },
+    assertApprovalCurrent: () => void,
+    parentSignal: AbortSignal | null
+  ): Promise<string> {
+    this.assertWalletReadyForSigning();
+    assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    targetAccount = Object.freeze({ ...targetAccount });
+    const captured =
+      this.smartAccount.captureOwnerSigningIntent(executionContextId);
+    if (
+      captured.intent.purpose !== 'user-operation' ||
+      captured.intent.representation !== 'eip712'
+    )
+      throw new Error('Prepared Smart account operation is required');
+    const owner =
+      store.getState().vault.accounts[targetAccount.type]?.[targetAccount.id];
+    if (!owner) throw new Error('Smart account owner is unavailable');
+    const ownerAddress = owner.address,
+      ownerXpub = owner.xpub;
+    const check = () => {
+      this.assertSmartAccountExecutionContext(
+        executionContextId,
+        captured.intent.actionHash
+      );
+      assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+      const current =
+        store.getState().vault.accounts[targetAccount.type]?.[targetAccount.id];
+      if (current?.address !== ownerAddress || current.xpub !== ownerXpub)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    await this.smartAccount.assertSmartAccountPreparedNonce(executionContextId);
+    check();
+    return this.signSmartAccountOwnerIntentInternal(
+      captured.intent,
+      targetAccount,
+      { assertCurrent: check, signal: parentSignal },
+      captured.expiresAt
+    );
+  }
+
+  /** Only the bound original message approval can reach this worker-owned method. */
+  private async signSmartAccountMessageOwnerInternal(
+    intent: SmartAccountOwnerSigningIntent,
+    targetAccount: { id: number; type: KeyringAccountType },
+    approval: { assertCurrent(): void; signal: AbortSignal }
+  ): Promise<string> {
+    if (
+      !approval ||
+      typeof approval.assertCurrent !== 'function' ||
+      !approval.signal
+    )
+      throw new Error('Smart account message approval is required');
+    return this.signSmartAccountOwnerIntentInternal(
+      intent,
+      targetAccount,
+      approval
+    );
+  }
+
+  private async signSmartAccountOwnerIntentInternal(
+    intent: SmartAccountOwnerSigningIntent,
+    targetAccount: { id: number; type: KeyringAccountType },
+    source: { assertCurrent(): void; signal: AbortSignal | null },
+    expiresAt?: number
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
+    const keyring = this.getActiveKeyring();
+    const { accounts, activeAccount, activeNetwork } = store.getState().vault;
+    const selected = accounts[activeAccount.type]?.[activeAccount.id];
+    const owner = accounts[targetAccount.type]?.[targetAccount.id];
+    if (
+      !selected ||
+      activeAccount.type !== KeyringAccountType.SmartAccount ||
+      !owner
+    )
+      throw new Error('Smart account owner is unavailable');
+    const selectedAddress = selected.address,
+      ownerAddress = owner.address,
+      ownerXpub = owner.xpub;
+    const network = JSON.stringify(activeNetwork);
     const assertContext = () => {
       this.assertWalletReadyForSigning();
-      this.assertCurrentWalletSession(generation);
-      if (executionContextId)
-        this.assertSmartAccountExecutionContext(executionContextId, params[1]);
-      if (assertApprovalCurrent !== undefined)
-        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+      this.assertCurrentWalletSession(generation, keyring);
+      assertSynchronousEvmFeeGuard(source.assertCurrent);
+      const current = store.getState().vault,
+        currentOwner = current.accounts[targetAccount.type]?.[targetAccount.id];
+      if (
+        current.activeAccount.type !== activeAccount.type ||
+        current.activeAccount.id !== activeAccount.id ||
+        current.accounts[activeAccount.type]?.[activeAccount.id]?.address !==
+          selectedAddress ||
+        currentOwner?.address !== ownerAddress ||
+        currentOwner.xpub !== ownerXpub ||
+        JSON.stringify(current.activeNetwork) !== network ||
+        (expiresAt !== undefined && expiresAt <= Date.now())
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertContext();
-    if (executionContextId)
-      await this.smartAccount.assertSmartAccountPreparedNonce(
-        executionContextId
-      );
-    assertContext();
-    const { accounts, activeAccount } = store.getState().vault;
-    const targetAccountExists =
-      accounts[targetAccount.type]?.[targetAccount.id];
-    if (!targetAccountExists) {
-      throw new Error(
-        `Target account ${targetAccount.type}:${targetAccount.id} was not found`
-      );
+    const lifetime = this.captureSmartOwnerLifetime(
+      assertContext,
+      source.signal,
+      expiresAt
+    );
+    const check = lifetime.assertCurrent;
+    try {
+      check();
+      return await signSmartAccountOwnerIntent({
+        intent,
+        selectedSmart: {
+          id: activeAccount.id,
+          type: activeAccount.type,
+          expectedAddress: selectedAddress,
+        },
+        owner: {
+          id: targetAccount.id,
+          type: targetAccount.type,
+          address: ownerAddress,
+        },
+        authority: { assertCurrent: check, signal: lifetime.signal },
+        sdk: {
+          rawSign: (params, options) =>
+            keyring.ethereumTransaction.ethSign(params, options),
+          ledger: {
+            signTypedData: (request, authority) =>
+              keyring.ledgerSigner.evm.signTypedData(request, authority),
+          },
+          trezor: {
+            signTypedData: (request, authority) =>
+              keyring.trezorSigner.signTypedData(request, authority),
+          },
+        },
+      });
+    } finally {
+      lifetime.dispose();
     }
+  }
 
-    const selected = accounts[activeAccount.type]?.[activeAccount.id];
-    if (!selected) throw new Error('Selected account is unavailable');
-    const keyring = this.getActiveKeyring();
-    const signature = await keyring.ethereumTransaction.ethSign(params, {
-      selectedAccount: {
-        id: activeAccount.id,
-        type: activeAccount.type,
-        expectedAddress: selected.address,
+  private captureSmartOwnerLifetime(
+    assertContext: () => void,
+    parentSignal: AbortSignal | null,
+    expiresAt?: number
+  ) {
+    assertSynchronousEvmFeeGuard(assertContext);
+    const lifetime = createDappApprovalLifetime(() => {
+      try {
+        assertSynchronousEvmFeeGuard(assertContext);
+        return true;
+      } catch {
+        return false;
+      }
+    }, parentSignal ?? undefined);
+    const assertCurrent = () => {
+      assertSynchronousEvmFeeGuard(assertContext);
+      if (!lifetime.isCurrent())
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    const unsubscribe = store.subscribe(lifetime.isCurrent);
+    const invalidators = (this.smartOwnerInvalidators ??= new Set());
+    invalidators.add(lifetime.retire);
+    const expiry =
+      expiresAt === undefined
+        ? undefined
+        : setTimeout(lifetime.retire, Math.max(0, expiresAt - Date.now()));
+    return {
+      assertCurrent,
+      signal: lifetime.signal,
+      dispose: () => {
+        clearTimeout(expiry);
+        unsubscribe();
+        invalidators.delete(lifetime.retire);
+        lifetime.dispose();
       },
-      targetAccount: {
-        id: targetAccount.id,
-        type: targetAccount.type,
-        expectedAddress: targetAccountExists.address,
-      },
-      assertCurrent: assertContext,
-    });
-    assertContext();
-    return signature;
+    };
+  }
+
+  /** Recovery digests have no EIP-712 preimage in this slice and are software-only. */
+  private async signSmartAccountRecoveryOwnerInternal(
+    executionContextId: string,
+    targetAccount: { id: number; type: KeyringAccountType },
+    assertApprovalCurrent: () => void,
+    parentSignal: AbortSignal | null
+  ): Promise<string> {
+    this.assertWalletReadyForSigning();
+    assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+    targetAccount = Object.freeze({ ...targetAccount });
+    const captured =
+      this.smartAccount.captureOwnerSigningIntent(executionContextId);
+    if (
+      captured.intent.purpose !== 'recovery' ||
+      captured.intent.representation !== 'raw-only' ||
+      ![KeyringAccountType.HDAccount, KeyringAccountType.Imported].includes(
+        targetAccount.type
+      )
+    )
+      throw new Error('Recovery requires a software owner');
+    const generation = this.walletSessionGeneration,
+      keyring = this.getActiveKeyring();
+    const { accounts, activeAccount } = store.getState().vault;
+    const selected = accounts[activeAccount.type]?.[activeAccount.id],
+      owner = accounts[targetAccount.type]?.[targetAccount.id];
+    if (!selected || !owner) throw new Error('Recovery owner is unavailable');
+    const ownerAddress = owner.address,
+      ownerXpub = owner.xpub;
+    const check = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation, keyring);
+      this.assertSmartAccountExecutionContext(
+        executionContextId,
+        captured.intent.actionHash
+      );
+      assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+      const current =
+        store.getState().vault.accounts[targetAccount.type]?.[targetAccount.id];
+      if (current?.address !== ownerAddress || current.xpub !== ownerXpub)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    const lifetime = this.captureSmartOwnerLifetime(
+      check,
+      parentSignal,
+      captured.expiresAt
+    );
+    try {
+      const signature = await keyring.ethereumTransaction.ethSign(
+        [ownerAddress, captured.intent.actionHash],
+        {
+          selectedAccount: {
+            id: activeAccount.id,
+            type: activeAccount.type,
+            expectedAddress: selected.address,
+          },
+          targetAccount: {
+            id: targetAccount.id,
+            type: targetAccount.type,
+            expectedAddress: ownerAddress,
+          },
+          assertCurrent: lifetime.assertCurrent,
+          signal: lifetime.signal,
+        }
+      );
+      lifetime.assertCurrent();
+      return signature;
+    } finally {
+      lifetime.dispose();
+    }
   }
 
   public getWalletSessionGeneration(): number {

@@ -177,7 +177,18 @@ beforeEach(() => {
       'ethereumTransaction',
       'signPersonalMessage',
     ]);
-    return sdk.signPersonalMessage(args[0]);
+    const scope = mockState;
+    return sdk.signPersonalMessage(args[0], {
+      signal: new AbortController().signal,
+      assertCurrent() {
+        if (
+          mockState !== scope ||
+          mockState.vault.activeAccount.type !== 'Ledger' ||
+          mockState.vault.accounts.Ledger[0].address !== ADDRESS
+        )
+          throw new Error('Approval changed');
+      },
+    });
   });
   jest.spyOn(window, 'close').mockImplementation(() => undefined);
 });
@@ -227,8 +238,7 @@ describe.each([false, true])(
       await prepare(payload, reversed);
       expect(screen.queryByRole('alert')).toBeNull();
       const originalRequest = { ...mockQuery };
-      const sdkParams = { ...mockQuery, 0: ADDRESS, 1: payload };
-      delete sdkParams.host;
+      const sdkParams = [ADDRESS, payload];
       fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
       await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
       expect(mockEmitter).toHaveBeenCalledTimes(1);

@@ -122,3 +122,115 @@ describe('controller submission timeout', () => {
     ).rejects.toEqual(error);
   });
 });
+
+describe('Smart account document-owned controller calls', () => {
+  function portFixture() {
+    const received = new Set<(value: unknown) => void>();
+    const disconnected = new Set<() => void>();
+    const port = {
+      onMessage: {
+        addListener: (listener: (value: unknown) => void) =>
+          received.add(listener),
+        removeListener: (listener: (value: unknown) => void) =>
+          received.delete(listener),
+      },
+      onDisconnect: {
+        addListener: (listener: () => void) => disconnected.add(listener),
+        removeListener: (listener: () => void) => disconnected.delete(listener),
+      },
+      postMessage: jest.fn(),
+      disconnect: jest.fn(() => {
+        for (const listener of [...disconnected]) listener();
+      }),
+    };
+    const connect = jest.fn(() => port);
+    (chrome.runtime as any).connect = connect;
+    (chrome.runtime as any).id = 'pali';
+    return {
+      port,
+      connect,
+      receive(value: unknown) {
+        for (const listener of [...received]) listener(value);
+      },
+      retire() {
+        for (const listener of [...disconnected]) listener();
+      },
+      received,
+      disconnected,
+    };
+  }
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+  it.each([
+    'signSmartAccountPreparedOwner',
+    'registerSmartAccountOnChain',
+    'submitSmartAccountExecution',
+  ] as const)(
+    'uses one actual browser Port without one-shot fallback for %s',
+    async (method) => {
+      const fixture = portFixture();
+      const pending = controllerEmitter(['wallet', method], ['opaque-context']);
+      expect(fixture.connect).toHaveBeenCalledWith({
+        name: 'pali-smart-account-controller',
+      });
+      expect(fixture.port.postMessage).toHaveBeenCalledWith({
+        type: 'CONTROLLER_ACTION',
+        data: { methods: ['wallet', method], params: ['opaque-context'] },
+      });
+      fixture.receive({ hash: 'completed' });
+      await expect(pending).resolves.toEqual({ hash: 'completed' });
+      expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+      expect(fixture.port.disconnect).toHaveBeenCalledTimes(1);
+      expect(fixture.received.size).toBe(0);
+      expect(fixture.disconnected.size).toBe(0);
+    }
+  );
+  it('retires the Port on timeout without retrying a signing operation', async () => {
+    jest.useFakeTimers();
+    const fixture = portFixture();
+    const pending = controllerEmitter(
+      ['wallet', 'signSmartAccountPreparedOwner'],
+      [],
+      100
+    );
+    const rejected = expect(pending).rejects.toThrow(
+      'Network request timed out'
+    );
+    await jest.advanceTimersByTimeAsync(100);
+    await rejected;
+    fixture.receive('late-proof');
+    await jest.advanceTimersByTimeAsync(10_000);
+    expect(fixture.connect).toHaveBeenCalledTimes(1);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+    expect(fixture.port.disconnect).toHaveBeenCalledTimes(1);
+  });
+  it('does not retry or fall back after the actual document disconnects', async () => {
+    const fixture = portFixture();
+    const pending = controllerEmitter(
+      ['wallet', 'submitSmartAccountExecution'],
+      []
+    );
+    fixture.retire();
+    await expect(pending).rejects.toThrow('document disconnected');
+    expect(fixture.connect).toHaveBeenCalledTimes(1);
+    expect(chrome.runtime.sendMessage).not.toHaveBeenCalled();
+  });
+  it('cleans up and returns the existing structured financial error unchanged', async () => {
+    const fixture = portFixture();
+    const pending = controllerEmitter(
+      ['wallet', 'submitSmartAccountExecution'],
+      []
+    );
+    const error = {
+      error: true,
+      code: 'PALI_TRANSACTION_UNKNOWN',
+      transactionNotBroadcast: false,
+    };
+    fixture.receive(error);
+    await expect(pending).rejects.toBe(error);
+    expect(fixture.port.disconnect).toHaveBeenCalledTimes(1);
+  });
+});

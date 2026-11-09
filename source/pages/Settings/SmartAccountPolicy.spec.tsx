@@ -223,8 +223,14 @@ describe('SmartAccountPolicy guardian approval', () => {
           case 'assertSmartAccountPreparedNonce':
             expect(payload).toEqual([RECOVERY_CONTEXT]);
             return undefined;
-          case 'signSmartAccountActionDigestInternal':
-            return mockOwnerWallet.signingKey.sign(payload[0][1]).serialized;
+          case 'signSmartAccountPreparedOwner':
+            return mockOwnerWallet.signingKey.sign(
+              getPaliErc7739PersonalSignHash({
+                accountAddress: GUARDIAN,
+                chainId: OPERATION.chainId,
+                hash: OPERATION.hash,
+              })
+            ).serialized;
           case 'submitPreparedSmartAccountGuardianStartRecovery':
             return { operation: OPERATION };
           default:
@@ -483,12 +489,8 @@ describe('SmartAccountPolicy guardian approval', () => {
     });
     expect(wrappedHash).not.toBe(OPERATION.hash);
     expect(controllerEmitter).toHaveBeenCalledWith(
-      ['wallet', 'signSmartAccountActionDigestInternal'],
-      [
-        [OWNER, wrappedHash],
-        { id: 0, type: KeyringAccountType.HDAccount },
-        RECOVERY_CONTEXT,
-      ],
+      ['wallet', 'signSmartAccountPreparedOwner'],
+      [RECOVERY_CONTEXT, { id: 0, type: KeyringAccountType.HDAccount }],
       10000
     );
     expect(controllerEmitter).toHaveBeenCalledWith(
@@ -517,7 +519,7 @@ describe('SmartAccountPolicy guardian approval', () => {
       methods.indexOf('validateSmartAccountGuardianRecoveryOperation')
     ).toBeLessThan(methods.indexOf('assertSmartAccountPreparedNonce'));
     expect(methods.indexOf('assertSmartAccountPreparedNonce')).toBeLessThan(
-      methods.indexOf('signSmartAccountActionDigestInternal')
+      methods.indexOf('signSmartAccountPreparedOwner')
     );
     expect(alert.error).not.toHaveBeenCalled();
     expect(alert.success).toHaveBeenCalled();
@@ -647,7 +649,7 @@ describe('SmartAccountPolicy guardian approval', () => {
       );
       expect(
         controllerEmitter.mock.calls.some(
-          ([[, method]]) => method === 'signSmartAccountActionDigestInternal'
+          ([[, method]]) => method === 'signSmartAccountPreparedOwner'
         )
       ).toBe(false);
       expect(controllerEmitter).toHaveBeenCalledWith(
@@ -688,7 +690,7 @@ describe('SmartAccountPolicy guardian approval', () => {
       [RECOVERY_CONTEXT]
     );
     const methods = controllerEmitter.mock.calls.map(([[, method]]) => method);
-    expect(methods).not.toContain('signSmartAccountActionDigestInternal');
+    expect(methods).not.toContain('signSmartAccountPreparedOwner');
     expect(methods).not.toContain('signSLHDSAActionHash');
     expect(methods).not.toContain(
       'submitPreparedSmartAccountGuardianStartRecovery'

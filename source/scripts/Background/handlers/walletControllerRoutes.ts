@@ -1,6 +1,5 @@
 const rendererEvmMethods = new Set([
   'decryptMessage',
-  'ethSign',
   'getBalance',
   'getFeeDataWithDynamicMaxPriorityFeePerGas',
   'getRecommendedGasPrice',

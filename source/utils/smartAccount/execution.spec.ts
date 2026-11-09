@@ -594,16 +594,21 @@ describe('getSmartAccountLocalOwnerContexts', () => {
     const ecdsaContext = contexts.ecdsa as {
       signActionHash: (params: {
         actionHash: string;
+        executionContextId: string;
         owner: typeof owner;
       }) => Promise<string>;
     };
 
     await expect(
-      ecdsaContext.signActionHash({ actionHash, owner })
+      ecdsaContext.signActionHash({
+        actionHash,
+        owner,
+        executionContextId: 'private-prepared-operation',
+      })
     ).resolves.toBe(signature);
     expect(controllerEmitter).toHaveBeenCalledWith(
-      ['wallet', 'signSmartAccountActionDigestInternal'],
-      [[owner.address, actionHash], { id: owner.id, type: owner.type }],
+      ['wallet', 'signSmartAccountPreparedOwner'],
+      ['private-prepared-operation', { id: owner.id, type: owner.type }],
       10000
     );
   });

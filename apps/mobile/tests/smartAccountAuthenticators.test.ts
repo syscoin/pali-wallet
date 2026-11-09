@@ -156,7 +156,7 @@ function fixture() {
           type: KeyringAccountType[owner.type],
           expectedAddress: address,
         },
-        assertCurrent: guard,
+        assertCurrent: guard, signal: new AbortController().signal,
       });
       calls.push({ owner, digest, signature });
       await afterSign?.();

@@ -28,8 +28,8 @@ function fixture() {
   const host: LedgerHost = {getStatus:()=>({connected:true}),connect:async()=>undefined,disconnect:async()=>undefined,
     retire:async()=>current,
     evm:{getAddress:unavailable,
-      async signPersonalMessage(request) {check();calls++;await wait?.();check();return wallet.signMessage(getBytes('0x'+request.messageHex));},
-      async signTypedData(request) {check();calls++;await wait?.();check();return signTypedData({privateKey:Buffer.from(wallet.privateKey.slice(2),'hex'),data:request.data as import('@metamask/eth-sig-util').TypedMessage<import('@metamask/eth-sig-util').MessageTypes>,
+      async signPersonalMessage(request, authority) {authority.assertCurrent();assert.equal(authority.signal,signal.signal);check();calls++;await wait?.();authority.assertCurrent();check();return wallet.signMessage(getBytes('0x'+request.messageHex));},
+      async signTypedData(request, authority) {authority.assertCurrent();assert.equal(authority.signal,signal.signal);check();calls++;await wait?.();authority.assertCurrent();check();return signTypedData({privateKey:Buffer.from(wallet.privateKey.slice(2),'hex'),data:request.data as import('@metamask/eth-sig-util').TypedMessage<import('@metamask/eth-sig-util').MessageTypes>,
         version:request.version as SignTypedDataVersion.V3|SignTypedDataVersion.V4});},
       async signTransaction(request, authority) {check();authority?.assertCurrent?.();calls++;await wait?.();check();authority?.assertCurrent?.();
         const signature=wallet.signingKey.sign(Transaction.from('0x'+request.unsignedTxHex).unsignedHash);
@@ -79,7 +79,7 @@ test('retirement after a held session prevents device work and after a held sign
     if(phase==='session')f.holdSession(wait);else f.hold(wait);
     const request=readDappMessageRequest('personal_sign',['0x6162',wallet.address],wallet.address)!;
     const result=f.adapter.signMessage(request);
-    const rejected=assert.rejects(result,/CANCELLED/);
+    const rejected=assert.rejects(result, phase==='session' ? /CANCELLED/ : {code:'HARDWARE_REQUEST_CANCELLED'});
     await entered.promise;f.retire();finish.resolve();await rejected;
     assert.equal(f.calls(),phase==='session'?0:1);
   }

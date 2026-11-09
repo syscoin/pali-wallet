@@ -46,6 +46,10 @@ Object.defineProperty(global, 'crypto', {
 global.chrome = {
   runtime: {
     sendMessage: jest.fn(),
+    onConnect: {
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+    },
     onMessage: {
       addListener: jest.fn(),
       removeListener: jest.fn(),

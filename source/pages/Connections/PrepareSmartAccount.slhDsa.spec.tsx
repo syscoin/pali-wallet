@@ -134,8 +134,9 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
               executions: params[0],
               smartAccount: BOOTSTRAP,
             };
-          case 'signSmartAccountActionDigestInternal':
-            return mockOwnerWallet.signingKey.sign(params[0][1]).serialized;
+          case 'signSmartAccountPreparedOwner':
+            return mockOwnerWallet.signingKey.sign(`0x${'55'.repeat(32)}`)
+              .serialized;
           case 'submitSmartAccountExecution':
             return { hash: `0x${'77'.repeat(32)}` };
           case 'hydrateSmartAccount': {

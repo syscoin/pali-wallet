@@ -1,3 +1,8 @@
+import {
+  SMART_ACCOUNT_CONTROLLER_PORT,
+  isOwnedSmartAccountControllerCall,
+} from '../../../shared/smartAccountControllerAuthority';
+
 import type { IMasterController } from '.';
 
 type Methods<T> = {
@@ -17,6 +22,77 @@ const isRuntimeAvailable = (): boolean => {
   }
 };
 
+function controllerResponseError(response: any): unknown {
+  if (
+    !response ||
+    !(
+      response.error ||
+      (response.success === false &&
+        Object.prototype.hasOwnProperty.call(response, 'error'))
+    )
+  )
+    return undefined;
+  if (response.error === true && response.code) return response;
+  if (response.error && typeof response.error === 'object')
+    return response.error;
+  return new Error(
+    typeof response.error === 'string' && response.error.trim()
+      ? response.error
+      : typeof response.message === 'string' && response.message.trim()
+      ? response.message
+      : 'Wallet operation failed'
+  );
+}
+
+/** A Port is owned by the actual browser document, not a React component. No signing retry. */
+function ownedControllerCall(
+  methods: readonly string[],
+  params: any[],
+  timeout: number
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let port: chrome.runtime.Port | undefined,
+      settled = false;
+    const finish = (error: unknown, response?: unknown) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      port?.onDisconnect.removeListener(disconnected);
+      port?.onMessage.removeListener(received);
+      try {
+        port?.disconnect();
+      } catch {
+        /* A retired browser document already owns no Port. */
+      }
+      if (error) reject(error);
+      else resolve(response);
+    };
+    const disconnected = () =>
+      finish(new Error('Wallet approval document disconnected'));
+    const received = (response: unknown) =>
+      finish(controllerResponseError(response), response);
+    const timer = setTimeout(
+      () => finish(new Error('Network request timed out')),
+      timeout
+    );
+    try {
+      if (!isRuntimeAvailable())
+        throw new Error(
+          'Extension context invalidated. Please reload the extension.'
+        );
+      port = chrome.runtime.connect({ name: SMART_ACCOUNT_CONTROLLER_PORT });
+      port.onDisconnect.addListener(disconnected);
+      port.onMessage.addListener(received);
+      port.postMessage({
+        type: 'CONTROLLER_ACTION',
+        data: { methods, params },
+      });
+    } catch (error) {
+      finish(error);
+    }
+  });
+}
+
 export async function controllerEmitter<
   T extends IMasterController,
   P extends
@@ -24,6 +100,12 @@ export async function controllerEmitter<
     | ['wallet', 'authorizeDappManualNonce']
     | ['wallet', 'performDappEncryptionApproval']
 >(methods: P, params?: any[], timeout = 10000, retryConnection = true) {
+  if (isOwnedSmartAccountControllerCall(methods))
+    return ownedControllerCall(
+      methods as readonly string[],
+      params || [],
+      timeout
+    );
   // Add retry logic for service worker lifecycle issues
   const MAX_RETRIES = 3;
   const RETRY_DELAY = 500; // Start with 500ms to reduce spam
@@ -82,34 +164,8 @@ export async function controllerEmitter<
                 return reject(error);
               }
 
-              // Controller failures include an error field, even when its
-              // message is empty. A domain result can legitimately report
-              // success:false (for example, a reverted transaction receipt).
-              if (
-                response &&
-                (response.error ||
-                  (response.success === false &&
-                    Object.prototype.hasOwnProperty.call(response, 'error')))
-              ) {
-                // If it's a structured error from syscoinjs-lib, pass it through as-is
-                if (response.error === true && response.code) {
-                  return reject(response);
-                }
-                if (response.error && typeof response.error === 'object') {
-                  return reject(response.error);
-                }
-                // For simple error messages, wrap in Error object
-                return reject(
-                  new Error(
-                    typeof response.error === 'string' && response.error.trim()
-                      ? response.error
-                      : typeof response.message === 'string' &&
-                        response.message.trim()
-                      ? response.message
-                      : 'Wallet operation failed'
-                  )
-                );
-              }
+              const failure = controllerResponseError(response);
+              if (failure) return reject(failure);
 
               resolve(response);
             }

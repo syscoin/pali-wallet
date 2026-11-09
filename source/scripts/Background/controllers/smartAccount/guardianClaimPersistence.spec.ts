@@ -60,7 +60,7 @@ function open() {
     getEthereumTransaction: () => transaction,
     getWalletSessionGeneration: () => generation,
     getWalletStateGeneration: () => 1,
-    signSmartAccountActionDigestInternal: sign,
+    signSmartAccountRecoveryOwner: sign,
     sendAndSaveEthTransaction: send,
   } as any);
   controller.buildGuardianStartRecoveryOperation = jest.fn(async () =>

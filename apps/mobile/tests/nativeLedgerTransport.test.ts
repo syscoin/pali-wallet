@@ -146,7 +146,7 @@ test('owner abort retires the shared host and prevents late signature delivery',
     accountIndex: 0,
     expectedAddress: '0x' + '11'.repeat(20),
     messageHex: '0x1234',
-  });
+  }, { signal: f.signal.signal, assertCurrent() { if (f.signal.signal.aborted) throw new Error('cancelled'); } });
   f.signal.abort();
   wait.resolve('late-signature');
   await assert.rejects(signing, /cancel/i);

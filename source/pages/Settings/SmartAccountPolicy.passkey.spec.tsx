@@ -255,8 +255,9 @@ describe('SmartAccountPolicy passkey preservation', () => {
           executions: params[0],
         };
       if (method === 'hydrateSmartAccount') return metadata;
-      if (method === 'signSmartAccountActionDigestInternal')
-        return mockOwnerWallet.signingKey.sign(params[0][1]).serialized;
+      if (method === 'signSmartAccountPreparedOwner')
+        return mockOwnerWallet.signingKey.sign(`0x${'77'.repeat(32)}`)
+          .serialized;
       if (method === 'submitSmartAccountExecution')
         return { hash: `0x${'99'.repeat(32)}` };
       throw new Error(`Unexpected ${method}`);

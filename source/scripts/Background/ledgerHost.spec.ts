@@ -888,3 +888,85 @@ describe('Ledger broker retirement', () => {
     expect(() => guard()).not.toThrow();
   });
 });
+
+describe.each([
+  'evm.signPersonalMessage',
+  'evm.signTypedData',
+  'utxo.signMessage',
+])('owned %s dispatch', (method) => {
+  const [group, action] = method.split('.');
+  it.each([
+    undefined,
+    {
+      assertCurrent: async () => undefined,
+      signal: new AbortController().signal,
+    },
+  ])(
+    'rejects omitted/async authority before opening a device page',
+    async (authority) => {
+      const f = fixture();
+      await expect(
+        Reflect.apply(f.broker.host[group][action], f.broker.host[group], [
+          {},
+          authority,
+        ])
+      ).rejects.toMatchObject({ code: 'HARDWARE_REQUEST_CANCELLED' });
+      expect(f.api.windows.create).not.toHaveBeenCalled();
+    }
+  );
+  it('rechecks after focus and retires only its pending dispatch on abort', async () => {
+    const f = fixture(),
+      connected = f.broker.host.connect(),
+      port = f.port();
+    await flush();
+    port.onMessage.emit({ type: 'ready' });
+    await connected;
+    let focus!: () => void;
+    f.api.windows.update.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          focus = resolve;
+        })
+    );
+    const lifetime = new AbortController();
+    let current = true;
+    const authority = {
+      signal: lifetime.signal,
+      assertCurrent() {
+        if (!current)
+          throw Object.assign(new Error('Retired'), {
+            code: 'HARDWARE_REQUEST_CANCELLED',
+          });
+      },
+    };
+    const pending = Reflect.apply(
+      f.broker.host[group][action],
+      f.broker.host[group],
+      [{ accountIndex: 3 }, authority]
+    );
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    current = false;
+    focus();
+    await rejected;
+    expect(
+      port.postMessage.mock.calls.some(
+        ([message]) => message.type === 'request'
+      )
+    ).toBe(false);
+    current = true;
+    const next = Reflect.apply(
+      f.broker.host[group][action],
+      f.broker.host[group],
+      [{ accountIndex: 3 }, authority]
+    );
+    const aborted = expect(next).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    await flush();
+    lifetime.abort();
+    await aborted;
+    expect(port.disconnect).toHaveBeenCalledTimes(1);
+  });
+});

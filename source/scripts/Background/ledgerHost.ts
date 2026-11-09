@@ -51,7 +51,12 @@ export class LedgerHostBroker {
       (params: unknown, options?: LedgerOperationOptions) => {
         const owner = options && { ...options };
         if (
-          method === 'utxo.signPsbt' &&
+          [
+            'utxo.signPsbt',
+            'utxo.signMessage',
+            'evm.signPersonalMessage',
+            'evm.signTypedData',
+          ].includes(method) &&
           (typeof owner?.assertCurrent !== 'function' ||
             typeof owner.signal?.aborted !== 'boolean' ||
             typeof owner.signal.addEventListener !== 'function' ||

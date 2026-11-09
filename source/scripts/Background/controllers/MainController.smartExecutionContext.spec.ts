@@ -26,6 +26,9 @@ jest.mock('utils/navigationState', () => ({
 }));
 
 import { getController } from '..';
+import { buildSmartAccountUserOperation } from '../../../utils/smartAccount/account';
+import { createSmartAccountRawSigningIntent } from '../../../utils/smartAccount/ownerSigningIntent';
+import { buildSmartAccountUserOpSigningIntent } from '../../../utils/smartAccount/userOperationHash';
 import store from 'state/store';
 import { setActiveAccount } from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -37,7 +40,19 @@ import SmartAccountController from './smartAccount';
 
 const OWNER_ADDRESS = `0x${'11'.repeat(20)}`;
 const SMART_ACCOUNT_ADDRESS = `0x${'22'.repeat(20)}`;
-const ACTION_HASH = `0x${'33'.repeat(32)}`;
+const SIGNING_INTENT = buildSmartAccountUserOpSigningIntent(
+  buildSmartAccountUserOperation({
+    sender: SMART_ACCOUNT_ADDRESS,
+    nonce: '1',
+    callData: '0x',
+    initCode: '0x',
+    accountGasLimits: '0x' + '00'.repeat(32),
+    gasFees: '0x' + '00'.repeat(32),
+    preVerificationGas: '1',
+  }),
+  1
+);
+const ACTION_HASH = SIGNING_INTENT.actionHash;
 const EXECUTION_CONTEXT_ID = 'approved-smart-account-operation';
 
 describe('smart-account signing and outer broadcast context', () => {
@@ -57,6 +72,15 @@ describe('smart-account signing and outer broadcast context', () => {
     smartAccountExecution: true,
     smartAccountExecutionFrom: SMART_ACCOUNT_ADDRESS,
   };
+
+  const documentAuthority = () => ({
+    kind: 'document' as const,
+    signal: new AbortController().signal,
+    assertCurrent() {
+      if (wallet.walletSessionGeneration !== 5)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    },
+  });
 
   beforeEach(() => {
     jest.spyOn(console, 'error').mockImplementation();
@@ -94,6 +118,7 @@ describe('smart-account signing and outer broadcast context', () => {
       },
     });
     keyring = {
+      isUnlocked: () => true,
       setVaultStateGetter: jest.fn(),
       ethereumTransaction: {
         ethSign: sign,
@@ -106,9 +131,17 @@ describe('smart-account signing and outer broadcast context', () => {
     wallet.getActiveKeyring = jest.fn(() => keyring);
     wallet.sendAndSaveTransaction = jest.fn().mockResolvedValue(undefined);
     wallet.smartAccount = {
+      captureOwnerSigningIntent: jest.fn((id) => {
+        if (id !== EXECUTION_CONTEXT_ID)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        return { intent: SIGNING_INTENT, expiresAt: Date.now() + 300000 };
+      }),
       assertSmartAccountPreparedNonce: jest.fn(async () => undefined),
       assertSmartAccountExecutionContext: jest.fn((id, digest) => {
-        if (id !== EXECUTION_CONTEXT_ID || digest !== ACTION_HASH)
+        if (
+          id !== EXECUTION_CONTEXT_ID ||
+          (digest !== undefined && digest !== ACTION_HASH)
+        )
           throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       }),
     };
@@ -132,10 +165,10 @@ describe('smart-account signing and outer broadcast context', () => {
 
   it('checks the bound action digest before signing and before exposing the result', async () => {
     await expect(
-      wallet.signSmartAccountActionDigestInternal(
-        [OWNER_ADDRESS, ACTION_HASH],
+      wallet.signSmartAccountPreparedOwner(
+        EXECUTION_CONTEXT_ID,
         owner,
-        EXECUTION_CONTEXT_ID
+        documentAuthority()
       )
     ).resolves.toBe('owner-signature');
     expect(sign).toHaveBeenCalledWith([OWNER_ADDRESS, ACTION_HASH], {
@@ -145,6 +178,7 @@ describe('smart-account signing and outer broadcast context', () => {
       },
       targetAccount: { ...owner, expectedAddress: OWNER_ADDRESS },
       assertCurrent: expect.any(Function),
+      signal: expect.any(AbortSignal),
     });
     const assertContext =
       wallet.smartAccount.assertSmartAccountExecutionContext;
@@ -160,18 +194,85 @@ describe('smart-account signing and outer broadcast context', () => {
     expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['a stale operation token', 'stale-token', ACTION_HASH],
-    ['an unrelated digest', EXECUTION_CONTEXT_ID, `0x${'55'.repeat(32)}`],
-  ])('rejects %s before ethSign', async (_reason, contextId, digest) => {
-    await expect(
-      wallet.signSmartAccountActionDigestInternal(
-        [OWNER_ADDRESS, digest],
-        owner,
-        contextId
-      )
-    ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
+  it.each(['stale-token', undefined, [OWNER_ADDRESS, ACTION_HASH]])(
+    'rejects invalid prepared context %j before SDK signing',
+    async (contextId) => {
+      await expect(
+        wallet.signSmartAccountPreparedOwner(
+          contextId,
+          owner,
+          documentAuthority()
+        )
+      ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
+      expect(sign).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rejects old arity or a renderer digest in place of actual document authority', async () => {
+    for (const authority of [undefined, null, `0x${'55'.repeat(32)}`]) {
+      await expect(
+        wallet.signSmartAccountPreparedOwner(
+          EXECUTION_CONTEXT_ID,
+          owner,
+          authority
+        )
+      ).rejects.toThrow('Owned document authority');
+    }
     expect(sign).not.toHaveBeenCalled();
+  });
+
+  it.each(['address', 'xpub'])(
+    'pins owner %s through the prepared nonce wait before SDK dispatch',
+    async (field) => {
+      let finish!: () => void, entered!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      wallet.smartAccount.assertSmartAccountPreparedNonce.mockImplementationOnce(
+        () => {
+          entered();
+          return new Promise<void>((resolve) => {
+            finish = resolve;
+          });
+        }
+      );
+      const pending = wallet.signSmartAccountPreparedOwner(
+        EXECUTION_CONTEXT_ID,
+        owner,
+        documentAuthority()
+      );
+      const rejected = expect(pending).rejects.toThrow(
+        EVM_TRANSACTION_CONTEXT_CHANGED
+      );
+      await started;
+      currentState.vault.accounts.HDAccount[0] = {
+        ...currentState.vault.accounts.HDAccount[0],
+        [field]: field === 'address' ? '0x' + '99'.repeat(20) : 'new-xpub',
+      };
+      finish();
+      await rejected;
+      expect(sign).not.toHaveBeenCalled();
+    }
+  );
+
+  it('keeps metadata-only owner replacement healthy during nonce validation', async () => {
+    wallet.smartAccount.assertSmartAccountPreparedNonce.mockImplementationOnce(
+      async () => {
+        currentState.vault.accounts.HDAccount[0] = {
+          ...currentState.vault.accounts.HDAccount[0],
+          label: 'New label',
+          balances: { ethereum: '9' },
+        };
+      }
+    );
+    await expect(
+      wallet.signSmartAccountPreparedOwner(
+        EXECUTION_CONTEXT_ID,
+        owner,
+        documentAuthority()
+      )
+    ).resolves.toBe('owner-signature');
+    expect(sign).toHaveBeenCalledTimes(1);
   });
 
   it('suppresses a completed signature when the wallet context changed while signing', async () => {
@@ -184,10 +285,10 @@ describe('smart-account signing and outer broadcast context', () => {
       entered();
       return new Promise((resolve) => (finishSigning = resolve));
     });
-    const signing = wallet.signSmartAccountActionDigestInternal(
-      [OWNER_ADDRESS, ACTION_HASH],
+    const signing = wallet.signSmartAccountPreparedOwner(
+      EXECUTION_CONTEXT_ID,
       owner,
-      EXECUTION_CONTEXT_ID
+      documentAuthority()
     );
     await started;
     wallet.smartAccount.assertSmartAccountExecutionContext.mockImplementation(
@@ -214,14 +315,39 @@ describe('smart-account signing and outer broadcast context', () => {
       return 'unreachable';
     });
     await expect(
-      wallet.signSmartAccountActionDigestInternal(
-        [OWNER_ADDRESS, ACTION_HASH],
+      wallet.signSmartAccountPreparedOwner(
+        EXECUTION_CONTEXT_ID,
         owner,
-        EXECUTION_CONTEXT_ID
+        documentAuthority()
       )
     ).rejects.toThrow(EVM_TRANSACTION_CONTEXT_CHANGED);
     expect(sign).toHaveBeenCalledTimes(1);
   });
+
+  it.each(['network metadata', 'SDK owner', 'wallet session'])(
+    'rejects %s changes at the exact SDK return boundary',
+    async (axis) => {
+      sign.mockImplementationOnce(async () => {
+        if (axis === 'network metadata')
+          currentState.vault.activeNetwork = {
+            ...currentState.vault.activeNetwork,
+            currency: 'CHANGED',
+          };
+        else if (axis === 'SDK owner')
+          wallet.getActiveKeyring.mockReturnValue({ ...keyring });
+        else wallet.walletSessionGeneration++;
+        return 'late-signature';
+      });
+      await expect(
+        wallet.signSmartAccountPreparedOwner(
+          EXECUTION_CONTEXT_ID,
+          owner,
+          documentAuthority()
+        )
+      ).rejects.toThrow();
+      expect(sign).toHaveBeenCalledTimes(1);
+    }
+  );
 
   it('checks the personal-sign approval again at the actual smart owner SDK invocation', async () => {
     let approvalCurrent = true;
@@ -234,12 +360,10 @@ describe('smart-account signing and outer broadcast context', () => {
       return 'unreachable';
     });
     await expect(
-      wallet.signSmartAccountActionDigestInternal(
-        [OWNER_ADDRESS, ACTION_HASH],
-        owner,
-        undefined,
-        assertApproval
-      )
+      wallet.signSmartAccountMessageOwnerInternal(SIGNING_INTENT, owner, {
+        assertCurrent: assertApproval,
+        signal: new AbortController().signal,
+      })
     ).rejects.toThrow('Approval retired');
     expect(sign).toHaveBeenCalledTimes(1);
     expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
@@ -253,10 +377,9 @@ describe('smart-account signing and outer broadcast context', () => {
     'rejects a %s approval guard before invoking the SDK',
     async (_name, guard) => {
       await expect(
-        wallet.signSmartAccountActionDigestInternal(
-          [OWNER_ADDRESS, ACTION_HASH],
-          owner,
+        wallet.signSmartAccountOperationOwnerInternal(
           EXECUTION_CONTEXT_ID,
+          owner,
           guard
         )
       ).rejects.toThrow('EVM fee approval guard must be synchronous');
@@ -265,17 +388,34 @@ describe('smart-account signing and outer broadcast context', () => {
     }
   );
 
-  it('preserves the locally derived guardian recovery signing path without an execution token', async () => {
+  it('preserves software recovery only through its private prepared context and rejects hardware before SDK', async () => {
+    wallet.smartAccount.captureOwnerSigningIntent.mockReturnValue({
+      intent: createSmartAccountRawSigningIntent(
+        'recovery',
+        ACTION_HASH,
+        'recovery-digest'
+      ),
+      expiresAt: Date.now() + 300000,
+    });
     await expect(
-      wallet.signSmartAccountActionDigestInternal(
-        [OWNER_ADDRESS, ACTION_HASH],
-        owner
+      wallet.signSmartAccountPreparedOwner(
+        EXECUTION_CONTEXT_ID,
+        owner,
+        documentAuthority()
       )
     ).resolves.toBe('owner-signature');
-    expect(sign).toHaveBeenCalledTimes(1);
-    expect(
-      wallet.smartAccount.assertSmartAccountExecutionContext
-    ).not.toHaveBeenCalled();
+    sign.mockClear();
+    await expect(
+      wallet.signSmartAccountPreparedOwner(
+        EXECUTION_CONTEXT_ID,
+        {
+          ...owner,
+          type: KeyringAccountType.Ledger,
+        },
+        documentAuthority()
+      )
+    ).rejects.toThrow('software owner');
+    expect(sign).not.toHaveBeenCalled();
   });
 
   const contextGuard = () => {

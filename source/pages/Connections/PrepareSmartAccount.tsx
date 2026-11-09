@@ -532,16 +532,15 @@ export const PrepareSmartAccount = () => {
                 type: localOwner.type,
               },
             ],
-            signActionHash: ({ actionHash, executionContextId, owner }) =>
-              controllerEmitter(
-                ['wallet', 'signSmartAccountActionDigestInternal'],
-                [
-                  [owner.address, actionHash],
-                  { id: owner.id, type: owner.type },
-                  executionContextId,
-                ],
+            signActionHash: ({ executionContextId, owner }) => {
+              if (!executionContextId)
+                throw new Error('Prepared Smart account operation is required');
+              return controllerEmitter(
+                ['wallet', 'signSmartAccountPreparedOwner'],
+                [executionContextId, { id: owner.id, type: owner.type }],
                 300000
-              ) as Promise<string>,
+              ) as Promise<string>;
+            },
           },
         },
         controllerEmitter,

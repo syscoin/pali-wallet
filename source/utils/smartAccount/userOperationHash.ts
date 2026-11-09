@@ -2,6 +2,7 @@ import { TypedDataEncoder } from '../ethersV6Compat.ts';
 
 import type { SmartAccountPackedUserOperation } from './account';
 import { getPaliEntryPointAddress } from './contracts.ts';
+import { createSmartAccountTypedSigningIntent } from './ownerSigningIntent.ts';
 
 // EntryPoint v0.9 uses this EIP-712 type, not the v0.7 abi.encode hash.
 // Keep the signing intent local: an RPC getUserOpHash response is not trusted
@@ -19,10 +20,10 @@ const PACKED_USER_OPERATION_TYPES = {
   ],
 };
 
-export const getSmartAccountUserOpHash = (
+export const buildSmartAccountUserOpSigningIntent = (
   userOperation: SmartAccountPackedUserOperation,
   chainId: number
-): string => {
+) => {
   if (!Number.isSafeInteger(chainId) || chainId <= 0) {
     throw new Error('Smart account signing requires a valid chain ID');
   }
@@ -40,14 +41,37 @@ export const getSmartAccountUserOpHash = (
     throw new Error('EIP-7702 UserOperations are not supported');
   }
 
-  return TypedDataEncoder.hash(
-    {
-      chainId,
-      name: 'ERC4337',
-      verifyingContract: getPaliEntryPointAddress(chainId),
-      version: '1',
-    },
+  const domain = {
+    chainId,
+    name: 'ERC4337',
+    verifyingContract: getPaliEntryPointAddress(chainId),
+    version: '1',
+  };
+  const message = {
+    sender: userOperation.sender,
+    nonce: userOperation.nonce,
+    initCode: userOperation.initCode,
+    callData: userOperation.callData,
+    accountGasLimits: userOperation.accountGasLimits,
+    preVerificationGas: userOperation.preVerificationGas,
+    gasFees: userOperation.gasFees,
+    paymasterAndData: userOperation.paymasterAndData,
+  };
+  const actionHash = TypedDataEncoder.hash(
+    domain,
     PACKED_USER_OPERATION_TYPES,
-    userOperation
+    message
+  );
+  return createSmartAccountTypedSigningIntent(
+    'user-operation',
+    { domain, types: PACKED_USER_OPERATION_TYPES, message },
+    actionHash
   );
 };
+
+/** Hashing and device signing consume the identical canonical preimage. */
+export const getSmartAccountUserOpHash = (
+  userOperation: SmartAccountPackedUserOperation,
+  chainId: number
+): string =>
+  buildSmartAccountUserOpSigningIntent(userOperation, chainId).actionHash;

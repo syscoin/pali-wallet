@@ -504,7 +504,7 @@ const EthSign: React.FC<ISign> = () => {
       else if (personalRequest) {
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
-          [{ ...data, 0: personalRequest.address, 1: personalRequest.message }],
+          [[personalRequest.address, personalRequest.message]],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets

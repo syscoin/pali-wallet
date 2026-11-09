@@ -196,20 +196,24 @@ describe('smart-account owner signing intent', () => {
                   expectedAddress: owner.address,
                 },
                 assertCurrent: () => undefined,
+                signal: new AbortController().signal,
               }),
           },
         },
         smartAccount: metadata as any,
       });
       await expect(
-        controller.submitSmartAccountExecution({
-          accountId: 7,
-          executionContextId: prepared.executionContextId,
-          executions: prepared.executions,
-          gasPayer: prepared.gasPayer,
-          signature: signature.signature,
-          userOperation: prepared.userOperation,
-        })
+        controller.submitSmartAccountExecution(
+          {
+            accountId: 7,
+            executionContextId: prepared.executionContextId,
+            executions: prepared.executions,
+            gasPayer: prepared.gasPayer,
+            signature: signature.signature,
+            userOperation: prepared.userOperation,
+          },
+          captureSubmissionGuard(controller)
+        )
       ).rejects.toThrow('malicious RPC rejects');
 
       expect(recoverAddress(prepared.actionHash, signature.signature)).toBe(
@@ -234,3 +238,9 @@ describe('smart-account owner signing intent', () => {
     }
   );
 });
+
+/** A fixture owner captured at admission, not a permissive omitted guard. */
+function captureSubmissionGuard(controller: any): () => void {
+  const context = controller.infrastructureContext();
+  return () => controller.assertInfrastructureContext(context);
+}
