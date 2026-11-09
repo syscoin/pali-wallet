@@ -2,14 +2,20 @@ import { ethErrors } from 'helpers/errors';
 
 // validateEOAAddress removed - validation should be done through background service
 import {
-  isDappRpcReadMethod,
-  normalizeDappRpcRead,
+  isDappPublicRpcMethod,
+  classifyDappRpcMethod,
+  normalizeDappRpcRequest,
+  executeDappRpcRequest,
 } from '../../shared/dappRpcReads.ts';
 import { normalizeDappTransaction } from '../../shared/dappTransaction.ts';
 import { snapshotSmartAccountDappTransaction } from '../../shared/smartAccountDappTransaction.ts';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
+import {
+  assertRequestActive,
+  requestCancelledError,
+} from 'scripts/Background/controllers/message-handler/request-lifetime';
 import { requestCoordinator } from 'scripts/Background/controllers/message-handler/request-pipeline';
 import {
   IEnhancedRequestContext,
@@ -19,7 +25,6 @@ import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { getAddress } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -27,10 +32,7 @@ import {
 } from 'utils/evmTransactionContext';
 import { verifyNetworkEIP1559Compatibility } from 'utils/network';
 
-export const EthProvider = (
-  host: string,
-  context?: IEnhancedRequestContext
-) => {
+export const EthProvider = (host: string, context: IEnhancedRequestContext) => {
   const sendTransaction = async (params: ITransactionParams) => {
     const tx = normalizeDappTransaction(params);
     const { wallet } = getController();
@@ -241,70 +243,66 @@ export const EthProvider = (
   };
 
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
-    const unrestrictedMethods = getUnrestrictedMethods();
-    if (!unrestrictedMethods.includes(method)) return false;
-    if (isDappRpcReadMethod(method))
-      params = [...normalizeDappRpcRead(method, params).params];
-    const { ethereumTransaction } = getController().wallet;
-
-    // Safety check: ensure web3Provider exists for EVM networks
-    if (!ethereumTransaction?.web3Provider) {
+    const classification = classifyDappRpcMethod(method);
+    if (!getUnrestrictedMethods().includes(method))
       throw cleanErrorStack(
-        ethErrors.provider.unauthorized(
-          'EthProvider methods are not available on UTXO networks'
-        )
+        ethErrors.provider.unsupportedMethod('Unsupported public RPC method')
       );
-    }
-
-    // Handle personal_ecRecover here since it's an unrestricted method
-    if (method === 'personal_ecRecover') {
-      // verifyPersonalMessage returns the address, but we need to checksum it
-      const recoveredAddress = ethereumTransaction.verifyPersonalMessage(
-        params[0],
-        params[1]
-      );
-      // Convert to checksummed address format using ethers
-      return getAddress(recoveredAddress);
-    }
-
-    // Handle subscription methods (not supported)
-    if (method === 'eth_subscribe' || method === 'eth_unsubscribe') {
+    if (classification === 'unsupported')
       throw cleanErrorStack(
         ethErrors.provider.unsupportedMethod(
           `${method} is not supported. Pali does not support WebSocket subscriptions.`
         )
       );
-    }
-
-    // Validate eth_getTransactionReceipt params
-    if (method === 'eth_getTransactionReceipt') {
-      // Retain the legacy hash-object input without changing the caller's params.
-      const input = params?.[0];
-      const hash = input && typeof input === 'object' ? input.hash : input;
-      if (
-        !Array.isArray(params) ||
-        params.length !== 1 ||
-        typeof hash !== 'string' ||
-        !/^0x[\da-f]{64}$/i.test(hash)
-      ) {
-        throw cleanErrorStack(
-          ethErrors.rpc.invalidParams(
-            'Invalid transaction hash. Expected one 0x-prefixed 32-byte hash.'
-          )
-        );
-      }
-      params = [hash];
-    }
-
-    // Defaults
-    try {
-      const resp = await ethereumTransaction.web3Provider.send(method, params);
-
-      return resp;
-    } catch (error) {
-      console.error({ error });
-      throw error;
-    }
+    // Local wallet methods have their own account-disclosure/cache handlers.
+    // An unknown or custom method must never reach a generic RPC fallback.
+    if (!isDappPublicRpcMethod(method))
+      throw cleanErrorStack(
+        ethErrors.provider.unsupportedMethod('Unsupported public RPC method')
+      );
+    const request = normalizeDappRpcRequest(method, params);
+    const signal = context.originalRequest.signal;
+    if (!signal) throw requestCancelledError();
+    const { wallet } = getController();
+    const { ethereumTransaction } = wallet;
+    if (!ethereumTransaction?.web3Provider)
+      throw cleanErrorStack(
+        ethErrors.provider.unauthorized(
+          'EthProvider methods are not available on UTXO networks'
+        )
+      );
+    const provider = ethereumTransaction.web3Provider;
+    const sourceIdentity = () => {
+      const { vault, vaultGlobal } = store.getState();
+      const account =
+        vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
+      return JSON.stringify([
+        vault.isBitcoinBased,
+        vault.activeNetwork,
+        vault.activeAccount,
+        account?.address,
+        vaultGlobal.activeSlip44,
+        wallet.getWalletSessionGeneration(),
+      ]);
+    };
+    const identity = sourceIdentity();
+    return executeDappRpcRequest(request, {
+      assertCurrent() {
+        assertRequestActive(signal);
+        if (
+          getController().wallet !== wallet ||
+          sourceIdentity() !== identity ||
+          wallet.ethereumTransaction !== ethereumTransaction ||
+          ethereumTransaction.web3Provider !== provider
+        )
+          throw ethErrors.provider.unauthorized(
+            EVM_TRANSACTION_CONTEXT_CHANGED
+          );
+      },
+      request: (request) => provider.send(request.method, [...request.params]),
+      verifyPersonalMessage: (message, signature) =>
+        ethereumTransaction.verifyPersonalMessage(message, signature),
+    });
   };
 
   const restrictedRPCMethods = async (method: string, params: any[]) => {

@@ -199,13 +199,13 @@ export function createNativeWalletControllers() {
   const recipientResolver = createNativeRecipientResolver({ source: authority, fetch: walletFetch });
   const observeWatchAsset = createNativeWatchAssetObserver({ fetch: walletFetch,
     registrations: () => authority.getCatalogue()?.networks ?? [] });
-  const reads = createNativeDappRpcReadHost({ fetch: walletFetch, registration() {
+  const readRegistration = () => {
     const state = authority.getSnapshot(), catalogue = authority.getCatalogue();
     const network = catalogue?.networks.find(item => item.id === state.account?.network);
     if (state.phase !== 'ready' || !state.account || !network || catalogue?.active.networkId !== network.id)
       throw new CustodyOperationError('CANCELLED');
     return network;
-  } });
+  };
   const controls = createNativeDappControlHost({
     utxoNetworks: () => authority.getCatalogue()?.utxoNetworks ?? [],
     networks: connectionNetworks,
@@ -251,6 +251,11 @@ export function createNativeWalletControllers() {
       if (!runtime) throw new CustodyOperationError('NOT_READY');
       const captured = runtime, connection = await captured.openConnectionHost();
       if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+      const reads = createNativeDappRpcReadHost({ fetch: walletFetch, registration: readRegistration,
+        verifyPersonalMessage(message, signature) {
+          if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+          return connection.verifyPersonalMessage(message, signature);
+        } });
       return Object.freeze({ ...connection, controls, reads, syscoin, sentry: sentryRequests,
         psbt: { cancelHandoff: (job: object) => {
           return captured.cancelConnectionPsbtHandoff(job);

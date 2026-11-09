@@ -1,20 +1,23 @@
-import type { DappRpcReadRequest } from '../../../../source/shared/dappRpcReads.ts';
+import { executeDappRpcRequest, type DappPublicRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 
 export type NativeConnectionReadHost = Readonly<{
-  read(request: DappRpcReadRequest, signal: AbortSignal, assertCurrent: () => void): Promise<unknown>;
+  read(request: DappPublicRpcRequest, signal: AbortSignal, assertCurrent: () => void): Promise<unknown>;
 }>;
-/** One selected registration, with the same HTTP, chain, byte and time fences as wallet reads. */
+/** Public node queries/controls on one registration, with the existing wallet HTTP/owner fences. */
 export function createNativeDappRpcReadHost(ports: Readonly<{
   registration(): NativeNetworkRegistration;
   fetch(url: string, init: RequestInit): Promise<Response>;
+  verifyPersonalMessage(message: string, signature: string): string;
 }>): NativeConnectionReadHost {
   return Object.freeze({ async read(request, signal, assertCurrent) {
     const selected = snapshotNativeNetwork(ports.registration());
     const check = () => { assertCurrent(); if (signal.aborted || ports.registration().registrationHash !== selected.registrationHash) throw new Error('CONTEXT_CHANGED'); };
     check();
-    const result = await new EvmTransferReadRpc(selected, { fetch: ports.fetch }).dappRead(request, signal, check);
+    const result = await executeDappRpcRequest(request, { assertCurrent: check,
+      verifyPersonalMessage: ports.verifyPersonalMessage,
+      request: request => new EvmTransferReadRpc(selected, { fetch: ports.fetch }).dappRequest(request, signal, check) });
     check(); return result;
   } });
 }

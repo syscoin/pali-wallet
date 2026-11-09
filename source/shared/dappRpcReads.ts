@@ -1,44 +1,102 @@
+import { getAddress } from 'ethers/address';
+
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import { normalizeNftTokenId } from '../utils/nftTokenId.ts';
-import { assertProviderRequestBudget } from '../utils/requestPayloadBudget.ts';
+import {
+  assertJsonWorkBudget,
+  assertProviderRequestBudget,
+} from '../utils/requestPayloadBudget.ts';
 
-/** Stateless methods already classified as public ETH reads by the extension registry. */
-export const DAPP_RPC_READ_METHODS = Object.freeze([
-  'eth_blockNumber',
-  'eth_gasPrice',
-  'eth_protocolVersion',
-  'eth_syncing',
-  'eth_getBalance',
-  'eth_getCode',
-  'eth_getTransactionCount',
-  'eth_getStorageAt',
-  'eth_call',
-  'eth_estimateGas',
-  'eth_getTransactionReceipt',
-  'eth_getTransactionByHash',
-  'eth_getBlockByNumber',
-  'eth_getBlockByHash',
-  'eth_getBlockTransactionCountByNumber',
-  'eth_getBlockTransactionCountByHash',
-  'eth_getTransactionByBlockNumberAndIndex',
-  'eth_getTransactionByBlockHashAndIndex',
-  'eth_getUncleCountByBlockNumber',
-  'eth_getUncleCountByBlockHash',
-  'eth_getUncleByBlockNumberAndIndex',
-  'eth_getUncleByBlockHashAndIndex',
-  'eth_feeHistory',
-] as const);
-export type DappRpcReadMethod = (typeof DAPP_RPC_READ_METHODS)[number];
-export type DappRpcReadRequest = Readonly<{
-  method: DappRpcReadMethod;
+import { assertSynchronousEvmFeeGuard } from './evmFeeGuard.ts';
+
+/** Exhaustive public provider policy, independent of any node's capabilities. */
+export const DAPP_RPC_METHOD_CLASSIFICATION = Object.freeze({
+  eth_blockNumber: 'node-query',
+  eth_gasPrice: 'node-query',
+  eth_protocolVersion: 'node-query',
+  eth_syncing: 'node-query',
+  eth_getBalance: 'node-query',
+  eth_getCode: 'node-query',
+  eth_getTransactionCount: 'node-query',
+  eth_getStorageAt: 'node-query',
+  eth_call: 'node-query',
+  eth_estimateGas: 'node-query',
+  eth_getTransactionReceipt: 'node-query',
+  eth_getTransactionByHash: 'node-query',
+  eth_getBlockByNumber: 'node-query',
+  eth_getBlockByHash: 'node-query',
+  eth_getBlockTransactionCountByNumber: 'node-query',
+  eth_getBlockTransactionCountByHash: 'node-query',
+  eth_getTransactionByBlockNumberAndIndex: 'node-query',
+  eth_getTransactionByBlockHashAndIndex: 'node-query',
+  eth_getUncleCountByBlockNumber: 'node-query',
+  eth_getUncleCountByBlockHash: 'node-query',
+  eth_getUncleByBlockNumberAndIndex: 'node-query',
+  eth_getUncleByBlockHashAndIndex: 'node-query',
+  eth_feeHistory: 'node-query',
+  eth_getLogs: 'node-query',
+  eth_getProof: 'node-query',
+  web3_clientVersion: 'node-query',
+  net_listening: 'node-query',
+  net_peerCount: 'node-query',
+  personal_ecRecover: 'local-verification',
+  eth_coinbase: 'node-query',
+  web3_sha3: 'node-query',
+  eth_getFilterLogs: 'node-query',
+  eth_getFilterChanges: 'node-control',
+  eth_newBlockFilter: 'node-control',
+  eth_newFilter: 'node-control',
+  eth_newPendingTransactionFilter: 'node-control',
+  eth_uninstallFilter: 'node-control',
+  eth_getWork: 'node-query',
+  eth_hashrate: 'node-query',
+  eth_mining: 'node-query',
+  eth_submitHashrate: 'node-control',
+  eth_submitWork: 'node-control',
+  eth_accounts: 'custom',
+  eth_chainId: 'custom',
+  net_version: 'custom',
+  eth_subscribe: 'unsupported',
+  eth_unsubscribe: 'unsupported',
+} as const);
+export type DappRpcMethodClassification =
+  (typeof DAPP_RPC_METHOD_CLASSIFICATION)[keyof typeof DAPP_RPC_METHOD_CLASSIFICATION];
+export type DappPublicRpcMethod = {
+  [K in keyof typeof DAPP_RPC_METHOD_CLASSIFICATION]: (typeof DAPP_RPC_METHOD_CLASSIFICATION)[K] extends
+    | 'custom'
+    | 'unsupported'
+    ? never
+    : K;
+}[keyof typeof DAPP_RPC_METHOD_CLASSIFICATION];
+export function classifyDappRpcMethod(
+  method: string
+): DappRpcMethodClassification | null {
+  return Object.hasOwn(DAPP_RPC_METHOD_CLASSIFICATION, method)
+    ? DAPP_RPC_METHOD_CLASSIFICATION[
+        method as keyof typeof DAPP_RPC_METHOD_CLASSIFICATION
+      ]
+    : null;
+}
+export const isDappPublicRpcMethod = (
+  method: string
+): method is DappPublicRpcMethod => {
+  const classification = classifyDappRpcMethod(method);
+  return (
+    classification === 'node-query' ||
+    classification === 'node-control' ||
+    classification === 'local-verification'
+  );
+};
+export const DAPP_PUBLIC_RPC_METHODS: readonly DappPublicRpcMethod[] =
+  Object.freeze(
+    Object.keys(DAPP_RPC_METHOD_CLASSIFICATION).filter(isDappPublicRpcMethod)
+  );
+export type DappPublicRpcRequest = Readonly<{
+  method: DappPublicRpcMethod;
   params: readonly unknown[];
 }>;
-export const isDappRpcReadMethod = (
-  method: string
-): method is DappRpcReadMethod =>
-  (DAPP_RPC_READ_METHODS as readonly string[]).includes(method);
 const invalid = (): never => {
-  throw new EthereumRpcErrorHandler(-32602, 'Invalid RPC read parameters');
+  throw new EthereumRpcErrorHandler(-32602, 'Invalid public RPC parameters');
 };
 const address = (value: unknown) =>
   typeof value === 'string' && /^0x[\da-f]{40}$/i.test(value)
@@ -58,6 +116,10 @@ const quantity = (value: unknown) => {
 const bytes = (value: unknown) =>
   typeof value === 'string' && /^0x(?:[\da-f]{2})*$/i.test(value)
     ? `0x${value.slice(2)}`
+    : invalid();
+const miningRate = (value: unknown) =>
+  typeof value === 'string' && (value === '' || /^0x[\da-f]*$/i.test(value))
+    ? value
     : invalid();
 const object = (value: unknown, fields: readonly string[]) => {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -184,15 +246,76 @@ function block(value: unknown): unknown {
     return { blockNumber: quantity(item.blockNumber) };
   return invalid();
 }
-/** A bounded detached request, never an arbitrary provider method or signed payload. */
-export function normalizeDappRpcRead(
+function logFilter(value: unknown) {
+  if (value === null) return null;
+  const filter = object(value, [
+    'fromBlock',
+    'toBlock',
+    'blockHash',
+    'address',
+    'topics',
+  ]);
+  if (filter.blockHash != null) {
+    if (filter.fromBlock != null || filter.toBlock != null) return invalid();
+    filter.blockHash = hash(filter.blockHash);
+  }
+  for (const field of ['fromBlock', 'toBlock'])
+    if (filter[field] != null) filter[field] = blockNumber(filter[field]);
+  if (filter.address != null)
+    filter.address = Array.isArray(filter.address)
+      ? list(filter.address, address)
+      : address(filter.address);
+  if (filter.topics != null)
+    filter.topics = list(filter.topics, (value) =>
+      value === null
+        ? null
+        : Array.isArray(value)
+        ? list(value, (topic) => (topic === null ? null : hash(topic)))
+        : hash(value)
+    );
+  return filter;
+}
+function storageKey(value: unknown) {
+  // Nodes accept short/odd and full-width keys. Width affects storageProof.key;
+  // preserve the original spelling rather than converting these to quantities.
+  return typeof value === 'string' && /^(?:0[xX])?[\da-f]{0,64}$/i.test(value)
+    ? value
+    : invalid();
+}
+function proofBlock(value: unknown): unknown {
+  // A bare full-width hash is a hash selector, even when its leading bytes are
+  // zero. Quantity conversion would silently change it into a block number.
+  if (typeof value === 'string' && /^0x[\da-f]{64}$/i.test(value))
+    return hash(value);
+  if (typeof value === 'string' || typeof value === 'number')
+    return blockNumber(value);
+  const selector = object(value, [
+    'blockNumber',
+    'blockHash',
+    'requireCanonical',
+  ]);
+  if (
+    selector.requireCanonical != null &&
+    typeof selector.requireCanonical !== 'boolean'
+  )
+    return invalid();
+  if (selector.blockHash != null) {
+    if (selector.blockNumber != null) return invalid();
+    selector.blockHash = hash(selector.blockHash);
+  } else if (selector.blockNumber != null)
+    selector.blockNumber = blockNumber(selector.blockNumber);
+  else return invalid();
+  return selector;
+}
+/** Bounded public node queries/controls and local verification, never wallet signing. */
+export function normalizeDappRpcRequest(
   method: string,
   input: unknown
-): DappRpcReadRequest {
-  if (!isDappRpcReadMethod(method))
-    throw new EthereumRpcErrorHandler(4200, 'Unsupported RPC read method');
+): DappPublicRpcRequest {
+  if (!isDappPublicRpcMethod(method))
+    throw new EthereumRpcErrorHandler(4200, 'Unsupported public RPC method');
   assertProviderRequestBudget({ method, params: input });
-  const values = input === undefined ? [] : input;
+  const values = input == null ? [] : input;
   if (!Array.isArray(values)) return invalid();
   const params = JSON.parse(JSON.stringify(values)) as unknown[];
   const length = (minimum: number, maximum = minimum) => {
@@ -204,10 +327,62 @@ export function normalizeDappRpcRead(
       'eth_gasPrice',
       'eth_protocolVersion',
       'eth_syncing',
+      'web3_clientVersion',
+      'net_listening',
+      'net_peerCount',
+      'eth_coinbase',
+      'eth_getWork',
+      'eth_hashrate',
+      'eth_mining',
+      'eth_newBlockFilter',
     ].includes(method)
   )
     length(0);
-  else if (
+  else if (method === 'web3_sha3') {
+    length(1);
+    if (params[0] !== '') bytes(params[0]);
+  } else if (method === 'eth_newPendingTransactionFilter') {
+    length(0, 1);
+    if (params.length && params[0] !== null && typeof params[0] !== 'boolean')
+      return invalid();
+  } else if (
+    [
+      'eth_getFilterChanges',
+      'eth_getFilterLogs',
+      'eth_uninstallFilter',
+    ].includes(method)
+  ) {
+    length(1);
+    // A server filter ID is opaque. Quantity conversion or case folding can
+    // select a different remote filter; no local filter registry is invented.
+    if (typeof params[0] !== 'string') return invalid();
+  } else if (method === 'eth_submitHashrate') {
+    length(2);
+    // Preserve DATA/quantity spellings; capability and numeric limits belong to
+    // the selected node, rather than a wallet-maintained mining policy.
+    params[0] = miningRate(params[0]);
+    hash(params[1]);
+  } else if (method === 'eth_submitWork') {
+    length(3);
+    if (typeof params[0] !== 'string' || !/^0x[\da-f]{16}$/i.test(params[0]))
+      return invalid();
+    hash(params[1]);
+    hash(params[2]);
+  } else if (method === 'personal_ecRecover') {
+    length(2);
+    // The SDK owns message/signature decoding, including UTF-8, odd hex and
+    // compact signatures. Public recovery is not a signing request.
+    if (params.some((value) => typeof value !== 'string')) return invalid();
+  } else if (method === 'eth_getLogs' || method === 'eth_newFilter') {
+    length(1);
+    params[0] = logFilter(params[0]);
+  } else if (method === 'eth_getProof') {
+    length(2, 3);
+    params[0] = address(params[0]);
+    if (params[1] !== null) params[1] = list(params[1], storageKey);
+    if (params.length === 3 && params[2] !== null)
+      params[2] = proofBlock(params[2]);
+  } else if (
     ['eth_getBalance', 'eth_getCode', 'eth_getTransactionCount'].includes(
       method
     )
@@ -271,7 +446,18 @@ export function normalizeDappRpcRead(
         ? hash(params[0])
         : blockNumber(params[0]);
     if (typeof params[1] !== 'boolean') return invalid();
-  } else {
+  } else if (
+    [
+      'eth_getBlockTransactionCountByNumber',
+      'eth_getBlockTransactionCountByHash',
+      'eth_getTransactionByBlockNumberAndIndex',
+      'eth_getTransactionByBlockHashAndIndex',
+      'eth_getUncleCountByBlockNumber',
+      'eth_getUncleCountByBlockHash',
+      'eth_getUncleByBlockNumberAndIndex',
+      'eth_getUncleByBlockHashAndIndex',
+    ].includes(method)
+  ) {
     const withIndex = method.includes('AndIndex');
     length(withIndex ? 2 : 1);
     params[0] =
@@ -279,6 +465,35 @@ export function normalizeDappRpcRead(
         ? hash(params[0])
         : blockNumber(params[0]);
     if (withIndex) params[1] = quantity(params[1]);
-  }
+  } else return invalid();
   return Object.freeze({ method, params: Object.freeze(params) });
+}
+
+/** One owned request per node query/control; controls never retry automatically. */
+export async function executeDappRpcRequest(
+  input: DappPublicRpcRequest,
+  ports: Readonly<{
+    assertCurrent(): void;
+    request(request: DappPublicRpcRequest): Promise<unknown>;
+    verifyPersonalMessage(message: string, signature: string): string;
+  }>
+): Promise<unknown> {
+  assertSynchronousEvmFeeGuard(() => ports.assertCurrent());
+  const request = normalizeDappRpcRequest(input.method, input.params);
+  let result: unknown;
+  try {
+    result =
+      classifyDappRpcMethod(request.method) === 'local-verification'
+        ? getAddress(
+            ports.verifyPersonalMessage(
+              request.params[0] as string,
+              request.params[1] as string
+            )
+          )
+        : await ports.request(request);
+  } finally {
+    assertSynchronousEvmFeeGuard(() => ports.assertCurrent());
+  }
+  assertJsonWorkBudget(result);
+  return result;
 }

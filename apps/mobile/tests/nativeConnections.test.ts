@@ -7,7 +7,7 @@ import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { UTXO_ADDRESSES, XPUB } from './publicWatchFixtures.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
-import { DAPP_RPC_READ_METHODS } from '../../../source/shared/dappRpcReads.ts';
+import { DAPP_PUBLIC_RPC_METHODS } from '../../../source/shared/dappRpcReads.ts';
 import { EthereumRpcErrorHandler } from '../../../source/helpers/errors/errorClassesHandlers.ts';
 import type { EvmDappFeeComparison } from '../../../source/shared/evmDappFeePolicy.ts';
 import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
@@ -305,6 +305,7 @@ function fixture(
       }, origin, id);
     },
     assertOwner() {},
+    verifyPersonalMessage() { throw new Error('Public recovery is outside this fixture'); },
     sessionGeneration: () => snapshot.revision,
     async signMessage(input) {
       input.approval.assertCurrent();
@@ -431,7 +432,7 @@ function fixture(
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
+          ...DAPP_PUBLIC_RPC_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -461,7 +462,7 @@ function fixture(
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
+          ...DAPP_PUBLIC_RPC_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -2153,6 +2154,28 @@ test('authorized stateless reads normalize parameters and preserve EVM revert da
     f.failRead(new EthereumRpcErrorHandler(3, 'execution reverted', '0xdead'));
     await messageRequest(f, 'eth_call', [{ to: ADDRESS }], 11);
     assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: 'execution reverted', data: '0xdead' } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const [method, params] of [
+  ['eth_getLogs', [{ topics: [null] }]], ['eth_getProof', [ADDRESS, ['0XABC'], null]],
+  ['web3_clientVersion', []], ['net_listening', []], ['net_peerCount', []],
+  ['personal_ecRecover', ['public text', 'compact-signature']],
+  ['eth_coinbase', []], ['web3_sha3', ['0x1234']],
+  ['eth_getFilterChanges', ['opaque-filter-ID']], ['eth_getFilterLogs', ['opaque-filter-ID']],
+  ['eth_newBlockFilter', []], ['eth_newFilter', [{}]], ['eth_newPendingTransactionFilter', [null]],
+  ['eth_uninstallFilter', ['opaque-filter-ID']], ['eth_getWork', []], ['eth_hashrate', []], ['eth_mining', []],
+  ['eth_submitHashrate', ['0x01', `0x${'11'.repeat(32)}`]],
+  ['eth_submitWork', ['0x0000000000000001', `0x${'11'.repeat(32)}`, `0x${'22'.repeat(32)}`]],
+] as const) test(`${method} is negotiated as a public RPC operation and never opens signing consent`, async () => {
+  const f = await connectedFixture();
+  try {
+    assert(f.session.namespaces.eip155!.methods.includes(method));
+    await messageRequest(f, method, params);
+    assert.deepEqual(f.readRequests, [{ method, params }]);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.signatures.length, 0);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: '0x42' } });
   } finally { await f.controller.dispose(); }
 });
 

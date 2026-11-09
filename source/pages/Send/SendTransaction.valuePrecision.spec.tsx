@@ -10,6 +10,7 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import type { IEnhancedRequestContext } from 'scripts/Background/controllers/message-handler/types';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { BigNumber, Interface, formatEther } from 'utils/ethersV6Compat';
 
@@ -146,7 +147,11 @@ jest.mock(
 );
 jest.mock(
   'scripts/Background/controllers/message-handler/request-pipeline',
-  () => ({ requestCoordinator: { coordinatePopupRequest: jest.fn() } })
+  () => ({
+    requestCoordinator: {
+      coordinatePopupRequest: jest.fn((_context, openPopup) => openPopup()),
+    },
+  })
 );
 jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/navigationState', () => ({
@@ -194,6 +199,24 @@ afterEach(() => {
   cleanup();
 });
 
+const transactionProvider = () => {
+  const host = 'https://review-dapp.synthetic.invalid';
+  const { getMethodConfig } = jest.requireActual(
+    'scripts/Background/controllers/message-handler/method-registry'
+  );
+  const context: IEnhancedRequestContext = {
+    methodConfig: getMethodConfig('eth_sendTransaction'),
+    originalRequest: {
+      host,
+      method: 'eth_sendTransaction',
+      type: 'ethereum',
+      sender: { url: host, origin: host },
+      signal: new AbortController().signal,
+    },
+  };
+  return EthProvider(host, context);
+};
+
 const prepare = async (
   value: string,
   data = '0x',
@@ -208,9 +231,7 @@ const prepare = async (
     ...(automatic ? {} : { nonce: 0 }),
   };
   const original = JSON.stringify(input);
-  await EthProvider('https://review-dapp.synthetic.invalid').sendTransaction(
-    input as any
-  );
+  await transactionProvider().sendTransaction(input as any);
   expect(JSON.stringify(input)).toBe(original);
   expect(mockQuery.tx.value).toBe(`0x${BigInt(value).toString(16)}`);
   expect(mockQuery.tx.data).toBe(data);
@@ -453,9 +474,12 @@ it.each([
       return previous(path, args);
     });
     try {
-      await EthProvider(
-        'https://review-dapp.synthetic.invalid'
-      ).sendTransaction({ from: FROM, to: TO, value: '1', data: '0x' } as any);
+      await transactionProvider().sendTransaction({
+        from: FROM,
+        to: TO,
+        value: '1',
+        data: '0x',
+      } as any);
       render(<SendTransaction />);
       expect(await screen.findByText(messageKey)).toBeInTheDocument();
       expect(

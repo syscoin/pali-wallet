@@ -4112,6 +4112,12 @@ export function createKeyringRuntimeFactory(
               repository,
               walletBindingId,
               assertOwner,
+              verifyPersonalMessage(message, signature) {
+                assertOwner();
+                const result = keyring.ethereumTransaction.verifyPersonalMessage(message, signature);
+                assertOwner();
+                return result;
+              },
               async recoverStoppedEoaCalls(origin, id, assertStopped) {
                 const ring = keyring;
                 const check = () => {

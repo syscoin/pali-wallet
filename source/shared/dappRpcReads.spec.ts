@@ -1,35 +1,343 @@
 import { getUnrestrictedMethods } from '../scripts/Background/controllers/message-handler/method-registry';
 
-import { DAPP_RPC_READ_METHODS, normalizeDappRpcRead } from './dappRpcReads';
+import {
+  DAPP_PUBLIC_RPC_METHODS,
+  DAPP_RPC_METHOD_CLASSIFICATION,
+  classifyDappRpcMethod,
+  executeDappRpcRequest,
+  normalizeDappRpcRequest,
+} from './dappRpcReads';
 
 const address = `0x${'11'.repeat(20)}`,
   hash = `0x${'22'.repeat(32)}`;
-it('admits only stateless methods already exposed by the extension provider', () => {
-  expect(
-    DAPP_RPC_READ_METHODS.every((method) =>
-      getUnrestrictedMethods().includes(method)
+it.each([
+  null,
+  {},
+  {
+    fromBlock: 'earliest',
+    toBlock: 'pending',
+    address: [address, address],
+    topics: [null, [hash, null], []],
+  },
+  {
+    blockHash: hash,
+    fromBlock: null,
+    toBlock: null,
+    address: null,
+    topics: null,
+  },
+  { fromBlock: '0x00', toBlock: 'safe', address, topics: [hash, [hash]] },
+])(
+  'preserves valid bounded log filters without block-range or canonical-chain policy: %p',
+  (filter) => {
+    const original = JSON.parse(JSON.stringify(filter));
+    const normalized = normalizeDappRpcRequest('eth_getLogs', [filter]);
+    expect(filter).toEqual(original);
+    expect(normalized.params).toEqual([
+      filter && 'fromBlock' in filter && filter.fromBlock === '0x00'
+        ? { ...filter, fromBlock: '0x0' }
+        : filter,
+    ]);
+  }
+);
+it.each([
+  [address, ['', '0x', '0X', 'f', '0XABC', hash, '0'.repeat(64)]],
+  [address, null, null],
+  [address, [], 'pending'],
+  [address, ['0x0'], { blockHash: hash, requireCanonical: false }],
+  [address, [], `0x${'00'.repeat(31)}01`],
+  [address, [], { blockHash: hash, blockNumber: null }],
+  [address, [], { blockHash: hash, requireCanonical: null }],
+  [
+    address,
+    [],
+    { blockNumber: 'latest', blockHash: null, requireCanonical: true },
+  ],
+])(
+  'preserves proof key strings/width and omitted or null block semantics: %p',
+  (...params) => {
+    expect(normalizeDappRpcRequest('eth_getProof', params).params).toEqual(
+      params
+    );
+  }
+);
+it.each(['web3_clientVersion', 'net_listening', 'net_peerCount'])(
+  '%s accepts exactly zero arguments',
+  (method) => {
+    expect(normalizeDappRpcRequest(method, undefined).params).toEqual([]);
+    expect(() => normalizeDappRpcRequest(method, [null])).toThrow();
+  }
+);
+it.each([
+  ['eth_getLogs', []],
+  ['eth_getLogs', [{ topics: ['0x1'] }]],
+  ['eth_getLogs', [{ topics: [[[hash]]] }]],
+  ['eth_getLogs', [{ address: [null] }]],
+  ['eth_getLogs', [{ fromBlock: { blockHash: hash } }]],
+  ['eth_getLogs', [{ blockHash: hash, toBlock: 'latest' }]],
+  ['eth_getLogs', [{ blockHash: '0x1' }]],
+  ['eth_getLogs', [{ extra: true }]],
+  ['eth_getProof', [address]],
+  ['eth_getProof', [address, ['0xgg']]],
+  ['eth_getProof', [address, ['0x' + '0'.repeat(65)]]],
+  ['eth_getProof', [address, [false]]],
+  ['eth_getProof', [address, [], { blockHash: hash, blockNumber: '0x1' }]],
+  ['personal_ecRecover', ['text']],
+  ['personal_ecRecover', ['text', null]],
+])('rejects malformed %s shapes before execution', (method, params) => {
+  expect(() => normalizeDappRpcRequest(method as string, params)).toThrow();
+});
+it('applies existing byte/work limits to log filters, proof keys and public recovery', () => {
+  for (const [method, params] of [
+    ['eth_getLogs', [{ topics: Array(10_001).fill(hash) }]],
+    ['eth_getProof', [address, Array(10_001).fill('0x0')]],
+    ['personal_ecRecover', ['x'.repeat(1024 * 1024), 'signature']],
+  ] as const)
+    expect(() => normalizeDappRpcRequest(method, params)).toThrow(
+      'Request exceeds wallet work limits'
+    );
+});
+it('executes recovery locally with the SDK port and one shared checksum path', async () => {
+  const read = jest.fn(),
+    verifyPersonalMessage = jest.fn(
+      () => '0x52908400098527886e0f7030069857d2e4169ee7'
+    ),
+    assertCurrent = jest.fn();
+  await expect(
+    executeDappRpcRequest(
+      normalizeDappRpcRequest('personal_ecRecover', [
+        '0xabc',
+        'compact-signature',
+      ]),
+      { request: read, verifyPersonalMessage, assertCurrent }
     )
-  ).toBe(true);
+  ).resolves.toBe('0x52908400098527886E0F7030069857D2E4169EE7');
+  expect(read).not.toHaveBeenCalled();
+  expect(verifyPersonalMessage).toHaveBeenCalledWith(
+    '0xabc',
+    'compact-signature'
+  );
+  expect(assertCurrent).toHaveBeenCalledTimes(2);
+});
+it('checks ownership after successful and failed asynchronous reads and bounds response work', async () => {
+  for (const failure of [false, true]) {
+    let current = true;
+    await expect(
+      executeDappRpcRequest(normalizeDappRpcRequest('net_listening', []), {
+        assertCurrent() {
+          if (!current) throw Error('STALE');
+        },
+        verifyPersonalMessage() {
+          throw Error('Must not verify');
+        },
+        async request() {
+          current = false;
+          if (failure) throw Error('Provider failed');
+          return true;
+        },
+      })
+    ).rejects.toThrow('STALE');
+  }
+  await expect(
+    executeDappRpcRequest(normalizeDappRpcRequest('web3_clientVersion', []), {
+      assertCurrent() {},
+      verifyPersonalMessage() {
+        throw Error('Must not verify');
+      },
+      async request() {
+        return 'x'.repeat(1024 * 1024 + 1);
+      },
+    })
+  ).rejects.toThrow('Request exceeds wallet work limits');
+});
+it.each([false, true])(
+  'refuses an asynchronous initial authority guard, including rejection=%s, before any capability runs',
+  async (rejected) => {
+    for (const method of ['net_listening', 'personal_ecRecover']) {
+      const read = jest.fn(),
+        verifyPersonalMessage = jest.fn();
+      await expect(
+        executeDappRpcRequest(
+          normalizeDappRpcRequest(
+            method,
+            method === 'personal_ecRecover' ? ['message', 'signature'] : []
+          ),
+          {
+            request: read,
+            verifyPersonalMessage,
+            assertCurrent: () =>
+              rejected
+                ? Promise.reject(Error('late authority rejection'))
+                : Promise.resolve(),
+          }
+        )
+      ).rejects.toThrow('guard must be synchronous');
+      expect(read).not.toHaveBeenCalled();
+      expect(verifyPersonalMessage).not.toHaveBeenCalled();
+    }
+  }
+);
+it.each([false, true])(
+  'refuses an asynchronous final authority guard after the owned RPC await, including rejection=%s',
+  async (rejected) => {
+    let guardCalls = 0,
+      release!: (value: unknown) => void;
+    const pending = new Promise((resolve) => {
+      release = resolve;
+    });
+    const read = jest.fn(() => pending),
+      verifyPersonalMessage = jest.fn();
+    const result = executeDappRpcRequest(
+      normalizeDappRpcRequest('net_listening', []),
+      {
+        request: read,
+        verifyPersonalMessage,
+        assertCurrent() {
+          if (++guardCalls === 2)
+            return rejected
+              ? Promise.reject(Error('late authority rejection'))
+              : Promise.resolve();
+        },
+      }
+    );
+    const refused = expect(result).rejects.toThrow('guard must be synchronous');
+    expect(read).toHaveBeenCalledTimes(1);
+    release(true);
+    await refused;
+    expect(guardCalls).toBe(2);
+    expect(verifyPersonalMessage).not.toHaveBeenCalled();
+  }
+);
+it('classifies the exact unrestricted registry, including custom and unsupported methods, with no default forwarding', () => {
+  const registry = getUnrestrictedMethods();
+  expect(registry).toHaveLength(47);
+  expect(Object.keys(DAPP_RPC_METHOD_CLASSIFICATION).sort()).toEqual(
+    [...registry].sort()
+  );
+  expect(DAPP_PUBLIC_RPC_METHODS).toHaveLength(42);
+  expect(new Set(DAPP_PUBLIC_RPC_METHODS).size).toBe(42);
+  expect(
+    Object.entries(DAPP_RPC_METHOD_CLASSIFICATION)
+      .filter(([, kind]) => kind === 'custom')
+      .map(([method]) => method)
+      .sort()
+  ).toEqual(['eth_accounts', 'eth_chainId', 'net_version']);
+  expect(
+    Object.entries(DAPP_RPC_METHOD_CLASSIFICATION)
+      .filter(([, kind]) => kind === 'unsupported')
+      .map(([method]) => method)
+      .sort()
+  ).toEqual(['eth_subscribe', 'eth_unsubscribe']);
+  expect(
+    Object.entries(DAPP_RPC_METHOD_CLASSIFICATION)
+      .filter(([, kind]) => kind === 'node-control')
+      .map(([method]) => method)
+      .sort()
+  ).toEqual([
+    'eth_getFilterChanges',
+    'eth_newBlockFilter',
+    'eth_newFilter',
+    'eth_newPendingTransactionFilter',
+    'eth_submitHashrate',
+    'eth_submitWork',
+    'eth_uninstallFilter',
+  ]);
+  expect(classifyDappRpcMethod('future_unclassified')).toBeNull();
   for (const method of [
     'eth_sendRawTransaction',
     'eth_sendTransaction',
     'eth_sign',
     'eth_subscribe',
-    'eth_newFilter',
+    'eth_accounts',
+    'eth_chainId',
+    'net_version',
     'debug_traceCall',
   ])
-    expect(() => normalizeDappRpcRead(method, [])).toThrow();
+    expect(() => normalizeDappRpcRequest(method, [])).toThrow();
+});
+
+it.each([
+  ['eth_coinbase', []],
+  ['eth_getWork', null],
+  ['eth_hashrate', []],
+  ['eth_mining', undefined],
+  ['web3_sha3', ['0Xabcd']],
+  ['web3_sha3', ['']],
+  ['web3_sha3', ['0x']],
+  ['eth_getFilterChanges', ['0x0000aBcD']],
+  ['eth_getFilterLogs', ['opaque-server-ID']],
+  ['eth_uninstallFilter', ['0x00ABC']],
+  ['eth_newBlockFilter', []],
+  [
+    'eth_newFilter',
+    [{ blockHash: hash, fromBlock: null, topics: [null, [hash, null]] }],
+  ],
+  ['eth_newPendingTransactionFilter', []],
+  ['eth_newPendingTransactionFilter', [true]],
+  ['eth_newPendingTransactionFilter', [null]],
+  ['eth_submitHashrate', ['0x1', hash]],
+  ['eth_submitHashrate', [`0x${'00'.repeat(31)}01`, hash]],
+  ['eth_submitHashrate', ['', hash]],
+  ['eth_submitHashrate', [`0x${'ab'.repeat(40)}`, hash]],
+  ['eth_submitWork', ['0x0000000000000001', hash, hash]],
+])(
+  'preserves the bounded asynchronous node contract for %s',
+  (method, params) => {
+    expect(normalizeDappRpcRequest(method as string, params).params).toEqual(
+      params == null ? [] : params
+    );
+  }
+);
+it.each([
+  ['eth_coinbase', [1]],
+  ['eth_getWork', [1]],
+  ['eth_hashrate', [1]],
+  ['eth_mining', [1]],
+  ['web3_sha3', ['0x1']],
+  ['web3_sha3', [null]],
+  ['web3_sha3', ['0x00', 'extra']],
+  ['eth_getFilterChanges', [1]],
+  ['eth_getFilterLogs', [null]],
+  ['eth_uninstallFilter', [{}]],
+  ['eth_newBlockFilter', [false]],
+  ['eth_newFilter', [{ topics: [false] }]],
+  ['eth_newPendingTransactionFilter', [1]],
+  ['eth_newPendingTransactionFilter', [false, true]],
+  ['eth_submitHashrate', [null, hash]],
+  ['eth_submitHashrate', ['invalid', hash]],
+  ['eth_submitHashrate', ['0x1', '0x1']],
+  ['eth_submitWork', ['0x1', hash, hash]],
+  ['eth_submitWork', ['0x0000000000000001', null, hash]],
+  ['eth_submitWork', ['0x0000000000000001', hash]],
+])(
+  'rejects malformed public query/control %s before any node operation',
+  (method, params) => {
+    expect(() => normalizeDappRpcRequest(method as string, params)).toThrow();
+  }
+);
+it('keeps existing byte/work limits for remote controls and hashing without node policy additions', () => {
+  for (const [method, params] of [
+    ['eth_getFilterChanges', ['x'.repeat(1024 * 1024)]],
+    ['web3_sha3', [`0x${'00'.repeat(1024 * 1024)}`]],
+    ['eth_newFilter', [{ topics: Array(10_001).fill(hash) }]],
+    ['eth_submitHashrate', ['x'.repeat(1024 * 1024), hash]],
+  ] as const)
+    expect(() => normalizeDappRpcRequest(method, params)).toThrow(
+      'Request exceeds wallet work limits'
+    );
 });
 it('preserves legacy receipt objects and canonicalizes exact quantities without rounding', () => {
   expect(
-    normalizeDappRpcRead('eth_getTransactionReceipt', [{ hash }]).params
+    normalizeDappRpcRequest('eth_getTransactionReceipt', [{ hash }]).params
   ).toEqual([hash]);
   expect(
-    normalizeDappRpcRead('eth_getStorageAt', [address, '18446744073709551616'])
-      .params
+    normalizeDappRpcRequest('eth_getStorageAt', [
+      address,
+      '18446744073709551616',
+    ]).params
   ).toEqual([address, '0x10000000000000000', 'latest']);
   expect(
-    normalizeDappRpcRead('eth_getBalance', [
+    normalizeDappRpcRequest('eth_getBalance', [
       address,
       { blockHash: hash, requireCanonical: true },
     ]).params
@@ -43,21 +351,23 @@ it('detaches simulation transactions and canonicalizes unambiguous aliases', () 
     gas: 21000,
     value: '2',
   };
-  const result = normalizeDappRpcRead('eth_call', [input]);
+  const result = normalizeDappRpcRequest('eth_call', [input]);
   input.input = '0xffff';
   expect(result.params).toEqual([
     { from: address, to: address, data: '0x1234', gas: '0x5208', value: '0x2' },
     'latest',
   ]);
   expect(() =>
-    normalizeDappRpcRead('eth_call', [
+    normalizeDappRpcRequest('eth_call', [
       { to: address },
       'latest',
       { balance: '1' },
     ])
   ).toThrow();
   expect(() =>
-    normalizeDappRpcRead('eth_estimateGas', [{ to: address, unchecked: true }])
+    normalizeDappRpcRequest('eth_estimateGas', [
+      { to: address, unchecked: true },
+    ])
   ).toThrow();
 });
 it.each(['eth_call', 'eth_estimateGas'])(
@@ -72,7 +382,7 @@ it.each(['eth_call', 'eth_estimateGas'])(
       gasLimit: 21000,
       accessList: [entry, entry],
     };
-    const result = normalizeDappRpcRead(method, [input, 'pending']);
+    const result = normalizeDappRpcRequest(method, [input, 'pending']);
     entry.storageKeys[0] = 'invalid';
     input.accessList.length = 0;
     expect(result.params).toEqual([
@@ -105,7 +415,7 @@ it.each([
   'leaves simulation type, nonce and fee execution policy to the node: %p',
   (tx) => {
     for (const method of ['eth_call', 'eth_estimateGas'])
-      expect(normalizeDappRpcRead(method, [tx]).params[0]).toEqual({
+      expect(normalizeDappRpcRequest(method, [tx]).params[0]).toEqual({
         ...tx,
         data: '0x',
       });
@@ -131,7 +441,7 @@ it('preserves bounded blob and authorization simulation fields without creating 
     proofs: ['0x9abc'],
     authorizationList: [authorization],
   };
-  const result = normalizeDappRpcRead('eth_call', [input]);
+  const result = normalizeDappRpcRequest('eth_call', [input]);
   expect(result).toEqual({
     method: 'eth_call',
     params: [{ ...input, data: '0x' }, 'latest'],
@@ -142,7 +452,9 @@ it('preserves bounded blob and authorization simulation fields without creating 
     blobVersionedHashes: [hash],
     authorizationList: [{ ...authorization, address }],
   });
-  expect(() => normalizeDappRpcRead('eth_sendTransaction', [input])).toThrow();
+  expect(() =>
+    normalizeDappRpcRequest('eth_sendTransaction', [input])
+  ).toThrow();
 });
 it.each([
   null,
@@ -181,16 +493,16 @@ it.each([
   { unchecked: true },
 ])('rejects malformed simulation fields before RPC: %p', (tx) => {
   for (const method of ['eth_call', 'eth_estimateGas'])
-    expect(() => normalizeDappRpcRead(method, [tx])).toThrow();
+    expect(() => normalizeDappRpcRequest(method, [tx])).toThrow();
 });
 it('keeps the existing byte and work limits for nested simulation fields', () => {
   expect(() =>
-    normalizeDappRpcRead('eth_estimateGas', [
+    normalizeDappRpcRequest('eth_estimateGas', [
       { blobs: [`0x${'00'.repeat(1024 * 1024)}`] },
     ])
   ).toThrow('Request exceeds wallet work limits');
   expect(() =>
-    normalizeDappRpcRead('eth_call', [
+    normalizeDappRpcRequest('eth_call', [
       { accessList: [{ address, storageKeys: Array(10_001).fill(hash) }] },
     ])
   ).toThrow('Request exceeds wallet work limits');
@@ -205,5 +517,5 @@ it.each([
   ['eth_getBalance', [address, { blockNumber: '0x1', blockHash: hash }]],
   ['eth_call', [{ to: address, data: `0x${'00'.repeat(1024 * 1024)}` }]],
 ])('rejects malformed or oversized %s before any RPC', (method, params) => {
-  expect(() => normalizeDappRpcRead(method as string, params)).toThrow();
+  expect(() => normalizeDappRpcRequest(method as string, params)).toThrow();
 });
