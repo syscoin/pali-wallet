@@ -133,6 +133,8 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     const collateral = previous.clone();
     collateral.outs[0].value = BigInt((network.testnet ? SENTRY_NETWORKS.testnet : SENTRY_NETWORKS.mainnet).collateralSatoshis);
     const previousId = previous.getId(), collateralId = collateral.getId();
+    const freeFunding = previous.clone(); freeFunding.ins[0].hash = Buffer.alloc(32, 9);
+    const freeFundingId = freeFunding.getId();
     const assetCarrier = previous.clone();
     assetCarrier.outs[0].value = 330n; // Taproot carrier cannot cover both asset outputs plus fees.
     const feeCollateral = bitcoin.Transaction.fromHex(SENTRY_TX_HEX);
@@ -148,6 +150,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     feeCollateral.outs[1].script = bitcoin.payments.embed({ data: [internal] }).output;
     const assetCarrierId = assetCarrier.getId(), feeCollateralId = feeCollateral.getId();
     let useCollateral: false | 'asset' | 'fee' = false;
+    let quoteFreeFunding = false;
     const recipient = bitcoin.payments.p2wpkh({
       hash: Buffer.alloc(20, 8),
       network: network.addressNetwork,
@@ -178,7 +181,8 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
         return reply(url, { tokens: [] });
       if (path === `/api/v2/utxo/${account.xpub}`) {
-        const funding = useCollateral === 'fee' ? [assetCarrier, feeCollateral]
+        const funding = quoteFreeFunding ? [previous, freeFunding]
+          : useCollateral === 'fee' ? [assetCarrier, feeCollateral]
           : [useCollateral === 'asset' ? collateral : previous];
         return reply(url, funding.map((transaction) => ({
           txid: transaction.getId(),
@@ -192,6 +196,8 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       }
       if (path === `/api/v2/tx/${previousId}`)
         return reply(url, { hex: previous.toHex() });
+      if (path === `/api/v2/tx/${freeFundingId}`)
+        return reply(url, { hex: freeFunding.toHex() });
       if (path === `/api/v2/tx/${collateralId}`)
         return reply(url, { hex: collateral.toHex() });
       if (path === `/api/v2/tx/${assetCarrierId}`)
@@ -411,6 +417,41 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       records = new UtxoSignedRecords(storage.utxoSignedRecords!, storage.utxoSignedRecords!);
       const freshSign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
       const reopened = openSend(currentPostAuthority);
+      if (network.id === 'syscoin' && type === 'HDAccount') {
+        // The real lost-ACK journal and a full collateral registry overlap once:
+        // 1001 source entries must remain 1000 unique exclusions, with no truncation.
+        const owner = { chainId: network.chainId, slip44: network.slip44, genesisHash: network.genesisHash,
+          account: { id: account.id, type, xpub: account.xpub } };
+        const retained = await records.fundingExclusions({ keyring: ring, assertCurrent: currentPostAuthority }, owner);
+        assert.deepEqual(retained.outpoints, [{ txid: previousId, vout: 0 }]);
+        protectedCollateral = [{ txid: previousId, vout: 0, proTxHash: 'ab'.repeat(32) },
+          ...Array.from({ length: 999 }, (_, index) => ({ txid: (index + 1).toString(16).padStart(64, '0'), vout: 0, pendingRegistration: true as const }))];
+        assert.equal(retained.outpoints.length + protectedCollateral.length, 1001);
+        const expected = new Set([...retained.outpoints, ...protectedCollateral].map(({ txid, vout }) => `${txid}:${vout}`));
+        assert.equal(expected.size, 1000); assert(!expected.has(`${freeFundingId}:0`));
+        const before = (await storage.recovery.readSnapshot()).records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY)!.value;
+        const postsBefore = posted.length, signaturesBefore = freshSign.mock.callCount();
+        const originalQuote = ring.syscoinTransaction.getEstimateSysTransactionFee.bind(ring.syscoinTransaction);
+        let exclusions: Parameters<typeof originalQuote>[0]['excludedOutpoints'];
+        const quote = t.mock.method(ring.syscoinTransaction, 'getEstimateSysTransactionFee', async (...args: Parameters<typeof originalQuote>) => {
+          exclusions = args[0].excludedOutpoints;
+          const result = await originalQuote(...args); // Exercise the SDK's real 1000-entry admission.
+          const inputs: readonly { hash: Uint8Array; index: number }[] = PsbtUtils.fromPali(result.psbt, sdkNetwork).txInputs;
+          assert.deepEqual(inputs.map(({ hash, index }) => ({ txid: Buffer.from(hash).reverse().toString('hex'), vout: index })), [{ txid: freeFundingId, vout: 0 }]);
+          return result;
+        });
+        quoteFreeFunding = true;
+        try {
+          const additional = await reopened.prepare({ amount: '0.12345678', recipient, asset });
+          assert(additional.outputs.some(output => output.address === recipient));
+          assert.equal(exclusions!.length, 1000);
+          assert.deepEqual(new Set(exclusions!.map(({ txid, vout }) => `${txid}:${vout}`)), expected);
+          assert.equal(freshSign.mock.callCount(), signaturesBefore); assert.equal(posted.length, postsBefore);
+          assert.equal((await storage.recovery.readSnapshot()).records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY)!.value, before);
+        } finally {
+          quote.mock.restore(); quoteFreeFunding = false; protectedCollateral = []; reopened.cancel();
+        }
+      }
       const afterRestart = calls.length;
       assert.deepEqual(await reopened.list(), [{ txid: signed.getId(), accepted: false }]);
       await assert.rejects(reopened.confirm(review), /NOT_READY/);

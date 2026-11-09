@@ -1,4 +1,5 @@
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
+import { unionUtxoExclusions } from '../../../../source/shared/utxoExclusions.ts';
 import type { createNativeSentryCollateral } from './sentryNodeManagement.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
@@ -262,7 +263,10 @@ export function createNativeUtxoSend(
               { ...session, assertCurrent: check },
               owner
             );
-          const excludedOutpoints = [...retainedOutpoints,...await protectedPoints(check)];
+          const excludedOutpoints = unionUtxoExclusions(
+            retainedOutpoints,
+            await protectedPoints(check)
+          );
           check();
           const result = await sdk.getEstimateSysTransactionFee(
             {

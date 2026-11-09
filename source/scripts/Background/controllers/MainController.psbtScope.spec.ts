@@ -29,6 +29,7 @@ import {
   privateRecordProfileId,
 } from '@sidhujag/sysweb3-keyring/cjs/private-records.js';
 import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core.js';
+import { excludedOutpointIds } from '@sidhujag/sysweb3-keyring/cjs/utils/excluded-utxos.js';
 import {
   findUtxoCoinByRegistration,
   getNetworkConfigFromCoin,
@@ -1183,10 +1184,68 @@ describe('PSBT approval context', () => {
     expect(
       keyring.syscoinTransaction.getEstimateSysTransactionFee
     ).toHaveBeenCalledWith(
-      { amount: '1', excludedOutpoints: [reservation] },
+      {
+        amount: '1',
+        excludedOutpoints: [{ txid: reservation.txid, vout: reservation.vout }],
+      },
       expect.objectContaining({ fetch: expect.any(Function) })
     );
   });
+
+  it.each([1000, 1001])(
+    'applies the SDK exclusion bound to %i unique outpoints across overlapping protection sources',
+    async (uniqueCount) => {
+      const points = Array.from({ length: uniqueCount }, (_, index) => ({
+        txid: index.toString(16).padStart(64, '0'),
+        vout: index % 4,
+      }));
+      const collateral = points.slice(0, 750).map((point) => ({
+        ...point,
+        proTxHash: 'ab'.repeat(32),
+      }));
+      const journal = points.slice(250).map((point) => ({
+        ...point,
+        txid: point.txid.toUpperCase(),
+      }));
+      expect(collateral.length + journal.length).toBeGreaterThan(1000);
+      wallet.getProtectedSentryOutpoints.mockResolvedValue(collateral);
+      wallet.getRetainedUtxoRecords.mockReturnValue({
+        fundingExclusions: jest.fn(async () => ({
+          outpoints: journal,
+          submitted: new Set(),
+        })),
+      });
+      keyring.syscoinTransaction.getEstimateSysTransactionFee.mockImplementationOnce(
+        async ({ excludedOutpoints }) => {
+          // Exercise the pinned SDK's real pre-deduplication length and entry
+          // validation, rather than a permissive quote fixture.
+          const ids = excludedOutpointIds(excludedOutpoints);
+          expect(excludedOutpoints).toHaveLength(uniqueCount);
+          expect(ids).toEqual(
+            new Set(points.map(({ txid, vout }) => `${txid}:${vout}`))
+          );
+          return { psbt: 'estimate-fixture', fee: 0.00001 };
+        }
+      );
+      const quoted = wallet.getEstimateSysTransactionFee({ amount: '1' });
+      if (uniqueCount === 1000) {
+        await expect(quoted).resolves.toMatchObject({ fee: 0.00001 });
+        expect(
+          keyring.syscoinTransaction.getEstimateSysTransactionFee
+        ).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(quoted).rejects.toMatchObject({
+          error: true,
+          code: 'INVALID_EXCLUDED_UTXOS',
+        });
+        expect(
+          keyring.syscoinTransaction.getEstimateSysTransactionFee
+        ).not.toHaveBeenCalled();
+      }
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ['journal match', true, '01'.repeat(32) + ':0', true],
