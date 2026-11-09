@@ -84,6 +84,7 @@ import {
   type UtxoActivityParticipants,
 } from '../../../shared/utxoActivityParticipants';
 import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
+import { unionUtxoExclusions } from '../../../shared/utxoExclusions';
 import { createUtxoRegistrationPin } from '../../../shared/utxoRegistration';
 import { assertUtxoSoftwareSpend } from '../../../shared/utxoSoftwareCustody';
 import {
@@ -2562,7 +2563,10 @@ class MainController {
       owner
     );
     signing.assertCurrent();
-    const excludedOutpoints = [...collateral, ...journal.outpoints];
+    const excludedOutpoints = unionUtxoExclusions(
+      collateral,
+      journal.outpoints
+    );
     return signing.withRead(async (read) => {
       const result = await signing.transactions
         .getEstimateSysTransactionFee({ ...params, excludedOutpoints }, read)

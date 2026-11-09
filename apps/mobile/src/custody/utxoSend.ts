@@ -1,3 +1,6 @@
+import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
+import { unionUtxoExclusions } from '../../../../source/shared/utxoExclusions.ts';
+import type { createNativeSentryCollateral } from './sentryNodeManagement.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { supportsSptUtxoChain } from '../../../../source/shared/sptInventory.ts';
@@ -79,8 +82,14 @@ export function createNativeUtxoSend(
   records: UtxoSignedRecords,
   fetch: typeof globalThis.fetch,
   getAddress: IKeyringManager['getAddress'],
+  collateral: ReturnType<typeof createNativeSentryCollateral> | null,
   now = () => performance.now()
 ) {
+  const sentryChain = Object.values(SENTRY_NETWORKS).some(item=>
+    item.chainId===scope.network.chainId && item.genesisHash===scope.network.genesisHash);
+  const supplied = collateral !== null && typeof collateral === 'object' && !!collateral?.registry && !!collateral?.scope;
+  if ((collateral !== null && !supplied) || sentryChain !== supplied || (collateral && collateral.scope.genesisHash!==scope.network.genesisHash))
+    throw new CustodyRuntimeError('NOT_READY');
   const owner = Object.freeze({
     chainId: scope.network.chainId,
     slip44: scope.network.slip44,
@@ -117,6 +126,27 @@ export function createNativeUtxoSend(
     } finally {
       busy = false;
     }
+  };
+  const protectedPoints = async (check:()=>void) => {
+    check();
+    if (!collateral) return [];
+    const reservations = await collateral.registry.getSentryCollateralReservations(collateral.scope);
+    check();
+    return reservations.map(({txid,vout})=>({txid,vout}));
+  };
+  const assertUnprotected = async (points:readonly string[],check:()=>void) => {
+    const protectedSet=new Set((await protectedPoints(check)).map(item=>`${item.txid}:${item.vout}`));check();
+    if(points.some(point=>protectedSet.has(point)))
+      throw new Error('This transaction spends protected Sentry Node collateral. Release its protection explicitly only if you intend to stop the node.');
+  };
+  const submitProtected = <T>(points:readonly string[],check:()=>void,submit:(transport:typeof fetch)=>Promise<T>) => {
+    const send=async(markInvoked:()=>void)=>{
+      await assertUnprotected(points,check);check();
+      return submit((input,init)=>{
+        check();if(init?.method==='POST')markInvoked();return fetch(input,init);
+      });
+    };
+    return collateral ? collateral.registry.withSentryCollateralBroadcast(collateral.scope,send) : send(()=>undefined);
   };
   const custom = isCustomUtxoNetworkId(network.id);
   if (custom && scope.network.url !== network.endpoint)
@@ -228,11 +258,15 @@ export function createNativeUtxoSend(
         }
         try {
           const read = await ownedRead(check, amount.kind === 'spt');
-          const { outpoints: excludedOutpoints } =
+          const { outpoints: retainedOutpoints } =
             await records.fundingExclusions(
               { ...session, assertCurrent: check },
               owner
             );
+          const excludedOutpoints = unionUtxoExclusions(
+            retainedOutpoints,
+            await protectedPoints(check)
+          );
           check();
           const result = await sdk.getEstimateSysTransactionFee(
             {
@@ -287,6 +321,7 @@ export function createNativeUtxoSend(
             }
           );
           check();
+          await assertUnprotected(binding.review.outpoints,check);
           assertUtxoBuilderFee(result.fee, binding.review.feeSatoshis);
           const view = Object.freeze({
             feeSatoshis: binding.review.feeSatoshis,
@@ -341,6 +376,7 @@ export function createNativeUtxoSend(
         );
         check();
         if (!retained) throw new CustodyRuntimeError('NOT_READY');
+        await assertUnprotected(retained.outpoints,check);
         const transaction = syscoinUtils.bitcoinjs.Transaction.fromHex(
           retained.rawTransaction
         );
@@ -398,14 +434,15 @@ export function createNativeUtxoSend(
         check();
         const currentSession = { ...session, assertCurrent: check };
         if ('retained' in selected)
-          return submitRetainedUtxo({
+          return submitProtected(selected.retained.outpoints,check,transport=>submitRetainedUtxo({
             record: selected.retained,
             sender: sdk,
             records,
             session: currentSession,
-            fetch,
-          });
+            fetch:transport,
+          }));
         try {
+          await assertUnprotected(selected.binding.review.outpoints,check);
           const read = await ownedRead(check);
           const signed = await sdk.signPSBT(
             { psbt: selected.binding.psbt },
@@ -413,7 +450,7 @@ export function createNativeUtxoSend(
           );
           check();
           const { record } = selected.binding.bindSigned(signed);
-          return await submitReviewedUtxo({
+          return await submitProtected(record.review.outpoints,check,transport=>submitReviewedUtxo({
             record: {
               owner,
               operation: 'wallet',
@@ -427,8 +464,8 @@ export function createNativeUtxoSend(
             sender,
             records,
             session: currentSession,
-            fetch,
-          });
+            fetch:transport,
+          }));
         } finally {
           readController?.abort();
           readController = undefined;

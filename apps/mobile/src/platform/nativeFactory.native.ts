@@ -42,6 +42,7 @@ import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInve
 import type { NativeNoteImportRuntime } from '../custody/noteImport.ts';
 import type { NativeUtxoSend } from '../custody/utxoSend.ts';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement.ts';
+import type { NativeSentryNodeManagement } from '../custody/sentryNodeManagement.ts';
 
 async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
@@ -316,19 +317,33 @@ export function createNativeWalletControllers() {
     }
     return { selected, assertCurrent, observeFailure };
   };
-  const sentryKeys = Object.freeze({
+  const sentry = Object.freeze({
     available: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.(),
-    async open(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryKeyManagement> {
+    async openKeys(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryKeyManagement> {
       const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
       const open = selected.openSentryKeyManagement;
       if (!open) throw new CustodyOperationError('NOT_READY');
       const manager = await observeFailure(() => open(lifetime, assertCurrent));
-      assertCurrent();
+      try { assertCurrent(); if (lifetime.aborted) throw new CustodyOperationError('CANCELLED'); }
+      catch (cause) { manager.dispose(); throw cause; }
       return Object.freeze<NativeSentryKeyManagement>({
         ...manager,
         confirmImport: (...args) => observeFailure(() => manager.confirmImport(...args)),
         confirmRemoval: (...args) => observeFailure(() => manager.confirmRemoval(...args)),
         saveSettings: (...args) => observeFailure(() => manager.saveSettings(...args)),
+      });
+    },
+    async openNodes(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryNodeManagement> {
+      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+      const open = selected.openSentryNodeManagement;
+      if (!open) throw new CustodyOperationError('NOT_READY');
+      const manager = await observeFailure(() => open(lifetime, assertCurrent));
+      try { assertCurrent(); if (lifetime.aborted) throw new CustodyOperationError('CANCELLED'); }
+      catch (cause) { manager.dispose(); throw cause; }
+      return Object.freeze<NativeSentryNodeManagement>({
+        ...manager,
+        confirmLink: (...args) => observeFailure(() => manager.confirmLink(...args)),
+        releaseCollateral: (...args) => observeFailure(() => manager.releaseCollateral(...args)),
       });
     },
   });
@@ -496,6 +511,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentryKeys, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentry, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
