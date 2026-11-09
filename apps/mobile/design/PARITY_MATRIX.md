@@ -157,6 +157,8 @@ Tools can check guardian recovery for the selected EVM watch address or controll
 | G02 | Refresh setting and configurable autolock (0 or 5-120 minutes), save/error confirmation. `source/pages/Settings/Advanced.tsx`.             | Settings -> Security -> Auto-lock; Advanced -> Refresh behavior.    | Native background deadline enforcement rather than reliance on running JS timers; disabling autolock requires clear explanation. Manual lock always remains reachable.  |
 | G03 | About/version, support and provider attribution/external links. `source/pages/Settings/About.tsx`.                                         | Settings -> Help & about -> version/build, support, data providers. | Safe external links, correct platform/build identity and no unsupported support claims. Native review/store links are additions, not replacements for existing help.    |
 
+The shared passkey code now normalizes original credential response bytes with explicit challenge, origin and RP expectations. Current browser ceremonies consume it, and quick unlock uses the same strict client-data parser. This removes duplicate validation before native integration; it does not add an OS credential bridge, enable native P256 signing or establish PRF-based native login. Associated-domain/RP configuration and native qualification remain required.
+
 ## Ordered remaining implementation slices
 
 This is an engineering order, not a reduced parity target. Native qualification of existing flows continues in parallel.
