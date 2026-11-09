@@ -19,7 +19,10 @@ enum PaliCryptoPrimitives {
     let status = output.withUnsafeMutableBytes { bytes in
       SecRandomCopyBytes(kSecRandomDefault, count, bytes.baseAddress!)
     }
-    guard status == errSecSuccess else { throw PaliCryptoFailure.operational }
+    guard status == errSecSuccess else {
+      output.resetBytes(in: output.startIndex..<output.endIndex)
+      throw PaliCryptoFailure.operational
+    }
     return output
   }
 

@@ -122,6 +122,31 @@ test('new storage provisions once, verifies device key metadata, and reopens wit
   }
 });
 
+test('second storage entropy failure clears the unused key without publishing custody state', async () => {
+  const f = await setup();
+  const key = new Uint8Array(32).fill(0x5a);
+  const draws: number[] = [];
+  let keyWrites = 0, databaseCreates = 0;
+  f.ports.randomBytes = (length) => {
+    draws.push(length);
+    if (draws.length === 1) return key;
+    throw new Error('SECRET entropy failure');
+  };
+  f.ports.keyStore.set = async () => { keyWrites++; };
+  f.ports.policy.createDatabase = async () => { databaseCreates++; };
+  try {
+    await assert.rejects(openWalletStorage(f.ports), { code: 'STORAGE_UNAVAILABLE' });
+    assert.deepEqual(draws, [32, 16]);
+    assert.deepEqual(key, new Uint8Array(32));
+    assert.equal(keyWrites, 0);
+    assert.equal(databaseCreates, 0);
+    assert.equal(f.opened, 0);
+    assert.equal(f.record, null);
+    assert.equal(f.held, false);
+    await assert.rejects(stat(f.file), { code: 'ENOENT' });
+  } finally { await f.cleanup(); }
+});
+
 test('the leased device-unlock pair port reads only the exact stored pair and survives cold reopen', async () => {
   const operations: string[] = [];
   const f = await setup({ before(_kind, sql) { operations.push(sql); } });
