@@ -1,12 +1,13 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
+import { ENS_RECIPIENT_TTL_MS } from '../../shared/ensRecipient';
 import { IGlobalState } from '../vault/types';
 import { INetwork, INetworkType } from 'types/network';
 import { PALI_NETWORKS_STATE } from 'utils/constants';
 
 // ENS cache TTL: 5 minutes (300,000 ms)
 // ENS names can change, so we don't cache them indefinitely for security
-export const ENS_CACHE_TTL_MS = 5 * 60 * 1000;
+export const ENS_CACHE_TTL_MS = ENS_RECIPIENT_TTL_MS;
 
 const initialState: IGlobalState = {
   activeSlip44: null,

@@ -13,8 +13,10 @@ import { runNativePrivacyProof } from '../modules/pali-private-prover';
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard';
 import {
   PRIVATE_PROOF_CASES,
+  type PrivateProofCase,
   type PrivateProofResult,
 } from './private-proof-contract.ts';
+import type { PrivateProofBoundary } from './private-proof-diagnostics.ts';
 
 /** A public synthetic vector only. This caller never opens wallet storage. */
 function verifyResult(result: IPrivacyProofResult) {
@@ -49,12 +51,19 @@ function verifyResult(result: IPrivacyProofResult) {
 }
 
 export async function qualifyNativePrivateProof(
-  options: IPrivacyProofOptions
+  options: IPrivacyProofOptions & {
+    onDiagnostic: (caseName: PrivateProofCase, boundary: PrivateProofBoundary) => void;
+  }
 ): Promise<PrivateProofResult> {
+  if (typeof options.onDiagnostic !== 'function')
+    throw new Error('PRIVATE_PROOF_DIAGNOSTIC_REQUIRED');
+  const observe = (caseName: PrivateProofCase, boundary: PrivateProofBoundary) =>
+    assertSynchronousEvmFeeGuard(() => options.onDiagnostic(caseName, boundary));
   const assertCurrent = () =>
     assertSynchronousEvmFeeGuard(options.assertCurrent);
   const cases: PrivateProofResult['cases'][number][] = [];
   for (const name of PRIVATE_PROOF_CASES) {
+    observe(name, 'start');
     assertCurrent();
     const started = Date.now();
     const stages = new Set<IPrivacyProofProgress['stage']>();
@@ -76,6 +85,7 @@ export async function qualifyNativePrivateProof(
             assertCurrent,
             signal: owner.signal,
             onProgress(progress) {
+              observe(name, progress.stage);
               stages.add(progress.stage);
               options.onProgress?.(progress);
               if (
@@ -104,8 +114,10 @@ export async function qualifyNativePrivateProof(
           stages: [...stages],
           rejectedPublicSignalMutations: 0,
         });
+        observe(name, 'case-complete');
         continue;
       }
+      observe(name, 'result-check');
       assertCurrent();
       if (name === 'cancel-while-proving')
         throw new Error('PRIVATE_PROOF_CANCELLATION_NOT_OBSERVED');
@@ -117,6 +129,7 @@ export async function qualifyNativePrivateProof(
         stages: [...stages],
         rejectedPublicSignalMutations: 6,
       });
+      observe(name, 'case-complete');
     } finally {
       options.signal?.removeEventListener('abort', externalAbort);
       owner.abort();

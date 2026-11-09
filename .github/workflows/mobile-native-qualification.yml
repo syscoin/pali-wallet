@@ -39,7 +39,8 @@ on:
       - 'scripts/build-native-private-prover.cjs'
       - 'scripts/prepare-native-private-prover.cjs'
       - 'source/wallet/**'
-      - 'source/utils/sentry/importBatch.ts'
+      - 'source/utils/sentry/**'
+      - 'source/assets/locales/**'
       - 'source/constants/trustedApps.json'
       - 'source/types/network.ts'
       - 'source/types/security.ts'
@@ -256,6 +257,8 @@ jobs:
         run: bash qualification/create-public-pool-ci-ca.sh
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform android --no-install
+      - name: Configure Gradle distribution download timeout
+        run: node qualification/gradle-wrapper-download.cjs
       - name: Run Android JVM public snapshot and SLH ownership checks
         if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION != '1' && env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION != '1'
         run: |

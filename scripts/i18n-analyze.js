@@ -37,7 +37,14 @@ function walk(dir, files = []) {
   }
   return files;
 }
-const files = walk(path.join(ROOT, 'source'));
+// Both apps consume the same canonical resources. Native tests and fixtures
+// cannot make an unused production message appear live.
+const nativeFiles = walk(path.join(ROOT, 'apps', 'mobile', 'src')).filter(
+  (file) =>
+    !/\.(?:spec|test)\.[jt]sx?$/.test(file) &&
+    !/(?:^|[/\\])__(?:tests|mocks)__(?:[/\\])/.test(file)
+);
+const files = [...walk(path.join(ROOT, 'source')), ...nativeFiles];
 
 // --- Extract string literals + template literal prefixes from source ---
 const literals = new Set();

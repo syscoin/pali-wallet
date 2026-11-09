@@ -718,6 +718,36 @@ describe('approval popup boundary', () => {
     await rejected;
   });
 
+  it('withholds an authenticated response if its request grant aborts during document liveness', async () => {
+    let live!: (value: any) => void;
+    (chrome as any).tabs = {
+      query: jest.fn((_query, callback) => callback([])),
+      sendMessage: jest.fn().mockResolvedValue({ documentActive: true }),
+    };
+    const grant = new AbortController();
+    const { pending } = await begin(grant.signal, {
+      tab: { id: 7 },
+      frameId: 0,
+      documentId: 'dapp-document',
+    } as chrome.runtime.MessageSender);
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    (chrome.tabs.sendMessage as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        live = resolve;
+      })
+    );
+    messageListener({
+      source: source('external/connect-wallet'),
+      data: {
+        eventName: `${POPUP_EVENT}.https://site.test`,
+        detail: JSON.stringify({ transactionHex: '0102' }),
+      },
+    });
+    grant.abort();
+    live({ documentActive: true });
+    await rejected;
+  });
+
   it('closes an unbound popup at the hard deadline and removes flags/listeners', async () => {
     jest.useFakeTimers();
     const starting = begin(undefined, undefined, false);

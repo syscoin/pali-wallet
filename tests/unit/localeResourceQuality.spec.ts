@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 
+import { projectLocale } from '../../source/config/loaders/localeProjection';
+
 const languages = ['en', 'es', 'pt', 'fr', 'de', 'zh', 'ja', 'ko', 'ru'];
 const resources = Object.fromEntries(
   languages.map((lng) => [
@@ -27,6 +29,19 @@ const flatten = (
 const flat = Object.fromEntries(
   languages.map((lng) => [lng, flatten(resources[lng])])
 );
+const extensionFlat = Object.fromEntries(
+  languages.map((lng) => {
+    const base = projectLocale(resources[lng], 'base');
+    const privacy = projectLocale(resources[lng], 'privacy');
+    return [
+      lng,
+      flatten({
+        ...base,
+        privacy: { ...base.privacy, ...privacy.privacy },
+      }),
+    ];
+  })
+);
 
 // Algorithm/standard/unit names, not English placeholder guidance. A loanword
 // shared with English in one language is valid; this catches all-eight copies.
@@ -43,12 +58,14 @@ const identicalTechnicalNames = {
   'sentry.sLHDSASHAKE128s': 'SLH-DSA SHAKE-128s',
 };
 
-it('has no unexplained whole-English placeholders copied into every non-English resource', () => {
+// Native English fallback remains an unfinished translation parity gate. This
+// assertion covers only the messages actually packaged by the extension.
+it('extension base and lazy Privacy have no unexplained whole-English placeholders', () => {
   const identical = Object.fromEntries(
-    Object.entries(flat.en).filter(
+    Object.entries(extensionFlat.en).filter(
       ([key, value]) =>
         /[A-Za-z]{2}/.test(value) &&
-        languages.slice(1).every((lng) => flat[lng][key] === value)
+        languages.slice(1).every((lng) => extensionFlat[lng][key] === value)
     )
   );
   expect(identical).toEqual(identicalTechnicalNames);

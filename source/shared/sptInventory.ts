@@ -3,6 +3,8 @@ import {
   getSyscoinUTXOTestnetNetwork,
 } from '../utils/defaultNetworks.ts';
 
+import { parseSyscoinAssetGuid } from './syscoinAssetIds.ts';
+
 const syscoinMainnet = getSyscoinUTXOMainnetNetwork().chainId;
 const syscoinTestnet = getSyscoinUTXOTestnetNetwork().chainId;
 const ZERO = BigInt(0);
@@ -26,6 +28,53 @@ export type SptHolding = Readonly<{
   transfers: number;
   utxoCount: number;
 }>;
+
+export type SptBalance = Readonly<{
+  assetGuid: string;
+  confirmedUnits: string;
+  decimals: number;
+  pendingDeltaUnits: string;
+  symbol: string;
+}>;
+
+export const isSptDisplaySymbol = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  value.length > 0 &&
+  value.length <= 128 &&
+  !/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/u.test(value);
+
+/** The extension's fixed MAX fill includes the observed pending delta. */
+export function sptBalanceTotalUnits(
+  balance: Pick<SptBalance, 'confirmedUnits' | 'pendingDeltaUnits'>
+): string {
+  const confirmed = integer(balance.confirmedUnits),
+    pending = integer(balance.pendingDeltaUnits, true);
+  const total = confirmed + pending;
+  if (
+    confirmed > (BigInt(1) << BigInt(256)) - BigInt(1) ||
+    total < ZERO ||
+    total > (BigInt(1) << BigInt(256)) - BigInt(1)
+  )
+    throw invalid();
+  return total.toString();
+}
+
+/** Public, bounded presentation of the same account inventory on both hosts. */
+export function projectSptBalance(holding: SptHolding): SptBalance {
+  if (!parseSyscoinAssetGuid(holding.assetGuid))
+    throw new Error('SPT token metadata does not match its identifier');
+  const label = holding.metadata.symbol;
+  const symbol = isSptDisplaySymbol(label) ? label : holding.assetGuid;
+  const balance = Object.freeze({
+    assetGuid: holding.assetGuid,
+    decimals: holding.decimals,
+    symbol,
+    confirmedUnits: holding.confirmedUnits.toString(),
+    pendingDeltaUnits: holding.pendingDeltaUnits.toString(),
+  });
+  sptBalanceTotalUnits(balance);
+  return balance;
+}
 
 type SptInventory = Readonly<{
   holdings: ReadonlyMap<string, SptHolding>;

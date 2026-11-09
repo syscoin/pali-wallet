@@ -279,7 +279,7 @@ function assertResult(
 }
 
 export type NativeSentryMessage = { id: string; kind: 'sentry'; version: 1 } & (
-  | { type: 'error' | 'disposed' }
+  | { type: 'error' | 'disposed' | 'sdk-start' }
   | { result: SentryCryptoResult; type: 'success' }
 );
 
@@ -299,7 +299,9 @@ export function readNativeSentryMessage(
   )
     throw failed();
   if (
-    (value.type === 'error' || value.type === 'disposed') &&
+    (value.type === 'error' ||
+      value.type === 'disposed' ||
+      value.type === 'sdk-start') &&
     exact(value, ['version', 'kind', 'id', 'type'])
   )
     return value as NativeSentryMessage;

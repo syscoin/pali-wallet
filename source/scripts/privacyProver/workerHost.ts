@@ -1,4 +1,7 @@
-import { eraseNativeSentryInput } from './nativeSentryProtocol.ts';
+import {
+  eraseNativeSentryInput,
+  readNativeSentryMessage,
+} from './nativeSentryProtocol.ts';
 import type { PrivacyArtifactPolicy } from '../../utils/privacy/proverArtifacts';
 import type { IPrivacyProofInput } from '../../utils/privacy/proverTypes';
 import type { SentryCryptoJob } from '../../wallet/sentryCryptoJobs.ts';
@@ -101,11 +104,28 @@ export function startSentryCryptoWorker(
 ) {
   const error = { version: 1, kind: 'sentry', id, type: 'error' };
   const owner = ownWorkers(respond, error);
+  let sdkStarted = false;
   try {
     const worker = makeWorker();
     owner.workers.push(worker);
     worker.onmessage = (event) => {
-      if (owner.active()) owner.finish(event.data);
+      if (!owner.active()) return;
+      if (event.data?.type !== 'sdk-start') {
+        owner.finish(event.data);
+        return;
+      }
+      try {
+        const message = readNativeSentryMessage(
+          JSON.stringify(event.data),
+          id,
+          job
+        );
+        if (sdkStarted) throw new Error();
+        sdkStarted = true;
+        respond(message);
+      } catch {
+        owner.finish(error);
+      }
     };
     worker.onerror = () => owner.finish(error);
     worker.postMessage({ version: 1, kind: 'sentry', id, job });

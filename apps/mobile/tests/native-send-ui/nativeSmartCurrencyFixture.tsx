@@ -236,7 +236,7 @@ function open(
           );
           guard();
           calls.push({ method: 'submit' });
-          onBroadcast(hash);
+          onBroadcast(hash, 'submit-operation');
           return hash;
         },
       })

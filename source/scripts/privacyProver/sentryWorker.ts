@@ -27,6 +27,7 @@ self.onmessage = async (event: MessageEvent) => {
         job: value.job,
       })
     );
+    emit({ type: 'sdk-start' });
     const result = await executeSentryCryptoJob(job, () => undefined);
     const message = readNativeSentryMessage(
       JSON.stringify({

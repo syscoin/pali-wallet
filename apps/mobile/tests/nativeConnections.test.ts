@@ -1,3 +1,11 @@
+import { dappCaipChain, DAPP_MODE_METHODS } from '../../../source/shared/dappChainScope.ts';
+import { DAPP_SYSCOIN_READ_METHODS } from '../../../source/shared/dappSyscoinReads.ts';
+import { SENTRY_DAPP_METHODS, type NativeSentryDetails, type NativeSentryAssent } from '../src/connections/sentryRequests.ts';
+import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { UTXO_ADDRESSES, XPUB } from './publicWatchFixtures.ts';
+import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
+import { DAPP_RPC_READ_METHODS } from '../../../source/shared/dappRpcReads.ts';
+import { EthereumRpcErrorHandler } from '../../../source/helpers/errors/errorClassesHandlers.ts';
 import type { EvmDappFeeComparison } from '../../../source/shared/evmDappFeePolicy.ts';
 import { createSmartAccountCallsExecutions } from '../../../source/shared/dappCalls.ts';
 import { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
@@ -22,6 +30,7 @@ import type { NativeSigningReview } from '../src/connections/types.ts';
 import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { Interface } from 'ethers/abi';
 import { summarizeApproval, type ApprovalContractMetadata } from '../../../source/shared/approval.ts';
+const ROTATED_SYSCOIN_ADDRESS = parseUtxoPublicIdentifier(XPUB, 'syscoin').address;
 
 const messageText = (review: NativeSigningReview | null) => {
   assert.ok(review?.kind === 'message');
@@ -40,6 +49,8 @@ const ADDRESS = '0x' + '11'.repeat(20),
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(
   options: {
+    utxo?: boolean;
+    hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
@@ -56,8 +67,8 @@ function fixture(
   } = {}
 ) {
   const { secondAccount = false, smart = false, smartMessages = false } = options;
-  const firstAccountType = smart ? 'SmartAccount' : options.imported ? 'Imported' : 'HDAccount';
-  const firstAccountId = smart ? 'smart:60:0' : options.imported ? 'imported:60:0' : 'hd:60:0';
+  const firstAccountType = options.hardware ?? (smart ? 'SmartAccount' : options.imported ? 'Imported' : 'HDAccount');
+  const firstAccountId = options.hardware ? `${options.hardware.toLowerCase()}:60:0` : smart ? 'smart:60:0' : options.imported ? 'imported:60:0' : 'hd:60:0';
   let snapshot: CustodySnapshot = {
     phase: 'ready',
     revision: 1,
@@ -70,6 +81,16 @@ function fixture(
   const rows = new Map<string, unknown>();
   const signatures: unknown[] = [];
   const transactions: unknown[] = [];
+  const controlCommits: unknown[] = [], externalUrls: string[] = [];
+  let controlWait: Promise<void> = Promise.resolve();
+  let controlFailure: Error | undefined;
+  let afterControlCommit: (() => void) | undefined;
+  let sentryWait: Promise<void> = Promise.resolve();
+  let receivingAddress: string = UTXO_ADDRESSES.syscoin;
+  const sentryRequests: unknown[] = [], sentryAssents: NativeSentryAssent[] = [];
+  let readWait: Promise<void> = Promise.resolve();
+  let readError: Error | undefined;
+  const readRequests: unknown[] = [];
   let signWait: Promise<void> = Promise.resolve();
   let storageWait: Promise<void> = Promise.resolve();
   let preparationError: Error | undefined;
@@ -82,7 +103,7 @@ function fixture(
   let siteBlocked = false;
   let siteWait: Promise<void> = Promise.resolve();
   let blacklistedAddress = false;
-  let selectedAccountId = firstAccountId;
+  let selectedAccountId = options.utxo ? 'hd:57:0' : firstAccountId;
   const responses: unknown[] = [],
     emissions: unknown[] = [],
     emissionScopes: string[] = [],
@@ -95,6 +116,7 @@ function fixture(
   let openWait: Promise<void> = Promise.resolve();
   let approveWait: Promise<void> = Promise.resolve();
   let responseWait: Promise<void> = Promise.resolve();
+  let responseFailure: Error | undefined;
   let dispatchWait: Promise<void> = Promise.resolve();
   let dispatchFailure: Error | undefined;
   let callsStatusError: Error | undefined;
@@ -104,12 +126,14 @@ function fixture(
   const callsStatusChains: number[] = [];
   const callsStatusReceipts = new Map<number, ReadonlyMap<string, unknown>>();
   const handedOff: unknown[] = [];
+  const remoteDisconnects: unknown[] = [];
   let emissionWait: Promise<void> = Promise.resolve();
   let pairWait: Promise<void> = Promise.resolve();
   let disconnectWait: Promise<void> = Promise.resolve();
   let rejectFailure: Error | undefined;
   let pairFailure: { error: Error; beforeHandle: boolean } | undefined;
   let selectedChainId = 1;
+  let selectedUtxo = options.utxo ?? false, defaultEvmAccountId = firstAccountId;
   let pairingExpiry = Date.now() + 300000;
   let openFailures = options.openFailures ?? 0;
   let inventoryFailures = options.inventoryFailures ?? 0;
@@ -164,6 +188,51 @@ function fixture(
     },
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
+    syscoin: {
+      registration: () => { if (!selectedUtxo || snapshot.phase !== 'ready') throw new Error('CONTEXT_CHANGED'); return getUtxoNetwork('syscoin'); },
+      anchor: () => UTXO_ADDRESSES.syscoin,
+      async read(request, owner, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('CANCELLED'); return request.method === 'sys_getPublicKey' ? owner.xpub : request.method === 'sys_requestAccounts' ? [owner.address] : 'syscoin-read'; },
+    },
+    sentry: { async prepare(request, signal, check) {
+      check(); sentryRequests.push(request); await sentryWait; check();
+      const node = { proTxHash: 'ab'.repeat(32), service: 'sentry.example:8369', nevmAddress: '', collateralOutpoint: { txid: 'cd'.repeat(32), vout: 0 } };
+      const approval = { id: 'private-sentry-approval', network: 'mainnet', origin: request.origin, serviceUrl: 'https://sentry.example', node };
+      const details = (request.method === 'sys_linkSentryNode' ? { kind: 'link', approval } : request.method === 'sys_signSentryVote' ? { kind: 'vote', approval: { ...approval, nodes: [], missingVotingKeys: [] } } : { kind: 'operation', approval: { ...approval, keys: [] } }) as NativeSentryDetails;
+      return { details, assertCurrent: () => { check(); if (signal.aborted) throw new Error('CANCELLED'); }, async approve(assent, guard) { check(); guard(); sentryAssents.push(assent); return { method: request.method }; }, dispose() {} };
+    } },
+    reads: { async read(request, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('ABORTED'); if (readError) throw readError; return '0x42'; } },
+    controls: {
+      context: () => snapshot.phase === 'ready' ? ({ revision: snapshot.revision, catalogueRevision: snapshot.revision, activeAccountId: selectedAccountId, networkId: selectedUtxo ? 'syscoin' : 'ethereum', networkLabel: selectedUtxo ? 'Syscoin' : 'Ethereum', accounts: [
+        { id: firstAccountId, index: 0, type: firstAccountType, address: ADDRESS, slip44: 60, label: 'Account 1' },
+        ...(secondAccount ? [{ id: 'hd:60:1', index: 1, type: 'HDAccount' as const, address: '0x' + '22'.repeat(20), slip44: 60, label: 'Account 2' }] : []),
+        { id: 'hd:57:0', index: 0, type: 'HDAccount' as const, address: receivingAddress, slip44: 57, label: 'Syscoin account' },
+      ] }) : null,
+      async prepare(request, _owner, signal, check) {
+        const chain = selectedChainId;
+        const current = () => { check(); if (signal.aborted || selectedChainId !== chain) throw new Error('CONTROL_CHANGED'); };
+        current();
+        return {
+          details: request.method === 'wallet_watchAsset'
+            ? { kind: 'watch-asset', type: request.type, address: request.address, name: 'Observed token', symbol: 'OBS', decimals: 18, ...(request.tokenId ? { tokenId: request.tokenId } : {}) }
+            : { kind: request.method === 'wallet_switchEthereumChain' || 'kind' in request ? 'network-switch' : 'network-add', chainId: String(request.chainId), name: 'Observed chain', rpcUrl: 'https://observed.example', symbol: 'ETH' },
+          assertCurrent: current,
+          async commit(checkRequest, onNetworkCommitted) {
+            current(); await controlWait; checkRequest();
+            if (controlFailure) throw controlFailure;
+            controlCommits.push(request);
+            if (request.method === 'wallet_switchEthereumChain' || 'kind' in request) {
+              selectedChainId = request.chainId; selectedUtxo = 'kind' in request && request.kind === 'syscoin'; selectedAccountId = selectedUtxo ? 'hd:57:0' : defaultEvmAccountId;
+              snapshot = { ...snapshot, revision: snapshot.revision + 1 };
+              for (const listener of listeners) listener();
+              onNetworkCommitted();
+            }
+            afterControlCommit?.();
+            return { result: request.method === 'wallet_watchAsset' ? true : null, assertCurrent: checkRequest };
+          },
+          dispose() {},
+        };
+      },
+    },
     walletBindingId: 'd4'.repeat(32),
     supportsAtomicCalls: () => Boolean(options.smart && options.batch),
     supportsSmartAccountMessages: () => Boolean(options.smart && options.smartMessages),
@@ -181,7 +250,7 @@ function fixture(
         async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
         async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
           await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
-          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash); return hash;
+          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
         },
       });
       return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)) };
@@ -246,7 +315,7 @@ function fixture(
           async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
           async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
             await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
-            guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash); return hash;
+            guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
           },
         });
         const dispose = operation.dispose.bind(operation);
@@ -282,16 +351,16 @@ function fixture(
       };
     },
     context: () => ({
-      network: { ...network, chainId: selectedChainId } as ReturnType<
+      network: (selectedUtxo ? { ...network, kind: 'syscoin', chainId: 57, slip44: 57 } : { ...network, chainId: selectedChainId }) as ReturnType<
         NativeConnectionHost['context']
       >['network'],
-      networkId: 'ethereum',
-      networkLabel: 'Ethereum',
+      networkId: selectedUtxo ? 'syscoin' : 'ethereum',
+      networkLabel: selectedUtxo ? 'Syscoin' : 'Ethereum',
       activeAccountId: ['ready', 'authenticating'].includes(snapshot.phase) ? selectedAccountId : null,
       unlocked: ['ready', 'authenticating'].includes(snapshot.phase),
       accounts:
         ['ready', 'authenticating'].includes(snapshot.phase)
-          ? [
+          ? selectedUtxo ? [{ id: 'hd:57:0', index: 0, type: 'HDAccount' as const, address: receivingAddress, xpub: 'stable-utxo-public-account', label: 'Syscoin account' }] : [
               {
                 id: firstAccountId,
                 index: 0,
@@ -326,12 +395,17 @@ function fixture(
     metadata: { name: 'Reported app', description: '', url: ORIGIN, icons: [] },
     expiry: Math.floor(Date.now() / 1000) + 3600,
     namespaces: {
-      eip155: {
-        accounts: [`eip155:1:${ADDRESS}`],
-        chains: ['eip155:1'],
+      [options.utxo ? 'bip122' : 'eip155']: {
+        accounts: [options.utxo ? `${dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' })}:${UTXO_ADDRESSES.syscoin}` : `eip155:1:${ADDRESS}`],
+        chains: [options.utxo ? dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }) : 'eip155:1'],
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
+          'wallet_switchEthereumChain',
+          'wallet_addEthereumChain',
+          'wallet_watchAsset',
+          'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
+          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -352,11 +426,16 @@ function fixture(
     verification: UNKNOWN,
     requiredNamespaces: {},
     optionalNamespaces: {
-      eip155: {
-        chains: ['eip155:1'],
+      [options.utxo ? 'bip122' : 'eip155']: {
+        chains: [options.utxo ? dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }) : 'eip155:1'],
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
+          'wallet_switchEthereumChain',
+          'wallet_addEthereumChain',
+          'wallet_watchAsset',
+          'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
+          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -394,6 +473,7 @@ function fixture(
     return value;
   });
   const controller = new NativeConnectionsController({
+    openExternalUrl: async url => { externalUrls.push(url); },
     async activateAccount(accountId, expectedRevision, guard) {
       guard();
       assert.equal(snapshot.revision, expectedRevision);
@@ -467,7 +547,7 @@ function fixture(
         approve: async (_proposal, namespaces, guard) => {
           guard();
           approved++;
-          assert.equal(
+          if (!options.utxo) assert.equal(
             namespaces.eip155!.methods.includes('personal_sign'),
             !smart || smartMessages
           );
@@ -478,11 +558,13 @@ function fixture(
         reject: async () => {
           if (rejectFailure) throw rejectFailure;
         },
-        disconnect: async () => {
+        disconnect: async (binding) => {
           await disconnectWait;
+          remoteDisconnects.push(binding);
         },
         respond: async (_binding, id, result, guard, onDispatch) => {
           await responseWait;
+          if (responseFailure) throw responseFailure;
           guard();
           onDispatch();
           handedOff.push({ id, result });
@@ -511,12 +593,21 @@ function fixture(
   });
   return {
     controller,
+    controlCommits, externalUrls, readRequests, sentryRequests, sentryAssents,
+    setSentryWait(value: Promise<void>) { sentryWait = value; },
+    rotateReceiving(value: string) { receivingAddress = value; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
+    setReadWait(value: Promise<void>) { readWait = value; },
+    failRead(value: Error) { readError = value; },
+    setControlWait(value: Promise<void>) { controlWait = value; },
+    failControlCommit() { controlFailure = Error('Mode switch failed'); },
+    afterControlCommit(hook: () => void) { afterControlCommit = hook; },
     beforePreparedReturn(hook: () => void) { beforePreparedReturn = hook; },
     smartDisposals: () => smartDisposals,
     view: controller.view,
     rows,
     responses,
     handedOff,
+    remoteDisconnects,
     setDispatchWait(value: Promise<void>) {
       dispatchWait = value;
     },
@@ -575,6 +666,7 @@ function fixture(
     setResponseWait(value: Promise<void>) {
       responseWait = value;
     },
+    failBeforeDispatch() { responseFailure = Error('Response unavailable before handoff'); },
     setEmissionWait(value: Promise<void>) {
       emissionWait = value;
     },
@@ -609,6 +701,9 @@ function fixture(
       snapshot = { ...snapshot, revision: snapshot.revision + 1 };
       for (const listener of listeners) listener();
     },
+    selectDisplayAccount(id: string) { selectedAccountId = id; defaultEvmAccountId = id; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
+    selectEvm() { selectedUtxo = false; selectedAccountId = defaultEvmAccountId; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
+    selectUtxo() { selectedUtxo = true; selectedAccountId = 'hd:57:0'; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
     selectChain(chainId: number) {
       selectedChainId = chainId;
       snapshot = { ...snapshot, revision: snapshot.revision + 1 };
@@ -1453,6 +1548,8 @@ for (const retirement of [
 
 async function connectedFixture(
   options: {
+    utxo?: boolean;
+    hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
@@ -1474,8 +1571,8 @@ async function connectedFixture(
   });
   await f.view.approve(
     3,
-    options.accountId ?? 'hd:60:0',
-    'ethereum',
+    options.accountId ?? (options.utxo ? 'hd:57:0' : 'hd:60:0'),
+    options.utxo ? 'syscoin' : 'ethereum',
     f.view.getSnapshot().revision
   );
   return f;
@@ -1503,6 +1600,572 @@ async function messageRequest(
   await settle();
   return f.view.getSnapshot().signingReview;
 }
+async function syscoinRequest(f: ReturnType<typeof fixture>, method: string, params: unknown = [], id = 10) {
+  f.event({ type: 'request', request: { id, session: f.session, method, params, chainId: dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+  await settle();
+}
+for (const hardware of ['Ledger', 'Trezor'] as const) test(`${hardware} proposal exposes only its wired EVM message methods and retains the existing calls exclusion`, async () => {
+  const f = await connectedFixture({ hardware, batch: true, accountId: `${hardware.toLowerCase()}:60:0` });
+  try {
+    const methods = f.session.namespaces.eip155!.methods;
+    assert(methods.includes('personal_sign')); assert(methods.includes('eth_signTypedData_v3')); assert(methods.includes('eth_signTypedData_v4'));
+    assert.equal(methods.includes('eth_signTypedData'), false); assert.equal(methods.includes('wallet_sendCalls'), false);
+    assert.equal(methods.some(method => method.startsWith('sys_') && !(DAPP_MODE_METHODS as readonly string[]).includes(method)), false);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN]?.accountType, hardware);
+  } finally { await f.controller.dispose(); }
+});
+for (const mismatch of ['family', 'chain'] as const) test(`session updates cannot replace the persisted signing ${mismatch} grant`, async () => {
+  const f = await connectedFixture({ utxo: mismatch === 'family' });
+  try {
+    if (mismatch === 'family') f.selectEvm(); else f.selectChain(10);
+    const chainId = mismatch === 'family' ? 'eip155:1' : 'eip155:10';
+    const updated = { ...f.session, namespaces: { eip155: { accounts: [`${chainId}:${ADDRESS}`], chains: [chainId], methods: ['personal_sign'], events: [] } } };
+    f.event({ type: 'session', session: updated });
+    f.event({ type: 'request', request: { id: 10, session: updated, chainId, method: 'personal_sign', params: ['Hello', ADDRESS], expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    await settle();
+    assert.equal(f.view.getSnapshot().signingReview, null); assert.equal(f.signatures.length, 0);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, mismatch === 'family' ? 4100 : 4901);
+  } finally { await f.controller.dispose(); }
+});
+test('Syscoin approval uses full-genesis-derived bip122 scope and the common stable public-key grant', async () => {
+  const f = await connectedFixture({ utxo: true });
+  try {
+    const chain = dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' });
+    assert.deepEqual(f.session.namespaces.bip122!.accounts, [`${chain}:${UTXO_ADDRESSES.syscoin}`]);
+    assert.equal(f.session.namespaces.eip155, undefined);
+    assert.equal(f.session.namespaces.bip122!.methods.includes('eth_sendTransaction'), false);
+    const grant = (await f.repository).permissions(f.session.binding).read().dapps[ORIGIN];
+    assert.deepEqual(grant?.utxoAccount, { slip44: 57, xpub: 'stable-utxo-public-account' });
+    await syscoinRequest(f, 'sys_getPublicKey');
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: 'stable-utxo-public-account' } });
+    f.rotateReceiving(ROTATED_SYSCOIN_ADDRESS);
+    await syscoinRequest(f, 'sys_requestAccounts', [], 11);
+    assert.deepEqual(f.responses.at(-1), { id: 11, result: { result: [ROTATED_SYSCOIN_ADDRESS] } });
+    assert.deepEqual(f.session.namespaces.bip122!.accounts, [`${chain}:${UTXO_ADDRESSES.syscoin}`]);
+    await syscoinRequest(f, 'wallet_getPermissions', [], 12);
+    const permissions = (f.responses.at(-1) as { result: { result: { caveats: { value: unknown[] }[] }[] } }).result.result;
+    assert.equal(permissions.length, 1);
+    assert.deepEqual(permissions[0]!.caveats[0]!.value, [ROTATED_SYSCOIN_ADDRESS]);
+  } finally { await f.controller.dispose(); }
+});
+for (const mismatch of ['method', 'account', 'chain', 'origin'] as const) test(`Syscoin read refuses ${mismatch} before custody access`, async () => {
+  const f = await connectedFixture({ utxo: true });
+  try {
+    const session = { ...f.session, binding: mismatch === 'origin' ? { ...f.session.binding, origin: 'https://other.example' } : f.session.binding };
+    if (mismatch === 'method') Object.assign(f.session.namespaces.bip122!, { methods: [] });
+    if (mismatch === 'account') Object.assign(f.session.namespaces.bip122!, { accounts: [`${dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' })}:${UTXO_ADDRESSES.bitcoin}`] });
+    f.event({ type: 'request', request: { id: 10, session, method: 'sys_getPublicKey', params: [], chainId: mismatch === 'chain' ? 'bip122:' + '00'.repeat(16) : dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    await settle(); assert.equal(f.readRequests.length, 0);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, mismatch === 'chain' ? 4901 : 4100);
+  } finally { await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) test(`explicit ${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} mode consent replies on its original namespace and retires that binding`, async () => {
+  const f = await connectedFixture({ utxo });
+  try {
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details?.kind === 'network-switch');
+    assert.equal(f.controlCommits.length, 0);
+    await f.view.approveControl(review.id, review.revision);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: null } });
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.controlCommits.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) for (const committed of [false, true]) for (const acknowledged of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} mode grant cleanup: ${committed ? 'committed' : 'failed'} switch, ${acknowledged ? 'delivered' : 'lost'} response acknowledgment`, async () => {
+  const f = await connectedFixture({ utxo });
+  try {
+    const permissions = (await f.repository).permissions(f.session.binding);
+    const originalGrant = permissions.read().dapps[ORIGIN];
+    const namespaces = JSON.stringify(f.session.namespaces);
+    if (!committed) f.failControlCommit();
+    if (!acknowledged) f.failDispatch();
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview;
+    assert(review?.details?.kind === 'network-switch');
+    assert.equal(f.controlCommits.length, 0, 'mode changes still require explicit consent');
+    const approving = f.view.approveControl(review.id, review.revision);
+    if (!committed) await assert.rejects(approving, /Mode switch failed/);
+    else if (!acknowledged) await assert.rejects(approving, /Lost acknowledgment/);
+    else await approving;
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.equal(f.controlCommits.length, Number(committed));
+    assert.equal(f.view.getSnapshot().sessions.length, committed ? 0 : 1);
+    assert.deepEqual(permissions.read().dapps[ORIGIN], committed ? undefined : originalGrant);
+    assert.equal(JSON.stringify(f.session.namespaces), namespaces, 'switching never expands the negotiated authority');
+    assert.equal(f.responses.length, Number(acknowledged));
+    assert.equal(f.handedOff.length, 1, 'transport uncertainty must not cause a second response');
+    const response = f.handedOff[0] as { id: number; result: { result?: unknown; error?: { code: number } } };
+    assert.equal(response.id, 10);
+    if (committed) assert.deepEqual(response.result, { result: null });
+    else assert.equal(response.result.error?.code, 4001, 'a failed switch cannot claim completion');
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} known mode commit retires its grant when the request expires before response admission`, async () => {
+  const readNow = Date.now;
+  let now = readNow();
+  Date.now = () => now;
+  const f = await connectedFixture({ utxo });
+  try {
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.afterControlCommit(() => { now += 300001; });
+    await assert.rejects(f.view.approveControl(review.id, review.revision), /REQUEST_EXPIRED/);
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.responses.length, 0); assert.equal(f.handedOff.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.signatures.length, 0);
+  } finally { Date.now = readNow; await f.controller.dispose(); }
+});
+test('late known mode commit cleanup retains a newly published successor grant', async () => {
+  const readNow = Date.now; let now = readNow(); Date.now = () => now;
+  const f = await connectedFixture();
+  try {
+    const permission = (await f.repository).permissions(f.session.binding);
+    const frame = permission.read(), original = frame.dapps[ORIGIN]; assert(original);
+    const successor = { ...original, date: original.date + 1 };
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.afterControlCommit(() => {
+      permission.publish({ ...frame, dapps: { ...frame.dapps, [ORIGIN]: successor } });
+      now += 300001;
+    });
+    await assert.rejects(f.view.approveControl(review.id, review.revision), /REQUEST_EXPIRED/);
+    assert.equal(f.controlCommits.length, 1);
+    assert.deepEqual(permission.read().dapps[ORIGIN], successor);
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert.equal(f.remoteDisconnects.length, 0);
+    assert.equal(f.responses.length, 0);
+  } finally { Date.now = readNow; await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) for (const acknowledged of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} committed mode grant retires at handoff while its ${acknowledged ? 'delivered' : 'lost'} acknowledgment is held`, async () => {
+  const f = await connectedFixture({ utxo });
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined;
+  try {
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setDispatchWait(held);
+    if (!acknowledged) f.failDispatch();
+    let completed = false;
+    approving = f.view.approveControl(review.id, review.revision);
+    const outcome = approving.then(() => { completed = true; return null; }, cause => { completed = true; return cause; });
+    await settle();
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.handedOff.length, 1);
+    assert.equal(f.responses.length, 0);
+    assert.equal(completed, false);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.remoteDisconnects.length, 0, 'local retirement cannot remove transport session keys while response publication is pending');
+    release();
+    const failure = await outcome;
+    if (acknowledged) assert.equal(failure, null);
+    else assert.match(String(failure), /Lost acknowledgment/);
+    assert.equal(f.handedOff.length, 1);
+    assert.equal(f.responses.length, Number(acknowledged));
+    assert.equal(f.remoteDisconnects.length, 1, 'remote disconnect follows settled response delivery or uncertainty exactly once');
+  } finally { release(); await approving?.catch(() => undefined); await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} committed mode grant retires when response fails before handoff`, async () => {
+  const f = await connectedFixture({ utxo });
+  try {
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.failBeforeDispatch();
+    await assert.rejects(f.view.approveControl(review.id, review.revision), /Response unavailable before handoff/);
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.responses.length, 0);
+    assert.equal(f.handedOff.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+test('late committed mode response cleanup cannot revoke a successor connection or grant', async () => {
+  const f = await connectedFixture();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined;
+  try {
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setResponseWait(held);
+    approving = f.view.approveControl(review.id, review.revision);
+    const outcome = assert.rejects(approving);
+    await settle();
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.handedOff.length, 0);
+    await f.view.disconnect(f.view.getSnapshot().sessions[0]!.id);
+    f.selectEvm();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    await f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const permission = (await f.repository).permissions(f.session.binding);
+    const successor = permission.read().dapps[ORIGIN]; assert(successor);
+    release();
+    await outcome;
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert.deepEqual(permission.read().dapps[ORIGIN], successor);
+    assert.equal(f.handedOff.length, 0);
+    assert.equal(f.responses.length, 0);
+  } finally { release(); await approving?.catch(() => undefined); await f.controller.dispose(); }
+});
+test('a held committed mode revocation cannot delete or remotely disconnect a successor after its write completes', async () => {
+  const f = await connectedFixture();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined, successorApproval: Promise<void> | undefined;
+  try {
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setStorageWait(held);
+    approving = f.view.approveControl(review.id, review.revision);
+    await settle();
+    assert.equal(f.handedOff.length, 1);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    f.event({ type: 'session-ended', topic: TOPIC });
+    f.event({ type: 'session', session: { ...f.session } });
+    f.selectEvm();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    successorApproval = f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const successorOutcome = successorApproval.then(() => null, cause => cause);
+    await settle();
+    release();
+    await approving;
+    assert.equal(await successorOutcome, null);
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN]);
+    assert.equal(f.remoteDisconnects.length, 0);
+  } finally { release(); await Promise.allSettled([approving, successorApproval]); await f.controller.dispose(); }
+});
+test('a settled mode response cannot remotely disconnect a successor approved after local retirement', async () => {
+  const f = await connectedFixture();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined;
+  try {
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setDispatchWait(held);
+    approving = f.view.approveControl(review.id, review.revision);
+    await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.remoteDisconnects.length, 0);
+    f.selectEvm();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    await f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const permission = (await f.repository).permissions(f.session.binding);
+    const successor = permission.read().dapps[ORIGIN]; assert(successor);
+    release();
+    await approving;
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert.deepEqual(permission.read().dapps[ORIGIN], successor);
+    assert.equal(f.remoteDisconnects.length, 0);
+    assert.equal(f.handedOff.length, 1);
+    assert.equal(f.responses.length, 1);
+  } finally { release(); await approving?.catch(() => undefined); await f.controller.dispose(); }
+});
+for (const method of SENTRY_DAPP_METHODS) test(`${method} retains its exact origin/typed request and requires its own fresh assent`, async () => {
+  const f = await connectedFixture({ utxo: true });
+  try {
+    const raw = { version: 1, proTxHash: 'ab'.repeat(32), genesisHash: getUtxoNetwork('syscoin').genesisHash };
+    await syscoinRequest(f, method, [raw]);
+    const review = f.view.getSnapshot().sentryReview;
+    assert(review?.details); assert.equal(review.origin, ORIGIN);
+    assert.deepEqual(f.sentryRequests, [{ method, raw, origin: ORIGIN }]);
+    assert.equal(f.responses.length, 0); assert.equal(f.sentryAssents.length, 0);
+    const assent: NativeSentryAssent = review.details.kind === 'link' ? { kind: 'link' } : review.details.kind === 'vote' ? { kind: 'vote', password: 'Transient fixture password' } : { kind: 'operation', password: 'Transient fixture password', keyId: 'displayed-role-key' };
+    await f.view.approveSentry(review.id, review.revision, assent);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { method } } });
+    assert.equal(f.view.getSnapshot().sentryReview, null);
+    assert.equal(f.sentryAssents.length, 1);
+    assert.equal(JSON.stringify(f.view.getSnapshot()).includes('Transient fixture password'), false);
+  } finally { await f.controller.dispose(); }
+});
+test('Sentry FIFO prepares the next request after rejection and a second approval cannot reuse a consumed revision', async () => {
+  const f = await connectedFixture({ utxo: true });
+  try {
+    await syscoinRequest(f, 'sys_linkSentryNode', [{ version: 1 }], 10);
+    await syscoinRequest(f, 'sys_signSentryVote', [{ version: 1 }], 11);
+    const first = f.view.getSnapshot().sentryReview; assert(first);
+    assert.equal(f.sentryRequests.length, 1);
+    await f.view.rejectSentry(first.id); await settle();
+    const next = f.view.getSnapshot().sentryReview; assert(next?.details?.kind === 'vote');
+    assert.equal(f.sentryRequests.length, 2);
+    const signing = f.view.approveSentry(next.id, next.revision, { kind: 'vote', password: 'Transient fixture' });
+    await assert.rejects(f.view.approveSentry(next.id, next.revision, { kind: 'vote', password: 'Transient fixture' }));
+    await signing;
+    assert.equal(f.sentryAssents.length, 1);
+    assert.deepEqual(f.responses.map(value => (value as { id: number }).id), [10, 11]);
+  } finally { await f.controller.dispose(); }
+});
+for (const change of ['lock', 'network', 'session', 'revoke', 'expiry', 'dispose'] as const) test(`held Sentry preparation cannot outlive ${change}`, async () => {
+  const f = await connectedFixture({ utxo: true }), held = Promise.withResolvers<void>(), readNow = Date.now;
+  let now = readNow(); Date.now = () => now;
+  let disposing: Promise<void> | undefined;
+  try {
+    f.setSentryWait(held.promise);
+    await syscoinRequest(f, 'sys_linkSentryNode', [{ version: 1 }]);
+    assert.equal(f.sentryRequests.length, 1);
+    if (change === 'lock') f.lock();
+    else if (change === 'network') f.selectChain(5700);
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'revoke') await syscoinRequest(f, 'wallet_revokePermissions', [{ eth_accounts: {} }], 11);
+    else if (change === 'expiry') now += 300001;
+    else disposing = f.controller.dispose();
+    held.resolve(); await settle(); await disposing;
+    assert.equal(f.view.getSnapshot().sentryReview, null);
+    assert.equal(f.sentryAssents.length, 0);
+    assert.equal(f.responses.some(value => (value as { id: number }).id === 10), false);
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
+});
+
+for (const display of ['other-evm', 'utxo', 'other-account'] as const) test(`permission roundtrip retains the exact grant while displaying ${display}`, async () => {
+  const f = await connectedFixture({ secondAccount: true });
+  try {
+    const before = structuredClone([...f.rows]);
+    if (display === 'other-evm') f.selectChain(10);
+    else if (display === 'utxo') f.selectUtxo();
+    else f.selectDisplayAccount('hd:60:1');
+    for (const method of ['wallet_getPermissions', 'wallet_requestPermissions']) {
+      await messageRequest(f, method, method === 'wallet_getPermissions' ? [] : [{ eth_accounts: {} }]);
+      const result = (f.responses.at(-1) as { result: { result: { caveats: { value: unknown[] }[] }[] } }).result.result;
+      assert.deepEqual(result[0]!.caveats[0]!.value, [ADDRESS]);
+      assert.deepEqual(result[1]!.caveats[0]!.value, ['0x1']);
+    }
+    assert.deepEqual([...f.rows], before);
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const display of ['other-evm', 'utxo'] as const) test(`network switchback from ${display} uses the original grant without changing its account ceiling`, async () => {
+  const f = await connectedFixture({ secondAccount: true });
+  try {
+    f.selectDisplayAccount('hd:60:1');
+    if (display === 'other-evm') f.selectChain(10); else f.selectUtxo();
+    await messageRequest(f, 'wallet_switchEthereumChain', [{ chainId: '0x1' }]);
+    const review = f.view.getSnapshot().controlReview;
+    assert(review?.details?.kind === 'network-switch');
+    assert.equal(review.address, ADDRESS);
+    await f.view.approveControl(review.id, review.revision);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: null } });
+    assert.equal(f.view.getSnapshot().selectedAccountId, 'hd:60:1');
+    assert.deepEqual(f.session.namespaces.eip155!.accounts, [`eip155:1:${ADDRESS}`]);
+    const signing = await messageRequest(f, 'personal_sign', ['hello', ADDRESS], 11);
+    assert(signing?.kind === 'message' && signing.needsAccountSwitch);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('permission requests cannot silently request new caveats or unnegotiated methods', async () => {
+  const f = await connectedFixture();
+  try {
+    const before = structuredClone([...f.rows]);
+    await messageRequest(f, 'wallet_requestPermissions', [{ eth_accounts: { caveats: [] } }]);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4200);
+    Object.assign(f.session.namespaces.eip155!, { methods: f.session.namespaces.eip155!.methods.filter(value => value !== 'wallet_getPermissions') });
+    await messageRequest(f, 'wallet_getPermissions', [], 11);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4100);
+    assert.deepEqual([...f.rows], before);
+  } finally { await f.controller.dispose(); }
+});
+
+test('nonempty permission revocation immediately retires signing, controls and held public reads', async () => {
+  const f = await connectedFixture();
+  const held = Promise.withResolvers<void>();
+  try {
+    const signing = await messageRequest(f);
+    assert(signing);
+    await messageRequest(f, 'wallet_switchEthereumChain', [{ chainId: '0xa' }], 11);
+    f.setReadWait(held.promise);
+    await messageRequest(f, 'eth_blockNumber', [], 12);
+    await messageRequest(f, 'wallet_revokePermissions', [{ eth_accounts: {} }], 13);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    held.resolve(); await settle();
+    assert.deepEqual(f.responses, [{ id: 13, result: { result: null } }]);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.controlCommits.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('empty permission revocation retains the grant and connection', async () => {
+  const f = await connectedFixture();
+  try {
+    await messageRequest(f, 'wallet_revokePermissions', [{}]);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: null } });
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    await messageRequest(f, 'wallet_getPermissions', [], 11);
+    assert.equal((f.responses.at(-1) as { result: { result: unknown[] } }).result.result.length, 2);
+  } finally { await f.controller.dispose(); }
+});
+test('revocation waits for its existing durable grant engine and leaves a different peer claiming the same origin alone', async () => {
+  const f = await connectedFixture();
+  const held = Promise.withResolvers<void>();
+  try {
+    const repository = await f.repository;
+    const peerSession = { ...f.session, binding: { ...f.session.binding, topic: 'ef'.repeat(32), peerPublicKey: '12'.repeat(32) } };
+    const original = repository.permissions(f.session.binding), peer = repository.permissions(peerSession.binding);
+    const frame = structuredClone(original.read());
+    await peer.exclusive(async () => { await peer.write(frame); peer.publish(frame); });
+    f.event({ type: 'session', session: peerSession });
+    assert.equal(f.view.getSnapshot().sessions.length, 2);
+    f.setStorageWait(held.promise);
+    await messageRequest(f, 'wallet_revokePermissions', [{ eth_accounts: {} }]);
+    assert.equal(original.read().dapps[ORIGIN], undefined);
+    assert(peer.read().dapps[ORIGIN]);
+    assert.deepEqual(f.responses, []);
+    held.resolve(); for (let i = 0; i < 3; i++) await settle();
+    assert.deepEqual(f.responses, [{ id: 10, result: { result: null } }]);
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert(peer.read().dapps[ORIGIN]);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('authorized stateless reads normalize parameters and preserve EVM revert data', async () => {
+  const f = await connectedFixture();
+  try {
+    await messageRequest(f, 'eth_getBalance', [ADDRESS]);
+    assert.deepEqual(f.readRequests, [{ method: 'eth_getBalance', params: [ADDRESS, 'latest'] }]);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: '0x42' } });
+    f.failRead(new EthereumRpcErrorHandler(3, 'execution reverted', '0xdead'));
+    await messageRequest(f, 'eth_call', [{ to: ADDRESS }], 11);
+    assert.deepEqual(f.responses.at(-1), { id: 11, result: { error: { code: 3, message: 'execution reverted', data: '0xdead' } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const mismatch of ['chain', 'method', 'account', 'origin', 'parameters'] as const) test(`stateless read rejects ${mismatch} before provider access`, async () => {
+  const f = await connectedFixture();
+  try {
+    if (mismatch === 'chain') f.selectChain(10);
+    if (mismatch === 'method') Object.assign(f.session.namespaces.eip155!, { methods: f.session.namespaces.eip155!.methods.filter(value => value !== 'eth_getBalance') });
+    if (mismatch === 'account') Object.assign(f.session.namespaces.eip155!, { accounts: [`eip155:1:0x${'22'.repeat(20)}`] });
+    const session = mismatch === 'origin' ? { ...f.session, binding: { ...f.session.binding, origin: 'https://other.example' } } : f.session;
+    f.event({ type: 'request', request: { id: 10, session, chainId: 'eip155:1', method: 'eth_getBalance', params: mismatch === 'parameters' ? ['invalid'] : [ADDRESS], expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    await settle();
+    assert.equal(f.readRequests.length, 0);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, mismatch === 'chain' ? 4901 : mismatch === 'parameters' ? -32602 : 4100);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const change of ['lock', 'network', 'session', 'expiry', 'dispose'] as const) test(`held stateless read is retired on ${change}`, async () => {
+  const f = await connectedFixture();
+  const held = Promise.withResolvers<void>(), readNow = Date.now;
+  let now = readNow(), disposing: Promise<void> | undefined;
+  Date.now = () => now;
+  try {
+    f.setReadWait(held.promise);
+    await messageRequest(f, 'eth_blockNumber', []);
+    assert.equal(f.readRequests.length, 1);
+    if (change === 'lock') f.lock();
+    else if (change === 'network') f.selectChain(10);
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'expiry') now += 300001;
+    else disposing = f.controller.dispose();
+    held.resolve(); await settle(); await disposing;
+    assert.deepEqual(f.responses, []);
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
+});
+
+test('shared pending budgets count reads alongside signing and controls and discard duplicate wire IDs', async () => {
+  const f = await connectedFixture();
+  const held = Promise.withResolvers<void>();
+  try {
+    f.setReadWait(held.promise);
+    for (let id = 10; id < 14; id++) await messageRequest(f, 'eth_blockNumber', [], id);
+    await messageRequest(f, 'eth_blockNumber', [], 10);
+    assert.equal(f.readRequests.length, 4);
+    await messageRequest(f, 'wallet_switchEthereumChain', [{ chainId: '0xa' }], 14);
+    await messageRequest(f, 'personal_sign', ['hello', ADDRESS], 15);
+    assert.deepEqual(f.responses.map(value => (value as { result: { error: { code: number } } }).result.error.code), [-32005, -32005]);
+    f.lock(); held.resolve(); await settle();
+    assert.equal(f.responses.length, 2);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const method of ['wallet_switchEthereumChain', 'wallet_addEthereumChain', 'wallet_watchAsset'] as const) test(`${method} requires its exact public control approval before mutation and responds on the original request`, async () => {
+  const f = await connectedFixture();
+  try {
+    const params = method === 'wallet_watchAsset'
+      ? [{ type: 'ERC20', options: { address: `0x${'12'.repeat(20)}`, symbol: 'Untrusted symbol' } }]
+      : [{ chainId: method === 'wallet_switchEthereumChain' ? '0xa' : '0x89', ...(method === 'wallet_addEthereumChain' ? { rpcUrls: ['https://claimed.example'], chainName: 'Claimed chain' } : {}) }];
+    await messageRequest(f, method, params, 801);
+    const review = f.view.getSnapshot().controlReview;
+    assert.ok(review); assert.equal(review.origin, ORIGIN); assert.equal(review.verification.validation, 'UNKNOWN');
+    assert.equal(f.controlCommits.length, 0); assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.ok(review.details);
+    if (review.details.kind === 'watch-asset') assert.equal(review.details.symbol, 'OBS');
+    await assert.rejects(f.view.approveControl(review.id, review.revision - 1));
+    await f.view.approveControl(review.id, f.view.getSnapshot().revision);
+    assert.equal(f.controlCommits.length, 1); assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.deepEqual(f.responses.at(-1), { id: 801, result: { result: method === 'wallet_watchAsset' ? true : null } });
+    assert.deepEqual(f.session.namespaces.eip155!.chains, ['eip155:1']);
+  } finally { await f.controller.dispose(); }
+});
+
+test('control requests cannot bypass method, source-chain, origin or blacklist isolation', async () => {
+  const f = await connectedFixture();
+  try {
+    f.blockSite();
+    await messageRequest(f, 'wallet_switchEthereumChain', [{ chainId: '0xa' }]);
+    const review = f.view.getSnapshot().controlReview;
+    assert.ok(review); assert.equal(review.error, 'BLOCKED_SITE');
+    await assert.rejects(f.view.approveControl(review.id, f.view.getSnapshot().revision));
+    assert.equal(f.controlCommits.length, 0);
+    await f.view.rejectControl(review.id);
+    await messageRequest(f, 'wallet_watchAsset', [{ type: 'ERC1155', options: { address: `0x${'12'.repeat(20)}`, tokenId: 2 ** 53 } }], 802);
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.equal((f.responses.at(-1) as any).result.error.code, -32602);
+    f.event({ type: 'request', request: { id: 803, session: { ...f.session, binding: { ...f.session.binding, origin: 'https://different.example' } }, method: 'wallet_switchEthereumChain', chainId: 'eip155:1', params: [{ chainId: '0xa' }], verification: UNKNOWN, expiresAt: Date.now() + 60000 } });
+    await settle(); assert.equal(f.view.getSnapshot().controlReview, null); assert.equal(f.controlCommits.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('control and signing requests share their foreground order and cannot use another review command', async () => {
+  const f = await connectedFixture();
+  try {
+    await messageRequest(f, 'wallet_watchAsset', [{ type: 'ERC20', options: { address: `0x${'12'.repeat(20)}` } }], 811);
+    const control = f.view.getSnapshot().controlReview!;
+    await messageRequest(f, 'personal_sign', ['Queued after control', ADDRESS], 812);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    await f.view.rejectControl(control.id); await settle();
+    const message = f.view.getSnapshot().signingReview;
+    assert.ok(message); assert.equal(message.method, 'personal_sign');
+    await f.view.rejectRequest(message.id);
+    await messageRequest(f, 'personal_sign', ['First signing request', ADDRESS], 813);
+    await messageRequest(f, 'wallet_watchAsset', [{ type: 'ERC20', options: { address: `0x${'12'.repeat(20)}` } }], 814);
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    const first = f.view.getSnapshot().signingReview!; await f.view.rejectRequest(first.id); await settle();
+    assert.ok(f.view.getSnapshot().controlReview);
+  } finally { await f.controller.dispose(); }
+});
+
+test('return-to-dapp is a separate explicit origin-only action and never follows incoming metadata automatically', async () => {
+  const f = await connectedFixture();
+  try {
+    const session = f.view.getSnapshot().sessions[0]!;
+    assert.deepEqual(f.externalUrls, []); assert.equal(session.returnTarget?.url, `${ORIGIN}/`); assert.equal(session.returnTarget?.verification.validation, 'UNKNOWN');
+    await f.view.returnToDapp(session.id, f.view.getSnapshot().revision);
+    assert.deepEqual(f.externalUrls, [`${ORIGIN}/`]);
+    f.refresh(); await assert.rejects(f.view.returnToDapp(session.id, session.returnTarget ? 0 : -1));
+    f.blockSite(); await assert.rejects(f.view.returnToDapp(session.id, f.view.getSnapshot().revision));
+    assert.equal(f.externalUrls.length, 1);
+  } finally { await f.controller.dispose(); }
+});
 
 for (const smart of [false, true])
   test(`capabilities reflect native batching support for ${

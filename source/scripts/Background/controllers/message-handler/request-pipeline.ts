@@ -1,5 +1,10 @@
 import { ethErrors } from 'helpers/errors';
 
+import {
+  normalizeDappModeRequest,
+  requiresDappModeSwitch,
+} from '../../../../shared/dappChainScope.ts';
+import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
 import { DAPP_REQUEST_LIMITS } from '../../../../utils/requestPayloadBudget';
 import {
   getMessageSignGrantReplacement,
@@ -659,34 +664,23 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
   const { networks } = vaultGlobal;
   const { dapp } = getController();
 
-  const params = originalRequest.params;
-  const rawChainId = params?.[0]?.chainId;
-  const chainId =
-    typeof rawChainId === 'string'
-      ? rawChainId.startsWith('0x')
-        ? parseInt(rawChainId, 16)
-        : Number(rawChainId)
-      : rawChainId;
-
-  if (chainId === undefined || chainId === null) {
+  let normalized: ReturnType<typeof normalizeDappModeRequest>;
+  try {
+    normalized = normalizeDappModeRequest(
+      originalRequest.method,
+      originalRequest.params
+    );
+  } catch {
     throw cleanErrorStack(ethErrors.rpc.invalidParams('chainId is required'));
   }
+  const { chainId, kind: newChainValue } = normalized;
 
   // Validate prefix matches current network type
-  const validatePrefixAndCurrentChain =
-    (originalRequest.method?.toLowerCase() === 'eth_changeutxoevm' &&
-      isBitcoinBased) ||
-    (originalRequest.method?.toLowerCase() === 'sys_changeutxoevm' &&
-      !isBitcoinBased) ||
-    // For sys_switchChain allow from any current type; target is always UTXO
-    originalRequest.method === 'sys_switchChain';
+  const validatePrefixAndCurrentChain = requiresDappModeSwitch(
+    normalized,
+    isBitcoinBased ? 'syscoin' : 'ethereum'
+  );
 
-  const newChainValue =
-    originalRequest.method?.toLowerCase() === 'sys_changeutxoevm'
-      ? 'syscoin'
-      : originalRequest.method === 'sys_switchChain'
-      ? 'syscoin'
-      : 'ethereum';
   const targetNetwork =
     networks[newChainValue.toLowerCase()]?.[Number(chainId)];
 
@@ -1231,38 +1225,14 @@ export const popupOptimizationMiddleware: Middleware = async (
         const dappInfo = dapp.get(host);
 
         if (account && dappInfo) {
-          const permissions = [
-            {
-              id: '1',
-              parentCapability: 'eth_accounts',
-              invoker: host,
-              caveats: [
-                {
-                  type: 'restrictReturnedAccounts',
-                  value: [account.address],
-                },
-              ],
-              date: dappInfo.date,
-            },
-          ];
-
-          // Add chain permissions for EVM
-          if (vault && !vault.isBitcoinBased) {
-            permissions.push({
-              id: '2',
-              parentCapability: 'endowment:permitted-chains',
-              invoker: host,
-              caveats: [
-                {
-                  type: 'restrictNetworkSwitching',
-                  value: [`0x${vault.activeNetwork.chainId.toString(16)}`],
-                },
-              ],
-              date: dappInfo.date,
-            });
-          }
-
-          return permissions;
+          return projectDappPermissions(
+            host,
+            account.address,
+            dappInfo.date,
+            vault && !vault.isBitcoinBased
+              ? [vault.activeNetwork.chainId]
+              : undefined
+          );
         }
       }
       break;

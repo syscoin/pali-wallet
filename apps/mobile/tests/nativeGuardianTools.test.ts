@@ -4,6 +4,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = {
   type: unknown;
@@ -65,6 +66,7 @@ function screen(name: string, props: Record<string, unknown>) {
     },
   };
   const dependencies = {
+    '../platform/localization': nativeTranslationFixture,
     react,
     'react-native': { StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },

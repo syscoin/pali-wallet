@@ -50,6 +50,12 @@ import { normalizeDappTransaction } from '../../../shared/dappTransaction';
 import { assertSupportedEvmFees } from '../../../shared/dappTransaction.ts';
 import { readStoredDappPermissions } from '../../../shared/dappTypes';
 import {
+  ENS_RESOLUTION_CHAIN_ID,
+  isEnsRecipientName,
+  resolveEnsRecipientName,
+  selectEnsResolutionNetwork,
+} from '../../../shared/ensRecipient';
+import {
   encodeErc20Transfer,
   formatErc20Balance,
   parseErc20Units,
@@ -776,9 +782,15 @@ class MainController {
   // Resolve the configured Ethereum mainnet provider (cached)
   private getEnsMainnetProvider(): CustomJsonRpcProvider | null {
     const { networks } = store.getState().vaultGlobal;
-    const mainnet = networks?.ethereum?.[1];
+    const mainnet = selectEnsResolutionNetwork(
+      Object.values(networks?.ethereum ?? {}),
+      (network) => network.chainId
+    );
     if (!mainnet?.url) return null;
-    return this.getOrCreatePersistentProvider(1, mainnet.url);
+    return this.getOrCreatePersistentProvider(
+      ENS_RESOLUTION_CHAIN_ID,
+      mainnet.url
+    );
   }
 
   // Centralized reset routine used by both forgetWallet and createWallet(import)
@@ -2707,6 +2719,35 @@ class MainController {
           ({ SentryController: SentryControllerConstructor }) =>
             new SentryControllerConstructor({
               captureScope: () => this.captureSentryWalletScope(),
+              captureApprovalScope: (origin) => {
+                const assertGrant =
+                  getController().dapp.captureApproval(origin);
+                const scope = this.captureSentryWalletScope();
+                const { vault } = store.getState();
+                const grant = getController().dapp.get(origin);
+                if (
+                  !vault.isBitcoinBased ||
+                  vault.activeNetwork.kind !== INetworkType.Syscoin ||
+                  grant?.accountId !== vault.activeAccount.id ||
+                  grant.accountType !== vault.activeAccount.type
+                )
+                  throw new Error(
+                    'The connected account is no longer selected'
+                  );
+                return {
+                  ...scope,
+                  assertRequestCurrent: () => {
+                    assertGrant();
+                    if (
+                      this.captureSentryWalletScope().identity !==
+                      scope.identity
+                    )
+                      throw new Error(
+                        'Wallet account, network or session changed. Start the Sentry operation again.'
+                      );
+                  },
+                };
+              },
               getSeed: (password) => this.getSeed(password),
               ownsCollateral: (outpoint, scope) =>
                 this.ownsSentryCollateral(outpoint, scope),
@@ -14327,11 +14368,7 @@ class MainController {
    * Returns the resolved 0x address or null if not resolvable.
    */
   public async resolveEns(name: string): Promise<string | null> {
-    if (
-      !name ||
-      typeof name !== 'string' ||
-      !name.toLowerCase().endsWith('.eth')
-    ) {
+    if (!isEnsRecipientName(name)) {
       return null;
     }
 
@@ -14349,9 +14386,15 @@ class MainController {
     try {
       let resolved: string | null = null;
       try {
-        resolved = await (provider as any).resolveName(name);
-      } catch (e) {
-        // Best-effort; fall through to null.
+        resolved = await resolveEnsRecipientName(name, {
+          resolveName: (value) => provider.resolveName(value),
+          readChainId: async () => {
+            await provider.verifyConfiguredChainId(true);
+            return provider.send('eth_chainId', []);
+          },
+        });
+      } catch (_) {
+        // Unresolvable names do not publish a cache entry.
       }
 
       // Reset invalidates the caller as well as cache publication. Independent

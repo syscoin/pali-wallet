@@ -1,3 +1,4 @@
+import { unsupportedDappViews } from '../unsupportedDappPorts';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type {
   NativeConnectionsView,
@@ -131,6 +132,7 @@ export function NativeEoaBatchFixture() {
     throw new Error('Outside EOA batch presentation fixture');
   };
   const controller: NativeConnectionsView = {
+  ...unsupportedDappViews,
     getSnapshot: () => ({
       revision: review?.revision ?? 0,
       status: 'ready',
@@ -139,7 +141,7 @@ export function NativeEoaBatchFixture() {
       network: null,
       proposals: [],
       sessions: [],
-      signingReview: review,
+      controlReview: null, sentryReview: null, signingReview: review,
       callsStatus: null,
       error: null,
     }),

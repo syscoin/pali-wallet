@@ -1,6 +1,5 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { parseSptInventory, supportsSptUtxoChain } from '../../../../source/shared/sptInventory.ts';
-import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../../source/shared/syscoinAssetIds.ts';
+import { parseSptInventory, projectSptBalance, supportsSptUtxoChain, type SptBalance } from '../../../../source/shared/sptInventory.ts';
 import { assertBaseUnits } from './amounts.ts';
 import { parseUtxoPublicIdentifier } from './utxoIdentifier.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
@@ -8,26 +7,25 @@ import { resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxo
 import { openUtxoReadSession, utxoCount, utxoFailure, utxoFetchOptions, utxoObject, utxoUnits, UtxoBalanceError, type UtxoFetch, type UtxoReadSession } from './utxoReadSession.ts';
 export { UtxoBalanceError, type UtxoBalanceErrorCode } from './utxoReadSession.ts';
 
-export type UtxoSysxBalance = Readonly<{ confirmedUnits: string; pendingDeltaUnits: string }>;
+export type UtxoSptBalance = SptBalance;
 export type UtxoBalance = Readonly<{
   networkId: UtxoNetworkId; kind: 'utxo'; chainId: number; genesisHash: string;
   confirmedUnits: string; pendingDeltaUnits: string; unconfirmedTransactions: number; observedHeight: number;
-  sysx?: UtxoSysxBalance;
+  assets?: readonly SptBalance[];
 }>;
 export interface UtxoBalanceReader {
   readBalance(scope: UtxoNetworkId | UtxoNetwork, address: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
   readAccount(scope: UtxoNetworkId | UtxoNetwork, identifier: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
 }
 
-function readSysxBalance(summary: Record<string, unknown>, identifier: string): UtxoSysxBalance | undefined {
+function readSptBalances(summary: Record<string, unknown>, identifier: string): readonly SptBalance[] | undefined {
   try {
-    const holding = parseSptInventory(summary, identifier).lookup(SYSX_ASSET_GUID);
-    if (holding && holding.decimals !== SYSX_ASSET_DECIMALS) return undefined;
-    const confirmedUnits = holding?.confirmedUnits.toString() ?? '0';
-    const pendingDeltaUnits = holding?.pendingDeltaUnits.toString() ?? '0';
-    assertBaseUnits(confirmedUnits);
-    assertBaseUnits(pendingDeltaUnits.replace(/^-/, ''));
-    return Object.freeze({ confirmedUnits, pendingDeltaUnits });
+    return Object.freeze([...parseSptInventory(summary, identifier).holdings.values()].map(holding => {
+      const value = projectSptBalance(holding);
+      assertBaseUnits(value.confirmedUnits);
+      assertBaseUnits(value.pendingDeltaUnits.replace(/^-/, ''));
+      return value;
+    }));
   } catch { return undefined; }
 }
 
@@ -59,11 +57,11 @@ export function createUtxoBalanceReader(options: Readonly<{ fetch: UtxoFetch; ti
         },
       }));
       if (summary.address !== canonical) return utxoFailure('INVALID_RESPONSE');
-      const sysx = supportsSptUtxoChain(active.network.chainId) ? readSysxBalance(summary, canonical) : undefined;
+      const assets = supportsSptUtxoChain(active.network.chainId) ? readSptBalances(summary, canonical) : undefined;
       return Object.freeze({ networkId: network.id, kind: 'utxo', chainId: active.network.chainId, genesisHash: active.network.genesisHash,
         confirmedUnits: utxoUnits(summary.balance, false), pendingDeltaUnits: utxoUnits(summary.unconfirmedBalance, true),
         unconfirmedTransactions: utxoCount(summary.unconfirmedTxs), observedHeight: active.observedHeight,
-        ...(sysx ? { sysx } : {}) });
+        ...(assets ? { assets } : {}) });
     } catch (cause) { throw cause instanceof UtxoBalanceError ? cause : new UtxoBalanceError(signal.aborted ? 'CANCELLED' : 'UNAVAILABLE'); }
     finally { session?.close(); }
   }

@@ -1,5 +1,6 @@
 import type {
   SentryApprovalScope,
+  SentryRequestScope,
   SentrySettings,
   SentryNetwork,
 } from './sentryApprovalTypes.ts';
@@ -13,6 +14,7 @@ import type { SentryAuthorityKey } from '@sidhujag/sysweb3-sentry';
 /** Custody, transport and execution stay with the exact captured wallet owner. */
 export type SentryApprovalHost = Readonly<{
   assertCurrent(scope: SentryApprovalScope): void;
+  captureApprovalScope(origin: string): SentryRequestScope;
   captureScope(): SentryApprovalScope;
   getSeed(
     password: string,

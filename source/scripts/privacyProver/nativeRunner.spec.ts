@@ -8,6 +8,8 @@ import { NativePrivateWithdrawal } from '../../../apps/mobile/src/custody/privat
 import fixture from '../../utils/privacy/prover.fixture.json';
 import { encodePrivacyProof } from '../../utils/privacy/proverCore';
 
+import { readNativeExecutionCode } from './nativeExecutionDiagnostic';
+
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 beforeAll(() =>
   Object.defineProperty(globalThis, 'crypto', {
@@ -22,10 +24,12 @@ afterAll(() => {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
     resolve = done;
+    reject = fail;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 const options = () => ({ assertCurrent: jest.fn() });
 function setup() {
@@ -57,8 +61,22 @@ const flush = async () => {
 
 it('keeps global admission through acknowledged disposal after a valid proof', async () => {
   const host = setup();
-  const task = runProof(host.native, structuredClone(fixture.input), options());
+  const onProgress = jest.fn();
+  const task = runProof(host.native, structuredClone(fixture.input), {
+    ...options(),
+    onProgress,
+  });
   const id = host.context.run.mock.calls[0][0];
+  host.context.addListener.mock.calls[0][1](
+    JSON.stringify({
+      version: 1,
+      id,
+      type: 'progress',
+      progress: { stage: 'proving' },
+    })
+  );
+  expect(onProgress).toHaveBeenCalledWith({ stage: 'proving' });
+  expect(host.context.close).not.toHaveBeenCalled();
   host.pending.resolve(
     JSON.stringify({
       version: 1,
@@ -329,6 +347,10 @@ it('shares global admission and acknowledged disposal between SDK and proof jobs
   const [id, json] = host.context.runSentry.mock.calls[0];
   expect(host.context.run).not.toHaveBeenCalled();
   expect(JSON.parse(json)).toEqual({ version: 1, kind: 'sentry', job });
+  host.context.addListener.mock.calls[0][1](
+    JSON.stringify({ version: 1, kind: 'sentry', id, type: 'sdk-start' })
+  );
+  expect(host.context.close).not.toHaveBeenCalled();
   const key = {
     role: job.role,
     scheme: job.scheme,
@@ -372,6 +394,240 @@ it('refuses a proof-domain result for a Sentry job and drains retirement', async
   await flush();
   host.disposed.resolve();
   await expect(task).rejects.toThrow('privacy_proof_failed');
+});
+
+it.each([
+  ['ERR_PALI_NATIVE_READINESS_TIMEOUT', 'readiness-timeout'],
+  ['ERR_PALI_NATIVE_JOB_TIMEOUT', 'job-timeout'],
+  ['ERR_PALI_NATIVE_SDK_JOB_TIMEOUT', 'sdk-job-timeout'],
+])(
+  'retains %s through a failed native execution and acknowledged disposal',
+  async (code, expected) => {
+    const host = setup();
+    const task = runSentryJob(
+      host.native,
+      { type: 'validateVote', request: {} },
+      options()
+    );
+    const outcome = task.catch((error) => error);
+    host.pending.reject(Object.assign(Error('private native input'), { code }));
+    await flush();
+    await flush();
+    expect(host.context.dispose).toHaveBeenCalledTimes(1);
+    await expect(
+      runProof(host.native, structuredClone(fixture.input), options())
+    ).rejects.toThrow('privacy_proof_busy');
+    host.disposed.resolve();
+    const error = await outcome;
+    expect(error.message).toBe('privacy_proof_failed');
+    expect(readNativeExecutionCode(error)).toBe(expected);
+    expect(error).not.toHaveProperty('code');
+    expect(error).not.toHaveProperty('cause');
+  }
+);
+
+it('preserves asynchronous native verification-pending rejection through disposal', async () => {
+  const host = setup();
+  const task = runProof(host.native, structuredClone(fixture.input), options());
+  const outcome = task.catch((error) => error);
+  host.pending.reject(new Error('privacy_verification_pending'));
+  await flush();
+  await flush();
+  expect(host.context.dispose).toHaveBeenCalledTimes(1);
+  host.disposed.resolve();
+  const error = await outcome;
+  expect(error.message).toBe('privacy_verification_pending');
+  expect(readNativeExecutionCode(error)).toBeUndefined();
+});
+
+it('keeps unknown native code getters inert and refuses the result', async () => {
+  const host = setup(),
+    getter = jest.fn(() => {
+      throw Error('private getter');
+    });
+  const task = runSentryJob(
+    host.native,
+    { type: 'validateVote', request: {} },
+    options()
+  );
+  const outcome = task.catch((error) => error);
+  host.pending.reject(
+    Object.defineProperty(Error('private input'), 'code', { get: getter })
+  );
+  await flush();
+  await flush();
+  host.disposed.resolve();
+  const error = await outcome;
+  expect(error.message).toBe('privacy_proof_failed');
+  expect(readNativeExecutionCode(error)).toBeUndefined();
+  expect(getter).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'classifies the unchanged JS watchdog using only its owned observed SDK entry (%s)',
+  async (observed) => {
+    jest.useFakeTimers();
+    const host = setup();
+    try {
+      const task = runSentryJob(
+        host.native,
+        { type: 'validateVote', request: {} },
+        options()
+      );
+      const outcome = task.catch((error) => error);
+      const id = host.context.runSentry.mock.calls[0][0];
+      const listener = host.context.addListener.mock.calls[0][1];
+      const entry = JSON.stringify({
+        version: 1,
+        kind: 'sentry',
+        id,
+        type: 'sdk-start',
+      });
+      jest.advanceTimersByTime(119000);
+      if (observed) listener(entry);
+      expect(host.context.close).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1000);
+      // A late native event cannot upgrade a timeout that already revoked its owner.
+      if (!observed) listener(entry);
+      await flush();
+      expect(host.context.close).toHaveBeenCalled();
+      await expect(
+        runProof(host.native, structuredClone(fixture.input), options())
+      ).rejects.toThrow('privacy_proof_busy');
+      host.disposed.resolve();
+      const error = await outcome;
+      expect(error.message).toBe('privacy_proof_cancelled');
+      expect(readNativeExecutionCode(error)).toBe(
+        observed ? 'sdk-job-timeout' : 'job-timeout'
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  }
+);
+
+it.each(['wrong-id', 'wrong-kind', 'extra', 'duplicate', 'proof-domain'])(
+  'refuses %s SDK-entry evidence without classifying it or publishing progress',
+  async (fault) => {
+    const host = setup();
+    const task =
+      fault === 'proof-domain'
+        ? runProof(host.native, structuredClone(fixture.input), options())
+        : runSentryJob(
+            host.native,
+            { type: 'validateVote', request: {} },
+            options()
+          );
+    const outcome = task.catch((error) => error);
+    const id = (
+      fault === 'proof-domain' ? host.context.run : host.context.runSentry
+    ).mock.calls[0][0];
+    const listener = host.context.addListener.mock.calls[0][1];
+    const entry = { version: 1, kind: 'sentry', id, type: 'sdk-start' };
+    if (fault === 'duplicate') listener(JSON.stringify(entry));
+    listener(
+      JSON.stringify(
+        fault === 'wrong-id'
+          ? { ...entry, id: '00000000-0000-4000-8000-000000000002' }
+          : fault === 'wrong-kind'
+          ? { ...entry, kind: 'proof' }
+          : fault === 'extra'
+          ? { ...entry, secret: 'private marker' }
+          : entry
+      )
+    );
+    await flush();
+    expect(host.context.close).toHaveBeenCalled();
+    host.disposed.resolve();
+    const error = await outcome;
+    expect(error.message).toBe('privacy_proof_failed');
+    expect(readNativeExecutionCode(error)).toBeUndefined();
+    expect(JSON.stringify(error)).not.toContain('private marker');
+  }
+);
+
+it('an SDK-entry marker on the terminal channel is never a signature result', async () => {
+  const host = setup();
+  const task = runSentryJob(
+    host.native,
+    { type: 'validateVote', request: {} },
+    options()
+  );
+  const outcome = task.catch((error) => error);
+  const id = host.context.runSentry.mock.calls[0][0];
+  host.pending.resolve(
+    JSON.stringify({ version: 1, kind: 'sentry', id, type: 'sdk-start' })
+  );
+  await flush();
+  host.disposed.resolve();
+  const error = await outcome;
+  expect(error.message).toBe('privacy_proof_failed');
+  expect(readNativeExecutionCode(error)).toBeUndefined();
+});
+
+it('a retired listener cannot classify a successor SDK job', async () => {
+  jest.useFakeTimers();
+  try {
+    const first = setup();
+    const abort = new AbortController();
+    const cancelled = runSentryJob(
+      first.native,
+      { type: 'validateVote', request: {} },
+      { ...options(), signal: abort.signal }
+    ).catch((error) => error);
+    const oldId = first.context.runSentry.mock.calls[0][0];
+    const oldListener = first.context.addListener.mock.calls[0][1];
+    abort.abort();
+    await flush();
+    first.disposed.resolve();
+    expect((await cancelled).message).toBe('privacy_proof_cancelled');
+    const successor = setup();
+    const outcome = runSentryJob(
+      successor.native,
+      { type: 'validateVote', request: {} },
+      options()
+    ).catch((error) => error);
+    oldListener(
+      JSON.stringify({
+        version: 1,
+        kind: 'sentry',
+        id: oldId,
+        type: 'sdk-start',
+      })
+    );
+    expect(successor.context.close).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(120000);
+    await flush();
+    successor.disposed.resolve();
+    expect(readNativeExecutionCode(await outcome)).toBe('job-timeout');
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+it('retains disposal timeout evidence while poisoning its isolated admission', async () => {
+  let isolated!: typeof import('../../../apps/mobile/modules/pali-private-prover/runner');
+  jest.isolateModules(() => {
+    isolated = jest.requireActual(
+      '../../../apps/mobile/modules/pali-private-prover/runner'
+    );
+  });
+  const host = setup();
+  host.context.dispose.mockImplementation(async () => {
+    throw Object.assign(Error('private input'), {
+      code: 'ERR_PALI_NATIVE_DISPOSAL_TIMEOUT',
+    });
+  });
+  const outcome = isolated
+    .runProof(host.native, structuredClone(fixture.input), options())
+    .catch((error) => error);
+  host.pending.resolve('malformed private native error');
+  const error = await outcome;
+  expect(error.message).toBe('privacy_proof_unavailable');
+  expect(readNativeExecutionCode(error)).toBe('disposal-timeout');
+  await expect(
+    isolated.runProof(host.native, structuredClone(fixture.input), options())
+  ).rejects.toThrow('privacy_proof_unavailable');
 });
 
 it('poisons subsequent admission when document retirement cannot be established', async () => {

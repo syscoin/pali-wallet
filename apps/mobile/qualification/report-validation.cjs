@@ -8,6 +8,9 @@ const { isImportedQualificationReport, matchesImportedRestartEvidence, IMPORTED_
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { Buffer } = require('node:buffer');
 const { isWalletConnectQualificationDiagnostic } = require('./walletconnect-native.ts');
+const { readPrivateProofDiagnostic, PRIVATE_PROOF_CHECK } = require('./private-proof-diagnostics.ts');
+const { readSentryIsolatedDiagnostic } = require('./sentry-isolated-diagnostics.ts');
+const { SENTRY_ISOLATED_CHECK } = require('./native-sentry-isolated.ts');
 const {
   isStorageQualificationDiagnostic,
 } = require('./storage-diagnostics.ts');
@@ -57,6 +60,8 @@ const FIELDS = new Set([
   'cryptoEvidence',
   'cryptoDiagnostic',
   'walletConnectDiagnostic',
+  'privateProofDiagnostic',
+  'sentryIsolatedDiagnostic',
   'mnemonicEntropyVerified',
   'storageDiagnostic',
   'nativeHdAccountsVerified',
@@ -116,6 +121,16 @@ function decodeNativeReport(
   )
     throw Error('Invalid qualification report');
   const report = JSON.parse(text);
+  if (report?.privateProofDiagnostic !== undefined) {
+    if (report.status !== 'failed' || report.failedStage !== PRIVATE_PROOF_CHECK)
+      throw Error('Unexpected qualification report schema');
+    readPrivateProofDiagnostic(report.privateProofDiagnostic);
+  }
+  if (report?.sentryIsolatedDiagnostic !== undefined) {
+    if (report.status !== 'failed' || report.failedStage !== SENTRY_ISOLATED_CHECK)
+      throw Error('Unexpected qualification report schema');
+    readSentryIsolatedDiagnostic(report.sentryIsolatedDiagnostic);
+  }
   if (
     !report ||
     typeof report !== 'object' ||

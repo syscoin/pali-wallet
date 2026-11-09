@@ -1,3 +1,4 @@
+import { unsupportedDappViews } from '../unsupportedDappPorts';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Interface } from 'ethers/abi';
 import {
@@ -86,6 +87,7 @@ const initial: NativeSmartTransactionReview = {
     },
     payerReview: null,
     transactionHash: null,
+    userOperationSubmissionStarted: false,
     error: null,
   },
 };
@@ -128,6 +130,7 @@ export function NativeSmartDappFixture() {
     throw new Error('Outside Smart review fixture');
   };
   const controller: NativeConnectionsView = {
+  ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     getSnapshot: () => ({
@@ -138,7 +141,7 @@ export function NativeSmartDappFixture() {
       network: null,
       proposals: [],
       sessions: [],
-      signingReview: latest.current,
+      controlReview: null, sentryReview: null, signingReview: latest.current,
       callsStatus: null,
       error: null,
     }),

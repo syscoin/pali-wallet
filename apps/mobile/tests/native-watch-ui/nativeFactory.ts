@@ -175,8 +175,13 @@ export function createNativeWalletControllers() {
           const accountId = sysxSendFixture.enabled ? catalogue.accounts.find(({ slip44 }) =>
             slip44 === ('slip44' in registration ? registration.slip44 : 60))?.id : catalogue.active.accountId;
           if (!accountId) throw new KeyringRuntimeError('INVALID_INPUT');
+          const address = catalogue.accounts.find(account => account.id === accountId)?.address;
+          if (!address) throw new KeyringRuntimeError('INVALID_INPUT');
           catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { accountId, networkId: registration.id } });
           guard();
+          const assertCurrent = () => { guard(); if (catalogue.revision !== expectedRevision + 1 || catalogue.active.accountId !== accountId || catalogue.active.networkId !== registration.id) throw new KeyringRuntimeError('CANCELLED'); };
+          return Object.freeze({ target: registration, sourceCatalogueRevision: expectedRevision,
+            selection: Object.freeze({ accountId, address, networkId: registration.id }), assertCurrent });
         } };
       },
     },
@@ -282,6 +287,7 @@ export function createNativeWalletControllers() {
     activateAccount: (id, revision, guard) => authority.selectConnectionAccount(id, revision, guard),
     preparePlatform: unavailableConnection,
     openHost: unavailableConnection,
+    openExternalUrl: unavailableConnection,
     checkSite: unavailableConnection,
     checkAddress: unavailableConnection,
     projectId: '0'.repeat(32),

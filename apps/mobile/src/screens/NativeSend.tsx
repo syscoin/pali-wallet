@@ -1,4 +1,5 @@
 import type { NativePortfolioAccount } from '../portfolio/nativePortfolio';
+import type { NativeRecipientResolution, NativeRecipientResolver } from '../portfolio/nativeRecipientResolver';
 import { NativeTokenMaximum } from './NativeTokenMaximum';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import { NativeLedgerConnectionModal } from './NativeLedger';
@@ -62,6 +63,8 @@ export const nativeTransferFailure = (
   cancellation: boolean
 ) => {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'ENS_UNAVAILABLE') return 'This ENS name could not be resolved. Check the name and try again.';
+  if (code === 'RECIPIENT_EXPIRED') return 'The recipient lookup expired or changed. Review the transfer again.';
   if (code === 'SIGNED_STORAGE_FULL') return hasSavedTransaction ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE;
   if (code === 'CANCELLATION_QUEUED')
     return hasSavedTransaction
@@ -184,11 +187,13 @@ export function NativeSend({
   ledgerConnection,
   initialDraft,
   beforeClose,
+  recipientResolver,
 }: {
   controller: NativeTransferView;
   ledgerConnection?: NativeLedgerConnectionView;
   initialDraft?: NativeSendInitialDraft;
   beforeClose?(): Promise<void>;
+  recipientResolver?: NativeRecipientResolver;
   onBack(): void;
   accountLabel?: string;
   account: NativePortfolioAccount;
@@ -229,7 +234,6 @@ export function NativeSend({
   }>({ value: initialDraft?.recipient ?? '' });
   const recipient = recipientDraft.owner && recipientDraft.owner !== recipientPicker
     ? '' : recipientDraft.value;
-  const setRecipient = (value: string) => setRecipientDraft({ value });
   const activePicker = useRef<RecipientPickerSession | null>(null);
   const [openPicker, setOpenPicker] = useState<Readonly<{
     session: RecipientPickerSession;
@@ -251,6 +255,33 @@ export function NativeSend({
   const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
   const leaving = useRef(false);
   const lifetime = useRef({ alive: true, epoch: 0 });
+  const [resolving, setResolving] = useState(false);
+  const [resolvedRecipient, setResolvedRecipient] = useState<NativeRecipientResolution | null>(null);
+  const resolution = useRef<{
+    abort: AbortController;
+    ticket?: NativeRecipientResolution;
+    authorized: boolean;
+    review?: NonNullable<typeof snapshot.review>;
+  } | null>(null);
+  const latestRecipientOwner = useRef({ controller, account, context, recipientResolver, recipient });
+  useLayoutEffect(() => {
+    latestRecipientOwner.current = { controller, account, context, recipientResolver, recipient };
+  }, [controller, account, context, recipientResolver, recipient]);
+  const retireResolution = useCallback((cancelReview = true) => {
+    const held = resolution.current;
+    resolution.current = null;
+    held?.abort.abort();
+    held?.ticket?.dispose();
+    if (cancelReview && held && !held.authorized) controller.cancel();
+    setResolving(false);
+    setResolvedRecipient(null);
+  }, [controller]);
+  const setRecipient = (value: string) => {
+    retireResolution();
+    setRecipientDraft({ value });
+  };
+  useLayoutEffect(() => () => retireResolution(), [retireResolution, account.address,
+    account.network, account.revision, context.registrationHash, recipientResolver]);
   const pickerIsCurrent = (session: RecipientPickerSession) =>
     lifetime.current.alive && activePicker.current === session && session.owner.current();
   const latestBack = useRef(onBack);
@@ -258,11 +289,17 @@ export function NativeSend({
     latestBack.current = onBack;
   }, [onBack]);
   const [closingHardware, setClosingHardware] = useState(false);
-  const busy = closingHardware || ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
+  const busy = resolving || closingHardware || ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
   const promptMatches = (current: typeof snapshot) => !!leavePrompt &&
     current.phase === 'submitting' && current.review === leavePrompt.review &&
     (leavePrompt.review !== null || current === leavePrompt.fallback);
   const review = snapshot.review;
+  useLayoutEffect(() => {
+    // A quote owns its lookup only until that exact review is retired. Release
+    // the ticket without cancelling any successor work in the controller.
+    const held = resolution.current;
+    if (held?.review && held.review !== review) retireResolution(false);
+  }, [review, resolving, retireResolution]);
   const replacementHash = replacement?.hash;
   const replacementMode = replacement?.mode;
   const cancellation = replacementMode === 'cancel' || replacementMode === 'cancel-saved';
@@ -336,6 +373,7 @@ export function NativeSend({
     if (!lifetime.current.alive || leaving.current) return;
     leaving.current = true;
     retirePicker();
+    retireResolution();
     lifetime.current.epoch++;
     const closingEpoch = lifetime.current.epoch;
     controller.cancel();
@@ -351,7 +389,7 @@ export function NativeSend({
         setError('The hardware request is still closing. Try again.');
       }
     });
-  }, [beforeClose, controller, retirePicker]);
+  }, [beforeClose, controller, retirePicker, retireResolution]);
   const close = useCallback(() => {
     if (!lifetime.current.alive || leaving.current) return;
     const current = controller.getSnapshot();
@@ -423,7 +461,21 @@ export function NativeSend({
     if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
   }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
   const submit = () => {
-    if (!review || busy || !review.retry && ledgerConnection && !ledgerConnection.isConnected()) return;
+    if (!review || controller.getSnapshot().review !== review || busy ||
+        !review.retry && ledgerConnection && !ledgerConnection.isConnected()) return;
+    const held = resolution.current;
+    if (held?.ticket && !review.retry) {
+      try {
+        held.ticket.assertCurrent();
+        if (recipient.trim() !== held.ticket.input ||
+            (reviewedCollectible?.recipient ?? review.recipient).toLowerCase() !== held.ticket.address.toLowerCase()) throw new Error('RECIPIENT_EXPIRED');
+        held.authorized = true;
+      } catch {
+        retireResolution();
+        setError('The recipient lookup expired or changed. Review the transfer again.');
+        return;
+      }
+    }
     Keyboard.dismiss();
     void run(() => controller.confirm(review.id));
   };
@@ -436,10 +488,63 @@ export function NativeSend({
       return;
     }
     const nonceOverride = advanced ? nonce.trim() || undefined : undefined;
+    const prepareRecipient = (operation: (address: string) => Promise<void>) => {
+      const input = recipient.trim();
+      if (!input.toLowerCase().endsWith('.eth')) {
+        retireResolution();
+        void run(() => operation(input));
+        return;
+      }
+      if (resolution.current || busy) return;
+      const held: NonNullable<(typeof resolution)['current']> = { abort: new AbortController(), authorized: false };
+      resolution.current = held;
+      const captured = latestRecipientOwner.current;
+      const epoch = lifetime.current.epoch;
+      const check = () => {
+        const actual = latestRecipientOwner.current;
+        if (!lifetime.current.alive || lifetime.current.epoch !== epoch || resolution.current !== held || held.abort.signal.aborted ||
+            actual.controller !== captured.controller || actual.recipient !== captured.recipient ||
+            actual.recipientResolver !== captured.recipientResolver || actual.account.address !== captured.account.address ||
+            actual.account.network !== captured.account.network || actual.account.revision !== captured.account.revision ||
+            actual.context.registrationHash !== captured.context.registrationHash) throw new Error('RECIPIENT_EXPIRED');
+      };
+      void run(async () => {
+        setResolving(true);
+        try {
+          if (!recipientResolver) throw new Error('ENS_UNAVAILABLE');
+          const ticket = await recipientResolver.resolve(input, { account, context }, held.abort.signal, check);
+          held.ticket = ticket;
+          check();
+          ticket.assertCurrent();
+          ticket.signal.addEventListener('abort', () => {
+            if (resolution.current !== held || held.authorized) return;
+            retireResolution();
+            if (lifetime.current.alive) {
+              setResolving(false);
+              setError('The recipient lookup expired or changed. Review the transfer again.');
+            }
+          }, { once: true });
+          setResolvedRecipient(ticket);
+          await operation(ticket.address);
+          check();
+          ticket.assertCurrent();
+          const review = controller.getSnapshot().review;
+          if (!review || (review.collectible?.recipient ?? review.recipient).toLowerCase() !== ticket.address.toLowerCase()) throw new Error('RECIPIENT_EXPIRED');
+          held.review = review;
+        } catch (error) {
+          held.ticket?.dispose();
+          if (resolution.current !== held) return;
+          retireResolution();
+          throw error;
+        } finally {
+          if (resolution.current === held && lifetime.current.alive && lifetime.current.epoch === epoch) setResolving(false);
+        }
+      });
+    };
     if (!draftCollectible) {
-      void run(() => token
-        ? controller.prepareToken(token.contractAddress, recipient.trim(), amount, nonceOverride)
-        : controller.prepare(recipient.trim(), amount, nonceOverride));
+      prepareRecipient((address) => token
+        ? controller.prepareToken(token.contractAddress, address, amount, nonceOverride)
+        : controller.prepare(address, amount, nonceOverride));
       return;
     }
     let id: string;
@@ -462,7 +567,7 @@ export function NativeSend({
       return;
     }
     Keyboard.dismiss();
-    void run(() => controller.prepareCollectible(draftCollectible, recipient.trim(), id, quantity, nonceOverride));
+    prepareRecipient((address) => controller.prepareCollectible(draftCollectible, address, id, quantity, nonceOverride));
   };
   const clearCollectibleError = () => {
     if (draftCollectible && error) setError('');
@@ -553,6 +658,11 @@ export function NativeSend({
                   onPress={() => void run(() => controller.loadMorePredecessors())} />}
               </Card>}
               <Card style={s.summary}>
+                {resolvedRecipient && !review.retry && !review.replacement && <>
+                  <Text style={s.label}>ENS NAME</Text>
+                  <Text selectable style={s.address}>{resolvedRecipient.input}</Text>
+                  <Text style={s.label}>RESOLVED ADDRESS</Text>
+                </>}
                 <Text style={s.label}>{reviewCancellation ? 'TO · YOUR ADDRESS' : reviewedCollectible ? 'RECIPIENT' : 'TO'}</Text>
                 <Text
                   selectable
@@ -742,7 +852,8 @@ export function NativeSend({
                 onChange={setRecipient}
                 onEdit={clearCollectibleError}
                 busy={busy}
-                max={128}
+                max={255}
+                placeholder="0x… or name.eth"
               />
               {recipientPicker && !savedHash && !replacementHash && !token && !draftCollectible && (
                 <>
@@ -848,7 +959,7 @@ export function NativeSend({
             <View style={s.progress}>
               <ActivityIndicator color={colors.pink} />
               <Text style={styles.muted}>
-                {snapshot.phase === 'signing'
+                {resolving ? 'Resolving ENS recipient…' : snapshot.phase === 'signing'
                   ? 'Authenticating and signing…'
                   : snapshot.phase === 'submitting'
                   ? 'Submitting the transaction…'

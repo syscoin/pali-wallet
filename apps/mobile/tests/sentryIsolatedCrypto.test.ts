@@ -26,6 +26,7 @@ async function execute<T extends SentryCryptoResult>(
   );
   try {
     assert.deepEqual((await once(worker, 'message'))[0], { type: 'ready' });
+    let sdkStarted = false;
     const result = new Promise<T>((resolve, reject) => {
       worker.on('error', reject);
       worker.on('message', (message) => {
@@ -36,8 +37,14 @@ async function execute<T extends SentryCryptoResult>(
             ID,
             job
           );
+          if (value.type === 'sdk-start') {
+            assert.equal(sdkStarted, false);
+            sdkStarted = true;
+            return;
+          }
           if (value.type !== 'success')
             throw new Error('SENTRY_EXECUTION_FAILED');
+          assert.equal(sdkStarted, true);
           resolve(value.result as T);
         } catch (error) {
           reject(error);
@@ -54,6 +61,7 @@ async function execute<T extends SentryCryptoResult>(
 test('exact production SDK worker performs real SHAKE key validation, service and management signatures off the caller thread', async () => {
   let ticks = 0;
   const heartbeat = setInterval(() => ticks++, 5);
+  const observed: string[] = [];
   try {
     const run: import('../../../source/wallet/sentryCryptoJobs.ts').RunSentryCrypto =
       async (job, check) => {
@@ -66,9 +74,12 @@ test('exact production SDK worker performs real SHAKE key validation, service an
       throw new Error('PQ job reached renderer crypto');
     }, run);
     assert.equal(
-      await qualifyNativeSentryIsolated(new AbortController().signal, executor),
+      await qualifyNativeSentryIsolated(new AbortController().signal, executor,
+        (step, phase) => observed.push(`${step}:${phase}`)),
       executor
     );
+    assert.deepEqual(observed, ['operator-import', 'service-sign', 'service-verify', 'owner-sign', 'owner-verify']
+      .flatMap(step => [`${step}:started`, `${step}:completed`]));
     assert(
       ticks > 10,
       'caller event loop remains live while the actual SHAKE work executes'
@@ -76,6 +87,25 @@ test('exact production SDK worker performs real SHAKE key validation, service an
   } finally {
     clearInterval(heartbeat);
   }
+});
+
+test('isolated qualification requires its observer before starting native work', async () => {
+  let calls = 0;
+  const executeNothing = async () => { calls++; throw new Error('must not execute'); };
+  await assert.rejects(
+    // @ts-expect-error Deliberately exercise a missing required observer at runtime.
+    qualifyNativeSentryIsolated(new AbortController().signal, executeNothing),
+    /SENTRY_ISOLATED_DIAGNOSTIC_REQUIRED/
+  );
+  assert.equal(calls, 0);
+});
+
+test('a failed isolated call leaves the exact started step without a completion label', async () => {
+  const observed: string[] = [];
+  await assert.rejects(qualifyNativeSentryIsolated(new AbortController().signal,
+    async () => { throw new Error('SENTRY_EXECUTION_FAILED'); },
+    (step, phase) => observed.push(`${step}:${phase}`)), /SENTRY_EXECUTION_FAILED/);
+  assert.deepEqual(observed, ['operator-import:started']);
 });
 
 test('isolated protocol refuses untagged proof payloads, arbitrary jobs, extra authority fields and wrong-domain results', () => {

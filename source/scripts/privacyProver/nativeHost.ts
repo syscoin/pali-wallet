@@ -102,7 +102,7 @@ export function createNativeProofPage(
                 sentry!
               );
               if (result.type === 'disposed') throw new Error();
-              terminal = true;
+              terminal = result.type !== 'sdk-start';
               send(JSON.stringify(result));
             } catch {
               terminal = true;

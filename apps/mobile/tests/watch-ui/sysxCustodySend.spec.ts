@@ -19,7 +19,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
       .getByRole('textbox', { name: 'Password', exact: true })
       .fill('public-password');
     await button('Unlock wallet').click();
-    await expect(button('Send SYSX')).toBeVisible();
+    await expect(page.getByRole('button', { name: /^SYSX(?:\s|$)/ })).toBeVisible();
   };
   await button('Accounts').click();
   await button('Open wallet').click();
@@ -38,11 +38,12 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
   const review = page.getByTestId('native-utxo-review');
   const confirm = page.getByTestId('native-utxo-confirm');
   async function enterDraft() {
-    await button('Send SYSX').click();
+    await page.getByRole('button', { name: /^SYSX(?:\s|$)/ }).click();
+    await button('Send').click();
     await expect(heading('Send SYSX')).toBeVisible();
     await expect(address).toHaveValue('');
     await expect(amount).toHaveValue('');
-    await expect(button('Use maximum')).toHaveCount(0);
+    await expect(button('Use maximum')).toBeVisible();
     await expect(review).toBeDisabled();
     await address.fill(recipient);
     await amount.fill('0.12345678');
@@ -133,7 +134,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
   );
   await enterDraft();
   await button('Back').click();
-  await expect(button('Send SYSX')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^SYSX(?:\s|$)/ })).toBeVisible();
   expect(
     await page.evaluate(() => window.__watchFixture.sysx.audit().confirmations)
   ).toBe(0);

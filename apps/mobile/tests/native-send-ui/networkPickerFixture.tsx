@@ -1,3 +1,4 @@
+import { networkSelectionReceiptFixture } from '../networkSelectionReceiptFixture';
 import { NATIVE_NETWORKS, getNativeSendContext } from '../../src/custody/networkContext';
 import { createNativeChainCatalogue } from '../../src/custody/networkCatalogue';
 import { EVM_CHAIN_CATALOGUE_URL } from '../../../../source/shared/chainCatalogueData';
@@ -92,6 +93,11 @@ const controller: NativeNetworkView = {
     if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
     snapshot = Object.freeze({ ...snapshot, selectedId: id, revision: snapshot.revision + 1 });
     contextRevision++; notify();
+    const target = snapshot.networks.find(network => network.id === id)?.registration;
+    if (!target) throw Error('Unsupported fixture selection');
+    return networkSelectionReceiptFixture(target, { accountId: 'hd:60:0', address: '0x' + '11'.repeat(20), networkId: id }, expectedContextRevision, expectedCatalogueRevision, () => {
+      if (snapshot?.selectedId !== id || contextRevision !== expectedContextRevision + 1) throw Error('CANCELLED');
+    });
   },
 };
 let replacementSnapshot: NativeNetworkSnapshot = Object.freeze({ revision: 7, selectedId: 'ethereum', networks });
@@ -110,6 +116,11 @@ const replacementController: NativeNetworkView = {
     replacementSnapshot = Object.freeze({ ...replacementSnapshot, selectedId: id, revision: revision + 1 });
     replacementRevision++;
     for (const listener of replacementListeners) listener();
+    const target = replacementSnapshot.networks.find(network => network.id === id)?.registration;
+    if (!target) throw Error('Unsupported fixture selection');
+    return networkSelectionReceiptFixture(target, { accountId: 'hd:60:0', address: '0x' + '11'.repeat(20), networkId: id }, context, revision, () => {
+      if (replacementSnapshot.selectedId !== id || replacementRevision !== context + 1) throw Error('CANCELLED');
+    });
   },
 };
 declare global {

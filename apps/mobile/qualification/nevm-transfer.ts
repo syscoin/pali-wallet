@@ -136,7 +136,7 @@ export async function qualifyNativeNevmTransfer(
   const manage = (request: NativeAccountRequest) =>
     authority.manageAccounts(request, current().revision, catalogue().revision);
   const selectNetwork = (id: 'ethereum' | 'syscoin-nevm-testnet') =>
-    authority.selectNetwork(id, current().revision, catalogue().revision);
+    authority.selectNetwork(id, current().revision, catalogue().revision, () => {});
   const guardFor = (
     id: string,
     address: string,

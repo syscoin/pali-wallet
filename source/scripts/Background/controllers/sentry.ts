@@ -32,6 +32,7 @@ import type {
   SentryApproval,
   SentrySettings,
   SentryApprovalScope,
+  SentryRequestScope,
 } from '../../../wallet/sentryApprovalTypes';
 import type { SentryFeeReview } from '../../../wallet/sentryFeeAuthorizations';
 import type {
@@ -43,6 +44,7 @@ import type {
 
 export type SentryWalletScope = SentryApprovalScope;
 type Host = {
+  captureApprovalScope(origin: string): SentryRequestScope;
   captureScope: () => SentryWalletScope;
   getSeed: (password: string) => Promise<string>;
   hasWalletAuthority: (
@@ -115,6 +117,7 @@ export class SentryController {
     if (
       [
         host.hasWalletAuthority,
+        host.captureApprovalScope,
         host.ownsCollateral,
         host.resolveVotingAuthority,
         host.resolveWalletAuthority,
@@ -123,6 +126,10 @@ export class SentryController {
       throw new Error('Sentry authority and collateral ports are required');
     this.nodeManagement = createExtensionSentryNodeManagement({
       captureScope: host.captureScope,
+      captureLinkScope: (origin) => {
+        const scope = host.captureApprovalScope(origin);
+        return { scope, assertCurrent: scope.assertRequestCurrent };
+      },
       assertCurrent: (scope) => this.assertCurrent(scope),
       authenticate: (password) => host.getSeed(password),
       readSettings: (scope) => this.settings(scope),
@@ -130,6 +137,7 @@ export class SentryController {
     });
     this.operations = new SharedSentryOperationApprovals({
       captureScope: host.captureScope,
+      captureApprovalScope: host.captureApprovalScope,
       assertCurrent: (scope) => this.assertCurrent(scope),
       getSeed: (password) => host.getSeed(password),
       getSettings: (scope) => this.settings(scope),

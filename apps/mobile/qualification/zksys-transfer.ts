@@ -198,7 +198,7 @@ export async function qualifyNativeZksysTransfer(
     'zksys-testnet',
     current().revision,
     catalogue().revision
-  );
+  , () => {});
   const address = account.address;
   const revision = current().revision;
   const guard = () =>
@@ -467,7 +467,7 @@ export async function qualifyNativeZksysTransfer(
         'ethereum',
         current().revision,
         catalogue().revision
-      );
+      , () => {});
       await manage({ kind: 'select', id: second.id });
       expect(
         current().account?.address === second.address &&

@@ -9,6 +9,8 @@ const { parsePrivateProofReport, PRIVATE_PROOF_CASES } = require('./private-proo
 const { readPrivateProofCiBuild, runPrivateProofQualification } = require('./private-proof-ci.cjs');
 const { readHttpSidecar } = require('./post-sidecar.cjs');
 const { SENTRY_ISOLATED_CHECK } = require('./native-sentry-isolated.ts');
+const { PRIVATE_PROOF_CHECK } = require('./private-proof-diagnostics.ts');
+const { decodeNativeReport } = require('./report-validation.cjs');
 
 const expected = { sourceRevision: 'a'.repeat(40), lockfileSha256: crypto.createHash('sha256').update('{}').digest('hex'),
   sdkVersion: '3.9.7', sdkPackageVersion: '3.9.7', platform: 'ios', token: 'b'.repeat(32) };
@@ -170,6 +172,124 @@ for (const fault of ['malformed', 'oversized', 'unknown-field', 'invalid-diagnos
     assert(!fs.existsSync(path.join(output, `${platform}-private-proof-app.json`)));
   } finally { fs.rmSync(output, { recursive: true, force: true }); }
 });
+
+for (const platform of ['ios', 'android']) test(`${platform} failed proof retains exact case, boundary and fixed code while remaining fatal`, async () => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-proof-boundary-'));
+  const value = { ...appFailure(platform), failedStage: PRIVATE_PROOF_CHECK,
+    checks: [{ name: SENTRY_ISOLATED_CHECK, durationMs: 79009 }],
+    privateProofDiagnostic: { case: 'cancel-while-proving', boundary: 'proving', code: 'privacy_proof_unavailable', nativeExecutionCode: 'job-timeout' } };
+  let launched = false;
+  try {
+    const { token, platform: _platform, ...config } = expected;
+    await assert.rejects(runPrivateProofQualification({ platform, config, output, randomBytes: () => Buffer.from(token, 'hex'),
+      launch: () => { launched = true; }, list: () => launched ? ['pali-native-qualification-create.json'] : [],
+      read: () => assert.fail('Failed proof evidence cannot become a proof result'), readFailure: () => JSON.stringify(value),
+    }), /PRIVATE_PROOF_EXTRA_REPORT/);
+    const text = fs.readFileSync(path.join(output, `${platform}-private-proof-diagnostic.json`), 'utf8');
+    const diagnostic = JSON.parse(text);
+    assert.equal(diagnostic.status, 'failed'); assert.equal(diagnostic.diagnosticOnly, true);
+    assert.equal(diagnostic.reports[0].failedStage, PRIVATE_PROOF_CHECK);
+    assert.equal(diagnostic.reports[0].isolatedSentryQualified, true);
+    assert.deepEqual(diagnostic.reports[0].privateProofDiagnostic, value.privateProofDiagnostic);
+    assert(!text.includes(value.sessionId)); assert(Buffer.byteLength(text) <= 8192);
+    assert.throws(() => parsePrivateProofReport(text, expected), /PRIVATE_PROOF_REPORT_INVALID/);
+    assert(!fs.existsSync(path.join(output, `${platform}-private-proof-app.json`)));
+  } finally { fs.rmSync(output, { recursive: true, force: true }); }
+});
+
+for (const fault of ['extra', 'missing', 'case', 'boundary', 'code', 'code-object', 'code-newline', 'native-code', 'native-code-object', 'array', 'null', 'wrong-stage', 'passed'])
+  test(`invalid proof diagnostic ${fault} is rejected without retaining secrets`, async () => {
+    const secret = 'private marker never upload', platform = 'ios';
+    const output = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-proof-boundary-refusal-'));
+    const value = { ...appFailure(platform), failedStage: PRIVATE_PROOF_CHECK,
+      privateProofDiagnostic: { case: 'proof-before-cancel', boundary: 'artifacts', code: 'privacy_proof_failed' } };
+    if (fault === 'extra') value.privateProofDiagnostic.input = secret;
+    if (fault === 'missing') delete value.privateProofDiagnostic.code;
+    if (fault === 'case') value.privateProofDiagnostic.case = secret;
+    if (fault === 'boundary') value.privateProofDiagnostic.boundary = secret;
+    if (fault === 'code') value.privateProofDiagnostic.code = secret;
+    if (fault === 'code-object') value.privateProofDiagnostic.code = { message: secret };
+    if (fault === 'code-newline') value.privateProofDiagnostic.code = 'privacy_proof_failed\n';
+    if (fault === 'native-code') value.privateProofDiagnostic.nativeExecutionCode = secret;
+    if (fault === 'native-code-object') value.privateProofDiagnostic.nativeExecutionCode = { code: 'job-timeout', secret };
+    if (fault === 'array') value.privateProofDiagnostic = [secret];
+    if (fault === 'null') value.privateProofDiagnostic = null;
+    if (fault === 'wrong-stage') value.failedStage = SENTRY_ISOLATED_CHECK;
+    if (fault === 'passed') value.status = 'passed';
+    let launched = false;
+    try {
+      assert.throws(() => decodeNativeReport(JSON.stringify(value), platform, 'create', 'import'));
+      const { token, platform: _platform, ...config } = expected;
+      await assert.rejects(runPrivateProofQualification({ platform, config, output, randomBytes: () => Buffer.from(token, 'hex'),
+        launch: () => { launched = true; }, list: () => launched ? ['pali-native-qualification-create.json'] : [],
+        read: () => assert.fail('No proof may be consumed'), readFailure: () => JSON.stringify(value),
+      }), /PRIVATE_PROOF_EXTRA_REPORT/);
+      const text = fs.readFileSync(path.join(output, `${platform}-private-proof-diagnostic.json`), 'utf8');
+      assert(!text.includes(secret)); assert(Buffer.byteLength(text) <= 8192);
+      assert.deepEqual(JSON.parse(text).reports, [{ filePhase: 'create', availability: 'invalid' }]);
+      assert(!fs.existsSync(path.join(output, `${platform}-private-proof-app.json`)));
+    } finally { fs.rmSync(output, { recursive: true, force: true }); }
+  });
+
+for (const platform of ['ios', 'android']) test(`${platform} fixed Sentry failure diagnostics remain fatal and retain only public labels`, async () => {
+  const output = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-sentry-boundary-'));
+  const value = { ...appFailure(platform), sentryIsolatedDiagnostic: {
+    step: 'service-sign', phase: 'started', elapsedMs: 120001,
+    code: 'SENTRY_EXECUTION_FAILED', nativeExecutionCode: 'readiness-timeout',
+  } };
+  let launched = false;
+  try {
+    const { token, platform: _platform, ...config } = expected;
+    await assert.rejects(runPrivateProofQualification({ platform, config, output, randomBytes: () => Buffer.from(token, 'hex'),
+      launch: () => { launched = true; }, list: () => launched ? ['pali-native-qualification-create.json'] : [],
+      read: () => assert.fail('No proof may be consumed'), readFailure: () => JSON.stringify(value),
+    }), /PRIVATE_PROOF_EXTRA_REPORT/);
+    const text = fs.readFileSync(path.join(output, `${platform}-private-proof-diagnostic.json`), 'utf8');
+    const diagnostic = JSON.parse(text);
+    assert.deepEqual(diagnostic.reports[0].sentryIsolatedDiagnostic, value.sentryIsolatedDiagnostic);
+    assert.equal(diagnostic.reports[0].failedStage, SENTRY_ISOLATED_CHECK);
+    assert.equal(diagnostic.reports[0].isolatedSentryQualified, false);
+    assert(!text.includes(value.sessionId)); assert(Buffer.byteLength(text) <= 8192);
+    assert.throws(() => parsePrivateProofReport(text, expected), /PRIVATE_PROOF_REPORT_INVALID/);
+    assert(!fs.existsSync(path.join(output, `${platform}-private-proof-app.json`)));
+  } finally { fs.rmSync(output, { recursive: true, force: true }); }
+});
+
+for (const fault of ['extra', 'missing', 'step', 'phase', 'elapsed-negative', 'elapsed-oversized', 'elapsed-string',
+  'code', 'native-code', 'array', 'null', 'wrong-stage', 'passed'])
+  test(`invalid Sentry diagnostic ${fault} cannot retain secret values or qualify a proof`, async () => {
+    const secret = 'private marker never upload', platform = 'ios';
+    const output = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-sentry-boundary-refusal-'));
+    const value = { ...appFailure(platform), sentryIsolatedDiagnostic: {
+      step: 'owner-verify', phase: 'completed', elapsedMs: 1, code: 'unrecognized',
+    } };
+    if (fault === 'extra') value.sentryIsolatedDiagnostic.signature = secret;
+    if (fault === 'missing') delete value.sentryIsolatedDiagnostic.code;
+    if (fault === 'step') value.sentryIsolatedDiagnostic.step = secret;
+    if (fault === 'phase') value.sentryIsolatedDiagnostic.phase = secret;
+    if (fault === 'elapsed-negative') value.sentryIsolatedDiagnostic.elapsedMs = -1;
+    if (fault === 'elapsed-oversized') value.sentryIsolatedDiagnostic.elapsedMs = 300001;
+    if (fault === 'elapsed-string') value.sentryIsolatedDiagnostic.elapsedMs = secret;
+    if (fault === 'code') value.sentryIsolatedDiagnostic.code = secret;
+    if (fault === 'native-code') value.sentryIsolatedDiagnostic.nativeExecutionCode = secret;
+    if (fault === 'array') value.sentryIsolatedDiagnostic = [secret];
+    if (fault === 'null') value.sentryIsolatedDiagnostic = null;
+    if (fault === 'wrong-stage') value.failedStage = PRIVATE_PROOF_CHECK;
+    if (fault === 'passed') value.status = 'passed';
+    let launched = false;
+    try {
+      assert.throws(() => decodeNativeReport(JSON.stringify(value), platform, 'create', 'import'));
+      const { token, platform: _platform, ...config } = expected;
+      await assert.rejects(runPrivateProofQualification({ platform, config, output, randomBytes: () => Buffer.from(token, 'hex'),
+        launch: () => { launched = true; }, list: () => launched ? ['pali-native-qualification-create.json'] : [],
+        read: () => assert.fail('No proof may be consumed'), readFailure: () => JSON.stringify(value),
+      }), /PRIVATE_PROOF_EXTRA_REPORT/);
+      const text = fs.readFileSync(path.join(output, `${platform}-private-proof-diagnostic.json`), 'utf8');
+      assert(!text.includes(secret)); assert(Buffer.byteLength(text) <= 8192);
+      assert.deepEqual(JSON.parse(text).reports, [{ filePhase: 'create', availability: 'invalid' }]);
+      assert(!fs.existsSync(path.join(output, `${platform}-private-proof-app.json`)));
+    } finally { fs.rmSync(output, { recursive: true, force: true }); }
+  });
 
 test('required failure-reader omission is refused before launch and diagnostic write failure preserves primary rejection', async () => {
   const output = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-proof-diagnostic-owner-'));

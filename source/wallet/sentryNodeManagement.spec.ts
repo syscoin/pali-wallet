@@ -97,12 +97,19 @@ function fixture() {
     })
   );
   let tail = Promise.resolve();
+  let requestCurrent = true;
   const manager = createSentryNodeManagement({
     assertCurrent: checkScope,
     authenticate,
     captureAdmission: async () =>
       registry.captureSentryCollateralAdmission(registryScope),
     captureScope: () => scope,
+    captureLinkScope: () => ({
+      scope,
+      assertCurrent: () => {
+        if (!requestCurrent) throw new Error('Site approval retired');
+      },
+    }),
     commitLink,
     createId: () => `review-${++sequence}`,
     fetch,
@@ -133,6 +140,9 @@ function fixture() {
     release,
     fetch,
     write,
+    revokeRequest: () => {
+      requestCurrent = false;
+    },
     changeScope: () => {
       scope = { id: 'other-session' };
     },
@@ -227,6 +237,36 @@ it('cancels a fresh read before any persistent mutation', async () => {
   response.resolve(new Response('{}'));
   await expect(confirming).rejects.toThrow('cancelled or expired');
   expect(f.commitLink).not.toHaveBeenCalled();
+});
+
+it('refuses a dapp-revoked link after its fresh read without blocking wallet-only registry management', async () => {
+  const f = fixture();
+  const review = await f.manager.prepareLink(request, 'https://dapp.example');
+  const entered = deferred<void>();
+  const response = deferred<Response>();
+  f.fetch.mockImplementationOnce(async () => {
+    entered.resolve();
+    return response.promise;
+  });
+  const confirming = f.manager.confirmLink(review);
+  await entered.promise;
+  f.revokeRequest();
+  response.resolve(
+    new Response(
+      JSON.stringify({ chain: { genesisHash: request.genesisHash }, node })
+    )
+  );
+  await expect(confirming).rejects.toThrow('Site approval retired');
+  expect(f.commitLink).not.toHaveBeenCalled();
+  await expect(f.manager.list()).resolves.toMatchObject({ network: 'mainnet' });
+  f.setCollateral([reservation]);
+  await expect(
+    f.manager.releaseCollateral({
+      reservation,
+      password: 'password',
+      acknowledgeNodeStops: true,
+    })
+  ).resolves.toEqual(reservation);
 });
 
 it('rechecks the original scope after queued work and refuses expired reviews', async () => {

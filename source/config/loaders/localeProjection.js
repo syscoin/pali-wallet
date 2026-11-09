@@ -13,7 +13,12 @@ const projectLocale = (resource, scope) => {
     throw new Error('Missing Privacy locale title');
   }
   if (scope === 'base') {
-    return { ...resource, privacy: { title: resource.privacy.title } };
+    const extension = {
+      ...resource,
+      privacy: { title: resource.privacy.title },
+    };
+    delete extension.mobile;
+    return extension;
   }
   return {
     privacy: Object.fromEntries(

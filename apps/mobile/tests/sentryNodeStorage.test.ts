@@ -440,14 +440,10 @@ test('native manager uses shared fresh link workflow, atomic storage and exact a
     const empty = await n.manager.list();
     assert.deepEqual(empty.linkedNodes, []);
     assert.deepEqual(empty.collateral, []);
-    const cancelled = await n.manager.prepareLink(
-      sentryNodeResponse(SENTRY_NETWORKS.mainnet.genesisHash).node.proTxHash
-    );
+    const cancelled = await n.manager.prepareLink({ version: 1, proTxHash: sentryNodeResponse(SENTRY_NETWORKS.mainnet.genesisHash).node.proTxHash, genesisHash: SENTRY_NETWORKS.mainnet.genesisHash }, 'Pali Wallet');
     n.manager.cancelLink(cancelled.id);
     await assert.rejects(n.manager.confirmLink(cancelled));
-    const review = await n.manager.prepareLink(
-      sentryNodeResponse(SENTRY_NETWORKS.mainnet.genesisHash).node.proTxHash
-    );
+    const review = await n.manager.prepareLink({ version: 1, proTxHash: sentryNodeResponse(SENTRY_NETWORKS.mainnet.genesisHash).node.proTxHash, genesisHash: SENTRY_NETWORKS.mainnet.genesisHash }, 'Pali Wallet');
     assert(
       Object.isFrozen(review) && Object.isFrozen(review.node.collateralOutpoint)
     );
@@ -515,17 +511,17 @@ test('native shared workflow refuses a changed trusted source/node and owner can
     });
     const id = sentryNodeResponse(SENTRY_NETWORKS.mainnet.genesisHash).node
       .proTxHash;
-    const first = await n.manager.prepareLink(id);
+    const first = await n.manager.prepareLink({ version: 1, proTxHash: id, genesisHash: SENTRY_NETWORKS.mainnet.genesisHash }, 'Pali Wallet');
     url = 'https://other.test';
     await assert.rejects(n.manager.confirmLink(first));
     assert.equal(f.raw(), undefined);
     url = 'https://sentry.test';
-    const second = await n.manager.prepareLink(id);
+    const second = await n.manager.prepareLink({ version: 1, proTxHash: id, genesisHash: SENTRY_NETWORKS.mainnet.genesisHash }, 'Pali Wallet');
     modified = true;
     await assert.rejects(n.manager.confirmLink(second));
     assert.equal(f.raw(), undefined);
     modified = false;
-    const third = await n.manager.prepareLink(id);
+    const third = await n.manager.prepareLink({ version: 1, proTxHash: id, genesisHash: SENTRY_NETWORKS.mainnet.genesisHash }, 'Pali Wallet');
     active = false;
     await assert.rejects(n.manager.confirmLink(third));
     assert.equal(f.raw(), undefined);
@@ -556,9 +552,7 @@ test('native manager cancellation during atomic link SQL rolls back both public 
   });
   try {
     const n = await nodeManager(f),
-      review = await n.manager.prepareLink(
-        sentryNodeResponse(SENTRY_NETWORKS.mainnet.genesisHash).node.proTxHash
-      );
+      review = await n.manager.prepareLink({ version: 1, proTxHash: sentryNodeResponse(SENTRY_NETWORKS.mainnet.genesisHash).node.proTxHash, genesisHash: SENTRY_NETWORKS.mainnet.genesisHash }, 'Pali Wallet');
     held = true;
     const pending = n.manager.confirmLink(review);
     await entered;

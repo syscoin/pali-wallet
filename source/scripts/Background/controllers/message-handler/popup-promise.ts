@@ -487,6 +487,7 @@ const openApprovalPopup = async (
     const safeResolve = (result: any) => {
       if (
         resolved ||
+        signal?.aborted ||
         (messageSignApproval && !messageSignApproval.isCurrent())
       ) {
         return;

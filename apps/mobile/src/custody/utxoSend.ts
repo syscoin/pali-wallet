@@ -1,9 +1,10 @@
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { unionUtxoExclusions } from '../../../../source/shared/utxoExclusions.ts';
+import { inspectUtxoRbf, reviewUtxoTransactionOptions, snapshotUtxoRbf, type UtxoTransactionOptions } from '../../../../source/shared/utxoTransactionOptions.ts';
 import type { createNativeSentryCollateral } from './sentryNodeManagement.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
-import { supportsSptUtxoChain } from '../../../../source/shared/sptInventory.ts';
+import { isSptDisplaySymbol, supportsSptUtxoChain } from '../../../../source/shared/sptInventory.ts';
 import { toEightDecimalBuilderAmount } from '../../../../source/utils/syscoinAssetAmount.ts';
 import {
   ALLOCATION_SEND_VERSION,
@@ -66,6 +67,7 @@ type QuotedAmount =
     }>;
 
 export type NativeUtxoReview = Readonly<{
+  transactionOptions: UtxoTransactionOptions;
   assetDisplay?: NativeUtxoAsset;
   feeSatoshis: string;
   outputs: readonly ReviewedUtxoOutput[];
@@ -204,6 +206,7 @@ export function createNativeUtxoSend(
         amount: string;
         max?: boolean;
         asset?: NativeUtxoAsset;
+        rbf?: boolean;
       }>
     ): Promise<NativeUtxoReview> {
       return run(async () => {
@@ -214,12 +217,14 @@ export function createNativeUtxoSend(
         check();
         let recipient: string;
         let amount: QuotedAmount;
+        let rbf: boolean;
         const asset =
           input.asset === undefined
             ? undefined
             : Object.freeze({ ...input.asset });
         const max = input.max === true;
         try {
+          rbf = snapshotUtxoRbf(input.rbf);
           recipient = normalizeUtxoAddress(input.recipient.trim(), network);
           if (
             !canUseUtxoCustodyAddress(scope.account.address, network) ||
@@ -228,11 +233,9 @@ export function createNativeUtxoSend(
             throw new Error('Unsupported UTXO spending script');
           if (asset) {
             if (
-              max ||
               !supportsSptUtxoChain(network.chainId) ||
               !isPositiveSptGuid(asset.assetGuid) ||
-              typeof asset.symbol !== 'string' ||
-              !/^[A-Za-z0-9]{1,16}$/.test(asset.symbol)
+              !isSptDisplaySymbol(asset.symbol)
             )
               throw new Error('Unsupported asset');
             const builderAmount = toEightDecimalBuilderAmount(
@@ -272,6 +275,7 @@ export function createNativeUtxoSend(
             {
               amount: amount.builderAmount,
               receivingAddress: recipient,
+              txOptions: { rbf },
               excludedOutpoints,
               ...(amount.kind === 'spt'
                 ? {
@@ -281,7 +285,7 @@ export function createNativeUtxoSend(
                     },
                   }
                 : {}),
-              ...(max ? { nativeSweep: true, isMax: true } : {}),
+              ...(max && amount.kind === 'native' ? { nativeSweep: true, isMax: true } : {}),
             },
             read
           );
@@ -324,6 +328,7 @@ export function createNativeUtxoSend(
           await assertUnprotected(binding.review.outpoints,check);
           assertUtxoBuilderFee(result.fee, binding.review.feeSatoshis);
           const view = Object.freeze({
+            transactionOptions: reviewUtxoTransactionOptions(binding.rbf, amount.kind === 'spt', rbf),
             feeSatoshis: binding.review.feeSatoshis,
             outputs: binding.review.outputs,
             ...(amount.kind === 'spt' ? { assetDisplay: amount.asset } : {}),
@@ -413,6 +418,7 @@ export function createNativeUtxoSend(
           );
         }
         const view = Object.freeze({
+          transactionOptions: reviewUtxoTransactionOptions(inspectUtxoRbf(transaction.ins), transaction.version === ALLOCATION_SEND_VERSION),
           feeSatoshis: retained.feeSatoshis,
           outputs: Object.freeze(outputs),
           ...(retained.url !== utxoSubmissionUrl(scope.network.url)

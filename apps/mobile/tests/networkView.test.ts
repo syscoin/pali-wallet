@@ -1,3 +1,4 @@
+import { networkSelectionReceiptFixture } from './networkSelectionReceiptFixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
@@ -5,6 +6,7 @@ import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
+import type { NativeNetworkSelectionProof } from '../src/custody/accounts.ts';
 
 const address = '0x52908400098527886E0F7030069857D2E4169EE7';
 function fixture(utxoSendAvailable = false, removeUtxoNetwork?: (id: string, context: number, revision: number, signal: AbortSignal) => Promise<void>) {
@@ -17,11 +19,11 @@ function fixture(utxoSendAvailable = false, removeUtxoNetwork?: (id: string, con
     getSnapshot: () => state,
     getCatalogue: () => catalogue,
     subscribe(listener: (value: CustodySnapshot) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    async selectNetwork(...args: [string, number, number]) { requests.push(args); },
+    async selectNetwork(...args: [string, number, number, (proof: NativeNetworkSelectionProof) => void]) { requests.push(args.slice(0, 3)); const target = NATIVE_NETWORKS.find(network => network.id === args[0]) ?? UTXO_NETWORKS.find(network => network.id === args[0]); if (!target) throw new Error('Invalid fixture selection'); const receipt = networkSelectionReceiptFixture(target, { accountId: 'hd:60:0', address, networkId: target.id }, args[1], args[2], () => {}); args[3](receipt); return receipt; },
     cancelAccountOperation() { cancels++; },
     ...(removeUtxoNetwork && { removeUtxoNetwork }),
   };
-  const view = createNativeNetworkView(authority, { utxoSendAvailable });
+  const view = createNativeNetworkView(authority, { utxoSendAvailable, fetch: async () => { throw Error('Unexpected HTTP in projection fixture'); } });
   return { view, requests, listeners, cancels: () => cancels,
     set(next: CustodySnapshot, nextCatalogue: NativeWalletCatalogueSnapshot | null) {
       state = next; catalogue = nextCatalogue;
@@ -54,8 +56,10 @@ test('network projection is stable, frozen, public-only and projects all saved E
 test('network selection forwards both captured revisions and teardown removes observation', async () => {
   const f = fixture(); let updates = 0;
   const stop = f.view.subscribe(() => updates++);
-  await f.view.select('base', f.view.getContextRevision(), f.view.getSnapshot()!.revision);
+  let observed: NativeNetworkSelectionProof | undefined;
+  await f.view.select('base', f.view.getContextRevision(), f.view.getSnapshot()!.revision, proof => { observed = proof; });
   assert.deepEqual(f.requests, [['base', 12, 3]]);
+  assert.equal(observed?.target.id, 'base');
   f.set({ phase: 'locked', revision: 13, presence: 'existing', backup: 'confirmed', account: null, error: null }, null);
   assert.equal(updates, 1);
   assert.equal(f.view.getSnapshot(), null);
@@ -94,7 +98,7 @@ test('network verification and persistence share one detached registration snaps
   const catalogue = { revision: 1, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } };
   const saved: unknown[] = [];
   const view = createNativeNetworkView({ getSnapshot: () => state, getCatalogue: () => catalogue, subscribe: () => () => undefined,
-    selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+    selectNetwork: async () => { throw new Error('Selection is outside this read-only fixture'); }, cancelAccountOperation: () => undefined,
     manageNetwork: async (request) => { saved.push(request); } }, { utxoSendAvailable: false, fetch: async (url, init) => {
       assert.equal(url, original.rpcUrl); const request = JSON.parse(String(init.body)); started(); await held;
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: '0x115c' }), { headers: { 'content-type': 'application/json' } });
@@ -115,7 +119,7 @@ test('long padded network text reaches the verified endpoint unchanged and stale
     const view = createNativeNetworkView({
       getSnapshot: () => ({ phase: 'ready', revision, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
       getCatalogue: () => ({ revision: catalogueRevision, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
-      subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+      subscribe: () => () => undefined, selectNetwork: async () => { throw new Error('Selection is outside this read-only fixture'); }, cancelAccountOperation: () => undefined,
       manageNetwork: async (request) => { saved.push(request); },
     }, { utxoSendAvailable: false, fetch: async (url, init) => {
       urls.push(url); const request = JSON.parse(String(init.body));
@@ -146,7 +150,7 @@ test('catalogue is lazy and verified Save rejects unexpected endpoints before re
   const view = createNativeNetworkView({
     getSnapshot: () => ({ phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
     getCatalogue: () => ({ revision: 1, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
-    subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+    subscribe: () => () => undefined, selectNetwork: async () => { throw new Error('Selection is outside this read-only fixture'); }, cancelAccountOperation: () => undefined,
     manageNetwork: async (request) => { saved.push(request); },
   }, { utxoSendAvailable: false, fetch: async (url, init) => {
     requests.push(url);
@@ -182,4 +186,48 @@ test('catalogue is lazy and verified Save rejects unexpected endpoints before re
   await view.save!(registration, 1, 1);
   assert.deepEqual(saved, [{ kind: 'save-network', registration }]);
   assert.deepEqual(requests, [EVM_CHAIN_CATALOGUE_URL, ...Array(4).fill(registration.rpcUrl)]);
+});
+
+test('network view requires a transport at runtime and never falls back after rejection or cancellation', async () => {
+  const registration = NATIVE_NETWORKS[0]!;
+  const saved: unknown[] = [];
+  const authority = {
+    getSnapshot: (): CustodySnapshot => ({ phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
+    getCatalogue: () => ({ revision: 1, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
+    subscribe: () => () => undefined, selectNetwork: async () => { throw Error('Unexpected selection'); },
+    cancelAccountOperation() {}, manageNetwork: async (request: unknown) => { saved.push(request); },
+  };
+  for (const missing of [undefined, null, false]) {
+    assert.throws(() => createNativeNetworkView(authority, { utxoSendAvailable: false, fetch: missing as never }), /HTTP transport is required/);
+  }
+  const original = globalThis.fetch;
+  let ambient = 0;
+  globalThis.fetch = async () => { ambient++; throw Error('Ambient HTTP is forbidden'); };
+  try {
+    for (const mode of ['reject', 'cancel'] as const) {
+      const entered = Promise.withResolvers<AbortSignal>(), held = Promise.withResolvers<void>();
+      let calls = 0;
+      const options = { utxoSendAvailable: false, fetch: async (url: string, init: RequestInit) => {
+        calls++;
+        assert.equal(url, registration.rpcUrl);
+        entered.resolve(init.signal as AbortSignal);
+        if (mode === 'reject') throw Error('Configured transport rejected');
+        await held.promise;
+        const request = JSON.parse(String(init.body));
+        return Response.json({ jsonrpc: '2.0', id: request.id, result: '0x1' });
+      } };
+      const view = createNativeNetworkView(authority, options);
+      // The admitted port is retained even if its caller later mutates options.
+      options.fetch = globalThis.fetch;
+      const pending = view.save!(registration, 1, 1);
+      const rejected = assert.rejects(pending);
+      const signal = await entered.promise;
+      if (mode === 'cancel') { view.cancel(); assert.equal(signal.aborted, true); }
+      try { await rejected; }
+      finally { held.resolve(); }
+      assert.equal(calls, 1);
+      assert.equal(ambient, 0);
+      assert.deepEqual(saved, []);
+    }
+  } finally { globalThis.fetch = original; }
 });

@@ -4,7 +4,17 @@ import Foundation
 import UIKit
 import WebKit
 
+fileprivate enum ProofFailure: String {
+  case readinessTimeout = "ERR_PALI_NATIVE_READINESS_TIMEOUT"
+  case jobTimeout = "ERR_PALI_NATIVE_JOB_TIMEOUT"
+  case sdkJobTimeout = "ERR_PALI_NATIVE_SDK_JOB_TIMEOUT"
+  case disposalTimeout = "ERR_PALI_NATIVE_DISPOSAL_TIMEOUT"
+}
+
 private final class ProofException: Exception {
+  private let failure: ProofFailure?
+  init(_ failure: ProofFailure? = nil) { self.failure = failure; super.init() }
+  override var code: String { failure?.rawValue ?? super.code }
   override var reason: String { "privacy_proof_unavailable" }
 }
 
@@ -142,8 +152,16 @@ private final class ProofDocument: NSObject, WKScriptMessageHandler, WKNavigatio
   var retiring = false
   private var documentRetired = false
   private var readsDrained = false
+  private weak var hostingWindow: UIWindow?
+  private weak var hostingScene: UIWindowScene?
 
   init(owner: PaliProofHost, id: String) throws {
+    let windows = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .filter { $0.activationState == .foregroundActive }
+      .flatMap { $0.windows }
+      .filter { $0.isKeyWindow && !$0.isHidden && $0.alpha > 0 && $0.rootViewController?.viewIfLoaded != nil }
+    guard windows.count == 1, let window = windows.first, let scene = window.windowScene else { throw ProofException() }
     self.owner = owner
     resources = try ProofResources(host: id)
     url = URL(string: "pali-private-prover://\(id)/index.html")!
@@ -151,11 +169,32 @@ private final class ProofDocument: NSObject, WKScriptMessageHandler, WKNavigatio
     configuration.websiteDataStore = .nonPersistent()
     configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
     configuration.setURLSchemeHandler(resources, forURLScheme: "pali-private-prover")
-    view = WKWebView(frame: .zero, configuration: configuration)
+    view = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: configuration)
     super.init()
+    hostingWindow = window; hostingScene = scene
     view.isInspectable = false
+    view.isUserInteractionEnabled = false
+    view.accessibilityElementsHidden = true
+    view.isOpaque = false
+    view.backgroundColor = .clear
+    view.scrollView.backgroundColor = .clear
     view.navigationDelegate = self; view.uiDelegate = self
     view.configuration.userContentController.add(self, name: "PaliPrivateProver")
+    // WebKit's iOS activity state requires an actual window. Keep this empty,
+    // noninteractive carrier behind the wallet UI through retirement and reads.
+    window.insertSubview(view, at: 0)
+    guard ownsForegroundWindow else { detach(); throw ProofException() }
+  }
+
+  var ownsForegroundWindow: Bool {
+    guard let window = hostingWindow, let scene = hostingScene else { return false }
+    return UIApplication.shared.applicationState == .active && scene.activationState == .foregroundActive &&
+      window.windowScene === scene && window.isKeyWindow && !window.isHidden && window.alpha > 0 && view.window === window
+  }
+
+  func load() throws {
+    guard ownsForegroundWindow else { throw ProofException() }
+    view.load(URLRequest(url: url))
   }
 
   func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -197,6 +236,9 @@ private final class ProofDocument: NSObject, WKScriptMessageHandler, WKNavigatio
                initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping (String?) -> Void) { completionHandler(nil) }
 
   func invoke(_ operation: String, arguments: [String: Any]) {
+    if operation == "start" || operation == "startSentry" {
+      guard ownsForegroundWindow else { owner?.fail(); return }
+    }
     // Fixed program text. Private input is an argument, never evaluated source.
     let program = operation == "start" ? "globalThis.PaliPrivacyProof.start(id, input)" :
       operation == "startSentry" ? "globalThis.PaliPrivacyProof.startSentry(id, input)" :
@@ -246,11 +288,13 @@ final class PaliProofHost: SharedObject {
   private var pending: Promise?
   private var disposals: [Promise] = []
   private var submitted = false
+  private var sdkStarted = false
   private var sentry = false
   private var workerRetired = false
   private var retirementRequested = false
   private var finished: Bool?
   private var deadline: DispatchWorkItem?
+  private var executionFailure: ProofFailure?
 
   private var isRevoked: Bool { mutex.lock(); defer { mutex.unlock() }; return revoked }
 
@@ -283,8 +327,11 @@ final class PaliProofHost: SharedObject {
       do {
         let document = try ProofDocument(owner: self, id: id)
         self.document = document
-        document.view.load(URLRequest(url: document.url))
-        let timeout = DispatchWorkItem { [weak self] in self?.fail() }
+        try document.load()
+        let timeout = DispatchWorkItem { [weak self] in
+          guard let self else { return }
+          self.fail(self.submitted ? (self.sdkStarted ? .sdkJobTimeout : .jobTimeout) : .readinessTimeout)
+        }
         self.deadline = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: timeout)
       } catch { self.fail() }
@@ -299,7 +346,7 @@ final class PaliProofHost: SharedObject {
   func dispose(_ promise: Promise) {
     close()
     DispatchQueue.main.async {
-      if let clean = self.finished { clean ? promise.resolve() : promise.reject(ProofException()) }
+      if let clean = self.finished { clean ? promise.resolve() : promise.reject(ProofException(self.executionFailure)) }
       else { self.disposals.append(promise) }
     }
   }
@@ -319,9 +366,13 @@ final class PaliProofHost: SharedObject {
       workerRetired = true; requestRetirement(); return
     }
     guard !isRevoked else { return }
+    guard document?.ownsForegroundWindow == true else { fail(); return }
     if type == "ready" && keys == ["version", "id", "type"], !submitted, let input {
       submitted = true; self.input = nil
       document?.invoke(sentry ? "startSentry" : "start", arguments: ["id": id, "input": input])
+    } else if sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted {
+      sdkStarted = true
+      emit(event: "progress", payload: json)
     } else if !sentry && type == "progress" && keys == ["version", "id", "type", "progress"] && submitted {
       emit(event: "progress", payload: json)
     } else if submitted && domain && ((type == "success" && keys == basic.union(["result"])) ||
@@ -331,8 +382,9 @@ final class PaliProofHost: SharedObject {
     } else { fail() }
   }
 
-  fileprivate func fail() {
-    pending?.reject(ProofException()); pending = nil; input = nil
+  fileprivate func fail(_ failure: ProofFailure? = nil) {
+    executionFailure = failure ?? executionFailure
+    pending?.reject(ProofException(executionFailure)); pending = nil; input = nil
     close()
   }
 
@@ -343,7 +395,7 @@ final class PaliProofHost: SharedObject {
 
   private func requestRetirement(contentProcessTerminated: Bool = false) {
     guard finished == nil else { return }
-    pending?.reject(ProofException()); pending = nil; input = nil
+    pending?.reject(ProofException(executionFailure)); pending = nil; input = nil
     if document == nil { finish(clean: true); return }
     if document?.retiring == true {
       if contentProcessTerminated { document?.retire(contentProcessTerminated: true) }
@@ -352,7 +404,11 @@ final class PaliProofHost: SharedObject {
     if !retirementRequested {
       retirementRequested = true
       deadline?.cancel()
-      let timeout = DispatchWorkItem { [weak self] in self?.finish(clean: false) }
+      let timeout = DispatchWorkItem { [weak self] in
+        guard let self, self.finished == nil else { return }
+        self.executionFailure = .disposalTimeout
+        self.finish(clean: false)
+      }
       deadline = timeout
       DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: timeout)
     }
@@ -364,11 +420,11 @@ final class PaliProofHost: SharedObject {
   fileprivate func finish(clean: Bool) {
     guard finished == nil else { return }
     finished = clean; deadline?.cancel(); deadline = nil
-    input = nil; pending?.reject(ProofException()); pending = nil
+    input = nil; pending?.reject(ProofException(executionFailure)); pending = nil
     document?.detach(); document = nil
     ProofAdmission.release(self, clean: clean)
     let callbacks = disposals; disposals.removeAll()
-    callbacks.forEach { clean ? $0.resolve() : $0.reject(ProofException()) }
+    callbacks.forEach { clean ? $0.resolve() : $0.reject(ProofException(executionFailure)) }
   }
 
   override func sharedObjectDidRelease() { close() }

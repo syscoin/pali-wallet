@@ -7,9 +7,13 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
 }));
+jest.mock('./sentry', () => ({
+  SentryController: jest.fn().mockImplementation((host) => ({ host })),
+}));
 
 import { utils } from 'syscoinjs-lib';
 
+import { getController } from '..';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 
@@ -68,6 +72,36 @@ describe('Sentry wallet authority discovery and authenticated resolution', () =>
     wallet.getPrivateKeyByAccountId = jest.fn().mockResolvedValue(pair.toWIF());
   });
   afterEach(() => jest.restoreAllMocks());
+
+  it('binds extension Sentry admission to the exact original dapp grant and selected UTXO account', async () => {
+    const origin = 'https://sentry-dapp.example';
+    const grant = { accountId: 0, accountType: KeyringAccountType.Imported };
+    let current: typeof grant | undefined = grant;
+    const assertRequestCurrent = jest.fn(() => {
+      if (current !== grant) throw new Error('Grant retired');
+    });
+    const captureApproval = jest.fn(() => assertRequestCurrent);
+    (getController as jest.Mock).mockReturnValue({
+      dapp: { captureApproval, get: () => current },
+    });
+    state.vault.isBitcoinBased = true;
+    state.vault.activeAccount = { id: 0, type: KeyringAccountType.Imported };
+    state.vault.activeNetwork.kind = 'syscoin';
+    const controller = await wallet.getSentryController();
+    const captured = controller.host.captureApprovalScope(origin);
+    expect(captureApproval).toHaveBeenCalledWith(origin);
+    expect(captured.assertRequestCurrent).toEqual(expect.any(Function));
+    captured.assertRequestCurrent();
+    expect(assertRequestCurrent).toHaveBeenCalled();
+    expect(captured.identity).toBe(scope.identity);
+    current = undefined;
+    expect(() => captured.assertRequestCurrent()).toThrow('Grant retired');
+    current = grant;
+    state.vault.activeAccount.id = 1;
+    expect(() => controller.host.captureApprovalScope(origin)).toThrow(
+      'no longer selected'
+    );
+  });
 
   it('offers an authenticated Taproot WIF candidate without reading its secret during discovery', async () => {
     await expect(

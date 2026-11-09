@@ -137,6 +137,9 @@ beforeEach(async () => {
     return 'synthetic-unused-authentication-result';
   });
   controller = new SentryController({
+    captureApprovalScope: () => {
+      throw new Error('Unexpected dapp request');
+    },
     captureScope: () => ({
       identity: 'synthetic-current-wallet',
       rootPublicIdentity: ROOT,

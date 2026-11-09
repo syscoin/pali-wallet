@@ -1,3 +1,6 @@
+import { DAPP_RPC_READ_METHODS, normalizeDappRpcRead, type DappRpcReadMethod, type DappRpcReadRequest } from '../../../../source/shared/dappRpcReads.ts';
+import { EthereumRpcErrorHandler } from '../../../../source/helpers/errors/errorClassesHandlers.ts';
+import { assertJsonWorkBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import { privacyWithdrawalFees } from '../../../../source/utils/privacy/withdrawalFees.ts';
 import { captureEvmGasPolicy, prepareEvmDappQuote, EvmDappReviewRequiredError, type EvmDappPreparedQuote, type EvmDappTransactionRequest, type EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { getAddress } from 'ethers/address';
@@ -33,9 +36,9 @@ const RETIREMENT_METHODS: Readonly<Record<EvmSignedRetirementReadMethod, true>> 
 const BLOCK_BYTES = 512 * 1024;
 const RECEIPT_BYTES = 1024 * 1024;
 const CODE_BYTES = 32 * 1024;
-type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
+type Method = DappRpcReadMethod | 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
   'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount' | 'eth_getTransactionByHash';
-const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
+const METHODS: readonly string[] = Object.freeze([...DAPP_RPC_READ_METHODS, 'eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
   'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount', 'eth_getTransactionByHash']);
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & {
   assertCurrent(): void;
@@ -117,7 +120,7 @@ export class EvmTransferReadRpc {
     this.monotonicMilliseconds = options.monotonicMilliseconds ?? (() => Math.floor(performance.now()));
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 30000) throw new Error('Invalid read timeout');
   }
-  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>, scope?: 'endpoint' | 'nft-quote' | 'smart-account'): Promise<T> {
+  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>, scope?: 'endpoint' | 'nft-quote' | 'smart-account' | 'dapp-read'): Promise<T> {
     guardedRead(guard);
     if (external.aborted) return rejectRead('CANCELLED');
     const controller = new AbortController();
@@ -147,7 +150,7 @@ export class EvmTransferReadRpc {
       if (!response.ok) return rejectRead('UNAVAILABLE');
       const contentType = response.headers.get('content-type');
       if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
-      const limit = method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
+      const limit = scope === 'dapp-read' ? DAPP_REQUEST_LIMITS.bytes : method === 'eth_getTransactionReceipt' ? RECEIPT_BYTES : method === 'eth_getBlockByNumber' ? BLOCK_BYTES : method === 'eth_getCode' ? (boundedContractCode ? CODE_BYTES * 2 + 512 : CODE_BYTES) : 16 * 1024;
       const text = await cancellable(boundedResponseText(response, controller.signal, limit), controller.signal);
       guardedRead(guard);
       const result = object(JSON.parse(text));
@@ -159,6 +162,11 @@ export class EvmTransferReadRpc {
       if (Object.hasOwn(result, 'error')) {
         if (Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
         const error = object(result.error);
+        if (scope === 'dapp-read') {
+          if (!Number.isInteger(error.code) || Number(error.code) < -2147483648 || Number(error.code) > 2147483647 || typeof error.message !== 'string' || !error.message || error.message.length > 256) return rejectRead('INVALID_RESPONSE');
+          assertJsonWorkBudget(error);
+          throw new EthereumRpcErrorHandler(Number(error.code), error.message, typeof error.data === 'string' ? error.data : undefined);
+        }
         // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.
         if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200))
           throw Object.assign(new Error('Unsupported priority fee RPC'), { code: error.code });
@@ -179,6 +187,7 @@ export class EvmTransferReadRpc {
       guardedRead(guard);
       if (controller.signal.aborted) return rejectRead('CANCELLED');
       if (error instanceof EvmTransferReadError) throw error;
+      if (scope === 'dapp-read' && error instanceof EthereumRpcErrorHandler) throw error;
       if (error instanceof EvmAssetStateError) {
         if (nft) return rejectRead(error.code === 'INSUFFICIENT_ASSET' ? 'INSUFFICIENT_NFT_BALANCE'
           : error.code === 'TRANSFER_REJECTED' ? 'NFT_TRANSFER_REJECTED' : error.code);
@@ -211,6 +220,17 @@ export class EvmTransferReadRpc {
   }
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
+  }
+  dappRead(input: DappRpcReadRequest, signal: AbortSignal, guard: () => void): Promise<unknown> {
+    const request = normalizeDappRpcRead(input.method, input.params);
+    if ((request.method === 'eth_call' || request.method === 'eth_estimateGas') && (request.params[0] as { chainId?: string }).chainId !== undefined && BigInt((request.params[0] as { chainId: string }).chainId) !== BigInt(this.network.chainId)) return Promise.reject(new EthereumRpcErrorHandler(-32602, 'Transaction chainId does not match selected chain'));
+    return this.operation(signal, guard, async read => {
+      await this.checkChain(read);
+      const result = await read(request.method, request.params);
+      await this.checkChain(read);
+      assertJsonWorkBudget(result);
+      return result;
+    }, 'dapp-read');
   }
   smartAccountRead(method: 'eth_call' | 'eth_getCode' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getBlockByNumber' | 'eth_chainId' | 'eth_gasPrice' | 'eth_maxPriorityFeePerGas' | 'eth_feeHistory',
     params: readonly unknown[], signal: AbortSignal, guard: () => void): Promise<unknown> {

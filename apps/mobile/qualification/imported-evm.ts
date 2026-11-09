@@ -88,7 +88,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
   const hashes: string[] = []; let signatures = 0, authorizations = 0, broadcasts = 0;
   const transfer = runtime.transfers; expect(transfer);
   for (const [i, network] of NETWORKS.entries()) {
-    await authority.selectNetwork(network, state().revision, catalogue().revision);
+    await authority.selectNetwork(network, state().revision, catalogue().revision, () => {});
     const revision = state().revision;
     const guard = () => expect(state().phase === 'ready' && state().revision === revision && state().account?.address === ADDRESS &&
       state().account?.network === network && catalogue().active.accountId === imported.id);
@@ -169,7 +169,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     entry.hash === hashes[i] && entry.phase === (phase === 'create' ? 'signed' : 'submitted')));
   expect(await storage.getWalletFingerprint() === fingerprint &&
     JSON.stringify([await storage.keyringStorage.get('vault'), await storage.keyringStorage.get('vault-keys')]) === pair);
-  await authority.selectNetwork('ethereum', state().revision, catalogue().revision); await manage(hd1.id);
+  await authority.selectNetwork('ethereum', state().revision, catalogue().revision, () => {}); await manage(hd1.id);
   expect(state().account?.address === hd1.address && catalogue().active.accountId === hd1.id);
   expect(signatures === (phase === 'create' ? 3 : 0) && authorizations === (phase === 'create' ? 0 : 3) && broadcasts === 3);
   return Object.freeze({ nativeImportedVerified: true, importedAccountId: imported.id, importedAccountIndex: imported.index, importedAddress: ADDRESS,

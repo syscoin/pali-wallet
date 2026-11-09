@@ -62,7 +62,7 @@ function storagePort(read: () => RecoveryStorageSnapshot, removal?: OpenWalletSt
 
 export function createWalletRemovalFixture(
   owner: NativeCustodyAuthority,
-  catalogue: KeyringRuntime['catalogue'],
+  catalogue: Pick<KeyringRuntime['catalogue'], 'getSnapshot'>,
   passwordMatches: (password: string) => boolean
 ) {
   let dispatched: Result | undefined;
@@ -81,7 +81,8 @@ export function createWalletRemovalFixture(
     },
   });
   const runtime: Pick<KeyringRuntime, 'authorizeWalletRemoval' | 'catalogue'> = {
-    catalogue,
+    catalogue: { ...catalogue, getControlSnapshot: () => null,
+      previewNetworkSelection() { throw Error('Dapp network control is outside this removal fixture'); } },
     async authorizeWalletRemoval(password, guard, beforeSnapshot) {
       guard();
       audit.authorizations++;

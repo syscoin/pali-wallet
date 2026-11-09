@@ -15,7 +15,7 @@ const readNode = (value: string, privateKey: boolean, network: any) => {
   const payload = Buffer.from(bs58check.decode(value));
   if (
     payload.length !== 78 ||
-    (privateKey ? payload[45] !== 0 : ![2, 3].includes(payload[45]))
+    (privateKey ? payload[45] !== 0 : ![2, 3].includes(payload[45]!))
   )
     throw new Error('Invalid wallet account key');
   return bjs.bip32.fromBase58(value, {
@@ -148,7 +148,7 @@ export const findSentryWalletPath = (
       : '';
     if (!/^[01]\/(0|[1-9]\d*)$/.test(relative)) continue;
     const [branch, index] = relative.split('/').map(Number);
-    if (!Number.isSafeInteger(index) || index >= 0x80000000) continue;
+    if (!Number.isSafeInteger(index) || index! >= 0x80000000) continue;
     if (
       keyMatchesAddress(
         root.derive(branch).derive(index).publicKey,

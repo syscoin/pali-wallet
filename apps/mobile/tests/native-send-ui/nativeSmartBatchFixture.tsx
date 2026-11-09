@@ -1,3 +1,4 @@
+import { unsupportedDappViews } from '../unsupportedDappPorts';
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type {
   NativeConnectionsSnapshot,
@@ -65,6 +66,7 @@ const initial: NativeSmartTransactionReview = {
     },
     payerReview: null,
     transactionHash: null,
+    userOperationSubmissionStarted: false,
     error: null,
   },
 };
@@ -150,6 +152,7 @@ export function NativeSmartBatchFixture() {
       throw new Error('Outside batch presentation fixture');
     };
     return {
+      ...unsupportedDappViews,
       getSnapshot: () => ({
         revision: current.current.review?.revision ?? 0,
         status: 'ready',
@@ -158,7 +161,7 @@ export function NativeSmartBatchFixture() {
         network: null,
         proposals: [],
         sessions: [],
-        signingReview: current.current.review,
+        controlReview: null, sentryReview: null, signingReview: current.current.review,
         callsStatus: current.current.status,
         error: null,
       }),

@@ -4,10 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FIAT_QUOTE_CURRENCIES } from '../../../../source/shared/nativeCoinQuotes.ts';
 import { DEFAULT_FIAT_CURRENCY, type FiatCurrency } from '../core/fiatPreference.ts';
 import { reloadFiatCurrency, saveFiatCurrency, useFiatCurrency } from '../platform/fiatPreferences';
+import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput } from './IdleActivityBoundary';
 import { Button, Card, colors, Header, Notice, Row, styles, Text } from '../ui';
 
 export function DisplayCurrency({ onBack }: { onBack(): void }) {
+  const { t, i18n } = useNativeTranslation();
   const preference = useFiatCurrency();
   const saved = preference.status === 'ready' ? preference.currency : null;
   const [search, setSearch] = useState('');
@@ -17,9 +19,9 @@ export function DisplayCurrency({ onBack }: { onBack(): void }) {
   const selected = choice ?? saved;
   const query = search.trim().toLowerCase();
   const currencies = useMemo(() => {
-    const names = typeof Intl.DisplayNames === 'function' ? new Intl.DisplayNames(undefined, { type: 'currency', fallback: 'none' }) : null;
+    const names = typeof Intl.DisplayNames === 'function' ? new Intl.DisplayNames([i18n.resolvedLanguage ?? 'en'], { type: 'currency', fallback: 'none' }) : null;
     return FIAT_QUOTE_CURRENCIES.map((code) => ({ code, label: code.length === 3 ? names?.of(code.toUpperCase()) : undefined }));
-  }, []);
+  }, [i18n.resolvedLanguage]);
   const items = useMemo(() => currencies.filter(({ code, label }) => code.includes(query) || label?.toLocaleLowerCase().includes(query)), [currencies, query]);
   const save = async (target: FiatCurrency) => {
     if (pending.current || target === saved || AppState.currentState !== 'active') return;
@@ -31,26 +33,26 @@ export function DisplayCurrency({ onBack }: { onBack(): void }) {
   return <SafeAreaView edges={['top', 'bottom']} style={s.screen}>
     <KeyboardAvoidingView style={s.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={s.top}>
-        <Header title="Display currency" onBack={onBack} />
-        <Text style={styles.muted}>Choose the currency for estimated wallet values.</Text>
-        {saved && <IdleTextInput accessibilityLabel="Search currencies" placeholder="Search currencies" placeholderTextColor={colors.muted}
+        <Header title={t('mobile.currency.title')} onBack={onBack} />
+        <Text style={styles.muted}>{t('mobile.currency.description')}</Text>
+        {saved && <IdleTextInput accessibilityLabel={t('mobile.currency.search')} placeholder={t('mobile.currency.search')} placeholderTextColor={colors.muted}
           autoCapitalize="characters" autoCorrect={false} maxLength={12} value={search} onChangeText={setSearch} style={s.search} />}
       </View>
       {saved ? <FlatList data={items} keyExtractor={({ code }) => code} keyboardShouldPersistTaps="handled" contentContainerStyle={s.list}
-        initialNumToRender={10} windowSize={5} ListEmptyComponent={<Text style={styles.muted}>No matching currencies.</Text>}
+        initialNumToRender={10} windowSize={5} ListEmptyComponent={<Text style={styles.muted}>{t('mobile.currency.empty')}</Text>}
         renderItem={({ item }) => <Card><Row title={item.label || item.code.toUpperCase()}
-          subtitle={`${item.code.toUpperCase()}${item.code === selected ? ' · Selected' : ''}`}
+          subtitle={`${item.code.toUpperCase()}${item.code === selected ? ` · ${t('mobile.currency.selected')}` : ''}`}
           onPress={saving ? undefined : () => setChoice(item.code)} last /></Card>} /> :
-        <View style={s.top}>{preference.status === 'loading' ? <Text style={styles.muted} accessibilityLiveRegion="polite">Loading currency…</Text> : <>
+        <View style={s.top}>{preference.status === 'loading' ? <Text style={styles.muted} accessibilityLiveRegion="polite">{t('mobile.currency.loading')}</Text> : <>
           {preference.status === 'unsupported' ? <>
-            <Notice title="Saved currency unavailable" body="Reset to USD, then choose your display currency." tone="amber" />
-            <Button title={saving ? 'Resetting…' : 'Reset to USD'} disabled={saving} onPress={() => void save(DEFAULT_FIAT_CURRENCY)} />
+            <Notice title={t('mobile.currency.unsupportedTitle')} body={t('mobile.currency.unsupportedBody')} tone="amber" />
+            <Button title={saving ? t('mobile.currency.resetting') : t('mobile.currency.reset')} disabled={saving} onPress={() => void save(DEFAULT_FIAT_CURRENCY)} />
           </> : <>
-            <Notice title="Currency unavailable" body="Reload to check which currency is saved." tone="amber" />
-            <Button title="Reload" variant="secondary" onPress={() => { setChoice(null); void reloadFiatCurrency(); }} />
+            <Notice title={t('mobile.currency.unavailableTitle')} body={t('mobile.currency.unavailableBody')} tone="amber" />
+            <Button title={t('mobile.currency.reload')} variant="secondary" onPress={() => { setChoice(null); void reloadFiatCurrency(); }} />
           </>}
         </>}</View>}
-      {saved && <View style={s.footer}><Button title={saving ? 'Saving…' : 'Save currency'} disabled={saving || !choice || choice === saved} onPress={() => { if (choice) void save(choice); }} /></View>}
+      {saved && <View style={s.footer}><Button title={saving ? t('mobile.currency.saving') : t('mobile.currency.save')} disabled={saving || !choice || choice === saved} onPress={() => { if (choice) void save(choice); }} /></View>}
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }

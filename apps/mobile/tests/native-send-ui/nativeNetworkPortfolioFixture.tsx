@@ -1,3 +1,4 @@
+import { networkSelectionReceiptFixture } from '../networkSelectionReceiptFixture';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import React, { useState } from 'react';
 import type { CustodySnapshot } from '../../src/custody/types';
@@ -41,10 +42,13 @@ const authority = {
       accounts: [{ id: accountId, type: 'HDAccount', index: 0, slip44, address: selectedAddress, label: 'Account 1' }],
       active: { accountId, networkId: network.id } });
     state = Object.freeze({ ...state, phase: 'ready', account: { network: network.id, address: selectedAddress } }); publish();
+    return networkSelectionReceiptFixture(network, { accountId, address: selectedAddress, networkId: id }, revision, catalogueRevision, () => {
+      if (state.phase !== 'ready' || state.revision !== revision + 1 || catalogue.revision !== catalogueRevision + 1 || catalogue.active.networkId !== id || catalogue.active.accountId !== accountId) throw Error('CANCELLED');
+    });
   },
   cancelAccountOperation() {},
 };
-const networks = createNativeNetworkView(authority, { utxoSendAvailable: true });
+const networks = createNativeNetworkView(authority, { utxoSendAvailable: true, fetch: async () => { throw Error('Unexpected HTTP in network portfolio fixture'); } });
 const reader: BalanceReader = {
   async readBalance(id) {
     reads.push(id); return { chainId: Number(getNativeNetwork(id).chainId), units: '1234000000000000000' };
@@ -56,15 +60,15 @@ const reader: BalanceReader = {
     reads.push(id);
     return { kind: 'utxo', networkId: id, chainId: network.chainId, genesisHash: network.genesisHash,
       confirmedUnits: '123400000', pendingDeltaUnits: '-123', unconfirmedTransactions: 1, observedHeight: 123,
-      ...(id === 'syscoin' && sysxFixture !== 'unavailable' ? { sysx: sysxFixture === 'held'
-        ? { confirmedUnits: '9007199254740995', pendingDeltaUnits: '-1' }
-        : { confirmedUnits: '0', pendingDeltaUnits: '0' } } : {}) };
+      ...(id === 'syscoin' && sysxFixture !== 'unavailable' ? { assets: sysxFixture === 'held'
+        ? [{ assetGuid: '123456', symbol: 'SYSX', decimals: 8, confirmedUnits: '9007199254740995', pendingDeltaUnits: '-1' }]
+        : [] } : {}) };
   },
 };
 
 declare global { interface Window { __nativeNetworkPortfolio: { reads(): readonly string[]; sends(): number; select(id: EvmNetworkId): Promise<void>; setSysx(value: SysxFixture): void }; } }
 window.__nativeNetworkPortfolio = { reads: () => [...reads], sends: () => sends,
-  select: (id) => authority.selectNetwork(id, state.revision, catalogue.revision), setSysx: (value) => { sysxFixture = value; } };
+  select: async (id) => { await authority.selectNetwork(id, state.revision, catalogue.revision); }, setSysx: (value) => { sysxFixture = value; } };
 export function NativeNetworkPortfolioFixture() {
   const [view, setView] = useState<'portfolio' | 'networks'>('portfolio');
   return view === 'networks' ? <NativeNetworks controller={networks} onBack={() => setView('portfolio')} /> :

@@ -6,7 +6,7 @@ import { SENTRY_NETWORKS } from '../shared/sentryNetworks.ts';
 
 import type { SentryOperationHost } from './sentryApprovalHost.ts';
 import type {
-  SentryApprovalScope,
+  SentryRequestScope,
   SentryApproval,
   SentrySettings,
 } from './sentryApprovalTypes.ts';
@@ -31,7 +31,7 @@ type Pending = {
   context: SentryManagementContext;
   expiresAt: number;
   publicApproval: SentryApproval;
-  scope: SentryApprovalScope;
+  scope: SentryRequestScope;
   signing: boolean;
 };
 const APPROVAL_TTL_MS = 10 * 60 * 1000;
@@ -64,10 +64,13 @@ export class SharedSentryOperationApprovals {
   private readonly approvals = new Map<string, Pending>();
   private readonly host: SentryOperationHost;
   constructor(host: SentryOperationHost) {
+    if (typeof host.captureApprovalScope !== 'function')
+      throw new Error('Sentry request-authority port is required');
     this.host = host;
   }
-  private assertCurrent(scope: SentryApprovalScope) {
+  private assertCurrent(scope: SentryRequestScope) {
     assertSynchronousEvmFeeGuard(() => this.host.assertCurrent(scope));
+    assertSynchronousEvmFeeGuard(scope.assertRequestCurrent);
   }
   public clear() {
     this.approvals.clear();
@@ -75,7 +78,7 @@ export class SharedSentryOperationApprovals {
   }
 
   private async context(
-    scope: SentryApprovalScope,
+    scope: SentryRequestScope,
     request: SentryOperationRequest | SentryManagementRequest
   ): Promise<{
     context: SentryManagementContext;
@@ -173,7 +176,8 @@ export class SharedSentryOperationApprovals {
   }
 
   public async prepare(rawRequest: unknown, origin: string): Promise<string> {
-    const scope = this.host.captureScope();
+    const scope = this.host.captureApprovalScope(origin);
+    this.assertCurrent(scope);
     const admission = await this.host.captureCollateralAdmission(scope);
     this.assertCurrent(scope);
     const sdk = await loadSdk();
@@ -320,12 +324,13 @@ export class SharedSentryOperationApprovals {
     id: string,
     transactionHex: string
   ): Promise<SentryFeeReview> {
-    const scope = this.host.captureScope();
     const entry = this.feeAuthorizations.get(
       id,
       transactionHex,
-      scope.identity
+      this.host.captureScope().identity
     );
+    const scope = entry.scope;
+    this.assertCurrent(scope);
     const fresh = await this.context(scope, entry.request);
     if (
       !isEqual(fresh.context, entry.context) ||
@@ -489,7 +494,7 @@ export class SharedSentryOperationApprovals {
               ...publicApproval.request,
               transactionHex: response.transactionHex,
             },
-            scopeIdentity: scope.identity,
+            scope,
             serviceUrl: publicApproval.serviceUrl,
           });
         this.approvals.delete(params.id);

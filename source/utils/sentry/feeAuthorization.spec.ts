@@ -14,7 +14,12 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 const entry = () => ({
-  scopeIdentity: 'account/network/session',
+  scope: {
+    identity: 'account/network/session',
+    rootPublicIdentity: 'root',
+    network: { chainId: 57, kind: 'syscoin', url: 'https://blockbook.example' },
+    assertRequestCurrent: () => undefined,
+  },
   origin: 'https://sysnode.example',
   serviceUrl: 'https://trusted.example',
   request: {
@@ -29,19 +34,19 @@ const entry = () => ({
 it('binds exact transaction bytes, origin and complete wallet scope without consuming reads', () => {
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
-  const id = registry.find('010203', entry().origin, entry().scopeIdentity);
+  const id = registry.find('010203', entry().origin, entry().scope.identity);
   expect(
-    registry.get(id, '010203', entry().scopeIdentity).request.transactionHex
+    registry.get(id, '010203', entry().scope.identity).request.transactionHex
   ).toBe('010203');
-  expect(registry.find('010203', entry().origin, entry().scopeIdentity)).toBe(
+  expect(registry.find('010203', entry().origin, entry().scope.identity)).toBe(
     id
   );
   for (const changed of ['010204', '000203', '01020300'])
     expect(() =>
-      registry.find(changed, entry().origin, entry().scopeIdentity)
+      registry.find(changed, entry().origin, entry().scope.identity)
     ).toThrow(/exact/);
   expect(() =>
-    registry.find('010203', 'https://another.example', entry().scopeIdentity)
+    registry.find('010203', 'https://another.example', entry().scope.identity)
   ).toThrow(/exact/);
   expect(() => registry.get(id, '010203', 'another-account')).toThrow(
     /expired/
@@ -51,16 +56,16 @@ it('binds exact transaction bytes, origin and complete wallet scope without cons
 it('allows failure retry but prevents concurrent and second disclosed signatures', () => {
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
-  const id = registry.find('010203', entry().origin, entry().scopeIdentity);
-  const failed = registry.acquire(id, '010203', entry().scopeIdentity);
-  expect(() => registry.acquire(id, '010203', entry().scopeIdentity)).toThrow(
+  const id = registry.find('010203', entry().origin, entry().scope.identity);
+  const failed = registry.acquire(id, '010203', entry().scope.identity);
+  expect(() => registry.acquire(id, '010203', entry().scope.identity)).toThrow(
     /already/
   );
   failed();
-  const completed = registry.acquire(id, '010203', entry().scopeIdentity);
+  const completed = registry.acquire(id, '010203', entry().scope.identity);
   completed(true);
   completed();
-  expect(() => registry.get(id, '010203', entry().scopeIdentity)).toThrow(
+  expect(() => registry.get(id, '010203', entry().scope.identity)).toThrow(
     /expired/
   );
 });
@@ -68,19 +73,19 @@ it('allows failure retry but prevents concurrent and second disclosed signatures
 it('replaces prior consent for identical bytes when the user authorizes again', () => {
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
-  const prior = registry.find('010203', entry().origin, entry().scopeIdentity);
+  const prior = registry.find('010203', entry().origin, entry().scope.identity);
   registry.remember({ ...entry(), context: { fresh: true } as any });
   const current = registry.find(
     '010203',
     entry().origin,
-    entry().scopeIdentity
+    entry().scope.identity
   );
   expect(current).not.toBe(prior);
-  expect(() => registry.get(prior, '010203', entry().scopeIdentity)).toThrow(
+  expect(() => registry.get(prior, '010203', entry().scope.identity)).toThrow(
     /expired/
   );
   expect(
-    registry.get(current, '010203', entry().scopeIdentity).context
+    registry.get(current, '010203', entry().scope.identity).context
   ).toEqual({ fresh: true });
 });
 
@@ -88,23 +93,23 @@ it('expires after ten minutes and bounds retained public approvals', () => {
   jest.useFakeTimers();
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
-  const id = registry.find('010203', entry().origin, entry().scopeIdentity);
+  const id = registry.find('010203', entry().origin, entry().scope.identity);
   jest.advanceTimersByTime(600000);
-  expect(() => registry.get(id, '010203', entry().scopeIdentity)).toThrow(
+  expect(() => registry.get(id, '010203', entry().scope.identity)).toThrow(
     /expired/
   );
   registry.remember(entry());
   const evicted = registry.find(
     '010203',
     entry().origin,
-    entry().scopeIdentity
+    entry().scope.identity
   );
   for (let index = 0; index < 8; index++)
     registry.remember({
       ...entry(),
       request: { ...entry().request, transactionHex: `unique-${index}` },
     });
-  expect(() => registry.get(evicted, '010203', entry().scopeIdentity)).toThrow(
+  expect(() => registry.get(evicted, '010203', entry().scope.identity)).toThrow(
     /expired/
   );
 });

@@ -9,6 +9,8 @@ import { getNativeNetwork } from '../custody/networkContext';
 import { openTestnetFaucet } from '../custody/testnetFaucet';
 import { useNativeCoinQuote } from '../portfolio/useNativeCoinQuote';
 import { PortfolioQuote } from './PortfolioQuote';
+import { NativeSptAssets } from './NativeSptAssets';
+import { supportsSptUtxoChain } from '../../../../source/shared/sptInventory';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
 import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 import type { ShellLeafNavigation } from './RealAppShell';
@@ -25,6 +27,9 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState(false);
   const [openingFaucet, setOpeningFaucet] = useState(false);
+  const [tokenTitle, setTokenTitle] = useState<string | null>(null);
+  const tokenBack = useRef<(() => boolean) | null>(null);
+  const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
   const lifecycle = useRef({ alive: true, action: 0, busy: false });
   const observedGeneration = useRef(authority.getSnapshot().generation);
   const invalidateActions = useCallback(() => { lifecycle.current.action++; lifecycle.current.busy = false; setBusy(false); setOpeningFaucet(false); setFeedback(''); }, []);
@@ -35,7 +40,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const getSnapshot = useCallback(() => authority.getSnapshot(), [authority]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   useEffect(() => { const current = lifecycle.current; current.alive = true; const subscription = AppState.addEventListener('change', (state) => { if (state !== 'active') invalidateActions(); }); return () => { current.alive = false; current.action++; subscription.remove(); }; }, [invalidateActions]);
-  const handleBack = () => { if (mode === 'home') return false; setMode('home'); invalidateActions(); return true; };
+  const handleBack = () => { if (mode === 'home') return tokenBack.current?.() ?? false; setMode('home'); invalidateActions(); return true; };
   useLayoutEffect(() => navigation?.registerBack(handleBack));
   useLayoutEffect(() => { navigation?.setImmersive(mode !== 'home'); return () => navigation?.setImmersive(false); }, [navigation, mode]);
   useEffect(() => { const listener = BackHandler.addEventListener('hardwareBackPress', handleBack); return () => listener.remove(); });
@@ -73,12 +78,12 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
     ? snapshot.balance.pendingDeltaUnits : null;
   const pendingAmount = pending === null ? null : formatBalanceDelta(pending, network.decimals);
   const loading = snapshot.balance.status === 'loading';
-  const back = () => { invalidateActions(); if (mode !== 'home') setMode('home'); else onExit(); };
+  const back = () => { invalidateActions(); if (mode !== 'home') setMode('home'); else if (!tokenBack.current?.()) onExit(); };
   const faucetCard = address && network.kind === 'evm' && <TestnetFaucetCard registration={getNativeNetwork(network.id)} busy={busy} opening={openingFaucet} onCopy={mode === 'receive' ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const feedbackView = !!feedback && <Text accessibilityRole={feedback.startsWith('Could not ') ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, feedback.startsWith('Could not ') && { color: colors.red }]}>{feedback}</Text>;
-  return <SafeAreaView style={s.safe} edges={navigation && mode === 'home' ? ['top'] : ['top', 'bottom']}><Screen key={mode} footerScrollable={receiving} gap={mode === 'receive' ? 12 : 22} footer={receiving ? <><Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}><Button title="Copy address" icon="copy" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} /><Button title="Share address" icon="share" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} /></View></> : undefined}>
-    <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : 'Wallet'} subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={back} right={mode === 'home' && !stackActions ? <Button title="Accounts" variant="quiet" onPress={onAccounts} /> : undefined} />
-    {mode === 'home' && stackActions && <Button title="Accounts" variant="quiet" onPress={onAccounts} style={s.accountsBelowHeader} />}
+  return <SafeAreaView style={s.safe} edges={navigation && mode === 'home' && !tokenTitle ? ['top'] : ['top', 'bottom']}><Screen key={mode} footerScrollable={receiving} gap={mode === 'receive' ? 12 : 22} footer={receiving ? <><Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}><Button title="Copy address" icon="copy" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} /><Button title="Share address" icon="share" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} /></View></> : undefined}>
+    <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : tokenTitle ?? 'Wallet'} subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={back} right={mode === 'home' && !tokenTitle && !stackActions ? <Button title="Accounts" variant="quiet" onPress={onAccounts} /> : undefined} />
+    {mode === 'home' && !tokenTitle && stackActions && <Button title="Accounts" variant="quiet" onPress={onAccounts} style={s.accountsBelowHeader} />}
     {snapshot.status !== 'ready' || !address ? <Notice title="Public account hidden" body="Open your watch account to view its public balance." /> : mode === 'networks' ? <>
       <Text style={styles.muted}>Choose the network for this saved EVM public address.</Text>
       {authority.getAccountNetworks(account).map((choice) => <Card key={choice.id}><Row title={choice.name} subtitle={`${choice.symbol}${choice.testnet ? ' · Test network' : ''}${choice.id === network.id ? ' · Selected' : ''}`} icon="globe" onPress={() => { authority.selectNetwork(choice.id); setMode('home'); setFeedback(''); void authority.refresh(); }} last /></Card>)}
@@ -89,14 +94,21 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
       {utxo && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
       {faucetCard}
     </> : <>
+      {!tokenTitle && <>
       <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={46} /><Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text><Text style={[s.amount, amount !== null && amount.length > 14 && styles.walletBalanceLong, amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text><PortfolioQuote {...quote} testID="watch-portfolio-quote" />{loading && <ActivityIndicator color={colors.pink} />}</View>
       {utxo && <Card style={{ padding: 18, gap: 6 }}><Text style={s.label}>Pending balance change</Text><Text accessibilityLabel={pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`} style={s.name}>{pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text><Text style={styles.muted}>Incoming and outgoing transactions waiting for confirmation.</Text></Card>}
+      </>}
+      {network.kind === 'utxo' && supportsSptUtxoChain(network.chainId) && <NativeSptAssets
+        key={`${account.id}:${network.id}`} holdings={snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo' ? snapshot.balance.assets ?? null : null}
+        loading={loading} onRefresh={() => void authority.refresh()} onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack} />}
 
+      {!tokenTitle && <>
       {snapshot.balance.status === 'error' && <Notice title="Could not load your balance" body="Your address is still available. Refresh to try again." tone="amber" />}
       <View style={[s.actions, stackActions && s.stackedActions]}><Button title="Receive" icon="arrow-down-left" onPress={() => { invalidateActions(); setMode('receive'); }} style={actionStyle} /><Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" disabled={loading} onPress={() => void authority.refresh()} variant="secondary" style={actionStyle} /></View>
       <Card style={s.identity}><Text style={s.label}>{account.name}</Text><Text selectable style={s.address}>{address}</Text></Card>
       {faucetCard}
       <Card><Row title="Network" subtitle={`${network.name}`} icon="globe" onPress={utxo ? undefined : () => { invalidateActions(); setMode('networks'); }} /><Row title="Hide public account" icon="lock" onPress={onLock} last /></Card>
+      </>}
     </>}
     {mode !== 'receive' && feedbackView}
   </Screen></SafeAreaView>;

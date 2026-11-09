@@ -272,7 +272,7 @@ for (const scenario of ['import', 'generate'] as const) {
         for (const [index, network, value] of [
           [0, 'ethereum', 456n], [1, 'syscoin-nevm-testnet', 789n],
         ] as const) {
-          await authority.selectNetwork(network, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+          await authority.selectNetwork(network, authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
           const entry = container[index]!;
           assert.equal(entry.chainId, getNativeNetwork(network).chainId);
           assert.equal(entry.phase, 'attempted'); assert.equal(entry.nonce, 0);
@@ -285,7 +285,7 @@ for (const scenario of ['import', 'generate'] as const) {
           assert.equal(signed.maxFeePerGas, 3n); assert.equal(signed.maxPriorityFeePerGas, 1n);
           assert(!bundle.raw!.includes(saved!.rawTransaction));
         }
-        await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+        await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         const createdReport = {
           status: 'passed',
@@ -359,7 +359,7 @@ for (const scenario of ['import', 'generate'] as const) {
                 'ethereum',
                 authority.getSnapshot().revision,
                 authority.getCatalogue()!.revision
-              );
+              , () => {});
             await authority.manageAccounts(
               { kind: 'select', id: 'hd:60:1' },
               authority.getSnapshot().revision,

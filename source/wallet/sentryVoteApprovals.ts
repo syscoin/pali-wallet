@@ -7,7 +7,7 @@ import { SENTRY_NETWORKS } from '../shared/sentryNetworks.ts';
 import type { SentryApprovalHost } from './sentryApprovalHost.ts';
 import type {
   SentryVoteApproval,
-  SentryApprovalScope,
+  SentryRequestScope,
 } from './sentryApprovalTypes.ts';
 import type {
   SentryAuthorityKey,
@@ -21,7 +21,7 @@ interface IPendingSentryVote {
   context: SentryGovernanceVoteContext;
   expiresAt: number;
   publicApproval: SentryVoteApproval;
-  scope: SentryApprovalScope;
+  scope: SentryRequestScope;
   signing: boolean;
 }
 
@@ -31,11 +31,14 @@ export class SharedSentryVoteApprovals {
   private readonly host: SentryApprovalHost;
 
   constructor(host: SentryApprovalHost) {
+    if (typeof host.captureApprovalScope !== 'function')
+      throw new Error('Sentry request-authority port is required');
     this.host = host;
   }
 
-  private assertCurrent(scope: SentryApprovalScope) {
+  private assertCurrent(scope: SentryRequestScope) {
     assertSynchronousEvmFeeGuard(() => this.host.assertCurrent(scope));
+    assertSynchronousEvmFeeGuard(scope.assertRequestCurrent);
   }
 
   public clear() {
@@ -43,7 +46,7 @@ export class SharedSentryVoteApprovals {
   }
 
   private async context(
-    scope: SentryApprovalScope,
+    scope: SentryRequestScope,
     request: SentryGovernanceVoteRequest
   ) {
     const settings = await this.host.getSettings(scope);
@@ -84,7 +87,8 @@ export class SharedSentryVoteApprovals {
   }
 
   public async prepare(raw: unknown, origin: string) {
-    const scope = this.host.captureScope();
+    const scope = this.host.captureApprovalScope(origin);
+    this.assertCurrent(scope);
     const request = await this.host.runCrypto<SentryGovernanceVoteRequest>(
       { type: 'validateVote', request: raw },
       () => this.assertCurrent(scope)

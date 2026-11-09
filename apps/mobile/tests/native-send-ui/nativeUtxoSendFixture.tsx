@@ -16,6 +16,7 @@ let confirmations = 0, opens = 0, expired = false;
 window.__nativeUtxoLedgerFixture = { confirmations: () => confirmations, opens: () => opens, expire: () => { expired = true; } };
 declare global { interface Window { __nativeUtxoLedgerFixture: { confirmations(): number; opens(): number; expire(): void; }; } }
 const request = {
+  transactionOptions: { rbf: true },
   feeSatoshis: '452',
   outputs: [
     { address: recipient, amountSatoshis: '123456789' },

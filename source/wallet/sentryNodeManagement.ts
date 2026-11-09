@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
 import {
   normalizeSentryServiceUrl,
   SENTRY_NETWORKS,
@@ -47,6 +48,10 @@ export type SentryNodeManagementHost<Scope> = Readonly<{
     network: SentryNetwork,
     assertCurrent: () => void
   ): Promise<SentryCollateralAdmission>;
+  captureLinkScope(origin: string): Readonly<{
+    assertCurrent(): void;
+    scope: Scope;
+  }>;
   captureScope(): Scope;
   /** Atomically retain this node and its collateral against the exact host observation. */
   commitLink(
@@ -91,8 +96,11 @@ const sameNode = (left: SentryLinkedNode, right: SentryLinkedNode) =>
 export function createSentryNodeManagement<Scope>(
   host: SentryNodeManagementHost<Scope>
 ) {
+  if (typeof host.captureLinkScope !== 'function')
+    throw new Error('Sentry link request-authority port is required');
   type Pending = {
     admission: SentryCollateralAdmission;
+    assertRequestCurrent(): void;
     committing: boolean;
     controller: AbortController;
     expiresAt: number;
@@ -144,6 +152,7 @@ export function createSentryNodeManagement<Scope>(
     if (!link || link.expiresAt <= host.now())
       throw new Error('This Sentry link approval expired');
     assertCurrent(link.scope);
+    assertSynchronousEvmFeeGuard(link.assertRequestCurrent);
     return link;
   };
   const readNode = async (
@@ -181,8 +190,12 @@ export function createSentryNodeManagement<Scope>(
       raw: unknown,
       origin: string
     ): Promise<SentryNodeLinkReview> {
-      const scope = host.captureScope();
-      const check = () => assertCurrent(scope);
+      const requestScope = host.captureLinkScope(origin);
+      const { scope } = requestScope;
+      const check = () => {
+        assertCurrent(scope);
+        assertSynchronousEvmFeeGuard(requestScope.assertCurrent);
+      };
       check();
       const network = host.network(scope);
       const request = raw as {
@@ -246,6 +259,7 @@ export function createSentryNodeManagement<Scope>(
       links.set(id, {
         admission,
         scope,
+        assertRequestCurrent: requestScope.assertCurrent,
         controller,
         expiresAt: host.now() + APPROVAL_TTL_MS,
         committing: false,
@@ -266,6 +280,7 @@ export function createSentryNodeManagement<Scope>(
       return host.runExclusive(async () => {
         const check = () => {
           host.assertCurrent(link.scope);
+          assertSynchronousEvmFeeGuard(link.assertRequestCurrent);
           if (
             links.get(review.id) !== link ||
             (!link.committing && (disposed || link.expiresAt <= host.now()))

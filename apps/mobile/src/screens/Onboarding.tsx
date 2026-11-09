@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 
 import { colors, Icon, PaliMark } from '../ui';
+import { useNativeTranslation } from '../platform/localization';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
 import { getUtxoNetwork, isCustomUtxoNetworkId, UTXO_NETWORKS, type UtxoNetwork } from '../core/utxoNetworks';
@@ -56,6 +57,7 @@ export function Welcome({
   onDesign,
   onWallet,
 }: WelcomeProps) {
+  const { t } = useNativeTranslation();
   const compact = useWindowDimensions().height < 740;
   return (
     <View style={styles.screen}>
@@ -89,13 +91,13 @@ export function Welcome({
 
         <View style={styles.intro}>
           <Text accessibilityRole="header" style={styles.welcomeTitle}>
-            Your crypto.{'\n'}
-            <Text style={styles.titleAccent}>A clearer view.</Text>
+            {t('mobile.welcome.titleFirst')}{'\n'}
+            <Text style={styles.titleAccent}>{t('mobile.welcome.titleAccent')}</Text>
           </Text>
           <Text style={styles.welcomeDescription}>
             {onWallet
-              ? 'Create a wallet that stays with you, or follow a public address.'
-              : 'Follow your balances with a public address. Your recovery phrase and private keys stay with you.'}
+              ? t('mobile.welcome.nativeDescription')
+              : t('mobile.welcome.watchDescription')}
           </Text>
         </View>
 
@@ -105,8 +107,8 @@ export function Welcome({
           </View>
           <Text style={styles.trustText}>
             {onWallet
-              ? 'Your wallet. Your recovery phrase. Your control.'
-              : 'Watch-only. No access to spend your funds.'}
+              ? t('mobile.welcome.nativeControl')
+              : t('mobile.welcome.watchControl')}
           </Text>
         </View>
 
@@ -122,24 +124,24 @@ export function Welcome({
                 ]}
               >
                 <Text style={styles.primaryButtonText}>
-                  Review full wallet design
+                  {t('mobile.welcome.designReview')}
                 </Text>
                 <Icon name="arrow-right" size={21} color={colors.bg} />
               </IdlePressable>
             )}
             <IdlePressable
               accessibilityRole="button"
-              accessibilityHint="Open a separate interactive preview using sample balances"
+              accessibilityHint={t('mobile.welcome.previewHint')}
               onPress={onPreview}
               style={({ pressed }) => [
                 styles.secondaryButton,
                 pressed && styles.pressed,
               ]}
             >
-              <Text style={styles.secondaryButtonText}>Explore the design</Text>
+              <Text style={styles.secondaryButtonText}>{t('mobile.welcome.preview')}</Text>
             </IdlePressable>
             <Text style={styles.previewNote}>
-              The design preview uses sample balances.
+              {t('mobile.welcome.previewNote')}
             </Text>
           </View>
         )}
@@ -154,13 +156,13 @@ export function Welcome({
               pressed && styles.pressed,
             ]}
           >
-            <Text style={styles.primaryButtonText}>Set up your wallet</Text>
+            <Text style={styles.primaryButtonText}>{t('mobile.welcome.setup')}</Text>
             <Icon name="arrow-right" size={21} color={colors.bg} />
           </IdlePressable>
         )}
         <IdlePressable
           accessibilityRole="button"
-          accessibilityHint="Add a public address or account key to view its balance"
+          accessibilityHint={t('mobile.welcome.watchHint')}
           onPress={onWatch}
           style={({ pressed }) => [
             onWallet ? styles.secondaryButton : styles.primaryButton,
@@ -172,7 +174,7 @@ export function Welcome({
               onWallet ? styles.secondaryButtonText : styles.primaryButtonText
             }
           >
-            Watch an account
+            {t('mobile.welcome.watch')}
           </Text>
           {!onWallet && <Icon name="arrow-right" size={21} color={colors.bg} />}
         </IdlePressable>

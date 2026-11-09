@@ -8,6 +8,7 @@ import {
   normalizeDappCapabilitiesRequest,
   projectDappCapabilities,
 } from '../../../../shared/dappCapabilities.ts';
+import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
 import { hasLiveEoaCallsSequence } from '../../handlers/approvalSubmission';
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
@@ -18,6 +19,7 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import { createDappApprovalLifetime } from 'utils/dappApprovalLifetime';
 import { isHexString } from 'utils/ethersV6Compat';
 import { networkChain } from 'utils/network';
+import { createSentryDappApprovalLifetime } from 'utils/sentry/approvalLifetime';
 import { IUtxoSigningContext } from 'utils/utxoSigningContext';
 
 import { getUnrestrictedMethods } from './method-registry';
@@ -359,38 +361,12 @@ export class WalletMethodHandler implements IMethodHandler {
           // Get the current network info
           const network = dapp.getNetwork();
 
-          const permissions = [
-            {
-              id: '1', // Add id field that test dapp expects
-              parentCapability: 'eth_accounts',
-              invoker: host,
-              caveats: [
-                {
-                  type: 'restrictReturnedAccounts',
-                  value: [account.address], // Ensure we return address, not full account object
-                },
-              ],
-              date: dappInfo.date,
-            },
-          ];
-
-          // Add endowment:permitted-chains permission for EVM networks
-          if (vault && !vault.isBitcoinBased) {
-            permissions.push({
-              id: '2',
-              parentCapability: 'endowment:permitted-chains',
-              invoker: host,
-              caveats: [
-                {
-                  type: 'restrictNetworkSwitching',
-                  value: [`0x${network.chainId.toString(16)}`], // Convert to hex format
-                },
-              ],
-              date: dappInfo.date,
-            });
-          }
-
-          return permissions;
+          return projectDappPermissions(
+            host,
+            account.address,
+            dappInfo.date,
+            vault && !vault.isBitcoinBased ? [network.chainId] : undefined
+          );
 
         case 'revokePermissions':
           // Check params to see which permissions to revoke
@@ -807,44 +783,69 @@ export class SysMethodHandler implements IMethodHandler {
       // For sys methods, params are usually in array form already
       let popupData = params?.[0] || params;
       let sentryApprovalId: string | undefined;
-      if (
-        methodName === 'signSentryOperation' ||
-        methodName === 'linkSentryNode' ||
-        methodName === 'signSentryVote'
-      ) {
-        const { dapp, wallet } = getController();
-        const connection = dapp.get(host);
-        const { vault } = store.getState();
-        if (
-          !connection ||
-          !vault.isBitcoinBased ||
-          vault.activeNetwork.kind !== INetworkType.Syscoin ||
-          connection.accountId !== vault.activeAccount.id ||
-          connection.accountType !== vault.activeAccount.type
-        )
-          throw cleanErrorStack(
-            ethErrors.provider.unauthorized(
-              'The connected account is no longer selected'
-            )
-          );
-        if (!Array.isArray(params) || params.length !== 1)
-          throw cleanErrorStack(
-            ethErrors.rpc.invalidParams('Supply one typed Sentry operation')
-          );
-        sentryApprovalId =
-          methodName === 'linkSentryNode'
-            ? await wallet.prepareSentryLink(params[0], host)
-            : methodName === 'signSentryVote'
-            ? await wallet.prepareSentryVote(params[0], host)
-            : await wallet.prepareSentryOperation(params[0], host);
-        // The site never controls the popup's request, origin, key list or review.
-        popupData = { sentryApprovalId };
-      }
       let utxoLifetime:
         | ReturnType<typeof createDappApprovalLifetime>
         | undefined;
       let unsubscribeUtxo: (() => void) | undefined;
+      let sentryLifetime:
+        | ReturnType<typeof createSentryDappApprovalLifetime>
+        | undefined;
       try {
+        if (
+          methodName === 'signSentryOperation' ||
+          methodName === 'linkSentryNode' ||
+          methodName === 'signSentryVote'
+        ) {
+          const { dapp, wallet } = getController();
+          const connection = dapp.get(host);
+          const { vault } = store.getState();
+          if (
+            !connection ||
+            !vault.isBitcoinBased ||
+            vault.activeNetwork.kind !== INetworkType.Syscoin ||
+            connection.accountId !== vault.activeAccount.id ||
+            connection.accountType !== vault.activeAccount.type
+          )
+            throw cleanErrorStack(
+              ethErrors.provider.unauthorized(
+                'The connected account is no longer selected'
+              )
+            );
+          if (!Array.isArray(params) || params.length !== 1)
+            throw cleanErrorStack(
+              ethErrors.rpc.invalidParams('Supply one typed Sentry operation')
+            );
+          const assertGrant = dapp.captureApproval(host);
+          const readIdentity = () => {
+            const current = store.getState();
+            return JSON.stringify({
+              root: current.vault.accounts?.HDAccount?.[0]?.xpub,
+              session: wallet.getWalletSessionGeneration(),
+              account: current.vault.activeAccount,
+              network: current.vault.activeNetwork,
+              slip44: current.vaultGlobal.activeSlip44,
+            });
+          };
+          const identity = readIdentity();
+          sentryLifetime = createSentryDappApprovalLifetime(
+            method,
+            () => {
+              assertGrant();
+              if (readIdentity() !== identity) throw requestCancelledError();
+            },
+            context.originalRequest.signal
+          );
+          sentryApprovalId =
+            methodName === 'linkSentryNode'
+              ? await wallet.prepareSentryLink(params[0], host)
+              : methodName === 'signSentryVote'
+              ? await wallet.prepareSentryVote(params[0], host)
+              : await wallet.prepareSentryOperation(params[0], host);
+          sentryLifetime.assertCurrent();
+          // The site never controls the popup's request, origin, key list or review.
+          popupData = { sentryApprovalId };
+        }
+
         if (methodName === 'sign' || methodName === 'signAndSend') {
           const { dapp, wallet } = getController();
           const connection = dapp.get(host);
@@ -893,11 +894,14 @@ export class SysMethodHandler implements IMethodHandler {
           if (!lifetime.isCurrent()) throw requestCancelledError();
           popupData = { ...popupData, approvedContext, sentryFeeAuthorization };
         }
-        return await requestCoordinator.coordinatePopupRequest(
+        const result = await requestCoordinator.coordinatePopupRequest(
           context,
           () =>
             popupPromise({
-              signal: utxoLifetime?.signal ?? context.originalRequest.signal,
+              signal:
+                sentryLifetime?.signal ??
+                utxoLifetime?.signal ??
+                context.originalRequest.signal,
               sender: context.originalRequest.sender,
               host,
               route: methodConfig.popupRoute!,
@@ -906,6 +910,8 @@ export class SysMethodHandler implements IMethodHandler {
             }),
           methodConfig.popupRoute!
         );
+        sentryLifetime?.retainResponse(result);
+        return result;
       } finally {
         unsubscribeUtxo?.();
         utxoLifetime?.dispose();
@@ -918,6 +924,7 @@ export class SysMethodHandler implements IMethodHandler {
             : wallet.cancelSentryApproval(sentryApprovalId)
           ).catch(() => undefined);
         }
+        sentryLifetime?.release();
       }
     }
 

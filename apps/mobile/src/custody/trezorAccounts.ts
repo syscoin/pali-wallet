@@ -22,6 +22,7 @@ export type NativeTrezorResumeIntent = Readonly<{
       amount: string;
       max?: boolean;
       asset?: NativeUtxoAsset;
+      rbf?: boolean;
     }>
 );
 

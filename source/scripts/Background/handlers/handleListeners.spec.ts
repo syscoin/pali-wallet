@@ -42,6 +42,7 @@ Object.defineProperty(global, 'chrome', {
   writable: true,
 });
 
+import { onMessage } from '../controllers/message-handler';
 import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { checkForUpdates } from 'scripts/Background/handlers/handlePaliUpdates';
@@ -49,6 +50,7 @@ import {
   startPolling,
   getPollingInterval,
 } from 'scripts/Background/utils/startPolling';
+import { createSentryDappApprovalLifetime } from 'utils/sentry/approvalLifetime';
 
 import { handleListeners, resetListenersFlag } from './handleListeners';
 
@@ -128,6 +130,7 @@ jest.mock('scripts/Background/controllers/message-handler', () => ({
   onMessage: jest.fn(),
 }));
 jest.mock('state/store', () => ({
+  subscribe: jest.fn(() => jest.fn()),
   getState: jest.fn(() => ({
     vault: {
       isBitcoinBased: false,
@@ -341,6 +344,76 @@ describe('Background: handleListeners', () => {
 
     beforeEach(() => {
       sendResponse.mockClear();
+    });
+
+    it.each([
+      'sys_signSentryOperation',
+      'sys_signSentryVote',
+      'sys_linkSentryNode',
+    ])(
+      'requires the exact %s authority at the actual runtime response',
+      async (method) => {
+        const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+        const result = { version: 1, transactionHex: '0102' };
+        const approval = createSentryDappApprovalLifetime(
+          method,
+          () => undefined
+        );
+        approval.retainResponse(result);
+        approval.release();
+        (onMessage as jest.Mock).mockResolvedValueOnce(result);
+        listener(
+          { type: 'METHOD_REQUEST', data: { method } },
+          contentScriptSender,
+          sendResponse
+        );
+        await new Promise(setImmediate);
+        expect(sendResponse).toHaveBeenCalledWith(result);
+        expect(sendResponse.mock.calls[0][0]).toBe(result);
+        expect(Object.keys(result)).toEqual(['version', 'transactionHex']);
+        sendResponse.mockClear();
+        (onMessage as jest.Mock).mockResolvedValueOnce({ ...result });
+        listener(
+          { type: 'METHOD_REQUEST', data: { method } },
+          contentScriptSender,
+          sendResponse
+        );
+        await new Promise(setImmediate);
+        expect(sendResponse).toHaveBeenCalledWith({
+          error: { code: 4001, message: expect.any(String) },
+        });
+      }
+    );
+
+    it('withholds a produced Sentry response when grant revocation wins asynchronous response cleanup', async () => {
+      const method = 'sys_signSentryOperation';
+      const listener = chrome.runtime.onMessage.addListener.mock.calls[0][0];
+      let current = true;
+      let finish!: () => void;
+      const result = { version: 1, transactionHex: '0102' };
+      const approval = createSentryDappApprovalLifetime(method, () => {
+        if (!current) throw new Error('Revoked');
+      });
+      approval.retainResponse(result);
+      approval.release();
+      (onMessage as jest.Mock).mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = () => resolve(result);
+        })
+      );
+      listener(
+        { type: 'METHOD_REQUEST', data: { method } },
+        contentScriptSender,
+        sendResponse
+      );
+      current = false;
+      finish();
+      await new Promise(setImmediate);
+      expect(sendResponse).toHaveBeenCalledTimes(1);
+      expect(sendResponse).toHaveBeenCalledWith({
+        error: { code: 4001, message: expect.any(String) },
+      });
+      expect(sendResponse).not.toHaveBeenCalledWith(result);
     });
 
     it('does not expose default state from a degraded controller', () => {

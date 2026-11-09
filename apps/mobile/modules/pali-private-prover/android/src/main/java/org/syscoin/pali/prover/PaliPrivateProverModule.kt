@@ -21,7 +21,14 @@ import java.io.InputStream
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
-private class ProofException : CodedException("privacy_proof_unavailable")
+private enum class ProofFailure(val wireCode: String) {
+  READINESS_TIMEOUT("ERR_PALI_NATIVE_READINESS_TIMEOUT"),
+  JOB_TIMEOUT("ERR_PALI_NATIVE_JOB_TIMEOUT"),
+  SDK_JOB_TIMEOUT("ERR_PALI_NATIVE_SDK_JOB_TIMEOUT"),
+  DISPOSAL_TIMEOUT("ERR_PALI_NATIVE_DISPOSAL_TIMEOUT")
+}
+private class ProofException(failure: ProofFailure? = null) :
+  CodedException(failure?.wireCode ?: "ERR_PROOF", "privacy_proof_unavailable", null)
 
 private fun readProofResource(stream: InputStream, limit: Int): ByteArray {
   val output = ByteArrayOutputStream()
@@ -96,7 +103,7 @@ private class ProofResources(private val context: Context, private val origin: S
       val workers = if (name == "index.html") "'self'" else "'none'"
       val csp = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src $workers; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
       WebResourceResponse(pin.getString("mime"), null, 200, "OK", mapOf(
-        "Content-Security-Policy" to csp, "Content-Length" to bytes.size.toString(),
+        "Content-Security-Policy" to csp,
         "Cache-Control" to "no-store", "X-Content-Type-Options" to "nosniff"
       ), ByteArrayInputStream(bytes))
     } catch (_: Exception) {
@@ -144,6 +151,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
   private var pending: Promise? = null
   private val disposals = mutableListOf<Promise>()
   private var submitted = false
+  private var sdkStarted = false
   private var sentry = false
   private var workerRetired = false
   private var retirementRequested = false
@@ -152,6 +160,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
   private var readsDrained = false
   private var finished: Boolean? = null
   private var deadline: Runnable? = null
+  private var executionFailure: ProofFailure? = null
 
   fun run(job: String, json: String, promise: Promise) {
     runJob(job, json, false, promise)
@@ -178,7 +187,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
       id = job; origin = "https://$id.pali-private-prover.invalid"; input = json; this.sentry = sentry; pending = promise
       try {
         openDocument()
-        deadline = Runnable { fail() }.also { main.postDelayed(it, 120000) }
+        deadline = Runnable { fail(if (submitted) { if (sdkStarted) ProofFailure.SDK_JOB_TIMEOUT else ProofFailure.JOB_TIMEOUT } else ProofFailure.READINESS_TIMEOUT) }.also { main.postDelayed(it, 120000) }
       } catch (_: Exception) { fail() }
     }
   }
@@ -281,6 +290,10 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
           input = null
           checkNotNull(nativePort).postMessage(WebMessage(request.toString()))
         }
+        sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted -> {
+          sdkStarted = true
+          emit("progress", json)
+        }
         !sentry && type == "progress" && keys == basic + "progress" && submitted -> emit("progress", json)
         submitted && domain && ((type == "success" && keys == basic + "result") || (type == "error" && keys == basic)) -> {
           workerRetired = true; deadline?.let { main.removeCallbacks(it) }
@@ -301,14 +314,15 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
     main.post {
       when (finished) {
         true -> promise.resolve(null)
-        false -> promise.reject(ProofException())
+        false -> promise.reject(ProofException(executionFailure))
         null -> disposals.add(promise)
       }
     }
   }
 
-  private fun fail() {
-    pending?.reject(ProofException()); pending = null; input = null
+  private fun fail(failure: ProofFailure? = null) {
+    executionFailure = failure ?: executionFailure
+    pending?.reject(ProofException(executionFailure)); pending = null; input = null
     close()
   }
 
@@ -318,13 +332,15 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
       if (contentProcessTerminated) documentRetired = true
       finishRetirement(); return
     }
-    pending?.reject(ProofException()); pending = null; input = null
+    pending?.reject(ProofException(executionFailure)); pending = null; input = null
     val document = view
     if (document == null) { finish(true); return }
     if (!retirementRequested) {
       retirementRequested = true
       deadline?.let { main.removeCallbacks(it) }
-      deadline = Runnable { finish(false) }.also { main.postDelayed(it, 3000) }
+      deadline = Runnable {
+        if (finished == null) { executionFailure = ProofFailure.DISPOSAL_TIMEOUT; finish(false) }
+      }.also { main.postDelayed(it, 3000) }
     }
     try {
       if (contentProcessTerminated || !submitted || workerRetired) {
@@ -353,7 +369,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
     if (finished != null) return
     finished = clean
     deadline?.let { main.removeCallbacks(it) }; deadline = null
-    pending?.reject(ProofException()); pending = null; input = null
+    pending?.reject(ProofException(executionFailure)); pending = null; input = null
     resources?.cancel(); resources = null
     var retired = clean
     try { nativePort?.close() } catch (_: Exception) { retired = false }; nativePort = null
@@ -361,7 +377,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
     view = null
     finished = retired
     ProofAdmission.release(this, retired)
-    disposals.forEach { if (retired) it.resolve(null) else it.reject(ProofException()) }
+    disposals.forEach { if (retired) it.resolve(null) else it.reject(ProofException(executionFailure)) }
     disposals.clear()
   }
 

@@ -1,4 +1,5 @@
-import type { RunSentryCrypto } from '../../../source/wallet/sentryCryptoJobs.ts';
+import type { RunSentryCrypto, SentryCryptoJob, SentryCryptoResult } from '../../../source/wallet/sentryCryptoJobs.ts';
+import { SENTRY_ISOLATED_STEPS, type SentryIsolatedStep, type SentryIsolatedPhase } from './sentry-isolated-diagnostics.ts';
 import type {
   SentryAuthorityKey,
   SentryOperationResponse,
@@ -15,8 +16,19 @@ const PUBLIC = '37'.repeat(16) + 'df7468cb62f0ff4e6ec27cbe18019216';
 /** Uses the installed execution port, never an alternate signer or private-key encoder. */
 export async function qualifyNativeSentryIsolated(
   signal: AbortSignal,
-  execute: RunSentryCrypto
+  providedExecute: RunSentryCrypto,
+  observe: (step: SentryIsolatedStep, phase: SentryIsolatedPhase) => void
 ): Promise<RunSentryCrypto> {
+  if (typeof observe !== 'function') throw new Error('SENTRY_ISOLATED_DIAGNOSTIC_REQUIRED');
+  let nextStep = 0;
+  const execute: RunSentryCrypto = async <T extends SentryCryptoResult>(job: SentryCryptoJob, assertJobCurrent: () => void): Promise<T> => {
+    const step = SENTRY_ISOLATED_STEPS[nextStep++];
+    if (!step) throw new Error('SENTRY_ISOLATED_DIAGNOSTIC_INVALID');
+    observe(step, 'started');
+    const result = await providedExecute<T>(job, assertJobCurrent);
+    observe(step, 'completed');
+    return result;
+  };
   const check = () => {
     if (signal.aborted) throw new Error('CANCELLED');
   };
@@ -142,7 +154,7 @@ export async function qualifyNativeSentryIsolated(
     )
       throw new Error('QUALIFICATION_SENTRY_SHAKE_OWNER_FAILED');
     check();
-    return execute;
+    return providedExecute;
   } finally {
     operator.secretKey = '';
     if (owner) owner.secretKey = '';

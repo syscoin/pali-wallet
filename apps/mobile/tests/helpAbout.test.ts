@@ -5,6 +5,7 @@ import { URL as NodeURL } from 'node:url';
 import test from 'node:test';
 import ts from 'typescript';
 import { PALI_INFORMATION } from '../../../source/shared/paliInformation.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
 const source = (path: string) => readFileSync(new NodeURL(path, import.meta.url), 'utf8');
@@ -35,7 +36,8 @@ function setup(component = 'HelpAbout', watchOnly = true) {
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Screen', 'Text', 'Notice', 'Row'].map((v) => [v, v])), colors: {} };
   const deps: Record<string, unknown> = { react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { async setStringAsync(value: string) { actions.push({ kind: 'copy', value }); if (blocked) return false; return await pending; } },
-    '../../../../source/shared/paliInformation': { PALI_INFORMATION }, '../../app.json': JSON.parse(source('../app.json')), '../ui': ui, './HelpAbout': { HelpAbout: 'HelpAbout' }, './DisplayCurrency': { DisplayCurrency: 'DisplayCurrency' } };
+    '../../../../source/shared/paliInformation': { PALI_INFORMATION }, '../../app.json': JSON.parse(source('../app.json')), '../ui': ui, './HelpAbout': { HelpAbout: 'HelpAbout' }, './DisplayCurrency': { DisplayCurrency: 'DisplayCurrency' },
+    './NativePreferences': { NativePreferences: 'NativePreferences' }, '../platform/localization': nativeTranslationFixture };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, require(name: string) { assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });
@@ -93,6 +95,11 @@ test('actual Settings hardware Back closes Display currency before leaving Setti
   assert.equal(f.backs(), 0);
   assert.equal(f.actions.length, 0);
   f.dispose();
+});
+
+test('Settings language leaf revokes its exact owner synchronously on hardware Back', () => {
+  const f=setup('RealSettings');press(f.render(),'Languages');const page=f.render();assert.equal(page.type,'NativePreferences');
+  page.props.assertCurrent();assert.equal(f.back(),true);assert.throws(page.props.assertCurrent);assert.equal(f.backs(),0);f.dispose();
 });
 test('both real session owners pass existing navigation to the shared settings component', () => {
   for (const owner of ['NativeWallet.native', 'WatchSession']) assert.match(source(`../src/screens/${owner}.tsx`), /<RealSettings navigation=\{shell\.navigation\}/);

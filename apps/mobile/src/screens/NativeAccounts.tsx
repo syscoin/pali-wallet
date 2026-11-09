@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
@@ -42,25 +44,25 @@ type Form = {
   catalogueRevision: number;
   contextRevision: number;
 };
-function failure(error: unknown): string {
+function failure(error: unknown, t: TFunction): string {
   const code = error instanceof Error ? error.message : '';
   if (code === 'BUSY')
-    return 'Wait for the current wallet operation to finish.';
+    return t('mobile.accounts.busy');
   if (code === 'INVALID_CREDENTIAL')
-    return 'That password is incorrect. Unlock your wallet to try again.';
+    return t('mobile.accounts.invalidCredential');
   if (code === 'AUTH_THROTTLED')
-    return 'Too many incorrect passwords. Wait a few minutes before trying again.';
+    return t('mobile.accounts.throttled');
   if (code === 'INVALID_INPUT')
-    return 'Enter a name of up to 64 characters and your wallet password.';
+    return t('mobile.accounts.invalidInput');
   if (code === 'ACCOUNT_LIMIT')
-    return 'There is not enough protected storage for this account.';
+    return t('mobile.accounts.limit');
   if (code === 'ACCOUNT_NOT_REMOVABLE')
-    return 'Select another account before removing this one. Account 1 must remain on this device.';
+    return t('mobile.accounts.notRemovable');
   if (code === 'PENDING_TRANSFER')
-    return 'This account has an unresolved transfer. Check its transaction status before removing it.';
+    return t('mobile.accounts.pendingTransfer');
   if (code === 'CANCELLED' || code === 'NOT_READY')
-    return 'Your wallet context changed. Unlock it and try again.';
-  return 'The account change could not be completed. Your saved wallet has been preserved.';
+    return t('mobile.accounts.contextChanged');
+  return t('mobile.accounts.failed');
 }
 
 /** Real native account UI; the controller alone owns derivation and persistence. */
@@ -79,6 +81,7 @@ export function NativeAccounts({
   onLedger?(): void;
   onTrezor?(): void;
 }) {
+  const { t } = useNativeTranslation();
   const [form, setForm] = useState<Form | null>(null);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -160,7 +163,7 @@ export function NativeAccounts({
       }
     } catch (cause) {
       if (lifetime.current.alive && epoch === lifetime.current.epoch)
-        setError(failure(cause));
+        setError(failure(cause, t));
     } finally {
       working.current = false;
       if (lifetime.current.alive && epoch === lifetime.current.epoch) {
@@ -218,14 +221,14 @@ export function NativeAccounts({
   );
   const needsPassword = form && form.kind !== 'rename';
   const title = !form
-    ? 'Accounts'
+    ? t('mobile.accounts.title')
     : form.kind === 'create-smart'
-    ? 'Create a smart account'
+    ? t('mobile.accounts.createSmartTitle')
     : form.kind === 'create'
-    ? 'Add an account'
+    ? t('mobile.accounts.addTitle')
     : form.kind === 'remove'
-    ? 'Remove account'
-    : 'Rename account';
+    ? t('mobile.accounts.removeTitle')
+    : t('mobile.accounts.renameTitle');
   if (!form && !busy && snapshot)
     return (
       <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
@@ -243,24 +246,22 @@ export function NativeAccounts({
             <View style={s.listHeader}>
               <Header
                 title={title}
-                subtitle={`${networkLabel} · Wallet accounts`}
+                subtitle={t('mobile.accounts.subtitle', { network: networkLabel })}
                 onBack={close}
               />
               <Text style={styles.muted}>
-                Choose the account you want to use. Recovery phrase accounts and
-                imported-key accounts have separate backups.
-              </Text>
+                {t('mobile.accounts.choose')}</Text>
               <Button
-                title="Add account"
+                title={t('buttons.addAccount')}
                 onPress={() => open({ kind: 'create', label: '' })}
               />
-              {controller.supportsSmartAccounts?.() && <Button title="Create smart account" variant="secondary"
+              {controller.supportsSmartAccounts?.() && <Button title={t('mobile.accounts.createSmart')} variant="secondary"
                 onPress={() => open({ kind: 'create-smart', label: '' })} />}
-              {onLedger && <Button title="Connect Ledger" variant="secondary" onPress={onLedger} />}
-              {onTrezor && <Button title="Connect Trezor" variant="secondary" onPress={onTrezor} />}
+              {onLedger && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" onPress={onLedger} />}
+              {onTrezor && <Button title={t('mobile.accounts.connectTrezor')} variant="secondary" onPress={onTrezor} />}
               {onImport && (
                 <Button
-                  title="Import private key"
+                  title={t('mobile.accounts.importKey')}
                   variant="secondary"
                   onPress={onImport}
                 />
@@ -280,7 +281,7 @@ export function NativeAccounts({
             <Card style={s.account}>
               <IdlePressable
                 accessibilityRole="button"
-                accessibilityLabel={`Select ${account.label}`}
+                accessibilityLabel={t('mobile.accounts.select', { name: account.label })}
                 onPress={() => {
                   if (account.id !== snapshot.active.accountId)
                     void run(
@@ -293,13 +294,13 @@ export function NativeAccounts({
                 <View style={s.row}>
                   <Text style={s.name}>{account.label}</Text>
                   {account.id === snapshot.active.accountId && (
-                    <Text style={s.selected}>Selected</Text>
+                    <Text style={s.selected}>{t('mobile.accounts.selected')}</Text>
                   )}
                 </View>
                 <Text style={s.kind}>
-                  {account.type === 'Imported' ? 'Imported key · Separate backup'
-                    : account.type === 'SmartAccount' ? 'Smart account · ECDSA owner'
-                    : account.type === 'Ledger' ? 'Ledger hardware wallet' : 'Recovery phrase account'}
+                  {account.type === 'Imported' ? t('mobile.accounts.imported')
+                    : account.type === 'SmartAccount' ? t('mobile.accounts.smart')
+                    : account.type === 'Ledger' ? t('mobile.accounts.ledger') : t('mobile.accounts.phrase')}
                 </Text>
                 <Text selectable style={s.address}>
                   {account.address}
@@ -307,7 +308,7 @@ export function NativeAccounts({
               </IdlePressable>
               <View style={s.actions}>
                 <Button
-                  title="Rename"
+                  title={t('mobile.accounts.rename')}
                   variant="quiet"
                   onPress={() =>
                     open({
@@ -321,7 +322,7 @@ export function NativeAccounts({
                 {(account.type !== 'HDAccount' || account.index !== 0) &&
                   account.id !== snapshot.active.accountId && (
                     <Button
-                      title="Remove"
+                      title={t('buttons.remove')}
                       variant="quiet"
                       onPress={() =>
                         open({
@@ -340,8 +341,7 @@ export function NativeAccounts({
           ItemSeparatorComponent={() => <View style={s.separator} />}
           ListFooterComponent={
             <Text style={s.buildLabel}>
-              Development build · Use a test wallet
-            </Text>
+              {t('mobile.common.development')}</Text>
           }
         />
       </SafeAreaView>
@@ -357,11 +357,11 @@ export function NativeAccounts({
             form ? (
               <Button
                 title={
-                  form.kind === 'create-smart' ? 'Create smart account'
-                    : form.kind === 'create' ? 'Create account'
+                  form.kind === 'create-smart' ? t('mobile.accounts.createSmart')
+                    : form.kind === 'create' ? t('mobile.accounts.create')
                     : form.kind === 'remove'
-                    ? 'Remove from this device'
-                    : 'Save name'
+                    ? t('mobile.accounts.removeDevice')
+                    : t('mobile.accounts.saveName')
                 }
                 disabled={
                   busy ||
@@ -378,7 +378,7 @@ export function NativeAccounts({
         >
           <Header
             title={title}
-            subtitle={`${networkLabel} · Wallet accounts`}
+            subtitle={t('mobile.accounts.subtitle', { network: networkLabel })}
             onBack={() => {
               if (form && !busy) {
                 setForm(null);
@@ -389,13 +389,13 @@ export function NativeAccounts({
           />
           {busy ? (
             <Notice
-              title="Saving account change…"
-              body="Keep Pali open while your wallet completes this request."
+              title={t('mobile.accounts.saving')}
+              body={t('mobile.accounts.savingBody')}
             />
           ) : !snapshot ? (
             <Notice
-              title="Wallet locked"
-              body="Unlock your wallet to manage its accounts."
+              title={t('mobile.accounts.locked')}
+              body={t('mobile.accounts.unlock')}
             />
           ) : form ? (
             <>
@@ -410,45 +410,44 @@ export function NativeAccounts({
               {form.kind === 'remove' ? (
                 <>
                   <Notice
-                    title="Your funds stay at this address"
+                    title={t('mobile.accounts.fundsRemain')}
                     body={
-                      form.accountType === 'Ledger' || form.accountType === 'Trezor' ? `Removing this local account keeps its keys on your ${form.accountType}. Connect the same device to add it again.`
-                        : form.accountType === 'SmartAccount' ? 'Removing this local record does not move funds or change its on-chain owners. Keep the account address and wallet backup.'
+                      form.accountType === 'Ledger' || form.accountType === 'Trezor' ? t('mobile.accounts.removeHardware', { device: form.accountType })
+                        : form.accountType === 'SmartAccount' ? t('mobile.accounts.removeSmart')
                         : form.accountType === 'Imported'
-                        ? 'Removing this account removes its saved key from this wallet. Your recovery phrase cannot restore it. Keep the original key backed up separately. This does not move funds or cancel transactions.'
-                        : 'Removing this account removes its local record. Add account reuses the next available recovery-phrase account. This does not move funds or cancel transactions.'
+                        ? t('mobile.accounts.removeImported')
+                        : t('mobile.accounts.removeDerived')
                     }
                     tone="amber"
                   />
                   {form.accountType === 'Imported' && (
                     <IdlePressable
                       accessibilityRole="checkbox"
-                      accessibilityLabel="I have the original private key backed up"
+                      accessibilityLabel={t('mobile.accounts.backupAcknowledgement')}
                       accessibilityState={{ checked: removeAcknowledged }}
                       aria-checked={removeAcknowledged}
                       onPress={() => setRemoveAcknowledged((value) => !value)}
                       style={s.acknowledgement}
                     >
                       <Text>
-                        {removeAcknowledged ? '✓' : '□'} I have the original
-                        private key backed up.
+                        {removeAcknowledged ? '✓' : '□'} {t('mobile.accounts.backupAcknowledgementBody')}
                       </Text>
                     </IdlePressable>
                   )}
                 </>
               ) : (
                 <>
-                  {field('Account name', name, setName)}
+                  {field(t('mobile.accounts.accountName'), name, setName)}
                   {form.kind !== 'rename' && (
                     <Notice
-                      title={form.kind === 'create-smart' ? 'Managed by your wallet' : 'One recovery phrase, another address'}
-                      body={form.kind === 'create-smart' ? 'Create a smart account managed by Account 1 on this network. It can receive funds after creation; deployment is required before sending.' : 'This account is derived from your existing recovery phrase. Keep that phrase backed up offline.'}
+                      title={form.kind === 'create-smart' ? t('mobile.accounts.managed') : t('mobile.accounts.derived')}
+                      body={form.kind === 'create-smart' ? t('mobile.accounts.smartBody') : t('mobile.accounts.derivedBody')}
                     />
                   )}
                 </>
               )}
               {needsPassword &&
-                field('Confirm wallet password', password, setPassword, true)}
+                field(t('mobile.accounts.confirmPassword'), password, setPassword, true)}
             </>
           ) : null}
           {!!error && (
@@ -461,8 +460,7 @@ export function NativeAccounts({
             </Text>
           )}
           <Text style={s.buildLabel}>
-            Development build · Use a test wallet
-          </Text>
+            {t('mobile.common.development')}</Text>
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -225,6 +225,77 @@ it.each<PrivacyArtifactPolicy>(['extension-public', 'bundled'])(
   }
 );
 
+it.each([
+  'native-response',
+  'duplicate-length',
+  'invalid-length',
+  'oversized-length',
+  'refused',
+] as const)(
+  'keeps Android stream headers compatible with the strict artifact reader: %s',
+  async (control) => {
+    const android = readFileSync(
+      path.join(
+        __dirname,
+        '../../../apps/mobile/modules/pali-private-prover/android/src/main/java/org/syscoin/pali/prover/PaliPrivateProverModule.kt'
+      ),
+      'utf8'
+    );
+    const response = android
+      .split('WebResourceResponse(pin.getString("mime")')[1]
+      ?.split('ByteArrayInputStream(bytes)')[0];
+    expect(response).toBeDefined();
+    expect(android).toContain('check(result.size == size)');
+    expect(android).toContain('check(hash == pin.getString("sha256"))');
+    const oldSelf = Object.getOwnPropertyDescriptor(globalThis, 'self');
+    const oldFetch = globalThis.fetch;
+    Object.defineProperty(globalThis, 'self', {
+      configurable: true,
+      value: { location: { href: 'https://owned.pali.invalid/proof-main.js' } },
+    });
+    const lengths: string[] = [];
+    globalThis.fetch = jest.fn(async (url: RequestInfo | URL) => {
+      const name = new URL(String(url)).pathname.split('/').at(-1);
+      const bytes = witnessAsset(
+        name === 'metadata.json.gzip' ? 'metadata.json.gz' : 'groth16.wasm'
+      );
+      // Chromium derives this header from ByteArrayInputStream.available(),
+      // then appends the host's WebResourceResponse headers without replacing it.
+      const headers = new Headers({ 'Content-Length': String(bytes.length) });
+      if (/"Content-Length"\s+to/.test(response ?? ''))
+        headers.append('Content-Length', String(bytes.length));
+      if (control === 'duplicate-length')
+        headers.append('Content-Length', String(bytes.length));
+      if (control === 'invalid-length')
+        headers.set('Content-Length', 'invalid');
+      if (control === 'oversized-length')
+        headers.set('Content-Length', String(bytes.length + 1));
+      lengths.push(headers.get('Content-Length')!);
+      return new Response(new Uint8Array(bytes), {
+        headers,
+        status: control === 'refused' ? 403 : 200,
+      });
+    });
+    try {
+      if (control === 'native-response') {
+        const result = await loadPrivacyWitnessAssets('bundled');
+        expect(result.metadata.nVars).toBe(28300);
+        expect(result.wasmCode).toEqual(
+          new Uint8Array(witnessAsset('groth16.wasm'))
+        );
+        expect(lengths).toEqual(['310560', '30173']);
+      } else
+        await expect(loadPrivacyWitnessAssets('bundled')).rejects.toThrow(
+          'privacy_proof_artifact_invalid'
+        );
+    } finally {
+      globalThis.fetch = oldFetch;
+      if (oldSelf) Object.defineProperty(globalThis, 'self', oldSelf);
+      else Reflect.deleteProperty(globalThis, 'self');
+    }
+  }
+);
+
 it('requires a known witness policy before any artifact request', async () => {
   const oldFetch = globalThis.fetch,
     fetcher = jest.fn();

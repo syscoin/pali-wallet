@@ -600,37 +600,31 @@ for (const viewport of [
         }
       );
       await wallet.step(
-        'invalid collection address uses its normal error review without importing',
+        'invalid collection address is refused before opening a review or importing',
         async () => {
+          const beforeReads = reads.length;
           const invalidRequest = await startRequest(
             dapp!,
             'wallet_watchAsset',
             watch('not-an-address')
           );
-          const invalidPopup = await openWatchRequest(invalidRequest);
-          await invalidPopup.setViewportSize(viewport);
-          await expect(
-            invalidPopup.getByRole('heading', {
-              name: en.settings.assetNotFound,
-              exact: true,
-            })
-          ).toBeVisible();
-          await expect(
-            invalidPopup.getByRole('button', {
-              name: en.buttons.addToken,
-              exact: true,
-            })
-          ).toHaveCount(0);
-          await captureState(invalidPopup, 'erc721-invalid-address');
-          const rejected = await dismissRejectedApproval({
-            click: () =>
-              invalidPopup
-                .getByRole('button', { name: en.buttons.close, exact: true })
-                .click(),
-            isClosed: () => invalidPopup.isClosed(),
-            settle: () => settle(dapp!, invalidRequest),
+          const rejected = await settle(dapp!, invalidRequest);
+          expect(rejected.error).toEqual({
+            code: -32602,
+            message: 'Invalid token address',
           });
-          expect(rejected.error?.code).toBe(4001);
+          expect(rejected.result).toBeUndefined();
+          expect(
+            wallet!.context
+              .pages()
+              .filter((page) => page.url().includes('/external'))
+          ).toEqual([]);
+          expect(reads).toHaveLength(beforeReads);
+          observations.push({
+            label: 'erc721-invalid-address-rejected-before-review',
+            viewport,
+            error: rejected.error,
+          });
           expect(await matching()).toEqual([]);
           expect(
             reads.some((read) => read.selector === selector('ownerOf(uint256)'))

@@ -11,6 +11,9 @@ function NativeEntry() {
   useEffect(() => {
     let current = true;
     void loadAfterNativeCrypto(ensureNativeCryptoReady, () => {
+      // Locale resources and protected preferences stay behind the same gate.
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      void (require('./platform/localization') as typeof import('./platform/localization')).initializeNativeLanguage();
       // A static App import would let noble snapshot an absent/old RNG before
       // native qualification. Metro keeps this require behind the awaited gate.
       // eslint-disable-next-line @typescript-eslint/no-require-imports

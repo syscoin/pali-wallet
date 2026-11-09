@@ -522,41 +522,28 @@ test('provider edges: exact RPC results, capabilities and ordinary asset watch',
       }
     );
     await record(
-      'malformed asset requests show a bounded error and can close normally',
+      'malformed asset requests reject before approval without changing tokens',
       async () => {
-        for (const asset of [
-          { type: 'ERC20' },
-          { type: 'ERC20', options: { address: 'not-an-address' } },
+        const beforeTokens = await matchingTokens();
+        for (const [asset, message] of [
+          [{ type: 'ERC20' }, 'Unsupported asset type'],
+          [
+            { type: 'ERC20', options: { address: 'not-an-address' } },
+            'Invalid token address',
+          ],
         ]) {
-          const requestId = await startRequest(
-            page,
-            'wallet_watchAsset',
-            asset
-          );
-          const popup = await ordinaryPopup(requestId);
-          await expect(
-            popup
-              .getByRole('heading', {
-                name: en.settings.invalidRequestFormat,
-                exact: true,
-              })
-              .or(
-                popup.getByRole('heading', {
-                  name: en.settings.assetNotFound,
-                  exact: true,
-                })
-              )
-          ).toBeVisible();
-          await expect(
-            popup.getByRole('button', { name: /^add token$/i })
-          ).toHaveCount(0);
-          await rejectPopup(requestId, /^close$/i);
+          const response = await withoutPopup('wallet_watchAsset', asset);
+          expect(response.error).toEqual({ code: -32602, message });
+          expect(response.result).toBeUndefined();
+          expect(await matchingTokens()).toEqual(beforeTokens);
         }
         expect(await matchingTokens()).toHaveLength(1);
         return {
           malformed: 2,
           approvalUnavailable: true,
-          closedWithCode: 4001,
+          popupOpened: false,
+          code: -32602,
+          tokensUnchanged: true,
         };
       }
     );

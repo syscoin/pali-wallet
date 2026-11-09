@@ -95,7 +95,7 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-it('uses the installed ethers Universal Resolver for ordinary and wildcard batch names', async () => {
+async function checkEnsProviderSource(sourceChanges: boolean) {
   const provider = wallet.getEnsMainnetProvider();
   expect(provider).toBeInstanceOf(CustomJsonRpcProvider);
   const network = await provider.getNetwork();
@@ -113,6 +113,29 @@ it('uses the installed ethers Universal Resolver for ordinary and wildcard batch
   ];
   const reads: Array<{ method: string; name: string; to: string }> = [];
   const unexpectedReads: string[] = [];
+  let observedChain = '0x1';
+  const chainReads: unknown[] = [];
+  (global.fetch as jest.Mock).mockImplementation(
+    async (url: string, options: any) => {
+      expect(url).toBe('https://ens-mainnet.invalid');
+      const request = JSON.parse(options.body);
+      expect(request.method).toBe('eth_chainId');
+      expect(request.params).toEqual([]);
+      chainReads.push(request);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          jsonrpc: '2.0',
+          id: request.id,
+          result: observedChain,
+        }),
+      };
+    }
+  );
+  expect(await provider.send('eth_chainId', [])).toBe('0x1');
+  expect(await provider.send('eth_chainId', [])).toBe('0x1');
+  expect(chainReads).toHaveLength(1); // Exercise the real SDK identity cache.
   jest.spyOn(provider, 'call').mockImplementation(async (transaction: any) => {
     const to = String(transaction.to).toLowerCase();
     if (to === UNIVERSAL) {
@@ -149,6 +172,7 @@ it('uses the installed ethers Universal Resolver for ordinary and wildcard batch
       const addressResult = resolverInterface.encodeFunctionResult('addr', [
         record.address,
       ]);
+      if (sourceChanges) observedChain = '0x2';
       return extended
         ? resolverInterface.encodeFunctionResult('resolve', [addressResult])
         : addressResult;
@@ -158,15 +182,27 @@ it('uses the installed ethers Universal Resolver for ordinary and wildcard batch
   });
 
   const result = await wallet.batchResolveEns(records.map(({ name }) => name));
-  expect(result).toEqual({
-    'direct.eth': DIRECT,
-    'child.wildcard.eth': WILDCARD,
-    'unassigned.eth': null,
-  });
-  expect(selectEnsNameToAddress(mockState)).toEqual({
-    'direct.eth': DIRECT,
-    'child.wildcard.eth': WILDCARD,
-  });
+  expect(result).toEqual(
+    sourceChanges
+      ? {
+          'direct.eth': null,
+          'child.wildcard.eth': null,
+          'unassigned.eth': null,
+        }
+      : {
+          'direct.eth': DIRECT,
+          'child.wildcard.eth': WILDCARD,
+          'unassigned.eth': null,
+        }
+  );
+  expect(selectEnsNameToAddress(mockState)).toEqual(
+    sourceChanges
+      ? {}
+      : {
+          'direct.eth': DIRECT,
+          'child.wildcard.eth': WILDCARD,
+        }
+  );
   expect(reads).toHaveLength(6);
   expect(
     reads.filter(({ method }) => method === 'requireResolver')
@@ -177,6 +213,13 @@ it('uses the installed ethers Universal Resolver for ordinary and wildcard batch
     to: RESOLVER.toLowerCase(),
   });
   expect(unexpectedReads).toEqual([]);
-  expect(global.fetch).not.toHaveBeenCalled();
+  expect(chainReads).toHaveLength(3); // Prime plus one fresh read per address.
+  expect(global.fetch).toHaveBeenCalledTimes(3);
+  expect((await provider.getNetwork()).chainId).toBe(BigInt(1));
   expect(wallet.ensResolutionRequests.size).toBe(0);
-});
+}
+
+it.each([false, true])(
+  'uses the installed ENS provider and fresh source chain (changed=%s)',
+  checkEnsProviderSource
+);

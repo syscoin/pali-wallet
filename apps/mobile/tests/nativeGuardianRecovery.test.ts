@@ -77,7 +77,28 @@ async function fixture(smart = true) {
   const security = createSecurityTestFixture();
   await security.securityPreferences.load();
   security.custodyIdle.begin({}, () => undefined);
+  const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    'react-native': { Linking: { openURL: unexpectedFeature } },
+    '../crypto/sentryCrypto.native': {
+      createNativeSentryCryptoExecutor: (isolated: unknown) => {
+        assert.equal(isolated, null, 'production isolated signing stays gated');
+        return unexpectedFeature;
+      },
+    },
+    '../custody/networkView': { createNativeNetworkView: () => ({
+      getSnapshot: () => null, getContextRevision: unexpectedFeature,
+      subscribe: () => () => undefined, select: unexpectedFeature, cancel() {},
+    }) },
+    '../custody/dappControl': { createNativeDappControlHost: () => ({ context: () => null, prepare: unexpectedFeature }) },
+    '../custody/dappRpcReads': { createNativeDappRpcReadHost: () => ({ read: unexpectedFeature }) },
+    '../custody/dappSentry': { createNativeDappSentryHost: () => ({ prepare: unexpectedFeature }) },
+    '../custody/dappSyscoin': { createNativeDappSyscoinHost: () => ({ registration: unexpectedFeature, anchor: unexpectedFeature, read: unexpectedFeature }) },
+    '../portfolio/nativeWatchAsset': {
+      createNativeWatchAssetObserver: () => unexpectedFeature,
+      prepareNativeWatchAsset: unexpectedFeature,
+    },
+    '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability: () => ({
@@ -190,7 +211,7 @@ async function fixture(smart = true) {
         return new NativeSmartAccountOperation({ intent, account: GUARDIAN_FIXTURE_ACCOUNT, network, assertCurrent: guard,
           async prepare() { return { kind: 'authorization', intent, operation: prepared }; },
           async sign() { return '0xsigned'; },
-          async submit(_operation, _signature, _lifetime, check, _review, acknowledge) { check(); acknowledge(prepared.actionHash); return prepared.actionHash; },
+          async submit(_operation, _signature, _lifetime, check, _review, acknowledge) { check(); acknowledge(prepared.actionHash, 'submit-operation'); return prepared.actionHash; },
           async refreshMetadata() {
             if (failure === 'storage') catalogue = null;
             if (failure === 'stale') snapshot = { ...snapshot, revision: snapshot.revision + 1 };

@@ -5,6 +5,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = { type: string | ((props: object) => Element); props: Record<string, unknown>; children: unknown[] };
 function shell() {
@@ -13,6 +14,7 @@ function shell() {
     'react-native': { Text: 'NativeText', Pressable: 'Pressable', View: 'View', StyleSheet: { create: (styles: unknown) => styles } },
     'react-native-svg': {},
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '../platform/localization': nativeTranslationFixture,
   };
   const load = (path: string) => {
     const module = { exports: {} as Record<string, (props: object) => Element> };

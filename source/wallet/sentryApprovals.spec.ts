@@ -86,8 +86,10 @@ function fixture() {
     network: { chainId: 57, kind: 'syscoin', url: 'https://blockbook.example' },
   };
   let serviceUrl = 'https://trusted.example';
+  let requestCurrent = true;
   const check = (owner: typeof scope) => {
-    if (owner !== scope) throw new Error('Wallet context changed');
+    if (owner.identity !== scope.identity)
+      throw new Error('Wallet context changed');
   };
   const runCrypto = jest.fn(async (job, guard) => {
     guard();
@@ -126,6 +128,12 @@ function fixture() {
   let tail = Promise.resolve();
   const host: SentryOperationHost = {
     captureScope: () => scope,
+    captureApprovalScope: () => ({
+      ...scope,
+      assertRequestCurrent() {
+        if (!requestCurrent) throw new Error('Site approval retired');
+      },
+    }),
     assertCurrent: check,
     getSettings: async () => ({
       network: 'mainnet',
@@ -198,6 +206,9 @@ function fixture() {
     getSeed,
     operations: new SharedSentryOperationApprovals(host),
     votes: new SharedSentryVoteApprovals(host),
+    revokeRequest: () => {
+      requestCurrent = false;
+    },
     changeScope: () => {
       scope = { ...scope, identity: 'locked' };
     },
@@ -212,6 +223,74 @@ beforeEach(() => {
     configurable: true,
   });
 });
+
+it.each(['operation', 'vote'] as const)(
+  'refuses a retained %s approval after the original site grant retires',
+  async (kind) => {
+    const f = fixture();
+    const controller = kind === 'operation' ? f.operations : f.votes;
+    const id = await controller.prepare(
+      kind === 'operation' ? operationRequest : voteRequest,
+      'https://dapp.example'
+    );
+    f.revokeRequest();
+    await expect(
+      kind === 'operation'
+        ? f.operations.sign({ id, keyId: 'operator', password: 'password' })
+        : f.votes.sign({ id, password: 'password' })
+    ).rejects.toThrow('Site approval retired');
+    expect(f.getSeed).not.toHaveBeenCalled();
+  }
+);
+
+it('retires completed operation fee consent with its original site grant', async () => {
+  const f = fixture();
+  const id = await f.operations.prepare(
+    operationRequest,
+    'https://dapp.example'
+  );
+  await f.operations.sign({ id, keyId: 'operator', password: 'password' });
+  const token = f.operations.prepareFeePsbt('0102', 'https://dapp.example');
+  f.revokeRequest();
+  expect(() =>
+    f.operations.prepareFeePsbt('0102', 'https://dapp.example')
+  ).toThrow();
+  expect(() => f.operations.beginFeeSigning(token, '0102')).toThrow();
+  await expect(f.operations.reviewFeePsbt(token, '0102')).rejects.toThrow();
+});
+
+it.each(['operation', 'vote'] as const)(
+  'withholds the %s worker result if the original site retires during signing',
+  async (kind) => {
+    const f = fixture();
+    const controller = kind === 'operation' ? f.operations : f.votes;
+    const id = await controller.prepare(
+      kind === 'operation' ? operationRequest : voteRequest,
+      'https://dapp.example'
+    );
+    const worker = deferred();
+    const started = deferred();
+    const execute = f.runCrypto.getMockImplementation()!;
+    f.runCrypto.mockImplementation(async (job, check) => {
+      if (job.type === 'sign' || job.type === 'signVote') {
+        started.resolve();
+        await worker.promise;
+      }
+      return execute(job, check);
+    });
+    const signing =
+      kind === 'operation'
+        ? f.operations.sign({ id, keyId: 'operator', password: 'password' })
+        : f.votes.sign({ id, password: 'password' });
+    await started.promise;
+    f.revokeRequest();
+    worker.resolve();
+    await expect(signing).rejects.toThrow('Site approval retired');
+    expect(() =>
+      f.operations.prepareFeePsbt('0102', 'https://dapp.example')
+    ).toThrow();
+  }
+);
 
 it('shares public operation review and remembers only the exact completed transaction/origin for fee signing', async () => {
   const f = fixture();

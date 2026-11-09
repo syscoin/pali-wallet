@@ -127,6 +127,10 @@ export function createNativeSentryNodeManagement(ports: NodePorts) {
       check();
       return owner;
     },
+    captureLinkScope: () => {
+      check();
+      return { scope: owner, assertCurrent: check };
+    },
     assertCurrent: (captured) => {
       check();
       if (captured !== owner) throw new Error('CANCELLED');
@@ -179,17 +183,8 @@ export function createNativeSentryNodeManagement(ports: NodePorts) {
   ports.lifetime.addEventListener('abort', dispose, { once: true });
   return Object.freeze({
     list: () => ports.run(() => manager.list()),
-    prepareLink: (proTxHash: string) =>
-      ports.run(() =>
-        manager.prepareLink(
-          {
-            version: 1,
-            proTxHash,
-            genesisHash: SENTRY_NETWORKS[owner.network].genesisHash,
-          },
-          'Pali Wallet'
-        )
-      ),
+    prepareLink: (request: unknown, origin: string) =>
+      ports.run(() => manager.prepareLink(request, origin)),
     confirmLink: (review: SentryNodeLinkReview) => manager.confirmLink(review),
     cancelLink: manager.cancelLink,
     releaseCollateral: (

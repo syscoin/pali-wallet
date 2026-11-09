@@ -3,6 +3,7 @@ import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 
 import {
   parseSptInventory,
+  projectSptBalance,
   supportsSptUtxoChain,
   type SptHolding,
 } from '../../../../shared/sptInventory';
@@ -31,6 +32,7 @@ const projectHolding = (
   } = holding;
   return {
     ...metadata,
+    symbol: projectSptBalance(holding).symbol,
     assetGuid,
     balance: formatUnits(
       (confirmedUnits + pendingDeltaUnits).toString(),

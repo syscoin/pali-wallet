@@ -172,11 +172,14 @@ it('fails the build for key/order/type drift rather than shifting translations',
 });
 
 it.each(languages)(
-  '%s base and lazy Privacy projections reconstruct the original exactly',
+  '%s extension base and lazy Privacy preserve extension messages without native-only copy',
   (lng) => {
     const original = JSON.parse(source(lng));
+    const extension = { ...original };
+    delete extension.mobile;
     const base = compile(lng, 'base').packed as any;
     const privacy = compile(lng, 'privacy').packed as any;
+    expect(base.mobile).toBeUndefined();
     expect(base.privacy).toEqual({ title: original.privacy.title });
     expect(Object.keys(privacy)).toEqual(['privacy']);
     expect(privacy.privacy.title).toBeUndefined();
@@ -184,8 +187,12 @@ it.each(languages)(
       ...base,
       privacy: { ...base.privacy, ...privacy.privacy },
     };
-    expect(JSON.stringify(merged)).toBe(JSON.stringify(original));
-    expectExact(original, merged);
+    expect(JSON.stringify(merged)).toBe(JSON.stringify(extension));
+    expectExact(extension, merged);
+    expect(compile(lng).packed.mobile).toEqual(original.mobile);
+    expect(compile(lng, 'base').generated).not.toContain(
+      original.mobile.setup.nativeOnlyDescription
+    );
     expect(compile(lng, 'base').generated).not.toContain(
       original.privacy.noteSecret
     );
@@ -194,6 +201,19 @@ it.each(languages)(
     );
   }
 );
+
+it('still validates native-only resource structure before omitting it from the extension', () => {
+  const context = {
+    resourcePath: resourcePath('en'),
+    resourceQuery: '?baseMessages',
+    addDependency: jest.fn(),
+  };
+  const invalid = JSON.parse(source('en'));
+  invalid.mobile.setup.nativeOnlyDescription = null;
+  expect(() =>
+    compactLocaleJson.call(context, JSON.stringify(invalid))
+  ).toThrow('only objects and text');
+});
 
 it.each(['base', 'privacy'])(
   'validates omitted fields before the %s projection',
@@ -239,6 +259,7 @@ it('reconstructs literal prototype-named keys and refuses truncated/extra value 
 it('shares repeated English base values only when the full generated expression is smaller', () => {
   const original = JSON.parse(source('en'));
   const base = { ...original, privacy: { title: original.privacy.title } };
+  delete base.mobile;
   const flatten = (node: any): string[] =>
     typeof node === 'string' ? [node] : Object.values(node).flatMap(flatten);
   const oldGenerated =
@@ -272,6 +293,7 @@ it.each(languages)(
               ),
             }
           : original;
+      if (scope === 'base') delete projection.mobile;
       const structureName = scope ? `${scope}Structure` : 'localeStructure';
       const before =
         `module.exports=require("utils/restoreLocale").restoreLocale(require("assets/locales/en.json?${structureName}"),` +

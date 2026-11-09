@@ -1,9 +1,18 @@
+import { dappCaipChain, dappNamespace, DAPP_MODE_METHODS, normalizeDappModeRequest, type DappChainScope } from '../../../../source/shared/dappChainScope.ts';
+import { DAPP_SYSCOIN_READ_METHODS, isDappSyscoinRead, normalizeDappSyscoinRead } from '../../../../source/shared/dappSyscoinReads.ts';
+import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
+import { NativeSentryRequests, SENTRY_DAPP_METHODS } from './sentryRequests.ts';
 import {
   evmDappFeeChoiceMatches,
   selectEvmDappFeeChoice,
   type EvmDappFeeChoice,
 } from '../../../../source/shared/evmDappFeePolicy.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
+import { NativeDappControlRequests } from './controlRequests.ts';
+import { isDappPermissionMethod, readDappPermissionRequest, projectDappPermissions } from '../../../../source/shared/dappPermissions.ts';
+import { DAPP_RPC_READ_METHODS, isDappRpcReadMethod, normalizeDappRpcRead } from '../../../../source/shared/dappRpcReads.ts';
+import { createDappReturnTarget } from './pairingReturn.ts';
+import { isDappWalletControlMethod, normalizeDappWalletControl } from '../../../../source/shared/dappWalletControl.ts';
 import {
   normalizeDappCallsRequest,
   assertDappCallsAtomicSupport,
@@ -37,7 +46,7 @@ import { getEffectiveApprovalData } from '../../../../source/shared/approval.ts'
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import { getTypedOrderReview } from '../../../../source/utils/typedOrderReview.ts';
 import { createDappSessions } from '../../../../source/wallet/dappSessions.ts';
-import { DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
+import { assertProviderRequestBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import { createDappApprovalLifetime } from '../../../../source/utils/dappApprovalLifetime.ts';
 import type { DappSessionEvent } from '../../../../source/wallet/dappSessions.ts';
 import type { KeyringAccountType } from '../../../../source/types/network.ts';
@@ -70,6 +79,16 @@ const METHODS = Object.freeze([
   'net_version',
   'eth_accounts',
   'eth_requestAccounts',
+  'wallet_switchEthereumChain',
+  'wallet_addEthereumChain',
+  'wallet_watchAsset',
+  'wallet_getPermissions',
+  'wallet_requestPermissions',
+  'wallet_revokePermissions',
+  ...DAPP_RPC_READ_METHODS,
+  ...DAPP_SYSCOIN_READ_METHODS,
+  ...DAPP_MODE_METHODS,
+  ...SENTRY_DAPP_METHODS,
   'wallet_getCapabilities',
   'eth_sendTransaction',
   'wallet_sendCalls',
@@ -87,6 +106,15 @@ type Source = {
 };
 type Engine = ReturnType<typeof createDappSessions>;
 type Connected = { id: string; session: WalletConnectSession; engine: Engine };
+type ModeOwner = {
+  connection: Connected;
+  grant: NonNullable<ReturnType<Engine['get']>>;
+  key: string;
+  origin: string;
+  sourceFamily: 'ethereum' | 'syscoin';
+  targetFamily: 'ethereum' | 'syscoin';
+  cleanup?: Promise<boolean>;
+};
 type MessageApproval = ReturnType<typeof createDappSigningApproval>;
 type TransactionRequest = Readonly<{
   method: 'eth_sendTransaction';
@@ -121,6 +149,7 @@ type PrivateSigningReview =
       'revision' | 'needsAccountSwitch' | 'busy' | 'dispatched'
     >;
 type PendingSigning = {
+  queueOrder: number;
   id: string;
   wire: WalletConnectRequest;
   connection: Connected;
@@ -160,6 +189,8 @@ type Options = {
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   projectId: string;
   metadata: Parameters<typeof openWalletConnectTransport>[0]['metadata'];
+  /** Invoked only by the explicit returnToDapp view command after destination review. */
+  openExternalUrl(url: string): Promise<void>;
   openTransport?: typeof openWalletConnectTransport;
 };
 class ConnectionActionError extends Error {
@@ -178,7 +209,7 @@ const sessionEventChain = (session: WalletConnectSession, name: string) => {
   for (const namespace of Object.values(session.namespaces)) {
     if (!namespace.events.includes(name)) continue;
     const account = namespace.accounts.find((value) =>
-      /^eip155:\d+:[^:]+$/.test(value)
+      /^(?:eip155:\d+|bip122:[0-9a-f]{32}):[^:]+$/.test(value)
     );
     if (account) return account.slice(0, account.lastIndexOf(':'));
   }
@@ -221,6 +252,11 @@ export class NativeConnectionsController {
   private readonly connections = new Map<string, Connected>();
   private readonly proposals = new Map<number, WalletConnectProposal>();
   private readonly requests = new Map<string, PendingSigning>();
+  private readonly controls: NativeDappControlRequests;
+  private readonly sentry: NativeSentryRequests;
+  private readonly reads = new Map<string, { wire: WalletConnectRequest; connection: Connected; lifetime: AbortController; check(): void }>();
+  private readonly permissionRequests = new Map<string, Connected>();
+  private readonly modeOwners = new WeakMap<WalletConnectRequest, ModeOwner>();
   private readonly listeners = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private snapshot: NativeConnectionsSnapshot;
@@ -229,8 +265,47 @@ export class NativeConnectionsController {
   private readonly options: Options;
   constructor(options: Options) {
     this.options = options;
+    this.controls = new NativeDappControlRequests({
+      host: () => this.host!.controls,
+      foreground: order => order < Math.min(this.requests.values().next().value?.queueOrder ?? Infinity, this.sentry?.firstOrder ?? Infinity),
+      changed: () => { this.publish(); void this.prepareForegroundRequest(); },
+      checkSite: options.checkSite,
+      respond: (wire, response, check) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => {
+        if ('result' in response) this.startModeRetirement(wire);
+      }),
+      retireCommitted: wire => this.finishModeRetirement(wire),
+    });
+    this.sentry = new NativeSentryRequests({
+      host: () => this.host!.sentry,
+      foreground: order => order < Math.min(this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder),
+      changed: () => { this.publish(); void this.prepareForegroundRequest(); },
+      checkSite: options.checkSite,
+      respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
+    });
     this.snapshot = this.project();
     this.view = Object.freeze({
+      approveSentry: async (id, revision, assent) => {
+        if (revision !== this.revision) return failure('REQUEST_EXPIRED');
+        await this.sentry.approve(id, assent);
+      },
+      rejectSentry: async id => { this.sentry.reject(id); },
+      approveControl: async (id, revision) => {
+        if (revision !== this.revision) return failure('REQUEST_EXPIRED');
+        await this.controls.approve(id);
+      },
+      rejectControl: id => this.controls.reject(id),
+      returnToDapp: async (id, revision) => {
+        this.check();
+        const connection = [...this.connections.values()].find(value => value.id === id);
+        if (revision !== this.revision || this.disposed || this.options.source.getSnapshot().phase !== 'ready' || !connection?.engine.isConnected(connection.session.binding.origin)) return failure('REQUEST_EXPIRED');
+        const target = createDappReturnTarget(connection.session.binding.origin, { validation: 'UNKNOWN', isScam: false });
+        if (!target) return failure('SITE_MISMATCH');
+        const site = await this.options.checkSite(target.origin);
+        this.check();
+        if (site.isBlacklisted) return failure('BLOCKED_SITE');
+        if (revision !== this.revision || this.options.source.getSnapshot().phase !== 'ready' || this.connections.get(sessionKey(connection.session)) !== connection || !connection.engine.isConnected(target.origin)) return failure('CONTEXT_CHANGED');
+        await this.options.openExternalUrl(target.url);
+      },
       callsStatusShown: async (id) => {
         if (this.callsStatus?.id !== id) return;
         const respond = this.statusResponse;
@@ -264,7 +339,7 @@ export class NativeConnectionsController {
             if (
               !message ||
               revision !== this.revision ||
-              this.requests.values().next().value !== message ||
+              (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder) < message.queueOrder) ||
               message.review.kind !== 'smart-transaction' ||
               message.review.error ||
               message.dispatched ||
@@ -306,6 +381,8 @@ export class NativeConnectionsController {
       if (phase !== 'ready') this.dismissStatus();
       if (phase !== 'ready' && (this.action || this.pairing)) this.cancel();
       this.revalidateSigningRequests();
+      this.controls.revalidate(); this.sentry.revalidate();
+      this.revalidateReads();
       const previous = this.publishedScope;
       const current = this.publicScope();
       this.publishedScope = current;
@@ -342,6 +419,8 @@ export class NativeConnectionsController {
   }
   private unavailable() {
     if (!this.disposed) {
+      for (const read of this.reads.values()) read.lifetime.abort();
+      this.controls.clear(); this.sentry.clear();
       this.restored = false;
       this.actionEpoch++;
       this.action?.abort();
@@ -390,7 +469,15 @@ export class NativeConnectionsController {
     accountType?: string,
     accountId?: string
   ): readonly string[] {
+    const scope = this.host && this.options.source.getSnapshot().phase === 'ready' ? this.chainScope() : undefined;
     return METHODS.filter((method) => {
+      const hardware = accountType === 'Ledger' || accountType === 'Trezor';
+      if (hardware && (scope?.kind === 'syscoin' || method === 'eth_signTypedData')) return false;
+      if (scope?.kind === 'syscoin') {
+        if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
+        return isDappSyscoinRead(method) || (DAPP_MODE_METHODS as readonly string[]).includes(method) || isDappPermissionMethod(method);
+      }
+      if (isDappSyscoinRead(method) || (SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return false;
       if (accountType === 'SmartAccount' && isDappMessageMethod(method))
         return (
           (method === 'personal_sign' || method === 'eth_signTypedData_v4') &&
@@ -413,6 +500,19 @@ export class NativeConnectionsController {
       return true;
     });
   }
+  private chainScope(context = this.host!.context()): DappChainScope {
+    if (context.network.kind === 'ethereum') return { kind: 'ethereum', chainId: context.network.chainId };
+    const network = this.host!.syscoin.registration();
+    if (context.network.kind !== 'syscoin' || context.networkId !== network.id || context.network.chainId !== network.chainId || context.network.slip44 !== network.slip44) return failure('CONTEXT_CHANGED');
+    return { kind: 'syscoin', chainId: network.chainId, slip44: network.slip44, genesisHash: network.genesisHash };
+  }
+  private accountAnchor(account: ReturnType<NativeConnectionHost['context']>['accounts'][number], scope: DappChainScope): string {
+    return scope.kind === 'ethereum' ? account.address : this.host!.syscoin.anchor(account.xpub);
+  }
+  private permits(connection: Connected, wire: WalletConnectRequest, account: ReturnType<NativeConnectionHost['context']>['accounts'][number], scope: DappChainScope): boolean {
+    const chain = dappCaipChain(scope), anchor = this.accountAnchor(account, scope), expected = `${chain}:${anchor}`;
+    return wire.chainId === chain && Object.values(connection.session.namespaces).some(namespace => namespace.methods.includes(wire.method) && namespace.accounts.some(value => scope.kind === 'ethereum' ? value.toLowerCase() === expected.toLowerCase() : value === expected));
+  }
   private canApprove(
     proposal: WalletConnectProposal,
     accountId?: string
@@ -423,10 +523,11 @@ export class NativeConnectionsController {
     )
       return false;
     const context = this.host?.context();
-    if (!context || context.network.kind !== 'ethereum') return false;
-    const chain = `eip155:${context.network.chainId}`;
+    if (!context?.unlocked) return false;
+    const scope = this.chainScope(context), chain = dappCaipChain(scope), family = dappNamespace(scope);
     const account = context.accounts.find((value) => value.id === accountId);
     if (accountId && !account) return false;
+    if (scope.kind === 'syscoin' && (account?.type === 'Ledger' || account?.type === 'Trezor')) return false;
     const supported = this.supportedMethods(account?.type, account?.id);
     return Object.entries(proposal.requiredNamespaces).every(([name, raw]) => {
       const requirement = raw as {
@@ -435,7 +536,7 @@ export class NativeConnectionsController {
         events?: string[];
       };
       return (
-        (name === 'eip155' || name === chain) &&
+        (name === family || name === chain) &&
         (requirement.chains ?? [chain]).every((id) => id === chain) &&
         (requirement.methods ?? []).every((method) =>
           supported.includes(method)
@@ -453,8 +554,10 @@ export class NativeConnectionsController {
     } catch {
       /* A retired host never contributes account data. */
     }
-    const evm = context?.network.kind === 'ethereum';
+    const evm = context?.network.kind === 'ethereum' || context?.network.kind === 'syscoin';
     return Object.freeze({
+      controlReview: ready ? this.controls.review(this.revision) : null,
+      sentryReview: ready ? this.sentry?.review(this.revision) ?? null : null,
       callsStatus: ready ? this.callsStatus : null,
       revision: this.revision,
       status: ready ? this.status : 'locked',
@@ -509,6 +612,7 @@ export class NativeConnectionsController {
                       grant.chainId === context?.network.chainId
                         ? context.networkLabel
                         : `Chain ${grant.chainId}`,
+                    returnTarget: createDappReturnTarget(session.binding.origin, { validation: 'UNKNOWN', isScam: false }),
                   }),
                 ];
               }
@@ -681,7 +785,7 @@ export class NativeConnectionsController {
           ),
       canPublishAccount: (account) => !!account,
       isAccountAvailable: (account, _type, network) =>
-        !!account && network.kind === 'ethereum',
+        !!account && (network.kind === 'ethereum' || network.kind === 'syscoin'),
       permissions: repository.permissions(session.binding),
       resolveDelivery: async (origin, id) => {
         if (
@@ -715,9 +819,7 @@ export class NativeConnectionsController {
                   data: (event.params as { chainId: string }).chainId,
                 };
           // A network change or removed grant cannot expand session permissions.
-          const chainId = grant
-            ? `eip155:${grant.chainId}`
-            : sessionEventChain(selectedSession, message.name);
+          const chainId = grant?.chain === 'ethereum' ? `eip155:${grant.chainId}` : sessionEventChain(selectedSession, message.name);
           if (!chainId) return;
           guard();
           await transport.emit(session.binding, chainId, message, guard);
@@ -765,6 +867,8 @@ export class NativeConnectionsController {
           this.connections.delete(key);
         }
     } else if (event.type === 'request-expired') {
+      for (const read of this.reads.values()) if (read.wire.id === event.id) read.lifetime.abort();
+      this.controls.expire(event.id); this.sentry.expire(event.id);
       for (const message of this.requests.values())
         if (message.wire.id === event.id) this.retireRequest(message, false);
     } else if (event.type === 'request')
@@ -777,6 +881,8 @@ export class NativeConnectionsController {
       });
     else if (event.type === 'unavailable') this.unavailable();
     this.revalidateSigningRequests();
+    this.controls.revalidate(); this.sentry.revalidate();
+    this.revalidateReads();
     this.publish();
   }
   private async perform(
@@ -937,11 +1043,11 @@ export class NativeConnectionsController {
       );
       guard();
       if (site.isBlacklisted) return failure('BLOCKED_SITE');
-      const chain = `eip155:${context.network.chainId}`;
+      const scope = this.chainScope(context), chain = dappCaipChain(scope), family = dappNamespace(scope);
       const requested = [
-        ...Object.values(proposal.requiredNamespaces),
-        ...Object.values(proposal.optionalNamespaces),
-      ] as { methods?: string[]; events?: string[] }[];
+        ...Object.entries(proposal.requiredNamespaces),
+        ...Object.entries(proposal.optionalNamespaces),
+      ].filter(([name]) => name === family || name === chain).map(([, value]) => value) as { methods?: string[]; events?: string[] }[];
       const methods = [
         ...new Set(
           requested
@@ -961,9 +1067,9 @@ export class NativeConnectionsController {
       const session = await this.transport!.approve(
         proposal,
         {
-          eip155: {
+          [family]: {
             chains: [chain],
-            accounts: [`${chain}:${account.address}`],
+            accounts: [`${chain}:${this.accountAnchor(account, scope)}`],
             methods,
             events,
           },
@@ -1041,14 +1147,40 @@ export class NativeConnectionsController {
       (value) => value.id === id
     );
     if (!connected) return;
+    if (await this.retireConnection(connected)) this.notifyRetiredConnection(connected);
+  }
+  private async retireConnection(connected: Connected): Promise<boolean> {
+    const session = connected.session, key = sessionKey(session);
+    if (this.connections.get(key) !== connected) return false;
     for (const message of [...this.requests.values()])
       if (message.connection === connected) void this.retireRequest(message);
-    await connected.engine.revoke(connected.session.binding.origin, {
+    const revoking = connected.engine.revoke(session.binding.origin, {
       allowAlreadyDisconnected: true,
     });
-    this.connections.delete(sessionKey(connected.session));
+    this.controls.revalidate(); this.sentry.revalidate(); this.revalidateReads();
+    await revoking;
+    if (this.connections.get(key) !== connected || connected.session !== session || connected.engine.get(session.binding.origin)) return false;
+    this.connections.delete(key);
     this.publish();
+    return true;
+  }
+  private notifyRetiredConnection(connected: Connected) {
+    if (this.disposed || this.connections.has(sessionKey(connected.session)) || connected.engine.get(connected.session.binding.origin)) return;
     this.notifyRemoteDisconnect(connected);
+  }
+  private startModeRetirement(wire: WalletConnectRequest) {
+    const owner = this.modeOwners.get(wire);
+    if (!owner || owner.cleanup || owner.sourceFamily === owner.targetFamily || this.connections.get(owner.key) !== owner.connection || owner.connection.session.binding.origin !== owner.origin || owner.connection.engine.get(owner.origin) !== owner.grant) return;
+    owner.cleanup = this.retireConnection(owner.connection).catch(cause => { this.unavailable(); throw cause; });
+    void owner.cleanup.catch(() => undefined);
+  }
+  private async finishModeRetirement(wire: WalletConnectRequest) {
+    const owner = this.modeOwners.get(wire);
+    if (!owner) return;
+    try {
+      this.startModeRetirement(wire);
+      if (await owner.cleanup) this.notifyRetiredConnection(owner.connection);
+    } finally { this.modeOwners.delete(wire); }
   }
   private notifyRemoteDisconnect(connected: Connected) {
     const epoch = this.actionEpoch;
@@ -1059,8 +1191,212 @@ export class NativeConnectionsController {
       }
     });
   }
+  private pendingCount(connection?: Connected): number {
+    return [...this.permissionRequests.values()].filter(value => !connection || value === connection).length +
+      [...this.reads.values()].filter(value => !connection || value.connection === connection).length +
+      [...this.requests.values()].filter(value => !connection || value.connection === connection).length +
+      (connection ? this.controls.count(connection.session.binding.topic) + this.sentry.count(connection.session.binding.topic) : this.controls.size + this.sentry.size);
+  }
+  private hasPendingWire(wire: WalletConnectRequest): boolean {
+    const key = `${sessionKey(wire.session)}:${wire.id}`;
+    return this.permissionRequests.has(key) || this.reads.has(key) || this.controls.has(wire) || this.sentry.has(wire) ||
+      [...this.requests.values()].some(value => value.wire.id === wire.id && value.session.binding.topic === wire.session.binding.topic);
+  }
+  private async queueControlRequest(wire: WalletConnectRequest) {
+    const connection = this.connections.get(sessionKey(wire.session));
+    const host = this.host!, origin = wire.session.binding.origin;
+    const context = host.controls.context();
+    const grant = connection?.engine.get(origin);
+    const account = context?.accounts.find(entry => entry.slip44 === (grant?.chain === 'syscoin' ? grant.utxoAccount?.slip44 : 60) && entry.index === grant?.accountId && entry.type === grant?.accountType);
+    const reject = (code: number, message: string) => this.transport!.respond(wire.session.binding, wire.id, { error: { code, message } }, () => this.check(), () => undefined);
+    if (!connection || !grant || !account || !context || connection.session.binding.origin !== origin || this.options.source.getSnapshot().phase !== 'ready')
+      return reject(4100, 'Account is unavailable');
+    const mode = (DAPP_MODE_METHODS as readonly string[]).includes(wire.method);
+    const networkControl = mode || wire.method === 'wallet_switchEthereumChain' || wire.method === 'wallet_addEthereumChain';
+    // Network display changes keep the saved grant independent of the display account/family.
+    // Asset admission retains the selected signer and selected-chain requirements.
+    if (!networkControl) {
+      const signer = host.context();
+      if (!signer.unlocked || signer.activeAccountId !== account.id || signer.network.kind !== 'ethereum') return reject(4100, 'Account is unavailable');
+      if (grant.chainId !== signer.network.chainId) return reject(4901, 'Requested chain is not selected');
+    }
+    if (grant.chain === 'syscoin') {
+      if (!mode) return reject(4200, 'Unsupported method');
+      const signer = host.context(), scope = this.chainScope(signer), granted = signer.accounts.find(value => value.id === account.id);
+      if (!granted || scope.kind !== 'syscoin' || grant.chainId !== scope.chainId || grant.utxoAccount?.xpub !== granted.xpub || grant.utxoAccount.slip44 !== scope.slip44 || !this.permits(connection, wire, granted, scope)) return reject(4100, 'Method or account is not authorized');
+    } else {
+      if (wire.chainId !== `eip155:${grant.chainId}`) return reject(4901, 'Requested chain is not granted');
+      if (!Object.values(connection.session.namespaces).some(namespace => namespace.methods.includes(wire.method) && namespace.accounts.some(value => value.toLowerCase() === `${wire.chainId}:${account.address}`.toLowerCase()))) return reject(4100, 'Method or account is not authorized');
+    }
+    if (this.hasPendingWire(wire)) return;
+    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin)
+      return reject(-32005, 'Too many requests');
+    let request;
+    try { request = mode ? normalizeDappModeRequest(wire.method, wire.params) : normalizeDappWalletControl(wire.method as Parameters<typeof normalizeDappWalletControl>[0], wire.params); }
+    catch (cause) { return reject(cause instanceof EthereumRpcErrorHandler ? cause.code : -32602, cause instanceof Error ? cause.message : 'Invalid wallet request'); }
+    const session = connection.session;
+    const assertSessionCurrent = () => {
+      this.check();
+      const phase = this.options.source.getSnapshot().phase;
+      if (!['ready', 'authenticating'].includes(phase) || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+    };
+    const assertCurrent = () => {
+      assertSessionCurrent();
+      const next = host.controls.context();
+      if (this.options.source.getSnapshot().phase !== 'ready' || !next || next.revision !== context.revision || next.catalogueRevision !== context.catalogueRevision || next.activeAccountId !== context.activeAccountId || next.networkId !== context.networkId || !next.accounts.some(entry => entry.id === account.id && entry.address === account.address && entry.slip44 === account.slip44)) failure('CONTEXT_CHANGED');
+    };
+    if ('kind' in request) {
+      const selected = host.context();
+      if (selected.network.kind === request.kind && selected.network.chainId === request.chainId) {
+        assertCurrent(); return this.transport!.respond(wire.session.binding, wire.id, { result: null }, assertCurrent, () => {});
+      }
+    }
+    const networkFamily = host.context().network.kind;
+    if (networkFamily !== 'ethereum' && networkFamily !== 'syscoin') return reject(4100, 'Account is unavailable');
+    if ('kind' in request) this.modeOwners.set(wire, { connection, grant, origin, key: sessionKey(session), sourceFamily: networkFamily, targetFamily: request.kind });
+    this.controls.enqueue(wire, request, { networkFamily, order: ++this.serial, accountId: account.id, networkId: context.networkId, accountLabel: account.label, address: account.address, networkLabel: context.networkLabel, chainId: String(grant.chainId), assertCurrent, assertSessionCurrent });
+  }
+  private async queueSentryRequest(wire: WalletConnectRequest) {
+    const connection = this.connections.get(sessionKey(wire.session)), context = this.host!.context(), origin = wire.session.binding.origin;
+    const grant = connection?.engine.get(origin), account = context.accounts.find(value => value.index === grant?.accountId && value.type === grant?.accountType);
+    const reject = (code: number, message: string) => this.transport!.respond(wire.session.binding, wire.id, { error: { code, message } }, () => this.check(), () => {});
+    if (!connection || connection.session.binding.origin !== origin || !grant || grant.chain !== 'syscoin' || !account || !context.unlocked || context.activeAccountId !== account.id || this.options.source.getSnapshot().phase !== 'ready') return reject(4100, 'Account is unavailable');
+    const scope = this.chainScope(context);
+    if (scope.kind !== 'syscoin' || scope.chainId !== grant.chainId || grant.utxoAccount?.slip44 !== scope.slip44 || grant.utxoAccount.xpub !== account.xpub || !this.permits(connection, wire, account, scope)) return reject(4100, 'Method or account is not authorized');
+    if (!this.supportedMethods(account.type, account.id).includes(wire.method)) return reject(4200, 'Unsupported method');
+    if (!Array.isArray(wire.params) || wire.params.length !== 1) return reject(-32602, 'Supply one typed Sentry operation');
+    assertProviderRequestBudget({ method: wire.method, params: wire.params });
+    if (this.hasPendingWire(wire)) return;
+    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return reject(-32005, 'Too many requests');
+    const revision = this.options.source.getSnapshot().revision, session = connection.session, network = JSON.stringify(this.host!.syscoin.registration());
+    const check = () => {
+      this.check(); const next = this.host!.context();
+      if (this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || !next.unlocked || next.activeAccountId !== account.id || next.networkId !== context.networkId || JSON.stringify(this.host!.syscoin.registration()) !== network || !next.accounts.some(value => value.id === account.id && value.xpub === account.xpub) || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+    };
+    this.sentry.enqueue(wire, { order: ++this.serial, accountLabel: account.label, address: account.address, networkLabel: context.networkLabel, chainId: dappCaipChain(scope), assertCurrent: check });
+  }
+  private revalidateReads() {
+    for (const read of this.reads.values()) {
+      try { read.check(); } catch { read.lifetime.abort(); }
+    }
+  }
+  private async respondPermissions(wire: WalletConnectRequest) {
+    const connection = this.connections.get(sessionKey(wire.session));
+    const origin = wire.session.binding.origin;
+    const session = connection?.session;
+    const sessionCheck = () => {
+      this.check();
+      if (!connection || connection.session !== session || session?.binding.origin !== origin || this.connections.get(sessionKey(session)) !== connection || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+    };
+    const respond = (response: { result: unknown } | { error: { code: number; message: string } }, check = sessionCheck) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
+    if (!connection || session?.binding.origin !== origin || !Object.values(session.namespaces).some(namespace => namespace.methods.includes(wire.method) && namespace.accounts.some(value => value.startsWith(`${wire.chainId}:`)))) return respond({ error: { code: 4100, message: 'Method or chain is not authorized' } });
+    let permissions;
+    try { permissions = readDappPermissionRequest(wire.method as Parameters<typeof readDappPermissionRequest>[0], wire.params); }
+    catch (cause) { return respond({ error: { code: cause instanceof EthereumRpcErrorHandler ? cause.code : -32602, message: cause instanceof Error ? cause.message : 'Invalid permission request' } }); }
+    const key = `${sessionKey(wire.session)}:${wire.id}`;
+    if (this.hasPendingWire(wire)) return;
+    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return respond({ error: { code: -32005, message: 'Too many requests' } });
+    this.permissionRequests.set(key, connection);
+    const finish = this.disposal.begin();
+    try {
+      sessionCheck();
+      if (wire.method === 'wallet_revokePermissions') {
+        if (!Object.keys(permissions).length) return await respond({ result: null });
+        const revoking = connection.engine.revoke(origin, { allowAlreadyDisconnected: true });
+        for (const message of [...this.requests.values()]) if (message.connection === connection) void this.retireRequest(message, false);
+        for (const read of this.reads.values()) if (read.connection === connection) read.lifetime.abort();
+        this.controls.revalidate(); this.sentry.revalidate();
+        if (this.statusSession === session) this.dismissStatus();
+        this.publish();
+        try { await revoking; }
+        catch { return await respond({ error: { code: -32603, message: 'Permission revocation failed' } }); }
+        const revoked = () => { sessionCheck(); if (connection.engine.get(origin)) failure('CONTEXT_CHANGED'); };
+        try { await respond({ result: null }, revoked); }
+        finally {
+          if (this.connections.get(sessionKey(session)) === connection) this.connections.delete(sessionKey(session));
+          this.publish(); this.notifyRemoteDisconnect(connection);
+        }
+        return;
+      }
+      const sysGrant = connection.engine.get(origin);
+      if (sysGrant?.chain === 'syscoin') {
+        const context = this.host!.context(), revision = this.options.source.getSnapshot().revision;
+        const account = context.accounts.find(value => value.index === sysGrant.accountId && value.type === sysGrant.accountType);
+        const scope = context.network.kind === 'syscoin' && context.unlocked && this.options.source.getSnapshot().phase === 'ready' ? this.chainScope(context) : null;
+        if (!account || !scope || scope.kind !== 'syscoin' || scope.chainId !== sysGrant.chainId || sysGrant.utxoAccount?.slip44 !== scope.slip44 || sysGrant.utxoAccount.xpub !== account.xpub || !this.permits(connection, wire, account, scope))
+          return await respond(wire.method === 'wallet_getPermissions' ? { result: [] } : { error: { code: 4100, message: 'A new connection approval is required' } });
+        const registration = JSON.stringify(this.host!.syscoin.registration());
+        const check = () => { sessionCheck(); const current = this.host!.context();
+          if (this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision || connection.engine.get(origin) !== sysGrant || !current.unlocked || JSON.stringify(this.host!.syscoin.registration()) !== registration || !current.accounts.some(value => value.id === account.id && value.xpub === account.xpub)) failure('CONTEXT_CHANGED');
+        };
+        return await respond({ result: projectDappPermissions(origin, account.address, sysGrant.date, undefined) }, check);
+      }
+      const context = this.host!.controls.context(), revision = this.options.source.getSnapshot().revision;
+      const grant = connection.engine.get(origin);
+      const account = grant && context?.accounts.find(value => value.slip44 === 60 && value.index === grant.accountId && value.type === grant.accountType);
+      const ceiling = grant?.chain === 'ethereum' && wire.chainId === `eip155:${grant.chainId}` && account && Object.values(session.namespaces).some(namespace => namespace.methods.includes(wire.method) && namespace.accounts.some(value => value.toLowerCase() === `${wire.chainId}:${account.address}`.toLowerCase()));
+      if (!context || this.options.source.getSnapshot().phase !== 'ready' || !ceiling || !grant || !account) {
+        return await respond(wire.method === 'wallet_getPermissions' ? { result: [] } : { error: { code: 4100, message: 'A new connection approval is required' } });
+      }
+      const check = () => {
+        sessionCheck();
+        const next = this.host!.controls.context();
+        if (revision !== this.options.source.getSnapshot().revision || this.options.source.getSnapshot().phase !== 'ready' || !next || next.revision !== context.revision || next.catalogueRevision !== context.catalogueRevision || connection.engine.get(origin) !== grant || !next.accounts.some(value => value.id === account.id && value.address === account.address && value.slip44 === 60)) failure('CONTEXT_CHANGED');
+      };
+      // Like the extension's connected shortcut: existing authority is returned,
+      // never replaced by the current display account or an unnegotiated chain.
+      return await respond({ result: projectDappPermissions(origin, account.address, grant.date, [grant.chainId]) }, check);
+    } finally { if (this.permissionRequests.get(key) === connection) this.permissionRequests.delete(key); finish(); }
+  }
+  private async respondRead(wire: WalletConnectRequest) {
+    const connection = this.connections.get(sessionKey(wire.session));
+    const context = this.host!.context(), origin = wire.session.binding.origin;
+    const grant = connection?.engine.get(origin);
+    const account = grant && context.accounts.find(value => value.index === grant.accountId && value.type === grant.accountType);
+    const respond = (response: { result: unknown } | { error: { code: number; message: string; data?: string } }, check: () => void = () => this.check()) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
+    if (!connection || connection.session.binding.origin !== origin || !grant || !account || !context.unlocked || this.options.source.getSnapshot().phase !== 'ready' || !connection.engine.isConnected(origin)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
+    const scope = this.chainScope(context), syscoin = isDappSyscoinRead(wire.method);
+    if (grant.chain !== scope.kind || grant.chainId !== scope.chainId || syscoin !== (scope.kind === 'syscoin')) return respond({ error: { code: 4901, message: 'Requested chain is not selected' } });
+    if (scope.kind === 'syscoin' && (grant.utxoAccount?.slip44 !== scope.slip44 || grant.utxoAccount.xpub !== account.xpub)) return respond({ error: { code: 4100, message: 'Account is unavailable' } });
+    if (!this.permits(connection, wire, account, scope)) return respond({ error: { code: wire.chainId === dappCaipChain(scope) ? 4100 : 4901, message: 'Method or account is not authorized' } });
+    const key = `${sessionKey(wire.session)}:${wire.id}`;
+    if (this.hasPendingWire(wire)) return;
+    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return respond({ error: { code: -32005, message: 'Too many requests' } });
+    let request;
+    try { request = syscoin ? normalizeDappSyscoinRead(wire.method, wire.params) : normalizeDappRpcRead(wire.method, wire.params); }
+    catch (cause) { return respond({ error: { code: cause instanceof EthereumRpcErrorHandler ? cause.code : -32602, message: cause instanceof Error ? cause.message : 'Invalid RPC read' } }); }
+    const session = connection.session, revision = this.options.source.getSnapshot().revision, network = JSON.stringify(context.network), utxoNetwork = syscoin ? JSON.stringify(this.host!.syscoin.registration()) : null;
+    const lifetime = new AbortController(), finish = this.disposal.begin();
+    const check = () => {
+      this.check(); const next = this.host!.context();
+      if (lifetime.signal.aborted || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now() || revision !== this.options.source.getSnapshot().revision || this.options.source.getSnapshot().phase !== 'ready' || !next.unlocked || next.networkId !== context.networkId || JSON.stringify(next.network) !== network || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || (utxoNetwork !== null && JSON.stringify(this.host!.syscoin.registration()) !== utxoNetwork) || !next.accounts.some(value => value.id === account.id && (syscoin || value.address === account.address) && value.xpub === account.xpub)) failure('CONTEXT_CHANGED');
+    };
+    const entry = { wire, connection, lifetime, check };
+    const timer = setTimeout(() => lifetime.abort(), Math.max(0, Math.min(wire.expiresAt, session.expiry * 1000) - Date.now()));
+    this.reads.set(key, entry);
+    try {
+      check(); const result = isDappSyscoinRead(request.method) ? await this.host!.syscoin.read(request as ReturnType<typeof normalizeDappSyscoinRead>, account, lifetime.signal, check) : await this.host!.reads.read(request as ReturnType<typeof normalizeDappRpcRead>, lifetime.signal, check); check();
+      await respond({ result }, check);
+    } catch (cause) {
+      check();
+      await respond({ error: cause instanceof EthereumRpcErrorHandler ? { code: cause.code, message: cause.message.slice(0, 256), ...(typeof cause.data === 'string' ? { data: cause.data } : {}) } : { code: -32603, message: 'RPC read unavailable' } }, check);
+    } finally { clearTimeout(timer); lifetime.abort(); if (this.reads.get(key) === entry) this.reads.delete(key); finish(); }
+  }
   private async respond(request: WalletConnectRequest) {
     this.check();
+    if (isDappPermissionMethod(request.method)) {
+      await this.respondPermissions(request);
+      return;
+    }
+    if ((SENTRY_DAPP_METHODS as readonly string[]).includes(request.method)) { await this.queueSentryRequest(request); return; }
+    if (isDappRpcReadMethod(request.method) || isDappSyscoinRead(request.method)) {
+      await this.respondRead(request);
+      return;
+    }
+    if (isDappWalletControlMethod(request.method) || (DAPP_MODE_METHODS as readonly string[]).includes(request.method)) {
+      await this.queueControlRequest(request);
+      return;
+    }
     const key = sessionKey(request.session);
     const connected = this.connections.get(key);
     const session = connected?.session;
@@ -1290,7 +1626,7 @@ export class NativeConnectionsController {
     const message = this.requests.values().next().value as
       | PendingSigning
       | undefined;
-    if (!message) return null;
+    if (!message || Math.min(this.controls.firstOrder, this.sentry.firstOrder) < message.queueOrder) return null;
     try {
       return Object.freeze({
         ...message.review,
@@ -1455,7 +1791,7 @@ export class NativeConnectionsController {
     });
     this.requestRetirement = retiring;
     this.publish();
-    void retiring.then(() => this.prepareForegroundRequest());
+    void retiring.then(() => { void this.controls.prepare(); void this.sentry.prepare(); return this.prepareForegroundRequest(); });
     return retiring;
   }
   private async queueSigningRequest(wire: WalletConnectRequest) {
@@ -1480,13 +1816,15 @@ export class NativeConnectionsController {
     if (
       !connection ||
       !grant ||
+      grant.chain !== 'ethereum' ||
+      !connection.engine.isConnected(origin) ||
       !account ||
       !context.unlocked ||
       this.options.source.getSnapshot().phase !== 'ready' ||
       context.network.kind !== 'ethereum'
     )
       return reject(4100, 'Account is unavailable');
-    if (wire.chainId !== `eip155:${context.network.chainId}`)
+    if (wire.chainId !== `eip155:${context.network.chainId}` || grant.chainId !== context.network.chainId)
       return reject(4901, 'Requested chain is not selected');
     const permitted = Object.values(connection.session.namespaces).some(
       (namespace) =>
@@ -1500,21 +1838,9 @@ export class NativeConnectionsController {
     if (!permitted) return reject(4100, 'Method or account is not authorized');
     if (!this.supportedMethods(account.type, account.id).includes(wire.method))
       return reject(4200, 'Unsupported method');
-    if (
-      this.requests.size >= DAPP_REQUEST_LIMITS.pendingRequests ||
-      [...this.requests.values()].filter(
-        (entry) => entry.connection === connection
-      ).length >= DAPP_REQUEST_LIMITS.requestsPerOrigin
-    )
+    if (this.hasPendingWire(wire)) return;
+    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin)
       return reject(-32005, 'Too many requests');
-    if (
-      [...this.requests.values()].some(
-        (entry) =>
-          entry.wire.id === wire.id &&
-          entry.session.binding.topic === wire.session.binding.topic
-      )
-    )
-      return;
     let request: SigningRequest | undefined;
     try {
       if (wire.method === 'eth_sendTransaction') {
@@ -1649,8 +1975,10 @@ export class NativeConnectionsController {
         return;
       }
     }
-    const id = `request-${++this.serial}`;
+    const queueOrder = ++this.serial;
+    const id = `request-${queueOrder}`;
     const message: PendingSigning = {
+      queueOrder,
       id,
       wire,
       requestExpiresAt: expiresAt,
@@ -1730,6 +2058,7 @@ export class NativeConnectionsController {
         message.approval.assertCurrent();
         if (
           this.requests.values().next().value === message &&
+          Math.min(this.controls.firstOrder, this.sentry.firstOrder) > message.queueOrder &&
           context.activeAccountId === account.id &&
           !message.review.error
         )
@@ -1796,9 +2125,11 @@ export class NativeConnectionsController {
   }
   private async prepareForegroundRequest(): Promise<void> {
     await this.requestRetirement;
+    if (!this.disposed) { void this.controls.prepare(); void this.sentry.prepare(); }
     const message = this.requests.values().next().value;
     if (
       !message ||
+      Math.min(this.controls.firstOrder, this.sentry.firstOrder) < message.queueOrder ||
       message.busy ||
       message.prepared ||
       message.smart ||
@@ -2090,7 +2421,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      this.requests.values().next().value !== message ||
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder) < message.queueOrder) ||
       message.review.kind !== 'transaction' ||
       message.dispatched ||
       (message.broadcastHash && !message.eoa)
@@ -2171,7 +2502,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      this.requests.values().next().value !== message ||
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder) < message.queueOrder) ||
       message.request.method !== 'eth_sendTransaction' ||
       message.review.kind === 'message' ||
       message.dispatched ||
@@ -2240,7 +2571,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      this.requests.values().next().value !== message
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder) < message.queueOrder)
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -2355,7 +2686,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      this.requests.values().next().value !== message
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder) < message.queueOrder)
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -2428,6 +2759,8 @@ export class NativeConnectionsController {
     return this.disposal.close(() => {
       this.dismissStatus();
       this.disposed = true;
+      for (const read of this.reads.values()) read.lifetime.abort();
+      this.controls.clear(); this.sentry.clear();
       for (const message of [...this.requests.values()])
         void this.retireRequest(message, false);
       this.transportOwner = undefined;
@@ -2436,6 +2769,7 @@ export class NativeConnectionsController {
       this.unsubscribe();
       this.publish();
     }, [async () => {
+      await Promise.all([this.controls.dispose(), this.sentry.dispose()]);
       await this.requestRetirement;
       await this.opening?.catch(() => undefined);
       await this.openingTransport?.catch(() => undefined);

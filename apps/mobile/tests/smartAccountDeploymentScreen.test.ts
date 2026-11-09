@@ -36,6 +36,7 @@ function fixture() {
     },
     payerReview: null,
     transactionHash: null,
+    userOperationSubmissionStarted: false,
     error: null,
   };
   const calls = {

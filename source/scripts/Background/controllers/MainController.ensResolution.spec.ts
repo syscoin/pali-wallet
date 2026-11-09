@@ -46,7 +46,12 @@ const deferred = () => {
 };
 
 let wallet: any;
-let provider: { lookupAddress: jest.Mock; resolveName: jest.Mock };
+let provider: {
+  lookupAddress: jest.Mock;
+  resolveName: jest.Mock;
+  send: jest.Mock;
+  verifyConfiguredChainId: jest.Mock;
+};
 const cached = (name = NAME) => selectEnsNameToAddress(mockState)[name];
 beforeEach(() => {
   mockState = {
@@ -55,7 +60,12 @@ beforeEach(() => {
   wallet = Object.create(MainController.prototype);
   wallet.walletStateGeneration = 0;
   wallet.ensResolutionRequests = new Map();
-  provider = { resolveName: jest.fn(), lookupAddress: jest.fn() };
+  provider = {
+    resolveName: jest.fn(),
+    lookupAddress: jest.fn(),
+    send: jest.fn().mockResolvedValue('0x1'),
+    verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+  };
   wallet.getEnsMainnetProvider = () => provider;
 });
 
@@ -64,6 +74,41 @@ it('publishes an ordinary result and releases its active request token', async (
   expect(await wallet.resolveEns(NAME)).toBe(OLDER);
   expect(cached()).toBe(OLDER);
   expect(wallet.ensResolutionRequests.size).toBe(0);
+  expect(provider.send).toHaveBeenCalledWith('eth_chainId', []);
+  expect(provider.verifyConfiguredChainId).toHaveBeenCalledWith(true);
+});
+
+it.each(['changed', 'malformed', 'unavailable'])(
+  'does not return or cache a recipient when the source chain is %s after resolution',
+  async (mode) => {
+    provider.resolveName.mockResolvedValue(OLDER);
+    if (mode === 'unavailable')
+      provider.send.mockRejectedValue(new Error('RPC unavailable'));
+    else
+      provider.send.mockResolvedValue(mode === 'changed' ? '0x2' : 'invalid');
+    expect(await wallet.resolveEns(NAME)).toBeNull();
+    expect(cached()).toBeUndefined();
+    expect(wallet.ensResolutionRequests.size).toBe(0);
+    expect(provider.send).toHaveBeenCalledWith('eth_chainId', []);
+  }
+);
+
+it('does not publish a recipient when reset overtakes final source-chain verification', async () => {
+  const chain = deferred();
+  const started = deferred();
+  provider.resolveName.mockResolvedValue(OLDER);
+  provider.send.mockImplementation(() => {
+    started.resolve(null);
+    return chain.promise;
+  });
+  const result = wallet.resolveEns(NAME);
+  await started.promise;
+  expect(provider.send).toHaveBeenCalledWith('eth_chainId', []);
+  expect(cached()).toBeUndefined();
+  wallet.walletStateGeneration++;
+  chain.resolve('0x1');
+  expect(await result).toBeNull();
+  expect(cached()).toBeUndefined();
 });
 
 it.each(['older-first', 'newer-first'])(
@@ -438,6 +483,7 @@ describe('bulk ENS resolution', () => {
   });
 
   it('invalidates completed entries too when reset overtakes a partially completed batch', async () => {
+    const resolve = jest.spyOn(wallet, 'resolveEns');
     const responses = Array.from({ length: 3 }, deferred);
     const names = responses.map((_, index) => `partial${index}.eth`);
     provider.resolveName.mockImplementation(
@@ -445,7 +491,7 @@ describe('bulk ENS resolution', () => {
     );
     const result = wallet.batchResolveEns(names);
     responses[0].resolve(OLDER);
-    await responses[0].promise;
+    await resolve.mock.results[0].value;
     expect(cached(names[0])).toBe(OLDER);
     wallet.walletStateGeneration += 1;
     mockState = {

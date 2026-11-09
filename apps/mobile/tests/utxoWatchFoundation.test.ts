@@ -90,22 +90,23 @@ test('SDK address codec preserves supported P2PKH, P2SH and P2WSH scripts', () =
   for (const address of ['1BoatSLRHtKNngkdXEeobR76b53LETtpyT', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy', bech32.encode('bc', [0, ...bech32.toWords(new Uint8Array(32))])]) assert.equal(normalizeUtxoAddress(address, 'bitcoin'), address);
 });
 
-test('owned UTXO balance reads exact SYSX from the same verified account response', async () => {
+test('owned UTXO balance reads every SPT holding from the shared account inventory', async () => {
   for (const id of ['syscoin', 'utxo:5700', 'bitcoin'] as const) {
     const network = getUtxoNetwork(id);
     const fixture = responses(id, [statusFor(id), { blockHash: network.genesisHash }, {
       ...balanceFor(id),
       tokensAsset: [
-        { assetGuid: '123456', decimals: 8, balance: '9007199254740993', unconfirmedBalance: '-2' },
+        { assetGuid: '123456', symbol: 'SYSX', decimals: 8, balance: '9007199254740993', unconfirmedBalance: '-2' },
         { assetGuid: '123456', decimals: 8, balance: '9', unconfirmedBalance: '1' },
         { assetGuid: '123457', decimals: 8, balance: '900', symbol: 'SYSX' },
       ],
     }]);
     const result = await createUtxoBalanceReader(fixture).readBalance(id, addressFor(id), signal());
     assert.equal(result.confirmedUnits, '9007199254740993');
-    assert.deepEqual(result.sysx, id === 'bitcoin' ? undefined : {
-      confirmedUnits: '9007199254741002', pendingDeltaUnits: '-1',
-    });
+    assert.deepEqual(result.assets, id === 'bitcoin' ? undefined : [
+      { assetGuid: '123456', symbol: 'SYSX', decimals: 8, confirmedUnits: '9007199254741002', pendingDeltaUnits: '-1' },
+      { assetGuid: '123457', symbol: 'SYSX', decimals: 8, confirmedUnits: '900', pendingDeltaUnits: '0' },
+    ]);
     assert.equal(fixture.calls.length, 3);
   }
 });
@@ -115,11 +116,11 @@ test('an unavailable SYSX inventory stays distinct from verified zero and does n
   const { genesisHash } = getUtxoNetwork(id);
   for (const [assetResponse, expected] of [
     [{ tokensAsset: [] }, undefined],
-    [{ txs: 0, tokensAsset: [] }, { confirmedUnits: '0', pendingDeltaUnits: '0' }],
-    [{ txs: 0 }, { confirmedUnits: '0', pendingDeltaUnits: '0' }],
+    [{ txs: 0, tokensAsset: [] }, []],
+    [{ txs: 0 }, []],
     [{}, undefined],
     [{ tokensAsset: null }, undefined],
-    [{ tokensAsset: [{ assetGuid: '123456', decimals: 3, balance: '1' }] }, undefined],
+    [{ tokensAsset: [{ assetGuid: '123456', decimals: 3, balance: '1', symbol: 'THREE' }] }, [{assetGuid:'123456',decimals:3,confirmedUnits:'1',pendingDeltaUnits:'0',symbol:'THREE'}]],
     [{ tokensAsset: [{ assetGuid: '123456\n', decimals: 8, balance: '1' }] }, undefined],
     [{ tokensAsset: [{ assetGuid: '123456', decimals: 8, balance: '9'.repeat(79) }] }, undefined],
   ] as const) {
@@ -128,7 +129,7 @@ test('an unavailable SYSX inventory stays distinct from verified zero and does n
     }]);
     const result = await createUtxoBalanceReader(fixture).readBalance(id, addressFor(id), signal());
     assert.equal(result.confirmedUnits, '9007199254740993');
-    assert.deepEqual(result.sysx, expected);
+    assert.deepEqual(result.assets, expected);
     assert.equal(fixture.calls.length, 3);
   }
 });

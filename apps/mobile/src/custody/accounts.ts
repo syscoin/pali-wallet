@@ -1,4 +1,18 @@
-import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
+import type { NativeWalletCatalogueSnapshot, NativeNetworkSelection } from './walletCatalogue.ts';
+import type { NativeNetworkRegistration } from './networkContext.ts';
+import type { UtxoNetwork } from '../core/utxoNetworks.ts';
+
+export type NativeNetworkSelectionProof = Readonly<{
+  sourceCatalogueRevision: number;
+  target: NativeNetworkRegistration | UtxoNetwork;
+  selection: NativeNetworkSelection;
+  assertCurrent(): void;
+}>;
+export type NativeNetworkSelectionReceipt = NativeNetworkSelectionProof & Readonly<{
+  sourceContextRevision: number;
+  contextRevision: number;
+  catalogueRevision: number;
+}>;
 
 /** UI requests contain no SDK records, private keys or arbitrary method names. */
 export type NativeAccountRequest =
@@ -54,7 +68,7 @@ export interface NativeNetworkRuntime {
   withUtxoChangeApproval?(request: NativeUtxoNetworkChange, expectedCatalogueRevision: number,
     signal: AbortSignal, assertCurrent: () => void, commit: (proof: NativeUtxoNetworkApproval) => Promise<void>): Promise<void>;
   reserve(id: string | NativeNetworkRequest, expectedCatalogueRevision: number): {
-    execute(assertCurrent: () => void): Promise<void>;
+    execute(assertCurrent: () => void): Promise<NativeNetworkSelectionProof | null>;
     cancel(): void;
   };
   getSelectedId(): import('./networkContext.ts').EvmNetworkId | null;

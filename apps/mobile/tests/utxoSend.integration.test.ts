@@ -40,6 +40,7 @@ import { findWifAddressType, UTXO_IMPORT_TYPES, type UtxoImportAddressType } fro
 import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { metadata } from './publicWatchFixtures.ts';
 import { SENTRY_TX_HEX } from './sentryNodeFixtures.ts';
+import { formatBaseUnits } from '../src/core/amounts.ts';
 
 const syntheticPassword = 'synthetic fixture password';
 const fixtureAccountStateKey = 'fixture-custody-catalogue';
@@ -53,14 +54,16 @@ const litecoinRegistration = projectUtxoRegistration({
   backendChain: 'Provider-main_2', endpoint: litecoinEndpoint, name: 'Litecoin fixture', explorer: litecoinEndpoint,
 });
 const testNetworks = [
-  { network: getUtxoNetwork('bitcoin'), type: 'HDAccount', spt: false, utxoAddressType: undefined },
-  { network: litecoinRegistration, type: 'HDAccount', spt: false, utxoAddressType: undefined },
-  { network: getUtxoNetwork('syscoin'), type: 'HDAccount', spt: true, utxoAddressType: undefined },
-  { network: getUtxoNetwork('utxo:5700'), type: 'Imported', spt: true, utxoAddressType: 'p2wpkh' },
-  { network: getUtxoNetwork('syscoin'), type: 'Imported', spt: true, utxoAddressType: 'p2tr' },
+  { network: getUtxoNetwork('bitcoin'), type: 'HDAccount', spt: false, utxoAddressType: undefined, assetSpec: undefined },
+  { network: litecoinRegistration, type: 'HDAccount', spt: false, utxoAddressType: undefined, assetSpec: undefined },
+  { network: getUtxoNetwork('syscoin'), type: 'HDAccount', spt: true, utxoAddressType: undefined, assetSpec: undefined },
+  { network: getUtxoNetwork('utxo:5700'), type: 'Imported', spt: true, utxoAddressType: 'p2wpkh', assetSpec: undefined },
+  { network: getUtxoNetwork('syscoin'), type: 'Imported', spt: true, utxoAddressType: 'p2tr', assetSpec: undefined },
+  { network: getUtxoNetwork('syscoin'), type: 'HDAccount', spt: true, utxoAddressType: undefined,
+    assetSpec: { assetGuid: '123456', decimals: 3, symbol: 'THREE' } },
 ] as const;
-for (const { network, type, spt, utxoAddressType } of testNetworks)
-test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${utxoAddressType ?? type} quote, signed bytes, SQLite admission and exact ACK use the same scoped route`, async (t) => {
+for (const { network, type, spt, utxoAddressType, assetSpec } of testNetworks)
+test(`real native SDK ${spt ? `${assetSpec?.symbol ?? 'SYSX'} on ${network.symbol}` : network.symbol} ${utxoAddressType ?? type} quote, signed bytes, SQLite admission and exact ACK use the same scoped route`, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-signed-'));
   const file = join(directory, 'wallet.sqlite');
   const db = nodeConnection(file);
@@ -114,8 +117,11 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       },
       assertCurrent
     );
-    const asset = spt
-      ? { assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' } : undefined;
+    const asset: { assetGuid: string; decimals: number; symbol: string } | undefined = spt
+      ? { ...(assetSpec ?? { assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' }) } : undefined;
+    const originalAsset = asset && { ...asset };
+    const assetAmount = asset ? formatBaseUnits('12345678', asset.decimals) : '';
+    const assetMaximum = asset ? formatBaseUnits('200000000', asset.decimals) : '';
     const previous = new bitcoin.Transaction();
     previous.addInput(Buffer.alloc(32, 7), 0);
     previous.addOutput(
@@ -149,6 +155,14 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     feeCollateral.outs[0].value = collateral.outs[0].value;
     feeCollateral.outs[1].script = bitcoin.payments.embed({ data: [internal] }).output;
     const assetCarrierId = assetCarrier.getId(), feeCollateralId = feeCollateral.getId();
+    const fragments = asset ? Array.from({ length: 20 }, (_, index) => {
+      const transaction = previous.clone(); transaction.ins[0].hash = Buffer.alloc(32, 40 + index);
+      transaction.outs[1].script = bitcoin.payments.embed({ data: [bufferUtils.serializeAssetAllocations([{
+        assetGuid: asset.assetGuid, values: [{ n: 0, value: new syscoinUtils.BN('10000000') }],
+      }])] }).output;
+      return transaction;
+    }) : [];
+    let fragmented = false;
     let useCollateral: false | 'asset' | 'fee' = false;
     let quoteFreeFunding = false;
     const recipient = bitcoin.payments.p2wpkh({
@@ -181,7 +195,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
         return reply(url, { tokens: [] });
       if (path === `/api/v2/utxo/${account.xpub}`) {
-        const funding = quoteFreeFunding ? [previous, freeFunding]
+        const funding = fragmented ? fragments : quoteFreeFunding ? [previous, freeFunding]
           : useCollateral === 'fee' ? [assetCarrier, feeCollateral]
           : [useCollateral === 'asset' ? collateral : previous];
         return reply(url, funding.map((transaction) => ({
@@ -191,7 +205,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
           address: account.address,
           confirmations: 10,
           ...(type === 'HDAccount' ? { path: `m/84'/${network.slip44}'/0'/0/0` } : {}),
-          ...(asset && transaction !== feeCollateral ? { assetInfo: { assetGuid: SYSX_ASSET_GUID, value: '200000000' } } : {}),
+          ...(asset && transaction !== feeCollateral ? { assetInfo: { assetGuid: originalAsset!.assetGuid, value: fragmented ? '10000000' : '200000000' } } : {}),
         })));
       }
       if (path === `/api/v2/tx/${previousId}`)
@@ -204,6 +218,8 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
         return reply(url, { hex: assetCarrier.toHex() });
       if (path === `/api/v2/tx/${feeCollateralId}`)
         return reply(url, { hex: feeCollateral.toHex() });
+      const fragment = fragments.find((transaction) => path === `/api/v2/tx/${transaction.getId()}`);
+      if (fragment) return reply(url, { hex: fragment.toHex() });
       if (path === '/api/v2/sendtx/' && init?.method === 'POST') {
         published = init.body as string;
         posted.push(published);
@@ -280,7 +296,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     const releaseFunding=()=>collateralRegistry.releaseSentryCollateral({...collateralScope,assertCurrent:currentPostAuthority,
       reservation:{txid:previousId,vout:0,proTxHash:'ab'.repeat(32)}});
     if(protection){
-      const draft={amount:asset?'0.12345678':'0.0005',recipient,...(asset?{asset}: {})};
+      const draft={amount:asset?assetAmount:'0.0005',recipient,...(asset?{asset}: {})};
       const sign=t.mock.method(ring.syscoinTransaction,'signPSBT');
       const quote=ring.syscoinTransaction.getEstimateSysTransactionFee.bind(ring.syscoinTransaction);
       await protectFunding();
@@ -303,8 +319,9 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     if (asset) {
       const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
       const quote = ring.syscoinTransaction.getEstimateSysTransactionFee.bind(ring.syscoinTransaction);
-      const draft = { amount: '0.12345678', recipient, asset };
+      const draft = { amount: assetAmount, recipient, asset, rbf: false };
       await assert.rejects(send.prepare({ ...draft, amount: '10000000000.00000000' }), { code: 'INVALID_INPUT' });
+      await assert.rejects(send.prepare({ ...draft, rbf: 'false' as unknown as boolean }), { code: 'INVALID_INPUT' });
       assert.equal(calls.length, 0);
       useCollateral = utxoAddressType === 'p2tr' ? 'fee' : 'asset';
       await assert.rejects(send.prepare(draft), {
@@ -317,6 +334,25 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
         assert(calls.includes(`GET /api/v2/tx/${feeCollateralId}`));
       }
       useCollateral = false;
+      const defaultOptions = await send.prepare({ ...draft, rbf: undefined });
+      assert.deepEqual(defaultOptions.transactionOptions, { rbf: true, zdag: false });
+      const zdag = await send.prepare(draft);
+      assert.deepEqual(zdag.transactionOptions, { rbf: false, zdag: true });
+      const maxQuote = t.mock.method(ring.syscoinTransaction, 'getEstimateSysTransactionFee', (...args: Parameters<typeof quote>) => {
+        assert.equal(args[0].amount, '2.00000000');
+        assert.equal(args[0].txOptions.rbf, false);
+        assert.equal(args[0].nativeSweep, undefined); assert.equal(args[0].isMax, undefined);
+        return quote(...args);
+      });
+      const maximum = await send.prepare({ ...draft, amount: assetMaximum, max: true });
+      assert.equal(maximum.outputs[0]?.asset?.rawAmount, '200000000');
+      assert.equal(maximum.outputs.slice(1).some((output) => output.asset), false);
+      maxQuote.mock.restore();
+      fragmented = true;
+      const large = await send.prepare({ ...draft, amount: assetMaximum, max: true });
+      assert.deepEqual(large.transactionOptions, { rbf: true, zdag: false, zdagUnavailable: true });
+      assert.equal(large.outputs[0]?.asset?.rawAmount, '200000000');
+      fragmented = false;
       assert.equal(sign.mock.callCount(), 0);
       assert.deepEqual(await send.list(), []);
       assert.deepEqual(posted, []);
@@ -328,8 +364,9 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
         const heldQuote = t.mock.method(ring.syscoinTransaction, 'getEstimateSysTransactionFee', async (...args: Parameters<typeof quote>) => {
           entered();
           await held;
-          assert.equal(args[0].token?.guid, SYSX_ASSET_GUID);
+          assert.equal(args[0].token?.guid, originalAsset!.assetGuid);
           assert.equal(args[0].amount, '0.12345678');
+          assert.equal(args[0].txOptions.rbf, false);
           return quote(...args);
         });
         const pending = send.prepare(draft);
@@ -340,8 +377,9 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
           return await result;
         } finally {
           release();
-          draft.asset.assetGuid = SYSX_ASSET_GUID;
-          draft.asset.decimals = SYSX_ASSET_DECIMALS;
+          draft.asset.assetGuid = originalAsset!.assetGuid;
+          draft.asset.decimals = originalAsset!.decimals;
+          draft.rbf = false;
           heldQuote.mock.restore();
         }
       }
@@ -373,12 +411,14 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       const review = await whileQuoteHeld((pending) => {
         asset.assetGuid = '123457';
         asset.decimals = 0;
+        draft.rbf = true;
         return pending;
       });
       assert.equal(calls.slice(callStart).filter((call) => call.includes('/api/v2/xpub/')).length, type === 'HDAccount' ? 1 : 0);
-      assert.deepEqual(review.assetDisplay, { assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' });
+      assert.deepEqual(review.assetDisplay, originalAsset);
+      assert.deepEqual(review.transactionOptions, { rbf: false, zdag: true });
       assert.equal(review.outputs[0]?.address, recipient);
-      assert.deepEqual(review.outputs[0]?.asset, { assetGuid: SYSX_ASSET_GUID, rawAmount: '12345678' });
+      assert.deepEqual(review.outputs[0]?.asset, { assetGuid: originalAsset!.assetGuid, rawAmount: '12345678' });
       assert.equal(review.outputs[0]?.amountSatoshis, '294');
       const change = review.outputs.find(({ address, asset }) => address !== recipient && asset);
       assert.equal(change?.asset?.rawAmount, '187654322');
@@ -392,8 +432,9 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       assert.equal(posted.length, 1);
       const signed = bitcoin.Transaction.fromHex(posted[0]!);
       assert.equal(signed.version, ALLOCATION_SEND_VERSION);
+      assert(signed.ins.every(({ sequence }: { sequence: number }) => sequence >= 0xfffffffe));
       const allocations = getExactAssetAllocations(signed);
-      assert.equal(allocations[0]?.assetGuid, SYSX_ASSET_GUID);
+      assert.equal(allocations[0]?.assetGuid, originalAsset!.assetGuid);
       assert.equal(allocations[0]?.values.find(({ n }) =>
         bitcoin.address.fromOutputScript(signed.outs[n].script, network.addressNetwork) === recipient
       )?.value, '12345678');
@@ -442,7 +483,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
         });
         quoteFreeFunding = true;
         try {
-          const additional = await reopened.prepare({ amount: '0.12345678', recipient, asset });
+          const additional = await reopened.prepare({ amount: assetAmount, recipient, asset });
           assert(additional.outputs.some(output => output.address === recipient));
           assert.equal(exclusions!.length, 1000);
           assert.deepEqual(new Set(exclusions!.map(({ txid, vout }) => `${txid}:${vout}`)), expected);
@@ -465,6 +506,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       }
       assert.deepEqual(retry.outputs, review.outputs);
       assert.equal(retry.feeSatoshis, review.feeSatoshis);
+      assert.deepEqual(retry.transactionOptions, { rbf: false, zdag: true });
       await reopened.confirm(retry);
       assert.equal(sign.mock.callCount(), 1);
       assert.equal(freshSign.mock.callCount(), 0);
@@ -484,6 +526,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       assert.equal(calls.length, 0);
     }
     let review = await send.prepare({ amount: '0.0004', recipient });
+    assert.deepEqual(review.transactionOptions, { rbf: true });
     assert.equal(review.outputs[0]?.address, recipient);
     assert.equal(review.outputs[0]?.amountSatoshis, '40000');
     const change = review.outputs[1];
@@ -508,8 +551,15 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 0);
     assert.equal((await send.list()).length, 0);
     dishonestSign.mock.restore();
-    review = await send.prepare({ amount: '0.0004', recipient });
+    const quote = ring.syscoinTransaction.getEstimateSysTransactionFee.bind(ring.syscoinTransaction);
+    const wrongOptions = t.mock.method(ring.syscoinTransaction, 'getEstimateSysTransactionFee', (...[options, read]: Parameters<typeof quote>) =>
+      quote({ ...options, txOptions: { rbf: true } }, read));
+    await assert.rejects(send.prepare({ amount: '0.0004', recipient, rbf: false }), /UTXO_OPTIONS_CHANGED/);
+    wrongOptions.mock.restore();
+    review = await send.prepare({ amount: '0.0004', recipient, rbf: false });
+    assert.deepEqual(review.transactionOptions, { rbf: false });
     const { txid } = await send.confirm(review);
+    assert(bitcoin.Transaction.fromHex(published!).ins.every(({ sequence }: { sequence: number }) => sequence >= 0xfffffffe));
     assert.equal(txid, ackId);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
     assert.equal(await send.check(txid), 'confirmed');
@@ -528,6 +578,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       const retry = await reopened.prepareRetry(txid);
       assert.equal(retry.retryProviderOrigin, 'https://offline-ltc.invalid');
       assert.deepEqual(retry.outputs, review.outputs);
+      assert.deepEqual(retry.transactionOptions, { rbf: false });
       assert.equal(calls.length, beforeReview);
       const exactRaw = published;
       assert.equal((await reopened.confirm(retry)).txid, txid);
@@ -709,7 +760,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   } });
   let owner = newOwner();
   const current = () => undefined;
-  const selectNetwork = () => owner.selectNetwork(network.id, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+  const selectNetwork = () => owner.selectNetwork(network.id, owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
   const selectAccount = (id: string) => owner.manageAccounts({ kind: 'select', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const removeAccount = (id: string, credential = password) => owner.manageAccounts({ kind: 'remove', id, password: credential }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const preview = (privateKey: string, utxoAddressType?: UtxoImportAddressType) => owner.previewUtxoImport(
@@ -851,7 +902,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       if (target === custom) {
         const beforeIneligibleRequests = calls.length;
         await assert.rejects(removeNetwork(custom.id), { code: 'INVALID_INPUT' });
-        await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+        await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
         const saved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
         const ready = owner.getSnapshot();
         await assert.rejects(removeNetwork(custom.id), { code: 'ACCOUNT_NOT_REMOVABLE' });
@@ -919,7 +970,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           assert.equal(JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY)), before);
 
           const oldContext = owner.getSnapshot().revision, oldCatalogue = owner.getCatalogue()!.revision;
-          await owner.selectNetwork('ethereum', oldContext, oldCatalogue);
+          await owner.selectNetwork('ethereum', oldContext, oldCatalogue, () => {});
           await assert.rejects(owner.importAccount(
             { privateKey: wif, utxoAddressType: script, expectedAddress: address, label: 'Revoked review' },
             password, oldContext, oldCatalogue

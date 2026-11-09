@@ -339,7 +339,7 @@ test('protected collectible operations revoke on lock and quarantine a lost SQL 
     });
     const pending = assert.rejects(tokens.removeCollectible(1, item, current), /CANCELLED|NOT_READY/);
     await pause.reached;
-    await assert.rejects(f.owner.selectNetwork('base', f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision), /BUSY/);
+    await assert.rejects(f.owner.selectNetwork('base', f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision, () => {}), /BUSY/);
     f.owner.lock();
     pause.release();
     await pending;
@@ -1252,7 +1252,7 @@ test('shared actualSDK inspector rejects an authenticated bundle containing513un
 type RecoveryFixture = Awaited<ReturnType<typeof fixture>>;
 const selectNetwork = (f: RecoveryFixture, id: string) => f.owner.selectNetwork(
   id, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision
-);
+, () => {});
 const accountRecord = async (f: RecoveryFixture) =>
   await f.store.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
 

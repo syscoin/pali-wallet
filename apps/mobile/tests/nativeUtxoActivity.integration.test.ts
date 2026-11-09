@@ -91,7 +91,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     await runtime!.backup.confirm(await runtime!.backup.fingerprint());
     await authority.refreshAuthenticatedMetadata();
     assert.equal(activity.getUtxoActivityContext(), null);
-    await authority.selectNetwork(network.id, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+    await authority.selectNetwork(network.id, authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => {});
 
     badGenesis = true;
     await assert.rejects(readPage(), { code: 'UNAVAILABLE' });

@@ -10,10 +10,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  SYSX_ASSET_DECIMALS,
-  SYSX_ASSET_GUID,
-} from '../../../../source/shared/syscoinAssetIds';
+import { isAssetAmountEqualToBalance, toEightDecimalBuilderAmount } from '../../../../source/utils/syscoinAssetAmount';
+import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions';
 
 import { formatBaseUnits } from '../core/amounts';
 import {
@@ -49,6 +47,7 @@ function describe(error: unknown): string {
     return 'Enter a valid address and amount for this network.';
   if (code === 'CANCELLED' || code === 'NOT_READY')
     return 'This review is no longer available. Open a new review to continue.';
+  if (code === 'UTXO_OPTIONS_CHANGED') return 'Transaction options changed. Review a new quote.';
   if (error && typeof error === 'object' && 'code' in error) {
     if (error.code === 'UTXO_SIGNED_OUTPOINT_PENDING')
       return 'A saved transfer uses these funds. Check its status before sending again.';
@@ -67,10 +66,12 @@ export function NativeUtxoSendScreen({
   ledgerConnection,
   initialDraft,
   beforeClose,
+  maximumAmount,
 }: {
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
-  initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean }>;
+  initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean; rbf?: boolean }>;
+  maximumAmount?: string;
   beforeClose?(): Promise<void>;
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
@@ -86,7 +87,12 @@ export function NativeUtxoSendScreen({
   const [send, setSend] = useState<NativeUtxoSend | null>(null);
   const [address, setAddress] = useState(initialDraft?.recipient ?? '');
   const [amount, setAmount] = useState(initialDraft?.amount ?? '');
-  const [max, setMax] = useState(initialDraft?.max ?? false);
+  const [maximumSelected, setMax] = useState((initialDraft?.max ?? false) && (!asset ||
+    maximumAmount !== undefined && isAssetAmountEqualToBalance(initialDraft?.amount ?? '', maximumAmount, asset.decimals)));
+  const max = maximumSelected && (!asset || maximumAmount !== undefined &&
+    isAssetAmountEqualToBalance(amount, maximumAmount, asset.decimals));
+  const [rbf, setRbf] = useState(snapshotUtxoRbf(initialDraft?.rbf));
+  const [advanced, setAdvanced] = useState(false);
   const [working, setBusy] = useState(true);
   const [closingHardware, setClosingHardware] = useState(false);
   const busy = working || closingHardware;
@@ -98,6 +104,7 @@ export function NativeUtxoSendScreen({
   const [savedLimit, setSavedLimit] = useState(6);
   const [error, setError] = useState('');
   const owner = useRef({ revision: 0 });
+  const draftRevision = useRef(0);
   const inFlight = useRef(false);
   const closing = useRef(false);
   useEffect(() => {
@@ -166,8 +173,8 @@ export function NativeUtxoSendScreen({
   });
   const run = (work: (current: () => boolean) => Promise<void>) => {
     if (inFlight.current || closing.current) return;
-    const revision = owner.current.revision,
-      current = () => revision === owner.current.revision;
+    const revision = owner.current.revision, draft = draftRevision.current,
+      current = () => revision === owner.current.revision && draft === draftRevision.current;
     inFlight.current = true;
     setBusy(true);
     setError('');
@@ -190,9 +197,19 @@ export function NativeUtxoSendScreen({
       })
       .finally(() => {
         inFlight.current = false;
-        if (current()) setBusy(false);
+        if (revision === owner.current.revision) setBusy(false);
       });
   };
+  const invalidateDraft = () => {
+    draftRevision.current++;
+    send?.cancel();
+    setReview(null);
+    setError('');
+  };
+  let assetMaximumAvailable = false;
+  if (asset && maximumAmount !== undefined) {
+    try { toEightDecimalBuilderAmount(maximumAmount, asset.decimals); assetMaximumAvailable = true; } catch { /* Unavailable or zero inventory cannot select MAX. */ }
+  }
   const symbol = asset?.symbol ?? network.symbol;
   const units = (value: string) =>
     `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
@@ -205,8 +222,6 @@ export function NativeUtxoSendScreen({
       return `${formatBaseUnits(rawAmount, display.decimals)} ${
         display.symbol
       }`;
-    if (assetGuid === SYSX_ASSET_GUID)
-      return `${formatBaseUnits(rawAmount, SYSX_ASSET_DECIMALS)} SYSX`;
     return `${rawAmount} base units · Asset ${assetGuid}`;
   };
   const recipient = review?.outputs[0];
@@ -231,6 +246,7 @@ export function NativeUtxoSendScreen({
             amount,
             max,
             asset,
+            rbf,
           });
           if (current()) setReview(next);
         });
@@ -338,18 +354,12 @@ export function NativeUtxoSendScreen({
                 <Coin
                   id={
                     recipient?.asset
-                      ? review.assetDisplay?.symbol ??
-                        (recipient.asset.assetGuid === SYSX_ASSET_GUID
-                          ? 'SYSX'
-                          : 'asset')
+                      ? review.assetDisplay?.symbol ?? 'asset'
                       : network.symbol
                   }
                   fallbackSymbol={
                     recipient?.asset
-                      ? review.assetDisplay?.symbol ??
-                        (recipient.asset.assetGuid === SYSX_ASSET_GUID
-                          ? 'SYSX'
-                          : 'SPT')
+                      ? review.assetDisplay?.symbol ?? 'SPT'
                       : undefined
                   }
                   size={46}
@@ -393,6 +403,14 @@ export function NativeUtxoSendScreen({
                 <Text testID="native-utxo-fee">
                   {units(review.feeSatoshis)}
                 </Text>
+                <Text style={styles.muted}>Replace-by-fee</Text>
+                <Text>{review.transactionOptions.rbf ? 'Enabled' : 'Disabled'}</Text>
+                {review.transactionOptions.zdag !== undefined && <>
+                  <Text style={styles.muted}>Z-DAG</Text>
+                  <Text>{review.transactionOptions.zdag ? 'Enabled' : 'Disabled'}</Text>
+                </>}
+                {review.transactionOptions.zdagUnavailable && <Notice title="Z-DAG unavailable"
+                  body="Z-DAG is unavailable for this transaction size. Replace-by-fee is enabled." tone="amber" />}
                 {review.outputs.slice(1).map((output, index) => (
                   <View key={index} style={s.card}>
                     <Text style={styles.muted}>
@@ -415,7 +433,7 @@ export function NativeUtxoSendScreen({
                 <IdleTextInput
                   accessibilityLabel="Recipient address"
                   value={address}
-                  onChangeText={setAddress}
+                  onChangeText={(value) => { invalidateDraft(); setAddress(value); }}
                   editable={!busy}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -427,8 +445,9 @@ export function NativeUtxoSendScreen({
                 <Text style={styles.muted}>Amount in {symbol}</Text>
                 <IdleTextInput
                   accessibilityLabel={`Amount in ${symbol}`}
-                  value={max ? 'Max' : amount}
+                  value={max && !asset ? 'Max' : amount}
                   onChangeText={(value) => {
+                    invalidateDraft();
                     setMax(false);
                     setAmount(value);
                   }}
@@ -438,15 +457,32 @@ export function NativeUtxoSendScreen({
                   maxLength={40}
                   style={s.input}
                 />
-                {!asset && (
+                {(!asset || maximumAmount !== undefined) && (
                   <Button
                     title={max ? 'Enter amount' : 'Use maximum'}
                     variant="quiet"
-                    disabled={busy}
-                    onPress={() => setMax(!max)}
+                    disabled={busy || !!asset && !assetMaximumAvailable}
+                    onPress={() => {
+                      invalidateDraft();
+                      if (asset && !max) {
+                        if (!assetMaximumAvailable || maximumAmount === undefined) return;
+                        setAmount(maximumAmount);
+                      }
+                      setMax(!max);
+                    }}
                   />
                 )}
               </Card>
+              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
+                disabled={busy} expanded={advanced} onPress={() => setAdvanced(!advanced)} />
+              {advanced && <Card style={s.insetCard}>
+                <Button title={asset ? `Z-DAG ${rbf ? 'disabled' : 'enabled'}` : `Replace-by-fee ${rbf ? 'enabled' : 'disabled'}`}
+                  variant="quiet" disabled={busy}
+                  onPress={() => { invalidateDraft(); setRbf(!rbf); }} />
+                <Text style={styles.muted}>{asset
+                  ? 'Enable Z-DAG for faster asset transfers. Avoid using it for large amounts. Z-DAG disables replace-by-fee.'
+                  : 'Replace-by-fee allows this transaction to be replaced with a higher network fee.'}</Text>
+              </Card>}
               {saved.length > 0 && (
                 <Card style={s.insetCard}>
                   <Text style={styles.muted}>Saved transfers</Text>

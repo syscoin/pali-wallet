@@ -136,7 +136,7 @@ it.each([maximum, '0x' + 'f'.repeat(64), '000' + maximum, '0007', 7])(
   }
 );
 
-it('retains the early blocked-origin check without parsing an oversized token ID', async () => {
+it('rejects an oversized token ID before blocked-origin admission without integer parsing', async () => {
   mockState.spamFilter.dapps[HOST] = {
     blockedUntil: Date.now() + 60_000,
     requests: [],
@@ -146,7 +146,36 @@ it('retains the early blocked-origin check without parsing an oversized token ID
     .spyOn(global, 'BigInt')
     .mockImplementation(((value: any) => nativeBigInt(value)) as typeof BigInt);
   const result = await request('9'.repeat(4096));
-  expect(result.error.code).toBe(4100);
+  expect(result.error).toEqual({ code: -32602, message: 'Invalid token id' });
   expect(integer).not.toHaveBeenCalled();
+  expect(popupPromise).not.toHaveBeenCalled();
+});
+
+it('retains blocked-origin refusal for a valid collection request without integer parsing', async () => {
+  mockState.spamFilter.dapps[HOST] = {
+    blockedUntil: Date.now() + 60_000,
+    requests: [],
+  };
+  const integer = jest.spyOn(global, 'BigInt');
+  const result = await onMessage(
+    {
+      type: 'METHOD_REQUEST',
+      data: {
+        method: 'wallet_watchAsset',
+        params: [{ type: 'ERC721', options: { address: TOKEN } }],
+      },
+    },
+    {
+      url: HOST + '/',
+      origin: HOST,
+      tab: { id: 50 },
+    } as chrome.runtime.MessageSender
+  );
+  expect(result).toEqual({
+    error: { code: 4100, message: 'Request blocked due to spam filter.' },
+  });
+  expect(integer).not.toHaveBeenCalled();
+  expect(mockController.dapp.isConnected).not.toHaveBeenCalled();
+  expect(mockController.wallet.isUnlocked).not.toHaveBeenCalled();
   expect(popupPromise).not.toHaveBeenCalled();
 });

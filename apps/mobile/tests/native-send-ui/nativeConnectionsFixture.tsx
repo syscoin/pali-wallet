@@ -1,3 +1,4 @@
+import { unsupportedDappViews } from '../unsupportedDappPorts';
 import React, { useLayoutEffect, useState } from 'react';
 import type { NativeConnectionsSnapshot, NativeConnectionsView } from '../../src/connections/types';
 import type { NativePairingEntry } from '../../src/connections/pairingLinks';
@@ -16,7 +17,7 @@ let snapshot: NativeConnectionsSnapshot = {
   network: { id: 'ethereum', label: 'Ethereum', chainId: '1' },
   proposals: [],
   sessions: [],
-  signingReview: null,
+  signingReview: null, controlReview: null, sentryReview: null,
   callsStatus: null,
   error: null,
 };
@@ -28,6 +29,7 @@ const publish = (next: NativeConnectionsSnapshot) => {
   for (const listener of listeners) listener();
 };
 const controller: NativeConnectionsView = {
+  ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
@@ -39,7 +41,7 @@ const controller: NativeConnectionsView = {
   async approve(...args) {
     calls.push({ method: 'approve', args });
     publish({ ...snapshot, revision: snapshot.revision + 1, proposals: [], sessions: [
-      { id: 'connection-1', name: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings', networkLabel: 'Ethereum' },
+      { returnTarget: null, id: 'connection-1', name: 'Example app', origin: 'https://example.invalid', accountLabel: 'Savings', networkLabel: 'Ethereum' },
     ] });
   },
   async reject(id) { calls.push({ method: 'reject', args: [id] }); publish({ ...snapshot, proposals: [] }); },

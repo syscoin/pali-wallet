@@ -4,10 +4,12 @@ import { runSentryCrypto } from 'utils/sentry/workerClient';
 
 import type {
   SentryApprovalScope,
+  SentryRequestScope,
   SentrySettings,
 } from '../../../wallet/sentryApprovalTypes';
 
 type ExtensionVoteHost = {
+  captureApprovalScope(origin: string): SentryRequestScope;
   captureScope(): SentryApprovalScope;
   getSeed(password: string): Promise<string>;
   getSettings(scope: SentryApprovalScope): Promise<SentrySettings>;
@@ -28,11 +30,13 @@ export class SentryVoteController extends SharedSentryVoteApprovals {
   constructor(host: ExtensionVoteHost) {
     if (
       typeof host.hasWalletAuthority !== 'function' ||
+      typeof host.captureApprovalScope !== 'function' ||
       typeof host.resolveWalletAuthority !== 'function'
     )
       throw new Error('Sentry wallet-authority ports are required');
     super({
       captureScope: host.captureScope,
+      captureApprovalScope: host.captureApprovalScope,
       assertCurrent(scope) {
         if (host.captureScope().identity !== scope.identity)
           throw new Error('Wallet context changed. Start the vote again.');
