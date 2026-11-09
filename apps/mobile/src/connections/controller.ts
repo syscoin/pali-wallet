@@ -262,15 +262,27 @@ export class NativeConnectionsController {
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       respond: async (wire, response, check) => {
-        await this.transport!.respond(wire.session.binding, wire.id, response, check, () => undefined);
         const previous = this.modeFamilies.get(wire);
         this.modeFamilies.delete(wire);
-        if ('result' in response && previous && normalizeDappModeRequest(wire.method, wire.params).kind !== previous) {
-          const connection = this.connections.get(sessionKey(wire.session));
-          if (connection) {
-            try { await this.disconnect(connection.id); }
-            catch (cause) { this.unavailable(); throw cause; }
-          }
+        const key = sessionKey(wire.session), origin = wire.session.binding.origin;
+        const connection = 'result' in response && previous && normalizeDappModeRequest(wire.method, wire.params).kind !== previous
+          ? this.connections.get(key) : undefined;
+        const grant = connection?.engine.get(origin);
+        let cleanup: Promise<boolean> | undefined;
+        const retireCommittedMode = () => {
+          if (cleanup || !connection || !grant || this.connections.get(key) !== connection || connection.session.binding.origin !== origin || connection.engine.get(origin) !== grant) return;
+          cleanup = this.retireConnection(connection).catch(cause => { this.unavailable(); throw cause; });
+          // Handoff is synchronous; join cleanup below without an unhandled
+          // rejection while the transport is still awaiting acknowledgment.
+          void cleanup.catch(() => undefined);
+        };
+        try {
+          await this.transport!.respond(wire.session.binding, wire.id, response, check, retireCommittedMode);
+        } finally {
+          // A known committed family switch retires its old authority even if
+          // delivery fails before handoff. Failed commits only send an error.
+          retireCommittedMode();
+          if (await cleanup && connection) this.notifyRetiredConnection(connection);
         }
       },
     });
@@ -1146,15 +1158,25 @@ export class NativeConnectionsController {
       (value) => value.id === id
     );
     if (!connected) return;
+    if (await this.retireConnection(connected)) this.notifyRetiredConnection(connected);
+  }
+  private async retireConnection(connected: Connected): Promise<boolean> {
+    this.check();
+    const session = connected.session, key = sessionKey(session);
     for (const message of [...this.requests.values()])
       if (message.connection === connected) void this.retireRequest(message);
-    const revoking = connected.engine.revoke(connected.session.binding.origin, {
+    const revoking = connected.engine.revoke(session.binding.origin, {
       allowAlreadyDisconnected: true,
     });
     this.controls.revalidate(); this.sentry.revalidate(); this.revalidateReads();
     await revoking;
-    this.connections.delete(sessionKey(connected.session));
+    if (this.connections.get(key) !== connected || connected.session !== session || connected.engine.get(session.binding.origin)) return false;
+    this.connections.delete(key);
     this.publish();
+    return true;
+  }
+  private notifyRetiredConnection(connected: Connected) {
+    if (this.disposed || this.connections.has(sessionKey(connected.session)) || connected.engine.get(connected.session.binding.origin)) return;
     this.notifyRemoteDisconnect(connected);
   }
   private notifyRemoteDisconnect(connected: Connected) {

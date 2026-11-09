@@ -63,6 +63,27 @@ const redact = (value) =>
     .join('[public password redacted]');
 const run = createCommandRunner(spawnSync, redact);
 const privateProofBuild = proofCi?.readPrivateProofCiBuild(process.env, path.join(__dirname, '..'), run);
+const proofFailureName = (phase) => {
+  if (!['create', 'startup'].includes(phase)) throw Error('PRIVATE_PROOF_FAILURE_PHASE_INVALID');
+  return `pali-native-qualification-${phase}.json`;
+};
+const readIosProofFailure = (documents, phase) => {
+  const name = proofFailureName(phase);
+  let descriptor;
+  try {
+    descriptor = fs.openSync(path.join(documents, name), fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW);
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile() || stat.size < 1 || stat.size > 100000) throw Error('PRIVATE_PROOF_FAILURE_INVALID');
+    const bytes = Buffer.alloc(100001); let length = 0;
+    while (length < bytes.length) {
+      const count = fs.readSync(descriptor, bytes, length, bytes.length - length, null);
+      if (!count) break;
+      length += count;
+    }
+    if (length > 100000) throw Error('PRIVATE_PROOF_FAILURE_INVALID');
+    return bytes.subarray(0, length).toString('utf8');
+  } finally { if (descriptor !== undefined) fs.closeSync(descriptor); }
+};
 const androidProcessRunning = () =>
   Boolean(
     run('adb', [
@@ -256,6 +277,7 @@ async function ios() {
             path.join(output, 'ios-private-proof-launch.json'), `${JSON.stringify(evidence, null, 2)}\n`)),
           list: () => fs.existsSync(documents) ? fs.readdirSync(documents) : [],
           read: (name) => readHttpSidecar(documents, name),
+          readFailure: (phase) => readIosProofFailure(documents, phase),
         }));
         return { platform, runtime: runtime.identifier, privateProof,
           appExecutableSha256: hash(fs.readFileSync(path.join(artifact, executable))) };
@@ -483,6 +505,13 @@ async function android() {
           `if [ ! -e '/data/user/0/${PACKAGE}/files' ]; then exit 0; fi; [ -d '/data/user/0/${PACKAGE}/files' ] && [ ! -L '/data/user/0/${PACKAGE}/files' ] && ls -1 '/data/user/0/${PACKAGE}/files'`,
         ]).split(/\r?\n/).filter(Boolean),
         read: (name) => readAndroidHttpSidecar(deviceRun, name),
+        readFailure: (phase) => {
+          const file = `/data/user/0/${PACKAGE}/files/${proofFailureName(phase)}`;
+          const command = `[ -f '${file}' ] && [ ! -L '${file}' ] && [ "$(stat -c %s '${file}')" -le 100000 ] && head -c 100001 '${file}'`;
+          const text = deviceRun('adb', ['shell', command], false, 5000);
+          if (typeof text !== 'string' || Buffer.byteLength(text) > 100000) throw Error('PRIVATE_PROOF_FAILURE_INVALID');
+          return text;
+        },
       });
       return { platform, apkSha256: hash(fs.readFileSync(artifact)), nativeLibraries, privateProof,
         osVersion: deviceRun('adb', ['shell', 'getprop', 'ro.build.version.release']) };

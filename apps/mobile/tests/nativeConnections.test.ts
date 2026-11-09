@@ -83,6 +83,7 @@ function fixture(
   const transactions: unknown[] = [];
   const controlCommits: unknown[] = [], externalUrls: string[] = [];
   let controlWait: Promise<void> = Promise.resolve();
+  let controlFailure: Error | undefined;
   let sentryWait: Promise<void> = Promise.resolve();
   let receivingAddress: string = UTXO_ADDRESSES.syscoin;
   const sentryRequests: unknown[] = [], sentryAssents: NativeSentryAssent[] = [];
@@ -114,6 +115,7 @@ function fixture(
   let openWait: Promise<void> = Promise.resolve();
   let approveWait: Promise<void> = Promise.resolve();
   let responseWait: Promise<void> = Promise.resolve();
+  let responseFailure: Error | undefined;
   let dispatchWait: Promise<void> = Promise.resolve();
   let dispatchFailure: Error | undefined;
   let callsStatusError: Error | undefined;
@@ -123,6 +125,7 @@ function fixture(
   const callsStatusChains: number[] = [];
   const callsStatusReceipts = new Map<number, ReadonlyMap<string, unknown>>();
   const handedOff: unknown[] = [];
+  const remoteDisconnects: unknown[] = [];
   let emissionWait: Promise<void> = Promise.resolve();
   let pairWait: Promise<void> = Promise.resolve();
   let disconnectWait: Promise<void> = Promise.resolve();
@@ -214,6 +217,7 @@ function fixture(
           assertCurrent: current,
           async commit(checkRequest) {
             current(); await controlWait; checkRequest();
+            if (controlFailure) throw controlFailure;
             controlCommits.push(request);
             if (request.method === 'wallet_switchEthereumChain' || 'kind' in request) {
               selectedChainId = request.chainId; selectedUtxo = 'kind' in request && request.kind === 'syscoin'; selectedAccountId = selectedUtxo ? 'hd:57:0' : defaultEvmAccountId;
@@ -551,11 +555,13 @@ function fixture(
         reject: async () => {
           if (rejectFailure) throw rejectFailure;
         },
-        disconnect: async () => {
+        disconnect: async (binding) => {
           await disconnectWait;
+          remoteDisconnects.push(binding);
         },
         respond: async (_binding, id, result, guard, onDispatch) => {
           await responseWait;
+          if (responseFailure) throw responseFailure;
           guard();
           onDispatch();
           handedOff.push({ id, result });
@@ -590,12 +596,14 @@ function fixture(
     setReadWait(value: Promise<void>) { readWait = value; },
     failRead(value: Error) { readError = value; },
     setControlWait(value: Promise<void>) { controlWait = value; },
+    failControlCommit() { controlFailure = Error('Mode switch failed'); },
     beforePreparedReturn(hook: () => void) { beforePreparedReturn = hook; },
     smartDisposals: () => smartDisposals,
     view: controller.view,
     rows,
     responses,
     handedOff,
+    remoteDisconnects,
     setDispatchWait(value: Promise<void>) {
       dispatchWait = value;
     },
@@ -654,6 +662,7 @@ function fixture(
     setResponseWait(value: Promise<void>) {
       responseWait = value;
     },
+    failBeforeDispatch() { responseFailure = Error('Response unavailable before handoff'); },
     setEmissionWait(value: Promise<void>) {
       emissionWait = value;
     },
@@ -1659,6 +1668,170 @@ for (const utxo of [false, true]) test(`explicit ${utxo ? 'Syscoin to EVM' : 'EV
     assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
     assert.equal(f.controlCommits.length, 1);
   } finally { await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) for (const committed of [false, true]) for (const acknowledged of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} mode grant cleanup: ${committed ? 'committed' : 'failed'} switch, ${acknowledged ? 'delivered' : 'lost'} response acknowledgment`, async () => {
+  const f = await connectedFixture({ utxo });
+  try {
+    const permissions = (await f.repository).permissions(f.session.binding);
+    const originalGrant = permissions.read().dapps[ORIGIN];
+    const namespaces = JSON.stringify(f.session.namespaces);
+    if (!committed) f.failControlCommit();
+    if (!acknowledged) f.failDispatch();
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview;
+    assert(review?.details?.kind === 'network-switch');
+    assert.equal(f.controlCommits.length, 0, 'mode changes still require explicit consent');
+    const approving = f.view.approveControl(review.id, review.revision);
+    if (!committed) await assert.rejects(approving, /Mode switch failed/);
+    else if (!acknowledged) await assert.rejects(approving, /Lost acknowledgment/);
+    else await approving;
+    assert.equal(f.view.getSnapshot().controlReview, null);
+    assert.equal(f.controlCommits.length, Number(committed));
+    assert.equal(f.view.getSnapshot().sessions.length, committed ? 0 : 1);
+    assert.deepEqual(permissions.read().dapps[ORIGIN], committed ? undefined : originalGrant);
+    assert.equal(JSON.stringify(f.session.namespaces), namespaces, 'switching never expands the negotiated authority');
+    assert.equal(f.responses.length, Number(acknowledged));
+    assert.equal(f.handedOff.length, 1, 'transport uncertainty must not cause a second response');
+    const response = f.handedOff[0] as { id: number; result: { result?: unknown; error?: { code: number } } };
+    assert.equal(response.id, 10);
+    if (committed) assert.deepEqual(response.result, { result: null });
+    else assert.equal(response.result.error?.code, 4001, 'a failed switch cannot claim completion');
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) for (const acknowledged of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} committed mode grant retires at handoff while its ${acknowledged ? 'delivered' : 'lost'} acknowledgment is held`, async () => {
+  const f = await connectedFixture({ utxo });
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined;
+  try {
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setDispatchWait(held);
+    if (!acknowledged) f.failDispatch();
+    let completed = false;
+    approving = f.view.approveControl(review.id, review.revision);
+    const outcome = approving.then(() => { completed = true; return null; }, cause => { completed = true; return cause; });
+    await settle();
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.handedOff.length, 1);
+    assert.equal(f.responses.length, 0);
+    assert.equal(completed, false);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.signatures.length, 0);
+    assert.equal(f.remoteDisconnects.length, 0, 'local retirement cannot remove transport session keys while response publication is pending');
+    release();
+    const failure = await outcome;
+    if (acknowledged) assert.equal(failure, null);
+    else assert.match(String(failure), /Lost acknowledgment/);
+    assert.equal(f.handedOff.length, 1);
+    assert.equal(f.responses.length, Number(acknowledged));
+    assert.equal(f.remoteDisconnects.length, 1, 'remote disconnect follows settled response delivery or uncertainty exactly once');
+  } finally { release(); await approving?.catch(() => undefined); await f.controller.dispose(); }
+});
+for (const utxo of [false, true]) test(`${utxo ? 'Syscoin to EVM' : 'EVM to Syscoin'} committed mode grant retires when response fails before handoff`, async () => {
+  const f = await connectedFixture({ utxo });
+  try {
+    if (utxo) await syscoinRequest(f, 'eth_changeUTXOEVM', [{ chainId: 1 }]);
+    else await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.failBeforeDispatch();
+    await assert.rejects(f.view.approveControl(review.id, review.revision), /Response unavailable before handoff/);
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.responses.length, 0);
+    assert.equal(f.handedOff.length, 0);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+test('late committed mode response cleanup cannot revoke a successor connection or grant', async () => {
+  const f = await connectedFixture();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined;
+  try {
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setResponseWait(held);
+    approving = f.view.approveControl(review.id, review.revision);
+    const outcome = assert.rejects(approving);
+    await settle();
+    assert.equal(f.controlCommits.length, 1);
+    assert.equal(f.handedOff.length, 0);
+    await f.view.disconnect(f.view.getSnapshot().sessions[0]!.id);
+    f.selectEvm();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    await f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const permission = (await f.repository).permissions(f.session.binding);
+    const successor = permission.read().dapps[ORIGIN]; assert(successor);
+    release();
+    await outcome;
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert.deepEqual(permission.read().dapps[ORIGIN], successor);
+    assert.equal(f.handedOff.length, 0);
+    assert.equal(f.responses.length, 0);
+  } finally { release(); await approving?.catch(() => undefined); await f.controller.dispose(); }
+});
+test('a held committed mode revocation cannot delete or remotely disconnect a successor after its write completes', async () => {
+  const f = await connectedFixture();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined, successorApproval: Promise<void> | undefined;
+  try {
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setStorageWait(held);
+    approving = f.view.approveControl(review.id, review.revision);
+    await settle();
+    assert.equal(f.handedOff.length, 1);
+    assert.equal((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN], undefined);
+    f.event({ type: 'session-ended', topic: TOPIC });
+    f.event({ type: 'session', session: { ...f.session } });
+    f.selectEvm();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    successorApproval = f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const successorOutcome = successorApproval.then(() => null, cause => cause);
+    await settle();
+    release();
+    await approving;
+    assert.equal(await successorOutcome, null);
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert((await f.repository).permissions(f.session.binding).read().dapps[ORIGIN]);
+    assert.equal(f.remoteDisconnects.length, 0);
+  } finally { release(); await Promise.allSettled([approving, successorApproval]); await f.controller.dispose(); }
+});
+test('a settled mode response cannot remotely disconnect a successor approved after local retirement', async () => {
+  const f = await connectedFixture();
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let approving: Promise<void> | undefined;
+  try {
+    await messageRequest(f, 'sys_changeUTXOEVM', [{ chainId: 57 }]);
+    const review = f.view.getSnapshot().controlReview; assert(review?.details);
+    f.setDispatchWait(held);
+    approving = f.view.approveControl(review.id, review.revision);
+    await settle();
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.remoteDisconnects.length, 0);
+    f.selectEvm();
+    await f.view.pair('wc:fixture');
+    f.event({ type: 'proposal', proposal: f.proposal });
+    await f.view.approve(3, 'hd:60:0', 'ethereum', f.view.getSnapshot().revision);
+    const permission = (await f.repository).permissions(f.session.binding);
+    const successor = permission.read().dapps[ORIGIN]; assert(successor);
+    release();
+    await approving;
+    assert.equal(f.view.getSnapshot().sessions.length, 1);
+    assert.deepEqual(permission.read().dapps[ORIGIN], successor);
+    assert.equal(f.remoteDisconnects.length, 0);
+    assert.equal(f.handedOff.length, 1);
+    assert.equal(f.responses.length, 1);
+  } finally { release(); await approving?.catch(() => undefined); await f.controller.dispose(); }
 });
 for (const method of SENTRY_DAPP_METHODS) test(`${method} retains its exact origin/typed request and requires its own fresh assent`, async () => {
   const f = await connectedFixture({ utxo: true });

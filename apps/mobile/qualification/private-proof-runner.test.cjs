@@ -5,8 +5,11 @@ const { Buffer } = require('node:buffer');
 const test = require('node:test');
 const { runInNewContext } = require('node:vm');
 
-async function fixture(platform, fail = false) {
+async function fixture(platform, fail = false, readFault) {
   const calls = [], writes = [];
+  const failureText = JSON.stringify({ publicFailure: true });
+  const failureBytes = Buffer.from(readFault === 'grown' ? 'x'.repeat(100001) : failureText);
+  let failureOffset = 0;
   const device = '11111111-2222-4333-8444-555555555555';
   const runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-5';
   const serial = 'emulator-5554';
@@ -30,6 +33,13 @@ async function fixture(platform, fail = false) {
     if (command === 'adb') {
       if (args[0] === 'get-serialno') return ok(serial);
       assert.deepEqual(Array.from(args.slice(0, 2)), ['-s', serial]);
+      const shell = args.find(value => typeof value === 'string' && value.includes('head -c 100001'));
+      if (shell) {
+        assert.match(shell, /\[ ! -L '\/data\/user\/0\/com\.paliwallet\.qualification\/files\/pali-native-qualification-(create|startup)\.json' \]/);
+        assert(shell.includes('stat -c %s')); assert(shell.includes('-le 100000'));
+        if (readFault === 'symlink') return { status: 1, stdout: '' };
+        return ok(readFault ? 'x'.repeat(100001) : failureText);
+      }
       if (args.includes('emu')) return ok('PaliQualification\nOK');
       if (args.includes('ro.boot.qemu')) return ok('1');
       if (args.includes('ro.build.version.sdk')) return ok('35');
@@ -42,10 +52,20 @@ async function fixture(platform, fail = false) {
     process, setTimeout, console: { log() {}, error() {} }, __dirname,
     require(name) {
       if (name === 'fs') return {
+        constants: fs.constants,
         existsSync: file => file === '/public-artifact', mkdirSync() {},
         readdirSync: file => file.endsWith('/build-tools') ? ['37.0.0'] : [],
         readFileSync: () => Buffer.from('public binary'),
         writeFileSync: (file, text) => writes.push({ file, text }),
+        openSync(file, flags) {
+          assert.match(file, /^\/public-container\/Documents\/pali-native-qualification-(create|startup)\.json$/);
+          assert(flags & fs.constants.O_NOFOLLOW); assert(flags & fs.constants.O_NONBLOCK);
+          if (readFault === 'symlink') throw Error('symlink refused');
+          failureOffset = 0; return 41;
+        },
+        fstatSync() { return { isFile: () => true, size: readFault === 'oversized' ? 100001 : Buffer.byteLength(failureText) }; },
+        readSync(_fd, bytes, offset, length) { const size = Math.min(length, failureBytes.length - failureOffset); failureBytes.copy(bytes, offset, failureOffset, failureOffset + size); failureOffset += size; return size; },
+        closeSync(fd) { assert.equal(fd, 41); },
       };
       if (name === 'child_process') return { spawnSync };
       if (name === './private-proof-ci.cjs') return {
@@ -54,6 +74,12 @@ async function fixture(platform, fail = false) {
           assert.equal(options.platform, platform);
           assert.deepEqual(Array.from(options.list()), []);
           await options.launch(uri);
+          assert.equal(typeof options.readFailure, 'function');
+          assert.throws(() => options.readFailure('restart'), /FAILURE_PHASE_INVALID/);
+          for (const phase of ['create', 'startup']) {
+            if (readFault) assert.throws(() => options.readFailure(phase));
+            else assert.equal(options.readFailure(phase), failureText);
+          }
           if (fail) throw Error('PRIVATE_PROOF_REPORT_INVALID');
           return { version: 1, kind: 'native-private-proof' };
         },
@@ -80,4 +106,10 @@ for (const platform of ['ios', 'android']) test(`real ${platform} runner reuses 
     assert(!result.writes.some(write => /(?:qualification|simulator-limited)\.json$/.test(write.file)));
     assert.equal(result.writes.filter(write => write.file.endsWith(`${platform}-private-proof.json`)).length, fail ? 0 : 1);
   }
+});
+
+for (const platform of ['ios', 'android']) for (const fault of ['symlink', 'oversized', 'grown']) test(`${platform} fixed failure reader refuses ${fault} without relaxing proof sidecars`, async () => {
+  const result = await fixture(platform, true, fault);
+  assert.equal(result.process.exitCode, 1);
+  assert(!result.writes.some(write => write.file.endsWith(`${platform}-private-proof.json`)));
 });
