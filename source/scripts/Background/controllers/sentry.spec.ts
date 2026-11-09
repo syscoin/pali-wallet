@@ -243,7 +243,14 @@ beforeEach(() => {
     },
   };
   getSeed = jest.fn().mockResolvedValue('private-seed');
-  controller = new SentryController({ captureScope: () => scope, getSeed });
+  controller = new SentryController({
+    captureScope: () => scope,
+    getSeed,
+    hasWalletAuthority: async () => false,
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
+    resolveWalletAuthority: async () => undefined,
+  });
   (chromeStorage.getItem as jest.Mock).mockResolvedValue(null);
   (chromeStorage.getItems as jest.Mock).mockResolvedValue({});
   (chromeStorage.setItem as jest.Mock).mockReset().mockResolvedValue(undefined);
@@ -778,6 +785,28 @@ it('does not treat an imported operator key as owner authority', async () => {
   expect(runSentryCrypto).not.toHaveBeenCalled();
 });
 
+it('requires every authority and collateral port instead of inferring a stored-key-only mode', () => {
+  for (const missing of [
+    'hasWalletAuthority',
+    'ownsCollateral',
+    'resolveVotingAuthority',
+    'resolveWalletAuthority',
+  ]) {
+    const host: Record<string, unknown> = {
+      captureScope: () => scope,
+      getSeed,
+      hasWalletAuthority: async () => false,
+      ownsCollateral: async () => false,
+      resolveVotingAuthority: async () => undefined,
+      resolveWalletAuthority: async () => undefined,
+    };
+    delete host[missing];
+    expect(() => new SentryController(host as never)).toThrow(
+      'ports are required'
+    );
+  }
+});
+
 it('resolves the selected wallet key only for the exact decoded owner address and authority slot', async () => {
   const resolver = jest
     .fn()
@@ -787,6 +816,8 @@ it('resolves the selected wallet key only for the exact decoded owner address an
     getSeed,
     resolveWalletAuthority: resolver,
     hasWalletAuthority: async () => true,
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
   });
   (runSentryCrypto as jest.Mock).mockImplementation(async (job) =>
     job.type === 'import'
@@ -892,6 +923,8 @@ it('does not offer an unrelated active wallet key as owner authority', async () 
     getSeed,
     hasWalletAuthority: async () => false,
     resolveWalletAuthority: jest.fn(),
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
   });
   const id = await controller.prepare(
     { ...request, operation: 'updateRegistrar' },

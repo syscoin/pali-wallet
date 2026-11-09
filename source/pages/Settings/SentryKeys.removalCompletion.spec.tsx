@@ -65,6 +65,10 @@ let enteredWrite: (() => void) | undefined;
 
 const makeController = () =>
   new SentryController({
+    hasWalletAuthority: async () => false,
+    ownsCollateral: async () => false,
+    resolveVotingAuthority: async () => undefined,
+    resolveWalletAuthority: async () => undefined,
     captureScope: () => ({
       identity: currentIdentity,
       rootPublicIdentity: 'synthetic-public-root',

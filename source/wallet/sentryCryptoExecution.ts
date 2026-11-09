@@ -1,0 +1,114 @@
+import {
+  importSentryAuthorityKey,
+  signSentryManagementOperation,
+  signSentryOperation,
+  signSentryGovernanceVote,
+  governanceVotingKeyIds,
+  verifySentryGovernanceVote,
+  validateSentryGovernanceVoteRequest,
+  reviewSentryGovernanceVote,
+  reviewSentryOperation,
+  reviewSentryManagementOperation,
+  verifySentryOperation,
+  verifySentryManagementOperation,
+} from '@sidhujag/sysweb3-sentry';
+
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeGuard.ts';
+
+import type {
+  SentryCryptoJob,
+  SentryCryptoResult,
+} from './sentryCryptoJobs.ts';
+
+/** The existing SDK dispatcher; hosts own execution lifetime and private-key storage. */
+export async function executeSentryCryptoJob<T extends SentryCryptoResult>(
+  job: SentryCryptoJob,
+  assertCurrent: () => void
+): Promise<T> {
+  const check = () => assertSynchronousEvmFeeGuard(assertCurrent);
+  const complete = (result: SentryCryptoResult): T => {
+    check();
+    return result as T;
+  };
+  check();
+  try {
+    if (job.type === 'verifyFee' || job.type === 'reviewOperation') {
+      const service = job.request.operation === 'updateService';
+      const valid =
+        job.type === 'reviewOperation' ||
+        (service
+          ? await verifySentryOperation(job.request as any, job.context as any)
+          : await verifySentryManagementOperation(
+              job.request as any,
+              job.context
+            ));
+      if (!valid) throw new Error('Incomplete or invalid Sentry authorization');
+      const result = service
+        ? reviewSentryOperation(job.request as any, job.context as any)
+        : reviewSentryManagementOperation(job.request as any, job.context);
+      return complete(result);
+    }
+    if (job.type === 'validateVote' || job.type === 'reviewVote') {
+      const result =
+        job.type === 'validateVote'
+          ? validateSentryGovernanceVoteRequest(job.request)
+          : reviewSentryGovernanceVote(job.request, job.context);
+      return complete(result);
+    }
+    if (job.type === 'votingIdentities') {
+      if (!Array.isArray(job.publicKeys) || job.publicKeys.length > 100)
+        throw new Error('Invalid voting key list');
+      const result = await Promise.all(
+        job.publicKeys.map(async (publicKey) => ({
+          publicKey,
+          ...(await governanceVotingKeyIds(publicKey)),
+        }))
+      );
+      return complete(result);
+    }
+    if (
+      job.type === 'sign' &&
+      (job.key.role !== 'operator' || job.key.scheme === 'secp256k1')
+    )
+      throw new Error('Service updates require the registered operator');
+    const result =
+      job.type === 'import'
+        ? await importSentryAuthorityKey(job.role, job.scheme, job.secretKey)
+        : job.type === 'sign'
+        ? await signSentryOperation(job.request, job.context, {
+            ...job.key,
+            scheme: job.key.scheme as 'bls-basic' | 'slh-dsa-shake-128s',
+          })
+        : job.type === 'signManagement'
+        ? await signSentryManagementOperation(
+            job.request,
+            job.context,
+            job.key,
+            job.authorizationId
+          )
+        : job.type === 'signVote'
+        ? await signSentryGovernanceVote(
+            job.request,
+            job.context,
+            job.proTxHash,
+            job.key
+          )
+        : undefined;
+    if (!result) throw new Error('Unsupported Sentry operation');
+    check();
+    if (
+      job.type === 'signVote' &&
+      !(await verifySentryGovernanceVote(
+        job.request,
+        job.context,
+        result as any
+      ))
+    )
+      throw new Error('Generated vote failed verification');
+    return complete(result);
+  } catch {
+    check();
+    // Library exceptions can include secret caller input. Keep one public error.
+    throw new Error('Sentry key validation or authorization failed');
+  }
+}

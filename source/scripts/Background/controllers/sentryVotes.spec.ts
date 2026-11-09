@@ -148,9 +148,25 @@ beforeEach(() => {
     captureScope: () => scope,
     getSeed,
     getSettings: async () => settings,
+    hasWalletAuthority: async () => false,
+    resolveWalletAuthority: async () => undefined,
     readJson,
     runExclusive: (job) => mutex.runExclusive(job),
   });
+});
+
+it('requires explicit wallet-authority ports even for stored-key-only hosts', () => {
+  expect(
+    () =>
+      new SentryVoteController({
+        captureScope: () => scope,
+        getSeed,
+        getSettings: async () => settings,
+        readJson,
+        runExclusive: async (run: () => Promise<unknown>) => run(),
+      } as never)
+  ).toThrow('ports are required');
+  expect(mockCrypto).not.toHaveBeenCalled();
 });
 
 it('signs only the reviewed batch and never returns key material', async () => {
