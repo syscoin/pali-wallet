@@ -6,16 +6,24 @@ import type {
   SmartAccountValidatorModule,
 } from '../../types/network.ts';
 
-/** True when Pali can natively produce signatures for this validator. */
+/** Algorithm support for configuration and the dispatcher's existing preflight. */
+export const isPaliValidatorAlgorithmSupported = (
+  module: SmartAccountValidatorModule
+): boolean => ['ecdsa', 'p256-webauthn', 'slh-dsa'].includes(module.id);
+
+/** Shared module structure and threshold traversal with explicit host availability. */
 export const isPaliSignableValidator = (
   module: SmartAccountValidatorModule,
-  metadata: Pick<ISmartAccountMetadata, 'installedModules'>
+  metadata: Pick<ISmartAccountMetadata, 'installedModules'>,
+  isAvailable: (validator: SmartAccountValidatorModule) => boolean
 ): boolean => {
+  if (typeof isAvailable !== 'function')
+    throw new TypeError('Explicit authenticator availability is required');
   switch (module.id) {
     case 'ecdsa':
     case 'p256-webauthn':
     case 'slh-dsa':
-      return true;
+      return isAvailable(module) === true;
     case 'composite': {
       // Match the contract's distinct, installed, non-nested children. An
       // optional external child cannot make an otherwise unavailable local
@@ -54,9 +62,8 @@ export const isPaliSignableValidator = (
             return false;
           }
           if (
-            childModule.id === 'ecdsa' ||
-            childModule.id === 'p256-webauthn' ||
-            childModule.id === 'slh-dsa'
+            isPaliValidatorAlgorithmSupported(childModule) &&
+            isAvailable(childModule) === true
           ) {
             signableChildren++;
           }

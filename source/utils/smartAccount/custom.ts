@@ -12,7 +12,10 @@ import {
   getInstalledValidatorModuleByAddress,
   listInstalledValidatorModules,
 } from './modules';
-import { isPaliSignableValidator } from './validatorSignability';
+import {
+  isPaliValidatorAlgorithmSupported,
+  isPaliSignableValidator,
+} from './validatorSignability';
 
 export { isPaliSignableValidator } from './validatorSignability';
 
@@ -137,7 +140,9 @@ export const assertValidatorActivationAllowed = (
       'Cannot activate a validator that is not installed on this account.'
     );
   }
-  if (isPaliSignableValidator(module, metadata)) {
+  if (
+    isPaliSignableValidator(module, metadata, isPaliValidatorAlgorithmSupported)
+  ) {
     return;
   }
   if (module.id === 'custom') {

@@ -30,7 +30,7 @@ import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHel
 import { createGuardianRecoveryFixture } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
 import { importedKeyIdentity } from '../src/custody/importedAccounts.ts';
-import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface, paliGuardianRecoveryModuleInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliCompositeValidatorInterface, paliP256WebAuthnValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface, paliGuardianRecoveryModuleInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
@@ -74,6 +74,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let recoveredOwner: string | undefined;
   let observedOwners: string[] | undefined;
   let observedThreshold = 1;
+  let composite: { threshold: number; ecdsaFirst: boolean } | undefined;
+  let replaceSoftwareOwner: ((type: 'HDAccount' | 'Imported', id: number) => void) | undefined;
   const openStorage = async () => {
     storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, !initialized);
     initialized = true;
@@ -162,9 +164,16 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
           } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
             const args = paliSmartAccountInterface.decodeFunctionData('isModuleInstalled', data);
-            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase()]);
+            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !!composite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
           } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
-            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa')]);
+            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), composite ? 'composite' : 'ecdsa')]);
+          } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'composite').toLowerCase()) {
+            const ecdsa = getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa'), passkey = getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn');
+            result = data.startsWith(paliCompositeValidatorInterface.getFunction('childValidators')!.selector)
+              ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [composite.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa]])
+              : paliCompositeValidatorInterface.encodeFunctionResult('threshold', [composite.threshold]);
+          } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
+            result = paliP256WebAuthnValidatorInterface.encodeFunctionResult('authData', [[`0x${'01'.repeat(32)}`, `0x${'02'.repeat(32)}`, `0x${'03'.repeat(32)}`, `0x${'04'.repeat(32)}`, 32]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
             const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
             result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
@@ -210,6 +219,14 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       return { ...sdk, HostKeyring: class extends Base {
         constructor(...args: ConstructorParameters<typeof Base>) {
           super(...args);
+          const setState = this.setVaultStateGetter.bind(this);
+          this.setVaultStateGetter = getter => {
+            setState(getter);
+            replaceSoftwareOwner = (type, id) => {
+              const current = getter(); const owner = current.accounts[type][id]; assert(owner);
+              current.accounts[type][id] = { ...owner };
+            };
+          };
           const original = this.ethereumTransaction.ethSign.bind(this.ethereumTransaction);
           this.ethereumTransaction.ethSign = async (...input: Parameters<typeof original>) => {
             const saved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { guardianRecoveryIntents?: unknown[] };
@@ -249,6 +266,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     externalOwner() { externalOwner = true; },
     recoveredOwner(address: string) { recoveredOwner = address; },
     observedEcdsaOwners(addresses: string[], threshold: number) { observedOwners = addresses; observedThreshold = threshold; },
+    observedComposite(threshold = 1, ecdsaFirst = false) { composite = { threshold, ecdsaFirst }; },
+    replaceSoftwareOwner(type: 'HDAccount' | 'Imported', id: number) { assert(replaceSoftwareOwner); replaceSoftwareOwner(type, id); },
     gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
     loseGasCredit() { gasCredit = 0n; },
     wrongChain() { wrongChain = true; },
@@ -2199,4 +2218,138 @@ test('revoking an executed recovery clear during its fresh observation preserves
     controller.dispose();
     await f.close();
   }
+});
+
+
+async function compositeMessageFixture(ownerThreshold = 2, childThreshold = 1, ecdsaFirst = false) {
+  const f = await fixture({}, true);
+  await f.change({ kind: 'create', label: 'Second message owner', password: PASSWORD });
+  await f.change({ kind: 'create-smart', label: 'Composite message owner', password: PASSWORD });
+  const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
+  f.guardianStatus('no-policy'); f.observedEcdsaOwners(owners.map(owner => owner.address), ownerThreshold); f.observedComposite(childThreshold, ecdsaFirst);
+  await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+  return { f, owners, connection: await smartMessageApproval(f) };
+}
+for (const ecdsaFirst of [false, true]) test(`composite Smart messages preserve shared child slots, inner owner threshold and ERC-7739 proof (ECDSA first ${ecdsaFirst})`, async () => {
+  const { f, owners, connection } = await compositeMessageFixture(2, 1, ecdsaFirst);
+  const { host, selected, approval } = connection;
+  const bound: string[] = [], bind = approval.bindSigner;
+  approval.bindSigner = (key, current) => { bound.push(key); bind(key, current); };
+  try {
+    assert.equal(host.supportsSmartAccountMessages(selected.id), true);
+    const requests: DappMessageRequest[] = [
+      { method: 'personal_sign', address: selected.address, message: 'Shared composite owner proof' },
+      { method: 'eth_signTypedData_v4', address: selected.address, version: 'V4', typedData: {
+        domain: { name: 'Dapp', chainId: 10 }, types: { EIP712Domain: [{ name: 'name', type: 'string' }, { name: 'chainId', type: 'uint256' }], Mail: [{ name: 'contents', type: 'string' }] },
+        primaryType: 'Mail', message: { contents: 'Preserve the original dapp domain' },
+      } },
+    ];
+    for (const request of requests) {
+      const start = f.signatures.length, prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
+      const result = await host.signMessage({ accountId: selected.id, networkId: 'ethereum', request, approval });
+      const signatures = f.signatures.slice(start);
+      assert.equal(signatures.length, 2);
+      assert.deepEqual(signatures.map(signature => signature.address.toLowerCase()), owners.map(owner => owner.address.toLowerCase()));
+      signatures.forEach(signature => { assert.equal(signature.digest, prepared.actionHash); assert.equal(recoverAddress(prepared.actionHash, signature.signature).toLowerCase(), signature.address.toLowerCase()); });
+      const inner = coder.encode(['bytes[]'], [signatures.map(signature => signature.signature)]);
+      const aggregate = coder.encode(['bytes[]'], [ecdsaFirst ? [inner, '0x'] : ['0x', inner]]);
+      assert.equal(result, encodeSmartAccountMessageSignature(prepared, { validator: getConfiguredAuthenticatorAddress(1, 'composite'), signature: aggregate }));
+    }
+    assert.equal(bound.filter(key => key === 'native-smart-message:HDAccount:0').length, 2);
+    assert.equal(bound.filter(key => key === 'native-smart-message:HDAccount:1').length, 2);
+    assert.equal(f.submitted.length, 0);
+  } finally { approval.dispose(); await f.close(); }
+});
+
+test('composite Smart message capability refuses missing owner keys and unavailable child ports', async () => {
+  const { f, connection } = await compositeMessageFixture(1, 2);
+  try {
+    assert.equal(connection.host.supportsSmartAccountMessages(connection.selected.id), false);
+    f.observedComposite(1); f.observedEcdsaOwners(['0x' + '66'.repeat(20)], 1);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const next = await f.runtime.openConnectionHost();
+    assert.equal(next.supportsSmartAccountMessages(connection.selected.id), false);
+    assert.equal(f.signatures.length, 0);
+  } finally { connection.approval.dispose(); await f.close(); }
+});
+
+for (const failure of ['reject', 'lock', 'owner-replaced'] as const) test(`composite Smart message ${failure} during the SDK boundary cannot fall through to another owner`, async () => {
+  const { f, connection } = await compositeMessageFixture();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  f.onSignature(async () => { entered.resolve(); if (failure === 'reject') throw Error('USER_REJECTED'); await release.promise; });
+  const { host, selected, approval } = connection;
+  try {
+    const work = host.signMessage({ accountId: selected.id, networkId: 'ethereum', approval,
+      request: { method: 'personal_sign', address: selected.address, message: 'Original owner only' } });
+    const rejected = assert.rejects(work); await entered.promise;
+    const locking = failure === 'lock' ? f.owner.lock() : undefined;
+    if (failure === 'owner-replaced') f.replaceSoftwareOwner('HDAccount', 0);
+    release.resolve(); await rejected; await locking;
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { release.resolve(); approval.dispose(); await f.close(); }
+});
+
+test('composite Smart messages bind only the actually-used owner until final delivery, and reject a later network selection', async () => {
+  const { f, connection } = await compositeMessageFixture(1);
+  const { host, selected, approval } = connection;
+  const bound: string[] = [], bind = approval.bindSigner;
+  approval.bindSigner = (key, current) => { bound.push(key); bind(key, current); };
+  try {
+    const request: DappMessageRequest = { method: 'personal_sign', address: selected.address, message: 'Retain the owner through delivery' };
+    await host.signMessage({ accountId: selected.id, networkId: 'ethereum', approval, request });
+    assert.deepEqual(bound.filter(key => key.startsWith('native-smart-message:')), ['native-smart-message:HDAccount:0']);
+    f.replaceSoftwareOwner('HDAccount', 1); approval.assertCurrent();
+    f.replaceSoftwareOwner('HDAccount', 0); assert.throws(approval.assertCurrent);
+    const next = await smartMessageApproval(f);
+    try {
+      await next.host.signMessage({ accountId: next.selected.id, networkId: 'ethereum', approval: next.approval, request });
+      await f.selectNetwork('syscoin-nevm');
+      assert.throws(next.approval.assertCurrent);
+      assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 0);
+    } finally { next.approval.dispose(); }
+  } finally { approval.dispose(); await f.close(); }
+});
+
+for (const threshold of [1, 2]) test(`plain ECDSA Smart messages keep configured inverse owner order through actual SDK signing (threshold ${threshold})`, async () => {
+  const f = await fixture({}, true);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    await f.change({ kind: 'create', label: 'Configured first owner', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Ordered message owners', password: PASSWORD });
+    const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60).reverse();
+    f.deployed(); f.observedEcdsaOwners(owners.map(owner => owner.address), threshold);
+    connection = await smartMessageApproval(f);
+    const { host, selected, approval } = connection;
+    const bound: string[] = [], bind = approval.bindSigner;
+    approval.bindSigner = (key, current) => { bound.push(key); bind(key, current); };
+    const request: DappMessageRequest = { method: 'personal_sign', address: selected.address, message: 'Configured owner order is authoritative' };
+    const prepared = prepareSmartAccountMessage({ accountAddress: selected.address, chainId: 1, request });
+    const signature = await host.signMessage({ accountId: selected.id, networkId: 'ethereum', approval, request });
+    const expected = owners.slice(0, threshold);
+    assert.deepEqual(f.signatures.map(signed => signed.address.toLowerCase()), expected.map(owner => owner.address.toLowerCase()));
+    assert.deepEqual(bound.filter(key => key.startsWith('native-smart-message:')), expected.map(owner => `native-smart-message:HDAccount:${owner.index}`));
+    assert.equal(signature, encodeSmartAccountMessageSignature(prepared, { validator: getConfiguredAuthenticatorAddress(1, 'ecdsa'),
+      signature: threshold === 1 ? f.signatures[0]!.signature : coder.encode(['bytes[]'], [f.signatures.map(signed => signed.signature)]) }));
+    assert.equal(f.submitted.length, 0); approval.assertCurrent();
+  } finally { connection?.approval.dispose(); await f.close(); }
+});
+
+test('plain ECDSA Smart transactions keep configured inverse owner order before payer review', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create', label: 'Configured first transaction owner', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Ordered transaction owners', password: PASSWORD });
+    const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60).reverse();
+    f.deployed(); f.fundedSmart(); f.holdReceipts(); f.observedEcdsaOwners(owners.map(owner => owner.address), 2);
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
+    const pending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+    assert.deepEqual(f.signatures.map(signed => signed.address.toLowerCase()), owners.map(owner => owner.address.toLowerCase()));
+    assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 0);
+    operation.cancel(); await pending;
+    assert.equal(f.submitted.length, 0);
+  } finally { operation?.dispose(); await f.close(); }
 });

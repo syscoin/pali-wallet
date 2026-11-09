@@ -27,10 +27,13 @@ import { readSmartAccountDeploymentState } from '../../../../source/utils/smartA
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import {
   prepareSmartAccountOperation,
-  requireSmartAccountAuthenticator,
   type SmartAccountGasPayer,
 } from '../../../../source/utils/smartAccount/prepareOperation.ts';
-import { signSmartAccountEcdsaOperation } from '../../../../source/utils/smartAccount/signOperation.ts';
+import {
+  assertNativeSmartAccountAuthenticator,
+  signNativeSmartAccountActionHash,
+  type NativeSmartAccountSigningOwner,
+} from './authenticatorSigning.ts';
 import {
   submitSmartAccountOperation,
   type SmartAccountSubmitHost,
@@ -136,7 +139,7 @@ export function createNativeSmartOperation(
           candidate.address.toLowerCase() === address.toLowerCase()
       );
       if (owner)
-        return { id: owner.id, type: type as SmartAccountGasPayer['type'] };
+        return { id: owner.id, type };
     }
     return null;
   };
@@ -249,7 +252,11 @@ export function createNativeSmartOperation(
         });
         assertCurrent();
       }
-      if (requireSmartAccountAuthenticator(metadata).module !== 'ecdsa')
+      if (
+        !['ecdsa', 'composite'].includes(
+          assertNativeSmartAccountAuthenticator(metadata).module
+        )
+      )
         throw new Error(
           'This authenticator is not available for native transfers'
         );
@@ -389,14 +396,41 @@ export function createNativeSmartOperation(
         userOperation: prepared.userOperation,
         assertCurrent,
       });
-      return signSmartAccountEcdsaOperation({
+      const localOwners: NativeSmartAccountSigningOwner[] = [];
+      const ownerRecords = new Map<string, IKeyringAccountState>();
+      for (const type of ['HDAccount', 'Imported'] as const)
+        for (const owner of Object.values(ports.wallet.accounts[type]))
+          if (
+            !owner.isSmartAccount &&
+            !owner.isLedgerWallet &&
+            !owner.isTrezorWallet
+          ) {
+            localOwners.push({ address: owner.address, id: owner.id, type });
+            ownerRecords.set(`${type}:${owner.id}`, owner);
+          }
+      const signature = await signNativeSmartAccountActionHash({
         metadata,
         actionHash: prepared.actionHash,
+        localOwners,
         assertCurrent,
-        findOwner: ownerFor,
-        signOwner: (address, digest, owner) =>
-          ports.signOwner(address, digest, owner, assertCurrent),
+        assertOwnerCurrent(owner) {
+          const current = ownerFor(owner.address);
+          if (
+            !current || current.id !== owner.id || current.type !== owner.type ||
+            ports.wallet.accounts[owner.type][owner.id] !==
+              ownerRecords.get(`${owner.type}:${owner.id}`)
+          )
+            throw new Error('Native smart account owner identity changed');
+        },
+        signOwner: (address, digest, owner, guard) =>
+          ports.signOwner(
+            address,
+            digest,
+            { id: owner.id, type: owner.type as SmartAccountGasPayer['type'] },
+            guard
+          ),
       });
+      return signature.signature;
     },
     async submit(
       prepared,

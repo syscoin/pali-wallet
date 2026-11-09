@@ -4,11 +4,16 @@ import { signP256WebAuthnActionHash } from '../passkey/authenticator';
 import { encodeEcdsaValidatorInitData } from './account';
 import {
   signSmartAccountActionHash,
+  canSignSmartAccountActionHash,
   SmartAccountExternalSignatureRequired,
   type SmartAccountAuthenticatorPorts,
 } from './authenticatorDispatch';
 import { signSmartAccountActionHash as extensionSign } from './execution';
 import { signSmartAccountEcdsaOperation } from './signOperation';
+import {
+  isPaliSignableValidator,
+  isPaliValidatorAlgorithmSupported,
+} from './validatorSignability';
 import type {
   ISmartAccountMetadata,
   KeyringAccountType,
@@ -323,4 +328,58 @@ it('does not skip rejected or stale composite child approvals', async () => {
     })
   ).rejects.toThrow('stale');
   expect(ecdsa).not.toHaveBeenCalled();
+});
+
+it('queries actual host ports through the same owner and composite thresholds without signing', () => {
+  const available = { ecdsa: localOwners, p256WebAuthn: false, slhDsa: false };
+  expect(canSignSmartAccountActionHash(metadata(2), available)).toBe(true);
+  expect(
+    canSignSmartAccountActionHash(metadata(2), {
+      ...available,
+      ecdsa: localOwners.slice(0, 1),
+    })
+  ).toBe(false);
+  expect(
+    canSignSmartAccountActionHash(composite(undefined, 1), available)
+  ).toBe(true);
+  expect(
+    canSignSmartAccountActionHash(composite(undefined, 2), available)
+  ).toBe(false);
+  expect(
+    canSignSmartAccountActionHash(composite(undefined, 2), {
+      ...available,
+      p256WebAuthn: true,
+    })
+  ).toBe(true);
+  const configured = composite(undefined, 2),
+    validator = configured.installedModules!.find(
+      (module) => module.id === 'composite'
+    )!;
+  expect(
+    isPaliSignableValidator(
+      validator as never,
+      configured,
+      isPaliValidatorAlgorithmSupported
+    )
+  ).toBe(true);
+  expect(() =>
+    canSignSmartAccountActionHash(configured, undefined as never)
+  ).toThrow('Explicit');
+  expect(() =>
+    isPaliSignableValidator(validator as never, configured, undefined as never)
+  ).toThrow('Explicit');
+  for (const answer of [
+    undefined,
+    1,
+    'yes',
+    Promise.resolve(true),
+    { then: () => undefined },
+  ])
+    expect(
+      isPaliSignableValidator(
+        validator as never,
+        configured,
+        (() => answer) as never
+      )
+    ).toBe(false);
 });

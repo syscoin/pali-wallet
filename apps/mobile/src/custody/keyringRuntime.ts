@@ -56,10 +56,10 @@ import { createSmartAccountCallsExecutions, normalizeDappCallsRequest } from '..
 import { captureSmartAccountCallsIdentity } from '../../../../source/shared/dappCallsStatus.ts';
 import {
   getSmartAccountLocalEcdsaOwners,
-  signSmartAccountEcdsaOperation,
   type SmartAccountLocalOwner,
 } from '../../../../source/utils/smartAccount/signOperation.ts';
 import type { NativeSmartOperationPorts } from '../smartAccount/runtime.ts';
+import { signNativeSmartAccountActionHash, canSignNativeSmartAccountActionHash, type NativeSmartAccountSigningOwner } from '../smartAccount/authenticatorSigning.ts';
 import { snapshotSmartAccountDappTransaction } from '../../../../source/shared/smartAccountDappTransaction.ts';
 import { summarizeApproval, decodeApprovalData } from '../../../../source/shared/approval.ts';
 import type { NativeGuardianPolicyDraft, NativeSmartAccountAmount, NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
@@ -3825,7 +3825,18 @@ export function createKeyringRuntimeFactory(
               }
               return null;
             };
-            const supportsLocalEcdsaSmartAccount = (accountId: string) => {
+            const captureLocalSmartOwners = () => {
+              const localOwners: NativeSmartAccountSigningOwner[] = [];
+              const ownerRecords = new Map<string, IKeyringAccountState>();
+              for (const type of ['HDAccount', 'Imported'] as const)
+                for (const owner of Object.values(state.accounts[type]))
+                  if (!owner.isSmartAccount && !owner.isLedgerWallet && !owner.isTrezorWallet) {
+                    localOwners.push({ address: owner.address, id: owner.id, type });
+                    ownerRecords.set(`${type}:${owner.id}`, owner);
+                  }
+              return { localOwners, ownerRecords };
+            };
+            const supportsLocalSmartAccount = (accountId: string) => {
               assertOwner();
               const record = catalogueSnapshot?.accounts.find(
                 (entry) => entry.id === accountId
@@ -3852,11 +3863,7 @@ export function createKeyringRuntimeFactory(
                   saved,
                   Number(network.chainId)
                 );
-                getSmartAccountLocalEcdsaOwners(
-                  saved.smartAccount,
-                  findLocalEcdsaOwner
-                );
-                return true;
+                return canSignNativeSmartAccountActionHash(saved.smartAccount, captureLocalSmartOwners().localOwners);
               } catch {
                 return false;
               }
@@ -3904,8 +3911,8 @@ export function createKeyringRuntimeFactory(
                 return generation;
               },
               calls: repository.calls,
-              supportsAtomicCalls: supportsLocalEcdsaSmartAccount,
-              supportsSmartAccountMessages: supportsLocalEcdsaSmartAccount,
+              supportsAtomicCalls: supportsLocalSmartAccount,
+              supportsSmartAccountMessages: supportsLocalSmartAccount,
               async readCallsStatus(origin, id, assertRequestCurrent) {
                 const snapshot = catalogueSnapshot;
                 const guard = () => {
@@ -4253,63 +4260,34 @@ export function createKeyringRuntimeFactory(
                       assertCurrent: guard,
                     });
                     guard();
-                    const validator = metadata.auth?.validator;
-                    if (!validator)
-                      throw new KeyringRuntimeError('INVALID_INPUT');
-                    const { owners } = getSmartAccountLocalEcdsaOwners(
-                      metadata,
-                      findLocalEcdsaOwner
-                    );
-                    for (const { address, owner } of owners) {
-                      const record = state.accounts[owner.type][owner.id];
-                      if (!record)
-                        throw new KeyringRuntimeError('INVALID_INPUT');
-                      approval.bindSigner(
-                        `native-smart-message:${owner.type}:${owner.id}`,
-                        () =>
-                          state.accounts[owner.type][owner.id] === record &&
-                          record.address.toLowerCase() === address.toLowerCase()
-                      );
-                    }
-                    guard();
-                    const signature = await signSmartAccountEcdsaOperation({
-                      metadata,
-                      actionHash: prepared.actionHash,
-                      findOwner: findLocalEcdsaOwner,
-                      assertCurrent: guard,
-                      async signOwner(address, digest, owner) {
-                        guard();
-                        const signature =
-                          await ring.ethereumTransaction.ethSign(
-                            [address, digest],
-                            {
-                              selectedAccount: {
-                                id: selected.index,
-                                type: selected.type,
-                                expectedAddress: selected.address,
-                              },
-                              targetAccount: {
-                                id: owner.id,
-                                type: owner.type,
-                                expectedAddress: address,
-                              },
-                              assertCurrent: guard,
-                            }
-                          );
-                        guard();
-                        if (
-                          typeof signature !== 'string' ||
-                          !/^0x[0-9a-f]{130}$/i.test(signature)
-                        )
-                          throw new KeyringRuntimeError('OPERATION_FAILED');
-                        return signature;
+                    const { localOwners, ownerRecords } = captureLocalSmartOwners();
+                    const boundOwners = new Set<string>();
+                    const signature = await signNativeSmartAccountActionHash({
+                      metadata, actionHash: prepared.actionHash, localOwners, assertCurrent: guard,
+                      assertOwnerCurrent(owner) {
+                        const original = ownerRecords.get(`${owner.type}:${owner.id}`), currentOwner = findLocalEcdsaOwner(owner.address);
+                        if (!original || !currentOwner || currentOwner.id !== owner.id || currentOwner.type !== owner.type ||
+                            state.accounts[owner.type][owner.id] !== original || original.address.toLowerCase() !== owner.address.toLowerCase())
+                          throw new KeyringRuntimeError('CANCELLED');
+                      },
+                      async signOwner(address, digest, owner, ownerGuard) {
+                        ownerGuard();
+                        const key = `native-smart-message:${owner.type}:${owner.id}`, record = ownerRecords.get(`${owner.type}:${owner.id}`)!;
+                        if (!boundOwners.has(key)) {
+                          approval.bindSigner(key, () => state.accounts[owner.type][owner.id] === record && record.address.toLowerCase() === address.toLowerCase());
+                          boundOwners.add(key);
+                        }
+                        ownerGuard();
+                        const result = await ring.ethereumTransaction.ethSign([address, digest], {
+                          selectedAccount: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                          targetAccount: { id: owner.id, type: owner.type as SmartAccountLocalOwner['type'], expectedAddress: address },
+                          assertCurrent: ownerGuard,
+                        });
+                        ownerGuard(); return result;
                       },
                     });
                     guard();
-                    return encodeSmartAccountMessageSignature(prepared, {
-                      validator,
-                      signature,
-                    });
+                    return encodeSmartAccountMessageSignature(prepared, signature);
                   }
                   const transactions = ring.ethereumTransaction;
                   const args =
