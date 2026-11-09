@@ -108,8 +108,9 @@ export async function openWalletStorage(
         throw new WalletStorageError('STORAGE_KEY_MISSING');
       observeStorageOpen(ports.observeOpen, 'key-generate');
       const key = ports.randomBytes(32);
-      const installation = ports.randomBytes(16);
+      let installation: Uint8Array | undefined;
       try {
+        installation = ports.randomBytes(16);
         if (
           !(key instanceof Uint8Array) ||
           key.length !== 32 ||

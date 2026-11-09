@@ -28,7 +28,14 @@ internal object PaliCryptoPrimitives {
 
   fun randomBytes(count: Int): ByteArray {
     require(count in 0..65_536)
-    return ByteArray(count).also { random.nextBytes(it) }
+    val output = ByteArray(count)
+    return try {
+      random.nextBytes(output)
+      output
+    } catch (error: Throwable) {
+      output.fill(0)
+      throw error
+    }
   }
 
   fun digest(data: ByteArray): ByteArray {
