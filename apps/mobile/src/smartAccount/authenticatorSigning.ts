@@ -7,6 +7,7 @@ import {
   signSmartAccountActionHash,
   canSignSmartAccountActionHash,
   type SmartAccountAuthenticatorSignature,
+  type SmartAccountAuthenticatorPorts,
 } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
 import { requireSmartAccountAuthenticator } from '../../../../source/utils/smartAccount/prepareOperation.ts';
 import { getSmartAccountLocalEcdsaOwners } from '../../../../source/utils/smartAccount/signOperation.ts';
@@ -118,10 +119,11 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
   return { metadata, owners };
 }
 
-export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[]): boolean {
+export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ slhDsa: boolean }>): boolean {
   try {
+    if (typeof available?.slhDsa !== 'boolean') return false;
     const captured = captureNativeSmartAccountSigningContext(metadata, localOwners);
-    return canSignSmartAccountActionHash(captured.metadata, { ecdsa: captured.owners, p256WebAuthn: false, slhDsa: false });
+    return canSignSmartAccountActionHash(captured.metadata, { ecdsa: captured.owners, p256WebAuthn: false, slhDsa: available.slhDsa });
   } catch { return false; }
 }
 
@@ -130,6 +132,9 @@ export async function signNativeSmartAccountActionHash(
   params: Readonly<{
     metadata: ISmartAccountMetadata;
     actionHash: string;
+    slhDsa: SmartAccountAuthenticatorPorts['slhDsa'];
+    allowReservedSLHDSASignature: boolean;
+    accountId: number;
     localOwners: readonly NativeSmartAccountSigningOwner[];
     assertCurrent(): void;
     assertOwnerCurrent(owner: NativeSmartAccountSigningOwner): void;
@@ -148,11 +153,18 @@ export async function signNativeSmartAccountActionHash(
     !isHexString(params.actionHash, 32) ||
     !Array.isArray(params.localOwners) ||
     typeof params.assertOwnerCurrent !== 'function' ||
-    typeof params.signOwner !== 'function'
+    typeof params.signOwner !== 'function' ||
+    !Object.hasOwn(params, 'slhDsa') ||
+    (params.slhDsa !== null && (!params.slhDsa || typeof params.slhDsa.signActionHash !== 'function' || params.slhDsa.signMessageActionHash !== null)) ||
+    typeof params.allowReservedSLHDSASignature !== 'boolean' ||
+    !Number.isSafeInteger(params.accountId) || params.accountId < 0
   )
     throw new Error('Native smart account signing ports are required');
   const { metadata, owners } = captureNativeSmartAccountSigningContext(params.metadata, params.localOwners);
+  const slhDsa = params.slhDsa === null ? null : Object.freeze({ signActionHash: params.slhDsa.signActionHash!.bind(params.slhDsa), signMessageActionHash: null });
   const result = await signSmartAccountActionHash({
+    accountId: params.accountId,
+    allowReservedSLHDSASignature: params.allowReservedSLHDSASignature,
     smartAccount: metadata,
     actionHash: params.actionHash,
     async assertBeforeAuthentication() {
@@ -195,7 +207,7 @@ export async function signNativeSmartAccountActionHash(
         },
       },
       p256WebAuthn: null,
-      slhDsa: null,
+      slhDsa,
     },
   });
   check();

@@ -31,6 +31,20 @@ const physicalScenario = process.env.PALI_PHYSICAL_QUALIFICATION;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
 const publicPoolEnabled = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1';
 const privateProofEnabled = process.env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION === '1';
+const fullSlhEnabled = process.env.PALI_NATIVE_FULL_SLH_QUALIFICATION === '1';
+if (process.env.PALI_NATIVE_FULL_SLH_QUALIFICATION !== undefined && !['0', '1'].includes(process.env.PALI_NATIVE_FULL_SLH_QUALIFICATION))
+  throw Error('Full SLH qualification requires an explicit boolean mode');
+let fullSlh;
+if (fullSlhEnabled) {
+  if (httpEnabled || publicPoolEnabled || privateProofEnabled || physicalScenario !== undefined ||
+      !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
+      ['paliFullSlhQualification', 'paliPrivateProofQualification', 'paliPublicPoolQualification', 'paliHttpQualification', 'paliPhysicalQualification'].some(key => app.expo.extra?.[key] !== undefined))
+    throw Error('Full SLH qualification requires a dedicated isolated build');
+  fullSlh = { version: 1, sourceRevision: process.env.GITHUB_SHA,
+    lockfileSha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'package-lock.json'))).digest('hex') };
+}
+if (!fullSlhEnabled && app.expo.extra?.paliFullSlhQualification !== undefined)
+  throw Error('Full SLH qualification requires a dedicated isolated build');
 let privateProof;
 if (privateProofEnabled) {
   if (httpEnabled || publicPoolEnabled || physicalScenario !== undefined ||
@@ -101,6 +115,7 @@ const receipt = {
   ...(http ? { http } : {}),
   ...(publicPool ? { publicPool } : {}),
   ...(privateProof ? { privateProof } : {}),
+  ...(fullSlh ? { fullSlh } : {}),
 };
 pkg.main = receipt.qualificationEntry;
 app.expo.extra = {
@@ -124,6 +139,7 @@ if (publicPool) {
   app.expo.plugins = [...(app.expo.plugins || []), './qualification/withHttpFixture.cjs'];
 }
 if (privateProof) app.expo.extra = { ...app.expo.extra, paliPrivateProofQualification: privateProof };
+if (fullSlh) app.expo.extra = { ...app.expo.extra, paliFullSlhQualification: fullSlh };
 if (physical) {
   app.expo.name =
     physicalScenario === 'import'

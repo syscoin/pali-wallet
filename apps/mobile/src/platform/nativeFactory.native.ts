@@ -72,6 +72,8 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     fetch: isCustomUtxoNetworkId(network.id) ? exactUtxoResponseFetch(walletFetch) : walletFetch,
   });
   return createKeyringRuntimeFactory({
+    // Full native SLH primitive/cache qualification is required before activation.
+    slhExecution: null,
     assertActive,
     deviceUnlock,
     deriveSentryPublicKey: createNativeSentryPublicKeyDeriver(),

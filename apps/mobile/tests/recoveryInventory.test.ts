@@ -1,9 +1,11 @@
+import { getSLHDSAKeyId, getSLHDSAStateStorageKey } from '../../../source/utils/slhDsa/constants.ts';
+import { SLH_DSA_PROFILE_STATE_DOMAIN } from '../../../source/wallet/slhDsaStateCrypto.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { keccak256 } from 'ethers/crypto';
+import { keccak256, sha256 } from 'ethers/crypto';
 import { Wallet } from 'ethers/wallet';
 import { inspectRecoveryInventory, readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
@@ -289,4 +291,47 @@ test('malformed rows, metadata, oversize and installation changes never produce 
       assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
     } finally { await f.close(); }
   }
+});
+
+
+function slhInventoryRow(profileId: string) {
+  const keyId = getSLHDSAKeyId({ pkSeed: `0x${'33'.repeat(16)}${'00'.repeat(16)}`, pkRoot: `0x${'44'.repeat(16)}${'00'.repeat(16)}` });
+  const encrypted = { version: 1, profileId, domain: SLH_DSA_PROFILE_STATE_DOMAIN,
+    recordId: sha256(new TextEncoder().encode(keyId)), nonce: 'A'.repeat(16), ciphertext: 'A'.repeat(24) };
+  return { key: getSLHDSAStateStorageKey(keyId), value: { version: 1, keyId, updatedAt: 1, cipherText: JSON.stringify(encrypted) }, encrypted };
+}
+
+test('SLH inventory admits only the existing canonical encrypted row under its exact wallet profile, read-only', async () => {
+  const f = await fixture();
+  try {
+    const row = slhInventoryRow(f.profileId); f.put(row.key, row.value);
+    const before = f.bytes(); f.sql.length = 0;
+    const inventory = await readRecoveryInventory(f.storage);
+    assert.equal(inventory.status, 'needs-matching-phrase-verification');
+    assert.equal(inventory.counts?.hdAccounts, 1);
+    assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
+  } finally { await f.close(); }
+});
+
+for (const malformed of ['prefix', 'case', 'outer-key', 'outer-extra', 'version', 'profile', 'domain', 'record', 'inner-extra', 'base64'] as const) test(`SLH inventory refuses ${malformed} rows without widening canonical admission`, async () => {
+  const f = await fixture();
+  try {
+    const row = slhInventoryRow(f.profileId);
+    let key = row.key;
+    const value: Record<string, unknown> = { ...row.value }, encrypted: Record<string, unknown> = { ...row.encrypted };
+    if (malformed === 'prefix') key = 'pali-slh-dsa-state:v1:arbitrary';
+    if (malformed === 'case') key = row.key.toUpperCase();
+    if (malformed === 'outer-key') value.keyId = 'another-key';
+    if (malformed === 'outer-extra') value.secretKeyHex = 'must not be retained';
+    if (malformed === 'version') value.version = 2;
+    if (malformed === 'profile') encrypted.profileId = `0x${'ef'.repeat(32)}`;
+    if (malformed === 'domain') encrypted.domain = 'another-domain';
+    if (malformed === 'record') encrypted.recordId = `0x${'ef'.repeat(32)}`;
+    if (malformed === 'inner-extra') encrypted.secretKeyHex = 'must not be retained';
+    if (malformed === 'base64') encrypted.ciphertext = 'invalid ciphertext';
+    value.cipherText = JSON.stringify(encrypted); f.put(key, value);
+    const before = f.bytes(); f.sql.length = 0;
+    assert.equal((await readRecoveryInventory(f.storage)).status, 'unavailable');
+    assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
+  } finally { await f.close(); }
 });

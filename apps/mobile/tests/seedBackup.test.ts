@@ -26,6 +26,7 @@ async function fixture() {
     ledger: { subscribeStatus: () => () => {}, isConnected: () => false, async scan() { throw new Error('Hardware is outside this fixture'); } },
     catalogue: { getSnapshot: () => null, getControlSnapshot: () => null, previewNetworkSelection() { throw Error('Network selection is outside this fixture'); } },
     async readConnectionUtxoPublic() { throw Error('UTXO is outside this fixture'); },
+    async openSlhDsaAccount() { throw new Error('SLH is outside this fixture'); },
     async openSmartAccountSend() { throw new Error('not used'); },
     openSmartAccountDeployment() { throw new Error('Unused test capability'); },
     async openWalletAuthenticator() { throw new Error('Authenticator is outside this fixture'); },

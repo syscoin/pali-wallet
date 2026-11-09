@@ -111,7 +111,7 @@ async function fixture() {
     initialized = true;
     return storage;
   };
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ slhExecution: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: CountedHost }),
     readEvmRetirement: null,

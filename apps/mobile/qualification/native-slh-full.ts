@@ -1,0 +1,505 @@
+import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
+import {
+  getSLHDSAKeyId,
+  SLH_DSA_PARAMETER_SET,
+} from '../../../source/utils/slhDsa/constants.ts';
+import {
+  bytesToHex,
+  concatBytes,
+  hexToBytes,
+  normalizeSLHDSAPublicKeyField,
+} from '../../../source/utils/slhDsa/hex.ts';
+import {
+  createNativeSlhExecution,
+  type NativeSlhExecutionModule,
+  type OwnedNativeSlhExecution,
+} from '../src/crypto/slhDsaNativeExecution.ts';
+import {
+  createNativeSlhDsaRuntime,
+  type NativeSlhInstalledKey,
+  type NativeSlhPublicState,
+} from '../src/smartAccount/slhDsaRuntime.ts';
+import type { OpenWalletStorage } from '../src/storage/types.ts';
+import type { NativeKeyringSdk } from '../src/custody/keyringSdk.ts';
+import { httpBuild } from './http-contract.ts';
+
+export const FULL_SLH_PHASE_TIMEOUT_MS = 1_800_000;
+export const FULL_SLH_CHECK = 'native full SLH execution and durable usage';
+type Build = ReturnType<typeof httpBuild>;
+type Keyring = InstanceType<NativeKeyringSdk['HostKeyring']>;
+type Phase = 'create' | 'restart';
+type Counts = {
+  loads: number;
+  setups: number;
+  prelude: number;
+  fors: number;
+  finish: number;
+  cached: number;
+  forced: number;
+};
+type Signed = Readonly<{
+  actionHash: string;
+  signatureHash: string;
+  count: number;
+  verified: true;
+  mutatedSignatureRefused: true;
+  mutatedActionRefused: true;
+  native: Counts;
+}>;
+export type FullSlhEvidence = Readonly<
+  Build & {
+    parameterSet: typeof SLH_DSA_PARAMETER_SET;
+    accountIndex: 0;
+    profileHash: string;
+    keyIdHash: string;
+    publicKey32: string;
+    signatureCount: 2 | 3;
+    deriveCalls: 0 | 1;
+    prepared: boolean;
+    canceledAdmissionDrained: boolean;
+    healthy: Signed;
+    fallback: Signed | null;
+  }
+>;
+function fail(): never {
+  throw Error('FULL_SLH_QUALIFICATION_FAILED');
+}
+const exact = (
+  input: unknown,
+  keys: readonly string[]
+): input is Record<string, unknown> =>
+  !!input &&
+  typeof input === 'object' &&
+  !Array.isArray(input) &&
+  Object.keys(input).length === keys.length &&
+  keys.every((key) => Object.hasOwn(input, key));
+const hash = (input: unknown): input is string =>
+  typeof input === 'string' && /^0x[0-9a-f]{64}$/.test(input);
+const blank = (): Counts => ({
+  loads: 0,
+  setups: 0,
+  prelude: 0,
+  fors: 0,
+  finish: 0,
+  cached: 0,
+  forced: 0,
+});
+const signedKeys = [
+  'actionHash',
+  'signatureHash',
+  'count',
+  'verified',
+  'mutatedSignatureRefused',
+  'mutatedActionRefused',
+  'native',
+];
+function signed(input: unknown, count: number, fallback: boolean): boolean {
+  if (
+    !exact(input, signedKeys) ||
+    input.actionHash !== `0x${String(count).padStart(2, '0').repeat(32)}` ||
+    !hash(input.signatureHash) ||
+    input.count !== count ||
+    input.verified !== true ||
+    input.mutatedSignatureRefused !== true ||
+    input.mutatedActionRefused !== true ||
+    !exact(input.native, Object.keys(blank()))
+  )
+    return false;
+  const n = input.native;
+  return (
+    Object.values(n).every(
+      (v) => Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 10_000
+    ) &&
+    n.setups === 0 &&
+    n.prelude === 1 &&
+    n.fors === (fallback ? 0 : 6) &&
+    n.finish === (fallback ? 0 : 1) &&
+    n.cached === (fallback ? 1 : 0) &&
+    n.forced === (fallback ? 1 : 0) &&
+    n.loads === (fallback ? 0 : 1)
+  );
+}
+
+/** Same immutable build schema as the existing isolated HTTP/proof modes. */
+export const fullSlhBuild = (value: unknown): Build => httpBuild(value);
+export function readFullSlhEvidence(
+  value: unknown,
+  phase: Phase,
+  build: Build
+): FullSlhEvidence {
+  if (!['create', 'restart'].includes(phase)) fail();
+  if (
+    !exact(value, [
+      'version',
+      'sourceRevision',
+      'lockfileSha256',
+      'parameterSet',
+      'accountIndex',
+      'profileHash',
+      'keyIdHash',
+      'publicKey32',
+      'signatureCount',
+      'deriveCalls',
+      'prepared',
+      'canceledAdmissionDrained',
+      'healthy',
+      'fallback',
+    ]) ||
+    value.version !== build.version ||
+    value.sourceRevision !== build.sourceRevision ||
+    value.lockfileSha256 !== build.lockfileSha256 ||
+    value.parameterSet !== SLH_DSA_PARAMETER_SET ||
+    value.accountIndex !== 0 ||
+    !hash(value.profileHash) ||
+    !hash(value.keyIdHash) ||
+    !hash(value.publicKey32) ||
+    value.signatureCount !== (phase === 'create' ? 2 : 3) ||
+    value.deriveCalls !== (phase === 'create' ? 1 : 0) ||
+    value.prepared !== (phase === 'create') ||
+    value.canceledAdmissionDrained !== (phase === 'create') ||
+    !signed(value.healthy, phase === 'create' ? 1 : 3, false) ||
+    (phase === 'create'
+      ? !signed(value.fallback, 2, true)
+      : value.fallback !== null)
+  )
+    fail();
+  if (
+    phase === 'create' &&
+    (value.healthy as Signed).signatureHash ===
+      (value.fallback as Signed).signatureHash
+  )
+    fail();
+  return Object.freeze(value) as FullSlhEvidence;
+}
+export function matchesFullSlhRestart(
+  created: unknown,
+  restored: unknown,
+  build: Build
+): boolean {
+  try {
+    const a = readFullSlhEvidence(created, 'create', build),
+      b = readFullSlhEvidence(restored, 'restart', build);
+    return (
+      a.publicKey32 === b.publicKey32 &&
+      a.profileHash === b.profileHash &&
+      a.keyIdHash === b.keyIdHash &&
+      a.healthy.signatureHash !== b.healthy.signatureHash
+    );
+  } catch {
+    return false;
+  }
+}
+const installed = (publicKey32: string): NativeSlhInstalledKey => {
+  if (!hash(publicKey32)) fail();
+  const bytes = hexToBytes(publicKey32);
+  const fields = {
+    pkSeed: normalizeSLHDSAPublicKeyField(bytesToHex(bytes.subarray(0, 16))),
+    pkRoot: normalizeSLHDSAPublicKeyField(bytesToHex(bytes.subarray(16))),
+  };
+  return Object.freeze({
+    ...fields,
+    parameterSet: SLH_DSA_PARAMETER_SET,
+    keyId: getSLHDSAKeyId(fields),
+  });
+};
+const publicKey = (state: NativeSlhPublicState) =>
+  bytesToHex(
+    concatBytes(
+      hexToBytes(state.pkSeed).subarray(0, 16),
+      hexToBytes(state.pkRoot).subarray(0, 16)
+    )
+  );
+
+/** Fixed public fixture only. Every cryptographic primitive delegates to the real native host. */
+export async function qualifyNativeSlhFull(
+  ports: Readonly<{
+    phase: Phase;
+    build: Build;
+    keyring: Keyring;
+    storage: OpenWalletStorage;
+    productionCapability: null;
+    nativeModule: NativeSlhExecutionModule;
+    previous: FullSlhEvidence | null;
+    assertCurrent(): void;
+    onStorageFault(): void;
+    randomFill(bytes: Uint8Array): void;
+    yield(): Promise<void>;
+    digest(bytes: Uint8Array): Promise<Uint8Array>;
+  }>
+): Promise<FullSlhEvidence> {
+  if (
+    ports.productionCapability !== null ||
+    !['create', 'restart'].includes(ports.phase) ||
+    (ports.phase === 'create'
+      ? ports.previous !== null
+      : ports.previous === null)
+  )
+    fail();
+  const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
+  check();
+  const unlocked = ports.keyring.captureUnlockedSessionGuard();
+  const owner = () => {
+    check();
+    assertSynchronousEvmFeeGuard(unlocked);
+    if (!ports.keyring.isUnlocked()) fail();
+  };
+  owner();
+  const namespace = await ports.keyring.getPrivateRecordProfileId();
+  owner();
+  const identity = await ports.storage.recovery?.readIdentity();
+  owner();
+  if (
+    !identity?.root ||
+    identity.root.profileId !== namespace ||
+    !/^0x[0-9a-f]{64}$/.test(namespace)
+  )
+    fail();
+  const digest = async (bytes: Uint8Array) => {
+    owner();
+    const result = await ports.digest(bytes);
+    owner();
+    if (result.length !== 32) fail();
+    return bytesToHex(result);
+  };
+  const profileHash = await digest(new TextEncoder().encode(namespace));
+  let stage: 'setup' | 'cancel' | 'healthy' | 'fallback' | 'restart' =
+    ports.phase === 'create' ? 'setup' : 'restart';
+  let counts = blank(),
+    forceFors = false,
+    admitted: (() => void) | undefined;
+  let native: OwnedNativeSlhExecution | undefined;
+  const openExecution: Parameters<
+    typeof createNativeSlhDsaRuntime
+  >[0]['openExecution'] = (captured) => {
+    owner();
+    const actual = createNativeSlhExecution(ports.nativeModule, {
+      ...captured,
+      randomFill: ports.randomFill,
+      yield: ports.yield,
+    });
+    native = actual;
+    const base = actual.host;
+    return Object.freeze({
+      ...actual,
+      host: Object.freeze({
+        ...base,
+        async loadTree(id: string) {
+          counts.loads++;
+          return base.loadTree(id);
+        },
+        openSetup(seed: Uint8Array) {
+          counts.setups++;
+          return base.openSetup(seed);
+        },
+        async signPrelude(...args: Parameters<typeof base.signPrelude>) {
+          counts.prelude++;
+          const pending = base.signPrelude(...args);
+          if (stage === 'cancel') {
+            const notify = admitted;
+            admitted = undefined;
+            notify?.();
+          }
+          return pending;
+        },
+        async signForsTree(...args: Parameters<typeof base.signForsTree>) {
+          if (forceFors) {
+            forceFors = false;
+            counts.forced++;
+            throw Error('FULL_SLH_BEFORE_NATIVE_FORS');
+          }
+          counts.fors++;
+          return base.signForsTree(...args);
+        },
+        async finishSignature(
+          ...args: Parameters<typeof base.finishSignature>
+        ) {
+          counts.finish++;
+          return base.finishSignature(...args);
+        },
+        async signCached(...args: Parameters<typeof base.signCached>) {
+          counts.cached++;
+          return base.signCached(...args);
+        },
+      }),
+    });
+  };
+  let deriveCalls = 0;
+  const keyring = {
+    async deriveSLHDSASetupSecretForAccount(request: { accountIndex: number }) {
+      owner();
+      if (
+        ports.phase !== 'create' ||
+        request.accountIndex !== 0 ||
+        deriveCalls !== 0
+      )
+        fail();
+      deriveCalls++;
+      const result = await ports.keyring.deriveSLHDSASetupSecretForAccount(
+        request
+      );
+      owner();
+      return result;
+    },
+    encryptPrivateRecord: ports.keyring.encryptPrivateRecord.bind(
+      ports.keyring
+    ),
+    decryptPrivateRecord: ports.keyring.decryptPrivateRecord.bind(
+      ports.keyring
+    ),
+  };
+  const create = () =>
+    createNativeSlhDsaRuntime({
+      namespace,
+      keyring,
+      storage: ports.storage.keyringStorage,
+      assertCurrent: owner,
+      openExecution,
+      onStorageFault: ports.onStorageFault,
+      now: Date.now,
+    });
+  let runtime = create();
+  try {
+    let state: NativeSlhPublicState;
+    if (ports.phase === 'create') {
+      state = await runtime.prepareFresh(0, owner, () => {
+        owner();
+      });
+      owner();
+      if (
+        state.accountIndex !== 0 ||
+        state.signatureCount !== 0 ||
+        counts.setups !== 1
+      )
+        fail();
+      const key = installed(publicKey(state));
+      stage = 'cancel';
+      const admission = new Promise<void>((resolve) => {
+        admitted = resolve;
+      });
+      let delivered = false;
+      const pending = runtime
+        .signActionHash(
+          { ...key, actionHash: `0x${'09'.repeat(32)}` },
+          null,
+          owner
+        )
+        .then(
+          () => {
+            delivered = true;
+          },
+          () => undefined
+        );
+      // The marker means admitted to the real native primitive port, not C-start.
+      await Promise.race([admission, pending.then(() => fail())]);
+      owner();
+      const retirement = runtime.retire();
+      await pending;
+      await retirement;
+      owner();
+      if (delivered || !native?.isRetired()) fail();
+      runtime = create();
+      stage = 'healthy';
+      counts = blank();
+      state = await runtime.hydrateInstalled(key, owner);
+      owner();
+      if (state.signatureCount !== 0) fail();
+    } else {
+      const previous = readFullSlhEvidence(
+        ports.previous,
+        'create',
+        ports.build
+      );
+      if (previous.profileHash !== profileHash) fail();
+      const key = installed(previous.publicKey32);
+      if (
+        (await digest(new TextEncoder().encode(key.keyId))) !==
+        previous.keyIdHash
+      )
+        fail();
+      state = await runtime.hydrateInstalled(key, owner);
+      owner();
+      if (state.signatureCount !== 2) fail();
+    }
+    if (
+      state.accountIndex !== 0 ||
+      state.parameterSet !== SLH_DSA_PARAMETER_SET
+    )
+      fail();
+    const key = installed(publicKey(state)),
+      publicBytes = hexToBytes(publicKey(state));
+    const verifySign = async (
+      byte: string,
+      expected: number
+    ): Promise<Signed> => {
+      const actionHash = `0x${byte.repeat(32)}`;
+      const signatureHex = await runtime.signActionHash(
+        { ...key, actionHash },
+        null,
+        owner
+      );
+      owner();
+      const signature = hexToBytes(signatureHex),
+        action = hexToBytes(actionHash);
+      const verifier = native;
+      if (
+        signature.length !== 3856 ||
+        !verifier ||
+        !(await verifier.verify(publicBytes, action, signature))
+      )
+        fail();
+      owner();
+      const mutated = signature.slice();
+      mutated[0] = mutated[0]! ^ 1;
+      if (await verifier.verify(publicBytes, action, mutated)) fail();
+      owner();
+      const wrongAction = action.slice();
+      wrongAction[0] = wrongAction[0]! ^ 1;
+      if (await verifier.verify(publicBytes, wrongAction, signature)) fail();
+      owner();
+      state = await runtime.hydrateInstalled(key, owner);
+      owner();
+      if (state.signatureCount !== expected) fail();
+      return Object.freeze({
+        actionHash,
+        signatureHash: await digest(signature),
+        count: expected,
+        verified: true,
+        mutatedSignatureRefused: true,
+        mutatedActionRefused: true,
+        native: Object.freeze({ ...counts }),
+      });
+    };
+    const healthy = await verifySign(
+      ports.phase === 'create' ? '01' : '03',
+      ports.phase === 'create' ? 1 : 3
+    );
+    let fallback: Signed | null = null;
+    if (ports.phase === 'create') {
+      stage = 'fallback';
+      forceFors = true;
+      counts = blank();
+      fallback = await verifySign('02', 2);
+    }
+    const result = readFullSlhEvidence(
+      {
+        ...ports.build,
+        parameterSet: SLH_DSA_PARAMETER_SET,
+        accountIndex: 0,
+        profileHash,
+        keyIdHash: await digest(new TextEncoder().encode(key.keyId)),
+        publicKey32: publicKey(state),
+        signatureCount: state.signatureCount,
+        deriveCalls,
+        prepared: ports.phase === 'create',
+        canceledAdmissionDrained: ports.phase === 'create',
+        healthy,
+        fallback,
+      },
+      ports.phase,
+      ports.build
+    );
+    return result;
+  } finally {
+    await runtime.retire();
+  }
+}

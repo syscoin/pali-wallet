@@ -25,6 +25,8 @@ import { SENTRY_ISOLATED_CHECK } from './native-sentry-isolated.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import type { NativeKeyringSdk } from '../src/custody/keyringSdk.ts';
+import type { FullSlhEvidence } from './native-slh-full.ts';
 import type { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import {
   ensureNativeCryptoReady,
@@ -120,11 +122,14 @@ function QualificationApp() {
       if (started) return;
       started = true;
       const publicPoolConfiguration = Constants.expoConfig?.extra?.paliPublicPoolQualification;
+      const fullSlhConfiguration = Constants.expoConfig?.extra?.paliFullSlhQualification;
       const checks: Check[] = [];
       let stage = 'parameters';
       let parameters: Awaited<ReturnType<typeof launchParameters>> | undefined;
       let storage: OpenWalletStorage | undefined;
       let runtime: KeyringRuntime | undefined;
+      let capturedHost: InstanceType<NativeKeyringSdk['HostKeyring']> | undefined;
+      let fullSlh: FullSlhEvidence | undefined;
       let authority: NativeCustodyAuthority | undefined;
       let backup: SeedBackupFlow | undefined;
       let cryptoEvidence: FullCryptoQualification | undefined;
@@ -158,6 +163,9 @@ function QualificationApp() {
       };
       try {
         parameters = await launchParameters();
+        if (fullSlhConfiguration !== undefined && (parameters.physical || parameters.scenario !== 'import' || parameters.http || parameters.publicPool || parameters.privateProof ||
+          Constants.expoConfig?.extra?.paliPrivateProofQualification !== undefined || publicPoolConfiguration !== undefined || Constants.expoConfig?.extra?.paliHttpQualification !== undefined))
+          throw Error('FULL_SLH_QUALIFICATION_BUILD_INVALID');
         const { getWalletConnectWebSocket } = await import('../src/platform/walletConnectRuntime.native');
         const NativeWebSocket = await getWalletConnectWebSocket();
         globalThis.fetch = (() => {
@@ -493,7 +501,8 @@ function QualificationApp() {
           import('../src/storage/native'),
           import('bip39'),
         ]);
-        const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
+        const qualificationSlhExecution = null;
+        const factory = createKeyringRuntimeFactory({ slhExecution: qualificationSlhExecution, readEvmRetirement: null,
           ensureCryptoReady: async () => {
             await ensureNativeCryptoReady();
           },
@@ -540,6 +549,12 @@ function QualificationApp() {
             verifiedSdkVersion = paliQualificationSdkIdentity;
             stage = 'initialize native custody';
             setStatus(stage);
+            if (fullSlhConfiguration !== undefined) {
+              const Host = sdk.HostKeyring;
+              return { ...sdk, HostKeyring: class extends Host {
+                constructor(...args: ConstructorParameters<NativeKeyringSdk['HostKeyring']>) { super(...args); capturedHost = this; }
+              } };
+            }
             return sdk;
           },
         });
@@ -628,6 +643,46 @@ function QualificationApp() {
         const rootAccount = authority.getCatalogue()?.accounts.find((account) => account.id === 'hd:60:0');
         expect(rootAccount && /^0x[0-9a-fA-F]{40}$/.test(rootAccount.address));
         if (parameters.scenario === 'import') expect(rootAccount?.address === EXPECTED_ADDRESS);
+        if (fullSlhConfiguration !== undefined) {
+          const { fullSlhBuild, readFullSlhEvidence, qualifyNativeSlhFull, FULL_SLH_CHECK } = await import('./native-slh-full.ts');
+          const build = fullSlhBuild(fullSlhConfiguration);
+          const ring = capturedHost, opened = storage, custody = authority, activeRuntime = runtime;
+          if (!ring || !opened || !activeRuntime || !FileSystem.documentDirectory) throw Error('FULL_SLH_QUALIFICATION_OWNER_MISSING');
+          const snapshot = custody.getSnapshot(), catalogue = custody.getCatalogue();
+          const owner = new AbortController();
+          const appState = AppState.addEventListener('change', state => { if (state !== 'active') owner.abort(); });
+          const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => owner.abort()) : undefined;
+          const assertCurrent = () => {
+            if (owner.signal.aborted || qualificationLifetime.signal.aborted || AppState.currentState !== 'active' ||
+                capturedHost !== ring || storage !== opened || runtime !== activeRuntime || custody.getSnapshot() !== snapshot ||
+                snapshot.phase !== 'ready' || custody.getCatalogue() !== catalogue || !ring.isUnlocked())
+              throw Error('FULL_SLH_QUALIFICATION_RETIRED');
+          };
+          try {
+            assertCurrent();
+            let previous: FullSlhEvidence | null = null;
+            if (parameters.phase === 'restart') {
+              const file = `${FileSystem.documentDirectory}pali-native-qualification-create.json`;
+              const info = await FileSystem.getInfoAsync(file); assertCurrent();
+              if (!info.exists || info.isDirectory || typeof info.size !== 'number' || info.size < 1 || info.size > 100000) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
+              const text = await FileSystem.readAsStringAsync(file); assertCurrent();
+              if (text.length > 100000 || text.includes(PUBLIC_PHRASE) || text.includes(PUBLIC_PASSWORD)) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
+              const prior = JSON.parse(text);
+              if (prior.version !== 1 || prior.phase !== 'create' || prior.scenario !== 'import' || prior.platform !== Platform.OS || prior.status !== 'passed' || prior.networkCalls !== 0) throw Error('FULL_SLH_RESTART_REPORT_INVALID');
+              previous = readFullSlhEvidence(prior.fullSlh, 'create', build);
+            }
+            const { requireNativeModule } = await import('expo-modules-core');
+            fullSlh = await check(FULL_SLH_CHECK, () => qualifyNativeSlhFull({
+              phase: parameters!.phase as Phase, build, keyring: ring, storage: opened,
+              productionCapability: qualificationSlhExecution, nativeModule: requireNativeModule('PaliWalletCrypto'), previous,
+              assertCurrent, onStorageFault: () => { custody.lock(); },
+              randomFill: bytes => { nativeCrypto.getRandomValues(bytes); },
+              yield: () => new Promise(resolve => setTimeout(resolve, 0)),
+              digest: async bytes => new Uint8Array(await nativeCrypto.subtle.digest('SHA-256', new Uint8Array(bytes).buffer)),
+            }));
+            assertCurrent();
+          } finally { owner.abort(); appState.remove(); blur?.remove(); }
+        }
         const { qualifyNativeHdAccounts } = await import('./hd-accounts.ts');
         const hdEvidence = await qualifyNativeHdAccounts({
           phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
@@ -728,6 +783,7 @@ function QualificationApp() {
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
           sdkVersion: verifiedSdkVersion,
+          ...(fullSlh ? { fullSlh } : {}),
           ...(verifiedQuickCryptoIdentity ? { quickCryptoIdentity: verifiedQuickCryptoIdentity } : {}),
           ...hdEvidence,
           ...erc20Evidence,

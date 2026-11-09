@@ -34,13 +34,15 @@ function pause() {
   return { reached, release, async hold() { enter(); await wait; } };
 }
 
-async function fixture() {
+async function fixture(withSlhCache = false) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-wallet-removal-'));
   const file = path.join(directory, 'wallet.sqlite');
   let exists = false, held = false, key: string | null = null;
   let opens = 0, unlocks = 0, now = 0, active = true, removalCommits = 0;
   let droppingRemovalAck: 'before' | 'after' | undefined, loseHintAck = false;
   let pauseUnlock: ReturnType<typeof pause> | undefined, afterRemovalCommit: SqlHook | undefined;
+  const purgedNamespaces: string[] = [];
+  let purgeFailure = false, pausePurge: ReturnType<typeof pause> | undefined;
   let beforeSnapshot: (check: () => void) => Promise<void> = async () => undefined;
   let reopenedIdentity: string | undefined;
   const rings: InstanceType<typeof sdk.HostKeyring>[] = [];
@@ -89,7 +91,15 @@ async function fixture() {
     },
   };
   const storage = await openWalletStorage(ports);
-  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ slhExecution: withSlhCache ? {
+    open() { throw Error('No signing context belongs to this removal fixture'); },
+    async purgePublicCache(namespace, guard) {
+      guard(); assert.equal(owner.getSnapshot().phase, 'disposed'); assert.equal(rings.some(ring => ring.isUnlocked()), false);
+      purgedNamespaces.push(namespace);
+      await pausePurge?.hold(); guard();
+      if (purgeFailure) throw Error('public cache purge failed');
+    },
+  } : null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedRing }),
     openStorage: async () => storage,
@@ -120,6 +130,12 @@ async function fixture() {
   });
   return {
     owner, runtime, storage, removal, values, statements, ports,
+    purgedNamespaces, failPurge() { purgeFailure = true; }, holdPurge() { return pausePurge = pause(); },
+    holdRetirement() {
+      const gate = pause(), original = runtime.storage.retireForRemoval!.bind(runtime.storage);
+      runtime.storage.retireForRemoval = remove => original(async () => { await gate.hold(); return remove(); });
+      return gate;
+    },
     get key() { return key; }, set key(value) { key = value; },
     get opens() { return opens; }, get unlocks() { return unlocks; }, get removalCommits() { return removalCommits; },
     get held() { return held; }, get reopenedIdentity() { return reopenedIdentity; },
@@ -241,7 +257,7 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
         assert.equal(created, 2);
         const authority = new NativeCustodyAuthority({ async open() {
           nextStorage = await openWalletStorage(f.ports);
-          nextRuntime = await createKeyringRuntimeFactory({ readEvmRetirement: null,
+          nextRuntime = await createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
             ensureCryptoReady: async () => undefined, openStorage: async () => nextStorage!,
           }).open() as KeyringRuntime;
           return nextRuntime;
@@ -478,4 +494,70 @@ test('cancelling after dispatch still drains and verifies removal without replay
     assert.equal(f.removal.hasVerifiedRemoval(), true);
     assert.equal(f.removalCommits, 1);
   } finally { gate.release(); await f.close(); }
+});
+
+
+test('public SLH cache cleanup is confirmation-only and bound to the captured profile after retirement', async () => {
+  const f = await fixture(true);
+  try {
+    const namespace = (await f.storage.recovery!.readIdentity())!.root!.profileId;
+    const ticket = await f.removal.authorize(PASSWORD, current);
+    assert.deepEqual(f.purgedNamespaces, []);
+    assert.equal(await f.removal.confirm(ticket, current), 'wallet-records-removed');
+    assert.deepEqual(f.purgedNamespaces, [namespace]);
+    assert.equal(f.removalCommits, 1);
+  } finally { await f.close(); }
+});
+
+test('forged, expired and cancelled removal tickets never purge public SLH caches', async () => {
+  const f = await fixture(true);
+  try {
+    const ticket = await f.removal.authorize(PASSWORD, current);
+    await assert.rejects(f.removal.confirm({ ...ticket }, current), { code: 'STATE_CHANGED' });
+    f.advance(30000);
+    await assert.rejects(f.removal.confirm(ticket, current), { code: 'CANCELLED' });
+    const cancelled = await f.removal.authorize(PASSWORD, current);
+    f.removal.cancel();
+    await assert.rejects(f.removal.confirm(cancelled, current), { code: 'STATE_CHANGED' });
+    assert.deepEqual(f.purgedNamespaces, []); assert.equal(f.removalCommits, 0);
+  } finally { await f.close(); }
+});
+
+test('failed public SLH cache cleanup prevents native selection clearing and SQL deletion', async () => {
+  const f = await fixture(true);
+  try {
+    const ticket = await f.removal.authorize(PASSWORD, current);
+    const before = await f.storage.recovery!.readSnapshot();
+    f.failPurge();
+    await assert.rejects(f.removal.confirm(ticket, current), { code: 'UNAVAILABLE' });
+    assert.equal(f.purgedNamespaces.length, 1); assert.equal(f.removalCommits, 0);
+    assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
+    const reopened = await openWalletStorage(f.ports);
+    try { assert.deepEqual(await reopened.recovery!.readSnapshot(), before); } finally { await reopened.close(); }
+  } finally { await f.close(); }
+});
+
+test('public SLH cache cleanup waits for the existing owner retirement boundary', async () => {
+  const f = await fixture(true), drain = f.holdRetirement();
+  try {
+    const ticket = await f.removal.authorize(PASSWORD, current);
+    const removing = f.removal.confirm(ticket, current);
+    await drain.reached;
+    assert.equal(f.unlocked, false); assert.deepEqual(f.purgedNamespaces, []);
+    assert.equal(f.removalCommits, 0);
+    drain.release();
+    assert.equal(await removing, 'wallet-records-removed');
+    assert.equal(f.purgedNamespaces.length, 1);
+  } finally { drain.release(); await f.close(); }
+});
+
+test('retirement of a removal request during public-cache purge cannot delete SQL records', async () => {
+  const f = await fixture(true), purge = f.holdPurge();
+  try {
+    const ticket = await f.removal.authorize(PASSWORD, current);
+    const removing = f.removal.confirm(ticket, current);
+    const rejected = assert.rejects(removing, { code: 'CANCELLED' });
+    await purge.reached; f.removal.cancel(); purge.release(); await rejected;
+    assert.equal(f.removalCommits, 0); assert.equal(f.values.get(ACCOUNT_SELECTION_KEY), NATIVE_HINT);
+  } finally { purge.release(); await f.close(); }
 });

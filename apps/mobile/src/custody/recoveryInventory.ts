@@ -1,3 +1,5 @@
+import { captureSLHDSAEncryptedStateEnvelope, parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaState.ts';
+import { captureSLHDSAProfileStateEnvelope } from '../../../../source/wallet/slhDsaStateCrypto.ts';
 import { normalizeSentryServiceSettings, parseSentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
 import { NATIVE_CONNECTION_STORAGE_KEY, inspectNativeConnectionRecord } from '../connections/storage.ts';
 import { decodeConnectionRecord } from '../storage/connectionRecordKey.ts';
@@ -33,8 +35,15 @@ const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0,
   retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 });
 
 /** Canonical native record domains. Runtime and recovery share this admission check. */
-export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records']): void {
+export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records'], profileId: string | null): void {
   for (const { key, value } of records) {
+    const slhKeyId = parseSLHDSAStateStorageKey(key);
+    if (slhKeyId !== null) {
+      const state = captureSLHDSAEncryptedStateEnvelope(decodeStorageValue(value), slhKeyId);
+      const encrypted = captureSLHDSAProfileStateEnvelope(state.cipherText, slhKeyId);
+      if (profileId === null || encrypted.profileId !== profileId) throw new Error('NATIVE_STORAGE_INVALID_SLH_PROFILE');
+      continue;
+    }
     if (parseSentrySettingsStorageKey(key)) {
       normalizeSentryServiceSettings(decodeStorageValue(value));
       continue;
@@ -64,7 +73,7 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
         snapshot.records.filter(({ key }) => !sentrySlotNetwork(key)).length > STORAGE_LIMITS.records) throw new Error();
     const records = new Map(snapshot.records.map(({ key, value }) => [key, value]));
     if (records.size !== snapshot.records.length) throw new Error();
-    try { assertNativeRecordDomains(snapshot.records); }
+    try { assertNativeRecordDomains(snapshot.records, snapshot.identity?.root?.profileId ?? null); }
     catch { return result('unavailable', 'unsupported-record', backup, null); }
     if (snapshot.state.presence === 'empty') {
       if (snapshot.identity ||

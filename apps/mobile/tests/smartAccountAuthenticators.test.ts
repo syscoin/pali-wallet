@@ -122,6 +122,7 @@ function fixture() {
     null
   );
   const ports = {
+    slhDsa: null, allowReservedSLHDSASignature: false, accountId: 0,
     localOwners,
     assertCurrent: check,
     assertOwnerCurrent(owner: NativeSmartAccountSigningOwner) {
@@ -630,11 +631,11 @@ test('aliases cannot satisfy a missing owner threshold or replace a rejected own
 
 test('native capability uses the shared available-port threshold and never advertises absent platform signers or duplicate owners', () => {
   const f = fixture();
-  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners));
-  assert(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), f.localOwners));
-  assert.equal(canSignNativeSmartAccountActionHash(f.composite(2), f.localOwners), false);
-  assert.equal(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), [f.localOwners[0]!, { ...f.localOwners[0]!, id: 17, type: 'Imported' }]), false);
-  assert.equal(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners.slice(0, 1)), false);
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners, { slhDsa: false }));
+  assert(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), f.localOwners, { slhDsa: false }));
+  assert.equal(canSignNativeSmartAccountActionHash(f.composite(2), f.localOwners, { slhDsa: false }), false);
+  assert.equal(canSignNativeSmartAccountActionHash(f.composite(1, false, 2), [f.localOwners[0]!, { ...f.localOwners[0]!, id: 17, type: 'Imported' }], { slhDsa: false }), false);
+  assert.equal(canSignNativeSmartAccountActionHash(f.ecdsa(2), f.localOwners.slice(0, 1), { slhDsa: false }), false);
   assert.equal(f.calls.length, 0);
 });
 
@@ -661,4 +662,35 @@ for (const threshold of [1, 2]) test(`plain ECDSA configured owner order matches
   assert.deepEqual(extension.calls.map(call => call.owner.id), order);
   assert.equal(result.signature, expected);
   assert.equal(encodeSmartAccountAuthenticatorSignature(result), encodeSmartAccountAuthenticatorSignature({ validator: metadata.auth!.validator, signature: expected }));
+});
+
+
+test('injected SLH uses the same composite collector, configured action and reserved-purpose flag', async () => {
+  const f = fixture();
+  const seen: unknown[] = [];
+  const metadata = f.composite(2);
+  const signature = `0x${'09'.repeat(3856)}`;
+  const result = await signNativeSmartAccountActionHash({ ...f.ports, metadata, actionHash: HASH,
+    slhDsa: { signMessageActionHash: null, async signActionHash(request) {
+      assert.deepEqual(f.calls.map(call => call.owner.id), [0]);
+      seen.push(request); return signature;
+    } },
+  });
+  assert.equal(seen.length, 1);
+  const module = metadata.installedModules!.find(module => module.id === 'slh-dsa')!;
+  assert.equal(module.id, 'slh-dsa');
+  if (module.id !== 'slh-dsa') assert.fail();
+  assert.deepEqual(seen[0], { accountId: 0, actionHash: HASH, allowReservedSignature: false,
+    keyId: module.config.keyId, parameterSet: module.config.parameterSet, pkRoot: module.config.pkRoot, pkSeed: module.config.pkSeed });
+  assert.equal(result.signature, coder.encode(['bytes[]'], [['0x', f.calls[0]!.signature, signature]]));
+  assert(canSignNativeSmartAccountActionHash(metadata, f.localOwners, { slhDsa: true }));
+});
+
+test('an ECDSA-satisfied composite does not touch an unused injected SLH key', async () => {
+  const f = fixture(); let calls = 0;
+  const result = await signNativeSmartAccountActionHash({ ...f.ports, metadata: f.composite(1), actionHash: HASH,
+    slhDsa: { signMessageActionHash: null, async signActionHash() { calls++; throw Error('Missing unused key'); } },
+  });
+  assert.equal(calls, 0); assert.equal(f.calls.length, 1);
+  assert.equal(result.signature, coder.encode(['bytes[]'], [['0x', f.calls[0]!.signature, '0x']]));
 });

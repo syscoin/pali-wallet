@@ -11,6 +11,10 @@ on:
         description: Run the dedicated offline Release private proof scenario
         type: boolean
         default: false
+      full_slh:
+        description: Run the full native SLH public-fixture setup, signing and Android cold restart (1800s per phase)
+        type: boolean
+        default: false
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -81,8 +85,7 @@ on:
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/utils/security/blacklistService.ts'
       - 'source/utils/psbtWorkBudget.ts'
-      - 'source/utils/slhDsa/constants.ts'
-      - 'source/utils/slhDsa/hex.ts'
+      - 'source/utils/slhDsa/**'
       - 'source/utils/syscoinAssetAmount.ts'
       - 'source/utils/syscoinPsbtValues.ts'
       - 'source/utils/utxoAcknowledgedInputs.ts'
@@ -98,20 +101,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-native-qualification-${{ github.ref }}${{ inputs.public_pool && '-public-pool' || inputs.private_proof && '-private-proof' || '' }}
+  group: mobile-native-qualification-${{ github.ref }}${{ inputs.public_pool && '-public-pool' || inputs.private_proof && '-private-proof' || inputs.full_slh && '-full-slh' || '' }}
   cancel-in-progress: true
 
 env:
   EXPO_NO_TELEMETRY: '1'
   EXPO_NO_DOTENV: '1'
   PALI_NATIVE_QUALIFICATION: '1'
-  PALI_NATIVE_HTTP_QUALIFICATION: ${{ (inputs.public_pool || inputs.private_proof) && '0' || '1' }}
+  PALI_NATIVE_HTTP_QUALIFICATION: ${{ (inputs.public_pool || inputs.private_proof || inputs.full_slh) && '0' || '1' }}
   PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: ${{ inputs.public_pool && '1' || '0' }}
   PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION: ${{ inputs.private_proof && '1' || '0' }}
+  PALI_NATIVE_FULL_SLH_QUALIFICATION: ${{ inputs.full_slh && '1' || '0' }}
 
 jobs:
   ios:
-    name: ${{ inputs.private_proof && 'iOS Simulator limited private proof Release scenario' || inputs.public_pool && 'iOS Simulator offline public pool Release fixture' || 'iOS Simulator HTTP, crypto and protected-storage refusal' }}
+    name: ${{ inputs.full_slh && 'iOS full SLH fixture protected-storage refusal (no durability claim)' || inputs.private_proof && 'iOS Simulator limited private proof Release scenario' || inputs.public_pool && 'iOS Simulator offline public pool Release fixture' || 'iOS Simulator HTTP, crypto and protected-storage refusal' }}
     runs-on: macos-26
     timeout-minutes: 90
     defaults:
@@ -125,7 +129,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate exclusive proof mode
-        run: test "$PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION" != '1' || test "$PALI_NATIVE_PUBLIC_POOL_QUALIFICATION" = '0'
+        run: test "$((PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION + PALI_NATIVE_PUBLIC_POOL_QUALIFICATION + PALI_NATIVE_FULL_SLH_QUALIFICATION))" -le 1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: '.nvmrc'
@@ -190,13 +194,13 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: native-ios-simulator-limited-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.public_pool && '-public-pool' || inputs.private_proof && '-private-proof-limited' || '' }}
+          name: native-ios-simulator-limited-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.public_pool && '-public-pool' || inputs.private_proof && '-private-proof-limited' || inputs.full_slh && '-full-slh-refusal' || '' }}
           path: ${{ runner.temp }}/pali-native-ios/
           if-no-files-found: warn
           retention-days: 14
 
   android:
-    name: ${{ inputs.private_proof && 'Android emulator limited private proof Release scenario' || inputs.public_pool && 'Android emulator offline public pool Release fixture' || 'Android native custody and cold restart' }}
+    name: ${{ inputs.full_slh && 'Android full native SLH execution and cold restart' || inputs.private_proof && 'Android emulator limited private proof Release scenario' || inputs.public_pool && 'Android emulator offline public pool Release fixture' || 'Android native custody and cold restart' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -207,7 +211,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Validate exclusive proof mode
-        run: test "$PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION" != '1' || test "$PALI_NATIVE_PUBLIC_POOL_QUALIFICATION" = '0'
+        run: test "$((PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION + PALI_NATIVE_PUBLIC_POOL_QUALIFICATION + PALI_NATIVE_FULL_SLH_QUALIFICATION))" -le 1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version-file: '.nvmrc'
@@ -352,7 +356,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: native-android-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.public_pool && '-public-pool' || inputs.private_proof && '-private-proof-limited' || '' }}
+          name: native-android-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.public_pool && '-public-pool' || inputs.private_proof && '-private-proof-limited' || inputs.full_slh && '-full-slh' || '' }}
           path: ${{ runner.temp }}/pali-native-android/
           if-no-files-found: warn
           retention-days: 14

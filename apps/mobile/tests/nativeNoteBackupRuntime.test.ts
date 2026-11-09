@@ -63,7 +63,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
       return result;
     }
   }
-  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
     openPrivacyPool,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
