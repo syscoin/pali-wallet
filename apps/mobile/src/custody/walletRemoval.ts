@@ -34,6 +34,7 @@ type Authorized = Readonly<Scope & {
   ticket: WalletRemovalTicket;
   before: RecoveryStorageSnapshot;
   assertRuntime(): void;
+  purgePublicCaches(assertCleanupCurrent: () => void): Promise<void>;
   installation: string;
   deadline: number;
 }>;
@@ -150,18 +151,19 @@ export class NativeWalletRemoval {
       return this.own(Promise.resolve().then(async () => {
         try {
           check();
-          const { snapshot: before, assertCurrent: assertRuntime } = await authorize(password, check, async (assertCurrent) => {
+          const { snapshot: before, assertCurrent: assertRuntime, purgePublicCaches } = await authorize(password, check, async (assertCurrent) => {
             checkGuard(assertCurrent);
             check();
             this.producersRetired = true;
             await this.dependencies.beforeSnapshot(assertCurrent);
           });
           check();
+          if (typeof purgePublicCaches !== 'function') return fail('NOT_READY');
           const installation = before.metadata.find((entry) => entry.key === 'installation')?.value;
           if (before.state.presence !== 'existing' || !before.identity || !installation || !/^[0-9a-f]{32}$/.test(installation))
             return fail('STATE_CHANGED');
           const ticket = Object.freeze({}) as WalletRemovalTicket;
-          const ready = { ...scope, ticket, before, assertRuntime, installation, deadline: this.now() + TICKET_MS };
+          const ready = { ...scope, ticket, before, assertRuntime, purgePublicCaches, installation, deadline: this.now() + TICKET_MS };
           check();
           this.ready = ready;
           this.timer = setTimeout(() => { if (this.ready === ready) this.cancel(); }, TICKET_MS);
@@ -200,6 +202,8 @@ export class NativeWalletRemoval {
         const retired = this.dependencies.owner.getSnapshot();
         if (retired.phase !== 'disposed' || retired.revision !== owner.revision + 1) return fail('CANCELLED');
         const check = () => this.check(authorized, retired, deadline, guard);
+        check();
+        await authorized.purgePublicCaches(check);
         check();
         // Do this before SQL COMMIT so a process death cannot leave the old
         // native hint pointing at a wallet whose records were removed.

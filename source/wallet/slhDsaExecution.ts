@@ -10,14 +10,14 @@ import {
   SLH_DSA_SIGNATURE_LENGTH,
   SLH_DSA_SIGNING_PRELUDE_LENGTH,
   SLH_DSA_XMSS_TREE_CACHE_LENGTH,
-} from '../utils/slhDsa/constants';
-import { deriveSLHDSASeedMaterial } from '../utils/slhDsa/derivation';
+} from '../utils/slhDsa/constants.ts';
+import { deriveSLHDSASeedMaterial } from '../utils/slhDsa/derivation.ts';
 import {
   bytesToHex,
   concatBytes,
   hexToBytes,
   normalizeSLHDSAPublicKeyField,
-} from '../utils/slhDsa/hex';
+} from '../utils/slhDsa/hex.ts';
 
 type Result<T> = T | Promise<T>;
 type Check = () => void;

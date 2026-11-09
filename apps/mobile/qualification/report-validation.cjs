@@ -11,6 +11,7 @@ const { isWalletConnectQualificationDiagnostic } = require('./walletconnect-nati
 const { readPrivateProofDiagnostic, PRIVATE_PROOF_CHECK } = require('./private-proof-diagnostics.ts');
 const { readSentryIsolatedDiagnostic } = require('./sentry-isolated-diagnostics.ts');
 const { SENTRY_ISOLATED_CHECK } = require('./native-sentry-isolated.ts');
+const { fullSlhBuild, readFullSlhEvidence } = require('./native-slh-full.ts');
 const {
   isStorageQualificationDiagnostic,
 } = require('./storage-diagnostics.ts');
@@ -62,6 +63,7 @@ const FIELDS = new Set([
   'walletConnectDiagnostic',
   'privateProofDiagnostic',
   'sentryIsolatedDiagnostic',
+  'fullSlh',
   'mnemonicEntropyVerified',
   'storageDiagnostic',
   'nativeHdAccountsVerified',
@@ -121,6 +123,12 @@ function decodeNativeReport(
   )
     throw Error('Invalid qualification report');
   const report = JSON.parse(text);
+  if (report?.fullSlh !== undefined) {
+    if (report.status !== 'passed' || report.scenario !== 'import' || !['create', 'restart'].includes(report.phase))
+      throw Error('Unexpected qualification report schema');
+    readFullSlhEvidence(report.fullSlh, report.phase, fullSlhBuild({ version: report.fullSlh.version,
+      sourceRevision: report.fullSlh.sourceRevision, lockfileSha256: report.fullSlh.lockfileSha256 }));
+  }
   if (report?.privateProofDiagnostic !== undefined) {
     if (report.status !== 'failed' || report.failedStage !== PRIVATE_PROOF_CHECK)
       throw Error('Unexpected qualification report schema');

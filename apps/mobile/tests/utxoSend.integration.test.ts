@@ -736,7 +736,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const sdk = await loadNativeKeyringSdk();
   let interceptExport: ((key: string) => Promise<string>) | undefined;
   let exports = 0;
-  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage,
     loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {

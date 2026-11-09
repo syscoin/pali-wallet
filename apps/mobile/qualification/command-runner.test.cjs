@@ -265,6 +265,7 @@ function reportWaitFixture() {
   let now = 0;
   const saved = [];
   const { waitReport: wait, validateReport: validate } = runInNewContext(source.slice(start, end) + '\n({ waitReport, validateReport });', {
+    fullSlhEnabled: false, fullSlhConfiguration: null,
     decodeNativeReport, assertFullNativeReport, simulatorVersion: undefined,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync(_file, text) { saved.push(JSON.parse(text)); } }, path: { join: () => 'unused' }, output: 'unused',
@@ -479,13 +480,14 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
     const android = runInNewContext(source.slice(start, end) + '\nandroid;', {
       process: { env: { ANDROID_HOME: '/public-sdk' } },
       httpEnabled: false, httpCompanion: undefined,
+      fullSlhEnabled: false, fullSlhConfiguration: null,
       publicPoolBuild: undefined,
       privateProofBuild: undefined,
       httpRead: undefined, captureHttpDiagnostic: async () => undefined,
       fs: { readdirSync: () => ['35.0.0'], writeFileSync() {}, readFileSync: () => Buffer.from('public APK fixture') },
       prepareAndroidRoot: require('./native-readiness.cjs').prepareAndroidRoot,
       path: require('node:path'), run, platform: 'android', PACKAGE: 'com.paliwallet.qualification', artifact: '/public.apk', output: '/public-output',
-      waitReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
+      waitPhaseReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
       androidProcessRunning: () => true,
       databaseEvidence: (bytes) => { assert.equal(bytes.length, 4096); return { plaintextHeader: false }; },
       matchesHdRestartEvidence, matchesErc20RestartEvidence, matchesNevmRestartEvidence, matchesZksysRestartEvidence, matchesHdKeyRevealRestartEvidence, matchesImportedRestartEvidence,

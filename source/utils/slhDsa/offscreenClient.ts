@@ -1,3 +1,5 @@
+import { assertSynchronousEvmFeeGuard } from '../../shared/evmFeeGuard';
+
 import type {
   SLHDSADispatchApproval,
   SLHDSASignActionHashParams,
@@ -95,22 +97,22 @@ export const signSLHDSAInOffscreen = async (
   params: SLHDSASignActionHashParams & {
     secretKeyHex?: string;
   },
-  assertCurrentSession?: () => void,
+  assertCurrentSession: () => void,
   approval?: SLHDSADispatchApproval
 ): Promise<string> => {
-  assertCurrentSession?.();
+  assertSynchronousEvmFeeGuard(assertCurrentSession);
   await ensureOffscreenDocument();
   // Dapp consent gates dispatch. The wallet session owns usage accounting
   // after dispatch, including when the dapp grant changes.
   if (approval) await approval.checkDocument(true);
-  assertCurrentSession?.();
+  assertSynchronousEvmFeeGuard(assertCurrentSession);
   approval?.assertCurrent();
 
   const response = (await chrome.runtime.sendMessage({
     payload: params,
     type: 'PALI_SLH_DSA_SIGN',
   })) as SLHDSAOffscreenResponse | undefined;
-  assertCurrentSession?.();
+  assertSynchronousEvmFeeGuard(assertCurrentSession);
 
   if (!response) {
     throw new Error('SLH-DSA signer returned no response');
@@ -135,15 +137,15 @@ export const prepareSLHDSAKeypairInOffscreen = async (
     setupJobId?: string;
     setupSecretHex: string;
   },
-  assertCurrentSession?: () => void
+  assertCurrentSession: () => void
 ): Promise<{
   pkRoot: string;
   pkSeed: string;
   secretKeyHex: string;
 }> => {
-  assertCurrentSession?.();
+  assertSynchronousEvmFeeGuard(assertCurrentSession);
   await ensureOffscreenDocument();
-  assertCurrentSession?.();
+  assertSynchronousEvmFeeGuard(assertCurrentSession);
 
   const response = (await chrome.runtime.sendMessage({
     payload: {
@@ -153,7 +155,7 @@ export const prepareSLHDSAKeypairInOffscreen = async (
     },
     type: 'PALI_SLH_DSA_PREPARE_KEYPAIR',
   })) as SLHDSAOffscreenResponse | undefined;
-  assertCurrentSession?.();
+  assertSynchronousEvmFeeGuard(assertCurrentSession);
 
   if (!response) {
     throw new Error('SLH-DSA key preparation returned no response');

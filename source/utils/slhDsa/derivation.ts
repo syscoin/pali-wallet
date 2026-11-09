@@ -1,5 +1,8 @@
-import { SLH_DSA_DERIVATION_VERSION, SLH_DSA_PARAMETER_SET } from './constants';
-import { bytesToHex, concatBytes, hexToBytes } from './hex';
+import {
+  SLH_DSA_DERIVATION_VERSION,
+  SLH_DSA_PARAMETER_SET,
+} from './constants.ts';
+import { bytesToHex, concatBytes, hexToBytes } from './hex.ts';
 
 const textEncoder = new TextEncoder();
 

@@ -161,7 +161,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
     async confirmBackup(expected) { assert.equal(expected, fingerprint()); confirmation = expected; },
     async close() { closes++; if(signedUnavailable) throw Error('ambiguous storage'); },
   }); };
-  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null, ensureCryptoReady: async () => {
+  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
   }, openStorage: open, loadSdk, assertActive, connectionFetch, trezorSessions, utxoFetch });
   return {
@@ -469,7 +469,7 @@ test('a committed wallet with lost acknowledgment is quarantined and reopened in
 test('native qualification fails before storage or SDK loading', async () => {
   let opened = false;
   let loaded = false;
-  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() { throw new Error('provider unavailable'); },
     async openStorage() { opened = true; throw new Error('must not open'); },
     async loadSdk() { loaded = true; throw new Error('must not load'); },
@@ -1737,9 +1737,13 @@ test('ambiguous signed-record acknowledgement quarantines authority and reopenin
     f.disk.loseCasAcknowledgement();
     await assert.rejects(transfers.confirm(review));
     assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+    await assert.rejects(f.authority.unlock(PASSWORD), /NOT_READY/);
+    await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CLEANUP_FAILED/);
     assert.equal(network.broadcasts.length, 0);
-    const value = JSON.parse(f.disk.signedValue()!);
+    const retained = f.disk.signedValue()!;
+    const value = JSON.parse(retained);
     assert.equal(value.entries[0].phase, 'signed');
+    assert.equal(f.disk.signedValue(), retained);
     await assert.rejects(f.authority.dispose(), /CLEANUP_FAILED/);
     assert.equal(f.disk.closes, 1);
     let runtime!: KeyringRuntime;
@@ -1747,6 +1751,7 @@ test('ambiguous signed-record acknowledgement quarantines authority and reopenin
     await reopened.initialize(); await reopened.unlock(PASSWORD);
     const saved = await (await runtime.transfers!.journal(() => undefined)).load();
     assert.equal(saved!.hash, value.entries[0].hash);
+    assert.equal(f.disk.signedValue(), retained);
     assert.equal(saved!.phase, 'signed');
     await reopened.dispose();
   } finally { transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }

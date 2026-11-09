@@ -110,6 +110,14 @@ function decodeEnvelope(
   return envelope;
 }
 
+/** The same strict SDK envelope parser used by decryption and public storage admission. */
+export function captureSLHDSAProfileStateEnvelope(
+  cipherText: string,
+  keyId: string
+): IEncryptedPrivateRecord {
+  return decodeEnvelope(cipherText, recordId(keyId));
+}
+
 /** Complete opaque signer state; the caller retains the existing counter/schema policy. */
 export function createSlhDsaProfileStateCrypto(
   keyring: ProfileCrypto,
@@ -150,8 +158,11 @@ export function createSlhDsaProfileStateCrypto(
     },
     async decrypt(cipherText: string, requestedKey: string): Promise<string> {
       current(assertCurrent);
-      const expectedKey = recordId(requestedKey);
-      const envelope = decodeEnvelope(cipherText, expectedKey);
+      const envelope = captureSLHDSAProfileStateEnvelope(
+        cipherText,
+        requestedKey
+      );
+      const expectedKey = envelope.recordId;
       const bytes = await decrypt({
         domain: SLH_DSA_PROFILE_STATE_DOMAIN,
         recordId: expectedKey,

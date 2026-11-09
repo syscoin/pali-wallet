@@ -1,3 +1,8 @@
+import { captureSLHDSAEncryptedStateEnvelope, createSlhDsaStateStore, parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaState.ts';
+import { createSlhDsaProfileStateCrypto } from '../../../../source/wallet/slhDsaStateCrypto.ts';
+import { getSLHDSAKeyId } from '../../../../source/utils/slhDsa/constants.ts';
+import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
+import { decodeStorageValue } from '../storage/json.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
 import { isNativeNewPassword } from './password.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
@@ -200,6 +205,21 @@ export class NativeRecoveryCoordinator {
             validateRetained: async ({ keyring, profileId }) => {
               try { await authenticateSentryBuckets(before.records, records, normalized, check); }
               catch { check(); return fail('INVALID_SAVED_DATA'); }
+              for (const row of before.records) {
+                const keyId = parseSLHDSAStateStorageKey(row.key);
+                if (keyId === null) continue;
+                const envelope = captureSLHDSAEncryptedStateEnvelope(decodeStorageValue(row.value), keyId);
+                const store = createSlhDsaStateStore({
+                  async read(key) { check(); if (key !== row.key) return fail('INVALID_SAVED_DATA'); return { present: true, value: envelope }; },
+                  async mutate() { return fail('INVALID_SAVED_DATA'); },
+                });
+                try {
+                  const state = await store.load({ keyId, crypto: createSlhDsaProfileStateCrypto(keyring, check), assertOwner: check });
+                  check();
+                  if (!state || getSLHDSAKeyId({ pkRoot: normalizeSLHDSAPublicKeyField(state.pkRoot), pkSeed: normalizeSLHDSAPublicKeyField(state.pkSeed) }) !== keyId)
+                    return fail('INVALID_SAVED_DATA');
+                } catch { check(); return fail('INVALID_SAVED_DATA'); }
+              }
               const utxo = before.records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY);
               if (utxo) {
                 const captured = utxo.value;

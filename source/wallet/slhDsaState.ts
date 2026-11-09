@@ -5,6 +5,7 @@ import {
   SLH_DSA_SIGNATURE_LIMIT,
   SLH_DSA_STATE_VERSION,
   getSLHDSAStateStorageKey,
+  getSLHDSAKeyId,
 } from '../utils/slhDsa/constants.ts';
 import { normalizeSLHDSAPublicKeyField } from '../utils/slhDsa/hex.ts';
 
@@ -106,7 +107,7 @@ export function assertSlhDsaStateOwner(assertOwner: SlhDsaStateOwner): void {
   throw new Error('SLH-DSA state owner must be synchronous');
 }
 
-function snapshotEnvelope(
+export function captureSLHDSAEncryptedStateEnvelope(
   value: unknown,
   keyId: string
 ): EncryptedSLHDSAStateEnvelope {
@@ -140,6 +141,20 @@ function snapshotEnvelope(
   return snapshot as EncryptedSLHDSAStateEnvelope;
 }
 
+/** Exact existing public key/row identity, never a prefix-only native admission. */
+export function parseSLHDSAStateStorageKey(storageKey: string): string | null {
+  const prefix = getSLHDSAStateStorageKey('');
+  if (typeof storageKey !== 'string' || !storageKey.startsWith(prefix))
+    return null;
+  const keyId = storageKey.slice(prefix.length);
+  const match = /^SLH-DSA-SHA2-128-24:(0x[0-9a-f]{64}):(0x[0-9a-f]{64})$/.exec(
+    keyId
+  );
+  if (!match) return null;
+  const canonical = getSLHDSAKeyId({ pkSeed: match[1]!, pkRoot: match[2]! });
+  return storageKey === getSLHDSAStateStorageKey(canonical) ? canonical : null;
+}
+
 /** Shared state bytes and ordering. Each host supplies its existing commit barrier. */
 export function createSlhDsaStateStore(storage: SlhDsaStateStorage) {
   const { read, mutate } = storage;
@@ -154,7 +169,9 @@ export function createSlhDsaStateStore(storage: SlhDsaStateStorage) {
     assertSlhDsaStateOwner(assertOwner);
     const entry = await reader(getSLHDSAStateStorageKey(keyId));
     assertSlhDsaStateOwner(assertOwner);
-    return entry.present ? snapshotEnvelope(entry.value, keyId) : null;
+    return entry.present
+      ? captureSLHDSAEncryptedStateEnvelope(entry.value, keyId)
+      : null;
   };
 
   return Object.freeze({

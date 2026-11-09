@@ -23,6 +23,7 @@ const { prepareIosSimulator, createIosStageRecorder, assertOwnedIosDevice } = re
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
 const { readHttpSidecar, readAndroidHttpSidecar } = require('./post-sidecar.cjs');
 const { captureIosLaunchReports } = require('./ios-launch-reports.cjs');
+const { fullSlhBuild, readFullSlhEvidence, matchesFullSlhRestart, FULL_SLH_PHASE_TIMEOUT_MS } = require('./native-slh-full.ts');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
   throw Error('Run only against isolated qualification devices');
@@ -31,8 +32,15 @@ const mode = qualificationMode(platform, process.argv.slice(4));
 const simulatorContract = mode === 'ios-simulator-contract';
 let simulatorVersion;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
+const fullSlhEnabled = process.env.PALI_NATIVE_FULL_SLH_QUALIFICATION === '1';
 const poolCi = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1' ? require('./public-pool-ci.cjs') : null;
 const proofCi = process.env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION === '1' ? require('./private-proof-ci.cjs') : null;
+if (fullSlhEnabled && (httpEnabled || poolCi || proofCi || process.env.PALI_PHYSICAL_QUALIFICATION !== undefined))
+  throw Error('Full SLH qualification requires a dedicated isolated build');
+const fullSlhConfiguration = fullSlhEnabled ? fullSlhBuild(JSON.parse(fs.readFileSync(path.join(__dirname, '../.native-qualification.json'), 'utf8')).fullSlh) : null;
+if (fullSlhConfiguration && (fullSlhConfiguration.sourceRevision !== process.env.GITHUB_SHA ||
+    fullSlhConfiguration.lockfileSha256 !== crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../package-lock.json'))).digest('hex')))
+  throw Error('Full SLH qualification build identity mismatch');
 if (poolCi && platform === 'ios' && !simulatorContract) throw Error('Public pool qualification requires an owned simulator');
 if (proofCi && platform === 'ios' && !simulatorContract) throw Error('Private proof qualification requires an owned simulator');
 const publicPoolBuild = poolCi?.readPublicPoolCiBuild(process.env, path.join(__dirname, '../.native-qualification.json'));
@@ -115,6 +123,7 @@ const validateReport = (text, phase, scenario) => {
     simulatorContract ? text : `${JSON.stringify(report, null, 2)}\n`
   );
   if (!simulatorContract) assertFullNativeReport(report);
+  if (fullSlhConfiguration && !simulatorContract) readFullSlhEvidence(report.fullSlh, phase, fullSlhConfiguration);
   return report;
 };
 const captureFixtureLoadError = (text, scenario, stage = 'quick-crypto-load') => {
@@ -161,6 +170,26 @@ const waitReport = async (read, phase, scenario, readStartup, isRunning) => {
   }
   throw Error(`Native ${platform} ${scenario} ${phase} timed out`);
 };
+// Explicit manual full-profile lane only; ordinary custody keeps its 300s limit.
+const waitFullSlhReport = async (read, phase, scenario, readStartup, isRunning) => {
+  if (!fullSlhConfiguration || scenario !== 'import') throw Error('Full SLH qualification mode required');
+  const startedAt = Date.now(), deadline = startedAt + FULL_SLH_PHASE_TIMEOUT_MS;
+  const available = () => {
+    const startup = readStartup?.();
+    if (startup) { validateReport(startup, 'unknown', 'unknown'); throw Error('Unexpected startup report'); }
+    const text = read(); return text ? validateReport(text, phase, scenario) : undefined;
+  };
+  while (Date.now() < deadline) {
+    const report = available(); if (report) return report;
+    if (isRunning && Date.now() - startedAt >= 5000 && !isRunning()) {
+      const final = available(); if (final) return final;
+      throw Error(`Native ${platform} full SLH ${phase} exited before report`);
+    }
+    await sleep(1000);
+  }
+  throw Error(`Native ${platform} full SLH ${phase} exceeded its 1800s phase budget`);
+};
+const waitPhaseReport = fullSlhEnabled ? waitFullSlhReport : waitReport;
 const databaseEvidence = (bytes) => {
   if (
     bytes.length < 4096 ||
@@ -218,7 +247,7 @@ async function ios() {
     const { startHttpCompanion } = require('./http-companion.cjs');
     httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
-  for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
+  for (const scenario of (simulatorContract || fullSlhEnabled ? ['import'] : ['import', 'generate'])) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
       path.join(output, `ios-${scenario}-stages.json`), `${JSON.stringify(evidence, null, 2)}\n`));
     let device, container;
@@ -313,7 +342,7 @@ async function ios() {
       });
       const created = await stage('report-create', async () => {
         try {
-          return await waitReport(() => read('create'), 'create', scenario, () => read('startup'));
+          return await waitPhaseReport(() => read('create'), 'create', scenario, () => read('startup'));
         } catch (error) {
           try {
             captureIosLaunchReports(fs, container, scenario, (evidence) => fs.writeFileSync(
@@ -335,6 +364,7 @@ async function ios() {
           appExecutableSha256: hash(fs.readFileSync(path.join(artifact, executable))),
           runtime: runtime.identifier,
           nativeCryptoVerified: true,
+          ...(fullSlhConfiguration ? { fullSlhQualified: false, fullSlhDurabilityQualified: false } : {}),
           sdkSmokeVerified: false,
           storageRefusal: created.storageDiagnostic,
           originalReportFile: 'ios-import-create.json',
@@ -364,7 +394,7 @@ async function ios() {
       const httpRestart = httpCompanion ? await httpCompanion.begin('restart', scenario) : '';
       await stage('launch-restart', () => launchIos(run, device, `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}${httpRestart}`,
         (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-restart-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
-      const restored = await stage('report-restart', () => waitReport(
+      const restored = await stage('report-restart', () => waitPhaseReport(
         () => read('restart'),
         'restart',
         scenario,
@@ -384,7 +414,8 @@ async function ios() {
         !matchesNevmRestartEvidence(created, restored) ||
         !matchesZksysRestartEvidence(created, restored) ||
         !matchesHdKeyRevealRestartEvidence(created, restored) ||
-        !matchesImportedRestartEvidence(created, restored)
+        !matchesImportedRestartEvidence(created, restored) ||
+        (fullSlhConfiguration && !matchesFullSlhRestart(created.fullSlh, restored.fullSlh, fullSlhConfiguration))
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       run('xcrun', [
@@ -547,7 +578,7 @@ async function android() {
     httpCompanion = await startHttpCompanion({ walletConnectIdentity: require('../scripts/qualification-sdk.cjs').readWalletConnectSdkIdentity(path.join(__dirname, '..')), platform, sourceRevision: process.env.GITHUB_SHA, run });
   }
   const reports = [];
-  for (const scenario of ['import', 'generate']) {
+  for (const scenario of (fullSlhEnabled ? ['import'] : ['import', 'generate'])) {
     run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
     try {
       run('adb', ['install', artifact]);
@@ -587,7 +618,7 @@ async function android() {
         `pali-wallet-qualification://run?phase=create&scenario=${scenario}${httpCreate}`,
         'create'
       );
-      const created = await waitReport(
+      const created = await waitPhaseReport(
         () => read('create'),
         'create',
         scenario,
@@ -619,7 +650,7 @@ async function android() {
         `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}${httpRestart}`,
         'restart'
       );
-      const restored = await waitReport(
+      const restored = await waitPhaseReport(
         () => read('restart'),
         'restart',
         scenario,
@@ -642,7 +673,8 @@ async function android() {
         !matchesNevmRestartEvidence(created, restored) ||
         !matchesZksysRestartEvidence(created, restored) ||
         !matchesHdKeyRevealRestartEvidence(created, restored) ||
-        !matchesImportedRestartEvidence(created, restored)
+        !matchesImportedRestartEvidence(created, restored) ||
+        (fullSlhConfiguration && !matchesFullSlhRestart(created.fullSlh, restored.fullSlh, fullSlhConfiguration))
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       try {
@@ -670,6 +702,7 @@ async function android() {
         nevmTransferRestored: true,
         zksysTransferRestored: true,
         importedAccountRestored: true,
+        ...(fullSlhConfiguration ? { fullSlhQualified: true, fullSlhDurabilityQualified: true, slhUsageCount: 3, resourcePeak: 'unmeasured' } : {}),
         journalContainerVersion: 1,
       });
     } catch (error) { await captureHttpDiagnostic(); throw error; }

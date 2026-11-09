@@ -444,7 +444,7 @@ test('the native storage coordinator exposes note backup to the real keyring acr
   const note = { note: `tornado-eth-1-1-0x${'01'.repeat(62)}`, createdAt: 10 };
   const current = () => undefined;
   const codec = createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent: current });
-  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: () => openWalletStorage(f.ports),
   });

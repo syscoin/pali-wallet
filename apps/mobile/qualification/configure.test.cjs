@@ -159,3 +159,33 @@ test('official SDK verification uses the explicitly selected working directory w
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('full SLH is manual, mutually exclusive, source/lock bound and never a production capability override', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-full-slh-config-'));
+  try {
+    fs.mkdirSync(path.join(root, 'scripts'));
+    const sdk = path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'); fs.mkdirSync(sdk, { recursive: true });
+    fs.writeFileSync(path.join(sdk, 'package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '3.9.7' }));
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs']) fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
+    const pkg = { main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': '3.9.7' } };
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify(pkg)); fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
+    fs.writeFileSync(path.join(root, 'index.ts'), 'PUBLIC untouched production entry');
+    fs.writeFileSync(path.join(root, 'app.json'), JSON.stringify({ expo: { ios: { bundleIdentifier: 'com.paliwallet.mobile' }, android: { package: 'com.paliwallet.mobile', allowBackup: false }, updates: { enabled: false } } }));
+    const env = { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_FULL_SLH_QUALIFICATION: '1', GITHUB_SHA: 'a'.repeat(40) };
+    const run = (overrides = {}) => spawnSync(process.execPath, [path.join(root, 'scripts/configure-native-qualification.cjs')], { env: { ...env, ...overrides } });
+    for (const patch of [{ CI: 'false' }, { GITHUB_SHA: '' }, { PALI_NATIVE_HTTP_QUALIFICATION: '1' }, { PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: '1' }, { PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION: '1' }, { PALI_PHYSICAL_QUALIFICATION: 'import' }, { PALI_NATIVE_FULL_SLH_QUALIFICATION: 'true' }]) {
+      assert.notEqual(run(patch).status, 0); assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'package.json'))), pkg);
+    }
+    assert.equal(run().status, 0);
+    const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'))).expo;
+    const receipt = JSON.parse(fs.readFileSync(path.join(root, '.native-qualification.json')));
+    assert.deepEqual(app.extra.paliFullSlhQualification, { version: 1, sourceRevision: 'a'.repeat(40), lockfileSha256: require('node:crypto').createHash('sha256').update('{}').digest('hex') });
+    assert.deepEqual(receipt.fullSlh, app.extra.paliFullSlhQualification);
+    assert.equal(app.extra.slhExecution, undefined); assert.equal(app.android.package, 'com.paliwallet.qualification');
+    assert.equal(app.android.allowBackup, false); assert.equal(app.updates.enabled, false);
+    assert.equal(fs.readFileSync(path.join(root, 'index.ts'), 'utf8'), 'PUBLIC untouched production entry');
+    const workflow = fs.readFileSync(path.resolve(path.dirname(require.resolve('./configure.test.cjs')), '../../../.github/workflows/mobile-native-qualification.yml'), 'utf8');
+    assert.match(workflow, /full_slh:\n\s+description:[^\n]+\n\s+type: boolean\n\s+default: false/);
+    assert.equal((workflow.match(/timeout-minutes: 90/g) || []).length, 2);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});

@@ -91,7 +91,7 @@ export function createWalletRemovalFixture(
       guard();
       await beforeSnapshot(guard);
       guard();
-      return { snapshot: before, assertCurrent: guard };
+      return { snapshot: before, assertCurrent: guard, async purgePublicCaches(check) { check(); } };
     },
   };
   const flow = new NativeWalletRemoval({

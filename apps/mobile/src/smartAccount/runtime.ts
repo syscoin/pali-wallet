@@ -18,6 +18,8 @@ import { buildGuardianPolicyExecutions } from '../../../../source/utils/smartAcc
 import type { EvmFeeFunding } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertSmartAccountTargetsAllowed } from '../../../../source/utils/smartAccount/targetPolicy.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
+import { canUseReservedSLHDSASignature } from '../../../../source/utils/smartAccount/slhDsaPurpose.ts';
+import type { SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import {
   hasUsableSmartAccountAuthMetadata,
@@ -69,6 +71,7 @@ export type NativeSmartOperationPorts = Readonly<{
   rpc: EvmTransferReadRpc;
   wallet: SmartAccountPayerWallet;
   assertCurrent(): void;
+  slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   signOwner(
     address: string,
@@ -104,6 +107,8 @@ export type NativeSmartOperationPorts = Readonly<{
 export function createNativeSmartOperation(
   ports: NativeSmartOperationPorts
 ): NativeSmartAccountOperation {
+  if (!Object.hasOwn(ports, 'slhDsa') || (ports.slhDsa !== null && typeof ports.slhDsa !== 'function'))
+    throw new TypeError('Explicit native SLH signing capability is required');
   const account = ports.account;
   let metadata = account.smartAccount;
   const intent =
@@ -252,11 +257,9 @@ export function createNativeSmartOperation(
         });
         assertCurrent();
       }
-      if (
-        !['ecdsa', 'composite'].includes(
-          assertNativeSmartAccountAuthenticator(metadata).module
-        )
-      )
+      const authenticator = assertNativeSmartAccountAuthenticator(metadata);
+      if (!['ecdsa', 'composite'].includes(authenticator.module) &&
+          !(authenticator.module === 'slh-dsa' && ports.slhDsa !== null))
         throw new Error(
           'This authenticator is not available for native transfers'
         );
@@ -411,6 +414,9 @@ export function createNativeSmartOperation(
       const signature = await signNativeSmartAccountActionHash({
         metadata,
         actionHash: prepared.actionHash,
+        accountId: account.id,
+        allowReservedSLHDSASignature: canUseReservedSLHDSASignature({ accountAddress: account.address, executions: prepared.executions, smartAccount: metadata }),
+        slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, prepared.actionHash, assertCurrent),
         localOwners,
         assertCurrent,
         assertOwnerCurrent(owner) {

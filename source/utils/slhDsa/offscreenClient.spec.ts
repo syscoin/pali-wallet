@@ -145,6 +145,25 @@ describe.each(cases)(
       expect(sendMessage).toHaveBeenCalledTimes(1);
     });
 
+    it('rejects omitted, asynchronous and thenable wallet owners before offscreen startup', async () => {
+      // @ts-expect-error Runtime JS callers must not omit their execution owner.
+      await expect(testCase.start()).rejects.toThrow();
+      for (const guard of [
+        async () => undefined,
+        () => ({
+          then() {
+            return undefined;
+          },
+        }),
+      ])
+        await expect(testCase.start(guard)).rejects.toThrow(
+          'guard must be synchronous'
+        );
+      expect(getContexts).not.toHaveBeenCalled();
+      expect(createDocument).not.toHaveBeenCalled();
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
     it('returns the worker result for the current session', async () => {
       await expect(testCase.start(assertSession)).resolves.toEqual(
         testCase.result

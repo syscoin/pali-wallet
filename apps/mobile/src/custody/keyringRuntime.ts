@@ -60,6 +60,14 @@ import {
 } from '../../../../source/utils/smartAccount/signOperation.ts';
 import type { NativeSmartOperationPorts } from '../smartAccount/runtime.ts';
 import { signNativeSmartAccountActionHash, canSignNativeSmartAccountActionHash, type NativeSmartAccountSigningOwner } from '../smartAccount/authenticatorSigning.ts';
+import type { SmartAccountAuthenticatorPorts } from '../../../../source/utils/smartAccount/authenticatorDispatch.ts';
+import type { SLHDSADispatchApproval } from '../../../../source/utils/slhDsa/types.ts';
+import { requireSmartAccountAuthenticator } from '../../../../source/utils/smartAccount/prepareOperation.ts';
+import type { ISmartAccountMetadata, SmartAccountValidatorModule } from '../../../../source/types/network.ts';
+import { createNativeSlhDsaRuntime, type NativeSlhDsaRuntime, type NativeSlhExecutionCapability, type NativeSlhInstalledKey } from '../smartAccount/slhDsaRuntime.ts';
+import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
+import { getInstalledValidatorModule, getInstalledValidatorModuleByAddress } from '../../../../source/utils/smartAccount/modules.ts';
+import { isPaliSignableValidator, isPaliValidatorAlgorithmSupported } from '../../../../source/utils/smartAccount/validatorSignability.ts';
 import { snapshotSmartAccountDappTransaction } from '../../../../source/shared/smartAccountDappTransaction.ts';
 import { summarizeApproval, decodeApprovalData } from '../../../../source/shared/approval.ts';
 import type { NativeGuardianPolicyDraft, NativeSmartAccountAmount, NativeSmartAccountIntent, NativeSmartAccountOperation } from '../smartAccount/operation.ts';
@@ -200,6 +208,7 @@ class TrezorReviewChangedError extends Error {
 
 export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
+  slhExecution: NativeSlhExecutionCapability | null;
   checkSmartAccountAddress?: (address: string) => Promise<IBlacklistCheckResult>;
   connectionFetch?: typeof walletFetch;
   openStorage(): Promise<OpenWalletStorage>;
@@ -267,10 +276,19 @@ export function createNativeRetirementReadForChain(
 }
 
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
+export type NativeSlhDsaAccount = Readonly<{
+  installedKeys: readonly NativeSlhInstalledKey[];
+  prepareFresh: (progress: Parameters<NativeSlhDsaRuntime['prepareFresh']>[2]) => ReturnType<NativeSlhDsaRuntime['prepareFresh']>;
+  hydrateInstalled(keyId: string): ReturnType<NativeSlhDsaRuntime['hydrateInstalled']>;
+  rebuildInstalled(keyId: string, progress: Parameters<NativeSlhDsaRuntime['rebuildInstalled']>[2]): ReturnType<NativeSlhDsaRuntime['rebuildInstalled']>;
+  signActionHash: NativeSlhDsaRuntime['signActionHash'];
+}>;
+
 export interface KeyringRuntime extends CustodyRuntime {
   readonly ledger: NativeLedgerRuntime;
   readonly trezor: NativeTrezorView;
   openConnectionHost(): Promise<NativeConnectionSigningHost>;
+  openSlhDsaAccount(assertCurrent: () => void): Promise<NativeSlhDsaAccount>;
   prepareConnectionPsbt(request: import('../connections/psbtRequests.ts').NativePsbtRequest,
     signal: AbortSignal, assertCurrent: () => void): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
   readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
@@ -323,6 +341,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   authorizeWalletRemoval?(password: string, assertCurrent: () => void, beforeSnapshot: (assertCurrent: () => void) => Promise<void>): Promise<Readonly<{
     snapshot: RecoveryStorageSnapshot;
     assertCurrent(): void;
+    purgePublicCaches(assertCleanupCurrent: () => void): Promise<void>;
   }>>;
   /** Public metadata only; no selection/signing authority. Cleared on lock. */
   readonly catalogue: {
@@ -360,6 +379,13 @@ function checkGuard(assertCurrent: () => void): void {
 export function createKeyringRuntimeFactory(
   dependencies: KeyringRuntimeDependencies
 ): CustodyRuntimeFactory {
+  if (dependencies.slhExecution !== null && (typeof dependencies.slhExecution !== 'object' ||
+      typeof dependencies.slhExecution.open !== 'function' || typeof dependencies.slhExecution.purgePublicCache !== 'function'))
+    throw new Error('An explicit native SLH execution capability is required');
+  const slhCapability = dependencies.slhExecution === null ? null : Object.freeze({
+    open: dependencies.slhExecution.open.bind(dependencies.slhExecution),
+    purgePublicCache: dependencies.slhExecution.purgePublicCache.bind(dependencies.slhExecution),
+  });
   if (dependencies.readEvmRetirement !== null && typeof dependencies.readEvmRetirement !== 'function')
     throw new Error('A signed-record retirement capability is required');
   return {
@@ -534,12 +560,25 @@ export function createKeyringRuntimeFactory(
         let noteBackups: NoteRuntime | undefined;
         let privateDomainStorageFault: 'unreported' | 'reopen' | undefined;
         const requirePrivateDomainReopen = () => { privateDomainStorageFault ??= 'unreported'; };
+        let slhDsa: NativeSlhDsaRuntime | undefined;
+        let slhRetirement: Promise<void> = Promise.resolve();
+        const retireSlhDsa = () => {
+          const previous = slhDsa; slhDsa = undefined;
+          if (!previous) return slhRetirement;
+          const retiring = previous.retire();
+          slhRetirement = Promise.allSettled([slhRetirement, retiring]).then(results => {
+            if (results.some(result => result.status === 'rejected')) { privateDomainStorageFault = 'reopen'; throw new KeyringRuntimeError('CLEANUP_FAILED'); }
+          });
+          void slhRetirement.catch(() => undefined);
+          return slhRetirement;
+        };
         const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || activityHistory.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || privateDomainStorageFault === 'reopen';
         const revokeGeneration = () => {
           const next = ++generation;
           void retireLedger()?.catch(() => undefined);
           void cancelTrezor().catch(() => undefined);
           retireContextReadLifetime();
+          void retireSlhDsa().catch(() => undefined);
           retireSentryKeys();
           noteBackups?.invalidate();
           pendingBalance?.abort();
@@ -590,15 +629,19 @@ export function createKeyringRuntimeFactory(
           preparedTrezor = undefined;
           publishTrezor();
           retireContextReadLifetime();
+          void retireSlhDsa().catch(() => undefined);
           retireSentryKeys();
           noteBackups?.invalidate();
           pendingBalance?.abort();
           pendingRegistration?.abort();
           utxoSend?.cancel(); utxoSend = undefined;
-          // Retire secrets synchronously, then report quarantine asynchronously.
-          // storage.close() must still install its cleanup promise and drain work.
+          // Publish an existing storage fault before waiting for native drainage.
+          // closeRuntime independently joins SLH retirement, including on failure.
           return retired.then(() => {
             if (requiresReopen()) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            return slhRetirement.then(() => {
+              if (requiresReopen()) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            });
           });
         };
         const closeRuntime = (capturePair: boolean, beforeClose?: () => Promise<void>): Promise<void> => {
@@ -619,8 +662,8 @@ export function createKeyringRuntimeFactory(
           try { revocation = lock(); } catch { revocation = Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED')); }
           noteBackups?.dispose();
           void (async () => {
-            const [, revoked, trezorRetired] = await Promise.allSettled([work, revocation, trezorRetirement, ...pendingSubmissions]);
-            let failed = trezorRetired?.status !== 'fulfilled';
+            const [, revoked, trezorRetired, slhRetired] = await Promise.allSettled([work, revocation, trezorRetirement, slhRetirement, ...pendingSubmissions]);
+            let failed = trezorRetired?.status !== 'fulfilled' || slhRetired?.status !== 'fulfilled';
             try { await keyring.lockWallet(); } catch { failed = true; }
             if (capturePair && !failed) {
               try {
@@ -921,7 +964,7 @@ export function createKeyringRuntimeFactory(
           verifiedIdentity = null;
           const identity = await readIdentity(); current(captured);
           const admitted = await storage.recovery!.readSnapshot(); current(captured);
-          assertNativeRecordDomains(admitted.records);
+          assertNativeRecordDomains(admitted.records, identity.root?.profileId ?? null);
           if (
             !identity.root ||
             (authenticatedPair !== null && authenticatedPair !== identity.pairFingerprint)
@@ -970,7 +1013,7 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('NOT_READY');
           const admitted = await storage.recovery.readSnapshot();
           guard();
-          assertNativeRecordDomains(admitted.records);
+          assertNativeRecordDomains(admitted.records, admitted.identity?.root?.profileId ?? null);
           if (
             admitted.records.some((row) => row.key !== 'utf8Error') ||
             admitted.notes.length ||
@@ -1235,6 +1278,124 @@ export function createKeyringRuntimeFactory(
           };
           assertCurrent();
           return Object.freeze({ ...wallet, assertCurrent });
+        };
+        const getSlhDsa = async (captured: number) => {
+          current(captured);
+          if (slhCapability === null || !verifiedIdentity?.root)
+            throw new KeyringRuntimeError('NOT_READY');
+          await slhRetirement;
+          current(captured);
+          if (!slhDsa) {
+            const session = privateDomainWalletSession(captured);
+            const profileId = verifiedIdentity.root.profileId;
+            slhDsa = createNativeSlhDsaRuntime({
+              namespace: profileId, keyring, storage: storage.keyringStorage,
+              assertCurrent: session.assertCurrent, openExecution: slhCapability.open,
+              onStorageFault: () => { requirePrivateDomainReopen(); void finalizePrivateDomain().catch(() => undefined); },
+              now: Date.now,
+            });
+          }
+          return slhDsa;
+        };
+        const slhDsaSigningPort = (
+          captured: number, metadata: ISmartAccountMetadata, accountId: number, actionHash: string,
+          assertDelivery: () => void, approval: SLHDSADispatchApproval | null
+        ): NonNullable<SmartAccountAuthenticatorPorts['slhDsa']> => {
+          if (slhCapability === null) throw new KeyringRuntimeError('NOT_READY');
+          const seal = JSON.stringify({ auth: metadata.auth, installedModules: metadata.installedModules });
+          const check = () => {
+            current(captured); checkGuard(assertDelivery);
+            if (JSON.stringify({ auth: metadata.auth, installedModules: metadata.installedModules }) !== seal)
+              throw new KeyringRuntimeError('CANCELLED');
+          };
+          check();
+          return Object.freeze({
+            signMessageActionHash: null,
+            signActionHash(input) {
+              const request = Object.freeze({ ...input });
+              check();
+              if (request.actionHash !== actionHash || request.accountId !== accountId)
+                throw new KeyringRuntimeError('CANCELLED');
+              // The shared dispatcher selects the actual child and supplies its
+              // canonical config. Unused installed keys never gate another child.
+              const installed = metadata.installedModules?.find((module): module is Extract<SmartAccountValidatorModule, { id: 'slh-dsa' }> =>
+                module.type === 'validator' && module.id === 'slh-dsa' && module.config.keyId === request.keyId);
+              if (!installed || installed.config.parameterSet !== request.parameterSet ||
+                  normalizeSLHDSAPublicKeyField(installed.config.pkRoot) !== normalizeSLHDSAPublicKeyField(request.pkRoot) ||
+                  normalizeSLHDSAPublicKeyField(installed.config.pkSeed) !== normalizeSLHDSAPublicKeyField(request.pkSeed))
+                throw new KeyringRuntimeError('CANCELLED');
+              const key: NativeSlhInstalledKey = Object.freeze({ keyId: request.keyId, parameterSet: request.parameterSet,
+                pkRoot: request.pkRoot, pkSeed: request.pkSeed });
+              const work = (async () => {
+                const runtime = await getSlhDsa(captured); check();
+                await runtime.hydrateInstalled(key, check); check();
+                return runtime.signActionHash(request, approval, check);
+              })();
+              const pending = work.finally(() => { pendingSubmissions.delete(pending); });
+              pendingSubmissions.add(pending);
+              return pending;
+            },
+          });
+        };
+        const openSlhDsaAccount = async (assertOwner: () => void): Promise<NativeSlhDsaAccount> => {
+          const captured = generation, before = catalogueSnapshot, selected = selectedAccount();
+          const account = selected.type === 'SmartAccount' ? state.accounts.SmartAccount[selected.index] : undefined;
+          const metadata: ISmartAccountMetadata | undefined = account?.smartAccount;
+          const network = before?.networks.find(entry => entry.id === before.active.networkId);
+          if (!before || !account || !metadata || !network || selected.slip44 !== 60 || metadata.chainId !== Number(network.chainId)) throw new KeyringRuntimeError('NOT_READY');
+          requireSmartAccountAddressIdentity(account, Number(network.chainId));
+          const descriptor = metadata.descriptor;
+          if (!descriptor || !Number.isSafeInteger(descriptor.accountIndex) || descriptor.accountIndex < 0)
+            throw new KeyringRuntimeError('NOT_READY');
+          const accountIndex = descriptor.accountIndex;
+          const seal = JSON.stringify({ auth: metadata.auth, installedModules: metadata.installedModules, descriptor });
+          const check = () => {
+            current(captured); checkGuard(assertOwner);
+            if (catalogueSnapshot !== before || state.accounts.SmartAccount[selected.index] !== account || account.smartAccount !== metadata || metadata.descriptor !== descriptor ||
+                JSON.stringify({ auth: metadata.auth, installedModules: metadata.installedModules, descriptor: metadata.descriptor }) !== seal)
+              throw new KeyringRuntimeError('CANCELLED');
+          };
+          check();
+          const runtime = await getSlhDsa(captured); check();
+          const installed = metadata.installedModules?.filter((module): module is Extract<SmartAccountValidatorModule, { id: 'slh-dsa' }> => module.type === 'validator' && module.id === 'slh-dsa') ?? [];
+          const installedKeys = Object.freeze(installed.map(({ config }) => Object.freeze({ keyId: config.keyId, parameterSet: config.parameterSet,
+            pkRoot: normalizeSLHDSAPublicKeyField(config.pkRoot), pkSeed: normalizeSLHDSAPublicKeyField(config.pkSeed) })));
+          const expectedKey = (keyId: string) => {
+            check();
+            const key = installedKeys.find(key => key.keyId === keyId);
+            if (!key) throw new KeyringRuntimeError('NOT_READY');
+            return key;
+          };
+          const track = <T>(operation: () => Promise<T>) => {
+            check();
+            const work = Promise.resolve().then(operation);
+            const pending = work.finally(() => { pendingSubmissions.delete(pending); });
+            pendingSubmissions.add(pending);
+            return pending;
+          };
+          return Object.freeze({
+            installedKeys,
+            prepareFresh(progress) {
+              check();
+              const auth = requireSmartAccountAuthenticator(metadata);
+              const activeModule = getInstalledValidatorModuleByAddress(metadata, auth.validator);
+              if (getInstalledValidatorModule(metadata, 'slh-dsa') || auth.module === 'slh-dsa' ||
+                  (auth.module === 'composite' && (!activeModule || !isPaliSignableValidator(activeModule, metadata, isPaliValidatorAlgorithmSupported))))
+                throw new KeyringRuntimeError('NOT_READY');
+              return track(() => runtime.prepareFresh(accountIndex, check, progress));
+            },
+            hydrateInstalled: keyId => track(() => runtime.hydrateInstalled(expectedKey(keyId), check)),
+            rebuildInstalled: (keyId, progress) => track(() => runtime.rebuildInstalled(expectedKey(keyId), check, progress)),
+            signActionHash(input, approval, assertDelivery) {
+              const request = Object.freeze({ ...input });
+              const key = expectedKey(request.keyId);
+              if (normalizeSLHDSAPublicKeyField(request.pkRoot) !== normalizeSLHDSAPublicKeyField(key.pkRoot) || normalizeSLHDSAPublicKeyField(request.pkSeed) !== normalizeSLHDSAPublicKeyField(key.pkSeed) ||
+                  request.parameterSet !== key.parameterSet || (request.accountId !== undefined && request.accountId !== account.id))
+                throw new KeyringRuntimeError('CANCELLED');
+              const delivery = () => { check(); checkGuard(assertDelivery); };
+              return track(() => runtime.signActionHash(request, approval, delivery));
+            },
+          });
         };
         const authenticateVerifiedOwner = async (password: string, request: IPrivateVaultSession) => {
           request.assertCurrent();
@@ -2054,7 +2215,14 @@ export function createKeyringRuntimeFactory(
           session.assertCurrent();
           if (snapshot.state.presence !== 'existing' || !identity || JSON.stringify(snapshot.identity) !== JSON.stringify(identity))
             throw new KeyringRuntimeError('CANCELLED');
-          return Object.freeze({ snapshot, assertCurrent() {
+          const cacheCapability = slhCapability;
+          const cacheNamespace = identity.root?.profileId;
+          if (!cacheNamespace) throw new KeyringRuntimeError('NOT_READY');
+          return Object.freeze({ snapshot, async purgePublicCaches(assertCleanupCurrent: () => void) {
+            checkGuard(assertCleanupCurrent);
+            if (cacheCapability !== null) await cacheCapability.purgePublicCache(cacheNamespace, assertCleanupCurrent);
+            checkGuard(assertCleanupCurrent);
+          }, assertCurrent() {
             try { session.assertCurrent(); }
             catch (error) {
               if (captured !== generation || closed) throw new KeyringRuntimeError('CANCELLED');
@@ -3436,7 +3604,7 @@ export function createKeyringRuntimeFactory(
             if (selected.type !== 'SmartAccount' || !account?.smartAccount ||
                 account.smartAccount.chainId !== Number(network.chainId)) throw new KeyringRuntimeError('INVALID_INPUT');
             requireSmartAccountAddressIdentity(account, Number(network.chainId));
-            const accountAddress = account.address;
+            const accountAddress = account.address, accountId = account.id;
             const check = () => {
               current(captured); checkGuard(assertOwner);
               if (keyring !== ring || !ring.isUnlocked() || catalogueSnapshot !== snapshot || selectedAccount() !== selected ||
@@ -3452,6 +3620,8 @@ export function createKeyringRuntimeFactory(
               checkAddress: dependencies.checkSmartAccountAddress ?? (address => blacklistService.checkAddress(address)),
               account: account as IKeyringAccountState & { smartAccount: NonNullable<IKeyringAccountState['smartAccount']> },
               wallet: state, network, rpc, assertCurrent: check,
+              slhDsa: slhCapability === null ? null : (metadata, actionHash, assertCurrent) =>
+                slhDsaSigningPort(captured, metadata, accountId, actionHash, () => { check(); checkGuard(assertCurrent); }, null),
               signOwner(address, digest, owner, assertCurrent) {
                 return run(async ownerGeneration => {
                   const guard = () => { current(ownerGeneration); check(); checkGuard(assertCurrent); };
@@ -3604,6 +3774,7 @@ export function createKeyringRuntimeFactory(
             };
             return openSmartAccountOperation({ kind: 'guardian-policy', command }, assertOwner, undefined, assertPolicy);
           },
+          openSlhDsaAccount,
           openSmartAccountDeployment: (assertOwner) => openSmartAccountOperation({ kind: 'deploy' }, assertOwner),
           canUseWalletAuthenticator: () => {
             if (!canManageGuardianPolicy()) return false;
@@ -3863,7 +4034,7 @@ export function createKeyringRuntimeFactory(
                   saved,
                   Number(network.chainId)
                 );
-                return canSignNativeSmartAccountActionHash(saved.smartAccount, captureLocalSmartOwners().localOwners);
+                return canSignNativeSmartAccountActionHash(saved.smartAccount, captureLocalSmartOwners().localOwners, { slhDsa: slhCapability !== null });
               } catch {
                 return false;
               }
@@ -4264,6 +4435,8 @@ export function createKeyringRuntimeFactory(
                     const boundOwners = new Set<string>();
                     const signature = await signNativeSmartAccountActionHash({
                       metadata, actionHash: prepared.actionHash, localOwners, assertCurrent: guard,
+                      accountId: account.id, allowReservedSLHDSASignature: false,
+                      slhDsa: slhCapability === null ? null : slhDsaSigningPort(captured, metadata, account.id, prepared.actionHash, guard, { assertCurrent: guard, async checkDocument() { guard(); } }),
                       assertOwnerCurrent(owner) {
                         const original = ownerRecords.get(`${owner.type}:${owner.id}`), currentOwner = findLocalEcdsaOwner(owner.address);
                         if (!original || !currentOwner || currentOwner.id !== owner.id || currentOwner.type !== owner.type ||
