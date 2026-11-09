@@ -481,6 +481,15 @@ module.exports = {
           name: 'account-review',
           enforce: true,
         },
+        // The direct signing route and Transactions barrel already duplicate
+        // this page. Keep one lazy copy without moving initial worker modules.
+        signingReview: {
+          test: /[\\/]source[\\/]pages[\\/]Transactions[\\/]SignEth\.tsx$/,
+          chunks: 'async',
+          name: 'signing-review',
+          minChunks: 2,
+          enforce: true,
+        },
         // Extract only modules already duplicated across lazy UI chunks.
         transactionDetails: {
           test: /[\\/]source[\\/](?:components[\\/]TransactionDetails[\\/]|pages[\\/]Send[\\/]components[\\/])/,
