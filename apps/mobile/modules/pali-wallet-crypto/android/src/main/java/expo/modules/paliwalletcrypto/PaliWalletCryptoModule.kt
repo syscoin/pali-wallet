@@ -104,16 +104,21 @@ class PaliWalletCryptoModule : Module() {
   private inline fun <T> operation(body: () -> T): T =
     try { body() } catch (_: Exception) { throw CryptoOperationException() }
 
+  private fun assertSlhForeground() {
+    val activity = checkNotNull(appContext.currentActivity)
+    slhOwner.requireForeground(activity.hasWindowFocus(), activity.isFinishing, activity.isDestroyed)
+  }
+
   override fun definition() = ModuleDefinition {
     Name("PaliWalletCrypto")
     Function("info") { mapOf("apiVersion" to 1, "implementation" to "android-jca-bc") }
     Function("createContext") { PaliCryptoContext() }
     Function("createSlhContext") { namespace: String -> operation {
-      check(appContext.reactContext?.lifecycleState == com.facebook.react.common.LifecycleState.RESUMED)
+      assertSlhForeground()
       PaliSlhContext(checkNotNull(appContext.reactContext), namespace, slhOwner)
     } }
     Function("prepareSlhCachePurge") { namespace: String -> operation {
-      check(appContext.reactContext?.lifecycleState == com.facebook.react.common.LifecycleState.RESUMED)
+      assertSlhForeground()
       PaliSlhCachePurge(checkNotNull(appContext.reactContext), namespace, slhOwner)
     } }
     OnActivityEntersBackground { slhOwner.background() }

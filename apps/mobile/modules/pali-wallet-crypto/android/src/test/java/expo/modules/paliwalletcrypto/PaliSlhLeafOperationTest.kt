@@ -8,6 +8,21 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class PaliSlhLeafOperationTest {
+  @Test fun newExecutionRequiresTheLiveForegroundOwnerAndAnInteractiveActivity() {
+    val owner = PaliSlhOperationOwner()
+    owner.requireForeground(true, false, false)
+    assertThrows(IllegalStateException::class.java) { owner.requireForeground(false, false, false) }
+    assertThrows(IllegalStateException::class.java) { owner.requireForeground(true, true, false) }
+    assertThrows(IllegalStateException::class.java) { owner.requireForeground(true, false, true) }
+    owner.background()
+    assertThrows(IllegalStateException::class.java) { owner.requireForeground(true, false, false) }
+    owner.resume()
+    owner.requireForeground(true, false, false)
+    owner.retire()
+    owner.resume()
+    assertThrows(IllegalStateException::class.java) { owner.requireForeground(true, false, false) }
+  }
+
   private class Completion : Promise {
     var result: Any? = null
     var error: String? = null

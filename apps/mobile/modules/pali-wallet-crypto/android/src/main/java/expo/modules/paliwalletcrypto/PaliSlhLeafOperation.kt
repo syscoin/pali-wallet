@@ -38,6 +38,9 @@ internal class PaliSlhOperationOwner {
   fun background() { val callbacks = synchronized(this) { foreground.set(false); retirements.toList() }; callbacks.forEach { it() } }
   fun resume() { foreground.set(true) }
   val isOpen: Boolean get() = !retired.get() && foreground.get()
+  fun requireForeground(focused: Boolean, finishing: Boolean, destroyed: Boolean) {
+    check(isOpen && focused && !finishing && !destroyed)
+  }
 }
 
 internal class PaliSlhNative {
