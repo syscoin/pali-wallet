@@ -238,7 +238,8 @@ function createReadOperation(options: ReadOptions) {
     let holder: string;
     try {
       network =
-        scope?.network ?? getNativeNetwork(networkId, options.registrations?.());
+        scope?.network ??
+        getNativeNetwork(networkId, options.registrations?.());
       holder = normalizePublicAddress(address, networkId);
     } catch {
       return fail('INVALID_INPUT');
@@ -483,9 +484,28 @@ export type ScopedCallOutcome =
   | Readonly<{ kind: 'rpc-error'; error: unknown }>;
 
 /** Internal host seam with one selected contract and no caller-supplied block or RPC method. */
-export function createSelectedNftReadOperation(options: SelectedNftReadOptions) {
+export function createSelectedNftReadOperation(
+  options: SelectedNftReadOptions
+) {
+  return createSelectedContractReadOperation(options, 2);
+}
+
+/** Contract-type and metadata observation only; ownership keeps its two-call boundary. */
+export function createSelectedAssetReadOperation(
+  options: SelectedNftReadOptions
+) {
+  return createSelectedContractReadOperation(options, 8);
+}
+
+function createSelectedContractReadOperation(
+  options: SelectedNftReadOptions,
+  maximumCalls: 2 | 8
+) {
   const { registrations } = options;
-  if (typeof options.fetch !== 'function' || typeof registrations !== 'function')
+  if (
+    typeof options.fetch !== 'function' ||
+    typeof registrations !== 'function'
+  )
     throw new Error('NFT read host required');
   const operation = createReadOperation(options);
   return async <T>(
@@ -520,14 +540,18 @@ export function createSelectedNftReadOperation(options: SelectedNftReadOptions) 
     const assertCurrent = () => {
       const result: unknown = guard();
       if (result !== undefined) {
-        if (result && (typeof result === 'object' || typeof result === 'function'))
+        if (
+          result &&
+          (typeof result === 'object' || typeof result === 'function')
+        )
           void Promise.resolve(result).catch(() => undefined);
         fail('CANCELLED');
       }
       const latest = registered();
       if (latest === initial && Object.isFrozen(initial)) return;
       if (
-        snapshotNativeNetwork(latest).registrationHash !== network.registrationHash
+        snapshotNativeNetwork(latest).registrationHash !==
+        network.registrationHash
       )
         fail('CANCELLED');
     };
@@ -542,8 +566,7 @@ export function createSelectedNftReadOperation(options: SelectedNftReadOptions) 
           holder,
           target,
           async call(data) {
-            // One independent probe and one selected read.
-            if (++calls > 2) return fail('INVALID_RESPONSE');
+            if (++calls > maximumCalls) return fail('INVALID_RESPONSE');
             if (
               typeof data !== 'string' ||
               data.length < 10 ||

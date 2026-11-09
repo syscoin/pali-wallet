@@ -19,6 +19,7 @@ const asset = Object.freeze({
   symbol: 'SYSX',
 });
 const view = Object.freeze<NativeUtxoReview>({
+  transactionOptions: { rbf: true, zdag: false },
   feeSatoshis: '452',
   assetDisplay: asset,
   outputs: Object.freeze([

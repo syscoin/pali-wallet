@@ -1,6 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 
 import { formatTokenUnits } from '../../../../source/shared/erc20.ts';
+import { snapshotUtxoRbf } from '../../../../source/shared/utxoTransactionOptions.ts';
 import { formatBaseUnits } from '../core/amounts.ts';
 import { assertTransferIntentEnvelope } from '../custody/transferIntent.ts';
 import type { NativeTrezorResumeIntent } from '../custody/trezorAccounts.ts';
@@ -11,7 +12,7 @@ export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
     return {
       kind: 'utxo' as const,
       asset: value.asset,
-      draft: { recipient: value.recipient, amount: value.amount, max: value.max },
+      draft: { recipient: value.recipient, amount: value.amount, max: value.max, rbf: snapshotUtxoRbf(value.rbf) },
     };
   const transaction = Transaction.from(value.unsignedTransaction);
   if (transaction.isSigned() || !transaction.to || transaction.chainId <= 0n)

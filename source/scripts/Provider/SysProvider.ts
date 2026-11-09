@@ -1,6 +1,6 @@
+import { projectDappSyscoinTransactions } from '../../shared/dappSyscoinReads.ts';
+import { sentryDappCapabilities } from '../../shared/sentryDappCapabilities.ts';
 // isValidSYSAddress removed - validation should use message passing to background
-
-import { UTXO_SUMMARY_OBSERVATION } from '../../shared/utxoDetailFreshness';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import { getSentryNetwork } from 'utils/sentry/network';
@@ -79,16 +79,7 @@ export const SysProvider = (host: string) => {
 
     // Local acknowledgement provenance can contain the configured backend URL.
     // Keep it and the wallet's observation marker out of dapp responses.
-    return transactions.map((transaction) => {
-      const {
-        localAcknowledgedInputs: _local,
-        [UTXO_SUMMARY_OBSERVATION]: _observation,
-        ...publicTransaction
-      } = transaction;
-      void _local;
-      void _observation;
-      return publicTransaction;
-    });
+    return projectDappSyscoinTransactions(transactions);
   };
 
   const transaction = (params: any[]) => {
@@ -114,30 +105,7 @@ export const SysProvider = (host: string) => {
   return {
     getSentryCapabilities: () => {
       getSentryNetwork(store.getState().vault.activeNetwork);
-      return {
-        version: 1,
-        operations: [
-          'register',
-          'updateService',
-          'updateRegistrar',
-          'registerOperator',
-          'rotateOperator',
-          'revoke',
-        ],
-        linkNode: true,
-        governanceVote: {
-          scheme: 'secp256k1',
-          signal: 'funding',
-          maxNodes: 20,
-        },
-        eras: ['legacy-v3', 'pq-v4'],
-        schemes: ['secp256k1', 'bls-basic', 'slh-dsa-shake-128s'],
-        roles: ['owner', 'operator', 'collateral', 'voting'],
-        keySelection: 'wallet-approval',
-        result: 'operator-authorized-transaction',
-        requiresFeeInputSignatures: true,
-        feeSigning: 'same-origin-authorized-psbt-v1',
-      };
+      return sentryDappCapabilities();
     },
     // Connection & Account methods
     getAccount,

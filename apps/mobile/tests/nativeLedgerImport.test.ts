@@ -9,6 +9,10 @@ import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
+import { getBytes } from 'ethers/utils';
+import { signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
+import { readDappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { approveHardwareDappRequest, hardwareDappRpc } from './hardwareDappTestSupport.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
@@ -76,10 +80,12 @@ async function fixture() {
   let holdCreation: (() => Promise<void>) | undefined;
   let disposedCount = 0,
     signedCount = 0,
+    messageCount = 0,
     psbtSignCount = 0;
   let utxoFetch: typeof globalThis.fetch = async () => {
     throw Error('Unexpected UTXO request');
   };
+  let connectionFetch: NonNullable<import('../src/custody/keyringRuntime.ts').KeyringRuntimeDependencies['connectionFetch']> = async () => { throw Error('Unexpected connection request'); };
   let selectedWallet = deviceWallet;
   let holdSignature: (() => Promise<void>) | undefined;
   const candidate = {
@@ -111,6 +117,7 @@ async function fixture() {
     readEvmRetirement: null,
     openStorage,
     utxoFetch: (...args) => utxoFetch(...args),
+    connectionFetch: (...args) => connectionFetch(...args),
     async createLedgerTransport(scope) {
       let connected = false,
         disposed = false;
@@ -185,8 +192,15 @@ async function fixture() {
                 v: signed.v.toString(16),
               };
             },
-            signPersonalMessage: unexpected,
-            signTypedData: unexpected,
+            async signPersonalMessage(request) {
+              check(); messageCount++; await holdSignature?.(); check();
+              return selectedWallet.signMessage(getBytes('0x' + request.messageHex));
+            },
+            async signTypedData(request) {
+              check(); messageCount++; await holdSignature?.(); check();
+              return signTypedData({ privateKey: Buffer.from(selectedWallet.privateKey.slice(2), 'hex'),
+                data: request.data as import('@metamask/eth-sig-util').TypedMessage<import('@metamask/eth-sig-util').MessageTypes>, version: request.version as SignTypedDataVersion.V3 | SignTypedDataVersion.V4 });
+            },
           },
           utxo: {
             async getXpub(request) {
@@ -302,6 +316,8 @@ async function fixture() {
     get signedCount() {
       return signedCount;
     },
+    get messageCount() { return messageCount; },
+    setConnectionFetch(value: NonNullable<import('../src/custody/keyringRuntime.ts').KeyringRuntimeDependencies['connectionFetch']>) { connectionFetch = value; },
     get sessionTransfers() {
       return sessionTransfers;
     },
@@ -563,6 +579,72 @@ test('Ledger connection reuses the saved public identity and shared EVM signing'
   } finally {
     await f.close();
   }
+});
+
+test('Ledger dapp host signs messages and journals the reviewed transaction before a lost reply', async () => {
+  const f = await fixture(), rpc = hardwareDappRpc();
+  f.setConnectionFetch(rpc.fetch);
+  try {
+    await importAndConnect(f);
+    const host = await f.runtime.openConnectionHost();
+    assert.equal(host.context().accounts.find(account => account.id === host.context().activeAccountId)?.type, 'Ledger');
+    const typed = { types: { EIP712Domain: [{ name: 'chainId', type: 'uint256' }], Message: [{ name: 'text', type: 'string' }] },
+      primaryType: 'Message', domain: { chainId: 1 }, message: { text: 'Public Ledger dapp fixture' } };
+    for (const method of ['personal_sign', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const) {
+      const request = readDappMessageRequest(method, method === 'personal_sign' ? ['0x6162', deviceWallet.address] : [deviceWallet.address, typed], deviceWallet.address)!;
+      const input = approveHardwareDappRequest(f.owner, host, request);
+      try { assert.match(await host.signMessage(input), /^0x[0-9a-f]{130}$/i); }
+      finally { input.approval.dispose(); }
+    }
+    assert.equal(f.messageCount, 3);
+    const request = readDappMessageRequest('personal_sign', ['0x6162', deviceWallet.address], deviceWallet.address)!;
+    const input = approveHardwareDappRequest(f.owner, host, request);
+    try {
+      const review = await host.prepareTransaction({ ...input, transaction: { from: deviceWallet.address,
+        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined);
+      assert(!('operation' in review));
+      assert.equal(f.signedCount, 0, 'review performs no device signing');
+      rpc.onAdmission(async (hash, raw) => {
+        const saved = await (await f.runtime.transfers!.journal(() => undefined)).load(hash);
+        assert.equal(saved?.rawTransaction, raw, 'exact signed bytes are durable before POST');
+      });
+      rpc.loseReply();
+      await assert.rejects(review.submit(() => undefined, hash => { rpc.reports.push(hash); }, { kind: 'transaction' }));
+      assert.equal(rpc.rawTransactions.length, 1);
+      assert.equal(f.signedCount, 1);
+      const raw = rpc.rawTransactions[0]!, transaction = Transaction.from(raw);
+      assert.equal(transaction.from, deviceWallet.address);
+      assert.equal(transaction.to?.toLowerCase(), '0x' + '22'.repeat(20));
+      assert.equal(transaction.data, '0x6000');
+      assert.equal(transaction.chainId, 1n);
+      const retained = await (await f.runtime.transfers!.journal(() => undefined)).load(keccak256(raw));
+      assert.equal(retained?.rawTransaction, raw);
+      await assert.rejects(review.submit(() => undefined, () => assert.fail('cannot resend retired review'), { kind: 'transaction' }), /REVIEW_REQUIRED/);
+      assert.equal(f.signedCount, 1);
+      assert.equal(rpc.rawTransactions.length, 1);
+    } finally { input.approval.dispose(); }
+  } finally { await f.close(); }
+});
+
+test('Ledger dapp request retirement drains its device and withholds a held signature', async () => {
+  const f = await fixture(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  try {
+    await importAndConnect(f);
+    const host = await f.runtime.openConnectionHost();
+    const request = readDappMessageRequest('personal_sign', ['0x6162', deviceWallet.address], deviceWallet.address)!;
+    const input = approveHardwareDappRequest(f.owner, host, request);
+    const disposedBefore = f.disposedCount;
+    f.holdSignature(async () => { entered.resolve(); await release.promise; });
+    const work = host.signMessage(input), rejected = assert.rejects(work);
+    await entered.promise;
+    input.approval.retire();
+    release.resolve();
+    await rejected;
+    assert.equal(f.messageCount, 1);
+    assert.equal(f.connection.isConnected(), false);
+    assert.equal(f.disposedCount, disposedBefore + 1);
+    input.approval.dispose();
+  } finally { release.resolve(); await f.close(); }
 });
 
 test('a different Ledger cannot reconnect to the saved account', async () => {

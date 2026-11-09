@@ -1,5 +1,15 @@
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
 import { createNativeSentryPublicKeyDeriver } from '../crypto/sentryPublicKey.native';
+import { createNativeSentryCryptoExecutor } from '../crypto/sentryCrypto.native';
+import type { NativeSentryApprovals } from '../custody/sentryApprovals';
+import { Linking } from 'react-native';
+import { createNativeNetworkView } from '../custody/networkView';
+import { createNativeDappControlHost } from '../custody/dappControl';
+import { createNativeDappRpcReadHost } from '../custody/dappRpcReads';
+import { createNativeDappSentryHost } from '../custody/dappSentry';
+import { createNativeDappSyscoinHost } from '../custody/dappSyscoin';
+import { createNativeWatchAssetObserver, prepareNativeWatchAsset } from '../portfolio/nativeWatchAsset';
+import { createNativeRecipientResolver } from '../portfolio/nativeRecipientResolver';
 import { createNativeTrezorSessions } from '../hardware/trezorTransport.native';
 import type { NativeTrezorSessions } from '../hardware/trezorSessions';
 import type { NativeTrezorView, NativeTrezorSnapshot } from '../custody/trezorAccounts';
@@ -22,7 +32,7 @@ import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
 import { createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
 import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
-import { isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks.ts';
+import { findUtxoNetwork, isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../core/utxoReadSession.ts';
 import { createNativeUtxoActivity } from '../custody/utxoActivity.ts';
 import { createUtxoActivityReader } from '../core/utxoActivity.ts';
@@ -64,6 +74,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     assertActive,
     deviceUnlock,
     deriveSentryPublicKey: createNativeSentryPublicKeyDeriver(),
+    runSentryCrypto: createNativeSentryCryptoExecutor(null),
     trezorSessions,
     async createLedgerTransport(owner) {
       const { createNativeLedgerTransport } = await import('../hardware/ledgerTransport.native');
@@ -179,14 +190,57 @@ export function createNativeWalletControllers() {
       return runtime;
     },
   }, { preferences: securityPreferences, assertActive });
+  const connectionNetworks = createNativeNetworkView(authority, { utxoSendAvailable: true });
+  const recipientResolver = createNativeRecipientResolver({ source: authority, fetch: walletFetch });
+  const observeWatchAsset = createNativeWatchAssetObserver({ fetch: walletFetch,
+    registrations: () => authority.getCatalogue()?.networks ?? [] });
+  const reads = createNativeDappRpcReadHost({ fetch: walletFetch, registration() {
+    const state = authority.getSnapshot(), catalogue = authority.getCatalogue();
+    const network = catalogue?.networks.find(item => item.id === state.account?.network);
+    if (state.phase !== 'ready' || !state.account || !network || catalogue?.active.networkId !== network.id)
+      throw new CustodyOperationError('CANCELLED');
+    return network;
+  } });
+  const controls = createNativeDappControlHost({
+    utxoNetworks: () => authority.getCatalogue()?.utxoNetworks ?? [],
+    networks: connectionNetworks,
+    fetch: walletFetch,
+    context() {
+      const state = authority.getSnapshot(), catalogue = authority.getCatalogue();
+      const control = runtime?.catalogue.getControlSnapshot();
+      if (state.phase !== 'ready' || !state.account || !catalogue || !control || catalogue.revision !== control.revision || catalogue.active.accountId !== control.active.accountId || catalogue.active.networkId !== state.account.network || control.active.networkId !== state.account.network)
+        return null;
+      const networkLabel = findUtxoNetwork(state.account.network, catalogue.utxoNetworks)?.name ??
+        catalogue.networks.find(item => item.id === state.account!.network)?.name ?? 'Network';
+      return { activeAccountId: control.active.accountId, networkId: control.active.networkId,
+        revision: state.revision, catalogueRevision: control.revision, networkLabel, accounts: control.accounts };
+    },
+    previewNetworkSelection(id, expectedRevision) {
+      if (!runtime) throw new CustodyOperationError('NOT_READY');
+      return runtime.catalogue.previewNetworkSelection(id, expectedRevision);
+    },
+    prepareWatchAsset: (request, owner, signal, check) => prepareNativeWatchAsset(request, owner, signal, check, {
+      source: authority, runtime: () => runtime?.tokens, observe: observeWatchAsset,
+    }),
+  });
+  const sentryRequests = createNativeDappSentryHost({
+    openApprovals: (...args) => sentry.openApprovals(...args),
+    openNodes: (...args) => sentry.openNodes(...args),
+  });
+  const syscoin = createNativeDappSyscoinHost({ source: authority, fetch: walletFetch,
+    readPublic(method, owner, isChange, signal, check) {
+      if (!runtime) throw new CustodyOperationError('NOT_READY');
+      return runtime.readConnectionUtxoPublic(method, owner, isChange, signal, check);
+    } });
   const connections = new NativeConnectionsController({
     source: authority,
     activateAccount: (accountId, revision, guard) => authority.selectConnectionAccount(accountId, revision, guard),
     preparePlatform: prepareWalletConnectRuntime,
     async openHost() {
       if (!runtime) throw new CustodyOperationError('NOT_READY');
-      return runtime.openConnectionHost();
+      return Object.freeze({ ...await runtime.openConnectionHost(), controls, reads, syscoin, sentry: sentryRequests });
     },
+    openExternalUrl: (url) => Linking.openURL(url),
     projectId: process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '2385bd7fee9c23847638bb997c6f8409',
     checkSite: (origin) => blacklistService.checkUrl(origin),
     checkAddress: (address) => blacklistService.checkAddress(address),
@@ -319,6 +373,19 @@ export function createNativeWalletControllers() {
   };
   const sentry = Object.freeze({
     available: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.(),
+    signingAvailable: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.() && !!runtime.openSentryApprovals,
+    async openApprovals(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryApprovals> {
+      const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+      const open = selected.openSentryApprovals;
+      if (!open) throw new CustodyOperationError('NOT_READY');
+      const manager = await observeFailure(() => open(lifetime, assertCurrent));
+      try { assertCurrent(); if (lifetime.aborted) throw new CustodyOperationError('CANCELLED'); }
+      catch (cause) { manager.dispose(); throw cause; }
+      return Object.freeze({ ...manager,
+        votes: Object.freeze({ ...manager.votes, sign: (...args: Parameters<typeof manager.votes.sign>) => observeFailure(() => manager.votes.sign(...args)) }),
+        operations: Object.freeze({ ...manager.operations, sign: (...args: Parameters<typeof manager.operations.sign>) => observeFailure(() => manager.operations.sign(...args)) }),
+      });
+    },
     async openKeys(lifetime: AbortSignal, assertOwner: () => void): Promise<NativeSentryKeyManagement> {
       const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
       const open = selected.openSentryKeyManagement;
@@ -511,6 +578,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentry, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentry, recipientResolver, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

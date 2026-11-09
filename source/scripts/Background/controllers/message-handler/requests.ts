@@ -1,7 +1,15 @@
 import { ethErrors } from 'helpers/errors';
 
 import { normalizeDappCallsRequest } from '../../../../shared/dappCalls.ts';
+import {
+  isDappSyscoinRead,
+  normalizeDappSyscoinRead,
+} from '../../../../shared/dappSyscoinReads.ts';
 import { normalizeDappTransaction } from '../../../../shared/dappTransaction.ts';
+import {
+  isDappWalletControlMethod,
+  normalizeDappWalletControl,
+} from '../../../../shared/dappWalletControl.ts';
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
@@ -138,40 +146,13 @@ export const methodRequest = async (
         'personal_sign hexadecimal messages must contain complete bytes'
       );
   }
-  if (
-    data.method === 'wallet_switchEthereumChain' ||
-    data.method === 'wallet_addEthereumChain'
-  ) {
-    const params = data.params;
-    const chain = params?.[0];
-    const chainId = chain?.chainId;
-    if (
-      !params ||
-      params.length !== 1 ||
-      !chain ||
-      typeof chain !== 'object' ||
-      Array.isArray(chain) ||
-      typeof chainId !== 'string' ||
-      !/^0x[\da-f]+$/i.test(chainId) ||
-      !Number.isSafeInteger(Number(chainId)) ||
-      Number(chainId) <= 0
-    )
-      throw ethErrors.rpc.invalidParams('Invalid chainId');
-    if (
-      data.method === 'wallet_addEthereumChain' &&
-      (!Array.isArray(chain.rpcUrls) ||
-        !chain.rpcUrls.length ||
-        chain.rpcUrls.some((url: unknown) => {
-          if (typeof url !== 'string') return true;
-          try {
-            return !['https:', 'http:'].includes(new URL(url).protocol);
-          } catch {
-            return true;
-          }
-        }))
-    )
-      throw ethErrors.rpc.invalidParams('Valid rpcUrls are required');
-  }
+  if (isDappWalletControlMethod(data.method))
+    normalizeDappWalletControl(data.method, data.params);
+
+  if (isDappSyscoinRead(data.method))
+    data.params = [
+      ...normalizeDappSyscoinRead(data.method, data.params).params,
+    ];
 
   // Parse the method prefix and name
   const [prefix, methodName] = data.method.includes('_')

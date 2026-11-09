@@ -8,6 +8,7 @@ import {
   normalizeDappCapabilitiesRequest,
   projectDappCapabilities,
 } from '../../../../shared/dappCapabilities.ts';
+import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
 import { hasLiveEoaCallsSequence } from '../../handlers/approvalSubmission';
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
@@ -359,38 +360,12 @@ export class WalletMethodHandler implements IMethodHandler {
           // Get the current network info
           const network = dapp.getNetwork();
 
-          const permissions = [
-            {
-              id: '1', // Add id field that test dapp expects
-              parentCapability: 'eth_accounts',
-              invoker: host,
-              caveats: [
-                {
-                  type: 'restrictReturnedAccounts',
-                  value: [account.address], // Ensure we return address, not full account object
-                },
-              ],
-              date: dappInfo.date,
-            },
-          ];
-
-          // Add endowment:permitted-chains permission for EVM networks
-          if (vault && !vault.isBitcoinBased) {
-            permissions.push({
-              id: '2',
-              parentCapability: 'endowment:permitted-chains',
-              invoker: host,
-              caveats: [
-                {
-                  type: 'restrictNetworkSwitching',
-                  value: [`0x${network.chainId.toString(16)}`], // Convert to hex format
-                },
-              ],
-              date: dappInfo.date,
-            });
-          }
-
-          return permissions;
+          return projectDappPermissions(
+            host,
+            account.address,
+            dappInfo.date,
+            vault && !vault.isBitcoinBased ? [network.chainId] : undefined
+          );
 
         case 'revokePermissions':
           // Check params to see which permissions to revoke

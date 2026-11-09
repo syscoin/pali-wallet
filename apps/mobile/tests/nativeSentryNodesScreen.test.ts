@@ -1,3 +1,4 @@
+import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -71,7 +72,7 @@ function renderer() {
   };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} };
   const idle = createIdleComponentFixture(hook, native);
-  const common = { react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
+  const common = { '../../../../source/shared/sentryNetworks': { SENTRY_NETWORKS }, react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
   const load = (name: string, additional: Record<string, unknown> = {}) => evaluate(readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8'), { ...common, ...additional });
   const password = load('NoteBackupPasswordField').NoteBackupPasswordField;
   const nodes = load('NativeSentryNodes', { './NoteBackupPasswordField': { NoteBackupPasswordField: password } }).NativeSentryNodes as Component;
@@ -110,7 +111,7 @@ const goBack = (tree: Element) => find(tree, 'Header').props.onBack();
 function fixture(options: { initial?: Snapshot; opening?: Promise<void>; preparing?: Promise<void>; confirming?: Promise<void>; releasing?: Promise<void>; openingFailure?: boolean; listFailureAt?: number } = {}) {
   const r = renderer();
   let snapshot: Snapshot = options.initial ?? empty, backs = 0, opened = 0;
-  const calls = { list: 0, prepare: [] as string[], confirm: [] as SentryNodeLinkReview[], cancel: [] as string[], release: [] as { reservation: unknown; password: string; acknowledgeNodeStops: boolean }[], dispose: 0, writes: 0 };
+  const calls = { list: 0, prepare: [] as { request: unknown; origin: string }[], confirm: [] as SentryNodeLinkReview[], cancel: [] as string[], release: [] as { reservation: unknown; password: string; acknowledgeNodeStops: boolean }[], dispose: 0, writes: 0 };
   const signals: AbortSignal[] = [], managers: NativeSentryNodeManagement[] = [];
   const open = async (signal: AbortSignal, check: () => void): Promise<NativeSentryNodeManagement> => {
     opened++; signals.push(signal);
@@ -118,7 +119,7 @@ function fixture(options: { initial?: Snapshot; opening?: Promise<void>; prepari
     const current = () => { check(); if (disposed) throw new Error('Manager disposed'); };
     const manager: NativeSentryNodeManagement = {
       async list() { calls.list++; current(); if (calls.list === options.listFailureAt) throw new Error('Private refresh error'); return snapshot; },
-      async prepareLink(registration) { calls.prepare.push(registration); current(); await options.preparing; current(); return review; },
+      async prepareLink(request, origin) { calls.prepare.push({ request, origin }); current(); await options.preparing; current(); return review; },
       async confirmLink(value) { calls.confirm.push(value); current(); await options.confirming; current(); calls.writes++; snapshot = { ...empty, linkedNodes: [node], collateral: [reservation] }; return { version: 1, linked: true, proTxHash: node.proTxHash, genesisHash: '01'.repeat(32) }; },
       cancelLink(id) { calls.cancel.push(id); },
       async releaseCollateral(value) { calls.release.push(value); current(); await options.releasing; current(); calls.writes++; snapshot = { ...empty, linkedNodes: [node], collateral: [] }; return value.reservation; },
@@ -163,7 +164,7 @@ test('hub routes node/key ports separately and keeps pane-close callback stable 
 
 test('node link displays exact reviewed fields, confirms that same object and refreshes persisted state', async () => {
   const f = fixture(); let tree = await reviewNode(f);
-  assert.deepEqual(f.calls.prepare, [node.proTxHash]);
+  assert.deepEqual(JSON.parse(JSON.stringify(f.calls.prepare)), [{ request: { version: 1, proTxHash: node.proTxHash, genesisHash: SENTRY_NETWORKS.testnet.genesisHash }, origin: 'Pali Wallet' }]);
   for (const value of [review.serviceUrl, node.proTxHash, node.service, node.nevmAddress, `${node.collateralOutpoint.txid}:2`]) assert.ok(text(tree).includes(value), `Missing reviewed field ${value}: ${text(tree)}`);
   assert.equal(all(tree).filter(element => element.type === 'TextInput').length, 0);
   press(button(tree, 'Link node')); await settle(); tree = f.render();

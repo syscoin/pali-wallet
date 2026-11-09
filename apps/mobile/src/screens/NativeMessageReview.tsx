@@ -5,6 +5,8 @@ import type { NativeConnectionsView, NativeMessageReview } from '../connections/
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import { DappSiteStatus } from './DappSiteStatus';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
+import { useDappLedgerConnection } from './useDappLedgerConnection';
 
 const reviewErrors = {
   INVALID_MESSAGE: 'The app sent an invalid signing message.',
@@ -24,10 +26,12 @@ const orderWarnings = {
 } as const;
 
 /** Public review data and identifier-only commands keep the signer inside custody. */
-export function NativeMessageReviewScreen({ review, controller }: {
+export function NativeMessageReviewScreen({ review, controller, ledgerConnection }: {
   review: NativeMessageReview;
   controller: NativeConnectionsView;
+  ledgerConnection?: NativeLedgerConnectionView;
 }) {
+  const ledger = useDappLedgerConnection({ review, controller, ledgerConnection });
   const [acceptance, setAcceptance] = useState<{ revision: number; checked: boolean } | null>(null);
   const acknowledged = acceptance?.revision === review.revision && acceptance.checked;
   const reject = () => { void controller.rejectRequest(review.id).catch(() => undefined); };
@@ -44,6 +48,7 @@ export function NativeMessageReviewScreen({ review, controller }: {
   const showError = review.error !== null && review.error !== 'SITE_MISMATCH' &&
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
   const perform = () => {
+    if (!review.needsAccountSwitch && !ledger.canApprove()) return;
     const action = review.needsAccountSwitch
       ? controller.activateRequestAccount(review.id, review.revision)
       : controller.approveRequest(review.id, review.revision, acknowledged);
@@ -91,11 +96,12 @@ export function NativeMessageReviewScreen({ review, controller }: {
     {showError && review.error && <Notice title="Signing unavailable" body={reviewErrors[review.error]} />}
     {review.needsAccountSwitch && !blocked && <Text style={s.body}>Switch to {review.accountLabel} to review and sign this request.</Text>}
     {review.dispatched && review.busy && <View style={s.sending}><ActivityIndicator color={colors.blue} /><Text>Sending signature…</Text></View>}
+    {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
     {!review.dispatched && <Button title={review.busy ? 'Please wait…' : review.needsAccountSwitch ? 'Switch account' : personal ? 'Sign message' : 'Sign typed data'}
-      disabled={blocked || review.busy || !review.needsAccountSwitch && review.requiresWarningAcknowledgement && !acknowledged} onPress={perform} />
+      disabled={blocked || review.busy || !review.needsAccountSwitch && (ledger.blocked || review.requiresWarningAcknowledgement && !acknowledged)} onPress={perform} />
     }
     <Button title={review.dispatched ? 'Close' : 'Reject'} variant="quiet" onPress={reject} />
-  </Screen></SafeAreaView>;
+  </Screen>{ledger.modal}</SafeAreaView>;
 }
 
 const s = StyleSheet.create({

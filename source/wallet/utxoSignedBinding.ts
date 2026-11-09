@@ -6,6 +6,7 @@ import { coinSelect } from 'syscointx-js';
 import { SENTRY_NETWORKS } from '../shared/sentryNetworks.ts';
 import { supportsSptUtxoChain } from '../shared/sptInventory.ts';
 import { assertUtxoSoftwareSpend } from '../shared/utxoSoftwareCustody.ts';
+import { inspectUtxoRbf } from '../shared/utxoTransactionOptions.ts';
 import { assertPsbtWorkBudget } from '../utils/psbtWorkBudget.ts';
 import {
   ALLOCATION_SEND_VERSION,
@@ -407,6 +408,7 @@ export async function prepareUtxoSignedBinding(
   return Object.freeze({
     psbt,
     review,
+    rbf: inspectUtxoRbf(parsed.txInputs),
     // Only the trusted host's finalized SDK signing result can enter this seam.
     bindSigned(signed: PsbtData) {
       check();

@@ -19,7 +19,8 @@ import { PortfolioQuote } from './PortfolioQuote';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
-import { SYSX_ASSET_DECIMALS } from '../../../../source/shared/syscoinAssetIds';
+import { supportsSptUtxoChain, type SptBalance } from '../../../../source/shared/sptInventory';
+import { NativeSptAssets } from './NativeSptAssets';
 import type { NativeCatalogueAccount } from '../custody/walletCatalogue';
 import type { NativePortfolioAccount, NativePortfolioSnapshot, PublicCustodySource } from '../portfolio/nativePortfolio';
 import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -35,7 +36,7 @@ type Props = {
   onViewRecovery(): void;
   onSecurity?(): void;
   onSend?(): void;
-  onSendSysx?(): void;
+  onSendSpt?(asset: SptBalance): void;
   onSendToken?(token: Erc20Metadata): void;
   onSendCollectible?(collectible: SavedCollectible): void;
   reader?: BalanceReader;
@@ -50,16 +51,16 @@ type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
+export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch, registrations: () => source.getCatalogue?.()?.networks }), [reader, source]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendSysx={onSendSysx} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
+  return <NativePortfolioContent hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
+function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot; accountLabel: string;
 }) {
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
@@ -146,7 +147,6 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
   const amount = snapshot.status === 'available' && snapshot.units !== null ? formatBaseUnits(snapshot.units, network.decimals) : null;
   const quote = useNativeCoinQuote(!receiving && !tokenTitle ? account?.network ?? null : null, amount, registration);
   const pending = snapshot.pendingDeltaUnits;
-  const sysx = snapshot.sysx;
   const statusText = loading ? `Loading ${networkName} balance…` : snapshot.status === 'error' ? 'Balance unavailable' : 'Balance not loaded';
   const currentFeedback = feedback?.scope === scope ? feedback : null;
   const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
@@ -195,16 +195,12 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
         </View>
         {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         {canReceive && <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>}
-        {sysx && <Card style={s.accountCard}>
-          <Text accessibilityRole="header" style={s.label}>SYSX</Text>
-          {sysx.status === 'available' ? <>
-            <Text style={s.address} testID="native-portfolio-sysx">{formatBaseUnits(sysx.confirmedUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>
-            {sysx.pendingDeltaUnits !== '0' && <Text style={s.unit}>Pending {formatBalanceDelta(sysx.pendingDeltaUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>}
-            {onSendSysx && sysx.confirmedUnits !== '0' && <Button title="Send SYSX" variant="secondary" onPress={() => { if (account && model.isCurrent(account)) onSendSysx(); }} />}
-          </> : <Text style={s.unit} testID="native-portfolio-sysx">{loading ? 'Loading balance…' : 'Balance unavailable'}</Text>}
-        </Card>}
         {faucetCard}
         </>}
+        {utxo && supportsSptUtxoChain(utxo.chainId) && <NativeSptAssets key={scope} holdings={snapshot.assets?.status === 'available' ? snapshot.assets.holdings : null} loading={loading}
+          onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack}
+          onRefresh={() => { if (account && model.isCurrent(account)) void model.refresh(); }}
+          onSend={account && onSendSpt ? asset => { if (model.isCurrent(account)) onSendSpt(asset); } : undefined} />}
         {tokenView && !utxo && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
           onSend={(!smartAccount || smartAccount.localEcdsa) && account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onSendCollectible={(!smartAccount || smartAccount.localEcdsa) && account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) onSendCollectible(collectible); } : undefined}

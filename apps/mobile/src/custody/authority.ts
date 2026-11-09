@@ -1,6 +1,6 @@
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy.ts';
 import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
-import type { NativeAccountRequest } from './accounts.ts';
+import type { NativeAccountRequest, NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { NativeImportRequest, NativeUtxoImportDraft } from './importedAccounts.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
@@ -142,11 +142,26 @@ export class NativeCustodyAuthority {
   }
 
   /** Selection revokes outstanding reviews before changing the saved EVM context. */
-  selectNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+  selectNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<NativeNetworkSelectionReceipt> {
     return this.manageContext((runtime) => {
       if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
-      return runtime.networks.reserve(id, expectedCatalogueRevision);
-    }, expectedRevision);
+      const admitted = runtime.networks.reserve(id, expectedCatalogueRevision);
+      return { cancel: admitted.cancel, execute: async (check) => {
+        const proof = await admitted.execute(check); check();
+        if (!proof || proof.sourceCatalogueRevision !== expectedCatalogueRevision || proof.target.id !== id || proof.selection.networkId !== id)
+          throw new CustodyRuntimeError('OPERATION_FAILED');
+        proof.assertCurrent(); check();
+        const catalogue = runtime.accounts?.getSnapshot(), selected = catalogue?.accounts.find(account => account.id === proof.selection.accountId);
+        if (catalogue?.revision !== expectedCatalogueRevision + 1 || catalogue.active.accountId !== proof.selection.accountId || catalogue.active.networkId !== id || selected?.address !== proof.selection.address)
+          throw new CustodyRuntimeError('OPERATION_FAILED');
+        const assertReceipt = () => {
+          proof.assertCurrent();
+          const current = runtime.accounts?.getSnapshot();
+          if (this.runtime !== runtime || this.snapshot.phase !== 'ready' || this.revision !== expectedRevision + 1 || this.snapshot.account?.network !== id || this.snapshot.account.address !== proof.selection.address || current?.revision !== expectedCatalogueRevision + 1 || current.active.accountId !== proof.selection.accountId || current.active.networkId !== id || !current.accounts.some(account => account.id === proof.selection.accountId && account.address === proof.selection.address)) throw new CustodyOperationError('CANCELLED');
+        };
+        return Object.freeze({ ...proof, sourceContextRevision: expectedRevision, contextRevision: expectedRevision + 1, catalogueRevision: expectedCatalogueRevision + 1, assertCurrent: assertReceipt });
+      } };
+    }, expectedRevision).then(receipt => { receipt.assertCurrent(); return receipt; });
   }
 
   async addUtxoNetwork(draft: import('./accounts.ts').NativeUtxoNetworkDraft, expectedRevision: number,
@@ -184,7 +199,7 @@ export class NativeCustodyAuthority {
       const admitted = networks.reserve(proof, expectedCatalogueRevision);
       return {
         cancel: admitted.cancel,
-        execute: (assertCurrent) => admitted.execute(() => { checkRoute(); assertCurrent(); }),
+        execute: async (assertCurrent) => { await admitted.execute(() => { checkRoute(); assertCurrent(); }); },
       };
     }, expectedRevision);
   }
@@ -206,10 +221,11 @@ export class NativeCustodyAuthority {
     return { networks, check, checkRoute };
   }
 
-  manageNetwork(request: import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+  manageNetwork(request: Exclude<import('./accounts.ts').NativeNetworkRequest, { kind: 'select-network' }>, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
     return this.manageContext((runtime) => {
       if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
-      return runtime.networks.reserve(request, expectedCatalogueRevision);
+      const admitted = runtime.networks.reserve(request, expectedCatalogueRevision);
+      return { cancel: admitted.cancel, execute: async (check) => { await admitted.execute(check); } };
     }, expectedRevision);
   }
 
@@ -220,12 +236,12 @@ export class NativeCustodyAuthority {
     return id;
   }
 
-  private manageContext(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<void>; cancel(): void }, expectedRevision: number): Promise<void> {
+  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number): Promise<T> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     if (!this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.revision !== expectedRevision) return Promise.reject(new CustodyOperationError('CANCELLED'));
     const runtime = this.runtime;
-    let reservation: ReturnType<NonNullable<CustodyRuntime['accounts']>['reserve']>;
+    let reservation: { execute(assertCurrent: () => void): Promise<T>; cancel(): void };
     try {
       // Runtime admission happens before observers can attempt competing work.
       reservation = reserve(runtime);
@@ -246,13 +262,14 @@ export class NativeCustodyAuthority {
     return (async () => {
       try {
         await this.drainLocks(); current();
-        await reservation.execute(current); current();
+        const result = await reservation.execute(current); current();
         await this.readState(true); current();
         const network = this.selectedNetwork(runtime);
         const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), network, runtime.accounts?.getSnapshot()?.utxoNetworks);
         current();
         this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network, address }), error: null });
         current();
+        return result;
       } catch (cause) {
         reservation.cancel();
         this.requestLock();

@@ -37,19 +37,21 @@ test('SYSX appears as an exact read-only balance on the selected Syscoin UTXO ac
   await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Ethereum balance 1.234 ETH');
   await page.evaluate(() => window.__nativeNetworkPortfolio.select('syscoin'));
   await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Syscoin Mainnet balance 1.234 SYS');
-  await expect(page.getByTestId('native-portfolio-sysx')).toHaveText('90071992.54740995 SYSX');
+  await page.getByRole('button', { name: /^SYSX(?:\s|$)/ }).click();
+  await expect(page.getByText('90071992.54740995 SYSX', { exact: true })).toBeVisible();
   await expect(page.getByText('Pending -0.00000001 SYSX', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /send sysx/i })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.evaluate(() => window.__nativeNetworkPortfolio.setSysx('unavailable'));
-  await page.getByTestId('native-portfolio-refresh').click();
-  await expect(page.getByTestId('native-portfolio-sysx')).toHaveText('Balance unavailable');
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect(page.getByText('Balance unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText('Pending -0.00000001 SYSX', { exact: true })).toHaveCount(0);
   await page.evaluate(() => window.__nativeNetworkPortfolio.setSysx('empty'));
-  await page.getByTestId('native-portfolio-refresh').click();
-  await expect(page.getByTestId('native-portfolio-sysx')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await page.getByRole('button', { name: 'All tokens', exact: true }).click();
+  await expect(page.getByText('No token holdings.', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__nativeNetworkPortfolio.select('bitcoin'));
-  await expect(page.getByTestId('native-portfolio-sysx')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Tokens', exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__nativeNetworkPortfolio.reads())).toEqual(['ethereum', 'syscoin', 'syscoin', 'syscoin', 'bitcoin']);
 });
 

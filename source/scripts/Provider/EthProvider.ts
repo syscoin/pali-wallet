@@ -1,6 +1,10 @@
-// validateEOAAddress removed - validation should be done through background service
 import { ethErrors } from 'helpers/errors';
 
+// validateEOAAddress removed - validation should be done through background service
+import {
+  isDappRpcReadMethod,
+  normalizeDappRpcRead,
+} from '../../shared/dappRpcReads.ts';
 import { normalizeDappTransaction } from '../../shared/dappTransaction.ts';
 import { snapshotSmartAccountDappTransaction } from '../../shared/smartAccountDappTransaction.ts';
 import { getController } from 'scripts/Background';
@@ -239,6 +243,8 @@ export const EthProvider = (
   const unrestrictedRPCMethods = async (method: string, params: any[]) => {
     const unrestrictedMethods = getUnrestrictedMethods();
     if (!unrestrictedMethods.includes(method)) return false;
+    if (isDappRpcReadMethod(method))
+      params = [...normalizeDappRpcRead(method, params).params];
     const { ethereumTransaction } = getController().wallet;
 
     // Safety check: ensure web3Provider exists for EVM networks

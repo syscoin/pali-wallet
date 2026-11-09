@@ -1,3 +1,4 @@
+import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks';
 import React from 'react';
 import { NativeSentryNodes } from '../../src/screens/NativeSentryNodes';
 import type {
@@ -54,7 +55,8 @@ const open = async (
         collateral: protectedCollateral ? [reservation()] : [],
       };
     },
-    async prepareLink(value) {
+    async prepareLink(value, origin) {
+      const request = value as { version?: unknown; proTxHash?: unknown; genesisHash?: unknown };
       check();
       calls.push('lookup');
       if (options.has('hold'))
@@ -62,7 +64,7 @@ const open = async (
           releaseLookup = resolve;
         });
       check();
-      if (options.has('error') || value !== node.proTxHash)
+      if (options.has('error') || request.version !== 1 || request.proTxHash !== node.proTxHash || request.genesisHash !== SENTRY_NETWORKS.mainnet.genesisHash || origin !== 'Pali Wallet')
         throw new Error('Fixture lookup failed');
       return (review = Object.freeze({
         id: 'public-review',

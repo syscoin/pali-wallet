@@ -1,3 +1,4 @@
+import { signingFixtureHost } from './unsupportedDappPorts.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,6 +14,8 @@ import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { HdKeyExportFlow, type HdKeyExportScope } from '../src/custody/hdKeyExport.ts';
 import { keccak256 } from 'ethers/crypto';
+import { getBytes } from 'ethers/utils';
+import { approveHardwareDappRequest, hardwareDappRpc } from './hardwareDappTestSupport.ts';
 import { Transaction } from 'ethers/transaction';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { getNativeNetwork, createNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
@@ -23,7 +26,7 @@ import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import type { DappGrant } from '../../../source/shared/dappTypes.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
-import { recoverPersonalSignature, recoverTypedSignature, SignTypedDataVersion } from '@metamask/eth-sig-util';
+import { recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
@@ -180,6 +183,84 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   };
 }
 
+test('selection receipt binds the first SDK-created UTXO group before commit and stays exact across later selections', async () => {
+  const f = await readyAccounts();
+  try {
+    const before = f.authority.getCatalogue()!, revision = f.authority.getSnapshot().revision;
+    assert.equal((f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.some(group => group.key === '57'), false);
+    const receipt = await f.authority.selectNetwork('syscoin', revision, before.revision);
+    receipt.assertCurrent();
+    assert.equal(receipt.sourceContextRevision, revision); assert.equal(receipt.sourceCatalogueRevision, before.revision);
+    assert.equal(receipt.target.kind, 'utxo');
+    assert.equal(receipt.target.kind === 'utxo' && receipt.target.genesisHash, UTXO_NETWORKS.find(network => network.id === 'syscoin')!.genesisHash);
+    assert.deepEqual(receipt.selection, { accountId: 'hd:57:0', networkId: 'syscoin', address: f.authority.getSnapshot().account!.address });
+    const saved = f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    assert.equal(saved.groups.filter(group => group.key === '57').length, 1);
+    assert.equal(saved.groups.find(group => group.key === '57')!.accounts.HDAccount[0]!.address, receipt.selection.address);
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    assert.throws(receipt.assertCurrent);
+    const reused = await f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    reused.assertCurrent(); assert.deepEqual(reused.selection, receipt.selection);
+    assert.equal((f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups.filter(group => group.key === '57').length, 1);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+test('selection receipt cannot escape a lock during first-group admission', async () => {
+  const f = await readyAccounts(), entered = Promise.withResolvers<void>(), held = Promise.withResolvers<void>();
+  let first = true;
+  try {
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY));
+    f.disk.onIdentity(async () => { if (first) { first = false; entered.resolve(); await held.promise; } });
+    const selecting = f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await entered.promise; f.authority.lock(); held.resolve();
+    await assert.rejects(selecting, /CANCELLED|OPERATION_FAILED/);
+    assert.notEqual(f.authority.getSnapshot().phase, 'ready');
+    assert.deepEqual(f.disk.records.get(WALLET_CATALOGUE_KEY), before);
+  } finally { held.resolve(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+test('selection receipt completes the real first-use dapp mode capability without adopting post-state', async () => {
+  const f = await readyAccounts();
+  try {
+    const [{ createNativeNetworkView }, { createNativeDappControlHost }, { normalizeDappModeRequest }] = await Promise.all([
+      import('../src/custody/networkView.ts'), import('../src/custody/dappControl.ts'), import('../../../source/shared/dappChainScope.ts'),
+    ]);
+    const ownerHost = await f.runtime.openConnectionHost(), before = f.authority.getSnapshot(), account = ownerHost.context().accounts[0]!;
+    const controls = createNativeDappControlHost({
+      networks: createNativeNetworkView(f.authority, { utxoSendAvailable: true }),
+      context() {
+        const state = f.authority.getSnapshot(), catalogue = f.runtime.catalogue.getControlSnapshot();
+        if (state.phase !== 'ready' || !catalogue) return null;
+        return { revision: state.revision, catalogueRevision: catalogue.revision, activeAccountId: catalogue.active.accountId, networkId: catalogue.active.networkId, networkLabel: catalogue.active.networkId, accounts: catalogue.accounts };
+      },
+      utxoNetworks() { const catalogue = f.runtime.catalogue.getSnapshot(); if (!catalogue) throw Error('CANCELLED'); return catalogue.utxoNetworks; },
+      previewNetworkSelection: (id, revision) => f.runtime.catalogue.previewNetworkSelection(id, revision),
+      async fetch() { throw Error('Mode selection must not fetch peer-provided endpoints'); },
+      async prepareWatchAsset() { throw Error('Mode selection must not open asset authority'); },
+    });
+    const prepared = await controls.prepare(normalizeDappModeRequest('sys_changeUTXOEVM', [{ chainId: 57 }]), { accountId: account.id, address: account.address, networkId: 'ethereum' }, new AbortController().signal, ownerHost.assertOwner);
+    assert.equal(f.authority.getSnapshot().revision, before.revision);
+    const result = await prepared.commit(ownerHost.assertOwner); result.assertCurrent();
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:57:0');
+    assert.equal(f.authority.getCatalogue()!.active.networkId, 'syscoin');
+    prepared.dispose();
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+for (const fault of ['wrong-group', 'missing-receipt'] as const) test(`selection receipt refuses ${fault} from an otherwise real first-use mutation`, async () => {
+  const f = await readyAccounts();
+  try {
+    const reserve = f.runtime.networks!.reserve;
+    f.runtime.networks!.reserve = (id, revision) => {
+      const admitted = reserve(id, revision);
+      return { cancel: admitted.cancel, async execute(check) {
+        const proof = await admitted.execute(check); assert(proof);
+        return fault === 'missing-receipt' ? null : { ...proof, selection: { ...proof.selection, accountId: 'hd:60:0', address: ADDRESS } };
+      } };
+    };
+    await assert.rejects(f.authority.selectNetwork('syscoin', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /OPERATION_FAILED/);
+    assert.notEqual(f.authority.getSnapshot().phase, 'ready');
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
 test('connection host retains its wallet owner across lock while disclosing only unlocked public accounts', async () => {
   const disk = memoryDisk();
   disk.denyNetwork();
@@ -214,6 +295,51 @@ test('connection host retains its wallet owner across lock while disclosing only
     await runtime.storage.close().catch(() => undefined);
     disk.restoreNetwork();
   }
+});
+
+test('connection UTXO public reads use the real SDK and reject a retired owner after held Blockbook discovery', async () => {
+  const { getUtxoNetwork } = await import('../src/core/utxoNetworks.ts');
+  const [{ getNetworkConfig }, { utils }] = await Promise.all([import('@sidhujag/sysweb3-network'), import('syscoinjs-lib')]);
+  const network = getUtxoNetwork('bitcoin'), requests: string[] = [];
+  let hold: (() => Promise<void>) | undefined;
+  const disk = memoryDisk(undefined, undefined, undefined, undefined, async (input, init) => {
+    const url = String(input); requests.push(url);
+    assert.equal(init?.method, 'GET'); assert.equal(init?.credentials, 'omit'); assert.equal(init?.redirect, 'error');
+    assert.match(url, /^https:\/\//);
+    assert(url.startsWith(network.endpoint + '/api/v2/xpub/'));
+    assert(url.endsWith('?tokens=used&details=tokens'));
+    await hold?.();
+    const response = Response.json({ tokens: [] }); Object.defineProperty(response, 'url', { value: url }); return response;
+  });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    const host = await runtime.openConnectionHost(), account = host.context().accounts.find(value => value.id === host.context().activeAccountId)!;
+    assert(account.xpub);
+    const scope = { accountId: account.id, xpub: account.xpub }, signal = new AbortController().signal;
+    const config = getNetworkConfig(0, 'btc');
+    const hd = new utils.HDSigner(PHRASE, null, false, config.networks, 0, config.types.zPubType, 84);
+    hd.createAccountAtIndex(account.index, 84);
+    assert.equal(await runtime.readConnectionUtxoPublic('getChangeAddress', scope, true, signal, () => undefined), hd.createAddress(0, true, 84));
+    for (const change of [false, true]) {
+      assert.equal(await runtime.readConnectionUtxoPublic('getCurrentAddressPubkey', scope, change, signal, () => undefined), hd.Signer.accounts.get(account.index).getPublicKey(0, change));
+      assert.equal(await runtime.readConnectionUtxoPublic('getBip32Path', scope, change, signal, () => undefined), `m/84'/0'/0'/${change ? 1 : 0}/0`);
+    }
+    assert.equal(requests.length, 5);
+    const before = requests.length;
+    await assert.rejects(runtime.readConnectionUtxoPublic('getBip32Path', { ...scope, accountId: 'hd:0:999' }, false, signal, () => undefined));
+    assert.equal(requests.length, before, 'a different account cannot disclose its xpub');
+    let current = true;
+    hold = async () => { entered.resolve(); await release.promise; };
+    const work = runtime.readConnectionUtxoPublic('getCurrentAddressPubkey', scope, false, signal, () => { if (!current) throw Error('retired request owner'); });
+    const refused = assert.rejects(work);
+    await entered.promise; current = false; release.resolve(); await refused;
+    assert.equal(requests.length, before + 1);
+  } finally { release.resolve(); await owner.dispose(); disk.restoreNetwork(); }
 });
 
 test('recovery retirement captures the original runtime pair and ordinary close joins the same drain', async () => {
@@ -1374,7 +1500,7 @@ test(`${networkId} synchronous network reentrancy cannot retarget the current sh
   const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
   try {
     await f.authority.selectNetwork(networkId, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
-    let attempted: Promise<void> | undefined;
+    let attempted: ReturnType<NativeCustodyAuthority['selectNetwork']> | undefined;
     const revision = f.authority.getSnapshot().revision;
     sdk.onSign(() => {
       attempted = f.authority.selectNetwork('ethereum', revision, f.authority.getCatalogue()!.revision);
@@ -2544,9 +2670,10 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
     let event!: (value: WalletConnectTransportEvent) => void;
     const responses: WalletConnectResponse[] = [];
     controller = new NativeConnectionsController({
+      async openExternalUrl() { throw Error('Website returns are outside this fixture'); },
       source: f.authority,
       activateAccount: (id, revision, guard) => f.authority.selectConnectionAccount(id, revision, guard),
-      openHost: async () => host,
+      openHost: async () => signingFixtureHost(host),
       preparePlatform: async () => undefined,
       projectId: 'public-authority-fixture',
       metadata: { name: 'Pali', description: '', url: 'https://paliwallet.com', icons: [] },
@@ -2623,6 +2750,8 @@ function trezorFixtureSessions() {
   let beforeAddress: (() => Promise<void>) | undefined;
   let beforeRetirement: (() => Promise<void>) | undefined;
   let beforeCancellation: (() => Promise<void>) | undefined;
+  let beforeSignature: (() => Promise<void>) | undefined;
+  let signatures = 0, cancellations = 0, finishes = 0;
   let inAddress = false;
   const publish = () => { for (const listener of listeners) listener(); };
   const sessions: Sessions = {
@@ -2630,7 +2759,7 @@ function trezorFixtureSessions() {
     getSnapshot: () => state,
     subscribe(listener) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     receiveCallback: () => false,
-    async cancel() { state = null; publish(); await beforeCancellation?.(); },
+    async cancel() { cancellations++; state = null; publish(); await beforeCancellation?.(); },
     async dispose() { state = null; publish(); },
     start(request) {
       assert.equal(request.sessionGeneration, generation);
@@ -2657,7 +2786,7 @@ function trezorFixtureSessions() {
       get(target, method: string) {
         if (method === 'then') return undefined;
         if (method in target) return target[method as keyof typeof target];
-        return async (guard: () => void, request: { path: string; transaction?: Record<string, unknown> }) => {
+        return async (guard: () => void, request: { path: string; transaction?: Record<string, unknown>; message?: string; data?: Parameters<typeof signTypedData>[0]['data']; metamask_v4_compat?: boolean }) => {
           check(); guard(); assert(live);
           const path = request.path;
           paths.push(path);
@@ -2683,7 +2812,17 @@ function trezorFixtureSessions() {
           }
           if (method === 'ethereumGetPublicKey')
             return { success: true, payload: { publicKey: wallet.publicKey.slice(2) } };
+          if (method === 'ethereumSignMessage') {
+            signatures++; await beforeSignature?.();
+            return { success: true, payload: { address: wallet.address, signature: (await wallet.signMessage(getBytes('0x' + request.message!))).slice(2) } };
+          }
+          if (method === 'ethereumSignTypedData') {
+            signatures++; await beforeSignature?.();
+            return { success: true, payload: { address: wallet.address, signature: signTypedData({ privateKey: Buffer.from(wallet.privateKey.slice(2), 'hex'),
+              data: request.data as import('@metamask/eth-sig-util').TypedMessage<import('@metamask/eth-sig-util').MessageTypes>, version: request.metamask_v4_compat ? SignTypedDataVersion.V4 : SignTypedDataVersion.V3 }) } };
+          }
           if (method === 'ethereumSignTransaction') {
+            signatures++; await beforeSignature?.();
             const tx = request.transaction!;
             const parsed = Transaction.from({ ...tx, type: tx.gasPrice === undefined ? 2 : 0 });
             const signature = wallet.signingKey.sign(parsed.unsignedHash);
@@ -2700,11 +2839,12 @@ function trezorFixtureSessions() {
         await beforeRetirement?.();
         await retireSdk();
       },
-      async finish() { check(); state = null; live = false; publish(); },
+      async finish() { check(); finishes++; state = null; live = false; publish(); },
       async cancel() { await sessions.cancel(job); },
     };
   }
-  return { sessions, paths, holdAddress(hook: () => Promise<void>) { beforeAddress = hook; },
+  return { sessions, paths, signatures: () => signatures, cancellations: () => cancellations, finishes: () => finishes,
+    holdSignature(hook: () => Promise<void>) { beforeSignature = hook; }, holdAddress(hook: () => Promise<void>) { beforeAddress = hook; },
     holdRetirement(hook: () => Promise<void>) { beforeRetirement = hook; },
     holdCancellation(hook: () => Promise<void>) { beforeCancellation = hook; } };
 }
@@ -2771,6 +2911,88 @@ test('Trezor runtime uses shared allocation, preserves records on unlock and sig
       assert.equal(broadcasts, 1);
     } finally { transfers.dispose(); }
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
+});
+
+test('Trezor dapp host adopts only its owned SDK transfer and preserves signed bytes after a lost reply', async () => {
+  const fixture = trezorFixtureSessions(), rpc = hardwareDappRpc();
+  const disk = memoryDisk(undefined, undefined, rpc.fetch, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await runtime.trezor.startImport('Trezor dapp');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Trezor dapp' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    const host = await runtime.openConnectionHost(), account = host.context().accounts.find(value => value.id === host.context().activeAccountId)!;
+    assert.equal(account.type, 'Trezor');
+    const typed = { types: { EIP712Domain: [{ name: 'chainId', type: 'uint256' }], Message: [{ name: 'text', type: 'string' }] },
+      primaryType: 'Message', domain: { chainId: 1 }, message: { text: 'Public Trezor dapp fixture' } };
+    for (const method of ['personal_sign', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const) {
+      const request = readDappMessageRequest(method, method === 'personal_sign' ? ['0x6162', account.address] : [account.address, typed], account.address)!;
+      const input = approveHardwareDappRequest(owner, host, request);
+      try { assert.match(await host.signMessage(input), /^0x[0-9a-f]{130}$/i); }
+      finally { input.approval.dispose(); }
+      assert.equal(fixture.sessions.getSnapshot(), null, 'successful request finishes its exact device job');
+      assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
+    }
+    assert.equal(fixture.signatures(), 3);
+    const request = readDappMessageRequest('personal_sign', ['0x6162', account.address], account.address)!;
+    const input = approveHardwareDappRequest(owner, host, request);
+    try {
+      const review = await host.prepareTransaction({ ...input, transaction: { from: account.address,
+        to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined);
+      assert(!('operation' in review));
+      assert.equal(fixture.signatures(), 3, 'review creates no device signature');
+      rpc.onAdmission(async (hash, raw) => {
+        const saved = await (await runtime.transfers!.journal(() => undefined)).load(hash);
+        assert.equal(saved?.rawTransaction, raw, 'adopted SDK owner writes exact bytes before POST');
+      });
+      rpc.loseReply();
+      await assert.rejects(review.submit(() => undefined, hash => { rpc.reports.push(hash); }, { kind: 'transaction' }));
+      assert.equal(fixture.signatures(), 4); assert.equal(rpc.rawTransactions.length, 1);
+      const raw = rpc.rawTransactions[0]!, transaction = Transaction.from(raw);
+      assert.equal(transaction.from, account.address); assert.equal(transaction.chainId, 1n);
+      assert.equal(transaction.data, '0x6000');
+      assert.equal((await (await runtime.transfers!.journal(() => undefined)).load(keccak256(raw)))?.rawTransaction, raw);
+      await assert.rejects(review.submit(() => undefined, () => assert.fail('cannot repeat retired review'), { kind: 'transaction' }), /REVIEW_REQUIRED/);
+      assert.equal(fixture.signatures(), 4); assert.equal(rpc.rawTransactions.length, 1);
+      assert.equal(fixture.sessions.getSnapshot(), null);
+    } finally { input.approval.dispose(); }
+  } finally { await owner.dispose(); await fixture.sessions.dispose(); disk.restoreNetwork(); }
+});
+
+test('retired Trezor dapp request drains its exact job without offering ordinary transfer resume', async () => {
+  const fixture = trezorFixtureSessions(), rpc = hardwareDappRpc();
+  const disk = memoryDisk(undefined, undefined, rpc.fetch, fixture.sessions);
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const cancelEntered = Promise.withResolvers<void>(), cancelRelease = Promise.withResolvers<void>();
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await runtime.trezor.startImport('Trezor dapp');
+    await owner.manageAccounts({ kind: 'import-trezor', label: 'Trezor dapp' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+    const host = await runtime.openConnectionHost(), account = host.context().accounts.find(value => value.id === host.context().activeAccountId)!;
+    const request = readDappMessageRequest('personal_sign', ['0x6162', account.address], account.address)!;
+    const input = approveHardwareDappRequest(owner, host, request);
+    fixture.holdSignature(async () => { entered.resolve(); await release.promise; });
+    fixture.holdCancellation(async () => { cancelEntered.resolve(); await cancelRelease.promise; });
+    let settled = false;
+    const work = host.signMessage(input).finally(() => { settled = true; });
+    const rejected = assert.rejects(work);
+    await entered.promise;
+    input.approval.retire();
+    await cancelEntered.promise;
+    release.resolve();
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(settled, false, 'retired caller waits for terminal device drainage');
+    cancelRelease.resolve(); await rejected;
+    assert.equal(fixture.signatures(), 1); assert.equal(rpc.rawTransactions.length, 0);
+    assert.equal(fixture.sessions.getSnapshot(), null);
+    assert.notEqual(runtime.trezor.getSnapshot().phase, 'resume');
+    input.approval.dispose();
+  } finally { release.resolve(); cancelRelease.resolve(); await owner.dispose(); await fixture.sessions.dispose(); disk.restoreNetwork(); }
 });
 
 test('Trezor runtime keeps a stable waiting snapshot and cannot save an import after lock', async () => {
@@ -3023,15 +3245,18 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     await owner.manageAccounts({ kind: 'import-trezor', label: 'Bitcoin Trezor' }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
     const callCount = methods.length;
     const first = await runtime.openUtxoSend!(() => undefined);
-    const review = await first.prepare({ recipient, amount: '0.0005' });
+    const review = await first.prepare({ recipient, amount: '0.0005', rbf: false });
+    assert.equal(review.transactionOptions.rbf, false);
     assert.equal(methods.length, callCount);
     owner.lock(); await owner.unlock(PASSWORD);
     assert.equal(runtime.trezor.getSnapshot().phase, 'resume');
     await assert.rejects(first.confirm(review), /CANCELLED|NOT_READY/);
     const intent = await runtime.trezor.resumeSend(); assert.equal(intent.kind, 'utxo');
     if (intent.kind !== 'utxo') throw new Error('Unexpected draft');
+    assert.equal(intent.rbf, false, 'paused handoff retains the actual reviewed option');
     const fresh = await runtime.openUtxoSend!(() => undefined);
     const freshReview = await fresh.prepare(intent);
+    assert.equal(freshReview.transactionOptions.rbf, false);
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
     await fresh.confirm(freshReview);
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);

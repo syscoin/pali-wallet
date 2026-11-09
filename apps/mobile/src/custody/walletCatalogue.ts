@@ -66,6 +66,17 @@ export type NativeWalletCatalogueSnapshot = Readonly<{
   utxoNetworks: readonly UtxoNetwork[];
   active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
 }>;
+/** Non-signing controls can prove a saved account in an inactive network family. */
+export type NativeWalletControlCatalogueSnapshot = Readonly<{
+  revision: number;
+  accounts: readonly NativeCatalogueAccount[];
+  active: NativeWalletCatalogueSnapshot['active'];
+}>;
+export type NativeNetworkSelection = Readonly<{
+  accountId: string;
+  address: string;
+  networkId: string;
+}>;
 export type NativeWalletCatalogueIdentity = Readonly<{
   walletFingerprint: string;
   address: string;
@@ -250,6 +261,38 @@ export function catalogueAccountGroup(
     ? record.groups.find(({ activeNetwork }) => activeNetwork.kind === 'syscoin' &&
         activeNetwork.chainId === network.chainId && activeNetwork.slip44 === network.slip44)
     : softwareGroup(record);
+}
+
+/** The same selection used by select-network; previews never select or grant an account. */
+function networkAccountSelection(record: NativeAccountRecord, networkId: string,
+  target = catalogueAccountGroup(record, networkId)) {
+  const group = catalogueAccountGroup(record) ?? invalid();
+  const utxo = findUtxoNetwork(networkId, catalogueUtxoNetworks(record.networks));
+  if (!utxo) getNativeNetwork(networkId, catalogueEvmNetworks(record));
+  if (!target) return invalid();
+  let selection = target === group ? parseNativeAccountId(record.active.accountId) : { type: target.activeAccount.type, index: target.activeAccount.id };
+  if (!utxo) {
+    const network = { kind: 'ethereum' as INetworkType, chainId: Number(getNativeNetwork(networkId, catalogueEvmNetworks(record)).chainId), slip44: 60 };
+    if (!isAccountCompatibleWithNetwork(target.accounts[selection.type][selection.index], selection.type, network)) {
+      const compatible = getFirstCompatibleAccountForNetwork(target.accounts, network) ?? invalid();
+      selection = { type: compatible.type, index: compatible.id };
+    }
+  }
+  const accountId = nativeAccountId(selection.type as NativeAccountType, selection.index, target.activeNetwork.slip44);
+  const address = target.accounts[selection.type][selection.index]?.address ?? invalid();
+  return { selection, accountId, address, networkId };
+}
+/** Custody-only preview also accepts the actual SDK-created group before its catalogue commit. */
+export function previewNativeNetworkSelection(record: NativeAccountRecord, networkId: string,
+  initialGroup: RecoveryAccountGroup | null): NativeNetworkSelection {
+  let target = catalogueAccountGroup(record, networkId);
+  if (initialGroup) {
+    const utxo = findUtxoNetwork(networkId, catalogueUtxoNetworks(record.networks));
+    if (target || !utxo || initialGroup.key !== String(utxo.slip44) || initialGroup.activeNetwork.chainId !== utxo.chainId) return invalid();
+    target = initialGroup;
+  }
+  const { accountId, address } = networkAccountSelection(record, networkId, target);
+  return Object.freeze({ accountId, address, networkId });
 }
 
 function decode(value: unknown, binding: string): NativeAccountRecord {
@@ -561,6 +604,8 @@ export class NativeWalletCatalogue {
   private busy = false;
   private uncertain = false;
   private record: NativeAccountRecord | null = null;
+  private controlRecord: NativeAccountRecord | null = null;
+  private controlSnapshot: NativeWalletControlCatalogueSnapshot | null = null;
   private stored: unknown;
   private root: NativeWalletCatalogueIdentity | null = null;
   private readonly storage: KeyringStoragePort;
@@ -573,6 +618,19 @@ export class NativeWalletCatalogue {
   get privateRecords(): NativeAccountRecord {
     if (!this.record) return changed();
     return snapshot(this.record);
+  }
+  getControlSnapshot(): NativeWalletControlCatalogueSnapshot | null {
+    if (!this.record || this.uncertain) return null;
+    if (this.controlRecord !== this.record) {
+      this.controlSnapshot = Object.freeze({ revision: this.record.revision, active: this.record.active,
+        accounts: Object.freeze(this.record.groups.flatMap(group => publicAccounts(group))) });
+      this.controlRecord = this.record;
+    }
+    return this.controlSnapshot;
+  }
+  previewNetworkSelection(id: string, expectedRevision: number): NativeNetworkSelection {
+    if (!this.record || this.uncertain || this.record.revision !== expectedRevision) return changed();
+    return previewNativeNetworkSelection(this.record, id, null);
   }
   async reconcile(
     value: NativeWalletCatalogueIdentity,
@@ -732,16 +790,8 @@ export class NativeWalletCatalogue {
           groups.push(target);
         }
         if (!target) return invalid();
-        let selection = target === group ? parseNativeAccountId(active.accountId) : { type: target.activeAccount.type, index: target.activeAccount.id };
-        if (!utxo) {
-          const network = { kind: 'ethereum' as INetworkType, chainId: Number(getNativeNetwork(mutation.id, catalogueEvmNetworks(next)).chainId), slip44: 60 };
-          if (!isAccountCompatibleWithNetwork(target.accounts[selection.type][selection.index], selection.type, network)) {
-            const compatible = getFirstCompatibleAccountForNetwork(target.accounts, network) ?? invalid();
-            selection = { type: compatible.type, index: compatible.id };
-          }
-        }
+        const { selection, accountId } = networkAccountSelection(next, mutation.id, target);
         setActiveAccountRecord(target as { activeAccount: typeof target.activeAccount }, { type: selection.type as SharedAccountType, id: selection.index });
-        const accountId = nativeAccountId(selection.type as 'HDAccount' | 'Imported' | 'SmartAccount', selection.index, target.activeNetwork.slip44);
         active = { accountId, networkId: mutation.id };
       } else {
         const selected = parseNativeAccountId(mutation.id),

@@ -1,7 +1,7 @@
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { createNativeChainCatalogue, type NativeNetworkSuggestion } from './networkCatalogue.ts';
 import { isCustomUtxoNetworkId, supportsUtxoSoftwareCustody } from '../core/utxoNetworks.ts';
-import type { NativeUtxoNetworkDraft, NativeUtxoNetworkEditDraft } from './accounts.ts';
+import type { NativeUtxoNetworkDraft, NativeUtxoNetworkEditDraft , NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { getNativeSendContext } from './networkContext.ts';
@@ -26,7 +26,7 @@ export interface NativeNetworkView<Id extends string = string> {
   getSnapshot(): NativeNetworkSnapshot<Id> | null;
   getContextRevision(): number;
   subscribe(listener: () => void): () => void;
-  select(id: Id, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
+  select(id: Id, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<NativeNetworkSelectionReceipt>;
   save?(registration: import('./networkContext.ts').NativeNetworkRegistration, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
   addUtxo?(draft: NativeUtxoNetworkDraft, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
   editUtxo?(id: Id, draft: NativeUtxoNetworkEditDraft, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;

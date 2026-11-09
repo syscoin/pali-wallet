@@ -66,7 +66,7 @@ type EventName =
   | 'session_expire'
   | 'proposal_expire'
   | 'session_request_expire';
-type Reason = Readonly<{ code: number; message: string }>;
+type Reason = Readonly<{ code: number; message: string; data?: string }>;
 export type WalletConnectResponse = Readonly<
   { result: unknown } | { error: Reason }
 >;

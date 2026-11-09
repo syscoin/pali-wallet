@@ -59,5 +59,8 @@ test('Trezor replacement and UTXO drafts retain the corresponding normal review 
   const utxo: NativeTrezorResumeIntent = { ...scope, kind: 'utxo', recipient: 'public-utxo-address',
     amount: '0.00000001', max: false };
   assert.deepEqual(trezorResumeDraft(utxo), { kind: 'utxo', asset: undefined,
-    draft: { recipient: utxo.recipient, amount: utxo.amount, max: false } });
+    draft: { recipient: utxo.recipient, amount: utxo.amount, max: false, rbf: true } });
+  const retainedOption = trezorResumeDraft({ ...utxo, rbf: false });
+  assert.equal(retainedOption.kind, 'utxo');
+  if (retainedOption.kind === 'utxo') assert.equal(retainedOption.draft.rbf, false);
 });

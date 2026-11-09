@@ -3,6 +3,7 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, Header, Icon, Notice, Screen, Text } from '../ui';
+import { useNativeTranslation } from '../platform/localization';
 
 export type RealTab = 'wallet' | 'activity' | 'tools' | 'settings';
 export type ShellLeafNavigation = Readonly<{
@@ -11,16 +12,17 @@ export type ShellLeafNavigation = Readonly<{
   setImmersive(value: boolean): void;
 }>;
 const TABS = [
-  { id: 'wallet', label: 'Wallet', icon: 'wallet' },
-  { id: 'activity', label: 'Activity', icon: 'activity' },
-  { id: 'tools', label: 'Tools', icon: 'grid' },
-  { id: 'settings', label: 'Settings', icon: 'settings' },
+  { id: 'wallet', icon: 'wallet' },
+  { id: 'activity', icon: 'activity' },
+  { id: 'tools', icon: 'grid' },
+  { id: 'settings', icon: 'settings' },
 ] as const;
 
 export function UnavailableActivity({ accountLabel, watchOnly, onBack }: { accountLabel: string; watchOnly: boolean; onBack(): void }) {
-  return <SafeAreaView edges={['top']} style={s.shell}><Screen><Header title="Activity" subtitle={accountLabel} onBack={onBack} />
-    <Notice title="Activity unavailable"
-      body={watchOnly ? 'Transaction history for this watch account is not available on the selected network yet. Balance and receive remain available.' : 'Transaction history is unavailable right now. Your account and receive address remain available.'} />
+  const { t } = useNativeTranslation();
+  return <SafeAreaView edges={['top']} style={s.shell}><Screen><Header title={t('mobile.navigation.activity')} subtitle={accountLabel} onBack={onBack} />
+    <Notice title={t('mobile.activity.unavailableTitle')}
+      body={watchOnly ? t('mobile.activity.watchUnavailable') : t('mobile.activity.unavailable')} />
   </Screen></SafeAreaView>;
 }
 
@@ -28,17 +30,18 @@ export function UnavailableActivity({ accountLabel, watchOnly, onBack }: { accou
 export function RealAppShell({ tab, onTab, immersive = false, children }: {
   tab: RealTab; onTab(tab: RealTab): void; immersive?: boolean; children: React.ReactNode;
 }) {
+  const { t } = useNativeTranslation();
   return <View style={s.shell}>
     <View style={s.content}>{children}</View>
     {!immersive && <SafeAreaView edges={['bottom']} style={s.safe}>
-      <View accessibilityRole="tablist" accessibilityLabel="Main navigation" style={s.tabs}>
-        {TABS.map((item) => <IdlePressable key={item.id} accessibilityRole="tab" accessibilityLabel={item.label}
-          accessibilityShowsLargeContentViewer accessibilityLargeContentTitle={item.label}
+      <View accessibilityRole="tablist" accessibilityLabel={t('mobile.navigation.label')} style={s.tabs}>
+        {TABS.map((item) => <IdlePressable key={item.id} accessibilityRole="tab" accessibilityLabel={t(`mobile.navigation.${item.id}`)}
+          accessibilityShowsLargeContentViewer accessibilityLargeContentTitle={t(`mobile.navigation.${item.id}`)}
           accessibilityState={{ selected: tab === item.id }} aria-selected={tab === item.id} onPress={() => onTab(item.id)}
           style={({ pressed }) => [s.tab, pressed && s.pressed]}>
           <View style={[s.icon, tab === item.id && s.selected]}><Icon name={item.icon} color={tab === item.id ? colors.blue : colors.muted} /></View>
           <Text testID={`main-tab-caption-${item.id}`} numberOfLines={1} maxFontSizeMultiplier={1.25}
-            adjustsFontSizeToFit minimumFontScale={1} style={[s.label, tab === item.id && s.selectedLabel]}>{item.label}</Text>
+            adjustsFontSizeToFit minimumFontScale={1} style={[s.label, tab === item.id && s.selectedLabel]}>{t(`mobile.navigation.${item.id}`)}</Text>
         </IdlePressable>)}
       </View>
     </SafeAreaView>}

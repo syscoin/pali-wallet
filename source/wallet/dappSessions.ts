@@ -1,3 +1,4 @@
+import { projectDappPermissions } from '../shared/dappPermissions.ts';
 import {
   matchesDappAccountIdentity,
   matchesDappAccountReference,
@@ -574,33 +575,13 @@ export function createDappSessions<Account extends DappPublicAccount>(
     context: IDAppAccountSelectionContext
   ) =>
     grantAccountPermission(origin, accountId, accountType, context).then(
-      ({ account, network, isBitcoinBased, date }) => {
-        const response = [
-          {
-            id: '1',
-            parentCapability: 'eth_accounts',
-            invoker: origin,
-            caveats: [
-              { type: 'restrictReturnedAccounts', value: [account.address] },
-            ],
-            date,
-          },
-        ];
-        if (!isBitcoinBased)
-          response.push({
-            id: '2',
-            parentCapability: 'endowment:permitted-chains',
-            invoker: origin,
-            caveats: [
-              {
-                type: 'restrictNetworkSwitching',
-                value: [`0x${network.chainId.toString(16)}`],
-              },
-            ],
-            date,
-          });
-        return response;
-      }
+      ({ account, network, isBitcoinBased, date }) =>
+        projectDappPermissions(
+          origin,
+          account.address,
+          date,
+          isBitcoinBased ? undefined : [network.chainId]
+        )
     );
   const captureAccountSessionRetirement = (
     accountId: number,

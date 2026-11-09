@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
+import { useDappLedgerConnection } from './useDappLedgerConnection';
 import type { EvmDappFeeChoice } from '../../../../source/shared/evmDappFeePolicy';
 import type { NativeConnectionsView, NativeTransactionReview } from '../connections/types';
 import { formatBaseUnits } from '../core/amounts';
@@ -42,10 +44,12 @@ export function TransactionDetails({ transaction }: { transaction: object }) {
 }
 
 /** The review receives public values and sends only bound identifiers to custody. */
-export function NativeTransactionReviewScreen({ review, controller }: {
+export function NativeTransactionReviewScreen({ review, controller, ledgerConnection }: {
   review: NativeTransactionReview;
   controller: NativeConnectionsView;
+  ledgerConnection?: NativeLedgerConnectionView;
 }) {
+  const ledger = useDappLedgerConnection({ review, controller, ledgerConnection });
   const expiryKey = `${review.id}:${review.expiresAt}`;
   const [expiredKey, setExpiredKey] = useState<string | null>(null);
   useEffect(() => {
@@ -123,6 +127,7 @@ export function NativeTransactionReviewScreen({ review, controller }: {
   };
   const approve = () => {
     if (expired || review.expiresAt <= Date.now()) return;
+    if (!review.needsAccountSwitch && !ledger.canApprove()) return;
     if (approvalDraftRef.current?.id === review.id && approvalDraftRef.current.transaction === review.transaction) return;
     const action = review.needsAccountSwitch
       ? controller.activateRequestAccount(review.id, review.revision)
@@ -227,11 +232,12 @@ export function NativeTransactionReviewScreen({ review, controller }: {
       <Text style={s.muted}>Switch to {review.accountLabel} to review this transaction.</Text>}
     {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
       <Text>{submitted ? 'Sending transaction…' : transaction ? 'Please wait…' : 'Preparing transaction…'}</Text></View>}
+    {ledger.showConnect && !submitted && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
     {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm transaction'}
       disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
-        (!retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} />}
+        (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} />}
     <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
-  </Screen></KeyboardAvoidingView></SafeAreaView>;
+  </Screen></KeyboardAvoidingView>{ledger.modal}</SafeAreaView>;
 }
 
 const s = StyleSheet.create({

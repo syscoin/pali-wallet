@@ -1,6 +1,8 @@
 import * as pairingLinks from '../src/connections/pairingLinks.ts';
 import * as sharedHistory from '../../../source/shared/evmHistory.ts';
 import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
+import * as sptInventory from '../../../source/shared/sptInventory.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -129,6 +131,8 @@ for (const kind of ['native', 'smart', 'watch', 'activity'] as const) {
         '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
+        '../../../../source/shared/sptInventory': sptInventory,
+        './NativeSptAssets': { NativeSptAssets: 'NativeSptAssets' },
       };
       const source = (kind === 'native' || kind === 'smart') ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
         : kind === 'activity' ? load('src/screens/NativeActivity.tsx') + '\nexport { NativeActivityContent };' : load('src/screens/WatchAccountPortfolio.tsx');
@@ -221,6 +225,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const idle = createIdleComponentFixture(render.api, native);
   await idle.ready;
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
+    '../platform/localization': nativeTranslationFixture,
     './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, '../ui': ui,
     '../core/watchOnlyAuthority': core, '../core/utxoNetworks': { UTXO_NETWORKS, getUtxoNetwork, isCustomUtxoNetworkId }, './WatchNetworks': {}, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },

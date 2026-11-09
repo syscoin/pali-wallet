@@ -8,6 +8,10 @@ import type { createDappSigningApproval } from '../../../../source/wallet/dappSi
 import type { DappCallsRequest } from '../../../../source/shared/dappCalls.ts';
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
 import type { EoaCallsStopped } from '../../../../source/wallet/evmCallsSequence.ts';
+import type { NativeDappControlHost } from './controlRequests.ts';
+import type { NativeConnectionReadHost } from '../custody/dappRpcReads.ts';
+import type { NativeConnectionSentryHost } from './sentryRequests.ts';
+import type { NativeConnectionUtxoHost } from '../custody/dappSyscoin.ts';
 
 export type NativeConnectionMessageSigning = Readonly<{
   accountId: string;
@@ -32,14 +36,14 @@ export type NativePreparedSmartConnectionTransaction = Readonly<{
 export type NativeConnectionAccount = Readonly<{
   id: string;
   index: number;
-  type: 'HDAccount' | 'Imported' | 'SmartAccount';
+  type: 'HDAccount' | 'Imported' | 'SmartAccount' | 'Ledger' | 'Trezor';
   address: string;
   xpub: string;
   label: string;
 }>;
 
 /** Internal connection capabilities. This host never belongs in React state. */
-export type NativeConnectionHost = Readonly<{
+export type NativeConnectionSigningHost = Readonly<{
   repository: NativeConnectionRepository;
   calls: NativeConnectionRepository['calls'];
   walletBindingId: string;
@@ -90,4 +94,12 @@ export type NativeConnectionHost = Readonly<{
     accounts: readonly NativeConnectionAccount[];
     unlocked: boolean;
   }>;
+}>;
+
+/** The platform composes wallet controls with the runtime's crypto/session host. */
+export type NativeConnectionHost = NativeConnectionSigningHost & Readonly<{
+  syscoin: NativeConnectionUtxoHost;
+  sentry: NativeConnectionSentryHost;
+  controls: NativeDappControlHost;
+  reads: NativeConnectionReadHost;
 }>;

@@ -187,7 +187,7 @@ afterEach(() => {
 
 it('returns an idle public read through the actual provider transport', async () => {
   await expect(request('eth_blockNumber')).resolves.toBe('0x2a');
-  expect(transport).toHaveBeenCalledWith('eth_blockNumber', undefined);
+  expect(transport).toHaveBeenCalledWith('eth_blockNumber', []);
   expect(popupPromise).not.toHaveBeenCalled();
 });
 

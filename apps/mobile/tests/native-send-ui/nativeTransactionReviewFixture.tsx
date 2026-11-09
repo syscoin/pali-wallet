@@ -1,3 +1,4 @@
+import { unsupportedDappViews } from '../unsupportedDappPorts';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import type { NativeConnectionsView, NativeTransactionReview } from '../../src/connections/types';
 import { NativeTransactionReviewScreen } from '../../src/screens/NativeTransactionReview';
@@ -71,6 +72,7 @@ export function NativeTransactionReviewFixture() {
   }, []);
   const unavailable = () => { throw new Error('Outside transaction review fixture'); };
   const controller: NativeConnectionsView = {
+  ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
@@ -130,7 +132,7 @@ export function NativeTransactionReviewFixture() {
         approval: summarizeApproval(edited.data, tokenContract, metadata) });
     },
     getSnapshot: () => ({ revision: review?.revision ?? 0, status: 'ready', accounts: [], selectedAccountId: null,
-      network: null, proposals: [], sessions: [], signingReview: review, callsStatus: null, error: null }),
+      network: null, proposals: [], sessions: [], controlReview: null, sentryReview: null, signingReview: review, callsStatus: null, error: null }),
     subscribe: unavailable, pair: unavailable, approve: unavailable,
     reject: unavailable, disconnect: unavailable, retry: unavailable, cancel: unavailable,
     async activateRequestAccount(...args) {

@@ -4,11 +4,13 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = { type: string; props: Record<string, any>; children: (Element | string | null)[] };
 const react = { createElement: (type: string, props: object, ...children: Element['children']) => ({ type, props, children }) };
 const dependencies: Record<string, unknown> = {
   './IdleActivityBoundary': { IdlePressable: 'IdlePressable' }, react,
+  '../platform/localization': nativeTranslationFixture,
   'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
   'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
   '../ui': { colors: {}, Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text' },

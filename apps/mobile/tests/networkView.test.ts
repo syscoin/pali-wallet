@@ -1,3 +1,4 @@
+import { networkSelectionReceiptFixture } from './networkSelectionReceiptFixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
@@ -17,7 +18,7 @@ function fixture(utxoSendAvailable = false, removeUtxoNetwork?: (id: string, con
     getSnapshot: () => state,
     getCatalogue: () => catalogue,
     subscribe(listener: (value: CustodySnapshot) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    async selectNetwork(...args: [string, number, number]) { requests.push(args); },
+    async selectNetwork(...args: [string, number, number]) { requests.push(args); const target = NATIVE_NETWORKS.find(network => network.id === args[0]) ?? UTXO_NETWORKS.find(network => network.id === args[0]); if (!target) throw new Error('Invalid fixture selection'); return networkSelectionReceiptFixture(target, { accountId: 'hd:60:0', address, networkId: target.id }, args[1], args[2], () => {}); },
     cancelAccountOperation() { cancels++; },
     ...(removeUtxoNetwork && { removeUtxoNetwork }),
   };
@@ -94,7 +95,7 @@ test('network verification and persistence share one detached registration snaps
   const catalogue = { revision: 1, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } };
   const saved: unknown[] = [];
   const view = createNativeNetworkView({ getSnapshot: () => state, getCatalogue: () => catalogue, subscribe: () => () => undefined,
-    selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+    selectNetwork: async () => { throw new Error('Selection is outside this read-only fixture'); }, cancelAccountOperation: () => undefined,
     manageNetwork: async (request) => { saved.push(request); } }, { utxoSendAvailable: false, fetch: async (url, init) => {
       assert.equal(url, original.rpcUrl); const request = JSON.parse(String(init.body)); started(); await held;
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: '0x115c' }), { headers: { 'content-type': 'application/json' } });
@@ -115,7 +116,7 @@ test('long padded network text reaches the verified endpoint unchanged and stale
     const view = createNativeNetworkView({
       getSnapshot: () => ({ phase: 'ready', revision, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
       getCatalogue: () => ({ revision: catalogueRevision, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
-      subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+      subscribe: () => () => undefined, selectNetwork: async () => { throw new Error('Selection is outside this read-only fixture'); }, cancelAccountOperation: () => undefined,
       manageNetwork: async (request) => { saved.push(request); },
     }, { utxoSendAvailable: false, fetch: async (url, init) => {
       urls.push(url); const request = JSON.parse(String(init.body));
@@ -146,7 +147,7 @@ test('catalogue is lazy and verified Save rejects unexpected endpoints before re
   const view = createNativeNetworkView({
     getSnapshot: () => ({ phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
     getCatalogue: () => ({ revision: 1, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
-    subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+    subscribe: () => () => undefined, selectNetwork: async () => { throw new Error('Selection is outside this read-only fixture'); }, cancelAccountOperation: () => undefined,
     manageNetwork: async (request) => { saved.push(request); },
   }, { utxoSendAvailable: false, fetch: async (url, init) => {
     requests.push(url);

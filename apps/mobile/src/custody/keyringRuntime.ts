@@ -86,7 +86,7 @@ import {
   type GuardianRecoveryObservation,
 } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import { createNativeSmartAccountProvider } from '../smartAccount/provider.ts';
-import type { NativeConnectionHost } from '../connections/host.ts';
+import type { NativeConnectionSigningHost } from '../connections/host.ts';
 import { createDeviceUnlockEnrollment } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { DeviceUnlockControls } from '@sidhujag/sysweb3-keyring/cjs/keyring-core.js';
 import {
@@ -110,7 +110,8 @@ import { isNativeNewPassword, isNativePasswordInput } from './password.ts';
 import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { canonicalUtxoEndpoint, findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
-import { exactUtxoResponseFetch, verifyUtxoRegistration } from '../core/utxoReadSession.ts';
+import { exactUtxoResponseFetch, verifySavedUtxoEndpoint, verifyUtxoRegistration } from '../core/utxoReadSession.ts';
+import { createOwnedUtxoBlockbookRead } from '../../../../source/wallet/utxoBlockbookReads.ts';
 import type { UtxoActivityContext, UtxoActivitySource } from '../core/utxoActivity.ts';
 import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
 import { findWifAddressType, normalizeUtxoAddress } from '../core/utxoAddresses.ts';
@@ -123,13 +124,14 @@ import { NativeWalletCatalogue, WalletCatalogueError,
   catalogueAccountGroup,
   catalogueEvmNetworks,
   catalogueUtxoNetworks,
+  previewNativeNetworkSelection,
   createNativeAccountRecord,
   recoveryVerificationRecords,
   sentryRootPublicIdentity,
   WALLET_CATALOGUE_KEY,
 } from './walletCatalogue.ts';
 import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from './networkContext.ts';
-import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime } from './accounts.ts';
+import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime, NativeNetworkSelectionProof } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import { NativeTransferError, type NativeTransferDispatchValidation, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
@@ -161,6 +163,12 @@ import { deriveSentryVaultId } from '../../../../source/wallet/sentryKeyVault.ts
 import type { DeriveSentryPublicKey, NativeSentryKeyManagement } from './sentryKeyManagement.ts';
 import { createSentryCollateralCoordinator } from '../../../../source/wallet/sentryCollateral.ts';
 import { createNativeSentryCollateral, createNativeSentryNodeManagement, type NativeSentryNodeManagement } from './sentryNodeManagement.ts';
+import { createNativeSentryApprovals, createNativeSentryJsonReader, type NativeSentryApprovals } from './sentryApprovals.ts';
+import { createNativeSentryWalletAuthority } from './sentryWalletAuthority.ts';
+import type { RunSentryCrypto } from '../../../../source/wallet/sentryCryptoJobs.ts';
+import { createNativeHardwareDappSigning, type NativeHardwareDappAccount, type NativeHardwareDappSigning } from '../hardware/dappSigning.ts';
+import { createOwnedKeyringTransfer } from '../hardware/ownedKeyringTransfer.ts';
+import type { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
 
 type SoftwareSdk = NativeKeyringSdk;
 type IndexedKeyring = InstanceType<SoftwareSdk['HostKeyring']> & {
@@ -214,6 +222,8 @@ export type KeyringRuntimeDependencies = Readonly<{
   prepareSmartAccount?: (network: NativeNetworkRegistration, accountIndex: number, managementAddress: string, signal: AbortSignal, guard: () => void) => Promise<{ address: string; metadata: NonNullable<IKeyringAccountState['smartAccount']> }>;
   /** Only a separately qualified host can install the Sentry derivation executor. */
   deriveSentryPublicKey?: DeriveSentryPublicKey;
+  /** Signing execution is qualified separately from public-key import. */
+  runSentryCrypto?: RunSentryCrypto;
   observeActivity?: (network: NativeNetworkRegistration, expected: EvmObservationRequest, signal: AbortSignal, guard: () => void) => Promise<EvmTransactionObservation>;
 }>;
 
@@ -260,7 +270,10 @@ export function createNativeRetirementReadForChain(
 export interface KeyringRuntime extends CustodyRuntime {
   readonly ledger: NativeLedgerRuntime;
   readonly trezor: NativeTrezorView;
-  openConnectionHost(): Promise<NativeConnectionHost>;
+  openConnectionHost(): Promise<NativeConnectionSigningHost>;
+  readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
+    owner: Readonly<{ accountId: string; xpub: string }>, isChangeAddress: boolean,
+    signal: AbortSignal, assertCurrent: () => void): Promise<string>;
   openSmartAccountDeployment(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   openWalletAuthenticator(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   canUseWalletAuthenticator(): boolean;
@@ -296,6 +309,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   getSentryKeyNetwork?(): SentryNetwork | undefined;
   openSentryKeyManagement?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryKeyManagement>;
   openSentryNodeManagement?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryNodeManagement>;
+  openSentryApprovals?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryApprovals>;
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
@@ -308,7 +322,11 @@ export interface KeyringRuntime extends CustodyRuntime {
     assertCurrent(): void;
   }>>;
   /** Public metadata only; no selection/signing authority. Cleared on lock. */
-  readonly catalogue: { getSnapshot(): NativeWalletCatalogueSnapshot | null };
+  readonly catalogue: {
+    getSnapshot(): NativeWalletCatalogueSnapshot | null;
+    getControlSnapshot(): ReturnType<NativeWalletCatalogue['getControlSnapshot']>;
+    previewNetworkSelection(id: string, expectedRevision: number): ReturnType<NativeWalletCatalogue['previewNetworkSelection']>;
+  };
   readonly backup: {
     readPhrase(password: string): Promise<readonly string[]>;
     fingerprint(): Promise<string>;
@@ -501,11 +519,13 @@ export function createKeyringRuntimeFactory(
         let utxoSend: NativeUtxoSend | undefined;
         let sentryKeys: NativeSentryKeyManagement | undefined;
         let sentryNodes: NativeSentryNodeManagement | undefined;
+        let sentryApprovals: NativeSentryApprovals | undefined;
         const sentryCollateralCoordinator = createSentryCollateralCoordinator();
         const retireSentryKeys = () => {
           sentryKeys?.dispose();
           sentryKeys = undefined;
           sentryNodes?.dispose(); sentryNodes = undefined;
+          sentryApprovals?.dispose(); sentryApprovals = undefined;
         };
         type NoteRuntime = ReturnType<typeof import('./noteBackupRuntime.ts').createNativeNoteBackupRuntime>;
         let noteBackups: NoteRuntime | undefined;
@@ -790,9 +810,13 @@ export function createKeyringRuntimeFactory(
         }
         const enteredPrivateSubmissions = new WeakSet<object>();
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
-          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy) {
+          selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
+          hardwareSigner: (NativeHardwareDappSigning & {keyring(): IndexedKeyring}) | null) {
           check();
-          if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
+          const hardware = selected.type === 'Ledger' || selected.type === 'Trezor';
+          if (hardware ? !hardwareSigner || typeof hardwareSigner.signTransaction !== 'function' || typeof hardwareSigner.keyring !== 'function'
+            : (hardwareSigner !== null || (selected.type !== 'HDAccount' && selected.type !== 'Imported')))
+            throw new KeyringRuntimeError('INVALID_INPUT');
           const signerType = selected.type, ring = keyring;
           const normalized = normalizeDappTransaction(input);
           if (normalized.from !== undefined && normalized.from.toLowerCase() !== selected.address.toLowerCase())
@@ -801,7 +825,9 @@ export function createKeyringRuntimeFactory(
           const fetch = dependencies.connectionFetch ?? walletFetch;
           const rpc = new EvmTransferReadRpc(network, { fetch });
           const sender = new NativeTransferRpc({ registration: network, fetch });
-          const planner = createNativeAutomaticNoncePlanner(signedRecords, { keyring: ring, assertCurrent: check },
+          const planner = createNativeAutomaticNoncePlanner(signedRecords, hardwareSigner
+            ? {get keyring() {check(); return hardwareSigner.keyring();}, assertCurrent: check}
+            : {keyring: ring, assertCurrent: check},
             network.chainId, selected.address, network.rpcUrl);
           return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
             network, rpc, signal, planner, funding, gasPolicy, assertCurrent: check,
@@ -812,9 +838,11 @@ export function createKeyringRuntimeFactory(
               return run(async (ownerGeneration) => {
                 const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
                 guard();
+                if (hardwareSigner) return hardwareSigner.signTransaction(serializePreparedEvmTransaction(transaction), {signal, assertCurrent: guard});
+                if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
                 const signed = ring.signPreparedEvmTransaction({
                   selectedAccount: { id: selectedContext.index, type: selectedContext.type, expectedAddress: selectedContext.address },
-                  account: { id: selected.index, type: signerType, expectedAddress: selected.address },
+                  account: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                   network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
                   transaction,
                 }, { assertCurrent: guard });
@@ -843,9 +871,12 @@ export function createKeyringRuntimeFactory(
                   ? bindEoaCallsSignedLifecycle(lifecycle, registry!, submission.attempt) : lifecycle;
               });
               if (metadata) enteredPrivateSubmissions.add(metadata);
-              const work = sdk.submitSignedEvmTransaction<string>(signed.rawTransaction, ({ rawTransaction, admit }) =>
-                sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast),
-              boundary, undefined, serializePreparedEvmTransaction(transaction));
+              const broadcast: Parameters<typeof sdk.submitSignedEvmTransaction<string>>[1] = ({rawTransaction, admit}) =>
+                sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast);
+              const work = hardwareSigner
+                ? sdk.submitSignedHardwareEvmTransaction<string>(signed.rawTransaction, broadcast, boundary, undefined,
+                    serializePreparedEvmTransaction(transaction), () => sender.verifyChain(signal, guard))
+                : sdk.submitSignedEvmTransaction<string>(signed.rawTransaction, broadcast, boundary, undefined, serializePreparedEvmTransaction(transaction));
               const tracked = submission.kind === 'eoa-calls' ? settleEoaCallsSignedSubmission(work, registry!, submission.attempt) : work;
               const pending = tracked.finally(() => { pendingSubmissions.delete(pending); });
               pendingSubmissions.add(pending);
@@ -1067,7 +1098,8 @@ export function createKeyringRuntimeFactory(
           return pending;
         };
         const openTrezorAttempt = async (captured: number, check: () => void,
-          operation: 'import' | 'send' | 'utxo-send', label: string, resume?: NativeTrezorResumeIntent) => {
+          operation: 'import' | 'send' | 'utxo-send', label: string, resume: NativeTrezorResumeIntent | undefined,
+          transferred: (source: IndexedKeyring, target: IndexedKeyring, session: NativeTrezorSession) => void) => {
           const sessions = dependencies.trezorSessions;
           if (!sessions || !trezorSessionGeneration || trezorSession) throw new KeyringRuntimeError('NOT_READY');
           await trezorCleanup;
@@ -1100,6 +1132,7 @@ export function createKeyringRuntimeFactory(
             transfer.transfer();
             keyring = target;
             trezorWorker = target;
+            checkGuard(() => transferred(source, target, session));
             await source.destroy(); check();
             return { session, ring: target };
           } catch (error) {
@@ -1267,6 +1300,85 @@ export function createKeyringRuntimeFactory(
               }),
             });
             return sentryNodes;
+          });
+        const openSentryApprovals: NonNullable<KeyringRuntime['openSentryApprovals']> = (lifetime, assertOwner) =>
+          runPrivateDomain(async captured => {
+            const runCrypto = dependencies.runSentryCrypto;
+            if (!storage.sentryKeys || !dependencies.utxoFetch || typeof runCrypto !== 'function' || typeof assertOwner !== 'function' ||
+                typeof lifetime?.aborted !== 'boolean' || typeof lifetime.addEventListener !== 'function' || typeof lifetime.removeEventListener !== 'function')
+              throw new KeyringRuntimeError('NOT_READY');
+            const session = privateDomainSession(captured, () => {
+              if (lifetime.aborted) throw new KeyringRuntimeError('CANCELLED');
+              checkGuard(assertOwner);
+            });
+            const bound = await bindSentryNodes(captured, session.assertCurrent);
+            session.assertCurrent();
+            const snapshot = catalogueSnapshot!, selected = selectedAccount(), ring = keyring;
+            const network = findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
+            if (!network) throw new KeyringRuntimeError('NOT_READY');
+            const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
+            const check = () => {
+              session.assertCurrent();
+              const actual = state.activeNetwork;
+              if (catalogueSnapshot !== snapshot || keyring !== ring || state.accounts[selected.type][selected.index] !== account ||
+                  state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type ||
+                  actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId || actual.slip44 !== sdkNetwork.slip44 ||
+                  actual.url !== sdkNetwork.url || actual.utxoBackendChain !== sdkNetwork.utxoBackendChain)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            check();
+            const readJson = createNativeSentryJsonReader({assertCurrent: check, lifetime, fetch: dependencies.utxoFetch});
+            const settingsKey = sentrySettingsStorageKey(bound.scope.vaultId, bound.scope.network);
+            const owned = storage.sentryKeys.bind(bound.scope, check);
+            const walletAuthority = createNativeSentryWalletAuthority({
+              account: {address: account.address, xpub: account.xpub}, accountId: selected.index,
+              assertCurrent: check, imported: selected.type === 'Imported', network, readJson,
+              hasPrivateMaterial: ['HDAccount', 'Imported'].includes(selected.type) && typeof account.xprv === 'string' && !!account.xprv,
+              async readPrivateAccount(password, assertRequest) {
+                const guard = () => {check(); checkGuard(assertRequest); check();};
+                guard();
+                if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('NOT_READY');
+                validPassword(password, false);
+                if (!(await authenticateVerifiedOwner(password, {...session, assertCurrent: guard}))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                guard();
+                const privateKey = await ring.getPrivateKeyByAccountId(selected.index,
+                  selected.type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported, password);
+                guard();
+                return privateKey;
+              },
+            });
+            check(); retireSentryKeys();
+            sentryApprovals = createNativeSentryApprovals({
+              assertCurrent: check, lifetime, collateral: createNativeSentryCollateral({...bound, assertCurrent: check}),
+              network: bound.scope.network, nodeStorage: bound.storage, vaultHost: {...owned, crypto: () => crypto},
+              vaultId: bound.scope.vaultId, readJson, walletAuthority, runCrypto,
+              scope: {identity: crypto.randomUUID(), rootPublicIdentity: bound.rootPublicIdentity,
+                network: {chainId: network.chainId, kind: sdkNetwork.kind, url: network.endpoint}},
+              async readSettings() {check(); const value = await storage.keyringStorage.get(settingsKey); check(); return value;},
+              async readSeed(password, assertRequest) {
+                const guard = () => {check(); checkGuard(assertRequest); check();};
+                guard(); validPassword(password, false);
+                if (!(await authenticateVerifiedOwner(password, {...session, assertCurrent: guard}))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                guard();
+                const seed = await ring.getSeed(password);
+                guard();
+                if (typeof seed !== 'string' || !ring.isSeedValid(seed)) throw new KeyringRuntimeError('OPERATION_FAILED');
+                return seed;
+              },
+              run: operation => runPrivateDomain(async () => {
+                try {check(); const result = await operation(); check(); return result;}
+                catch (error) {
+                  if (error instanceof KeyringRuntimeError) throw error;
+                  if (error instanceof WalletStorageError) {
+                    if (error.code === 'STORAGE_REOPEN_REQUIRED') requirePrivateDomainReopen();
+                    if (error.code === 'AUTH_THROTTLED') throw new KeyringRuntimeError(error.code);
+                    if (error.code === 'STORAGE_CHANGED') throw new KeyringRuntimeError('CANCELLED');
+                  }
+                  throw new KeyringRuntimeError('OPERATION_FAILED');
+                }
+              }),
+            });
+            return sentryApprovals;
           });
         const openSentryKeyManagement: NonNullable<
           KeyringRuntime['openSentryKeyManagement']
@@ -1589,7 +1701,7 @@ export function createKeyringRuntimeFactory(
                               check,
                               metadata,
                               NATIVE_EVM_FEE_FUNDING,
-                              { kind: 'fixed', gasLimit: PRIVACY_WITHDRAWAL_GAS }
+                              { kind: 'fixed', gasLimit: PRIVACY_WITHDRAWAL_GAS }, null
                             );
                             check();
                             if (
@@ -1813,7 +1925,7 @@ export function createKeyringRuntimeFactory(
                   check,
                   metadata,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }
+                  { kind: 'estimate' }, null
                 );
                 check();
                 prepared.set(owner.context, { quote, metadata });
@@ -2041,7 +2153,7 @@ export function createKeyringRuntimeFactory(
           );
         };
         const reserveContext = (input:
-            | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection = false) => {
+            | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection: boolean) => {
             if (closed || !keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
             if (active || reserved) throw new KeyringRuntimeError('BUSY');
             if (catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
@@ -2187,6 +2299,10 @@ export function createKeyringRuntimeFactory(
                       }
                     }
                   }
+                  const selection = mutation.kind === 'select-network' ? {
+                    expected: previewNativeNetworkSelection(catalogue.privateRecords, mutation.id, 'initialGroup' in mutation ? mutation.initialGroup : null),
+                    target: findUtxoNetwork(mutation.id, before.utxoNetworks) ?? getNativeNetwork(mutation.id, before.networks),
+                  } : null;
                   const guard = () => { current(captured); checkGuard(assertCurrent); };
                   if (mutation.kind === 'remove') {
                     const target = parseNativeAccountId(mutation.id);
@@ -2206,7 +2322,20 @@ export function createKeyringRuntimeFactory(
                     guard();
                     if (derived) state.accounts[derived.isLedgerWallet ? 'Ledger' : derived.isTrezorWallet ? 'Trezor' : derived.isSmartAccount ? 'SmartAccount' : 'HDAccount'][derived.id] = derived;
                     publishAccounts(next);
+                    if (selection) {
+                      const assertSelection = () => {
+                        current(captured); checkGuard(assertCurrent);
+                        const chosen = next.accounts.find(account => account.id === selection.expected.accountId);
+                        const actualTarget = selection.target.kind === 'utxo' ? next.utxoNetworks.find(network => network.id === selection.target.id) : next.networks.find(network => network.id === selection.target.id);
+                        if (catalogueSnapshot !== next || !keyring.isUnlocked() || requiresReopen() || next.revision !== expectedRevision + 1 || next.active.networkId !== selection.expected.networkId || next.active.accountId !== selection.expected.accountId || chosen?.address !== selection.expected.address || JSON.stringify(actualTarget) !== JSON.stringify(selection.target))
+                          throw new KeyringRuntimeError('CANCELLED');
+                      };
+                      assertSelection();
+                      return Object.freeze<NativeNetworkSelectionProof>({ sourceCatalogueRevision: expectedRevision,
+                        target: selection.target, selection: selection.expected, assertCurrent: assertSelection });
+                    }
                   }
+                  return null;
                 });
               },
             };
@@ -2310,7 +2439,10 @@ export function createKeyringRuntimeFactory(
           supported: () => typeof keyring.addNewAccount === 'function',
           supportsSmartAccounts: () => !!dependencies.prepareSmartAccount && !!catalogueSnapshot && !findUtxoNetwork(catalogueSnapshot.active.networkId, catalogueSnapshot.utxoNetworks),
           getSnapshot: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot,
-          reserve: (input, expectedRevision) => reserveContext(input, expectedRevision),
+          reserve: (input, expectedRevision) => {
+            const admitted = reserveContext(input, expectedRevision, false);
+            return { cancel: admitted.cancel, execute: async check => { await admitted.execute(check); } };
+          },
         };
         const networks: NativeNetworkRuntime = {
           prepareUtxo,
@@ -2392,7 +2524,7 @@ export function createKeyringRuntimeFactory(
             pending.accepted = true;
           } else if (pendingTrezor) throw new KeyringRuntimeError('BUSY');
           try {
-            const { session, ring } = await openTrezorAttempt(captured, check, 'import', label);
+            const { session, ring } = await openTrezorAttempt(captured, check, 'import', label, undefined, () => undefined);
             const account = await ring.importTrezorAccount(label); check();
             if (!account.isTrezorWallet || account.isLedgerWallet || account.isImported || account.isSmartAccount || account.xprv !== '')
               throw new KeyringRuntimeError('OPERATION_FAILED');
@@ -3215,7 +3347,7 @@ export function createKeyringRuntimeFactory(
                       smartAccountRecoveryAccount: account.address,
                     },
                     NATIVE_EVM_FEE_FUNDING,
-                    { kind: 'estimate' }
+                    { kind: 'estimate' }, null
                   );
                   check();
                   return Object.freeze({
@@ -3342,7 +3474,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' });
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null);
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent, operation) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
@@ -3547,15 +3679,75 @@ export function createKeyringRuntimeFactory(
             } catch (error) { if (error instanceof KeyringRuntimeError) throw error; throw new KeyringRuntimeError('INVALID_INPUT'); }
             return openSmartAccountOperation(intent, assertOwner);
           },
-          async openConnectionHost(): Promise<NativeConnectionHost> {
+          async openConnectionHost(): Promise<NativeConnectionSigningHost> {
             const captured = generation;
             const repository = await getConnectionRepository(captured);
             const walletBindingId = connectionRepositoryBinding;
             if (!walletBindingId) throw new KeyringRuntimeError('CANCELLED');
             const assertOwner = connectionOwner(walletBindingId);
             assertOwner();
+            type DappRingBinding = ReturnType<typeof createOwnedKeyringTransfer<IndexedKeyring, NativeTrezorSession>>;
+            const hardwareDappSigner = (selected: NativeCatalogueAccount, network: NativeNetworkRegistration,
+              approval: ReturnType<typeof createDappSigningApproval>, check: () => void, binding: DappRingBinding) => {
+              if (selected.type !== 'Ledger' && selected.type !== 'Trezor') return null;
+              const account: NativeHardwareDappAccount = {id: selected.id, index: selected.index, type: selected.type, address: selected.address};
+              const signer = createNativeHardwareDappSigning({account, network, signal: approval.signal, assertCurrent: check,
+                async withSession(requested, assertSigningCurrent, operation) {
+                  checkGuard(assertSigningCurrent);
+                  if (requested.id !== selected.id || requested.index !== selected.index || requested.type !== selected.type ||
+                      requested.address !== selected.address) throw new KeyringRuntimeError('CANCELLED');
+                  if (requested.type === 'Ledger') {
+                    const transport = ledgerTransport, ring = binding.current();
+                    if (!transport || !ring.ledgerSigner || !ledger.isConnected()) throw new KeyringRuntimeError('NOT_READY');
+                    const guard = () => {checkGuard(assertSigningCurrent); if (ledgerTransport !== transport || !ledger.isConnected()) throw new KeyringRuntimeError('CANCELLED');};
+                    let retirement: Promise<void> | undefined;
+                    const retire = () => {
+                      retirement ??= ledgerTransport === transport ? Promise.resolve(retireLedger()) : transport.dispose();
+                      void retirement.catch(() => undefined);
+                    };
+                    approval.signal.addEventListener('abort', retire, {once: true});
+                    try {
+                      guard();
+                      const result = await operation({kind: 'Ledger', signer: ring.ledgerSigner, transactions: ring.ethereumTransaction});
+                      guard(); return result;
+                    } finally {
+                      approval.signal.removeEventListener('abort', retire);
+                      await retirement;
+                    }
+                  }
+                  if (pendingTrezor || trezorSession) throw new KeyringRuntimeError('NOT_READY');
+                  const captured = generation, admittedEpoch = trezorEpoch;
+                  let owned: NativeTrezorSession | undefined, retirement: Promise<void> | undefined;
+                  const stillOwned = () => owned !== undefined && (pendingTrezor?.job === owned.job || trezorSession === owned);
+                  const guard = () => {current(captured); checkGuard(assertSigningCurrent); if (trezorEpoch !== admittedEpoch) throw new KeyringRuntimeError('CANCELLED');};
+                  const retire = () => {
+                    if (!owned) return;
+                    retirement ??= pendingTrezor?.job === owned.job || trezorSession === owned ? cancelTrezor() : owned.cancel();
+                    void retirement.catch(() => undefined);
+                  };
+                  try {
+                    const opened = await openTrezorAttempt(captured, guard, 'send', selected.label, undefined, binding.transferred);
+                    owned = opened.session;
+                    approval.signal.addEventListener('abort', retire, {once: true});
+                    guard();
+                    if (!opened.ring.trezorSigner) throw new KeyringRuntimeError('NOT_READY');
+                    const result = await operation({kind: 'Trezor', signer: opened.ring.trezorSigner, transactions: opened.ring.ethereumTransaction});
+                    guard(); await finishTrezor(owned, guard); guard();
+                    return result;
+                  } catch (error) {
+                    await failTrezor(captured, admittedEpoch, error);
+                    throw error;
+                  } finally {
+                    approval.signal.removeEventListener('abort', retire);
+                    if (stillOwned()) retire();
+                    await retirement;
+                  }
+                },
+              });
+              return {...signer, keyring: () => binding.current()};
+            };
             const captureTransaction = (
-              input: Parameters<NativeConnectionHost['prepareTransaction']>[0],
+              input: Parameters<NativeConnectionSigningHost['prepareTransaction']>[0],
               assertRequestCurrent: () => void
             ) => {
               assertOwner();
@@ -3573,7 +3765,7 @@ export function createKeyringRuntimeFactory(
                 !selected ||
                 (selected.type !== 'HDAccount' &&
                   selected.type !== 'Imported' &&
-                  selected.type !== 'SmartAccount') ||
+                  selected.type !== 'SmartAccount' && selected.type !== 'Ledger' && selected.type !== 'Trezor') ||
                 selected.id !== input.accountId ||
                 selected.slip44 !== 60 ||
                 snapshot.active.networkId !== input.networkId
@@ -3584,11 +3776,9 @@ export function createKeyringRuntimeFactory(
                 snapshot.active.networkId,
                 snapshot.networks
               );
-              const isCurrent = () =>
+              const ownerCurrent = () =>
                 !closed &&
                 generation === captured &&
-                keyring === ring &&
-                ring.isUnlocked() &&
                 catalogueSnapshot === snapshot &&
                 state.activeAccount.id === selected.index &&
                 state.activeAccount.type === selected.type &&
@@ -3597,6 +3787,10 @@ export function createKeyringRuntimeFactory(
                 state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
                 state.activeNetwork.chainId === Number(network.chainId) &&
                 state.activeNetwork.url === network.rpcUrl;
+              const binding = createOwnedKeyringTransfer({initial: ring, current: () => keyring,
+                worker: () => trezorWorker, session: () => trezorSession,
+                assertOwner() {assertOwner(); if (!ownerCurrent() || approval.signal.aborted) throw new KeyringRuntimeError('CANCELLED');}});
+              const isCurrent = () => ownerCurrent() && binding.matches() && keyring.isUnlocked();
               approval.bindSigner('native-transaction', isCurrent);
               const check = () => {
                 current(captured);
@@ -3606,7 +3800,7 @@ export function createKeyringRuntimeFactory(
                 if (!isCurrent()) throw new KeyringRuntimeError('CANCELLED');
               };
               check();
-              return { snapshot, selected, account, network, approval, check };
+              return { snapshot, selected, account, network, approval, check, binding };
             };
             const findLocalEcdsaOwner = (
               address: string
@@ -3874,7 +4068,7 @@ export function createKeyringRuntimeFactory(
                 }
               },
               async prepareTransaction(input, assertRequestCurrent) {
-                const { selected, network, approval, check } = captureTransaction(
+                const { selected, network, approval, check, binding } = captureTransaction(
                   input,
                   assertRequestCurrent
                 );
@@ -3940,7 +4134,7 @@ export function createKeyringRuntimeFactory(
                   check,
                   undefined,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }
+                  { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding)
                 );
               },
               signMessage(input) {
@@ -3989,11 +4183,9 @@ export function createKeyringRuntimeFactory(
                   snapshot.active.networkId,
                   snapshot.networks
                 );
-                const isCurrent = () =>
+                const ownerCurrent = () =>
                   !closed &&
                   generation === captured &&
-                  keyring === ring &&
-                  ring.isUnlocked() &&
                   catalogueSnapshot === snapshot &&
                   state.activeAccount.id === selected.index &&
                   state.activeAccount.type === selected.type &&
@@ -4002,7 +4194,11 @@ export function createKeyringRuntimeFactory(
                   state.activeNetwork.kind === sdk.INetworkType.Ethereum &&
                   state.activeNetwork.chainId === Number(network.chainId) &&
                   state.activeNetwork.url === network.rpcUrl;
-                approval.bindSigner('native-software-message', isCurrent);
+                const binding = createOwnedKeyringTransfer({initial: ring, current: () => keyring,
+                  worker: () => trezorWorker, session: () => trezorSession,
+                  assertOwner() {assertOwner(); if (!ownerCurrent() || approval.signal.aborted) throw new KeyringRuntimeError('CANCELLED');}});
+                const isCurrent = () => ownerCurrent() && binding.matches() && keyring.isUnlocked();
+                approval.bindSigner('native-message', isCurrent);
                 return run(async (ownerGeneration) => {
                   const guard = () => {
                     current(ownerGeneration);
@@ -4012,6 +4208,11 @@ export function createKeyringRuntimeFactory(
                       throw new KeyringRuntimeError('CANCELLED');
                   };
                   guard();
+                  const hardware = hardwareDappSigner(selected, network, approval, guard, binding);
+                  if (hardware) {
+                    const signature = await hardware.signMessage(request);
+                    guard(); return signature;
+                  }
                   if (selected.type === 'SmartAccount') {
                     if (
                       !account?.smartAccount ||
@@ -4140,11 +4341,13 @@ export function createKeyringRuntimeFactory(
                 assertOwner();
                 if (connectionNetworkId === null || connectionNetwork === null)
                   throw new KeyringRuntimeError('NOT_READY');
+                const selectedNetwork = connectionNetwork;
                 const snapshot = catalogueSnapshot;
                 const unlocked = keyring.isUnlocked() && snapshot !== null;
                 const accounts = unlocked
                   ? snapshot.accounts.flatMap((account) => {
-                      if (account.type === 'Ledger' || account.type === 'Trezor') return [];
+                      if ((account.type === 'Ledger' || account.type === 'Trezor') &&
+                          (account.slip44 !== 60 || selectedNetwork.kind !== sdk.INetworkType.Ethereum)) return [];
                       const type = account.type;
                       const source =
                         state.accounts[account.type][account.index];
@@ -4229,6 +4432,8 @@ export function createKeyringRuntimeFactory(
           ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory,
             ...(dependencies.openPrivacyPool ? { openNoteImport, openPrivateDeposit } : {}) } : {}),
           ...(storage.sentryNodes && dependencies.utxoFetch ? { getSentryKeyNetwork, openSentryNodeManagement } : {}),
+          ...(storage.sentryNodes && storage.sentryKeys && dependencies.utxoFetch && typeof dependencies.runSentryCrypto === 'function'
+            ? { getSentryKeyNetwork, openSentryApprovals } : {}),
           ...(storage.sentryKeys && typeof dependencies.deriveSentryPublicKey === 'function'
             ? { getSentryKeyNetwork, openSentryKeyManagement } : {}),
           ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
@@ -4317,7 +4522,15 @@ export function createKeyringRuntimeFactory(
                 (scope, check) => tokens.removeCollectible(scope, revision, target, check), 'registry-write');
             },
           },
-          catalogue: { getSnapshot: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot },
+          catalogue: {
+            getSnapshot: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot,
+            getControlSnapshot: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogue.getControlSnapshot(),
+            previewNetworkSelection(id, expectedRevision) {
+              current(generation);
+              if (closed || requiresReopen() || !keyring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+              return catalogue.previewNetworkSelection(id, expectedRevision);
+            },
+          },
           keyExport: {
             readSelected: (input, password, assertCurrent) => {
               if (closed || requiresReopen()) return run(async () => { throw new KeyringRuntimeError('NOT_READY'); });
@@ -4428,6 +4641,41 @@ export function createKeyringRuntimeFactory(
             },
             lock,
           },
+          async readConnectionUtxoPublic(method, owner, isChangeAddress, signal, assertOwner) {
+            const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
+            const network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
+            if (!network || !dependencies.utxoFetch || typeof isChangeAddress !== 'boolean')
+              throw new KeyringRuntimeError('NOT_READY');
+            const selected = selectedAccount(), account = state.accounts[selected.type][selected.index];
+            if (selected.id !== owner.accountId || selected.type === 'SmartAccount' || !account || account.xpub !== owner.xpub)
+              throw new KeyringRuntimeError('INVALID_INPUT');
+            const sdkNetwork = getUtxoSdkNetwork(network);
+            const check = () => {
+              current(captured); checkGuard(assertOwner); current(captured);
+              const actual = state.activeNetwork;
+              if (signal.aborted || ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
+                  selectedAccount() !== selected || state.accounts[selected.type][selected.index] !== account ||
+                  account.xpub !== owner.xpub || state.activeAccount.id !== selected.index ||
+                  state.activeAccount.type !== selected.type || actual.kind !== sdkNetwork.kind ||
+                  actual.chainId !== sdkNetwork.chainId || actual.url !== sdkNetwork.url)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            check();
+            await dataBinding(captured, check);
+            if (isCustomUtxoNetworkId(network.id))
+              await verifySavedUtxoEndpoint(network, { fetch: dependencies.utxoFetch, timeoutMs: 10_000 }, signal, check);
+            check();
+            const read = createOwnedUtxoBlockbookRead({ kind: 'wallet', url: sdkNetwork.url,
+              address: selected.address, xpub: owner.xpub, reuseAddressDiscovery: true },
+              signal, check, dependencies.utxoFetch);
+            const result = method === 'getChangeAddress' ? await ring.getChangeAddress(selected.index, read) :
+              method === 'getCurrentAddressPubkey' ? await ring.getCurrentAddressPubkey(owner.xpub, isChangeAddress, read) :
+              method === 'getBip32Path' ? await ring.getBip32Path(selected.index, isChangeAddress, read) :
+              (() => { throw new KeyringRuntimeError('INVALID_INPUT'); })();
+            check();
+            await dataBinding(captured, check);
+            return result;
+          },
           async withUtxoActivityRead(expected, signal, assertOwner, assertView, read) {
             const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
             const { accountId, networkId, address } = expected;
@@ -4504,7 +4752,7 @@ export function createKeyringRuntimeFactory(
                 if (admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
                   throw new KeyringRuntimeError('CANCELLED');
               };
-              trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label);
+              trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label, undefined, () => undefined);
               ring = trezorAttempt.ring;
             }
             const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
@@ -4557,7 +4805,7 @@ export function createKeyringRuntimeFactory(
                     if (admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
                       throw new KeyringRuntimeError('CANCELLED');
                   };
-                  trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label);
+                  trezorAttempt = await openTrezorAttempt(captured, check, 'utxo-send', selected.label, undefined, () => undefined);
                   ring = trezorAttempt.ring;
                   opened = createOpened(); utxoSend = opened;
                 }
@@ -4569,6 +4817,7 @@ export function createKeyringRuntimeFactory(
                     id: pendingTrezor.resume?.id ?? `trezor-${++trezorSequence}`,
                     kind: 'utxo', accountId: selected.id, networkId: network.id,
                     recipient: input.recipient.trim(), amount: input.amount,
+                    rbf: view.transactionOptions.rbf,
                     ...(input.max === true ? { max: true } : {}),
                     ...(input.asset ? { asset: Object.freeze({ ...input.asset }) } : {}),
                   });
@@ -5116,7 +5365,7 @@ export function createKeyringRuntimeFactory(
                     ...(replacement ? { replacement: { mode: replacement.mode, originalHash: replacement.original.hash } } : {}),
                   });
                   try {
-                    const { session, ring } = await openTrezorAttempt(captured, check, 'send', selected.label, resume);
+                    const { session, ring } = await openTrezorAttempt(captured, check, 'send', selected.label, resume, () => undefined);
                     const signed = await sdk.signTrezorEvmTransaction(ring.trezorSigner!, {
                       accountIndex: selected.index, expectedAddress: selected.address, coin: 'eth', slip44: network.slip44,
                       unsignedTransaction,

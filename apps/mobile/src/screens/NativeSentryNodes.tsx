@@ -1,3 +1,4 @@
+import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import {
   AppState,
@@ -350,7 +351,8 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                   const value = registration.trim();
                   Keyboard.dismiss();
                   void run(async (owner, check) => {
-                    const review = await owner.manager!.prepareLink(value);
+                    if (!snapshot) throw new Error('CANCELLED');
+                    const review = await owner.manager!.prepareLink({ version: 1, proTxHash: value, genesisHash: SENTRY_NETWORKS[snapshot.network].genesisHash }, 'Pali Wallet');
                     check();
                     navigate(owner, { kind: 'link', review });
                   }, step);

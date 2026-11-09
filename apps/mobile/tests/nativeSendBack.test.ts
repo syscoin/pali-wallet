@@ -4,10 +4,11 @@ import test from 'node:test';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>) {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver) {
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -39,13 +40,21 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const source=readFileSync(new NodeURL('../src/screens/NativeSend.tsx',import.meta.url),'utf8');
   const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React,esModuleInterop:true}}).outputText;
   const module={exports:{} as Record<string,any>};
-  runInNewContext(code,{module,exports:module.exports,Error,URL,Keyboard:native.Keyboard,require(name:string){assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
+  runInNewContext(code,{module,exports:module.exports,Error,URL,AbortController,Keyboard:native.Keyboard,require(name:string){assert.ok(Object.hasOwn(deps,name),`Unexpected import ${name}`);return deps[name];}});
   let snapshot: any={phase:'submitting',review:null,hash:null,message:null,intent:null,collectible:undefined};
   const prepared: unknown[] = [];
-  const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;},async prepareToken(...args: unknown[]) { prepared.push(args); }};
+  const confirmed: string[] = [];
+  const prepare = async (recipient: string, amount: string, nonce?: string) => {
+    prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
+      id: 'review', recipient, context, amountUnits: '1', maximumFeeUnits: '1', totalUnits: '2' } };
+  };
+  const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
+    async confirm(id: string) { confirmed.push(id); }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
   const context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,account:{address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1},onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render,prepared,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
+  let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  return {render,prepared,confirmed,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+    changeAccount(){account={...account,revision:2};},hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
 }
 function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all)];}
 function one(tree:Element,type:string,predicate:(e:Element)=>boolean=()=>true) {const matches=all(tree).filter(e=>e.type===type&&predicate(e));assert.equal(matches.length,1);return matches[0]!;}
@@ -113,4 +122,54 @@ for (const edit of [false, true]) test(`ordinary token MAX uses exact existing p
  if(edit){amount.props.onChange('0.'+'0'.repeat(254)+'2');tree=f.render();assert.equal(one(tree,'TokenMaximum').props.selected,false);}
  one(tree,'Screen').props.footer.props.onPress();await Promise.resolve();
  assert.equal((f.prepared[0] as unknown[])[2],'0.'+'0'.repeat(254)+(edit?'2':'1'));f.dispose();
+});
+
+function ensTicket(input: string, check: () => void, address = '0x2222222222222222222222222222222222222222') {
+  const abort = new AbortController();
+  const ticket: NativeRecipientResolution = { input, address, expiresAt: Date.now() + 1000, signal: abort.signal,
+    assertCurrent() { check(); if(abort.signal.aborted)throw new Error('RECIPIENT_EXPIRED'); }, dispose() { abort.abort(); } };
+  return { ticket, expire: () => abort.abort() };
+}
+const editSend = (f: ReturnType<typeof setup>, label: string, value: string) => {
+  const input=all(f.render()).find(node=>node.props.label===label)!;assert(input);input.props.onChange(value);
+};
+const reviewSend = (f: ReturnType<typeof setup>) => one(f.render(),'Screen').props.footer.props.onPress();
+const settle = () => new Promise<void>(resolve=>setImmediate(resolve));
+
+test('ENS review and final confirmation keep the exact resolved address and name', async () => {
+  let lookups=0;
+  const resolver:NativeRecipientResolver={async resolve(input,_owner,_signal,check){lookups++;return ensTicket(input,check).ticket;}};
+  const f=setup(undefined,undefined,resolver);f.snapshot.phase='idle';
+  editSend(f,'Ethereum address','recipient.eth');editSend(f,'Amount in ETH','1');reviewSend(f);await settle();
+  assert.equal((f.prepared[0] as string[])[0],'0x2222222222222222222222222222222222222222');
+  const tree=f.render();const text=all(tree).flatMap(node=>node.children).join(' ');
+  assert.match(text,/recipient.eth/);assert.match(text,/RESOLVED ADDRESS/);
+  assert.equal(one(tree,'Text',node=>node.props.testID==='native-send-recipient').children[0],'0x2222222222222222222222222222222222222222');
+  button(tree,'Confirm and send').props.onPress();await settle();assert.deepEqual(f.confirmed,['review']);assert.equal(lookups,1);f.dispose();
+});
+
+for(const change of ['edit','account','close'] as const)test(`held ENS result cannot prepare after ${change}`,async()=>{
+  let finish!:(ticket:NativeRecipientResolution)=>void,check!:()=>void;
+  const resolver:NativeRecipientResolver={resolve(_input,_owner,_signal,guard){check=guard;return new Promise(resolve=>{finish=resolve;});}};
+  const f=setup(undefined,undefined,resolver);f.snapshot.phase='idle';
+  editSend(f,'Ethereum address','old.eth');editSend(f,'Amount in ETH','1');reviewSend(f);await Promise.resolve();
+  if(change==='edit')editSend(f,'Ethereum address','0x3333333333333333333333333333333333333333');
+  if(change==='account'){f.changeAccount();f.render();}
+  if(change==='close')f.dispose();
+  finish(ensTicket('old.eth',check).ticket);await settle();assert.equal(f.prepared.length,0);f.dispose();
+});
+
+test('expired ENS review cancels the quote and permits a fresh lookup',async()=>{
+  let current!:ReturnType<typeof ensTicket>,lookups=0;
+  const resolver:NativeRecipientResolver={async resolve(input,_owner,_signal,check){lookups++;current=ensTicket(input,check);return current.ticket;}};
+  const f=setup(undefined,undefined,resolver);f.snapshot.phase='idle';
+  editSend(f,'Ethereum address','recipient.eth');editSend(f,'Amount in ETH','1');reviewSend(f);await settle();
+  const stale=button(f.render(),'Confirm and send');current.expire();stale.props.onPress();await settle();assert.equal(f.confirmed.length,0);
+  reviewSend(f);await settle();assert.equal(lookups,2);assert.equal(f.prepared.length,2);f.dispose();
+});
+
+test('unresolved ENS gives feedback without entering fee preparation',async()=>{
+  const f=setup(undefined,undefined,{async resolve(){throw new Error('ENS_UNAVAILABLE');}});f.snapshot.phase='idle';
+  editSend(f,'Ethereum address','missing.eth');editSend(f,'Amount in ETH','1');reviewSend(f);await settle();
+  assert.equal(f.prepared.length,0);assert.match(all(f.render()).flatMap(node=>node.children).join(' '),/could not be resolved/);f.dispose();
 });

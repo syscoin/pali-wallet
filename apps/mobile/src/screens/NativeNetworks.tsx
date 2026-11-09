@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
@@ -8,11 +10,11 @@ import { createNativeNetwork, type NativeNetworkRegistration } from '../custody/
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
 import { Button, colors, Header, Notice, Screen, Text } from '../ui';
 
-function failure(error: unknown): string {
+function failure(error: unknown, t: TFunction): string {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'BUSY') return 'Wait for the current wallet operation to finish, then try again.';
-  if (code === 'CANCELLED' || code === 'NOT_READY') return 'Your wallet context changed. Unlock it and try again.';
-  return 'Pali could not switch networks. Your saved wallet has been preserved.';
+  if (code === 'BUSY') return t('mobile.importAccount.busy');
+  if (code === 'CANCELLED' || code === 'NOT_READY') return t('mobile.accounts.contextChanged');
+  return t('mobile.networks.failed');
 }
 
 function NetworkOption<Id extends string>({ network, selected, busy, onSelect, onEdit }: {
@@ -22,20 +24,21 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
   onSelect(id: Id): Promise<void>;
   onEdit?: (network: NativeNetworkSnapshot<Id>['networks'][number]) => void;
 }) {
+  const { t } = useNativeTranslation();
   return <View style={[s.network, s.networkRow, selected && s.active]}><IdlePressable accessibilityRole="radio"
-    accessibilityLabel={`${network.name}, ${network.symbol}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}${network.testnet ? ', test network' : ''}${network.canSign ? '' : ', balance and receive only'}`}
+    accessibilityLabel={t('mobile.networks.networkLabel', { name: network.name, symbol: network.symbol, chain: network.registration ? t('mobile.networks.chainSuffix', { chainId: network.registration.chainId }) : '', testnet: network.testnet ? t('mobile.networks.testSuffix') : '', capability: network.canSign ? '' : t('mobile.networks.balanceSuffix') })}
     accessibilityState={{ checked: selected, disabled: busy }} aria-checked={selected} disabled={busy}
     onPress={() => { void onSelect(network.id); }}
     style={({ pressed }) => [s.networkSelect, pressed && s.pressed]}>
     <View style={s.details}><Text style={s.name} numberOfLines={2}>{network.name}</Text>
-      <Text style={s.help} numberOfLines={2}>{network.symbol}{network.testnet ? ' · Test network' : ''}</Text>
-      {network.registration && <Text style={s.help}>Chain ID {network.registration.chainId}</Text>}
-      {!network.canSign && <Text style={s.unavailable}>Balance and receive only</Text>}
+      <Text style={s.help} numberOfLines={2}>{network.symbol}{network.testnet ? ` · ${t('mobile.common.testNetwork')}` : ''}</Text>
+      {network.registration && <Text style={s.help}>{t('mobile.networks.chain', { chainId: network.registration.chainId })}</Text>}
+      {!network.canSign && <Text style={s.unavailable}>{t('mobile.networks.balanceOnly')}</Text>}
     </View>
     <View style={[s.check, selected && s.checked]}>
       {selected && <Text style={s.checkText}>✓</Text>}
     </View>
-  </IdlePressable>{onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}`} disabled={busy} onPress={() => onEdit(network)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
+  </IdlePressable>{onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={t('mobile.networks.editLabel', { name: network.name, chain: network.registration ? t('mobile.networks.chainSuffix', { chainId: network.registration.chainId }) : '' })} disabled={busy} onPress={() => onEdit(network)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
 }
 
 type CatalogueResult =
@@ -50,6 +53,7 @@ function NetworkSuggestions({ query, onQuery, load, networks, busy, onChoose }: 
   busy: boolean;
   onChoose(chain: NativeNetworkSuggestion): void;
 }) {
+  const { t } = useNativeTranslation();
   const [result, setResult] = useState<CatalogueResult>({ status: 'loading' });
   const [attempt, setAttempt] = useState(0);
   const searching = query.trim().length >= 2;
@@ -69,16 +73,16 @@ function NetworkSuggestions({ query, onQuery, load, networks, busy, onChoose }: 
   }, [networks, result]);
   const matches = useMemo(() => rankChainSuggestions(candidates, query), [candidates, query]);
   return <View style={s.field}>
-    <IdleTextInput accessibilityLabel="Find a network" placeholder="Search by name or chain ID"
+    <IdleTextInput accessibilityLabel={t('mobile.networks.find')} placeholder={t('mobile.networks.searchPlaceholder')}
       placeholderTextColor={colors.muted} value={query} onChangeText={onQuery}
       maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
       spellCheck={false} autoComplete="off" returnKeyType="search"
       onSubmitEditing={Keyboard.dismiss} style={s.search} />
     {searching && !busy && (result.status !== 'ready' || !matches.length) && (
       <Text accessibilityLiveRegion="polite" style={s.help}>
-        {result.status === 'loading' ? 'Searching networks…' : result.status === 'unavailable'
-          ? 'Search unavailable. Enter network details below.'
-          : 'No matching networks. Enter network details below.'}
+        {result.status === 'loading' ? t('mobile.networks.searching') : result.status === 'unavailable'
+          ? t('mobile.networks.searchUnavailable')
+          : t('mobile.networks.noSearchMatches')}
       </Text>
     )}
     {searching && !busy && result.status === 'unavailable' && (
@@ -87,17 +91,17 @@ function NetworkSuggestions({ query, onQuery, load, networks, busy, onChoose }: 
         void load(true).catch(() => undefined);
         setAttempt((previous) => previous + 1);
       }} style={s.retry}>
-        <Text style={s.retryLabel}>Retry search</Text>
+        <Text style={s.retryLabel}>{t('mobile.networks.retry')}</Text>
       </IdlePressable>
     )}
     {!busy && matches.map((chain) => (
       <IdlePressable key={chain.chainId} accessibilityRole="button"
-        accessibilityLabel={`Use ${chain.name}, ${chain.nativeCurrency.symbol}, Chain ID ${chain.chainId}`}
+        accessibilityLabel={t('mobile.networks.useLabel', { name: chain.name, symbol: chain.nativeCurrency.symbol, chainId: chain.chainId })}
         onPress={() => onChoose(chain)}
         style={({ pressed }) => [s.suggestion, pressed && s.pressed]}>
         <Text style={s.name} numberOfLines={2}>{chain.name}</Text>
         <Text style={s.help} numberOfLines={2}>
-          {chain.nativeCurrency.symbol} · Chain ID {chain.chainId}{chain.isTestnet ? ' · Test network' : ''}
+          {chain.nativeCurrency.symbol} · {t('mobile.networks.chain', { chainId: chain.chainId })}{chain.isTestnet ? ` · ${t('mobile.common.testNetwork')}` : ''}
         </Text>
       </IdlePressable>
     ))}
@@ -109,6 +113,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   controller: NativeNetworkView<Id>;
   onBack(): void;
 }) {
+  const { t } = useNativeTranslation();
   const [query, setQuery] = useState('');
   const [catalogueQuery, setCatalogueQuery] = useState('');
   const [form, setForm] = useState<{ id?: string; utxo?: true; catalogueRevision?: number; contextRevision?: number;
@@ -207,7 +212,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
       // Accepted operations may revoke this screen. Only an unchanged context owns inline feedback.
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&
           controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision)
-        setUi({ owner: controller, busy: false, error: failure(cause) });
+        setUi({ owner: controller, busy: false, error: failure(cause, t) });
     } finally {
       if (working.current === operation) {
         working.current = null;
@@ -215,7 +220,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           setUi((previous) => previous.owner === controller ? { ...previous, busy: false } : previous);
       }
     }
-  }, [controller, snapshot]);
+  }, [controller, snapshot, t]);
 
   const save = async (remove = false) => {
     if (!form || !snapshot || working.current) return;
@@ -223,7 +228,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     const saver = form.utxo ? (form.id ? controller.editUtxo : controller.addUtxo) : controller.save;
     if (remove ? !form.id || !remover : !saver) return;
     if (form.utxo && form.id && !isCurrentUtxoEdit()) {
-      setUi({ owner: controller, busy: false, error: 'This network changed. Reopen it to edit the current settings.' });
+      setUi({ owner: controller, busy: false, error: t('mobile.networks.changed') });
       return;
     }
     const contextRevision = controller.getContextRevision();
@@ -252,16 +257,16 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision) {
         const code = cause && typeof cause === 'object' && 'code' in cause ? cause.code : undefined;
         let message = form.utxo ? form.id ? code === 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER'
-          ? 'Check your saved transfers before changing this endpoint.'
-          : 'Check the network name and use a Blockbook URL for this network.'
-          : 'Check the Blockbook URL and make sure this coin type is not already saved.'
-          : 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.';
+          ? t('mobile.networks.savedTransfersEdit')
+          : t('mobile.networks.invalidBlockbook')
+          : t('mobile.networks.addBlockbook')
+          : t('mobile.networks.invalidEvm');
         if (form.utxo && remove) {
           message = code === 'ACCOUNT_NOT_REMOVABLE'
-            ? 'Keep this network while it has saved accounts.'
+            ? t('mobile.networks.keepAccounts')
             : code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER'
-            ? 'Check your saved transfers before removing this network.'
-            : 'Could not remove this network. Reopen its settings and try again.';
+            ? t('mobile.networks.savedTransfersRemove')
+            : t('mobile.networks.removeFailed');
         }
         setUi({ owner: controller, busy: false, error: message });
       }
@@ -293,42 +298,42 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen key={form ? 'network-form' : 'network-list'}>
-        <Header title={form ? form.utxo ? (form.id ? 'Edit UTXO network' : 'Add UTXO network') : form.id ? 'Edit network' : 'Add network' : 'Networks'} subtitle={form?.utxo && form.id ? undefined : 'Choose a network for this account'} onBack={form ? discardForm : close} />
+        <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.networks.title')} subtitle={form?.utxo && form.id ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
         {form ? <>
           {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (
             <NetworkSuggestions query={catalogueQuery} onQuery={setCatalogueQuery}
               load={controller.loadCatalogue} networks={snapshot.networks} busy={busy}
               onChoose={chooseSuggestion} />
           )}
-          {field('name', form.utxo && !form.id ? 'Network name (optional)' : 'Network name')}
-          {field('rpcUrl', form.utxo ? 'Blockbook URL' : 'RPC URL')}
-          {!form.utxo && <>{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
-          <IdlePressable accessibilityRole="checkbox" accessibilityLabel="This is a test network"
+          {field('name', form.utxo && !form.id ? t('mobile.networks.optionalName') : t('mobile.networks.name'))}
+          {field('rpcUrl', form.utxo ? t('mobile.networks.blockbook') : t('mobile.networks.rpc'))}
+          {!form.utxo && <>{field('chainId', t('mobile.networks.chainId'))}{field('symbol', t('mobile.networks.currency'))}
+          <IdlePressable accessibilityRole="checkbox" accessibilityLabel={t('mobile.networks.testNetwork')}
             accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
             onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
-            <Text style={{ flex: 1 }}>{form.testnet ? '✓ ' : ''}This is a test network</Text>
+            <Text style={{ flex: 1 }}>{form.testnet ? '✓ ' : ''}{t('mobile.networks.testNetwork')}</Text>
           </IdlePressable></>}
           {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
-          {!form.utxo && <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text>}
-          <Button title={form.utxo && form.id ? busy ? 'Saving…' : 'Save changes' : busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
-          {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
+          {!form.utxo && <Text style={s.help}>{t('mobile.networks.rpcChanges')}</Text>}
+          <Button title={form.utxo && form.id ? busy ? t('mobile.networks.saving') : t('mobile.networks.saveChanges') : busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy} onPress={() => { void save(); }} />
+          {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title={t('mobile.networks.remove')} variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {form.id && form.id === snapshot?.selectedId && <Text style={s.help}>
-            {form.utxo ? 'Only unused custom UTXO networks can be removed.' : 'Switch to another network before removing this one.'}
+            {form.utxo ? t('mobile.networks.removeUnused') : t('mobile.networks.switchBeforeRemove')}
           </Text>}
-          <Button title="Cancel" variant="quiet" disabled={busy} onPress={discardForm} />
+          <Button title={t('buttons.cancel')} variant="quiet" disabled={busy} onPress={discardForm} />
         </> : <>
-        <IdleTextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
+        <IdleTextInput accessibilityLabel={t('mobile.networks.search')} placeholder={t('mobile.networks.search')} placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
           spellCheck={false} autoComplete="off" style={s.search} />
-        {busy && <Notice title="Switching networks…" body="Pali is updating your wallet context." />}
-        {!snapshot && !busy ? <Notice title="Wallet locked" body="Unlock your wallet to choose a network." /> :
-          !matches.length && !busy ? <Notice title="No matching networks" body="Try another network name or currency." /> :
+        {busy && <Notice title={t('mobile.networks.switching')} body={t('mobile.networks.updating')} />}
+        {!snapshot && !busy ? <Notice title={t('mobile.accounts.locked')} body={t('mobile.networks.unlock')} /> :
+          !matches.length && !busy ? <Notice title={t('mobile.networks.noMatches')} body={t('mobile.networks.tryName')} /> :
           [false, true].map((testnet) => {
             const networks = matches.filter((network) => network.testnet === testnet);
             if (!networks.length) return null;
             return <View key={String(testnet)} style={s.section}>
-              <Text style={s.sectionTitle}>{testnet ? 'Test networks' : 'Main networks'}</Text>
-              {testnet && <Text style={s.help}>Test networks use tokens intended for testing.</Text>}
+              <Text style={s.sectionTitle}>{testnet ? t('mobile.networks.testnets') : t('mobile.networks.mainnets')}</Text>
+              {testnet && <Text style={s.help}>{t('mobile.networks.testHint')}</Text>}
               {networks.map((network) => {
                 const canEdit = network.registration ? controller.save : controller.editUtxo && network.customUtxoEndpoint;
                 return <NetworkOption key={network.id} network={network}
@@ -336,14 +341,14 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
               })}
             </View>;
           })}
-          {controller.save && <Button title="Add network" variant="quiet" disabled={busy} onPress={() => edit()} />}
-          {controller.addUtxo && <Button title="Add UTXO network" variant="quiet" disabled={busy} onPress={() => {
+          {controller.save && <Button title={t('mobile.networks.add')} variant="quiet" disabled={busy} onPress={() => edit()} />}
+          {controller.addUtxo && <Button title={t('mobile.networks.addUtxo')} variant="quiet" disabled={busy} onPress={() => {
             setUi({ owner: controller, busy: false, error: '' });
             setForm({ utxo: true, name: '', rpcUrl: 'https://', chainId: '', symbol: '', testnet: false });
           }} />}
         </>}
         {!form && !!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
-        <Text style={s.buildLabel}>Development build · Use a test wallet</Text>
+        <Text style={s.buildLabel}>{t('mobile.common.development')}</Text>
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;

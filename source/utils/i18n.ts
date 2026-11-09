@@ -4,21 +4,17 @@ import { initReactI18next } from 'react-i18next';
 
 // Keep navigation labels in the base resources; the lazy Privacy route
 // hydrates its own copy from packaged locale fragments.
+import {
+  DEFAULT_PALI_LANGUAGE,
+  PALI_LANGUAGE_OPTIONS,
+} from '../shared/languagePolicy';
 import enTranslations from 'assets/locales/en.json?baseMessages';
 import { chromeStorage } from 'utils/storageAPI';
 
-export const availableLanguages = [
-  'en',
-  'es',
-  'pt',
-  'fr',
-  'de',
-  'zh',
-  'ja',
-  'ko',
-  'ru',
-];
-export const defaultLocale = 'en';
+export const availableLanguages: string[] = PALI_LANGUAGE_OPTIONS.map(
+  (language) => language.value
+);
+export const defaultLocale: string = DEFAULT_PALI_LANGUAGE;
 let languageSelectionGeneration = 0;
 let languageCommit = Promise.resolve();
 

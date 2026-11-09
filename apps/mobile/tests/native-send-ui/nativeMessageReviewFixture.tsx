@@ -1,3 +1,4 @@
+import { unsupportedDappViews } from '../unsupportedDappPorts';
 import React, { useLayoutEffect, useState } from 'react';
 import type { NativeConnectionsView, NativeMessageReview } from '../../src/connections/types';
 import { NativeMessageReviewScreen } from '../../src/screens/NativeMessageReview';
@@ -49,6 +50,7 @@ export function NativeMessageReviewFixture() {
     };
   }, []);
   const controller: NativeConnectionsView = {
+  ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },

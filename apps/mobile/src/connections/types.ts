@@ -5,6 +5,9 @@ import type { DappMessageMethod } from '../../../../source/shared/dappMessageReq
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
 import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundles.ts';
+import type { NativeDappControlReview } from './controlRequests.ts';
+import type { NativeDappReturnTarget } from './pairingReturn.ts';
+import type { NativeSentryReview, NativeSentryAssent } from './sentryRequests.ts';
 
 export type NativeConnectionError =
   | 'INVALID_LINK'
@@ -109,6 +112,8 @@ export type NativeSigningReview =
   | NativeSmartTransactionReview;
 
 export type NativeConnectionsSnapshot = Readonly<{
+  sentryReview: NativeSentryReview | null;
+  controlReview: NativeDappControlReview | null;
   callsStatus: Readonly<{
     id: string;
     origin: string;
@@ -133,6 +138,7 @@ export type NativeConnectionsSnapshot = Readonly<{
     origin: string;
     accountLabel: string;
     networkLabel: string;
+    returnTarget: NativeDappReturnTarget | null;
   }>[];
   signingReview: NativeSigningReview | null;
   error: NativeConnectionError | null;
@@ -140,6 +146,11 @@ export type NativeConnectionsSnapshot = Readonly<{
 
 /** Public view commands carry identifiers only, never transport or keyring handles. */
 export type NativeConnectionsView = Readonly<{
+  approveSentry(id: string, revision: number, assent: NativeSentryAssent): Promise<void>;
+  rejectSentry(id: string): Promise<void>;
+  approveControl(id: string, revision: number): Promise<void>;
+  rejectControl(id: string): Promise<void>;
+  returnToDapp(id: string, revision: number): Promise<void>;
   callsStatusShown(id: string): Promise<void>;
   dismissCallsStatus(id: string): void;
   getSnapshot(): NativeConnectionsSnapshot;

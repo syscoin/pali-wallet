@@ -411,7 +411,7 @@ test('UTXO portfolio exposes exact native and SYSX units only for the selected r
     const result: UtxoBalance = { networkId: network.id, kind: 'utxo', chainId: network.chainId,
       genesisHash: network.genesisHash, confirmedUnits: '9007199254740993', pendingDeltaUnits: '-123',
       unconfirmedTransactions: 1, observedHeight: 42,
-      sysx: { confirmedUnits: '9007199254740995', pendingDeltaUnits: '-1' } };
+      assets: [{ assetGuid: '123456', symbol: 'SYSX', decimals: 8, confirmedUnits: '9007199254740995', pendingDeltaUnits: '-1' }] };
     calls[0]!.resolve({ ...result, genesisHash: '0'.repeat(64) });
     await tick();
     assert.equal(controller.getSnapshot().status, 'error');
@@ -420,22 +420,22 @@ test('UTXO portfolio exposes exact native and SYSX units only for the selected r
     await good;
     assert.equal(controller.getSnapshot().units, '9007199254740993');
     assert.equal(controller.getSnapshot().pendingDeltaUnits, '-123');
-    assert.deepEqual(controller.getSnapshot().sysx, { status: 'available', ...result.sysx });
+    assert.deepEqual(controller.getSnapshot().assets, { status: 'available', holdings: result.assets });
     const unavailable = controller.refresh();
-    assert.deepEqual(controller.getSnapshot().sysx, { status: 'unavailable' });
-    const { sysx: _known, ...nativeOnly } = result;
+    assert.deepEqual(controller.getSnapshot().assets, { status: 'unavailable' });
+    const { assets: _known, ...nativeOnly } = result;
     calls.at(-1)!.resolve(nativeOnly);
     await unavailable;
     assert.equal(controller.getSnapshot().units, '9007199254740993');
-    assert.deepEqual(controller.getSnapshot().sysx, { status: 'unavailable' });
+    assert.deepEqual(controller.getSnapshot().assets, { status: 'unavailable' });
     const empty = controller.refresh();
-    calls.at(-1)!.resolve({ ...nativeOnly, sysx: { confirmedUnits: '0', pendingDeltaUnits: '0' } });
+    calls.at(-1)!.resolve({ ...nativeOnly, assets: [] });
     await empty;
-    assert.equal(controller.getSnapshot().sysx, undefined);
+    assert.deepEqual(controller.getSnapshot().assets, { status: 'available', holdings: [] });
     const stillAbsent = controller.refresh();
     calls.at(-1)!.resolve(nativeOnly);
     await stillAbsent;
-    assert.equal(controller.getSnapshot().sysx, undefined);
+    assert.deepEqual(controller.getSnapshot().assets, { status: 'unavailable' });
     const restored = controller.refresh();
     calls.at(-1)!.resolve(result);
     await restored;

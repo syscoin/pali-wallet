@@ -6,6 +6,7 @@ import {
   type Erc20Metadata,
 } from '../../../../source/shared/erc20';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
+import type { NativeRecipientResolution, NativeRecipientResolver } from '../portfolio/nativeRecipientResolver';
 import {
   NativePortfolioController,
   type NativePortfolioAccount,
@@ -67,6 +68,7 @@ export function NativeSmartAccountSend({
   tokenView,
   collectible,
   onBack,
+  recipientResolver,
 }: {
   open(
     recipient: string,
@@ -82,6 +84,7 @@ export function NativeSmartAccountSend({
   collectible?: SavedCollectible;
   tokenView?: Pick<NativeTokenView, 'subscribe' | 'getSnapshot' | 'connect'>;
   onBack(): void;
+  recipientResolver?: NativeRecipientResolver;
 }) {
   const portfolio = useMemo(
     () => new NativePortfolioController(source, reader),
@@ -135,6 +138,28 @@ export function NativeSmartAccountSend({
   const [controller, setController] =
     useState<NativeSmartAccountOperation | null>(null);
   const [closing, setClosing] = useState(false);
+  const [resolvedRecipient, setResolvedRecipient] = useState<NativeRecipientResolution | null>(null);
+  const recipientRequest = useRef<{
+    abort: AbortController;
+    ticket?: NativeRecipientResolution;
+  } | null>(null);
+  const latestOwner = useRef({ open, account, context, recipientResolver, recipient });
+  useLayoutEffect(() => {
+    latestOwner.current = { open, account, context, recipientResolver, recipient };
+  }, [open, account, context, recipientResolver, recipient]);
+  const retireRecipient = useCallback(() => {
+    const held = recipientRequest.current;
+    recipientRequest.current = null;
+    held?.abort.abort();
+    held?.ticket?.dispose();
+    setResolvedRecipient(null);
+  }, []);
+  const editRecipient = (value: string) => {
+    retireRecipient();
+    setRecipient(value);
+  };
+  useLayoutEffect(() => () => retireRecipient(), [retireRecipient, open, account.address,
+    account.network, account.revision, context.registrationHash, recipientResolver]);
   const callbacks = useRef({ onBack });
   useLayoutEffect(() => {
     callbacks.current = { onBack };
@@ -150,6 +175,7 @@ export function NativeSmartAccountSend({
     if (!current.active) return;
     current.active = false;
     current.returning = true;
+    retireRecipient();
     const close = callbacks.current.onBack;
     setClosing(true);
     void disposeSend(current)
@@ -157,7 +183,7 @@ export function NativeSmartAccountSend({
       .then(() => {
         if (owner.current === current && current.returning) close();
       });
-  }, []);
+  }, [retireRecipient]);
   useEffect(() => {
     const current: SendOwner = {
       active: true,
@@ -173,19 +199,29 @@ export function NativeSmartAccountSend({
     return () => {
       current.active = false;
       current.returning = false;
+      retireRecipient();
       void disposeSend(current).catch(() => undefined);
       hardware.remove();
     };
-  }, [back]);
+  }, [back, retireRecipient]);
   const review = async () => {
     const current = owner.current;
     if (!current.active || current.busy) return;
     current.busy = true;
     setBusy(true);
     setError('');
-    const check = () => {
-      if (!current.active) throw new Error('SMART_OPERATION_EXPIRED');
+    const held = { abort: new AbortController(), ticket: undefined as NativeRecipientResolution | undefined };
+    recipientRequest.current = held;
+    const captured = latestOwner.current;
+    const checkOwner = () => {
+      const actual = latestOwner.current;
+      if (!current.active || owner.current !== current || recipientRequest.current !== held || held.abort.signal.aborted ||
+          actual.open !== captured.open || actual.recipient !== captured.recipient || actual.recipientResolver !== captured.recipientResolver ||
+          actual.account.address !== captured.account.address || actual.account.network !== captured.account.network ||
+          actual.account.revision !== captured.account.revision || actual.context.registrationHash !== captured.context.registrationHash)
+        throw new Error('RECIPIENT_EXPIRED');
     };
+    const check = () => { checkOwner(); held.ticket?.assertCurrent(); };
     try {
       let nftRequest: NativeSmartAccountAmount | undefined;
       if (collectible) {
@@ -213,8 +249,26 @@ export function NativeSmartAccountSend({
           amountUnits: quantity,
         };
       }
+      let address = recipient.trim();
+      if (address.toLowerCase().endsWith('.eth')) {
+        if (!recipientResolver) throw new Error('ENS_UNAVAILABLE');
+        held.ticket = await recipientResolver.resolve(address, { account, context }, held.abort.signal, checkOwner);
+        check();
+        const ticket = held.ticket;
+        address = ticket.address;
+        setResolvedRecipient(ticket);
+        ticket.signal.addEventListener('abort', () => {
+          if (recipientRequest.current !== held || !current.active) return;
+          retireRecipient();
+          void Promise.resolve(current.operation?.dispose()).catch(() => undefined);
+          setController(null);
+          setResolvedRecipient(null);
+          setError('The recipient lookup expired or changed. Review the transfer again.');
+        }, { once: true });
+      }
+      check();
       current.opening = open(
-        recipient,
+        address,
         nftRequest ??
           (token
             ? { kind: 'erc20', contractAddress: token.contractAddress, amount }
@@ -222,16 +276,23 @@ export function NativeSmartAccountSend({
             ? { kind: 'maximum' }
             : { kind: 'exact', amount }),
         check
-      ).then((operation) => {
+      ).then(async (operation) => {
         current.operation = operation;
-        if (current.active) {
+        try {
           check();
           setController(operation);
+        } catch (error) {
+          await operation.dispose();
+          if (current.operation === operation) current.operation = null;
+          throw error;
         }
       });
       await current.opening;
     } catch (error) {
-      if (current.active)
+      const owned = recipientRequest.current === held;
+      if (owned) retireRecipient();
+      else held.ticket?.dispose();
+      if (owned && current.active)
         setError(
           nativeTransferFailure(
             error,
@@ -242,8 +303,10 @@ export function NativeSmartAccountSend({
           )
         );
     } finally {
-      current.busy = false;
-      if (current.active) setBusy(false);
+      if (!recipientRequest.current || recipientRequest.current === held) {
+        current.busy = false;
+        if (current.active) setBusy(false);
+      }
     }
   };
   if (closing)
@@ -254,12 +317,17 @@ export function NativeSmartAccountSend({
         </Screen>
       </SafeAreaView>
     );
+  if (controller && !resolvedRecipient)
+    return <NativeSmartAccountOperationScreen controller={controller} onBack={back} />;
   if (controller)
     return (
-      <NativeSmartAccountOperationScreen
-        controller={controller}
-        onBack={back}
-      />
+      <>
+        {resolvedRecipient && <SafeAreaView edges={['top']} style={{ backgroundColor: colors.bg, paddingHorizontal: 24 }}>
+          <Text selectable style={styles.muted}>ENS name: {resolvedRecipient.input}</Text>
+          <Text selectable style={styles.muted}>Resolved address: {resolvedRecipient.address}</Text>
+        </SafeAreaView>}
+        <NativeSmartAccountOperationScreen controller={controller} onBack={back} />
+      </>
     );
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -300,9 +368,9 @@ export function NativeSmartAccountSend({
           <NativeSendInput
             label="Recipient address"
             value={recipient}
-            onChange={setRecipient}
+            onChange={editRecipient}
             busy={busy}
-            placeholder="0x…"
+            placeholder="0x… or name.eth"
           />
           {collectible?.tokenStandard === 'ERC-721' && (
             <NativeSendInput

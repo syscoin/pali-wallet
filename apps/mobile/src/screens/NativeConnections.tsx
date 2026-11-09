@@ -1,3 +1,4 @@
+import { useNativeTranslation } from '../platform/localization';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, BackHandler, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,15 +11,15 @@ import { ConnectionQrScanner } from './ConnectionQrScanner';
 import type { NativePairingEntry } from '../connections/pairingLinks';
 
 const ERRORS: Record<NativeConnectionError, string> = {
-  INVALID_LINK: 'Copy a WalletConnect link from the app you want to connect to.',
-  REQUEST_EXPIRED: 'This connection request expired. Request a new connection from the app.',
-  CONTEXT_CHANGED: 'Your wallet context changed. Review the connection again.',
-  UNSUPPORTED_REQUEST: 'This app requested an action that is unavailable for this connection.',
-  CONNECTION_UNAVAILABLE: 'The connection service is unavailable. Try again.',
-  BUSY: 'Finish the current connection request first.',
-  BLOCKED_SITE: 'This website is on a known phishing list. The connection was blocked.',
-  SITE_MISMATCH: 'The requesting website does not match the app’s claimed address. The connection was blocked.',
-  DELIVERY_UNCERTAIN: 'The signature was handed to WalletConnect, but delivery could not be confirmed. Check the requesting app before trying again.',
+  INVALID_LINK: 'mobile.connections.invalidLink',
+  REQUEST_EXPIRED: 'mobile.connections.expired',
+  CONTEXT_CHANGED: 'mobile.connections.contextChanged',
+  UNSUPPORTED_REQUEST: 'mobile.connections.unsupported',
+  CONNECTION_UNAVAILABLE: 'mobile.connections.unavailable',
+  BUSY: 'mobile.connections.busy',
+  BLOCKED_SITE: 'mobile.connections.blocked',
+  SITE_MISMATCH: 'mobile.connections.mismatch',
+  DELIVERY_UNCERTAIN: 'mobile.connections.deliveryUncertain',
 };
 
 export function NativeCallsStatus({
@@ -28,6 +29,7 @@ export function NativeCallsStatus({
   view: NonNullable<NativeConnectionsSnapshot['callsStatus']>;
   controller: NativeConnectionsView;
 }) {
+  const { t } = useNativeTranslation();
   const close = useCallback(
     () => controller.dismissCallsStatus(view.id),
     [controller, view.id]
@@ -47,11 +49,11 @@ export function NativeCallsStatus({
   const label =
     (
       {
-        100: 'Pending',
-        200: 'Confirmed',
-        400: 'Not submitted',
-        500: 'Reverted',
-        600: 'Partially reverted',
+        100: t('mobile.connections.pending'),
+        200: t('mobile.connections.confirmed'),
+        400: t('mobile.connections.notSubmitted'),
+        500: t('mobile.connections.reverted'),
+        600: t('mobile.connections.partiallyReverted'),
       } as Record<number, string>
     )[status.status] ?? String(status.status);
   return (
@@ -60,26 +62,26 @@ export function NativeCallsStatus({
       edges={['top', 'bottom']}
     >
       <Screen>
-        <Header title="Call bundle status" onBack={close} />
+        <Header title={t('mobile.connections.bundleStatus')} onBack={close} />
         <Text>{view.origin}</Text>
         <Card style={{ padding: 20, gap: 12 }}>
           <Text>{label}</Text>
-          <Text>Chain {BigInt(status.chainId).toString()}</Text>
-          <Text>{status.atomic ? 'Atomic calls' : 'Sequential calls'}</Text>
+          <Text>{t('mobile.connections.chain', { chainId: BigInt(status.chainId).toString() })}</Text>
+          <Text>{status.atomic ? t('mobile.connections.atomic') : t('mobile.connections.sequential')}</Text>
           <Text selectable>{status.id}</Text>
         </Card>
         {status.receipts?.map((receipt) => (
           <Card key={receipt.transactionHash} style={{ padding: 20, gap: 12 }}>
             <Text>
               {receipt.status === '0x1'
-                ? 'Transaction confirmed'
-                : 'Transaction reverted'}
+                ? t('mobile.connections.transactionConfirmed')
+                : t('mobile.connections.transactionReverted')}
             </Text>
             <Text selectable>{receipt.transactionHash}</Text>
-            <Text>Block {BigInt(receipt.blockNumber).toString()}</Text>
+            <Text>{t('mobile.connections.block', { blockNumber: BigInt(receipt.blockNumber).toString() })}</Text>
           </Card>
         ))}
-        <Button title="Close" variant="quiet" onPress={close} />
+        <Button title={t('buttons.close')} variant="quiet" onPress={close} />
       </Screen>
     </SafeAreaView>
   );
@@ -95,6 +97,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
   onScanStarted?(): void;
   onScanFinished?(): void;
 }) {
+  const { t } = useNativeTranslation();
   const subscribe = useCallback((listener: () => void) => controller.subscribe(listener), [controller]);
   const snapshot = useSyncExternalStore(subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selection, setSelection] = useState<{ controller: NativeConnectionsView; accountId: string } | null>(null);
@@ -167,17 +170,17 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
     }} />;
 
   return <SafeAreaView edges={['top']} style={s.container}><Screen>
-    <Header title="Connected apps" onBack={close} />
-    {snapshot.status === 'locked' ? <Notice title="Unlock to connect" body="Unlock your wallet to manage app connections." /> : <>
+    <Header title={t('mobile.connections.title')} onBack={close} />
+    {snapshot.status === 'locked' ? <Notice title={t('mobile.connections.unlockTitle')} body={t('mobile.connections.unlockBody')} /> : <>
       {proposal ? <Card style={s.card}>
         <View style={s.requestIcon}><Icon name="globe" size={26} color={colors.blue} /></View>
-        <Text accessibilityRole="header" style={s.title}>Connect to {proposal.name}</Text>
-        <Text style={s.label}>Reported website</Text>
+        <Text accessibilityRole="header" style={s.title}>{t('mobile.connections.connectTo', { name: proposal.name })}</Text>
+        <Text style={s.label}>{t('mobile.connections.reportedWebsite')}</Text>
         <Text selectable style={s.origin}>{proposal.origin}</Text>
         <DappSiteStatus verification={proposal.verification} />
-        <Text style={s.body}>Share the selected account with this app.</Text>
-        {snapshot.network && <Text style={s.network}>{snapshot.network.label} · Chain ID {snapshot.network.chainId}</Text>}
-        <View accessibilityRole="radiogroup" accessibilityLabel="Connection account" style={s.accounts}>
+        <Text style={s.body}>{t('mobile.connections.shareAccount')}</Text>
+        {snapshot.network && <Text style={s.network}>{t('mobile.connections.network', { network: snapshot.network.label, chainId: snapshot.network.chainId })}</Text>}
+        <View accessibilityRole="radiogroup" accessibilityLabel={t('mobile.connections.account')} style={s.accounts}>
           {snapshot.accounts.map((account) => <IdlePressable key={account.id} accessibilityRole="radio"
             accessibilityLabel={`${account.label}, ${account.address}`} accessibilityState={{ checked: account.id === selectedAccountId, disabled: busy }}
             disabled={busy} onPress={() => setSelection({ controller, accountId: account.id })}
@@ -187,37 +190,38 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
             {account.id === selectedAccountId && <Icon name="check" color={colors.blue} size={20} />}
           </IdlePressable>)}
         </View>
-        {!proposal.canApprove && proposal.verification.validation !== 'INVALID' && !proposal.verification.isScam && <Notice title="Unsupported request" body="This app requested actions that are unavailable for this connection." />}
-        <Button title={snapshot.status === 'approving' ? 'Connecting…' : 'Connect'}
+        {!proposal.canApprove && proposal.verification.validation !== 'INVALID' && !proposal.verification.isScam && <Notice title={t('mobile.connections.unsupportedTitle')} body={t('mobile.connections.unsupportedBody')} />}
+        <Button title={snapshot.status === 'approving' ? t('mobile.connections.connecting') : t('buttons.connect')}
           disabled={busy || !proposal.canApprove || !selectedAccountId || !snapshot.network}
           onPress={() => {
             if (selectedAccountId && snapshot.network) invoke(() => controller.approve(proposal.id, selectedAccountId, snapshot.network!.id, snapshot.revision));
           }} />
-        <Button title="Reject" variant="quiet" onPress={() => invoke(() => controller.reject(proposal.id))} />
+        <Button title={t('buttons.reject')} variant="quiet" onPress={() => invoke(() => controller.reject(proposal.id))} />
       </Card> : <Card style={s.card}>
         <View style={s.requestIcon}><Icon name="globe" size={26} color={colors.blue} /></View>
-        <Text style={s.title}>{busy ? 'Waiting for the app' : 'Connect with WalletConnect'}</Text>
-        <Text style={s.body}>{busy ? 'Review the connection request when it arrives.' : 'Scan a WalletConnect code or paste a connection link.'}</Text>
-        {busy ? <><ActivityIndicator color={colors.blue} accessibilityLabel="Waiting for a connection request" />
-          <Button title="Cancel" variant="secondary" onPress={() => controller.cancel()} /></>
+        <Text style={s.title}>{busy ? t('mobile.connections.waiting') : t('mobile.connections.connectWalletConnect')}</Text>
+        <Text style={s.body}>{busy ? t('mobile.connections.reviewArrival') : t('mobile.connections.scanOrPaste')}</Text>
+        {busy ? <><ActivityIndicator color={colors.blue} accessibilityLabel={t('mobile.connections.waitingRequest')} />
+          <Button title={t('buttons.cancel')} variant="secondary" onPress={() => controller.cancel()} /></>
           : snapshot.status === 'unavailable'
-          ? <Button title="Try again" onPress={() => invoke(() => controller.retry())} />
-          : <><Button title="Scan QR code" icon="scan" disabled={!snapshot.network}
+          ? <Button title={t('mobile.connections.tryAgain')} onPress={() => invoke(() => controller.retry())} />
+          : <><Button title={t('mobile.connections.scan')} icon="scan" disabled={!snapshot.network}
             onPress={() => { lifetime.current.revision++; onScanStarted?.(); setScanning(true); }} />
-            <Button title="Paste connection link" icon="copy" variant="secondary" disabled={!snapshot.network} onPress={paste} /></>}
+            <Button title={t('mobile.connections.paste')} icon="copy" variant="secondary" disabled={!snapshot.network} onPress={paste} /></>}
       </Card>}
-      {(snapshot.error || clipboardError) && <Notice title="Connection unavailable"
-        body={snapshot.error ? ERRORS[snapshot.error] : 'The clipboard could not be read. Copy the connection link and try again.'} />}
-      {entryExpired && <Notice title="Connection link expired" body="Request a new connection from the app and try again." />}
-      {snapshot.status === 'ready' && !snapshot.network && <Notice title="Choose a network"
-        body="Select an EVM network in Wallet to connect to an app." />}
+      {(snapshot.error || clipboardError) && <Notice title={t('mobile.connections.unavailableTitle')}
+        body={snapshot.error ? t(ERRORS[snapshot.error]) : t('mobile.connections.clipboard')} />}
+      {entryExpired && <Notice title={t('mobile.connections.linkExpiredTitle')} body={t('mobile.connections.linkExpired')} />}
+      {snapshot.status === 'ready' && !snapshot.network && <Notice title={t('mobile.connections.chooseNetwork')}
+        body={t('mobile.connections.chooseNetworkBody')} />}
       {snapshot.sessions.length > 0 && <View style={s.sessions}>
-        <Text accessibilityRole="header" style={s.sectionTitle}>Your connections</Text>
+        <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.connections.yourConnections')}</Text>
         {snapshot.sessions.map((session) => <Card key={session.id} style={s.card}>
           <Text style={s.accountLabel}>{session.name}</Text>
           <Text selectable style={s.origin}>{session.origin}</Text>
           <Text style={s.body}>{session.accountLabel} · {session.networkLabel}</Text>
-          <Button title={`Disconnect ${session.name}`} variant="quiet" onPress={() => invoke(() => controller.disconnect(session.id))} />
+          {session.returnTarget && <Button title={t('mobile.connections.openWebsite')} variant="secondary" onPress={() => invoke(() => controller.returnToDapp(session.id, snapshot.revision))} />}
+          <Button title={t('mobile.connections.disconnect', { name: session.name })} variant="quiet" onPress={() => invoke(() => controller.disconnect(session.id))} />
         </Card>)}
       </View>}
     </>}

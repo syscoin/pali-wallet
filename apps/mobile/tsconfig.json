@@ -32,6 +32,12 @@
       "@sidhujag/sysweb3-network/cjs/coins.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/coins.d.ts"
       ],
+      "@sidhujag/sysweb3-utils/cjs/getContract.js": [
+        "./node_modules/@sidhujag/sysweb3-utils/types/getContract.d.ts"
+      ],
+      "@sidhujag/sysweb3-utils/cjs/tokens.js": [
+        "./node_modules/@sidhujag/sysweb3-utils/types/tokens.d.ts"
+      ],
       "@sidhujag/sysweb3-network/cjs/networks.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/networks.d.ts"
       ],

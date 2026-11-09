@@ -50,6 +50,12 @@ import { normalizeDappTransaction } from '../../../shared/dappTransaction';
 import { assertSupportedEvmFees } from '../../../shared/dappTransaction.ts';
 import { readStoredDappPermissions } from '../../../shared/dappTypes';
 import {
+  ENS_RESOLUTION_CHAIN_ID,
+  isEnsRecipientName,
+  normalizeEnsResolvedAddress,
+  selectEnsResolutionNetwork,
+} from '../../../shared/ensRecipient';
+import {
   encodeErc20Transfer,
   formatErc20Balance,
   parseErc20Units,
@@ -776,9 +782,15 @@ class MainController {
   // Resolve the configured Ethereum mainnet provider (cached)
   private getEnsMainnetProvider(): CustomJsonRpcProvider | null {
     const { networks } = store.getState().vaultGlobal;
-    const mainnet = networks?.ethereum?.[1];
+    const mainnet = selectEnsResolutionNetwork(
+      Object.values(networks?.ethereum ?? {}),
+      (network) => network.chainId
+    );
     if (!mainnet?.url) return null;
-    return this.getOrCreatePersistentProvider(1, mainnet.url);
+    return this.getOrCreatePersistentProvider(
+      ENS_RESOLUTION_CHAIN_ID,
+      mainnet.url
+    );
   }
 
   // Centralized reset routine used by both forgetWallet and createWallet(import)
@@ -14327,11 +14339,7 @@ class MainController {
    * Returns the resolved 0x address or null if not resolvable.
    */
   public async resolveEns(name: string): Promise<string | null> {
-    if (
-      !name ||
-      typeof name !== 'string' ||
-      !name.toLowerCase().endsWith('.eth')
-    ) {
+    if (!isEnsRecipientName(name)) {
       return null;
     }
 
@@ -14349,9 +14357,11 @@ class MainController {
     try {
       let resolved: string | null = null;
       try {
-        resolved = await (provider as any).resolveName(name);
-      } catch (e) {
-        // Best-effort; fall through to null.
+        resolved = normalizeEnsResolvedAddress(
+          await (provider as any).resolveName(name)
+        );
+      } catch (_) {
+        // Unresolvable names do not publish a cache entry.
       }
 
       // Reset invalidates the caller as well as cache publication. Independent
