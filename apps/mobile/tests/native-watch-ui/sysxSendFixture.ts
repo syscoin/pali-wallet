@@ -81,6 +81,7 @@ export const sysxSendFixture = {
           ? [
               {
                 assetGuid: asset.assetGuid,
+                symbol: asset.symbol,
                 balance: '200000000',
                 decimals: asset.decimals,
               },

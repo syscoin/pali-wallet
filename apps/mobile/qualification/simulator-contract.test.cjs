@@ -5,6 +5,7 @@ const { Buffer } = require('node:buffer');
 const path = require('node:path');
 const test = require('node:test');
 const { expectedQuickCryptoIdentity } = require('./report-validation.cjs');
+const { SENTRY_APPROVAL_CHECK } = require('./native-sentry-approvals.ts');
 const {
   qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget,
   REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES,
@@ -90,6 +91,32 @@ test('only complete native crypto plus a classified strict protection refusal qu
     const report = refusal(); change(report);
     assert.throws(() => assertSimulatorRefusal(report, '26.5', expectedQuickCryptoIdentity), /Unexpected iOS Simulator refusal/);
   }
+});
+
+test('Sentry signing remains a required eighth ordered check before Simulator refusal', () => {
+  const current = refusal();
+  current.checks = [
+    ...current.checks.filter(({ name }) => name !== SENTRY_APPROVAL_CHECK),
+    { name: SENTRY_APPROVAL_CHECK, durationMs: 1 },
+  ];
+  assert.equal(current.checks.length, 8);
+  assert.doesNotThrow(() => assertSimulatorRefusal(current, '26.5', expectedQuickCryptoIdentity));
+  assert.equal(CHECKS.length, 8);
+  assert.equal(CHECKS.at(-1), SENTRY_APPROVAL_CHECK);
+  const invalid = [];
+  // The old seven-check report and every other missing step stay insufficient.
+  for (let index = 0; index < current.checks.length; index++) {
+    const missing = structuredClone(current); missing.checks.splice(index, 1); invalid.push(missing);
+  }
+  const reordered = structuredClone(current);
+  [reordered.checks[6], reordered.checks[7]] = [reordered.checks[7], reordered.checks[6]];
+  invalid.push(reordered);
+  const duplicate = structuredClone(current); duplicate.checks.push(duplicate.checks[7]); invalid.push(duplicate);
+  const renamed = structuredClone(current); renamed.checks[7].name = 'import-only Sentry evidence'; invalid.push(renamed);
+  const mutated = structuredClone(current); mutated.checks[7].durationMs = Infinity; invalid.push(mutated);
+  const extra = structuredClone(current); extra.checks[7].private = 'unexpected'; invalid.push(extra);
+  for (const report of invalid)
+    assert.throws(() => assertSimulatorRefusal(report, '26.5', expectedQuickCryptoIdentity), /Unexpected iOS Simulator refusal/);
 });
 
 async function runFixture({ limited = true, report = refusal(), target = 'iphonesimulator', mixedOutput = false, http = false, httpFailure = false, cleanupFailure = false, diagnosticFailure = false } = {}) {

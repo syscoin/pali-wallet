@@ -1960,15 +1960,6 @@
     },
     "setup": {
       "wallet": "Native wallet",
-      "create": "Create wallet",
-      "restore": "Restore wallet",
-      "unlock": "Unlock wallet",
-      "password": "Password",
-      "confirmPassword": "Confirm password",
-      "recoveryPhrase": "Recovery phrase",
-      "accountName": "Account name",
-      "continue": "Continue",
-      "back": "Back",
       "nativeOnly": "Open the native app",
       "nativeOnlyDescription": "Wallet setup is available in the iOS and Android development builds."
     },

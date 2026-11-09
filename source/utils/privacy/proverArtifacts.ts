@@ -187,13 +187,16 @@ export async function loadPrivacyProvingKey(options: {
   return bytes;
 }
 
-export async function loadPrivacyWitnessAssets(): Promise<{
+export async function loadPrivacyWitnessAssets(
+  policy: PrivacyArtifactPolicy
+): Promise<{
   metadata: any;
   wasmCode: Uint8Array;
 }> {
-  const load = async (pin: typeof PINS.metadata) => {
+  if (policy !== 'extension-public' && policy !== 'bundled') throw failure();
+  const load = async (pin: typeof PINS.metadata, file: string) => {
     const response = await fetch(
-      new URL('/' + ASSET_ROOT + pin.file, self.location.href).href,
+      new URL('/' + ASSET_ROOT + file, self.location.href).href,
       { credentials: 'omit', redirect: 'error' }
     );
     const bytes = await readBytes(response, pin.bytes);
@@ -201,8 +204,11 @@ export async function loadPrivacyWitnessAssets(): Promise<{
     return bytes;
   };
   const [compressed, wasm] = await Promise.all([
-    load(PINS.metadata),
-    load(PINS.wasm),
+    load(
+      PINS.metadata,
+      policy === 'bundled' ? 'metadata.json.gzip' : PINS.metadata.file
+    ),
+    load(PINS.wasm, PINS.wasm.file),
   ]);
   if (typeof DecompressionStream !== 'function') throw failure();
   const stream = new Blob([compressed])

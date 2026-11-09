@@ -14,6 +14,9 @@
       "@sidhujag/sysweb3-keyring": [
         "./node_modules/@sidhujag/sysweb3-keyring/types/index.d.ts"
       ],
+      "@sidhujag/sysweb3-sentry": [
+        "./node_modules/@sidhujag/sysweb3-sentry/dist/index.d.ts"
+      ],
       "@sidhujag/sysweb3-keyring/cjs/*.js": [
         "./node_modules/@sidhujag/sysweb3-keyring/types/*.d.ts"
       ],
@@ -47,6 +50,8 @@
       "axios": ["./node_modules/axios/index.d.ts"],
       "fast-safe-stringify": ["./node_modules/fast-safe-stringify/index.d.ts"],
       "bitcoinjs-lib": ["./node_modules/bitcoinjs-lib"],
+      "bs58check": ["./node_modules/bs58check/index.d.ts"],
+      "lodash/isEqual.js": ["./node_modules/@types/lodash/isEqual.d.ts"],
       "ethers": ["./node_modules/ethers"],
       "ethers/abi": ["./node_modules/ethers/lib.esm/abi/index.d.ts"],
       "ethers/address": ["./node_modules/ethers/lib.esm/address/index.d.ts"],
