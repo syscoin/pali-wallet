@@ -26,12 +26,14 @@ export type NativePreparedSentryRequest = Readonly<{
   details: NativeSentryDetails;
   assertCurrent(): void;
   approve(assent: NativeSentryAssent, assertCurrent: () => void): Promise<unknown>;
+  disclose(): void;
   dispose(): void;
 }>;
 export type NativeConnectionSentryHost = Readonly<{
-  prepare(request: NativeSentryRequest, signal: AbortSignal, assertCurrent: () => void): Promise<NativePreparedSentryRequest>;
+  prepare(request: NativeSentryRequest, signal: AbortSignal, assertCurrent: () => void, assertGrantCurrent: () => void): Promise<NativePreparedSentryRequest>;
+  revalidate(): void;
 }>;
-type Owner = Readonly<{ order: number; accountLabel: string; address: string; networkLabel: string; chainId: string; assertCurrent(): void }>;
+type Owner = Readonly<{ order: number; accountLabel: string; address: string; networkLabel: string; chainId: string; assertCurrent(): void; assertGrantCurrent(): void }>;
 type Pending = { id: string; wire: WalletConnectRequest; owner: Owner; signal: AbortController; expiresAt: number;
   timer: ReturnType<typeof setTimeout>; busy: boolean; handedOff: boolean; prepared?: NativePreparedSentryRequest; error: NativeSentryReview['error'] };
 
@@ -41,6 +43,7 @@ export class NativeSentryRequests {
   private readonly drain = new NativeOperationDrain();
   private closed = false;
   private serial = 0;
+  private retainedHost: NativeConnectionSentryHost | undefined;
   private readonly options: Readonly<{
     host(): NativeConnectionSentryHost; foreground(order: number): boolean; changed(): void;
     checkSite(origin: string): Promise<Readonly<{ isBlacklisted: boolean }>>;
@@ -80,8 +83,9 @@ export class NativeSentryRequests {
     try {
       this.check(entry); const site = await this.options.checkSite(entry.wire.session.binding.origin); this.check(entry);
       if (site.isBlacklisted) throw new Error('BLOCKED_SITE');
-      const prepared = await this.options.host().prepare({ method: entry.wire.method as NativeSentryRequest['method'], raw: JSON.parse(JSON.stringify((entry.wire.params as unknown[])[0])), origin: entry.wire.session.binding.origin }, entry.signal.signal, () => this.check(entry));
-      try { this.check(entry); prepared.assertCurrent(); entry.prepared = prepared; } catch (cause) { prepared.dispose(); throw cause; }
+      const host = this.options.host(); this.retainedHost = host;
+      const prepared = await host.prepare({ method: entry.wire.method as NativeSentryRequest['method'], raw: JSON.parse(JSON.stringify((entry.wire.params as unknown[])[0])), origin: entry.wire.session.binding.origin }, entry.signal.signal, () => this.check(entry), entry.owner.assertGrantCurrent);
+      try { this.check(entry); if (typeof prepared.disclose !== 'function') throw new Error('SENTRY_UNAVAILABLE'); prepared.assertCurrent(); entry.prepared = prepared; } catch (cause) { prepared.dispose(); throw cause; }
     } catch (cause) {
       if (this.pending.get(entry.id) === entry) {
         try { this.check(entry); } catch { this.retire(entry, false); return; }
@@ -99,7 +103,7 @@ export class NativeSentryRequests {
       const site = await this.options.checkSite(entry.wire.session.binding.origin); this.check(entry);
       if (site.isBlacklisted) throw new Error('BLOCKED_SITE');
       const result = await entry.prepared.approve(assent, () => this.check(entry)); this.check(entry);
-      await this.options.respond(entry.wire, { result }, () => this.check(entry), () => { entry.handedOff = true; });
+      await this.options.respond(entry.wire, { result }, () => this.check(entry), () => { this.check(entry); entry.prepared!.disclose(); entry.handedOff = true; });
       this.retire(entry, false);
     } catch (cause) {
       if (this.pending.get(entry.id) === entry) {
@@ -111,7 +115,7 @@ export class NativeSentryRequests {
   }
   reject(id: string) { const entry = this.pending.get(id); if (entry) this.retire(entry, !entry.handedOff); }
   expire(id: number) { for (const entry of [...this.pending.values()]) if (entry.wire.id === id) this.retire(entry, false); }
-  revalidate() { for (const entry of [...this.pending.values()]) { try { this.check(entry); } catch { this.retire(entry, false); } } }
+  revalidate() { this.retainedHost?.revalidate(); for (const entry of [...this.pending.values()]) { try { this.check(entry); } catch { this.retire(entry, false); } } }
   private retire(entry: Pending, respond: boolean) {
     if (this.pending.get(entry.id) !== entry) return;
     this.pending.delete(entry.id); clearTimeout(entry.timer); entry.signal.abort(); entry.prepared?.dispose(); this.options.changed();

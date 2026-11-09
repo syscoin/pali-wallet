@@ -4,12 +4,14 @@ import type { NativeConnectionSentryHost, NativeSentryAssent, NativeSentryDetail
 
 /** Every request opens a private instance of the existing typed Sentry consent lifecycle. */
 export function createNativeDappSentryHost(ports: Readonly<{
-  openApprovals(signal: AbortSignal, check: () => void): Promise<NativeSentryApprovals>;
+  openApprovals(): Promise<NativeSentryApprovals>;
   openNodes(signal: AbortSignal, check: () => void): Promise<NativeSentryNodeManagement>;
 }>): NativeConnectionSentryHost {
-  return Object.freeze({ async prepare(request, signal, assertCurrent) {
+  let retained: NativeSentryApprovals | undefined;
+  return Object.freeze({ revalidate() { retained?.operations.revalidate(); }, async prepare(request, signal, assertCurrent, assertGrantCurrent) {
     let disposed = false;
-    const check = () => { assertCurrent(); if (disposed || signal.aborted) throw new Error('CONTEXT_CHANGED'); };
+    if (typeof assertGrantCurrent !== 'function') throw new Error('SENTRY_AUTHORITY_REQUIRED');
+    const check = () => { assertCurrent(); assertGrantCurrent(); if (disposed || signal.aborted) throw new Error('CONTEXT_CHANGED'); };
     check();
     if (request.method === 'sys_linkSentryNode') {
       const nodes = await ports.openNodes(signal, check);
@@ -22,14 +24,16 @@ export function createNativeDappSentryHost(ports: Readonly<{
             check(); guard(); if (assent.kind !== 'link') throw new Error('INVALID_INPUT');
             const result = await nodes.confirmLink(reviewed); check(); guard(); return result;
           },
+          disclose: check,
           dispose() { disposed = true; nodes.cancelLink(reviewed.id); nodes.dispose(); } });
       } catch (cause) { if (approval) nodes.cancelLink(approval.id); nodes.dispose(); throw cause; }
     }
-    const approvals = await ports.openApprovals(signal, check);
+    const approvals = await ports.openApprovals();
+    retained = approvals;
     const manager = request.method === 'sys_signSentryVote' ? approvals.votes : approvals.operations;
     let id: string | undefined;
     try {
-      check(); id = await manager.prepare(request.raw, request.origin); check();
+      check(); id = await manager.prepare(request.raw, request.origin, assertGrantCurrent, { assertCurrent: check, signal }); check();
       const retained = id, vote = request.method === 'sys_signSentryVote';
       const details: NativeSentryDetails = vote ? { kind: 'vote', approval: approvals.votes.getApproval(retained) } : { kind: 'operation', approval: approvals.operations.getApproval(retained) };
       return Object.freeze({ details: Object.freeze(details), assertCurrent: check,
@@ -40,7 +44,8 @@ export function createNativeDappSentryHost(ports: Readonly<{
             : await approvals.operations.sign({ id: retained, password: assent.password, keyId: assent.keyId, authorizationId: assent.authorizationId });
           check(); guard(); return result;
         },
-        dispose() { disposed = true; manager.cancel(retained); approvals.dispose(); } });
-    } catch (cause) { if (id) manager.cancel(id); approvals.dispose(); throw cause; }
+        disclose() { check(); if (!vote) approvals.operations.publishFeeAuthorization(retained); },
+        dispose() { disposed = true; manager.cancel(retained); } });
+    } catch (cause) { if (id) manager.cancel(id); throw cause; }
   } });
 }

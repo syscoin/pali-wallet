@@ -20,6 +20,7 @@ import {
   type UtxoRecordSession,
 } from './utxoSignedRecords';
 import {
+  createUtxoSubmissionDisposition,
   observeRetainedUtxo,
   submitRetainedUtxo,
   submitReviewedUtxo,
@@ -72,6 +73,41 @@ function record(sequence = 0xfffffffd): UtxoDurableSubmission {
     outpoints: utxoInputOutpoints(signed.ins),
   };
 }
+
+it('tracks only the exact validated POST and never resets or adopts a second transaction', async () => {
+  const tracker = createUtxoSubmissionDisposition();
+  const expected = record();
+  const fetch = jest.fn(async () => {
+    throw new Error('Reply lost');
+  });
+  const post = tracker.trackPost(expected, fetch);
+  expect(tracker.read()).toEqual({ transactionNotBroadcast: true });
+  expect(() => post(expected.url, { method: 'GET' })).toThrow(
+    'Invalid owned UTXO POST'
+  );
+  expect(() =>
+    post(expected.url, { method: 'POST', body: expected.rawTransaction + '00' })
+  ).toThrow('Invalid owned UTXO POST');
+  expect(tracker.read()).toEqual({ transactionNotBroadcast: true });
+  expect(fetch).not.toHaveBeenCalled();
+  await expect(
+    post(expected.url, { method: 'POST', body: expected.rawTransaction })
+  ).rejects.toThrow('Reply lost');
+  expect(tracker.read()).toEqual({
+    transactionNotBroadcast: false,
+    txid: expected.txid,
+  });
+  const successor = record(0xffffffff);
+  const second = tracker.trackPost(successor, fetch);
+  expect(() =>
+    second(successor.url, { method: 'POST', body: successor.rawTransaction })
+  ).toThrow('Invalid owned UTXO POST');
+  expect(tracker.read()).toEqual({
+    transactionNotBroadcast: false,
+    txid: expected.txid,
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
 
 function context() {
   Object.defineProperty(globalThis, 'crypto', {

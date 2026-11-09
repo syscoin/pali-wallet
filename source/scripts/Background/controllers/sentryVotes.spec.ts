@@ -178,7 +178,10 @@ it('requires explicit wallet-authority ports even for stored-key-only hosts', ()
 });
 
 it('signs only the reviewed batch and never returns key material', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   expect(controller.getApproval(id).nodes).toHaveLength(2);
   expect(readJson.mock.calls[0][0]).toMatch(
     /^https:\/\/trusted\.test\/api\/sentry\/v1\/voting-context\?/
@@ -199,14 +202,20 @@ it('signs only the reviewed batch and never returns key material', async () => {
 it('uses the wallet clock instead of a service-controlled timestamp', async () => {
   context.now += 86400;
   await expect(
-    controller.prepare(request, 'https://dapp.test')
+    controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).resolves.toEqual(expect.any(String));
 });
 
 it('rejects wrong networks before contacting any service', async () => {
   request.chain.genesisHash = '77'.repeat(32);
   await expect(
-    controller.prepare(request, 'https://dapp.test')
+    controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow('Switch');
   expect(readJson).not.toHaveBeenCalled();
 });
@@ -214,18 +223,27 @@ it('rejects wrong networks before contacting any service', async () => {
 it('rejects a mismatched service genesis and unknown proposal', async () => {
   context.chain = { ...context.chain, genesisHash: '77'.repeat(32) };
   await expect(
-    controller.prepare(request, 'https://dapp.test')
+    controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow('genesis');
   context.chain = request.chain;
   delete context.proposal;
   await expect(
-    controller.prepare(request, 'https://dapp.test')
+    controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow('registered proposal');
 });
 
 it('does not treat an operator key as a voting key', async () => {
   settings.keys[0].role = 'operator';
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   expect(controller.getApproval(id).missingVotingKeys).toEqual(
     request.nodes.map((node: any) => node.proTxHash)
   );
@@ -239,7 +257,10 @@ it('does not treat an operator key as a voting key', async () => {
 });
 
 it('rechecks voting registration and proposal metadata before signing', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   context.nodes[0].votingKeyId = '33'.repeat(20);
   await expect(controller.sign({ id, password: 'synthetic' })).rejects.toThrow(
     'changed'
@@ -255,12 +276,18 @@ it('rechecks voting registration and proposal metadata before signing', async ()
 });
 
 it('retires cancelled and old-account approvals without exposing partial signatures', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   controller.cancel(id);
   await expect(controller.sign({ id, password: 'synthetic' })).rejects.toThrow(
     'expired'
   );
-  const next = await controller.prepare(request, 'https://dapp.test');
+  const next = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   scope = { ...scope, identity: 'new-account' };
   await expect(
     controller.sign({ id: next, password: 'synthetic' })
@@ -271,7 +298,10 @@ it('retires cancelled and old-account approvals without exposing partial signatu
 });
 
 it('rejects duplicate clicks and cancellation while cryptography is running', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   let release!: () => void;
   const normalCrypto = mockCrypto.getMockImplementation()!;
   mockCrypto.mockImplementation((job, assertCurrent) =>
@@ -295,7 +325,10 @@ it('rejects duplicate clicks and cancellation while cryptography is running', as
 });
 
 it('does not return an invalid generated signature', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   mockCrypto.mockRejectedValue(new Error('Generated vote failed verification'));
   await expect(controller.sign({ id, password: 'synthetic' })).rejects.toThrow(
     'failed verification'

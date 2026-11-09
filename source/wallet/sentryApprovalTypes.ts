@@ -69,3 +69,9 @@ export type SentryRequestScope = SentryApprovalScope &
   Readonly<{
     assertRequestCurrent(): void;
   }>;
+
+/** One wire request, distinct from the captured grant retained by fee descendants. */
+export type SentryRequestLifetime = Readonly<{
+  assertCurrent(): void;
+  signal: AbortSignal;
+}>;

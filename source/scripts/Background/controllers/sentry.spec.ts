@@ -280,7 +280,10 @@ beforeEach(() => {
 });
 
 it('prepares a public-only scoped review using fixed configured service and independent funding reads', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const review = controller.getApproval(id);
   expect(review.origin).toBe('https://dapp.test');
   expect(review.keys).toEqual([summary]);
@@ -300,8 +303,12 @@ it('requires completed local authorization and rechecks its exact context for fe
   expect(() =>
     controller.prepareFeePsbt('signed-public-bytes', 'https://dapp.test')
   ).toThrow(/exact/);
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   await controller.sign({ id, keyId: summary.id, password: 'test' });
+  controller.publishFeeAuthorization(id);
   const token = controller.prepareFeePsbt(
     'signed-public-bytes',
     'https://dapp.test'
@@ -317,7 +324,10 @@ it('requires completed local authorization and rechecks its exact context for fe
     feeSatoshis: '1000',
   });
   await expect(
-    controller.reviewFeePsbt(token, 'signed-public-bytes')
+    controller.reviewFeePsbt(token, 'signed-public-bytes', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).resolves.toMatchObject({ feeSatoshis: '1000' });
   expect(runSentryCrypto).toHaveBeenLastCalledWith(
     expect.objectContaining({
@@ -330,15 +340,22 @@ it('requires completed local authorization and rechecks its exact context for fe
   );
   observation.node.service = '2.3.4.5:8369';
   await expect(
-    controller.reviewFeePsbt(token, 'signed-public-bytes')
+    controller.reviewFeePsbt(token, 'signed-public-bytes', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow(/state changed/);
 });
 
 it.each(['serviceUrl', 'maxFeeSatoshis'])(
   'invalidates fee authorization after trusted %s changes',
   async (field) => {
-    const id = await controller.prepare(request, 'https://dapp.test');
+    const id = await controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    });
     await controller.sign({ id, keyId: summary.id, password: 'test' });
+    controller.publishFeeAuthorization(id);
     const token = controller.prepareFeePsbt(
       'signed-public-bytes',
       'https://dapp.test'
@@ -353,19 +370,26 @@ it.each(['serviceUrl', 'maxFeeSatoshis'])(
       },
     }));
     await expect(
-      controller.reviewFeePsbt(token, 'signed-public-bytes')
+      controller.reviewFeePsbt(token, 'signed-public-bytes', {
+        assertCurrent: () => undefined,
+        signal: new AbortController().signal,
+      })
     ).rejects.toThrow(/state changed/);
   }
 );
 
 it('does not admit incomplete multi-role management signatures to fee signing', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   (runSentryCrypto as jest.Mock).mockResolvedValueOnce({
     operation: 'register',
     complete: false,
     transactionHex: 'partial',
   });
   await controller.sign({ id, keyId: summary.id, password: 'test' });
+  controller.publishFeeAuthorization(id);
   expect(() =>
     controller.prepareFeePsbt('partial', 'https://dapp.test')
   ).toThrow(/exact/);
@@ -374,8 +398,12 @@ it('does not admit incomplete multi-role management signatures to fee signing', 
 it.each(['settings', 'key removal'])(
   'invalidates retained fee consent permanently after %s',
   async (change) => {
-    const id = await controller.prepare(request, 'https://dapp.test');
+    const id = await controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    });
     await controller.sign({ id, keyId: summary.id, password: 'test' });
+    controller.publishFeeAuthorization(id);
     const token = controller.prepareFeePsbt(
       'signed-public-bytes',
       'https://dapp.test'
@@ -388,7 +416,10 @@ it.each(['settings', 'key removal'])(
       });
     else await controller.removeKey({ id: summary.id, password: 'test' });
     await expect(
-      controller.reviewFeePsbt(token, 'signed-public-bytes')
+      controller.reviewFeePsbt(token, 'signed-public-bytes', {
+        assertCurrent: () => undefined,
+        signal: new AbortController().signal,
+      })
     ).rejects.toThrow(/expired/);
   }
 );
@@ -396,7 +427,10 @@ it.each(['settings', 'key removal'])(
 it('refuses a mismatched genesis before generating an approval', async () => {
   observation.chain = { ...request.chain, genesisHash: 'ff'.repeat(32) };
   await expect(
-    controller.prepare(request, 'https://dapp.test')
+    controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow('different network genesis');
   expect(runSentryCrypto).not.toHaveBeenCalled();
 });
@@ -415,7 +449,10 @@ it('cancels an oversized chunked response before buffering it, even without Cont
     )
   );
   await expect(
-    controller.prepare(request, 'https://dapp.test')
+    controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow('response is too large');
   expect(cancelled).toHaveBeenCalledTimes(1);
   expect(runSentryCrypto).not.toHaveBeenCalled();
@@ -424,12 +461,18 @@ it('cancels an oversized chunked response before buffering it, even without Cont
 it('rejects use of registered collateral as a funding input', async () => {
   observation.node.collateralOutpoint = { txid: 'cd'.repeat(32), vout: 0 };
   await expect(
-    controller.prepare(request, 'https://dapp.test')
+    controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow('collateral cannot fund');
 });
 
 it('invalidates pending approvals on account/network/session changes', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   scope = { ...scope, identity: 'scope-2' };
   expect(() => controller.getApproval(id)).toThrow('session changed');
   await expect(
@@ -439,12 +482,16 @@ it('invalidates pending approvals on account/network/session changes', async () 
 });
 
 it('authorizes once only after fresh unchanged state and local reauthentication', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const response = await controller.sign({
     id,
     keyId: summary.id,
     password: 'pw',
   });
+  controller.publishFeeAuthorization(id);
   expect(response.transactionHex).toBe('signed-public-bytes');
   expect(getSeed).toHaveBeenCalledWith('pw');
   expect(runSentryCrypto).toHaveBeenCalledWith(
@@ -457,7 +504,10 @@ it('authorizes once only after fresh unchanged state and local reauthentication'
 });
 
 it('never signs after registered state changes while the review is open', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   observation = {
     ...observation,
     node: { ...observation.node, nevmAddress: '0x' + '99'.repeat(20) },
@@ -474,7 +524,10 @@ it('accepts identical refreshed JSON with reordered nested object keys', async (
     requiredCollateralSatoshis: '100000',
     metadata: { active: true, values: ['first', 'second'] },
   };
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const reorder = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(reorder);
     if (value !== null && typeof value === 'object')
@@ -500,7 +553,10 @@ it.each(['collateral', 'registration', 'array order'])(
       requiredCollateralSatoshis: '100000',
       metadata: { active: true, values: ['first', 'second'] },
     };
-    const id = await controller.prepare(request, 'https://dapp.test');
+    const id = await controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    });
     if (change === 'collateral') observation.node.collateralOutpoint.vout = 2;
     else if (change === 'registration')
       observation.registration.requiredCollateralSatoshis = '100001';
@@ -515,7 +571,10 @@ it.each(['collateral', 'registration', 'array order'])(
 it.each(['network', 'fee policy', 'operator key'])(
   'never signs after the reviewed %s changes',
   async (change) => {
-    const id = await controller.prepare(request, 'https://dapp.test');
+    const id = await controller.prepare(request, 'https://dapp.test', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    });
     if (change === 'network')
       observation.chain = {
         ...observation.chain,
@@ -540,7 +599,10 @@ it.each(['network', 'fee policy', 'operator key'])(
 );
 
 it('drops a cancelled approval and requires a matching registered local key', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   await expect(
     controller.sign({ id, keyId: 'other-key', password: 'pw' })
   ).rejects.toThrow('registered operator key');
@@ -775,7 +837,8 @@ it('retires link authorization when the wallet session changes', async () => {
 it('does not treat an imported operator key as owner authority', async () => {
   const id = await controller.prepare(
     { ...request, operation: 'updateRegistrar' },
-    'https://dapp.test'
+    'https://dapp.test',
+    { assertCurrent: () => undefined, signal: new AbortController().signal }
   );
   expect(controller.getApproval(id).keys).toEqual([]);
   await expect(
@@ -850,7 +913,8 @@ it('resolves the selected wallet key only for the exact decoded owner address an
   );
   const id = await controller.prepare(
     { ...request, operation: 'updateRegistrar' },
-    'https://dapp.test'
+    'https://dapp.test',
+    { assertCurrent: () => undefined, signal: new AbortController().signal }
   );
   expect(controller.getApproval(id).keys[0].id).toBe('wallet-owner');
   const response = await controller.sign({
@@ -859,6 +923,7 @@ it('resolves the selected wallet key only for the exact decoded owner address an
     password: 'pw',
     authorizationId: 'owner',
   });
+  controller.publishFeeAuthorization(id);
   expect(resolver).toHaveBeenCalledWith(
     { address: 'synthetic-owner-address', password: 'pw' },
     expect.objectContaining({
@@ -913,7 +978,8 @@ it('preserves pending collateral before returning registration authorization, wi
   });
   const id = await controller.prepare(
     { ...request, operation: 'register' },
-    'https://dapp.test'
+    'https://dapp.test',
+    { assertCurrent: () => undefined, signal: new AbortController().signal }
   );
   await expect(
     controller.sign({
@@ -948,7 +1014,8 @@ it('does not offer an unrelated active wallet key as owner authority', async () 
   });
   const id = await controller.prepare(
     { ...request, operation: 'updateRegistrar' },
-    'https://dapp.test'
+    'https://dapp.test',
+    { assertCurrent: () => undefined, signal: new AbortController().signal }
   );
   expect(controller.getApproval(id).keys).toEqual([]);
 });

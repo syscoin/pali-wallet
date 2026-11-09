@@ -2021,7 +2021,20 @@
       "block": "Block {{blockNumber}}",
       "connectTo": "Connect to {{name}}",
       "network": "{{network}} · Chain ID {{chainId}}",
-      "disconnect": "Disconnect {{name}}"
+      "disconnect": "Disconnect {{name}}",
+      "psbt": {
+        "signTitle": "Только подписать",
+        "sendTitle": "Подписать и отправить",
+        "partialBody": "Подписанная транзакция будет возвращена подключённому приложению. Приложение может добавить недостающие подписи и отправить её.",
+        "checking": "Проверка транзакции…",
+        "transactionType": "Тип транзакции",
+        "unavailableTitle": "PSBT недоступна",
+        "unavailableBody": "Не удалось проверить или подписать эту PSBT. Запросите у приложения новый запрос.",
+        "deliveryTitle": "Доставка результата не подтверждена",
+        "deliveryBody": "Кошелёк завершил запрос, но не смог подтвердить доставку результата приложению.",
+        "submissionTitle": "Отправка не подтверждена",
+        "submissionBody": "Подписанная транзакция сохранена. Проверьте её статус перед повторной отправкой."
+      }
     },
     "security": {
       "revealFailed": "The private key could not be shown. Confirm your password and try again.",

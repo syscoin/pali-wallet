@@ -16,7 +16,7 @@ import {
 import { SharedSentryVoteApprovals } from '../../../../source/wallet/sentryVoteApprovals.ts';
 import { SharedSentryOperationApprovals } from '../../../../source/wallet/sentryOperationApprovals.ts';
 import type { SentryApprovalHost } from '../../../../source/wallet/sentryApprovalHost.ts';
-import type { SentryApprovalScope } from '../../../../source/wallet/sentryApprovalTypes.ts';
+import type { SentryApprovalScope, SentryRequestScope, SentryRequestLifetime } from '../../../../source/wallet/sentryApprovalTypes.ts';
 import type {
   RunSentryCrypto,
   SentryCryptoResult,
@@ -37,17 +37,19 @@ export function createNativeSentryJsonReader(
   return async (
     url: string,
     limit: number,
-    assertRequest: () => void
+    assertRequest: () => void,
+    signal: AbortSignal
   ): Promise<unknown> => {
     const request = new AbortController();
     const abort = () => request.abort();
     const check = () => {
       assertSynchronousEvmFeeGuard(ports.assertCurrent);
       assertSynchronousEvmFeeGuard(assertRequest);
-      if (ports.lifetime.aborted || request.signal.aborted)
+      if (ports.lifetime.aborted || signal.aborted || request.signal.aborted)
         throw new Error('CANCELLED');
     };
     ports.lifetime.addEventListener('abort', abort, { once: true });
+    signal.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(abort, 15_000);
     try {
       check();
@@ -90,6 +92,7 @@ export function createNativeSentryJsonReader(
     } finally {
       clearTimeout(timer);
       ports.lifetime.removeEventListener('abort', abort);
+      signal.removeEventListener('abort', abort);
       request.abort();
     }
   };
@@ -146,15 +149,11 @@ export function createNativeSentryApprovals(ports: Ports) {
   };
   const assertScope = (captured: SentryApprovalScope) => {
     check();
-    if (captured !== scope) throw new Error('CANCELLED');
+    if (captured.identity !== scope.identity || captured.network !== scope.network || captured.rootPublicIdentity !== scope.rootPublicIdentity) throw new Error('CANCELLED');
   };
   const vault = createSentryKeyVault(ports.vaultHost);
   const host: SentryApprovalHost = {
     captureScope: () => {
-      check();
-      return scope;
-    },
-    captureApprovalScope: () => {
       check();
       return scope;
     },
@@ -204,12 +203,12 @@ export function createNativeSentryApprovals(ports: Ports) {
       assertScope(captured);
       return key;
     },
-    async readJson(url, limit, captured, assertRequest) {
+    async readJson(url, limit, captured, assertRequest, signal) {
       assertScope(captured);
       const value = await ports.readJson(url, limit, () => {
         assertScope(captured);
         assertSynchronousEvmFeeGuard(assertRequest);
-      });
+      }, signal);
       assertScope(captured);
       return value;
     },
@@ -308,14 +307,19 @@ export function createNativeSentryApprovals(ports: Ports) {
     ports.lifetime.removeEventListener('abort', dispose);
   }
   ports.lifetime.addEventListener('abort', dispose, { once: true });
+  const captureScope = (assertGrant: () => void): SentryRequestScope => {
+    check(); assertSynchronousEvmFeeGuard(assertGrant);
+    return Object.freeze({ ...scope, assertRequestCurrent: () => { check(); assertSynchronousEvmFeeGuard(assertGrant); } });
+  };
   return Object.freeze({
+    assertCurrent: check,
     votes: Object.freeze({
-      prepare: (raw: unknown, origin: string) => {
+      prepare: (raw: unknown, origin: string, assertGrant: () => void, lifetime: SentryRequestLifetime) => {
         check();
         const request = captureRequest(raw);
         return ports.run(async () => {
           check();
-          const id = await votes.prepare(request, origin);
+          const id = await votes.prepare(request, origin, captureScope(assertGrant), lifetime);
           check();
           return id;
         });
@@ -332,12 +336,12 @@ export function createNativeSentryApprovals(ports: Ports) {
       },
     }),
     operations: Object.freeze({
-      prepare: (raw: unknown, origin: string) => {
+      prepare: (raw: unknown, origin: string, assertGrant: () => void, lifetime: SentryRequestLifetime) => {
         check();
         const request = captureRequest(raw);
         return ports.run(async () => {
           check();
-          const id = await operations.prepare(request, origin);
+          const id = await operations.prepare(request, origin, captureScope(assertGrant), lifetime);
           check();
           return id;
         });
@@ -348,6 +352,8 @@ export function createNativeSentryApprovals(ports: Ports) {
       },
       cancel: (id: string) => operations.cancel(id),
       clear: () => operations.clear(),
+      publishFeeAuthorization: (id: string) => { check(); operations.publishFeeAuthorization(id); },
+      revalidate: () => operations.revalidate(),
       sign: (params: Parameters<SharedSentryOperationApprovals['sign']>[0]) => {
         check();
         return operations.sign({ ...params });
@@ -360,13 +366,14 @@ export function createNativeSentryApprovals(ports: Ports) {
         check();
         return operations.beginFeeSigning(id, transactionHex);
       },
-      reviewFeePsbt: (id: string, transactionHex: string) =>
-        ports.run(async () => {
-          check();
-          const review = await operations.reviewFeePsbt(id, transactionHex);
-          check();
-          return publicSnapshot(review);
-        }),
+      async reviewFeePsbt(id: string, transactionHex: string, lifetime: SentryRequestLifetime) {
+        // Public verification runs inside the child PSBT's existing ownership.
+        // Re-entering the private gate would reject that same admitted child.
+        check();
+        const review = await operations.reviewFeePsbt(id, transactionHex, lifetime);
+        check();
+        return publicSnapshot(review);
+      },
     }),
     dispose,
   });

@@ -19,6 +19,8 @@ type FeeAuthorization = {
   context: SentryManagementContext;
   expiresAt: number;
   origin: string;
+  parentId: string;
+  published?: boolean;
   request: SentryOperationRequest | SentryManagementRequest;
   scope: SentryRequestScope;
   serviceUrl: string;
@@ -41,7 +43,9 @@ export class SentryFeeAuthorizations {
         this.entries.delete(id);
   }
 
-  public remember(entry: Omit<FeeAuthorization, 'expiresAt'>) {
+  public remember(
+    entry: Omit<FeeAuthorization, 'expiresAt' | 'published' | 'busy'>
+  ) {
     assertSynchronousEvmFeeGuard(entry.scope.assertRequestCurrent);
     this.prune(entry.scope.identity);
     for (const [id, previous] of this.entries)
@@ -54,14 +58,43 @@ export class SentryFeeAuthorizations {
       this.entries.delete(this.entries.keys().next().value!);
     this.entries.set(crypto.randomUUID(), {
       ...entry,
+      published: false,
       expiresAt: Date.now() + 10 * 60 * 1000,
     });
+  }
+
+  public cancelUnpublished(parentId: string) {
+    for (const [id, entry] of this.entries)
+      if (entry.parentId === parentId && !entry.published)
+        this.entries.delete(id);
+  }
+
+  public publish(parentId: string) {
+    for (const entry of this.entries.values()) {
+      if (entry.parentId !== parentId) continue;
+      assertSynchronousEvmFeeGuard(entry.scope.assertRequestCurrent);
+      if (entry.expiresAt <= Date.now())
+        throw new Error('Sentry fee authorization expired');
+      entry.published = true;
+    }
+  }
+
+  public revalidate() {
+    for (const [id, entry] of this.entries) {
+      try {
+        assertSynchronousEvmFeeGuard(entry.scope.assertRequestCurrent);
+        if (entry.expiresAt <= Date.now()) this.entries.delete(id);
+      } catch {
+        this.entries.delete(id);
+      }
+    }
   }
 
   public find(transactionHex: string, origin: string, scopeIdentity: string) {
     this.prune(scopeIdentity);
     for (const [id, entry] of this.entries)
       if (
+        entry.published === true &&
         entry.request.transactionHex === transactionHex &&
         entry.origin === origin &&
         entry.scope.identity === scopeIdentity
@@ -77,7 +110,11 @@ export class SentryFeeAuthorizations {
   public get(id: string, transactionHex: string, scopeIdentity: string) {
     this.prune(scopeIdentity);
     const entry = this.entries.get(id);
-    if (!entry || entry.request.transactionHex !== transactionHex)
+    if (
+      !entry ||
+      !entry.published ||
+      entry.request.transactionHex !== transactionHex
+    )
       throw new Error(
         'SENTRY_FEE_AUTHORIZATION_REQUIRED: The Sentry fee authorization expired or the transaction changed. Authorize the operation again.'
       );

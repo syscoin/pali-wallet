@@ -140,7 +140,7 @@ export function NativeSmartDappFixture() {
       network: null,
       proposals: [],
       sessions: [],
-      controlReview: null, sentryReview: null, signingReview: latest.current,
+      controlReview: null, sentryReview: null, psbtReview: null, signingReview: latest.current,
       callsStatus: null,
       error: null,
     }),

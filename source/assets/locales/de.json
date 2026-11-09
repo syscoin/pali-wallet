@@ -2021,7 +2021,20 @@
       "block": "Block {{blockNumber}}",
       "connectTo": "Connect to {{name}}",
       "network": "{{network}} · Chain ID {{chainId}}",
-      "disconnect": "Disconnect {{name}}"
+      "disconnect": "Disconnect {{name}}",
+      "psbt": {
+        "signTitle": "Nur signieren",
+        "sendTitle": "Signieren und senden",
+        "partialBody": "Die signierte Transaktion wird an die verbundene App zurückgegeben. Die App kann fehlende Signaturen hinzufügen und sie senden.",
+        "checking": "Transaktion wird geprüft…",
+        "transactionType": "Transaktionstyp",
+        "unavailableTitle": "PSBT nicht verfügbar",
+        "unavailableBody": "Diese PSBT konnte nicht geprüft oder signiert werden. Fordere bei der App eine neue Anfrage an.",
+        "deliveryTitle": "Ergebniszustellung ungewiss",
+        "deliveryBody": "Die Wallet hat die Anfrage abgeschlossen, konnte die Zustellung an die App aber nicht bestätigen.",
+        "submissionTitle": "Übermittlung nicht bestätigt",
+        "submissionBody": "Die signierte Transaktion ist gespeichert. Prüfe ihren Status, bevor du sie erneut sendest."
+      }
     },
     "security": {
       "revealFailed": "The private key could not be shown. Confirm your password and try again.",

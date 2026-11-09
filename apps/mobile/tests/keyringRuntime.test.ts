@@ -344,6 +344,52 @@ test('connection UTXO public reads use the real SDK and reject a retired owner a
   } finally { release.resolve(); await owner.dispose(); disk.restoreNetwork(); }
 });
 
+test('connection external PSBT runtime captures the selected account and aborts held prevout reads before a facade exists', async () => {
+  const { getUtxoNetwork } = await import('../src/core/utxoNetworks.ts');
+  const [{ utils }, { PsbtUtils }] = await Promise.all([
+    import('syscoinjs-lib'), import('@sidhujag/sysweb3-keyring/cjs/utils/psbt.js'),
+  ]);
+  const network = getUtxoNetwork('bitcoin'), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let previous: ReturnType<typeof utils.bitcoinjs.Transaction.fromHex>, held = false;
+  let readSignal: AbortSignal | undefined, calls = 0;
+  const disk = memoryDisk(undefined, undefined, undefined, undefined, async (input, init) => {
+    calls++; const url = String(input);
+    assert.equal(init?.method, 'GET'); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
+    assert.equal(url, `${network.endpoint}/api/v2/tx/${previous.getId()}`);
+    if (held) { readSignal = init.signal!; entered.resolve(); await release.promise; }
+    const response = Response.json({ hex: previous.toHex() }); Object.defineProperty(response, 'url', { value: url }); return response;
+  });
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  const owner = new NativeCustodyAuthority({ async open() { return runtime; } });
+  try {
+    await owner.initialize(); await owner.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata();
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
+    const selected = (await runtime.openConnectionHost()).context();
+    const account = selected.accounts.find(value => value.id === selected.activeAccountId)!;
+    previous = new utils.bitcoinjs.Transaction(); previous.addInput(Buffer.alloc(32, 17), 0);
+    const script = utils.bitcoinjs.address.toOutputScript(account.address, network.addressNetwork);
+    previous.addOutput(script, BigInt(10000));
+    const psbt = new utils.bitcoinjs.Psbt({ network: network.addressNetwork });
+    psbt.addInput({ hash: previous.getId(), index: 0, witnessUtxo: { script, value: BigInt(10000) } });
+    psbt.addOutput({ script, value: BigInt(9000) });
+    const request = { method: 'sys_sign' as const, origin: 'https://original.example', psbt: PsbtUtils.toPali(psbt) };
+    const review = await runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined);
+    assert.equal(review.review.origin, request.origin); assert.equal(review.review.feeSatoshis, '1000');
+    await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
+    assert.throws(review.assertCurrent); await assert.rejects(review.approve()); review.dispose();
+    const before = calls;
+    await assert.rejects(runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined), /NOT_READY/);
+    assert.equal(calls, before);
+    await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
+    held = true; const lifetime = new AbortController();
+    const opening = runtime.prepareConnectionPsbt(request, lifetime.signal, () => undefined);
+    const rejected = assert.rejects(opening); await entered.promise; lifetime.abort();
+    await rejected; assert.equal(readSignal?.aborted, true);
+    release.resolve();
+  } finally { release.resolve(); await owner.dispose(); disk.restoreNetwork(); }
+});
+
 test('recovery retirement captures the original runtime pair and ordinary close joins the same drain', async () => {
   const disk = memoryDisk(); disk.denyNetwork();
   const runtime = await disk.factory.open() as KeyringRuntime;

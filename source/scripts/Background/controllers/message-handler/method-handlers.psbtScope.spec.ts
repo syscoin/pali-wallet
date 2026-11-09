@@ -201,6 +201,12 @@ describe('extension-owned PSBT approval context', () => {
     beforeEach(() => {
       const { wallet, dapp } = mockController();
       wallet.getWalletSessionGeneration = () => 1;
+      wallet.captureSentryFeeDisclosure = jest.fn(async (id) => ({
+        disclose: jest.fn(),
+        retire: () => {
+          void wallet.cancelSentryApproval(id);
+        },
+      }));
       dapp.captureApproval = () => {
         const captured = currentGrant;
         return () => {
@@ -222,11 +228,22 @@ describe('extension-owned PSBT approval context', () => {
         expect(response).toBe(result);
         expect(mockController().wallet[prepare]).toHaveBeenCalledWith(
           { version: 1 },
-          'site.example'
+          'site.example',
+          ...(method === 'sys_linkSentryNode'
+            ? []
+            : [
+                expect.objectContaining({
+                  assertCurrent: expect.any(Function),
+                  signal: expect.any(AbortSignal),
+                }),
+              ])
         );
-        expect(mockController().wallet[cancel]).toHaveBeenCalledWith(
-          'approval-id'
-        );
+        if (method === 'sys_signSentryOperation')
+          expect(mockController().wallet[cancel]).not.toHaveBeenCalled();
+        else
+          expect(mockController().wallet[cancel]).toHaveBeenCalledWith(
+            'approval-id'
+          );
         expect(popupPromise).toHaveBeenCalledWith(
           expect.objectContaining({
             signal: expect.any(AbortSignal),
@@ -236,6 +253,9 @@ describe('extension-owned PSBT approval context', () => {
         expect(() =>
           assertSentryDappResponseCurrent(method, response)
         ).not.toThrow();
+        expect(mockController().wallet[cancel]).toHaveBeenCalledWith(
+          'approval-id'
+        );
         expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
       }
     );
@@ -267,12 +287,28 @@ describe('extension-owned PSBT approval context', () => {
         const enteredCleanup = new Promise<void>((resolve) => {
           entered = resolve;
         });
-        mockController().wallet[cancel].mockImplementation(() => {
-          entered();
-          return new Promise<void>((resolve) => {
-            finish = resolve;
+        if (method === 'sys_signSentryOperation') {
+          mockController().wallet.captureSentryFeeDisclosure.mockImplementation(
+            async (id) => {
+              entered();
+              await new Promise<void>((resolve) => {
+                finish = resolve;
+              });
+              return {
+                disclose: jest.fn(),
+                retire: () => {
+                  void mockController().wallet[cancel](id);
+                },
+              };
+            }
+          );
+        } else
+          mockController().wallet[cancel].mockImplementation(() => {
+            entered();
+            return new Promise<void>((resolve) => {
+              finish = resolve;
+            });
           });
-        });
         const result = { version: 1, transactionHex: '0102' };
         (popupPromise as jest.Mock).mockResolvedValue(result);
         const pending = new SysMethodHandler().handle(request(method));
@@ -281,9 +317,16 @@ describe('extension-owned PSBT approval context', () => {
         mockSubscribe.mock.calls[0][0]();
         currentGrant = grant;
         finish();
-        const response = await pending;
-        expect(() => assertSentryDappResponseCurrent(method, response)).toThrow(
-          /no longer current/
+        if (method === 'sys_signSentryOperation')
+          await expect(pending).rejects.toThrow(/no longer current/);
+        else {
+          const response = await pending;
+          expect(() =>
+            assertSentryDappResponseCurrent(method, response)
+          ).toThrow(/no longer current/);
+        }
+        expect(mockController().wallet[cancel]).toHaveBeenCalledWith(
+          'approval-id'
         );
         expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
       }

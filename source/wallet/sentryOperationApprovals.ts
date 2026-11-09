@@ -7,6 +7,7 @@ import { SENTRY_NETWORKS } from '../shared/sentryNetworks.ts';
 import type { SentryOperationHost } from './sentryApprovalHost.ts';
 import type {
   SentryRequestScope,
+  SentryRequestLifetime,
   SentryApproval,
   SentrySettings,
 } from './sentryApprovalTypes.ts';
@@ -30,6 +31,7 @@ type Pending = {
   admission: SentryCollateralAdmission;
   context: SentryManagementContext;
   expiresAt: number;
+  lifetime: SentryRequestLifetime;
   publicApproval: SentryApproval;
   scope: SentryRequestScope;
   signing: boolean;
@@ -64,13 +66,23 @@ export class SharedSentryOperationApprovals {
   private readonly approvals = new Map<string, Pending>();
   private readonly host: SentryOperationHost;
   constructor(host: SentryOperationHost) {
-    if (typeof host.captureApprovalScope !== 'function')
-      throw new Error('Sentry request-authority port is required');
     this.host = host;
   }
-  private assertCurrent(scope: SentryRequestScope) {
+  private assertCurrent(
+    scope: SentryRequestScope,
+    lifetime: SentryRequestLifetime
+  ) {
     assertSynchronousEvmFeeGuard(() => this.host.assertCurrent(scope));
     assertSynchronousEvmFeeGuard(scope.assertRequestCurrent);
+    if (
+      !lifetime ||
+      typeof lifetime.assertCurrent !== 'function' ||
+      typeof lifetime.signal?.aborted !== 'boolean'
+    )
+      throw new Error('Sentry request lifetime is required');
+    assertSynchronousEvmFeeGuard(lifetime.assertCurrent);
+    if (lifetime.signal.aborted)
+      throw new Error('Sentry request was cancelled');
   }
   public clear() {
     this.approvals.clear();
@@ -79,14 +91,16 @@ export class SharedSentryOperationApprovals {
 
   private async context(
     scope: SentryRequestScope,
-    request: SentryOperationRequest | SentryManagementRequest
+    request: SentryOperationRequest | SentryManagementRequest,
+    lifetime: SentryRequestLifetime
   ): Promise<{
     context: SentryManagementContext;
     settings: SentrySettings;
   }> {
     const sdk = await loadSdk();
+    this.assertCurrent(scope, lifetime);
     const settings = await this.host.getSettings(scope);
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     if (settings.network !== this.host.network(scope))
       throw new Error('Sentry network changed. Start the operation again.');
     if (!settings.serviceUrl)
@@ -110,9 +124,10 @@ export class SharedSentryOperationApprovals {
       `${settings.serviceUrl}/api/sentry/v1/context?${query}`,
       65536,
       scope,
-      () => this.assertCurrent(scope)
+      () => this.assertCurrent(scope, lifetime),
+      lifetime.signal
     );
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     if (
       observation?.chain?.genesisHash !==
       SENTRY_NETWORKS[settings.network].genesisHash
@@ -149,7 +164,8 @@ export class SharedSentryOperationApprovals {
           `${scope.network.url.replace(/\/$/, '')}/api/v2/tx/${txid}`,
           2 * 1024 * 1024,
           scope,
-          () => this.assertCurrent(scope)
+          () => this.assertCurrent(scope, lifetime),
+          lifetime.signal
         );
         const raw = tx?.hex;
         if (typeof raw !== 'string' || !/^(?:[0-9a-fA-F]{2})+$/.test(raw))
@@ -159,7 +175,7 @@ export class SharedSentryOperationApprovals {
         return raw;
       })
     );
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     return {
       settings,
       context: {
@@ -175,20 +191,24 @@ export class SharedSentryOperationApprovals {
     };
   }
 
-  public async prepare(rawRequest: unknown, origin: string): Promise<string> {
-    const scope = this.host.captureApprovalScope(origin);
-    this.assertCurrent(scope);
+  public async prepare(
+    rawRequest: unknown,
+    origin: string,
+    scope: SentryRequestScope,
+    lifetime: SentryRequestLifetime
+  ): Promise<string> {
+    this.assertCurrent(scope, lifetime);
     const admission = await this.host.captureCollateralAdmission(scope);
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     const sdk = await loadSdk();
     const request =
       (rawRequest as { operation?: unknown })?.operation === 'updateService'
         ? sdk.validateSentryOperationRequest(rawRequest)
         : sdk.validateSentryManagementRequest(rawRequest);
-    const { context, settings } = await this.context(scope, request);
+    const { context, settings } = await this.context(scope, request, lifetime);
     const review = await this.host.runCrypto<SentryFeeReview>(
       { type: 'reviewOperation', request, context },
-      () => this.assertCurrent(scope)
+      () => this.assertCurrent(scope, lifetime)
     );
     if (
       review.operation === 'updateService' &&
@@ -255,7 +275,7 @@ export class SharedSentryOperationApprovals {
           });
       }
     }
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     for (const [id, pending] of this.approvals)
       if (
         pending.expiresAt <= Date.now() ||
@@ -268,6 +288,7 @@ export class SharedSentryOperationApprovals {
     this.approvals.set(id, {
       admission,
       scope,
+      lifetime,
       context,
       expiresAt: Date.now() + APPROVAL_TTL_MS,
       signing: false,
@@ -292,7 +313,7 @@ export class SharedSentryOperationApprovals {
         'This Sentry approval expired. Start again from the dapp.'
       );
     }
-    this.assertCurrent(pending.scope);
+    this.assertCurrent(pending.scope, pending.lifetime);
     return pending;
   }
 
@@ -302,6 +323,15 @@ export class SharedSentryOperationApprovals {
 
   public cancel(id: string) {
     this.approvals.delete(id);
+    this.feeAuthorizations.cancelUnpublished(id);
+  }
+
+  public publishFeeAuthorization(id: string) {
+    this.feeAuthorizations.publish(id);
+  }
+
+  public revalidate() {
+    this.feeAuthorizations.revalidate();
   }
 
   public prepareFeePsbt(transactionHex: string, origin: string): string {
@@ -322,7 +352,8 @@ export class SharedSentryOperationApprovals {
 
   public async reviewFeePsbt(
     id: string,
-    transactionHex: string
+    transactionHex: string,
+    lifetime: SentryRequestLifetime
   ): Promise<SentryFeeReview> {
     const entry = this.feeAuthorizations.get(
       id,
@@ -330,8 +361,8 @@ export class SharedSentryOperationApprovals {
       this.host.captureScope().identity
     );
     const scope = entry.scope;
-    this.assertCurrent(scope);
-    const fresh = await this.context(scope, entry.request);
+    this.assertCurrent(scope, lifetime);
+    const fresh = await this.context(scope, entry.request, lifetime);
     if (
       !isEqual(fresh.context, entry.context) ||
       fresh.settings.serviceUrl !== entry.serviceUrl
@@ -341,10 +372,10 @@ export class SharedSentryOperationApprovals {
       );
     const review = await this.host.runCrypto<SentryFeeReview>(
       { type: 'verifyFee', request: entry.request, context: fresh.context },
-      () => this.assertCurrent(scope)
+      () => this.assertCurrent(scope, lifetime)
     );
     this.feeAuthorizations.get(id, transactionHex, scope.identity);
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     return review;
   }
 
@@ -365,14 +396,18 @@ export class SharedSentryOperationApprovals {
     try {
       return await this.host.runExclusive(async () => {
         assertPending();
-        const { scope, publicApproval } = pending;
+        const { scope, publicApproval, lifetime } = pending;
         const seed = await this.host.getSeed(
           params.password,
           scope,
           assertPending
         );
         assertPending();
-        const fresh = await this.context(scope, publicApproval.request);
+        const fresh = await this.context(
+          scope,
+          publicApproval.request,
+          lifetime
+        );
         assertPending();
         if (
           !isEqual(fresh.context, pending.context) ||
@@ -488,6 +523,7 @@ export class SharedSentryOperationApprovals {
           ('complete' in response && response.complete)
         )
           this.feeAuthorizations.remember({
+            parentId: params.id,
             context: pending.context,
             origin: publicApproval.origin,
             request: {

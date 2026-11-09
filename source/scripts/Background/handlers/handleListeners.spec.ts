@@ -359,7 +359,10 @@ describe('Background: handleListeners', () => {
           method,
           () => undefined
         );
-        approval.retainResponse(result);
+        approval.retainResponse(result, {
+          disclose: () => undefined,
+          retire: () => undefined,
+        });
         approval.release();
         (onMessage as jest.Mock).mockResolvedValueOnce(result);
         listener(
@@ -394,7 +397,10 @@ describe('Background: handleListeners', () => {
       const approval = createSentryDappApprovalLifetime(method, () => {
         if (!current) throw new Error('Revoked');
       });
-      approval.retainResponse(result);
+      approval.retainResponse(result, {
+        disclose: () => undefined,
+        retire: () => undefined,
+      });
       approval.release();
       (onMessage as jest.Mock).mockReturnValueOnce(
         new Promise((resolve) => {

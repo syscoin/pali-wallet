@@ -1,10 +1,9 @@
-import { BigNumber } from 'utils/ethersV6Compat';
-import { formatUnits } from 'utils/ethersV6Compat';
-
 import {
   numberToIntegerString,
   scientificToIntegerString,
-} from './bigNumberString';
+} from './bigNumberString.ts';
+import { BigNumber } from './ethersV6Compat.ts';
+import { formatUnits } from './ethersV6Compat.ts';
 
 const trimRedundantDecimalZeros = (value: string): string => {
   if (!value.includes('.')) return value;
