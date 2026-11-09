@@ -1142,7 +1142,7 @@ test('unresolved ENS approval retains visible keyboard cancellation in a small w
   });
 });
 
-test('transaction review freezes fee and nonce edits during a delayed balance refresh', async ({}, info) => {
+test('transaction review freezes fee and nonce edits during a delayed submission balance read', async ({}, info) => {
   test.setTimeout(120000);
   const observedSubmissions: string[] = [];
   await withWallet('transaction-review-edit-lock', async (wallet, origin) => {
@@ -1192,8 +1192,69 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
       markBalanceStarted = resolve;
     });
     const heldReads: Promise<void>[] = [];
-    // Delay only a read. Balances remain synthetic and the launch-time
-    // deny proxy continues to reject every unhandled external request.
+    const worker = wallet.context.serviceWorkers()[0];
+    expect(worker).toBeTruthy();
+    const approvalId = JSON.parse(
+      new URL(popup.url()).searchParams.get('data') || '{}'
+    ).approvalId;
+    expect(approvalId).toEqual(expect.any(String));
+    // Observe the existing trusted invocation without replying, replacing a
+    // Chrome API, or changing controller results. Bind it to this exact document.
+    const documentId = await worker.evaluate(async (expectedApprovalId) => {
+      const contexts = (await chrome.runtime.getContexts({})).filter(
+        (context) => {
+          try {
+            return (
+              JSON.parse(
+                new URL(context.documentUrl || '').searchParams.get('data') ||
+                  '{}'
+              ).approvalId === expectedApprovalId
+            );
+          } catch {
+            return false;
+          }
+        }
+      );
+      if (contexts.length !== 1 || !contexts[0].documentId)
+        throw new Error('The exact transaction review document is required');
+      const senderDocumentId = contexts[0].documentId;
+      const actions: Array<{ documentId: string; method: string }> = [];
+      const listener = (message: any, sender: chrome.runtime.MessageSender) => {
+        if (
+          sender.id !== chrome.runtime.id ||
+          sender.documentId !== senderDocumentId ||
+          message?.type !== 'CONTROLLER_ACTION'
+        )
+          return;
+        const methods = message.data?.methods;
+        if (
+          methods?.length === 2 &&
+          methods[0] === 'wallet' &&
+          [
+            'refreshActiveAccountBalances',
+            'sendAndSaveEthTransaction',
+          ].includes(methods[1])
+        )
+          actions.push({ method: methods[1], documentId: senderDocumentId });
+      };
+      chrome.runtime.onMessage.addListener(listener);
+      (globalThis as any).__transactionReviewEditLock = {
+        actions,
+        remove: () => chrome.runtime.onMessage.removeListener(listener),
+      };
+      return senderDocumentId;
+    }, approvalId);
+    const controllerActions = () =>
+      worker.evaluate(
+        () =>
+          (globalThis as any).__transactionReviewEditLock.actions as Array<{
+            documentId: string;
+            method: string;
+          }>
+      );
+    // Pre-invocation refreshes remain healthy. Hold only a balance read after
+    // this document actually invokes submission, so close has one exact outcome.
+    // The launch-time deny proxy continues to reject unhandled external requests.
     await wallet.context.route('https://rpc.tanenbaum.io/', async (route) => {
       if (route.request().method() !== 'POST') return route.fallback();
       const rpc = route.request().postDataJSON();
@@ -1204,6 +1265,12 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
           .map((call: any) => call.method)
       );
       if (!calls.some((call: any) => call.method === 'eth_getBalance'))
+        return route.fallback();
+      if (
+        !(await controllerActions()).some(
+          (action) => action.method === 'sendAndSaveEthTransaction'
+        )
+      )
         return route.fallback();
       let finished!: () => void;
       heldReads.push(new Promise<void>((resolve) => (finished = resolve)));
@@ -1222,6 +1289,15 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
         'confirm and inspect the locked review controls',
         async () => {
           await confirm.click();
+          await expect
+            .poll(async () =>
+              (
+                await controllerActions()
+              ).filter(
+                (action) => action.method === 'sendAndSaveEthTransaction'
+              )
+            )
+            .toEqual([{ method: 'sendAndSaveEthTransaction', documentId }]);
           await balanceStarted;
           await expect(nonce).toBeDisabled();
           await expect(edit).toBeDisabled();
@@ -1241,6 +1317,8 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
             feeDisabled: await edit.isDisabled(),
             nonceDisabled: await nonce.isDisabled(),
             reviewedNonce: await nonce.inputValue(),
+            documentId,
+            controllerActions: await controllerActions(),
             runtime: extensionEvidence(),
           });
         }
@@ -1248,22 +1326,29 @@ test('transaction review freezes fee and nonce edits during a delayed balance re
       await popupStep(
         wallet,
         popup,
-        'close during the pre-submit balance refresh and verify cancellation',
+        'close after the observed submission invocation and retain its uncertain outcome',
         async () => {
           await popup.close();
-          releaseBalance();
-          await Promise.all(heldReads);
+          // Keep the controller's read held until background removal has settled
+          // the original request; no released read can race this classification.
           const rejected = await settle(dapp, request);
           expect(rejected.error).toEqual({
-            code: 4001,
-            message: 'User closed popup window',
+            code: -32603,
+            message:
+              'Transaction submission outcome is unknown. Check the wallet activity and chain before submitting again.',
           });
           expect(rejected.result).toBeUndefined();
           expect(observedSubmissions).toEqual([]);
+          releaseBalance();
+          await Promise.all(heldReads);
         }
       );
     } finally {
       releaseBalance();
+      await worker.evaluate(() => {
+        (globalThis as any).__transactionReviewEditLock.remove();
+        delete (globalThis as any).__transactionReviewEditLock;
+      });
     }
   });
   // The context is now disposed. No send RPC was observed before or after release.
