@@ -28,6 +28,26 @@ export type SentryNodeObservation = Readonly<{
   origin: string;
 }>;
 
+/** The public node identity retained by both wallet hosts. */
+export function isSentryLinkedNode(value: unknown): value is SentryLinkedNode {
+  const node = value as SentryLinkedNode | null;
+  const outpoint = node?.collateralOutpoint;
+  return (
+    !!node &&
+    typeof node.proTxHash === 'string' &&
+    /^[0-9a-f]{64}$/.test(node.proTxHash) &&
+    typeof outpoint?.txid === 'string' &&
+    /^[0-9a-f]{64}$/.test(outpoint.txid) &&
+    Number.isSafeInteger(outpoint.vout) &&
+    outpoint.vout >= 0 &&
+    outpoint.vout <= 0xffffffff &&
+    typeof node.service === 'string' &&
+    /^[\x21-\x7e]{0,128}$/.test(node.service) &&
+    typeof node.nevmAddress === 'string' &&
+    (node.nevmAddress === '' || /^0x[0-9a-fA-F]{40}$/.test(node.nevmAddress))
+  );
+}
+
 type SentryNodeReader = Readonly<{
   assertCurrent(): void;
   fetch(url: string, init: RequestInit): Promise<Response>;
@@ -102,15 +122,7 @@ export async function readSentryNode(
       observation?.chain?.genesisHash !==
         SENTRY_NETWORKS[network].genesisHash ||
       node?.proTxHash !== proTxHash ||
-      typeof outpoint?.txid !== 'string' ||
-      !/^[0-9a-f]{64}$/.test(outpoint.txid) ||
-      !Number.isSafeInteger(outpoint.vout) ||
-      outpoint.vout < 0 ||
-      outpoint.vout > 0xffffffff ||
-      typeof node.service !== 'string' ||
-      !/^[\x21-\x7e]{0,128}$/.test(node.service) ||
-      typeof node.nevmAddress !== 'string' ||
-      (node.nevmAddress !== '' && !/^0x[0-9a-fA-F]{40}$/.test(node.nevmAddress))
+      !isSentryLinkedNode(node)
     )
       throw new Error(
         'Unable to verify the registered Sentry node on this network'

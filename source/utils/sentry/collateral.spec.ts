@@ -1,5 +1,6 @@
 import { webcrypto } from 'crypto';
 
+import { SENTRY_NETWORKS } from '../../shared/sentryNetworks';
 import { chromeStorage } from 'utils/storageAPI';
 
 import {
@@ -9,6 +10,7 @@ import {
   releaseSentryCollateral,
   reserveSentryCollateral as reserveWithAdmission,
 } from './collateral';
+import { getSentryVaultId } from './keyStore';
 
 const reserveSentryCollateral = async (
   params: Omit<Parameters<typeof reserveWithAdmission>[0], 'admission'>
@@ -19,7 +21,11 @@ const reserveSentryCollateral = async (
   });
 
 jest.mock('utils/storageAPI', () => ({
-  chromeStorage: { getItem: jest.fn(), setItem: jest.fn() },
+  chromeStorage: {
+    getItems: jest.fn(),
+    setItem: jest.fn(),
+    setItems: jest.fn(),
+  },
 }));
 const records = new Map();
 const scope = { walletIdentity: 'xpub-test', genesisHash: 'a1'.repeat(32) };
@@ -35,12 +41,15 @@ beforeEach(() => {
   });
   records.clear();
   jest.clearAllMocks();
-  (chromeStorage.getItem as jest.Mock).mockImplementation(async (key) =>
-    records.get(key)
+  (chromeStorage.getItems as jest.Mock).mockImplementation(async (keys) =>
+    Object.fromEntries(keys.map((key: string) => [key, records.get(key)]))
   );
   (chromeStorage.setItem as jest.Mock).mockImplementation(async (key, value) =>
     records.set(key, value)
   );
+  (chromeStorage.setItems as jest.Mock).mockImplementation(async (items) => {
+    Object.entries(items).forEach(([key, value]) => records.set(key, value));
+  });
 });
 
 it('explicit release removes only the exact acknowledged outpoint', async () => {
@@ -142,7 +151,9 @@ it('refuses a 1001st reservation without making the existing registry unreadable
     vout: 0,
     pendingRegistration: true as const,
   }));
-  (chromeStorage.getItem as jest.Mock).mockResolvedValue(entries);
+  (chromeStorage.getItems as jest.Mock).mockImplementation(async ([key]) => ({
+    [key]: entries,
+  }));
   await expect(
     reserveSentryCollateral({
       ...scope,
@@ -282,3 +293,164 @@ it('does not retire a Sentry approval when broadcast admission fails before invo
     })
   ).resolves.toBeUndefined();
 });
+
+it.each([undefined, null])(
+  'normalizes only legitimate Chrome absence (%s)',
+  async (missing) => {
+    const key = `sentry-collateral-v1:${await getSentryVaultId(
+      scope.walletIdentity
+    )}:${scope.genesisHash}`;
+    records.set(key, missing);
+    expect(await getSentryCollateralReservations(scope)).toEqual([]);
+    await reserveSentryCollateral({
+      ...scope,
+      reservation,
+      assertCurrent: () => undefined,
+    });
+    expect(records.get(key)).toEqual([reservation]);
+  }
+);
+
+it.each([false, 0, ''])(
+  'blocks corrupt falsy collateral storage (%s)',
+  async (corrupt) => {
+    const key = `sentry-collateral-v1:${await getSentryVaultId(
+      scope.walletIdentity
+    )}:${scope.genesisHash}`;
+    records.set(key, corrupt);
+    await expect(getSentryCollateralReservations(scope)).rejects.toThrow(
+      'spending is blocked'
+    );
+    await expect(
+      reserveSentryCollateral({
+        ...scope,
+        reservation,
+        assertCurrent: () => undefined,
+      })
+    ).rejects.toThrow('spending is blocked');
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    expect(chromeStorage.setItems).not.toHaveBeenCalled();
+  }
+);
+
+it('refuses to overwrite a reservation changed before the final persistence lock', async () => {
+  const key = `sentry-collateral-v1:${await getSentryVaultId(
+    scope.walletIdentity
+  )}:${scope.genesisHash}`;
+  const competing = [
+    { ...reservation, txid: '12'.repeat(32), proTxHash: '34'.repeat(32) },
+  ];
+  (chromeStorage.getItems as jest.Mock).mockImplementationOnce(async () => {
+    records.set(key, competing);
+    return { [key]: [] };
+  });
+  await expect(
+    reserveSentryCollateral({
+      ...scope,
+      reservation,
+      assertCurrent: () => undefined,
+    })
+  ).rejects.toThrow('storage changed');
+  expect(records.get(key)).toBe(competing);
+  expect(chromeStorage.setItem).not.toHaveBeenCalled();
+});
+
+it('atomically persists linked nodes and their collateral under the released namespaces', async () => {
+  const linkingScope = {
+    ...scope,
+    genesisHash: SENTRY_NETWORKS.testnet.genesisHash,
+  };
+  const vaultId = await getSentryVaultId(scope.walletIdentity);
+  const key = `sentry-collateral-v1:${vaultId}:${linkingScope.genesisHash}`;
+  const nodeKey = `sentry-linked-v1:${vaultId}:testnet`;
+  const node = {
+    proTxHash: reservation.proTxHash,
+    collateralOutpoint: { txid: reservation.txid, vout: reservation.vout },
+    service: '127.0.0.1:8369',
+    nevmAddress: '',
+  };
+  const previous = {
+    ...node,
+    proTxHash: '12'.repeat(32),
+    collateralOutpoint: { ...node.collateralOutpoint, txid: '34'.repeat(32) },
+  };
+  records.set(nodeKey, [previous]);
+  const assertCurrent = jest.fn();
+  (chromeStorage.setItems as jest.Mock).mockRejectedValueOnce(
+    new Error('Write refused')
+  );
+  await expect(
+    reserveSentryCollateral({
+      ...linkingScope,
+      reservation,
+      linkedNode: node,
+      assertCurrent,
+    })
+  ).rejects.toThrow('Write refused');
+  expect(records.get(key)).toBeUndefined();
+  expect(records.get(nodeKey)).toEqual([previous]);
+  await reserveSentryCollateral({
+    ...linkingScope,
+    reservation,
+    linkedNode: node,
+    assertCurrent,
+  });
+  expect(chromeStorage.setItem).not.toHaveBeenCalled();
+  expect(chromeStorage.setItems).toHaveBeenLastCalledWith({
+    [key]: [reservation],
+    [nodeKey]: [previous, node],
+  });
+  expect(records.get(key)).toEqual([reservation]);
+  expect(records.get(nodeKey)).toEqual([previous, node]);
+});
+
+it('refuses a linked node that differs from its reserved collateral', async () => {
+  await expect(
+    reserveSentryCollateral({
+      ...scope,
+      reservation,
+      linkedNode: {
+        proTxHash: reservation.proTxHash,
+        collateralOutpoint: { txid: reservation.txid, vout: 2 },
+        service: '',
+        nevmAddress: '',
+      },
+      assertCurrent: () => undefined,
+    })
+  ).rejects.toThrow('differs from its collateral');
+  expect(chromeStorage.setItems).not.toHaveBeenCalled();
+  expect(chromeStorage.setItem).not.toHaveBeenCalled();
+});
+
+it.each([false, 0, '', [{ proTxHash: 'invalid' }]])(
+  'preserves both registries when existing linked-node storage is corrupt (%s)',
+  async (corrupt) => {
+    const linkingScope = {
+      ...scope,
+      genesisHash: SENTRY_NETWORKS.testnet.genesisHash,
+    };
+    const vaultId = await getSentryVaultId(scope.walletIdentity);
+    const key = `sentry-collateral-v1:${vaultId}:${linkingScope.genesisHash}`;
+    const nodeKey = `sentry-linked-v1:${vaultId}:testnet`;
+    records.set(nodeKey, corrupt);
+    await expect(
+      reserveSentryCollateral({
+        ...linkingScope,
+        reservation,
+        linkedNode: {
+          proTxHash: reservation.proTxHash,
+          collateralOutpoint: {
+            txid: reservation.txid,
+            vout: reservation.vout,
+          },
+          service: '',
+          nevmAddress: '',
+        },
+        assertCurrent: () => undefined,
+      })
+    ).rejects.toThrow('Invalid linked Sentry registry');
+    expect(records.get(key)).toBeUndefined();
+    expect(records.get(nodeKey)).toBe(corrupt);
+    expect(chromeStorage.setItems).not.toHaveBeenCalled();
+  }
+);

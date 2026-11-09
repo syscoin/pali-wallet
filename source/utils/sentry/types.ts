@@ -2,6 +2,7 @@ import type { SentryCollateralReservation } from './collateral';
 import type { SentryNetwork } from '../../shared/sentryNetworks';
 import type { SentryLinkedNode } from '../../shared/sentryNodeLookup';
 import type { SentryKeySummary } from '../../wallet/sentryKeyVault';
+import type { SentryNodeLinkReview } from '../../wallet/sentryNodeManagement';
 import type {
   SentryOperationRequest,
   SentryOperationReview,
@@ -25,13 +26,7 @@ export interface SentrySettings {
   serviceUrl: string;
 }
 
-export interface SentryLinkApproval {
-  id: string;
-  network: SentryNetwork;
-  node: SentryLinkedNode;
-  origin: string;
-  serviceUrl: string;
-}
+export type SentryLinkApproval = SentryNodeLinkReview;
 
 export interface SentryApproval {
   id: string;

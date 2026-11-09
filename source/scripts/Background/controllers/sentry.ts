@@ -1,7 +1,6 @@
 import isEqual from 'lodash/isEqual';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
-import { readSentryNode } from '../../../shared/sentryNodeLookup';
 import {
   normalizeSentryServiceSettings,
   readSentryServiceSettings,
@@ -11,11 +10,11 @@ import { AsyncMutex } from 'utils/asyncMutex';
 import {
   captureSentryCollateralAdmission,
   getSentryCollateralReservations,
-  releaseSentryCollateral,
   reserveSentryCollateral,
   type SentryCollateralReservation,
   type SentryCollateralAdmission,
 } from 'utils/sentry/collateral';
+import { createExtensionSentryNodeManagement } from 'utils/sentry/extensionSentry';
 import {
   SentryFeeAuthorizations,
   type SentryFeeReview,
@@ -30,12 +29,7 @@ import {
 } from 'utils/sentry/keyStore';
 import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import { withSentryPersistence } from 'utils/sentry/persistence';
-import type {
-  SentryApproval,
-  SentrySettings,
-  SentryLinkApproval,
-  SentryLinkedNode,
-} from 'utils/sentry/types';
+import type { SentryApproval, SentrySettings } from 'utils/sentry/types';
 import { runSentryCrypto } from 'utils/sentry/workerClient';
 import { chromeStorage } from 'utils/storageAPI';
 
@@ -156,18 +150,18 @@ export class SentryController {
   private readonly mutex = new AsyncMutex();
   private readonly feeAuthorizations = new SentryFeeAuthorizations();
   private readonly approvals = new Map<string, Pending>();
-  private readonly links = new Map<
-    string,
-    {
-      admission: SentryCollateralAdmission;
-      approval: SentryLinkApproval;
-      committing?: boolean;
-      expiresAt: number;
-      scope: SentryWalletScope;
-    }
-  >();
+  private readonly nodeManagement: ReturnType<
+    typeof createExtensionSentryNodeManagement<SentryWalletScope>
+  >;
   public readonly votes: SentryVoteController;
   constructor(private readonly host: Host) {
+    this.nodeManagement = createExtensionSentryNodeManagement({
+      captureScope: host.captureScope,
+      assertCurrent: (scope) => this.assertCurrent(scope),
+      authenticate: (password) => host.getSeed(password),
+      readSettings: (scope) => this.settings(scope),
+      runExclusive: (operation) => this.mutex.runExclusive(operation),
+    });
     this.votes = new SentryVoteController({
       ...host,
       resolveWalletAuthority: host.resolveVotingAuthority,
@@ -223,164 +217,19 @@ export class SentryController {
   }
 
   public async prepareLink(raw: unknown, origin: string): Promise<string> {
-    const scope = this.host.captureScope();
-    const admission = await captureSentryCollateralAdmission({
-      walletIdentity: scope.rootPublicIdentity,
-      genesisHash: SENTRY_NETWORKS[getSentryNetwork(scope.network)].genesisHash,
-    });
-    const request = raw as {
-      genesisHash?: unknown;
-      proTxHash?: unknown;
-      version?: unknown;
-    };
-    if (
-      !request ||
-      typeof request !== 'object' ||
-      Object.keys(request).some(
-        (key) => !['version', 'proTxHash', 'genesisHash'].includes(key)
-      ) ||
-      request.version !== 1 ||
-      typeof request.proTxHash !== 'string' ||
-      !/^[a-fA-F0-9]{64}$/.test(request.proTxHash)
-    )
-      throw new Error('Supply a versioned Sentry node identity only');
-    const settings = await this.settings(scope);
-    if (request.genesisHash !== SENTRY_NETWORKS[settings.network].genesisHash)
-      throw new Error(
-        'Switch to the requested Syscoin network before linking this node'
-      );
-    if (!settings.serviceUrl)
-      throw new Error(
-        'Configure a trusted Sentry data service in wallet settings first'
-      );
-    const { node } = await readSentryNode(
-      {
-        network: settings.network,
-        origin: settings.serviceUrl,
-        proTxHash: request.proTxHash.toLowerCase(),
-      },
-      {
-        fetch: (url, init) => fetch(url, init),
-        assertCurrent: () => this.assertCurrent(scope),
-        signal: new AbortController().signal,
-      }
-    );
-    this.assertCurrent(scope);
-    for (const [id, link] of this.links)
-      if (
-        !link.committing &&
-        (link.expiresAt <= Date.now() || link.scope.identity !== scope.identity)
-      )
-        this.links.delete(id);
-    if (this.links.size >= 8) throw new Error('Too many pending Sentry links');
-    const id = crypto.randomUUID();
-    this.links.set(id, {
-      admission,
-      scope,
-      expiresAt: Date.now() + APPROVAL_TTL_MS,
-      approval: {
-        id,
-        origin,
-        network: settings.network,
-        serviceUrl: settings.serviceUrl,
-        node,
-      },
-    });
-    return id;
+    return (await this.nodeManagement.prepareLink(raw, origin)).id;
   }
 
   public getLinkApproval(id: string) {
-    const link = this.links.get(id);
-    if (!link || link.expiresAt <= Date.now())
-      throw new Error('This Sentry link approval expired');
-    this.assertCurrent(link.scope);
-    return link.approval;
+    return this.nodeManagement.getLinkApproval(id);
   }
 
   public cancelLink(id: string) {
-    // Once the user-approved commit starts, let its two scoped writes finish.
-    // Cancellation before this boundary prevents every persistent mutation.
-    if (!this.links.get(id)?.committing) this.links.delete(id);
+    this.nodeManagement.cancelLink(id);
   }
 
   public async approveLink(id: string) {
-    const link = this.links.get(id);
-    this.getLinkApproval(id);
-    return this.mutex.runExclusive(async () => {
-      const { scope, approval } = link!;
-      const assertLinkCurrent = () => {
-        this.assertCurrent(scope);
-        if (
-          this.links.get(id) !== link ||
-          (!link!.committing && link!.expiresAt <= Date.now())
-        )
-          throw new Error('This Sentry link approval was cancelled or expired');
-      };
-      assertLinkCurrent();
-      const freshId = await this.prepareLink(
-        {
-          version: 1,
-          proTxHash: approval.node.proTxHash,
-          genesisHash: SENTRY_NETWORKS[approval.network].genesisHash,
-        },
-        approval.origin
-      );
-      let fresh: SentryLinkApproval;
-      try {
-        assertLinkCurrent();
-        fresh = this.getLinkApproval(freshId);
-      } finally {
-        this.links.delete(freshId);
-      }
-      if (
-        !isEqual(fresh.node, approval.node) ||
-        fresh.serviceUrl !== approval.serviceUrl
-      )
-        throw new Error(
-          'Sentry state changed after review. Link the node again.'
-        );
-      const settings = await this.settings(scope);
-      assertLinkCurrent();
-      const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
-      assertLinkCurrent();
-      const linkedNodes: SentryLinkedNode[] = settings.linkedNodes.filter(
-        (node) => node.proTxHash !== approval.node.proTxHash
-      );
-      if (linkedNodes.length >= 1000)
-        throw new Error('The linked Sentry node limit has been reached');
-      linkedNodes.push(approval.node);
-      assertLinkCurrent();
-      link!.committing = true;
-      try {
-        await reserveSentryCollateral({
-          admission: link!.admission,
-          walletIdentity: scope.rootPublicIdentity,
-          genesisHash: SENTRY_NETWORKS[approval.network].genesisHash,
-          reservation: {
-            ...approval.node.collateralOutpoint,
-            proTxHash: approval.node.proTxHash,
-          },
-          assertCurrent: assertLinkCurrent,
-        });
-        assertLinkCurrent();
-        await withSentryPersistence(assertLinkCurrent, () =>
-          chromeStorage.setItem(
-            `sentry-linked-v1:${vaultId}:${approval.network}`,
-            linkedNodes
-          )
-        );
-        assertLinkCurrent();
-        this.links.delete(id);
-        return {
-          version: 1,
-          linked: true,
-          proTxHash: approval.node.proTxHash,
-          genesisHash: SENTRY_NETWORKS[approval.network].genesisHash,
-        };
-      } finally {
-        link!.committing = false;
-      }
-    });
+    return this.nodeManagement.confirmLink(this.getLinkApproval(id));
   }
 
   public async saveSettings(params: {
@@ -513,24 +362,7 @@ export class SentryController {
     password: string;
     reservation: SentryCollateralReservation;
   }) {
-    const scope = this.host.captureScope();
-    if (params.acknowledgeNodeStops !== true)
-      throw new Error('Confirm that spending collateral will stop this node');
-    return this.mutex.runExclusive(async () => {
-      this.assertCurrent(scope);
-      await this.host.getSeed(params.password);
-      this.assertCurrent(scope);
-      const network = getSentryNetwork(scope.network);
-      const { txid, vout, proTxHash, pendingRegistration } = params.reservation;
-      const reservation = { txid, vout, proTxHash, pendingRegistration };
-      await releaseSentryCollateral({
-        walletIdentity: scope.rootPublicIdentity,
-        genesisHash: SENTRY_NETWORKS[network].genesisHash,
-        reservation,
-        assertCurrent: () => this.assertCurrent(scope),
-      });
-      return reservation;
-    });
+    return this.nodeManagement.releaseCollateral(params);
   }
 
   private async context(

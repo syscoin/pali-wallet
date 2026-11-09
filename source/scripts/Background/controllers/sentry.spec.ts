@@ -661,9 +661,12 @@ it('links verified public node identity without signing or importing collateral'
     proTxHash: observation.node.proTxHash,
     genesisHash: request.chain.genesisHash,
   });
-  expect(chromeStorage.setItem).toHaveBeenCalledWith(
-    `sentry-linked-v1:${'aa'.repeat(32)}:mainnet`,
-    [expect.objectContaining({ proTxHash: observation.node.proTxHash })]
+  expect(reserveSentryCollateral).toHaveBeenCalledWith(
+    expect.objectContaining({
+      linkedNode: expect.objectContaining({
+        proTxHash: observation.node.proTxHash,
+      }),
+    })
   );
   expect(runSentryCrypto).not.toHaveBeenCalled();
   expect(getSeed).not.toHaveBeenCalled();
@@ -934,6 +937,7 @@ it('does not persist a linked registry larger than its readable limit', async ()
   (chromeStorage.getItem as jest.Mock).mockImplementation(async (key: string) =>
     key.startsWith('sentry-linked-v1:')
       ? Array.from({ length: 1000 }, (_, index) => ({
+          ...observation.node,
           proTxHash: index.toString(16).padStart(64, '0'),
         }))
       : null
@@ -973,5 +977,6 @@ it('finishes an accepted link commit if cancellation arrives after the commit bo
   controller.cancelLink(id);
   finishReserve();
   await expect(approval).resolves.toMatchObject({ linked: true });
-  expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+  expect(reserveSentryCollateral).toHaveBeenCalledTimes(1);
+  expect(chromeStorage.setItem).not.toHaveBeenCalled();
 });
