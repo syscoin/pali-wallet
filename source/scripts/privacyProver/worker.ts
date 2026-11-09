@@ -47,7 +47,7 @@ self.onmessage = async (
     const expected = privacyPublicSignals(input);
     progress({ stage: 'artifacts' });
     const [{ metadata, wasmCode }, provingKey] = await Promise.all([
-      loadPrivacyWitnessAssets(),
+      loadPrivacyWitnessAssets(policy),
       loadPrivacyProvingKey({ policy, onProgress: progress }),
     ]);
     progress({ stage: 'witness' });
