@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { once } from 'node:events';
+import { on, once } from 'node:events';
 import test from 'node:test';
 import { Worker } from 'node:worker_threads';
 import { URL } from 'node:url';
@@ -172,32 +172,57 @@ test('worker errors redact an inconsistent complete raw SHAKE key', async () => 
   );
 });
 
-test('termination drains an actual active SHAKE worker without releasing its result', async () => {
-  const worker = new Worker(
-    new URL('./sentryCryptoWorkerThread.mjs', import.meta.url)
-  );
-  try {
-    assert.deepEqual((await once(worker, 'message'))[0], { type: 'ready' });
-    const started = once(worker, 'message');
-    worker.postMessage({
-      version: 1,
-      kind: 'sentry',
-      id: ID,
-      job: {
-        type: 'import',
-        role: 'operator',
-        scheme: 'slh-dsa-shake-128s',
-        secretKey: SECRET,
-      },
-    });
-    assert.deepEqual((await started)[0], { type: 'started' });
-    let terminal = false;
-    worker.on('message', () => {
-      terminal = true;
-    });
-    await worker.terminate();
-    assert.equal(terminal, false);
-  } finally {
-    await worker.terminate();
+test('termination drains a real SHAKE worker before its held result is published', async () => {
+  // First prove that the held result is real and publishable, then terminate
+  // the same actual SDK job at that boundary. This does not claim mid-hash cancellation.
+  for (const release of [true, false]) {
+    const publicationGate = new SharedArrayBuffer(4);
+    const worker = new Worker(
+      new URL('./sentryCryptoWorkerThread.mjs', import.meta.url),
+      { workerData: { publicationGate } }
+    );
+    const job: SentryCryptoJob = {
+      type: 'import',
+      role: 'operator',
+      scheme: 'slh-dsa-shake-128s',
+      secretKey: SECRET,
+    };
+    try {
+      assert.deepEqual((await once(worker, 'message'))[0], { type: 'ready' });
+      const messages = on(worker, 'message', { close: ['exit'] });
+      worker.postMessage({ version: 1, kind: 'sentry', id: ID, job });
+      let sdkStarted = false, held = false;
+      for await (const [message] of messages) {
+        if (message.type === 'started') continue;
+        if (message.type === 'publication-held') {
+          held = true;
+          break;
+        }
+        const value = readNativeSentryMessage(JSON.stringify(message), ID, job);
+        assert.equal(value.type, 'sdk-start');
+        assert.equal(sdkStarted, false);
+        sdkStarted = true;
+      }
+      assert.equal(sdkStarted, true);
+      assert.equal(held, true);
+      if (release) {
+        const delivered = once(worker, 'message');
+        Atomics.store(new Int32Array(publicationGate), 0, 1);
+        Atomics.notify(new Int32Array(publicationGate), 0);
+        const value = readNativeSentryMessage(JSON.stringify((await delivered)[0]), ID, job);
+        assert(value.type === 'success');
+        assert.deepEqual(value.result, { role: 'operator', scheme: 'slh-dsa-shake-128s', secretKey: SECRET, publicKey: PUBLIC });
+      } else {
+        const terminal: string[] = [];
+        worker.on('message', (message) => {
+          const value = readNativeSentryMessage(JSON.stringify(message), ID, job);
+          if (value.type !== 'sdk-start') terminal.push(value.type);
+        });
+        await worker.terminate();
+        assert.deepEqual(terminal, []);
+      }
+    } finally {
+      await worker.terminate();
+    }
   }
 });
