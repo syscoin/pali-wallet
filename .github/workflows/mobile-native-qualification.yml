@@ -172,6 +172,13 @@ jobs:
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform ios --no-install
       - run: pod install --project-directory=ios
+      - name: Verify native SLH SHA256 compression conformance
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pali-native-ios/slh-sha256"
+          export TMPDIR="$RUNNER_TEMP/pali-native-ios/slh-sha256"
+          export PALI_SLH_OPENSSL_ROOT="$PWD/node_modules/react-native-quick-crypto/ios/openssl"
+          sh modules/pali-wallet-crypto/tests/run-slh-sha256-conformance.sh 2>&1 | tee "$RUNNER_TEMP/pali-native-ios/slh-sha256/conformance.log"
       - name: Build real iOS simulator binary
         env:
           SOURCEMAP_FILE: ${{ runner.temp }}/pali-native-ios/ios-main.jsbundle.map

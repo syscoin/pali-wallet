@@ -9,6 +9,9 @@
 
 #include "utils.h"
 #include "sha2.h"
+#if defined(PALI_SLH_OPENSSL_SHA256)
+#include "pali_slh_sha256_openssl.h"
+#endif
 
 static uint32_t load_bigendian_32(const uint8_t *x) {
     return (uint32_t)(x[3]) | (((uint32_t)(x[2])) << 8) |
@@ -132,6 +135,16 @@ static void store_bigendian_64(uint8_t *x, uint64_t u) {
 
 static size_t crypto_hashblocks_sha256(uint8_t *statebytes,
                                        const uint8_t *in, size_t inlen) {
+#if defined(PALI_SLH_OPENSSL_SHA256)
+    uint32_t words[8];
+    PALI_SLH_CLEAR_ON_RETURN(words);
+    for (size_t i = 0; i < 8; ++i)
+        words[i] = load_bigendian_32(statebytes + 4 * i);
+    const size_t remaining = pali_slh_sha256_blocks(words, in, inlen);
+    for (size_t i = 0; i < 8; ++i)
+        store_bigendian_32(statebytes + 4 * i, words[i]);
+    return remaining;
+#else
     uint32_t state[8];
     PALI_SLH_CLEAR_ON_RETURN(state);
     uint32_t a;
@@ -312,6 +325,7 @@ static size_t crypto_hashblocks_sha256(uint8_t *statebytes,
     store_bigendian_32(statebytes + 28, state[7]);
 
     return inlen;
+#endif
 }
 
 static int crypto_hashblocks_sha512(unsigned char *statebytes,const unsigned char *in,unsigned long long inlen)

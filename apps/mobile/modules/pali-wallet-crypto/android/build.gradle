@@ -19,6 +19,9 @@ android {
       version System.getenv('CMAKE_VERSION') ?: '3.22.1'
     }
   }
+  buildFeatures {
+    prefab true
+  }
 }
 
 def verifiedKdf = configurations.create('paliVerifiedKdf') {
@@ -28,6 +31,9 @@ def verifiedKdf = configurations.create('paliVerifiedKdf') {
 }
 
 dependencies {
+  implementation('io.github.ronickg:openssl-static:3.6.2-3') {
+    version { strictly '3.6.2-3' }
+  }
   // Lightweight KDF classes only; never register this as a global JCA provider.
   implementation('org.bouncycastle:bcprov-jdk18on:1.86') {
     version { strictly '1.86' }

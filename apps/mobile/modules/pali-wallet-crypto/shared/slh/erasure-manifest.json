@@ -17,8 +17,8 @@
     },
     {
       "file": "sha2.c",
-      "annotations": 67,
-      "sha256": "df59ad1e75c711d32ffcdc9eb9afdf526e99e0648be7551681d7b34670b07a9b"
+      "annotations": 68,
+      "sha256": "cb1efa358ac05c44cd5f58f5e906065b9654cdff7244aa856bad1cf72f3e05a3"
     },
     {
       "file": "params.h",
@@ -146,5 +146,5 @@
       "sha256": "06f0b89b160a2ded31095f8eec870cc1ca2a130473354d96fee836d58578071c"
     }
   ],
-  "patchSha256": "353e42bd1af2b19352df68cbba42336a6a52c09d91a5c4530cb8707338424947"
+  "patchSha256": "b71e22b8bb13dfa9d73b1ae86a218132e341d4a78519c85c54856fae78ed7898"
 }
