@@ -2,7 +2,7 @@ import { dappCaipChain, dappNamespace, DAPP_MODE_METHODS, normalizeDappModeReque
 import { DAPP_SYSCOIN_READ_METHODS, isDappSyscoinRead, normalizeDappSyscoinRead } from '../../../../source/shared/dappSyscoinReads.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { NativeSentryRequests, SENTRY_DAPP_METHODS } from './sentryRequests.ts';
-import { NativePsbtRequests, PSBT_DAPP_METHODS } from './psbtRequests.ts';
+import { NativePsbtRequests, PSBT_DAPP_METHODS, samePsbtResumeOwner, type PsbtResumeScope } from './psbtRequests.ts';
 import {
   evmDappFeeChoiceMatches,
   selectEvmDappFeeChoice,
@@ -231,6 +231,7 @@ export class NativeConnectionsController {
   private host: NativeConnectionHost | undefined;
   private repository: NativeConnectionRepository | undefined;
   private transport: WalletConnectTransport | undefined;
+  private transportGeneration = 0;
   private opening: Promise<void> | undefined;
   private openingTransport: Promise<void> | undefined;
   private restored = false;
@@ -299,6 +300,40 @@ export class NativeConnectionsController {
         await this.psbt.approve(id);
       },
       rejectPsbt: async id => { this.psbt.reject(id); },
+      backgroundPsbt: () => { this.psbt.background(); },
+      cancelPsbtHandoff: async () => {
+        const descriptor = this.psbt.cancelHandoff(), transport = this.transport;
+        if (!descriptor || !transport || descriptor.scope.adapter !== this.transportGeneration) return;
+        const check = () => {
+          this.check();
+          const connection = [...this.connections.values()].find(value => JSON.stringify(value.session.binding) === JSON.stringify(descriptor.binding));
+          if (this.transport !== transport || !connection || JSON.stringify(connection.engine.get(descriptor.binding.origin)) !== descriptor.scope.grant) failure('CONTEXT_CHANGED');
+        };
+        const wire = await transport.pending(descriptor.binding, descriptor.requestId, check); check();
+        if (wire && JSON.stringify(wire) === descriptor.wire)
+          await transport.respond(wire.session.binding, wire.id, { error: { code: 4001, message: 'User rejected' } }, check, () => {});
+      },
+      resumePsbt: async id => {
+        const descriptor = this.psbt.descriptor(id), transport = this.transport;
+        if (!descriptor || !transport || descriptor.scope.adapter !== this.transportGeneration) return failure('REQUEST_EXPIRED');
+        const check = () => {
+          this.check();
+          const scope = this.psbtResumeScope(descriptor.binding);
+          if (this.transport !== transport || this.psbt.descriptor(id) !== descriptor || !scope ||
+              !samePsbtResumeOwner(descriptor.scope, scope) || scope.unlockGeneration <= descriptor.scope.unlockGeneration)
+            failure('CONTEXT_CHANGED');
+        };
+        check();
+        try {
+          await this.psbt.drainSuspended(id); check();
+          const wire = await transport.pending(descriptor.binding, descriptor.requestId, check); check();
+          if (!wire || JSON.stringify(wire) !== descriptor.wire) return failure('REQUEST_EXPIRED');
+          await this.queuePsbtRequest(wire, id);
+        } catch (cause) {
+          this.psbt.discardHandoff(descriptor); // Exact captured descriptor only; a successor is untouched.
+          throw cause;
+        }
+      },
       approveSentry: async (id, revision, assent) => {
         if (revision !== this.revision) return failure('REQUEST_EXPIRED');
         await this.sentry.approve(id, assent);
@@ -396,7 +431,7 @@ export class NativeConnectionsController {
       if (phase !== 'ready') this.dismissStatus();
       if (phase !== 'ready' && (this.action || this.pairing)) this.cancel();
       this.revalidateSigningRequests();
-      this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate();
+      this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff();
       this.revalidateReads();
       const previous = this.publishedScope;
       const current = this.publicScope();
@@ -487,7 +522,7 @@ export class NativeConnectionsController {
     const scope = this.host && this.options.source.getSnapshot().phase === 'ready' ? this.chainScope() : undefined;
     return METHODS.filter((method) => {
       const hardware = accountType === 'Ledger' || accountType === 'Trezor';
-      if (hardware && (scope?.kind === 'syscoin' && accountType !== 'Ledger' || method === 'eth_signTypedData')) return false;
+      if (hardware && method === 'eth_signTypedData') return false;
       if (scope?.kind === 'syscoin') {
         if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return !hardware && Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
         return isDappSyscoinRead(method) || (DAPP_MODE_METHODS as readonly string[]).includes(method) || isDappPermissionMethod(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method);
@@ -542,7 +577,6 @@ export class NativeConnectionsController {
     const scope = this.chainScope(context), chain = dappCaipChain(scope), family = dappNamespace(scope);
     const account = context.accounts.find((value) => value.id === accountId);
     if (accountId && !account) return false;
-    if (scope.kind === 'syscoin' && account?.type === 'Trezor') return false;
     const supported = this.supportedMethods(account?.type, account?.id);
     return Object.entries(proposal.requiredNamespaces).every(([name, raw]) => {
       const requirement = raw as {
@@ -745,7 +779,7 @@ export class NativeConnectionsController {
           guard
         );
         guard();
-        this.transport = transport;
+        this.transport = transport; this.transportGeneration++;
         for (const session of sessions) this.connection(session);
         for (const event of events) this.onEvent(event);
         guard();
@@ -897,7 +931,7 @@ export class NativeConnectionsController {
       });
     else if (event.type === 'unavailable') this.unavailable();
     this.revalidateSigningRequests();
-    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate();
+    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff();
     this.revalidateReads();
     this.publish();
   }
@@ -1173,7 +1207,7 @@ export class NativeConnectionsController {
     const revoking = connected.engine.revoke(session.binding.origin, {
       allowAlreadyDisconnected: true,
     });
-    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidateReads();
+    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff(); this.revalidateReads();
     await revoking;
     if (this.connections.get(key) !== connected || connected.session !== session || connected.engine.get(session.binding.origin)) return false;
     this.connections.delete(key);
@@ -1272,26 +1306,55 @@ export class NativeConnectionsController {
     if ('kind' in request) this.modeOwners.set(wire, { connection, grant, origin, key: sessionKey(session), sourceFamily: networkFamily, targetFamily: request.kind });
     this.controls.enqueue(wire, request, { networkFamily, order: ++this.serial, accountId: account.id, networkId: context.networkId, accountLabel: account.label, address: account.address, networkLabel: context.networkLabel, chainId: String(grant.chainId), assertCurrent, assertSessionCurrent });
   }
-  private async queuePsbtRequest(wire: WalletConnectRequest) {
+  private psbtResumeScope(binding: import('./storage.ts').NativeConnectionBinding): PsbtResumeScope | null {
+    if (!this.transport || !this.host || this.options.source.getSnapshot().phase !== 'ready') return null;
+    const context = this.host.context(), connection = [...this.connections.values()].find(value => JSON.stringify(value.session.binding) === JSON.stringify(binding));
+    const grant = connection?.engine.get(binding.origin), account = context.accounts.find(value => value.index === grant?.accountId && value.type === grant?.accountType);
+    if (!connection || !grant || grant.chain !== 'syscoin' || !context.unlocked || !account || context.activeAccountId !== account.id || !account.xpub) return null;
+    try {
+      return Object.freeze({ adapter: this.transportGeneration, wallet: this.host.walletBindingId, unlockGeneration: this.host.sessionGeneration(),
+        accountId: account.id, address: account.address, type: account.type, xpub: account.xpub,
+        registration: JSON.stringify(this.host.syscoin.registration()), grant: JSON.stringify(grant) });
+    } catch { return null; }
+  }
+  private revalidatePsbtHandoff() {
+    this.psbt.revalidateSuspended(descriptor => {
+      if (descriptor.expiresAt <= Date.now() || descriptor.scope.adapter !== this.transportGeneration) return false;
+      const connection = [...this.connections.values()].find(value => JSON.stringify(value.session.binding) === JSON.stringify(descriptor.binding));
+      if (!connection || connection.session.expiry * 1000 <= Date.now() || JSON.stringify(connection.engine.get(descriptor.binding.origin)) !== descriptor.scope.grant) return false;
+      if (this.options.source.getSnapshot().phase !== 'ready') return true;
+      const scope = this.psbtResumeScope(descriptor.binding);
+      return !!scope && samePsbtResumeOwner(descriptor.scope, scope);
+    });
+  }
+  private async queuePsbtRequest(wire: WalletConnectRequest, resumeId?: string) {
     const connection = this.connections.get(sessionKey(wire.session)), context = this.host!.context(), origin = wire.session.binding.origin;
     const grant = connection?.engine.get(origin), account = context.accounts.find(value => value.index === grant?.accountId && value.type === grant?.accountType);
     const reject = (code: number, message: string) => this.transport!.respond(wire.session.binding, wire.id, { error: { code, message } }, () => this.check(), () => {});
     if (!connection || connection.session.binding.origin !== origin || !grant || grant.chain !== 'syscoin' || !account || !context.unlocked || context.activeAccountId !== account.id || this.options.source.getSnapshot().phase !== 'ready') return reject(4100, 'Account is unavailable');
     const scope = this.chainScope(context);
     if (scope.kind !== 'syscoin' || scope.chainId !== grant.chainId || grant.utxoAccount?.slip44 !== scope.slip44 || grant.utxoAccount.xpub !== account.xpub || !this.permits(connection, wire, account, scope)) return reject(4100, 'Method or account is not authorized');
-    if ((account.type !== 'HDAccount' && account.type !== 'Imported' && account.type !== 'Ledger') || !this.supportedMethods(account.type, account.id).includes(wire.method)) return reject(4200, 'PSBT signing is unavailable for this account');
-    if (this.hasPendingWire(wire)) return;
-    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return reject(-32005, 'Too many requests');
+    if ((account.type !== 'HDAccount' && account.type !== 'Imported' && account.type !== 'Ledger' && account.type !== 'Trezor') || !this.supportedMethods(account.type, account.id).includes(wire.method)) return reject(4200, 'PSBT signing is unavailable for this account');
+    if (account.type === 'Trezor' && wire.freshness !== 'fresh') return reject(4200, 'Reissue a fresh PSBT request with an explicit expiry');
+    if (!resumeId && this.hasPendingWire(wire)) return;
+    if (!resumeId && (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin)) return reject(-32005, 'Too many requests');
     const selectedNetwork = this.host!.syscoin.registration(), network = JSON.stringify(selectedNetwork);
     const revision = this.options.source.getSnapshot().revision, session = connection.session;
     const check = () => {
       this.check(); const next = this.host!.context();
       if (this.options.source.getSnapshot().phase !== 'ready' || this.options.source.getSnapshot().revision !== revision || this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant || !next.unlocked || next.activeAccountId !== account.id || next.networkId !== context.networkId || JSON.stringify(this.host!.syscoin.registration()) !== network || !next.accounts.some(value => value.id === account.id && value.xpub === account.xpub) || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
     };
+    const resumeScope = this.psbtResumeScope(wire.session.binding);
+    if (!resumeScope) return reject(4100, 'Account is unavailable');
+    const assertSessionCurrent = () => {
+      this.check();
+      if (this.connections.get(sessionKey(session)) !== connection || connection.session !== session || connection.engine.get(origin) !== grant ||
+          resumeScope.adapter !== this.transportGeneration || wire.expiresAt <= Date.now() || session.expiry * 1000 <= Date.now()) failure('CONTEXT_CHANGED');
+    };
     try {
       this.psbt.enqueue(wire, { order: ++this.serial, accountLabel: account.label, address: account.address,
         networkLabel: context.networkLabel, chainId: dappCaipChain(scope), symbol: selectedNetwork.symbol, decimals: selectedNetwork.decimals,
-        assertCurrent: check });
+        resumeScope, assertCurrent: check, assertSessionCurrent }, resumeId);
     } catch { return reject(-32602, 'Supply one structured PSBT and asset payload'); }
   }
   private async queueSentryRequest(wire: WalletConnectRequest) {
@@ -1344,7 +1407,7 @@ export class NativeConnectionsController {
         const revoking = connection.engine.revoke(origin, { allowAlreadyDisconnected: true });
         for (const message of [...this.requests.values()]) if (message.connection === connection) void this.retireRequest(message, false);
         for (const read of this.reads.values()) if (read.connection === connection) read.lifetime.abort();
-        this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate();
+        this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff();
         if (this.statusSession === session) this.dismissStatus();
         this.publish();
         try { await revoking; }

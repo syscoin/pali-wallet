@@ -216,7 +216,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const clearSecrets = useCallback(() => {
     setPassword(''); setConfirmation(''); setPhrase(''); setPresentation(null); setAnswers(['', '', '']);
   }, []);
-  const revoke = useCallback(() => {
+  const revoke = useCallback((background = false) => {
+    // The AppState owner records exact Suite suspension before authority.lock
+    // synchronously revalidates and removes the old request consent.
+    if (background === true) controllers.current?.connections.backgroundPsbt();
+    else void controllers.current?.connections.cancelPsbtHandoff().catch(() => undefined);
     custodyIdle.stop(screenToken.current);
     epoch.current++;
     recoveryRef.current?.cancel();
@@ -655,11 +659,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     };
     const lifecycle = AppState.addEventListener('change', (state) => {
       if (state === 'inactive' && controllers.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); }
-      else if (state !== 'active') revoke();
+      else if (state !== 'active') revoke(true);
       else resume();
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
-      if (controllers.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke();
+      if (controllers.current?.authentication?.isActive()) { clearSecrets(); Keyboard.dismiss(); } else revoke(true);
     }) : null;
     const focus = AppState.addEventListener('focus', resume);
     return () => {
@@ -895,14 +899,22 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'trezor' && trezorView && snapshot.phase === 'ready')
     return <NativeTrezor controller={trezorView} onBack={() => {
+      void controllers.current?.connections.cancelPsbtHandoff().catch(() => undefined);
       if (rootOrigin.current?.stage === 'trezor') closeStage(); else setStage('manage-hd');
-    }} onImported={() => { rootOrigin.current = null; setStage('choose'); }} onResumeSend={(intent: NativeTrezorResumeIntent) => {
+    }} onImported={() => { rootOrigin.current = null; setStage('choose'); }} onResumeSend={async (intent: NativeTrezorResumeIntent) => {
       const local = controllers.current;
       const current = readyContext();
       const captured = local?.authority.getCatalogue();
       if (!current || !captured || AppState.currentState !== 'active' ||
           captured.active.accountId !== intent.accountId || captured.active.networkId !== intent.networkId)
         throw new Error('CANCELLED');
+      if (intent.kind === 'external-psbt') {
+        if (!local) throw Error('CANCELLED');
+        const resumeEpoch = epoch.current;
+        await local.connections.resumePsbt(intent.id);
+        if (controllers.current === local && epoch.current === resumeEpoch && AppState.currentState === 'active') setStage('choose');
+        return;
+      }
       const resume = trezorResumeDraft(intent);
       const target: SendTarget = resume.kind === 'utxo' ? { kind: 'utxo', asset: resume.asset }
         : resume.kind === 'replacement' ? { kind: resume.replacement.mode, hash: resume.replacement.originalHash }

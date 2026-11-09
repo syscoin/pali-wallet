@@ -230,7 +230,7 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
             const pairing = { topic: 'ab'.repeat(32), expiresAt: Date.now() + 60000, async cancel() {} };
             onPairing(pairing); return pairing;
           },
-          async sessions() { return []; }, async close() {},
+          async pending() { return null; }, async sessions() { return []; }, async close() {},
           async approve() { throw new Error('Unexpected approval'); },
           async reject() { throw new Error('Unexpected rejection'); },
           async respond() { throw new Error('Unexpected response'); },

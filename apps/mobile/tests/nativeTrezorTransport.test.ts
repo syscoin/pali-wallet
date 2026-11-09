@@ -47,6 +47,7 @@ function fixture(
     vendorError?: Error;
     realClient?: boolean;
     now?: () => number;
+    beforeSuiteOpen?(expiresAt: number, job: object): (opened: boolean) => void;
   } = {}
 ) {
   let loads = 0,
@@ -118,6 +119,7 @@ function fixture(
       workflow: 'import',
       expiresAt: 91_000,
       sessionGeneration: generation,
+      beforeSuiteOpen: config.beforeSuiteOpen,
       assertCurrent,
     });
   const callback = (index = urls.length - 1, value: unknown = response) => {
@@ -602,4 +604,23 @@ test('callback router owns one subscription and ignores delivery after disposal'
   await router.ready;
   assert.deepEqual(seen, ['pali://unrelated']);
   assert.equal(removals, 1);
+});
+
+
+test('verified Suite marker runs before opening and reports a failed launch without granting signing authority', async () => {
+  const opening = deferred(), markers: unknown[] = [];
+  const f = fixture({ opening: opening.promise, beforeSuiteOpen: (expiresAt, job) => {
+    assert.equal(f.urls.length, 0); markers.push({ expiresAt, job }); return opened => { markers.push(opened); };
+  } });
+  const session = f.start(); await session.host.init(guard); const pending = session.host.ethereumGetAddress(guard, addressRequest), rejected = assert.rejects(pending);
+  await tick(); assert.equal(markers.length, 1); assert.equal(f.urls.length, 1);
+  opening.reject(Error('Suite launch failed')); await rejected;
+  assert.deepEqual(markers.slice(1), [false]); await f.sessions.dispose();
+});
+
+test('an invalid Suite dispatch never reaches the intentional-background marker', async () => {
+  let markers = 0;
+  const f = fixture({ changeURL: url => { url.searchParams.set('params', '{}'); }, beforeSuiteOpen: () => { markers++; return () => {}; } });
+  const session = f.start(); await session.host.init(guard); await assert.rejects(session.host.ethereumGetAddress(guard, addressRequest));
+  assert.equal(markers, 0); assert.equal(f.urls.length, 0); await f.sessions.dispose();
 });

@@ -38,6 +38,7 @@ export type NativeTrezorHostOptions = Readonly<{
   assertCurrent(): void;
   loadClient(): Promise<NativeTrezorClient>;
   openURL(url: string): Promise<unknown>;
+  beforeSuiteOpen?(): (opened: boolean) => void;
 }>;
 
 const cancelled = () =>
@@ -185,7 +186,11 @@ export function createNativeTrezorHost(options: NativeTrezorHostOptions): {
                   dispatched = true;
                   active.opening = Promise.resolve().then(() => {
                     guard();
-                    return openURL(url);
+                    const finishOpen = options.beforeSuiteOpen?.();
+                    return Promise.resolve().then(() => { guard(); return openURL(url); }).then(
+                      value => { finishOpen?.(true); return value; },
+                      error => { finishOpen?.(false); throw error; }
+                    );
                   });
                   void active.opening.catch(() => undefined);
                 },

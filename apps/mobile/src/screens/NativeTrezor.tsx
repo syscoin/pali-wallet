@@ -33,7 +33,7 @@ export function NativeTrezor({
   controller: NativeTrezorView;
   onBack(): void;
   onImported(): void;
-  onResumeSend(intent: NativeTrezorResumeIntent): void;
+  onResumeSend(intent: NativeTrezorResumeIntent): void | Promise<void>;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -119,7 +119,7 @@ export function NativeTrezor({
         if (owner.active && !owner.closing && owner.epoch === epoch) callbacks.current.onImported();
       } else {
         const intent = await controller.resumeSend();
-        if (owner.active && !owner.closing && owner.epoch === epoch) callbacks.current.onResumeSend(intent);
+        if (owner.active && !owner.closing && owner.epoch === epoch) await callbacks.current.onResumeSend(intent);
       }
     });
   };

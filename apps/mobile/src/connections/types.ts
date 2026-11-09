@@ -150,6 +150,9 @@ export type NativeConnectionsSnapshot = Readonly<{
 export type NativeConnectionsView = Readonly<{
   approvePsbt(id: string, revision: number): Promise<void>;
   rejectPsbt(id: string): Promise<void>;
+  backgroundPsbt(): void;
+  cancelPsbtHandoff(): Promise<void>;
+  resumePsbt(id: string): Promise<void>;
   approveSentry(id: string, revision: number, assent: NativeSentryAssent): Promise<void>;
   rejectSentry(id: string): Promise<void>;
   approveControl(id: string, revision: number): Promise<void>;

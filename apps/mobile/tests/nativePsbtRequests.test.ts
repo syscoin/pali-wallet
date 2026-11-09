@@ -20,7 +20,7 @@ function fixture(method: PsbtApprovalMethod = 'sys_sign') {
   const requests: unknown[] = [], responses: unknown[] = [], handoffs: unknown[] = [];
   const lifetime: AbortSignal[] = [];
   const check = () => { if (!current) throw Error('CONTEXT_CHANGED'); };
-  const wire: WalletConnectRequest = { id: 1, expiresAt: Date.now() + 120000,
+  const wire: WalletConnectRequest = { freshness: 'fresh', id: 1, expiresAt: Date.now() + 120000,
     session: { binding: { topic, peerPublicKey: 'b2'.repeat(32), origin },
       metadata: { name: 'Untrusted display name', description: '', url: 'https://attacker.invalid', icons: [] }, expiry: Math.ceil(Date.now() / 1000) + 600,
       namespaces: { bip122: { accounts: ['bip122:' + 'ab'.repeat(16) + ':stable-anchor'], methods: ['sys_sign', 'sys_signAndSend'], events: [] } } },
@@ -31,7 +31,7 @@ function fixture(method: PsbtApprovalMethod = 'sys_sign') {
     outputs: [{ index: 0, address: null, scriptHex: '51', valueSatoshis: '900', assets: [] }] });
   const manager = new NativePsbtRequests({
     foreground: () => foreground, changed() {}, checkSite: async () => ({ isBlacklisted: blocked }),
-    host: () => ({ async prepare(request, signal, guard) {
+    host: () => ({ async cancelHandoff() {}, async prepare(request, signal, guard) {
       preparations++; requests.push(request); lifetime.push(signal); await prepareWait;
       const prepared: PreparedPsbtApproval = { review: details, assertCurrent: guard,
         disposition: () => dispatched ? { transactionNotBroadcast: false, txid: 'ef'.repeat(32) } : { transactionNotBroadcast: true },
@@ -46,7 +46,7 @@ function fixture(method: PsbtApprovalMethod = 'sys_sign') {
     },
   });
   const enqueue = () => manager.enqueue(wire, { order: 1, accountLabel: 'Account', address: 'stable-address', networkLabel: 'Bitcoin',
-    chainId: wire.chainId, symbol: 'BTC', decimals: 8, assertCurrent: check });
+    chainId: wire.chainId, symbol: 'BTC', decimals: 8, resumeScope: { adapter: 1, wallet: 'public-wallet', unlockGeneration: 1, accountId: 'hd:0:0', address: 'stable-address', type: 'HDAccount', xpub: 'public-xpub', registration: 'public-registration', grant: 'public-grant' }, assertCurrent: check, assertSessionCurrent: check });
   return { manager, wire, details, enqueue, requests, responses, handoffs, lifetime,
     review: () => manager.review(7), preparations: () => preparations, signatures: () => signatures, disposals: () => disposals,
     retire: () => { current = false; manager.revalidate(); }, setForeground: (value: boolean) => { foreground = value; },
@@ -127,7 +127,7 @@ test('malformed envelope and missing required ports fail before host or signing 
   const f = fixture();
   try {
     for (const params of [envelope, [envelope, envelope], [{ psbt: 'invalid', assets: '[]' }], [{ ...envelope, sentryFeeAuthorization: 'untrusted tag' }]]) {
-      assert.throws(() => f.manager.enqueue({ ...f.wire, params }, { order: 1, accountLabel: '', address: '', networkLabel: '', chainId: '', symbol: '', decimals: 8, assertCurrent() {} }));
+      assert.throws(() => f.manager.enqueue({ ...f.wire, params }, { order: 1, accountLabel: '', address: '', networkLabel: '', chainId: '', symbol: '', decimals: 8, resumeScope: { adapter: 1, wallet: 'public-wallet', unlockGeneration: 1, accountId: 'hd:0:0', address: '', type: 'HDAccount', xpub: 'public-xpub', registration: 'public-registration', grant: 'public-grant' }, assertSessionCurrent() {}, assertCurrent() {} }));
     }
     assert.equal(f.preparations(), 0); assert.equal(f.signatures(), 0);
     // @ts-expect-error Required host callbacks are also enforced for JavaScript callers.
