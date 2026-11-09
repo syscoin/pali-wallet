@@ -15,6 +15,15 @@ import * as networkContext from '../src/custody/networkContext.ts';
 import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
 import type { NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
+import type { NativeConnectionsView } from '../src/connections/types.ts';
+
+function psbtLifecycle(events: string[] = []) {
+  return {
+    backgroundPsbt() { events.push('psbt-background'); },
+    async cancelPsbtHandoff() { events.push('psbt-cancel'); },
+    async resumePsbt() { throw Error('PSBT resume is outside this fixture'); },
+  } satisfies Pick<NativeConnectionsView, 'backgroundPsbt' | 'cancelPsbtHandoff' | 'resumePsbt'>;
+}
 
 type Element = { type: unknown; props: Record<string, unknown>; children: unknown[] };
 type Cell = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
@@ -205,7 +214,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
-    connections: { getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    connections: { ...psbtLifecycle(), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {}, async readRecoveryInventory() { return inventory; },
@@ -259,6 +268,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let nextError: string | null = null;
   let releasePrompt!: () => void;
   let locks = 0;
+  const lifecycle: string[] = [];
   const enrollments: { enabled: boolean; password: string }[] = [];
   const authentication = new DeviceUnlockPrompt({
     state: () => root.native.AppState.currentState,
@@ -291,14 +301,14 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         await authentication.run(() => new Promise<void>(resolve => { releasePrompt = resolve; }));
         check(); publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
       },
-      lock() { if (deviceUnlock) { locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
+      lock() { if (deviceUnlock) { lifecycle.push('lock'); locks++; publish({ phase: 'locked', revision: state.revision + 1, account: null }); } }, async dispose() { state = { ...state, phase: 'disposed' }; },
       async unlock() {
         publish({ phase: 'authenticating', error: null });
         if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
         publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
       } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
-    connections: { getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
@@ -336,7 +346,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, dispose: root.dispose, emit: root.emit, releasePrompt: () => releasePrompt(), enrollments, get locks() { return locks; } };
+  return { render, unlock, publish, dispose: root.dispose, emit: root.emit, releasePrompt: () => releasePrompt(), enrollments, lifecycle, get locks() { return locks; } };
 }
 
 test('password setup makes biometric enrollment an explicit optional choice', async () => {
@@ -381,8 +391,10 @@ for (const interruption of ['inactive', 'blur']) test(`native wallet keeps passw
     await new Promise(resolve => setImmediate(resolve));
     tree = f.render();
     assert.ok(all(tree).some(node => node.props.label === 'Confirm your password'));
+    const lifecycleOffset = f.lifecycle.length;
     f.emit('blur'); f.render();
     assert.equal(f.locks, 1);
+    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-background', 'lock']);
   } finally { f.dispose(); }
 });
 
@@ -403,8 +415,10 @@ for (const enabled of [false, true]) test(`a queued settings Cancel revokes pend
     press(button(tree, enabled ? 'Turn off biometric unlock' : 'Enable biometric unlock'));
     // Authentication replaces the form, but an already queued callback remains callable.
     assert.equal(all(f.render()).some(node => node.props.title === 'Cancel'), false);
+    const lifecycleOffset = f.lifecycle.length;
     press(cancel);
     assert.equal(f.locks, 1);
+    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-cancel', 'lock']);
     finish(); await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(f.enrollments, []);
     assert(button(f.render(), 'Unlock wallet'));
@@ -418,8 +432,10 @@ test('native wallet background revokes a pending biometric prompt', async () => 
     await new Promise(resolve => setImmediate(resolve));
     f.emit('blur'); f.render();
     assert.equal(f.locks, 0);
+    const lifecycleOffset = f.lifecycle.length;
     f.emit('change', 'background'); f.render();
     assert.equal(f.locks, 1);
+    assert.deepEqual(f.lifecycle.slice(lifecycleOffset), ['psbt-background', 'lock']);
     f.emit('change', 'active'); f.releasePrompt();
     await new Promise(resolve => setImmediate(resolve));
     const tree = f.render();
@@ -473,7 +489,7 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
         account: phase === 'ready' ? { address, network: 'ethereum' } : null };
       for (const listener of listeners) listener(state);
     };
-    const connections = { id, async pair() { assert.equal(connectionClosed, false); },
+    const connections = { ...psbtLifecycle(), id, async pair() { assert.equal(connectionClosed, false); },
       getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} };
     const bundle = {
       canManageGuardianPolicy: () => false, canSignSmartAccount: () => false, canManageSlhDsa: () => false,

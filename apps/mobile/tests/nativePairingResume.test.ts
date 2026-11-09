@@ -7,6 +7,7 @@ import ts from 'typescript';
 import * as networks from '../src/custody/networkContext.ts';
 import * as utxoNetworks from '../src/core/utxoNetworks.ts';
 import type { NativePairingEntry } from '../src/connections/pairingLinks.ts';
+import type { NativeConnectionsView } from '../src/connections/types.ts';
 
 type Element = {
   type: unknown;
@@ -47,6 +48,12 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let guardianReads = 0;
   let guardianOpens = 0;
   let recoveryOpens = 0;
+  const lifecycleEvents: string[] = [];
+  const psbtLifecycle = {
+    backgroundPsbt() { lifecycleEvents.push('psbt-background'); },
+    async cancelPsbtHandoff() { lifecycleEvents.push('psbt-cancel'); },
+    async resumePsbt() { throw Error('PSBT resume is outside this fixture'); },
+  } satisfies Pick<NativeConnectionsView, 'backgroundPsbt' | 'cancelPsbtHandoff' | 'resumePsbt'>;
   const authenticatorGuards: (() => void)[] = [];
   let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
@@ -180,6 +187,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       },
       supportsAccountManagement: () => false,
       lock() {
+        lifecycleEvents.push('lock');
         change('locked');
       },
       async unlock() {
@@ -198,6 +206,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       },
     },
     connections: {
+      ...psbtLifecycle,
       getSnapshot: () => connectionSnapshot,
       subscribe(listener: () => void) {
         connectionListeners.add(listener);
@@ -382,6 +391,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   };
   return {
     render,
+    lifecycle: () => lifecycleEvents,
     showTools() { shellTab = 'tools'; },
     showWallet() { shellTab = 'wallet'; },
     guardianReads: () => guardianReads,
@@ -510,8 +520,10 @@ for (const expired of [false, true])
         f.consume();
         tree.props.onScanStarted();
         f.render();
+        const lifecycleOffset = f.lifecycle().length;
         if (transition === 'background') f.background();
         else f.blur();
+        assert.deepEqual(f.lifecycle().slice(lifecycleOffset), ['psbt-background', 'lock']);
         tree = f.render();
         assert.notEqual(tree.type, 'NativeConnections');
         if (expired) f.expire();
