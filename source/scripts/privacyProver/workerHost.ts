@@ -1,15 +1,10 @@
+import { eraseNativeSentryInput } from './nativeSentryProtocol.ts';
 import type { PrivacyArtifactPolicy } from '../../utils/privacy/proverArtifacts';
 import type { IPrivacyProofInput } from '../../utils/privacy/proverTypes';
+import type { SentryCryptoJob } from '../../wallet/sentryCryptoJobs.ts';
 
 /** Own every worker, including arithmetic workers which cannot handle cancel messages while busy. */
-export function startPrivacyProofWorkers(
-  makeWorker: (kind: 'main' | 'sub') => Worker,
-  makeChannel: () => MessageChannel,
-  policy: PrivacyArtifactPolicy,
-  id: string,
-  input: IPrivacyProofInput,
-  respond: (message: any) => void
-) {
+function ownWorkers(respond: (message: any) => void, error: object) {
   const workers: Worker[] = [];
   const channels: MessageChannel[] = [];
   let active = true;
@@ -44,12 +39,32 @@ export function startPrivacyProofWorkers(
     if (message && retired) respond(message);
     return retired;
   };
-  const timeout = setTimeout(() => finish({ id, type: 'error' }), 120000);
+  const timeout = setTimeout(() => finish(error), 120000);
+  return {
+    workers,
+    channels,
+    finish,
+    active: () => active,
+    cancel: () => finish(),
+    isRetired: () => retired,
+  };
+}
+
+export function startPrivacyProofWorkers(
+  makeWorker: (kind: 'main' | 'sub') => Worker,
+  makeChannel: () => MessageChannel,
+  policy: PrivacyArtifactPolicy,
+  id: string,
+  input: IPrivacyProofInput,
+  respond: (message: any) => void
+) {
+  const owner = ownWorkers(respond, { id, type: 'error' });
+  const { workers, channels, finish } = owner;
   try {
     const main = makeWorker('main');
     workers.push(main);
     main.onmessage = (event) => {
-      if (!active || event.data?.id !== id) return;
+      if (!owner.active() || event.data?.id !== id) return;
       if (event.data.type === 'progress') respond(event.data);
       else finish(event.data);
     };
@@ -74,5 +89,30 @@ export function startPrivacyProofWorkers(
       input.secret = '';
     }
   }
-  return Object.freeze({ cancel: () => finish(), isRetired: () => retired });
+  return Object.freeze({ cancel: owner.cancel, isRetired: owner.isRetired });
+}
+
+/** The same retirement boundary owns a single, fixed SDK execution worker. */
+export function startSentryCryptoWorker(
+  makeWorker: () => Worker,
+  id: string,
+  job: SentryCryptoJob,
+  respond: (message: any) => void
+) {
+  const error = { version: 1, kind: 'sentry', id, type: 'error' };
+  const owner = ownWorkers(respond, error);
+  try {
+    const worker = makeWorker();
+    owner.workers.push(worker);
+    worker.onmessage = (event) => {
+      if (owner.active()) owner.finish(event.data);
+    };
+    worker.onerror = () => owner.finish(error);
+    worker.postMessage({ version: 1, kind: 'sentry', id, job });
+  } catch {
+    owner.finish(error);
+  } finally {
+    eraseNativeSentryInput(job);
+  }
+  return Object.freeze({ cancel: owner.cancel, isRetired: owner.isRetired });
 }

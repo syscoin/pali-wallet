@@ -9,9 +9,16 @@ const pageWindow = globalThis as typeof globalThis & {
   };
 };
 if (typeof window !== 'undefined') {
-  const id = location.hostname.split('.')[0];
-  const makeWorker = (kind: 'main' | 'sub') =>
-    kind === 'main'
+  const id = location.hostname.split('.')[0] ?? '';
+  const makeWorker = (kind: 'main' | 'sub' | 'sentry') =>
+    kind === 'sentry'
+      ? new Worker(
+          new URL(
+            /* webpackChunkName: "sentry-crypto" */ './sentryWorker.ts',
+            import.meta.url
+          )
+        )
+      : kind === 'main'
       ? new Worker(
           new URL(
             /* webpackChunkName: "proof-main" */ './worker.ts',
@@ -47,7 +54,7 @@ if (typeof window !== 'undefined') {
         pageWindow.PaliPrivacyProof
       )
         return;
-      const port = event.ports[0];
+      const port = event.ports[0]!;
       const page = createNativeProofPage(
         id,
         (json) => port.postMessage(json),
@@ -61,7 +68,13 @@ if (typeof window !== 'undefined') {
           if (request.id !== id) return;
           if (request.type === 'start' && typeof request.input === 'string')
             page.start(id, request.input);
+          else if (
+            request.type === 'startSentry' &&
+            typeof request.input === 'string'
+          )
+            page.startSentry(id, request.input);
           else if (request.type === 'cancel') page.cancel(id);
+          else if (request.type === 'cancelSentry') page.cancelSentry(id);
         } catch {
           page.cancel(id);
         }

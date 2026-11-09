@@ -77,6 +77,111 @@ it('binds one job to the bundled policy and retires all workers before its publi
   expect(host.send).toHaveBeenCalledTimes(1);
 });
 
+const sentryJob = () => ({
+  type: 'import' as const,
+  role: 'voting' as const,
+  scheme: 'secp256k1' as const,
+  secretKey: '02'.padStart(64, '0'),
+});
+const sentryResult = () => ({
+  role: 'voting',
+  scheme: 'secp256k1',
+  secretKey: '02'.padStart(64, '0'),
+  publicKey:
+    '02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5',
+});
+const sentryInput = () =>
+  JSON.stringify({ version: 1, kind: 'sentry', job: sentryJob() });
+
+it('uses one fixed SDK worker and retires it before returning a domain-bound result', () => {
+  const host = setup();
+  host.page.startSentry(id, sentryInput());
+  expect(host.workers).toHaveLength(1);
+  expect(host.channels).toHaveLength(0);
+  expect(host.workers[0].postMessage.mock.calls[0][0].job.secretKey).toBe('');
+  const key = sentryResult();
+  host.send.mockImplementation(() =>
+    expect(host.workers[0].terminate).toHaveBeenCalledTimes(1)
+  );
+  host.workers[0].onmessage({
+    data: { version: 1, kind: 'sentry', id, type: 'success', result: key },
+  });
+  expect(JSON.parse(host.send.mock.calls[0][0])).toEqual({
+    version: 1,
+    kind: 'sentry',
+    id,
+    type: 'success',
+    result: key,
+  });
+  host.page.start(id, JSON.stringify(input()));
+  host.page.startSentry(id, sentryInput());
+  expect(host.workers).toHaveLength(1);
+});
+
+it.each([
+  'wrong-domain',
+  'private-error',
+  'wrong-result',
+  'termination-failure',
+])(
+  'refuses Sentry %s without a success or false disposal acknowledgement',
+  (kind) => {
+    const host = setup();
+    host.page.startSentry(id, sentryInput());
+    if (kind === 'termination-failure') {
+      host.workers[0].terminate.mockImplementation(() => {
+        throw new Error('private');
+      });
+      host.page.cancel(id);
+      expect(host.send).not.toHaveBeenCalled();
+      return;
+    }
+    const key = sentryResult();
+    host.workers[0].onmessage({
+      data:
+        kind === 'wrong-domain'
+          ? { version: 1, id, type: 'success', result: key }
+          : kind === 'private-error'
+          ? { version: 1, kind: 'sentry', id, type: 'error', error: 'private' }
+          : {
+              version: 1,
+              kind: 'sentry',
+              id,
+              type: 'success',
+              result: { ...key, scheme: 'slh-dsa-shake-128s' },
+            },
+    });
+    expect(host.send).toHaveBeenCalledWith(
+      envelope({ kind: 'sentry', type: 'error' })
+    );
+  }
+);
+
+it('cancels the Sentry worker, acknowledges its own domain and ignores a late result', () => {
+  const host = setup();
+  host.page.startSentry(id, sentryInput());
+  host.page.cancel(id);
+  expect(host.send).toHaveBeenCalledWith(
+    envelope({ kind: 'sentry', type: 'disposed' })
+  );
+  host.workers[0].onmessage({
+    data: { version: 1, kind: 'sentry', id, type: 'error' },
+  });
+  expect(host.send).toHaveBeenCalledTimes(1);
+});
+
+it('acknowledges Sentry cancellation before its queued start without starting crypto', () => {
+  const host = setup();
+  host.page.cancelSentry(id);
+  expect(host.send).toHaveBeenCalledWith(
+    envelope({ kind: 'sentry', type: 'disposed' })
+  );
+  host.page.startSentry(id, sentryInput());
+  host.page.start(id, JSON.stringify(input()));
+  expect(host.workers).toHaveLength(0);
+  expect(host.send).toHaveBeenCalledTimes(1);
+});
+
 it('cancels every worker and port before acknowledging disposal and ignores late responses', () => {
   const host = setup();
   host.page.start(id, JSON.stringify(input()));

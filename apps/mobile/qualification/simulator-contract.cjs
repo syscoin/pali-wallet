@@ -1,6 +1,7 @@
 const { CRYPTO_FULL_CASES, isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { SENTRY_CLASSICAL_CHECK } = require('./native-sentry-classical.ts');
 const { SENTRY_SHAKE_CHECK } = require('./native-sentry-shake.ts');
+const { SENTRY_APPROVAL_CHECK } = require('./native-sentry-approvals.ts');
 
 const MODE = '--ios-simulator-contract';
 
@@ -18,6 +19,7 @@ const CHECKS = Object.freeze([
   'native SLH leaf setup vector',
   SENTRY_CLASSICAL_CHECK,
   SENTRY_SHAKE_CHECK,
+  SENTRY_APPROVAL_CHECK,
 ]);
 // The remaining labels are substeps, not completed timed cases.
 const TIMED_CRYPTO_CASES = Object.freeze(CRYPTO_FULL_CASES.filter((name) =>

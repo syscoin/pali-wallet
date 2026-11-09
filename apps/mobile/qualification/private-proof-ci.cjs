@@ -7,6 +7,12 @@ const { setTimeout: delay } = require('node:timers/promises');
 const { httpBuild } = require('./http-contract.ts');
 const { parsePrivateProofReport, privateProofReportName, PRIVATE_PROOF_REPORT_TIMEOUT } = require('./private-proof-contract.ts');
 const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('../scripts/qualification-sdk.cjs');
+const { decodeNativeReport } = require('./report-validation.cjs');
+const { CHECKS } = require('./simulator-contract.cjs');
+const { SENTRY_ISOLATED_CHECK } = require('./native-sentry-isolated.ts');
+const FAILURE_INPUT_BYTES = 100000;
+const FAILURE_OUTPUT_BYTES = 8192;
+const FAILURE_STAGES = new Set(['parameters', 'private proof host', ...CHECKS, SENTRY_ISOLATED_CHECK]);
 
 function readJson(file) {
   const descriptor = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NONBLOCK | fs.constants.O_NOFOLLOW);
@@ -52,9 +58,37 @@ function reportInventory(names) {
   return names.filter((name) => name.startsWith('pali-native-'));
 }
 
-async function runPrivateProofQualification({ platform, config, output, launch, read, list,
+function preserveUnexpectedFailure(platform, output, names, readFailure) {
+  const reports = ['startup', 'create'].filter(phase => names.includes(`pali-native-qualification-${phase}.json`)).map(filePhase => {
+    let text;
+    try { text = readFailure(filePhase); }
+    catch { return { filePhase, availability: 'unavailable' }; }
+    try {
+      if (typeof text !== 'string' || Buffer.byteLength(text) > FAILURE_INPUT_BYTES) throw Error();
+      const report = decodeNativeReport(text, platform, filePhase === 'startup' ? 'unknown' : 'create', filePhase === 'startup' ? 'unknown' : 'import');
+      if (report.status !== 'failed' || !Number.isSafeInteger(report.networkCalls) || report.networkCalls < 0 || !Array.isArray(report.checks) || report.checks.length > 64 ||
+          report.checks.some(check => !check || typeof check !== 'object' || Array.isArray(check) ||
+            Object.keys(check).sort().join(',') !== 'durationMs,name' || typeof check.name !== 'string' || check.name.length > 160 ||
+            !Number.isFinite(check.durationMs) || check.durationMs < 0 || check.durationMs > 300000)) throw Error();
+      const completedChecks = report.checks.filter(check => CHECKS.includes(check.name) || check.name === SENTRY_ISOLATED_CHECK)
+        .map(({ name, durationMs }) => ({ name, durationMs }));
+      return { filePhase, availability: 'available', reportedStatus: 'failed', reportedPhase: report.phase, reportedScenario: report.scenario,
+        failedStage: FAILURE_STAGES.has(report.failedStage) ? report.failedStage : 'unrecognized', completedCheckCount: report.checks.length, completedChecks,
+        isolatedSentryQualified: completedChecks.some(check => check.name === SENTRY_ISOLATED_CHECK), networkCalls: report.networkCalls,
+        nativeBridgeExercised: report.nativeBridgeExercised === true,
+        ...(report.cryptoDiagnostic ? { cryptoDiagnostic: report.cryptoDiagnostic } : {}), storageDiagnostic: report.storageDiagnostic };
+    } catch { return { filePhase, availability: 'invalid' }; }
+  });
+  const evidence = { version: 1, kind: 'native-private-proof-diagnostic', diagnosticOnly: true, status: 'failed', reason: 'unexpected-report', reports };
+  const text = `${JSON.stringify(evidence, null, 2)}\n`;
+  if (Buffer.byteLength(text) > FAILURE_OUTPUT_BYTES) throw Error('PRIVATE_PROOF_DIAGNOSTIC_INVALID');
+  fs.writeFileSync(path.join(output, `${platform}-private-proof-diagnostic.json`), text, { flag: 'wx' });
+}
+
+async function runPrivateProofQualification({ platform, config, output, launch, read, readFailure, list,
   now = () => performance.now(), pause = delay, randomBytes = crypto.randomBytes }) {
   if (!['ios', 'android'].includes(platform)) throw Error('PRIVATE_PROOF_PLATFORM_INVALID');
+  if (typeof readFailure !== 'function') throw Error('PRIVATE_PROOF_FAILURE_READER_REQUIRED');
   const token = randomBytes(16).toString('hex');
   const name = privateProofReportName(token);
   const target = path.join(output, `${platform}-private-proof-app.json`);
@@ -68,7 +102,11 @@ async function runPrivateProofQualification({ platform, config, output, launch, 
   while (now() < deadline) {
     const names = reportInventory(list());
     if (names.some((entry) => entry !== name && entry !== `${name}.tmp`) ||
-        (names.includes(name) && names.includes(`${name}.tmp`))) throw Error('PRIVATE_PROOF_EXTRA_REPORT');
+        (names.includes(name) && names.includes(`${name}.tmp`))) {
+      try { preserveUnexpectedFailure(platform, output, names, readFailure); }
+      catch { /* Diagnostic persistence cannot replace the primary report rejection. */ }
+      throw Error('PRIVATE_PROOF_EXTRA_REPORT');
+    }
     if (names.includes(name)) {
       const report = parsePrivateProofReport(read(name), expected);
       const text = `${JSON.stringify(report, null, 2)}\n`;

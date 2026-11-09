@@ -192,6 +192,10 @@ function QualificationApp() {
           try {
             assertCurrent();
             await ensureNativeCryptoReady();
+            const { runNativeSentryCrypto } = await import('../modules/pali-private-prover');
+            const { qualifyNativeSentryIsolated, SENTRY_ISOLATED_CHECK } = await import('./native-sentry-isolated.ts');
+            await check(SENTRY_ISOLATED_CHECK, () => qualifyNativeSentryIsolated(owner.signal, runNativeSentryCrypto));
+            assertCurrent();
             const { qualifyNativePrivateProof } = await import('./native-private-proof.ts');
             const result = await qualifyNativePrivateProof({ assertCurrent, signal: owner.signal });
             assertCurrent();
@@ -201,7 +205,7 @@ function QualificationApp() {
             const text = JSON.stringify({
               ...build, token, sdkVersion: paliQualificationSdkIdentity, sdkPackageVersion: installedVersion,
               kind: 'native-private-proof', status: 'passed', platform: Platform.OS, sessionId: Constants.sessionId,
-              jsNetworkCalls: networkCalls, nativeNetworkObservation: 'unmeasured', result,
+              jsNetworkCalls: networkCalls, nativeNetworkObservation: 'unmeasured', sentryQualified: true, result,
             });
             parsePrivateProofReport(text, expected);
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, text);
@@ -353,6 +357,10 @@ function QualificationApp() {
         await check(SENTRY_CLASSICAL_CHECK, () => qualifyNativeSentryClassical(
           qualificationLifetime.signal, () => sentryBlindingCalls, sentryDerive));
         await check(SENTRY_SHAKE_CHECK, () => qualifyNativeSentryShake(qualificationLifetime.signal, sentryDerive));
+        const { qualifyNativeSentryApprovals, SENTRY_APPROVAL_CHECK } = await import('./native-sentry-approvals.ts');
+        const { createNativeSentryCryptoExecutor } = await import('../src/crypto/sentryCrypto.native');
+        await check(SENTRY_APPROVAL_CHECK, () => qualifyNativeSentryApprovals(qualificationLifetime.signal,
+          createNativeSentryCryptoExecutor(null)));
         const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
         expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0 &&
           paliQualificationSdkIdentity === `${paliQualificationSdkVersion}.${paliQuickCryptoSentryIdentity}`);

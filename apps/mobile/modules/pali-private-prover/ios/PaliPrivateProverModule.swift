@@ -198,7 +198,9 @@ private final class ProofDocument: NSObject, WKScriptMessageHandler, WKNavigatio
 
   func invoke(_ operation: String, arguments: [String: Any]) {
     // Fixed program text. Private input is an argument, never evaluated source.
-    let program = operation == "start" ? "globalThis.PaliPrivacyProof.start(id, input)" : "globalThis.PaliPrivacyProof.cancel(id)"
+    let program = operation == "start" ? "globalThis.PaliPrivacyProof.start(id, input)" :
+      operation == "startSentry" ? "globalThis.PaliPrivacyProof.startSentry(id, input)" :
+      operation == "cancelSentry" ? "globalThis.PaliPrivacyProof.cancelSentry(id)" : "globalThis.PaliPrivacyProof.cancel(id)"
     view.callAsyncJavaScript(program, arguments: arguments, in: nil, in: .page) { [weak self] result in
       if case .failure = result { self?.owner?.fail() }
     }
@@ -244,6 +246,7 @@ final class PaliProofHost: SharedObject {
   private var pending: Promise?
   private var disposals: [Promise] = []
   private var submitted = false
+  private var sentry = false
   private var workerRetired = false
   private var retirementRequested = false
   private var finished: Bool?
@@ -252,6 +255,14 @@ final class PaliProofHost: SharedObject {
   private var isRevoked: Bool { mutex.lock(); defer { mutex.unlock() }; return revoked }
 
   func run(id: String, input: String, promise: Promise) {
+    runJob(id: id, input: input, sentry: false, promise: promise)
+  }
+
+  func runSentry(id: String, input: String, promise: Promise) {
+    runJob(id: id, input: input, sentry: true, promise: promise)
+  }
+
+  private func runJob(id: String, input: String, sentry: Bool, promise: Promise) {
     mutex.lock()
     let allowed = !revoked && !started
     if allowed { started = true }
@@ -260,8 +271,15 @@ final class PaliProofHost: SharedObject {
       guard allowed, !self.isRevoked, UIApplication.shared.applicationState == .active,
             UUID(uuidString: id)?.uuidString.lowercased() == id,
             id.range(of: "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", options: .regularExpression) != nil,
-            input.utf8.count <= 8192 else { promise.reject(ProofException()); self.close(); return }
-      self.id = id; self.input = input; self.pending = promise
+            input.utf8.count <= (sentry ? 4194304 : 8192) else { promise.reject(ProofException()); self.close(); return }
+      if sentry {
+        guard let data = input.data(using: .utf8),
+              let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              Set(envelope.keys) == ["version", "kind", "job"], envelope["kind"] as? String == "sentry",
+              let version = envelope["version"] as? NSNumber, CFGetTypeID(version) != CFBooleanGetTypeID(), version.doubleValue == 1,
+              envelope["job"] is [String: Any] else { promise.reject(ProofException()); self.close(); return }
+      }
+      self.id = id; self.input = input; self.sentry = sentry; self.pending = promise
       do {
         let document = try ProofDocument(owner: self, id: id)
         self.document = document
@@ -287,7 +305,7 @@ final class PaliProofHost: SharedObject {
   }
 
   fileprivate func receive(_ json: String) {
-    guard finished == nil, json.utf8.count <= 8192,
+    guard finished == nil, json.utf8.count <= (sentry ? 4194304 : 8192),
           let bytes = json.data(using: .utf8),
           let value = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
           let version = value["version"] as? NSNumber,
@@ -295,17 +313,19 @@ final class PaliProofHost: SharedObject {
           value["id"] as? String == id,
           let type = value["type"] as? String else { fail(); return }
     let keys = Set(value.keys)
-    if type == "disposed" && keys == ["version", "id", "type"] && isRevoked {
+    let basic: Set<String> = sentry ? ["version", "kind", "id", "type"] : ["version", "id", "type"]
+    let domain = !sentry || value["kind"] as? String == "sentry"
+    if type == "disposed" && keys == basic && domain && isRevoked {
       workerRetired = true; requestRetirement(); return
     }
     guard !isRevoked else { return }
     if type == "ready" && keys == ["version", "id", "type"], !submitted, let input {
       submitted = true; self.input = nil
-      document?.invoke("start", arguments: ["id": id, "input": input])
-    } else if type == "progress" && keys == ["version", "id", "type", "progress"] && submitted {
+      document?.invoke(sentry ? "startSentry" : "start", arguments: ["id": id, "input": input])
+    } else if !sentry && type == "progress" && keys == ["version", "id", "type", "progress"] && submitted {
       emit(event: "progress", payload: json)
-    } else if submitted && ((type == "success" && keys == ["version", "id", "type", "result"]) ||
-                            (type == "error" && keys == ["version", "id", "type"])) {
+    } else if submitted && domain && ((type == "success" && keys == basic.union(["result"])) ||
+                            (type == "error" && keys == basic)) {
       workerRetired = true; deadline?.cancel()
       pending?.resolve(json); pending = nil
     } else { fail() }
@@ -338,7 +358,7 @@ final class PaliProofHost: SharedObject {
     }
     if contentProcessTerminated { document?.retire(contentProcessTerminated: true) }
     else if !submitted || workerRetired { document?.retire() }
-    else { document?.invoke("cancel", arguments: ["id": id]) }
+    else { document?.invoke(sentry ? "cancelSentry" : "cancel", arguments: ["id": id]) }
   }
 
   fileprivate func finish(clean: Bool) {
@@ -365,6 +385,9 @@ public final class PaliPrivateProverModule: Module {
       Function("close") { (host: PaliProofHost) in host.close() }
       AsyncFunction("run") { (host: PaliProofHost, id: String, input: String, promise: Promise) in
         host.run(id: id, input: input, promise: promise)
+      }
+      AsyncFunction("runSentry") { (host: PaliProofHost, id: String, input: String, promise: Promise) in
+        host.runSentry(id: id, input: input, promise: promise)
       }
       AsyncFunction("dispose") { (host: PaliProofHost, promise: Promise) in host.dispose(promise) }
     }

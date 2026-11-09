@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const webpack = require('webpack');
+const TerserPlugin = require('terser-webpack-plugin');
 
 const root = path.resolve(__dirname, '..');
 const source = path.join(root, 'source/scripts/privacyProver');
@@ -13,6 +14,21 @@ const destination = path.join(
 );
 const digest = (bytes) =>
   crypto.createHash('sha256').update(bytes).digest('hex');
+
+async function copyWitnessArtifacts(artifactDir, pins) {
+  await fs.mkdir(artifactDir, { recursive: true });
+  // Avoid Android's special handling of .gz asset names. Keep the canonical
+  // compressed bytes under a portable name, with the same byte/hash pins.
+  for (const [sourceName, name, pin] of [
+    ['metadata.json.gz', 'metadata.json.gzip', pins.metadata],
+    ['groth16.wasm', 'groth16.wasm', pins.wasm],
+  ]) {
+    const bytes = await fs.readFile(path.join(source, 'assets', sourceName));
+    if (bytes.length !== pin.bytes || digest(bytes) !== pin.sha256)
+      throw new Error('Witness artifact pin mismatch');
+    await fs.writeFile(path.join(artifactDir, name), bytes);
+  }
+}
 
 async function build() {
   const keyPath = process.argv[2];
@@ -75,7 +91,19 @@ async function build() {
           },
         ],
       },
-      optimization: { splitChunks: false, runtimeChunk: false },
+      optimization: {
+        splitChunks: false,
+        runtimeChunk: false,
+        // Preserve dependency notices inline, without per-chunk license assets
+        // expanding the native host's fixed manifest entry budget.
+        minimizer: [new TerserPlugin({
+          extractComments: false,
+          terserOptions: { format: { comments: /@license|@preserve|^!/ } },
+        })],
+      },
+      // Proof and Sentry workers use fixed entries in the same pinned package.
+      // Keep lazy SDK crypto chunks within the native manifest's existing cap.
+      plugins: [new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 8 })],
       performance: false,
     };
     const compiler = webpack(config);
@@ -93,16 +121,7 @@ async function build() {
       })
     );
     const artifactDir = path.join(output, 'assets/privacy-prover');
-    await fs.mkdir(artifactDir, { recursive: true });
-    for (const [name, pin] of [
-      ['metadata.json.gz', pins.artifacts.metadata],
-      ['groth16.wasm', pins.artifacts.wasm],
-    ]) {
-      const bytes = await fs.readFile(path.join(source, 'assets', name));
-      if (bytes.length !== pin.bytes || digest(bytes) !== pin.sha256)
-        throw new Error('Witness artifact pin mismatch');
-      await fs.writeFile(path.join(artifactDir, name), bytes);
-    }
+    await copyWitnessArtifacts(artifactDir, pins.artifacts);
     await fs.writeFile(path.join(artifactDir, 'tornadoProvingKey.bin'), key);
     await fs.writeFile(
       path.join(output, 'index.html'),
@@ -159,7 +178,10 @@ async function build() {
   }
 }
 
-build().catch(() => {
-  process.stderr.write('Private proof packaging failed\n');
-  process.exitCode = 1;
-});
+module.exports = { copyWitnessArtifacts };
+if (require.main === module) {
+  build().catch(() => {
+    process.stderr.write('Private proof packaging failed\n');
+    process.exitCode = 1;
+  });
+}

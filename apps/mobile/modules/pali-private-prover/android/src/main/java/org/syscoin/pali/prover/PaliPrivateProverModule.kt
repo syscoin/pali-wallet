@@ -144,6 +144,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
   private var pending: Promise? = null
   private val disposals = mutableListOf<Promise>()
   private var submitted = false
+  private var sentry = false
   private var workerRetired = false
   private var retirementRequested = false
   private var retiring = false
@@ -153,13 +154,28 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
   private var deadline: Runnable? = null
 
   fun run(job: String, json: String, promise: Promise) {
+    runJob(job, json, false, promise)
+  }
+
+  fun runSentry(job: String, json: String, promise: Promise) {
+    runJob(job, json, true, promise)
+  }
+
+  private fun validSentryInput(json: String): Boolean = try {
+    val envelope = JSONObject(json)
+    envelope.keys().asSequence().toSet() == setOf("version", "kind", "job") &&
+      envelope.opt("version") is Int && envelope.getInt("version") == 1 && envelope.opt("kind") == "sentry" && envelope.opt("job") is JSONObject
+  } catch (_: Exception) { false }
+
+  private fun runJob(job: String, json: String, sentry: Boolean, promise: Promise) {
     val allowed = !revoked.get() && started.compareAndSet(false, true)
     main.post {
       if (!allowed || revoked.get() || context.lifecycleState != LifecycleState.RESUMED ||
-          !job.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")) || json.toByteArray().size > 8192) {
+          !job.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")) ||
+          json.toByteArray().size > (if (sentry) 4194304 else 8192) || (sentry && !validSentryInput(json))) {
         promise.reject(ProofException()); close(); return@post
       }
-      id = job; origin = "https://$id.pali-private-prover.invalid"; input = json; pending = promise
+      id = job; origin = "https://$id.pali-private-prover.invalid"; input = json; this.sentry = sentry; pending = promise
       try {
         openDocument()
         deadline = Runnable { fail() }.also { main.postDelayed(it, 120000) }
@@ -246,25 +262,27 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
 
   private fun receive(json: String) {
     try {
-      check(finished == null && json.toByteArray().size <= 8192)
+      check(finished == null && json.toByteArray().size <= (if (sentry) 4194304 else 8192))
       val value = JSONObject(json)
       check(value.opt("version") is Int && value.getInt("version") == 1 && value.getString("id") == id)
       val type = value.getString("type")
       val keys = value.keys().asSequence().toSet()
-      val basic = setOf("version", "id", "type")
-      if (type == "disposed" && keys == basic && revoked.get()) {
+      val ready = setOf("version", "id", "type")
+      val basic = if (sentry) ready + "kind" else ready
+      val domain = !sentry || value.opt("kind") == "sentry"
+      if (type == "disposed" && keys == basic && domain && revoked.get()) {
         workerRetired = true; requestRetirement(); return
       }
       if (revoked.get()) return
       when {
-        type == "ready" && keys == basic && !submitted -> {
+        type == "ready" && keys == ready && !submitted -> {
           submitted = true
-          val request = JSONObject().put("id", id).put("type", "start").put("input", checkNotNull(input))
+          val request = JSONObject().put("id", id).put("type", if (sentry) "startSentry" else "start").put("input", checkNotNull(input))
           input = null
           checkNotNull(nativePort).postMessage(WebMessage(request.toString()))
         }
-        type == "progress" && keys == basic + "progress" && submitted -> emit("progress", json)
-        submitted && ((type == "success" && keys == basic + "result") || (type == "error" && keys == basic)) -> {
+        !sentry && type == "progress" && keys == basic + "progress" && submitted -> emit("progress", json)
+        submitted && domain && ((type == "success" && keys == basic + "result") || (type == "error" && keys == basic)) -> {
           workerRetired = true; deadline?.let { main.removeCallbacks(it) }
           pending?.resolve(json); pending = null
         }
@@ -322,7 +340,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
         }
         finishRetirement()
       } else {
-        checkNotNull(nativePort).postMessage(WebMessage(JSONObject().put("id", id).put("type", "cancel").toString()))
+        checkNotNull(nativePort).postMessage(WebMessage(JSONObject().put("id", id).put("type", if (sentry) "cancelSentry" else "cancel").toString()))
       }
     } catch (_: Exception) { finish(false) }
   }
@@ -368,6 +386,7 @@ class PaliPrivateProverModule : Module() {
       Events("progress")
       Function("close") { host: PaliProofHost -> host.close() }
       AsyncFunction("run") { host: PaliProofHost, id: String, input: String, promise: Promise -> host.run(id, input, promise) }
+      AsyncFunction("runSentry") { host: PaliProofHost, id: String, input: String, promise: Promise -> host.runSentry(id, input, promise) }
       AsyncFunction("dispose") { host: PaliProofHost, promise: Promise -> host.dispose(promise) }
     }
   }
