@@ -23,6 +23,7 @@ const hash = (byte) => '0x' + byte.repeat(32);
 const signed = (count, fallback = false) => ({
   actionHash: hash(String(count).padStart(2, '0')),
   signatureHash: hash(String(count + 10).padStart(2, '0')),
+  signMs: 123.5,
   count,
   verified: true,
   mutatedSignatureRefused: true,
@@ -48,6 +49,11 @@ const evidence = (phase) => ({
   deriveCalls: phase === 'create' ? 1 : 0,
   prepared: phase === 'create',
   canceledAdmissionDrained: phase === 'create',
+  timings: {
+    deriveSetupSecretMs: phase === 'create' ? 10.5 : null,
+    prepareFreshMs: phase === 'create' ? 1000.5 : null,
+    hydrateInstalledMs: 2.5,
+  },
   healthy: signed(phase === 'create' ? 1 : 3),
   fallback: phase === 'create' ? signed(2, true) : null,
 });
@@ -157,6 +163,71 @@ test('full SLH public evidence requires exact profile, native FORS/finish/fallba
       matchesFullSlhRestart(evidence('create'), restored, build),
       false
     );
+  }
+});
+
+test('full SLH timings require the current bounded schema and phase-specific operations', () => {
+  for (const phase of ['create', 'restart']) {
+    for (const field of [
+      'hydrateInstalledMs',
+      ...(phase === 'create' ? ['deriveSetupSecretMs', 'prepareFreshMs'] : []),
+    ]) {
+      for (const invalid of [
+        -1,
+        NaN,
+        Infinity,
+        FULL_SLH_PHASE_TIMEOUT_MS + 1,
+        null,
+        '1',
+      ]) {
+        const value = evidence(phase);
+        value.timings[field] = invalid;
+        assert.throws(() => readFullSlhEvidence(value, phase, build));
+      }
+    }
+    for (const field of [
+      'healthy',
+      ...(phase === 'create' ? ['fallback'] : []),
+    ]) {
+      for (const invalid of [
+        -1,
+        NaN,
+        Infinity,
+        FULL_SLH_PHASE_TIMEOUT_MS + 1,
+        null,
+        '1',
+      ]) {
+        const value = evidence(phase);
+        value[field].signMs = invalid;
+        assert.throws(() => readFullSlhEvidence(value, phase, build));
+      }
+    }
+  }
+  for (const mutate of [
+    (r) => {
+      delete r.timings;
+    },
+    (r) => {
+      delete r.timings.prepareFreshMs;
+    },
+    (r) => {
+      r.timings.extra = 1;
+    },
+    (r) => {
+      delete r.healthy.signMs;
+    },
+    (r) => {
+      r.timings.deriveSetupSecretMs = r.timings.prepareFreshMs + 1;
+    },
+  ]) {
+    const value = evidence('create');
+    mutate(value);
+    assert.throws(() => readFullSlhEvidence(value, 'create', build));
+  }
+  for (const field of ['deriveSetupSecretMs', 'prepareFreshMs']) {
+    const value = evidence('restart');
+    value.timings[field] = 0;
+    assert.throws(() => readFullSlhEvidence(value, 'restart', build));
   }
 });
 
