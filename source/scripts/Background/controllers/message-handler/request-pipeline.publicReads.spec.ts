@@ -7,6 +7,7 @@ import spamFilterReducer from 'state/spamFilter';
 import vaultReducer from 'state/vault';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 
 import { onMessage } from './index';
 import { getMethodConfig } from './method-registry';
@@ -65,6 +66,7 @@ const OTHER_HOST = 'https://other-connected.invalid';
 const removedListeners = new Set<(id: number) => void>();
 const updatedListeners = new Set<(...args: any[]) => void>();
 let unlocked: boolean;
+let sessionGeneration: number;
 let transport: jest.Mock;
 
 const deferred = <T>() => {
@@ -160,17 +162,19 @@ beforeEach(() => {
       getDefaultMiddleware({ serializableCheck: false }),
   });
   unlocked = true;
+  sessionGeneration = 1;
   // Only the RPC transport and approval UI are simulated; requests traverse
   // the real onMessage, registry, admission, middleware and provider handlers.
   transport = jest.fn().mockResolvedValue('0x2a');
   mockController = {
     wallet: {
       isUnlocked: () => unlocked,
+      getWalletSessionGeneration: () => sessionGeneration,
       ethereumTransaction: { web3Provider: { send: transport } },
     },
     dapp: DAppController(
       () => unlocked,
-      () => 0
+      () => sessionGeneration
     ),
   };
 });
@@ -190,6 +194,28 @@ it('returns an idle public read through the actual provider transport', async ()
   expect(transport).toHaveBeenCalledWith('eth_blockNumber', []);
   expect(popupPromise).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  'refuses a stale session after a %s-rejected public transport read',
+  async (rejected) => {
+    const reply = deferred<string>(),
+      started = deferred<void>();
+    transport.mockImplementationOnce(() => {
+      started.resolve();
+      return reply.promise;
+    });
+    const read = request('eth_blockNumber');
+    await started.promise;
+    sessionGeneration++;
+    if (rejected) reply.reject(new Error('private RPC failure'));
+    else reply.resolve('0x2a');
+    await expect(read).resolves.toMatchObject({
+      error: { code: 4100, message: EVM_TRANSACTION_CONTEXT_CHANGED },
+    });
+    expect(popupPromise).not.toHaveBeenCalled();
+    await expect(request('eth_blockNumber')).resolves.toBe('0x2a');
+  }
+);
 
 it.each([false, true])(
   'does not let a stalled first public read hold connected account requests, read tab closed=%s',
