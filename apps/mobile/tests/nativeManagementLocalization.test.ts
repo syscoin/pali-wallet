@@ -96,14 +96,21 @@ test('new native management keys and interpolation fields match in every package
   const groups = ['common', 'connections', 'security', 'accounts', 'importAccount', 'networks', 'tools'];
   const english = languageMessages('en').mobile;
   const fields = (value: string) => [...value.matchAll(/{{\s*([^}]+)\s*}}/g)].map(match => match[1]!.trim()).sort();
+  const compare = (actual: unknown, expected: unknown, path: string): void => {
+    if (typeof expected === 'string') {
+      assert.equal(typeof actual, 'string', path);
+      assert.deepEqual(fields(actual as string), fields(expected), path);
+      return;
+    }
+    assert(expected && typeof expected === 'object' && !Array.isArray(expected), path);
+    assert(actual && typeof actual === 'object' && !Array.isArray(actual), path);
+    const translated = actual as Record<string, unknown>;
+    const canonical = expected as Record<string, unknown>;
+    assert.deepEqual(Object.keys(translated), Object.keys(canonical), path);
+    for (const key of Object.keys(canonical)) compare(translated[key], canonical[key], `${path}.${key}`);
+  };
   for (const language of PALI_LANGUAGE_OPTIONS) {
     const messages = languageMessages(language.value).mobile;
-    for (const group of groups) {
-      assert.deepEqual(Object.keys(messages[group]), Object.keys(english[group]));
-      for (const key of Object.keys(english[group])) {
-        assert.equal(typeof messages[group][key], 'string');
-        assert.deepEqual(fields(messages[group][key]), fields(english[group][key]), `${language.value}.${group}.${key}`);
-      }
-    }
+    for (const group of groups) compare(messages[group], english[group], `${language.value}.${group}`);
   }
 });
