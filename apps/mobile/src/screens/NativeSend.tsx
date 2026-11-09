@@ -261,17 +261,18 @@ export function NativeSend({
     abort: AbortController;
     ticket?: NativeRecipientResolution;
     authorized: boolean;
+    review?: NonNullable<typeof snapshot.review>;
   } | null>(null);
   const latestRecipientOwner = useRef({ controller, account, context, recipientResolver, recipient });
   useLayoutEffect(() => {
     latestRecipientOwner.current = { controller, account, context, recipientResolver, recipient };
   }, [controller, account, context, recipientResolver, recipient]);
-  const retireResolution = useCallback(() => {
+  const retireResolution = useCallback((cancelReview = true) => {
     const held = resolution.current;
     resolution.current = null;
     held?.abort.abort();
     held?.ticket?.dispose();
-    if (held && !held.authorized) controller.cancel();
+    if (cancelReview && held && !held.authorized) controller.cancel();
     setResolving(false);
     setResolvedRecipient(null);
   }, [controller]);
@@ -293,6 +294,12 @@ export function NativeSend({
     current.phase === 'submitting' && current.review === leavePrompt.review &&
     (leavePrompt.review !== null || current === leavePrompt.fallback);
   const review = snapshot.review;
+  useLayoutEffect(() => {
+    // A quote owns its lookup only until that exact review is retired. Release
+    // the ticket without cancelling any successor work in the controller.
+    const held = resolution.current;
+    if (held?.review && held.review !== review) retireResolution(false);
+  }, [review, resolving, retireResolution]);
   const replacementHash = replacement?.hash;
   const replacementMode = replacement?.mode;
   const cancellation = replacementMode === 'cancel' || replacementMode === 'cancel-saved';
@@ -489,7 +496,7 @@ export function NativeSend({
         return;
       }
       if (resolution.current || busy) return;
-      const held = { abort: new AbortController(), authorized: false, ticket: undefined as NativeRecipientResolution | undefined };
+      const held: NonNullable<(typeof resolution)['current']> = { abort: new AbortController(), authorized: false };
       resolution.current = held;
       const captured = latestRecipientOwner.current;
       const epoch = lifetime.current.epoch;
@@ -523,6 +530,7 @@ export function NativeSend({
           ticket.assertCurrent();
           const review = controller.getSnapshot().review;
           if (!review || (review.collectible?.recipient ?? review.recipient).toLowerCase() !== ticket.address.toLowerCase()) throw new Error('RECIPIENT_EXPIRED');
+          held.review = review;
         } catch (error) {
           held.ticket?.dispose();
           if (resolution.current !== held) return;

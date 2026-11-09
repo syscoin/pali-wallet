@@ -35,7 +35,7 @@ it('preserves legacy receipt objects and canonicalizes exact quantities without 
     ]).params
   ).toEqual([address, { blockHash: hash, requireCanonical: true }]);
 });
-it('detaches transactions and uses the same alias/fee validation as signing', () => {
+it('detaches simulation transactions and canonicalizes unambiguous aliases', () => {
   const input = {
     from: address,
     to: address,
@@ -59,6 +59,141 @@ it('detaches transactions and uses the same alias/fee validation as signing', ()
   expect(() =>
     normalizeDappRpcRead('eth_estimateGas', [{ to: address, unchecked: true }])
   ).toThrow();
+});
+it.each(['eth_call', 'eth_estimateGas'])(
+  '%s preserves type 1 and gasPrice access lists independently of wallet signing support',
+  (method) => {
+    const entry = { address, storageKeys: [hash, hash] };
+    const input = {
+      from: address,
+      to: null,
+      type: '0x01',
+      gasPrice: '1000000000',
+      gasLimit: 21000,
+      accessList: [entry, entry],
+    };
+    const result = normalizeDappRpcRead(method, [input, 'pending']);
+    entry.storageKeys[0] = 'invalid';
+    input.accessList.length = 0;
+    expect(result.params).toEqual([
+      {
+        from: address,
+        to: null,
+        type: '0x1',
+        gasPrice: '0x3b9aca00',
+        gas: '0x5208',
+        accessList: [
+          { address, storageKeys: [hash, hash] },
+          { address, storageKeys: [hash, hash] },
+        ],
+        data: '0x',
+      },
+      'pending',
+    ]);
+  }
+);
+it.each([
+  { gas: '0x0' },
+  { nonce: '0x20000000000000' },
+  { maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' },
+  { maxFeePerGas: '0x1', maxPriorityFeePerGas: '0x2' },
+  { gasPrice: '0x1', maxFeePerGas: '0x2' },
+  { type: '0x0', maxFeePerGas: '0x2', accessList: [] },
+  { type: '0x2', gasPrice: '0x1' },
+  { type: '0x7f' },
+])(
+  'leaves simulation type, nonce and fee execution policy to the node: %p',
+  (tx) => {
+    for (const method of ['eth_call', 'eth_estimateGas'])
+      expect(normalizeDappRpcRead(method, [tx]).params[0]).toEqual({
+        ...tx,
+        data: '0x',
+      });
+  }
+);
+it('preserves bounded blob and authorization simulation fields without creating a signing request', () => {
+  const authorization = {
+    chainId: '0x1',
+    address,
+    nonce: '0x0',
+    yParity: '0x1',
+    r: '0x2',
+    s: '0x3',
+  };
+  const input = {
+    from: address,
+    to: address,
+    type: '0x4',
+    maxFeePerBlobGas: '0x0',
+    blobVersionedHashes: [hash],
+    blobs: ['0x1234'],
+    commitments: ['0x5678'],
+    proofs: ['0x9abc'],
+    authorizationList: [authorization],
+  };
+  const result = normalizeDappRpcRead('eth_call', [input]);
+  expect(result).toEqual({
+    method: 'eth_call',
+    params: [{ ...input, data: '0x' }, 'latest'],
+  });
+  input.blobVersionedHashes[0] = 'invalid';
+  authorization.address = 'invalid';
+  expect(result.params[0]).toMatchObject({
+    blobVersionedHashes: [hash],
+    authorizationList: [{ ...authorization, address }],
+  });
+  expect(() => normalizeDappRpcRead('eth_sendTransaction', [input])).toThrow();
+});
+it.each([
+  null,
+  [],
+  { from: 'invalid' },
+  { to: 'example.eth' },
+  { gas: -1 },
+  { gas: null },
+  { gas: Number.MAX_SAFE_INTEGER + 1 },
+  { value: `0x1${'0'.repeat(64)}` },
+  { type: '0x100' },
+  { data: '0x1' },
+  { input: 'invalid' },
+  { data: '0x00', input: '0x01' },
+  { gas: '0x1', gasLimit: '0x2' },
+  { accessList: {} },
+  { accessList: [{ address, storageKeys: ['0x1'] }] },
+  { accessList: [{ address, storageKeys: [], unchecked: true }] },
+  { blobVersionedHashes: ['0x1'] },
+  { blobs: ['0x1'] },
+  { commitments: {} },
+  { proofs: [false] },
+  { authorizationList: [{ chainId: '0x1', address }] },
+  {
+    authorizationList: [
+      {
+        chainId: '0x1',
+        address,
+        nonce: '0x0',
+        yParity: '0x100',
+        r: '0x1',
+        s: '0x1',
+      },
+    ],
+  },
+  { unchecked: true },
+])('rejects malformed simulation fields before RPC: %p', (tx) => {
+  for (const method of ['eth_call', 'eth_estimateGas'])
+    expect(() => normalizeDappRpcRead(method, [tx])).toThrow();
+});
+it('keeps the existing byte and work limits for nested simulation fields', () => {
+  expect(() =>
+    normalizeDappRpcRead('eth_estimateGas', [
+      { blobs: [`0x${'00'.repeat(1024 * 1024)}`] },
+    ])
+  ).toThrow('Request exceeds wallet work limits');
+  expect(() =>
+    normalizeDappRpcRead('eth_call', [
+      { accessList: [{ address, storageKeys: Array(10_001).fill(hash) }] },
+    ])
+  ).toThrow('Request exceeds wallet work limits');
 });
 it.each([
   ['eth_getBalance', ['invalid']],

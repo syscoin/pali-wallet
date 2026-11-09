@@ -168,6 +168,53 @@ test('expired ENS review cancels the quote and permits a fresh lookup',async()=>
   reviewSend(f);await settle();assert.equal(lookups,2);assert.equal(f.prepared.length,2);f.dispose();
 });
 
+for (const edit of ['amount', 'nonce', 'controller cancellation'] as const) test(`ENS can be reviewed again after ${edit} without changing the name`, async () => {
+  const tickets: NativeRecipientResolution[] = [];
+  const resolver: NativeRecipientResolver = { async resolve(input, _owner, _signal, check) {
+    const ticket = ensTicket(input, check).ticket; tickets.push(ticket); return ticket;
+  } };
+  const f = setup(undefined, undefined, resolver); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', 'recipient.eth'); editSend(f, 'Amount in ETH', '1');
+  reviewSend(f); await settle();
+  const staleConfirm = button(f.render(), 'Confirm and send');
+  if (edit === 'controller cancellation') f.controller.cancel();
+  else button(f.render(), 'Edit transfer').props.onPress();
+  f.render();
+  assert.equal(tickets[0]!.signal.aborted, true);
+  staleConfirm.props.onPress(); await settle(); assert.equal(f.confirmed.length, 0);
+  if (edit === 'amount') editSend(f, 'Amount in ETH', '2');
+  if (edit === 'nonce') {
+    button(f.render(), 'Advanced options').props.onPress();
+    editSend(f, 'Transaction nonce', '7');
+  }
+  reviewSend(f); await settle();
+  assert.equal(tickets.length, 2); assert.equal(f.prepared.length, 2);
+  assert.equal((f.prepared[1] as string[])[1], edit === 'amount' ? '2' : '1');
+  if (edit === 'nonce') assert.equal((f.prepared[1] as string[])[2], '7');
+  button(f.render(), 'Confirm and send').props.onPress(); await settle();
+  assert.deepEqual(f.confirmed, ['review']); f.dispose();
+});
+
+test('retiring an ENS review does not cancel its successor review or an authorized submission', async () => {
+  const tickets: NativeRecipientResolution[] = [];
+  const resolver: NativeRecipientResolver = { async resolve(input, _owner, _signal, check) {
+    const ticket = ensTicket(input, check).ticket; tickets.push(ticket); return ticket;
+  } };
+  for (const authorized of [false, true]) {
+    const f = setup(undefined, undefined, resolver); f.snapshot.phase = 'idle';
+    editSend(f, 'Ethereum address', 'recipient.eth'); editSend(f, 'Amount in ETH', '1');
+    reviewSend(f); await settle();
+    if (authorized) { button(f.render(), 'Confirm and send').props.onPress(); await settle(); }
+    const cancels = f.counts().cancels;
+    const successor = authorized ? null : { ...f.snapshot.review, id: 'successor' };
+    f.setSnapshot({ ...f.snapshot, phase: authorized ? 'submitting' : 'review', review: successor });
+    f.render();
+    assert.equal(f.snapshot.review, successor); assert.equal(f.counts().cancels, cancels);
+    assert.equal(tickets.at(-1)!.signal.aborted, true);
+    f.dispose();
+  }
+});
+
 test('unresolved ENS gives feedback without entering fee preparation',async()=>{
   const f=setup(undefined,undefined,{async resolve(){throw new Error('ENS_UNAVAILABLE');}});f.snapshot.phase='idle';
   editSend(f,'Ethereum address','missing.eth');editSend(f,'Amount in ETH','1');reviewSend(f);await settle();

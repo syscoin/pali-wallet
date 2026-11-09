@@ -4176,6 +4176,7 @@ export function createKeyringRuntimeFactory(
                   return Promise.reject(
                     new KeyringRuntimeError('INVALID_INPUT')
                   );
+                checkGuard(approval.assertCurrent);
                 const ring = keyring,
                   captured = generation;
                 const account = state.accounts[selected.type][selected.index];

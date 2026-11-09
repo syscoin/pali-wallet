@@ -87,6 +87,34 @@ describe('EthProvider public RPC admission and errors', () => {
     ]);
   });
 
+  it.each(['eth_call', 'eth_estimateGas'])(
+    'forwards a bounded type-1 %s simulation without signing approval',
+    async (method) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue([method]);
+      const params = [
+        {
+          from: FROM,
+          to: TO,
+          type: '0x1',
+          gasPrice: '0x1',
+          accessList: [{ address: TO, storageKeys: [HASH] }],
+          data: '0x1234',
+        },
+        'pending',
+      ];
+      const original = JSON.parse(JSON.stringify(params));
+      rpc.send.mockResolvedValueOnce('0x5208');
+      await expect(
+        EthProvider(HOST).unrestrictedRPCMethods(method, params)
+      ).resolves.toBe('0x5208');
+      expect(rpc.send).toHaveBeenCalledTimes(1);
+      expect(rpc.send).toHaveBeenCalledWith(method, original);
+      expect(params).toEqual(original);
+      expect(popupMock).not.toHaveBeenCalled();
+      expect(coordinateMock).not.toHaveBeenCalled();
+    }
+  );
+
   it.each([
     [],
     [null],

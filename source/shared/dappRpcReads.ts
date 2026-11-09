@@ -2,8 +2,6 @@ import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.
 import { normalizeNftTokenId } from '../utils/nftTokenId.ts';
 import { assertProviderRequestBudget } from '../utils/requestPayloadBudget.ts';
 
-import { normalizeDappTransaction } from './dappTransaction.ts';
-
 /** Stateless methods already classified as public ETH reads by the extension registry. */
 export const DAPP_RPC_READ_METHODS = Object.freeze([
   'eth_blockNumber',
@@ -44,11 +42,11 @@ const invalid = (): never => {
 };
 const address = (value: unknown) =>
   typeof value === 'string' && /^0x[\da-f]{40}$/i.test(value)
-    ? value
+    ? `0x${value.slice(2)}`
     : invalid();
 const hash = (value: unknown) =>
   typeof value === 'string' && /^0x[\da-f]{64}$/i.test(value)
-    ? value
+    ? `0x${value.slice(2)}`
     : invalid();
 const quantity = (value: unknown) => {
   try {
@@ -57,6 +55,103 @@ const quantity = (value: unknown) => {
     return invalid();
   }
 };
+const bytes = (value: unknown) =>
+  typeof value === 'string' && /^0x(?:[\da-f]{2})*$/i.test(value)
+    ? `0x${value.slice(2)}`
+    : invalid();
+const object = (value: unknown, fields: readonly string[]) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return invalid();
+  if (Object.keys(value).some((key) => !fields.includes(key))) return invalid();
+  return value as Record<string, unknown>;
+};
+const list = (value: unknown, normalize: (item: unknown) => unknown) =>
+  Array.isArray(value) ? value.map(normalize) : invalid();
+const byteQuantity = (value: unknown) => {
+  const normalized = quantity(value);
+  return BigInt(normalized) <= BigInt(255) ? normalized : invalid();
+};
+const SIMULATION_QUANTITIES = [
+  'gas',
+  'gasLimit',
+  'gasPrice',
+  'maxFeePerGas',
+  'maxPriorityFeePerGas',
+  'maxFeePerBlobGas',
+  'value',
+  'nonce',
+  'chainId',
+] as const;
+// Read-only execution belongs to the node, not the wallet's signing policy.
+// Validate bounded RPC shapes without restricting transaction types or fees.
+function simulation(input: unknown) {
+  const tx = object(input, [
+    ...SIMULATION_QUANTITIES,
+    'from',
+    'to',
+    'data',
+    'input',
+    'type',
+    'accessList',
+    'blobVersionedHashes',
+    'blobs',
+    'commitments',
+    'proofs',
+    'authorizationList',
+  ]);
+  for (const field of SIMULATION_QUANTITIES)
+    if (tx[field] !== undefined) tx[field] = quantity(tx[field]);
+  if (tx.type !== undefined) tx.type = byteQuantity(tx.type);
+  if (tx.from !== undefined) tx.from = address(tx.from);
+  if (tx.to !== undefined && tx.to !== null) tx.to = address(tx.to);
+  for (const field of ['data', 'input'])
+    if (tx[field] !== undefined) tx[field] = bytes(tx[field]);
+  if (
+    tx.data !== undefined &&
+    tx.input !== undefined &&
+    (tx.data as string).toLowerCase() !== (tx.input as string).toLowerCase()
+  )
+    return invalid();
+  tx.data = tx.data ?? tx.input ?? '0x';
+  delete tx.input;
+  if (tx.gasLimit !== undefined) {
+    if (tx.gas !== undefined && tx.gas !== tx.gasLimit) return invalid();
+    tx.gas = tx.gasLimit;
+    delete tx.gasLimit;
+  }
+  if (tx.accessList !== undefined)
+    tx.accessList = list(tx.accessList, (value) => {
+      const entry = object(value, ['address', 'storageKeys']);
+      return {
+        address: address(entry.address),
+        storageKeys: list(entry.storageKeys, hash),
+      };
+    });
+  if (tx.blobVersionedHashes !== undefined)
+    tx.blobVersionedHashes = list(tx.blobVersionedHashes, hash);
+  for (const field of ['blobs', 'commitments', 'proofs'])
+    if (tx[field] !== undefined) tx[field] = list(tx[field], bytes);
+  if (tx.authorizationList !== undefined)
+    tx.authorizationList = list(tx.authorizationList, (value) => {
+      const entry = object(value, [
+        'chainId',
+        'address',
+        'nonce',
+        'yParity',
+        'r',
+        's',
+      ]);
+      return {
+        chainId: quantity(entry.chainId),
+        address: address(entry.address),
+        nonce: quantity(entry.nonce),
+        yParity: byteQuantity(entry.yParity),
+        r: quantity(entry.r),
+        s: quantity(entry.s),
+      };
+    });
+  return tx;
+}
 function blockNumber(value: unknown): unknown {
   return typeof value === 'number' || typeof value === 'string'
     ? block(value)
@@ -127,37 +222,7 @@ export function normalizeDappRpcRead(
     params[2] = block(params[2] ?? 'latest');
   } else if (method === 'eth_call' || method === 'eth_estimateGas') {
     length(1, 2);
-    if (
-      !params[0] ||
-      typeof params[0] !== 'object' ||
-      Array.isArray(params[0]) ||
-      Object.keys(params[0]).some(
-        (key) =>
-          ![
-            'from',
-            'to',
-            'gas',
-            'gasLimit',
-            'gasPrice',
-            'maxFeePerGas',
-            'maxPriorityFeePerGas',
-            'value',
-            'data',
-            'input',
-            'accessList',
-            'nonce',
-            'type',
-            'chainId',
-          ].includes(key)
-      )
-    )
-      return invalid();
-    const tx = normalizeDappTransaction(params[0]);
-    if (tx.gasLimit !== undefined) {
-      tx.gas = tx.gas ?? tx.gasLimit;
-      delete tx.gasLimit;
-    }
-    params[0] = tx;
+    params[0] = simulation(params[0]);
     if (params.length === 2 || method === 'eth_call')
       params[1] = block(params[1] ?? 'latest');
   } else if (method === 'eth_feeHistory') {

@@ -319,7 +319,28 @@ test('native factory explicitly wires one owned transport to all network consume
   const prepareWalletConnectRuntime = () => {
     assert.fail('unexpected WalletConnect runtime preparation');
   };
+  const unexpectedFeature = () => assert.fail('unexpected feature operation in HTTP factory fixture');
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
+    'react-native': { Linking: { openURL: unexpectedFeature } },
+    '../crypto/sentryCrypto.native': {
+      createNativeSentryCryptoExecutor: (isolated: unknown) => {
+        assert.equal(isolated, null, 'production isolated signing stays gated');
+        return unexpectedFeature;
+      },
+    },
+    '../custody/networkView': { createNativeNetworkView: () => ({
+      getSnapshot: () => null, getContextRevision: unexpectedFeature,
+      subscribe: () => () => undefined, select: unexpectedFeature, cancel() {},
+    }) },
+    '../custody/dappControl': { createNativeDappControlHost: () => ({ context: () => null, prepare: unexpectedFeature }) },
+    '../custody/dappRpcReads': { createNativeDappRpcReadHost: () => ({ read: unexpectedFeature }) },
+    '../custody/dappSentry': { createNativeDappSentryHost: () => ({ prepare: unexpectedFeature }) },
+    '../custody/dappSyscoin': { createNativeDappSyscoinHost: () => ({ registration: unexpectedFeature, anchor: unexpectedFeature, read: unexpectedFeature }) },
+    '../portfolio/nativeWatchAsset': {
+      createNativeWatchAssetObserver: () => unexpectedFeature,
+      prepareNativeWatchAsset: unexpectedFeature,
+    },
+    '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
     './deviceUnlockCredential.native': {
