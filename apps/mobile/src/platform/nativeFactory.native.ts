@@ -1,3 +1,5 @@
+import type { NativeSlhDsaManagement } from '../smartAccount/slhDsaManagement';
+import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard';
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
 import { createNativeSentryPublicKeyDeriver } from '../crypto/sentryPublicKey.native';
 import { createNativeSentryCryptoExecutor } from '../crypto/sentryCrypto.native';
@@ -493,6 +495,32 @@ export function createNativeWalletControllers() {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openSmartAccountDeployment(assertCurrent));
   };
+  const openSlhDsaManagement = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeSlhDsaManagement> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
+    check();
+    const account = await selected.openSlhDsaAccount(check); check();
+    const catalogue = authority.getCatalogue(), snapshot = authority.getSnapshot();
+    if (!catalogue || !snapshot.account) throw Error('CANCELLED');
+    const network = catalogue.networks.find(network => network.id === catalogue.active.networkId);
+    if (!network) throw Error('CANCELLED');
+    return Object.freeze({
+      accountAddress: snapshot.account.address, networkName: network.name,
+      isDeployed: catalogue.accounts.find(account => account.id === catalogue.active.accountId)?.smartAccount?.isDeployed === true,
+      installedKeys: account.installedKeys,
+      readPrepared: () => observeFailure(() => account.readPrepared()),
+      prepareFresh: progress => observeFailure(() => account.prepareFresh(progress)),
+      hydrateInstalled: keyId => observeFailure(() => account.hydrateInstalled(keyId)),
+      rebuildInstalled: (keyId, progress) => observeFailure(() => account.rebuildInstalled(keyId, progress)),
+      rebuildPrepared: (keyId, progress) => observeFailure(() => account.rebuildPrepared(keyId, progress)),
+      async openInstall(keyId, operationSignal, assertView) {
+        const guard = () => { assertSynchronousEvmFeeGuard(check); assertSynchronousEvmFeeGuard(assertView); if (operationSignal.aborted) throw Error('CANCELLED'); };
+        guard();
+        const operation = await observeFailure(() => selected.openSlhDsaInstallation(keyId, operationSignal, guard));
+        try { guard(); return operation; } catch (error) { await operation.dispose(); throw error; }
+      },
+    });
+  };
   const openWalletAuthenticator = async (signal: AbortSignal, assertOwner: () => void) => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     return observeFailure(() => selected.openWalletAuthenticator(signal, assertCurrent));
@@ -594,6 +622,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentry, recipientResolver, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentry, recipientResolver, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

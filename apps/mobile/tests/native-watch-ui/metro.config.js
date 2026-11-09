@@ -18,7 +18,8 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (origin.endsWith('/src/screens/NativeRecovery.tsx') && moduleName.includes('findNodeHandle')) return local('recoveryNativeUi.ts');
   // Shared extension modules use mobile dependencies; package-internal imports
   // retain normal hierarchy so nested, incompatible dependency versions work.
-  if (!moduleName.startsWith('.') && !path.isAbsolute(moduleName) && context.originModulePath.startsWith(sharedSourceRoot)) {
+  const renderer = ['react', 'react-dom', 'react-native'].some((name) => moduleName === name || moduleName.startsWith(`${name}/`));
+  if (renderer || !moduleName.startsWith('.') && !path.isAbsolute(moduleName) && context.originModulePath.startsWith(sharedSourceRoot)) {
     return context.resolveRequest({ ...context, originModulePath: path.join(mobileRoot, 'package.json') }, moduleName, platform);
   }
   return context.resolveRequest(context, moduleName, platform);

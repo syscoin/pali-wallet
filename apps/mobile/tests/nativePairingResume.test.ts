@@ -37,7 +37,7 @@ const code = ts.transpileModule(
   }
 ).outputText;
 
-function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false) {
+function harness(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
@@ -215,6 +215,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       throw new Error('Route mocked in parent navigation test');
     },
     canManageGuardianPolicy: () => smartAccount && canManage,
+    canSignSmartAccount: () => smartAccount && (canManage || slh), canManageSlhDsa: () => smartAccount && slh,
+    async openSlhDsaManagement(_signal: AbortSignal, check: () => void) { check(); authenticatorGuards.push(check); return { installedKeys: [] }; },
     canUseWalletAuthenticator: () => smartAccount && canManage && catalogue.accounts[0]?.smartAccount?.isDeployed === true,
     async openWalletAuthenticator(_signal: AbortSignal, check: () => void) {
       check();
@@ -325,6 +327,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
         goBack() {},
       }),
     },
+    './NativeSlhDsaManagement': { NativeSlhDsaManagementScreen: 'NativeSlhDsaManagementScreen' },
     './NativeSmartAccountAuthenticator': { NativeSmartAccountAuthenticator: 'NativeSmartAccountAuthenticator' },
     './NativeSmartAccountSend': { NativeSmartAccountSend: 'NativeSmartAccountSend' },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
@@ -446,8 +449,8 @@ function find(
     : node.children.flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false) {
-  const f = harness(ready, smartAccount, withPairing, canManage, handoff);
+async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false) {
+  const f = harness(ready, smartAccount, withPairing, canManage, handoff, slh);
   f.render();
   await settle();
   f.render();
@@ -778,5 +781,36 @@ test('Pali wallet authenticator owner is revoked when the wallet backgrounds', a
     f.background();
     assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
     assert.notEqual(f.render().type, 'NativeSmartAccountAuthenticator');
+  } finally { f.dispose(); }
+});
+
+test('SLH management and Smart send use runtime signer availability independently of the guardian ECDSA gate', async () => {
+  const f = await mounted(true, true, false, false, false, true);
+  try {
+    f.completeDeployment(); f.readyAtRevision(2);
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    assert.equal(typeof portfolio.props.onSend, 'function');
+    assert.equal(typeof portfolio.props.onManageSlhDsa, 'function');
+    assert.equal(portfolio.props.onUseWalletAuthenticator, undefined, 'fixture deliberately withholds that separate target route');
+    portfolio.props.onManageSlhDsa(); const route = f.render();
+    assert.equal(route.type, 'NativeSlhDsaManagementScreen');
+    await route.props.open(new AbortController().signal, () => undefined);
+    assert.equal(f.authenticatorGuards().length, 1); f.authenticatorGuards()[0]!();
+    assert.equal(f.hardwareBack(), false, 'management leaf owns its drain-before-Back');
+    route.props.onBack(); assert(find(f.render(), node => node.type === 'NativePortfolio'));
+    assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
+  } finally { f.dispose(); }
+});
+
+test('SLH management is hidden behind the runtime qualification capability and retires on background', async () => {
+  const gated = await mounted(true, true, false);
+  try { assert.equal(find(gated.render(), node => node.type === 'NativePortfolio')!.props.onManageSlhDsa, undefined); }
+  finally { gated.dispose(); }
+  const f = await mounted(true, true, false, false, false, true);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.onManageSlhDsa();
+    const route = f.render(); await route.props.open(new AbortController().signal, () => undefined);
+    f.background(); assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
+    assert.notEqual(f.render().type, 'NativeSlhDsaManagementScreen');
   } finally { f.dispose(); }
 });

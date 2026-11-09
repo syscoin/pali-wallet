@@ -41,6 +41,8 @@ function harness(
     | 'NativeSmartAccountOperation'
     | 'NativeSmartAccountSend'
     | 'NativeGuardianPolicy'
+    | 'NativeSlhDsaManagement',
+  language = 'en'
 ) {
   let cursor = 0;
   const cells: Cell[] = [];
@@ -144,6 +146,10 @@ function harness(
   };
   const dependencies: Record<string, unknown> = {
     react,
+    '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => {
+      const dictionary = JSON.parse(readFileSync(new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'));
+      return key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;
+    } }) },
     'react-native': native,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': {
@@ -385,11 +391,10 @@ const hash = `0x${'ab'.repeat(32)}`;
 function operationState(): NativeSmartAccountOperationSnapshot {
   return {
     intent: {
-      kind: 'wallet-authenticator',
+      kind: 'authenticator',
       command: {
         accountAddress: account,
         chainId: 1,
-        ownerAddress: owner,
         sourceAuthHash: hash,
         sourceModule: 'ecdsa',
         target: {
@@ -397,6 +402,7 @@ function operationState(): NativeSmartAccountOperationSnapshot {
           validator: `0x${'33'.repeat(20)}`,
           data: '0x',
         },
+        targetModule: { id: 'ecdsa', type: 'validator', address: `0x${'33'.repeat(20)}`, data: '0x', config: { owners: [owner], threshold: 1 } },
         executions: [],
       },
     },
@@ -438,8 +444,10 @@ test('authenticator review discloses full owner, threshold and rotation before a
     .filter((value) => typeof value === 'string')
     .join(' ');
   assert.match(text, new RegExp(owner));
-  assert.match(text, /Owner threshold · 1/);
-  assert.match(text, /rotates the smart account’s ECDSA ownership/);
+  assert.match(text, /Approvals required/);
+  assert(all(tree).some(node => node.type === 'Text' && node.children.includes(1)));
+  assert.match(text, /0x3333333333333333333333333333333333333333/);
+  assert.match(one(tree, 'Notice', 'Use this method').props.body, /owner and threshold shown above/);
   one(tree, 'Button', 'Authorize authenticator change').props.onPress();
   assert.equal(authorized, 1);
   assert(
@@ -503,7 +511,7 @@ test('already-configured authenticator reports its owner without a transaction',
       assert.fail();
     },
   });
-  one(tree, 'Notice', 'Pali wallet already configured');
+  one(tree, 'Notice', 'Smart account authenticator configured.');
   assert.deepEqual(
     all(tree)
       .filter((node) => node.type === 'Button')
@@ -609,3 +617,116 @@ for (const route of [
     });
   }
 }
+
+function slhManager(overrides: Record<string, unknown> = {}) {
+  const key = { keyId: 'exact-prepared-key', pkRoot: `0x${'44'.repeat(32)}`, pkSeed: `0x${'33'.repeat(32)}`, signatureCount: 7, signatureLimit: 4096 };
+  return { key, manager: { accountAddress: account, networkName: 'Ethereum', isDeployed: true, installedKeys: [],
+    async readPrepared() { return [key]; }, prepareFresh() { assert.fail('Prepared state must be reused'); },
+    hydrateInstalled() { assert.fail('No installed key'); }, rebuildInstalled() { assert.fail('No installed key'); },
+    async rebuildPrepared() { return key; }, openInstall() { assert.fail('No assent'); }, ...overrides } };
+}
+
+test('SLH management reviews the exact prepared key once and drains a late operation after Back', async () => {
+  const f = harness('NativeSlhDsaManagement'), held = Promise.withResolvers<any>(), drained = Promise.withResolvers<void>();
+  const calls: string[] = []; let capturedSignal!: AbortSignal, capturedCheck!: () => void;
+  const { key, manager } = slhManager({ openInstall(keyId: string, signal: AbortSignal, check: () => void) {
+    assert.equal(keyId, 'exact-prepared-key'); capturedSignal = signal; capturedCheck = check; calls.push('open'); return held.promise;
+  } });
+  const props = { open: async () => manager, onBack: () => calls.push('back') };
+  f.render('NativeSlhDsaManagementScreen', props); await settle();
+  const tree = f.render('NativeSlhDsaManagementScreen', props);
+  assert(all(tree).some(node => node.props.accessibilityLabel === 'SLH-DSA 7 / 4096'));
+  assert(all(tree).some(node => node.children.includes(key.pkRoot)));
+  const use = one(tree, 'Button', 'Use this method'); use.props.onPress(); use.props.onPress(); await settle();
+  assert.deepEqual(calls, ['open']);
+  one(tree, 'Header').props.onBack(); assert(capturedSignal.aborted); assert.throws(capturedCheck, /CANCELLED/);
+  held.resolve({ dispose() { calls.push('dispose'); return drained.promise; } }); await settle();
+  assert.deepEqual(calls, ['open', 'dispose']);
+  drained.resolve(); await settle(); assert.deepEqual(calls, ['open', 'dispose', 'back']);
+  assert.notEqual(f.render('NativeSlhDsaManagementScreen', props).type, 'NativeSmartAccountOperationScreen'); f.dispose();
+});
+
+for (const close of ['hardware', 'background', 'unmount'] as const) test(`SLH management ${close} refuses late status and waits for its owned read`, async () => {
+  const f = harness('NativeSlhDsaManagement'), held = Promise.withResolvers<any>();
+  const calls: string[] = []; let signal!: AbortSignal, guard!: () => void;
+  const props = { open(nextSignal: AbortSignal, check: () => void) { signal = nextSignal; guard = check; return held.promise; }, onBack() { calls.push('back'); } };
+  f.render('NativeSlhDsaManagementScreen', props); await settle();
+  if (close === 'hardware') f.back(); else if (close === 'background') f.event('change', 'background'); else f.dispose();
+  assert(signal.aborted); assert.throws(guard, /CANCELLED/); assert.deepEqual(calls, []);
+  held.resolve(slhManager({ readPrepared() { assert.fail('Retired opener cannot start status work'); } }).manager);
+  await settle(); assert.deepEqual(calls, close === 'unmount' ? [] : ['back']);
+  if (close !== 'unmount') f.dispose();
+});
+
+test('SLH management cancels setup progress, prevents double preparation and joins background retirement', async () => {
+  const f = harness('NativeSlhDsaManagement'), held = Promise.withResolvers<void>();
+  let progress!: (value: {completed: number; total: number}) => void, prepared = 0, backed = 0;
+  const { manager } = slhManager({ async readPrepared() { return []; }, async prepareFresh(callback: typeof progress) { prepared++; progress = callback; await held.promise; } });
+  const props = { open: async () => manager, onBack() { backed++; } };
+  f.render('NativeSlhDsaManagementScreen', props); await settle();
+  const create = one(f.render('NativeSlhDsaManagementScreen', props), 'Button', 'Create');
+  create.props.onPress(); create.props.onPress(); await settle(); assert.equal(prepared, 1);
+  progress({ completed: 1, total: 4 });
+  assert(all(f.render('NativeSlhDsaManagementScreen', props)).some(node => node.children.includes(25) && node.children.includes('%')));
+  f.event('change', 'background'); assert.equal(backed, 0); assert.throws(() => progress({completed: 2,total: 4}), /CANCELLED/);
+  held.resolve(); await settle(); assert.equal(backed, 1); assert.equal(prepared, 1); f.dispose();
+});
+
+test('SLH management recreates the captured owner only after the operation Back drains', async () => {
+  const f = harness('NativeSlhDsaManagement'), held = Promise.withResolvers<void>(); let opens = 0, disposed = 0, rebuilds = 0; const guards: (() => void)[] = [];
+  const operation = { dispose() { disposed++; return held.promise; } };
+  const props = { open: async (_signal: AbortSignal, check: () => void) => { opens++; guards.push(check); return slhManager({ async openInstall() { return operation; }, async rebuildPrepared() { rebuilds++; return slhManager().key; } }).manager; }, onBack() { assert.fail('Return to status stays in management'); } };
+  f.render('NativeSlhDsaManagementScreen', props); await settle();
+  const original = f.render('NativeSlhDsaManagementScreen', props);
+  const oldUse = one(original, 'Button', 'Use this method').props.onPress, oldRebuild = one(original, 'Button', 'Regenerate local signer').props.onPress, oldBack = one(original, 'Header').props.onBack;
+  oldUse(); await settle();
+  const review = f.render('NativeSlhDsaManagementScreen', props); assert.equal(review.type, 'NativeSmartAccountOperationScreen'); assert.equal(review.props.controller, operation);
+  review.props.onBack(); await settle(); assert.equal(disposed, 1); assert.equal(opens, 1);
+  held.resolve(); await settle(); f.render('NativeSlhDsaManagementScreen', props); await settle();
+  assert.equal(opens, 2); assert.notEqual(f.render('NativeSlhDsaManagementScreen', props).type, 'NativeSmartAccountOperationScreen');
+  guards[1]!(); review.props.onBack(); oldUse(); oldRebuild(); oldBack(); await settle(); f.render('NativeSlhDsaManagementScreen', props); await settle();
+  assert.equal(opens, 2); assert.equal(disposed, 1); assert.equal(rebuilds, 0); guards[1]!(); f.dispose();
+});
+
+test('SLH management never invents fresh state for a missing installed key', async () => {
+  const f = harness('NativeSlhDsaManagement'); let calls = 0;
+  const props = { open: async () => slhManager({ installedKeys: [{keyId:'installed-key'}], async readPrepared() { return []; }, async hydrateInstalled() { calls++; throw Error('missing encrypted state'); } }).manager, onBack() {} };
+  f.render('NativeSlhDsaManagementScreen', props); await settle();
+  const tree = f.render('NativeSlhDsaManagementScreen', props);
+  assert.equal(calls, 1); assert(!all(tree).some(node => node.type === 'Button' && ['Create', 'Use this method'].includes(node.props.title)));
+  assert(all(tree).some(node => node.children.includes('installed-key'))); f.dispose();
+});
+
+test('SLH target review discloses exact public fields without an ECDSA owner claim', () => {
+  const f = harness('NativeSmartAccountOperation'), state = operationState();
+  if (state.intent.kind !== 'authenticator') throw Error('Wrong fixture');
+  const root = `0x${'44'.repeat(32)}`, seed = `0x${'33'.repeat(32)}`;
+  const tree = f.render('NativeSmartAccountOperationContent', { state: { ...state, intent: { ...state.intent, command: { ...state.intent.command,
+    target: { module:'slh-dsa',validator: account,data:'0x' }, targetModule: {id:'slh-dsa',type:'validator',address:account,config:{pkRoot:root,pkSeed:seed}} } } }, onBack() {}, authorize() {}, confirmPayer() {} });
+  const text = all(tree).flatMap(node => node.children).filter(value => typeof value === 'string').join(' ');
+  assert(text.includes(root)); assert(text.includes(seed)); assert(!text.includes(owner));
+  assert.match(one(tree, 'Notice', 'Use this method').props.body, /post-quantum approval/); f.dispose();
+});
+
+for (const language of ['en','es','pt','fr','de','zh','ja','ko','ru']) test(`SLH management uses the canonical packaged ${language} dictionary`, async () => {
+  const f = harness('NativeSlhDsaManagement', language);
+  const dictionary = JSON.parse(readFileSync(new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'));
+  const props = { open: async () => slhManager().manager, onBack() {} };
+  f.render('NativeSlhDsaManagementScreen', props); await settle();
+  const tree = f.render('NativeSlhDsaManagementScreen', props);
+  one(tree, 'Header', dictionary.settings.slhDsaAuthenticator);
+  one(tree, 'Button', dictionary.settings.useSmartAccountValidator);
+  one(tree, 'Button', dictionary.settings.slhDsaRegenerateLocalSigner);
+  one(tree, 'Button', dictionary.buttons.close);
+  assert(!all(tree).some(node => typeof node.props.title === 'string' && /^(settings|buttons)\./.test(node.props.title))); f.dispose();
+});
+
+test('SLH payer review describes the exact approved target without claiming ECDSA owner rotation', () => {
+  const f = harness('NativeSmartAccountOperation'), state = operationState();
+  if (state.intent.kind !== 'authenticator') throw Error('Wrong fixture');
+  const tree = f.render('NativeSmartAccountOperationContent', {state:{...state,phase:'review-fee',payerReview:{id:1,purpose:'submit-operation',transaction:{from:owner,to:account,value:'0',data:'0x',chainId:'1',nonce:'0',gasLimit:'21000',type:2,maxFeePerGas:'2',maxPriorityFeePerGas:'1'},maximumFeeUnits:'42000',coveredFeeUnits:'0',maximumTotalUnits:'42000'},
+    intent:{...state.intent,command:{...state.intent.command,target:{module:'slh-dsa',validator:account,data:'0x'},targetModule:{id:'slh-dsa',type:'validator',address:account,config:{pkRoot:hash,pkSeed:hash}}}}},onBack(){},authorize(){},confirmPayer(){} });
+  const notice = one(tree,'Notice','Submit the authorized authenticator change');
+  assert.equal(notice.props.body,'Saving updates your account on-chain and may require a network fee.');
+  assert(!notice.props.body.includes('Pali wallet owner')); one(tree,'Button','Confirm authenticator change'); f.dispose();
+});

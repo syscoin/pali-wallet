@@ -1,10 +1,11 @@
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
-import { getSLHDSAKeyId, SLH_DSA_PARAMETER_SET } from '../../../../source/utils/slhDsa/constants.ts';
+import { getSLHDSAKeyId, getSLHDSAStateStorageKey, SLH_DSA_PARAMETER_SET } from '../../../../source/utils/slhDsa/constants.ts';
 import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
 import type { SLHDSADispatchApproval, SLHDSAProvisionedState, SLHDSASignActionHashParams } from '../../../../source/utils/slhDsa/types.ts';
+import { getSLHDSADerivationLabel } from '../../../../source/utils/slhDsa/derivation.ts';
 import { createSlhDsaExecution } from '../../../../source/wallet/slhDsaExecution.ts';
 import { createSlhDsaSigner } from '../../../../source/wallet/slhDsaSigner.ts';
-import { createSlhDsaStateStore, type SlhDsaStateStorage } from '../../../../source/wallet/slhDsaState.ts';
+import { createSlhDsaStateStore, parseSLHDSAStateStorageKey, type SlhDsaStateStorage } from '../../../../source/wallet/slhDsaState.ts';
 import { createSlhDsaProfileStateCrypto } from '../../../../source/wallet/slhDsaStateCrypto.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import type { NativeSlhExecutionOptions, OwnedNativeSlhExecution } from '../crypto/slhDsaNativeExecution.ts';
@@ -236,6 +237,24 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
           return publicState(state);
         } finally { progress = () => undefined; setupCheck = wallet; }
       }).finally(() => { preparing = false; });
+    },
+    inspectPrepared(keyId: string, accountIndex: number, assertRequest: () => void): Promise<NativeSlhPublicState | null> {
+      wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+      if (!Number.isSafeInteger(accountIndex) || accountIndex < 0 || typeof keyId !== 'string' || parseSLHDSAStateStorageKey(getSLHDSAStateStorageKey(keyId)) !== keyId) throw new Error('SLH_DSA_ACCOUNT_CHANGED');
+      // Status decrypts through the same observed-row store, without loading a
+      // signer key or opening any native execution context.
+      const finish = drain.begin();
+      return (async () => {
+        let state: SLHDSAProvisionedState | null;
+        try { state = await stored.load({ crypto, keyId, assertOwner: wallet }); }
+        catch (error) { return fault(error); }
+        wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+        if (!state || state.accountIndex !== accountIndex) return null;
+        if (!state.secretKeyHex || state.derivationLabel !== getSLHDSADerivationLabel(accountIndex) ||
+            state.keyId !== getSLHDSAKeyId({ pkRoot: normalizeSLHDSAPublicKeyField(state.pkRoot), pkSeed: normalizeSLHDSAPublicKeyField(state.pkSeed) }))
+          throw new Error('SLH_DSA_SAVED_DERIVATION_UNAVAILABLE');
+        return publicState(state);
+      })().finally(finish);
     },
     hydrateInstalled(input: NativeSlhInstalledKey, assertRequest: () => void): Promise<NativeSlhPublicState> {
       const key = captureInstalled(input);

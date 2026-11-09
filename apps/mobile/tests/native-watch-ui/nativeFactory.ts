@@ -372,6 +372,8 @@ export function createNativeWalletControllers() {
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, connections: connections.view, keyExport, imports,
     canManageGuardianPolicy: () => false,
+    canSignSmartAccount: () => false, canManageSlhDsa: () => false,
+    async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
     async resetActivity(check: () => void) {
       check();

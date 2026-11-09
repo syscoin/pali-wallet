@@ -2,7 +2,7 @@ import {
   createSmartAccountPendingState,
   type SmartAccountPendingState,
 } from '../../../../source/utils/smartAccount/pendingState.ts';
-import { assertPaliWalletValidatorSwitchCurrent } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
+import { assertSmartAccountValidatorSwitchCurrent } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import {
   createSmartAccountCallsExecutions,
   normalizeDappCallsRequest,
@@ -149,7 +149,7 @@ export function createNativeSmartOperation(
     return null;
   };
   const assertValidatorSwitch = async (assertCurrent: () => void) => {
-    if (intent.kind !== 'wallet-authenticator') return;
+    if (intent.kind !== 'authenticator') return;
     const observed = await readSmartAccountValidatorMetadata({
       account,
       chainId,
@@ -157,7 +157,7 @@ export function createNativeSmartOperation(
       assertCurrent,
     });
     assertCurrent();
-    assertPaliWalletValidatorSwitchCurrent(intent.command, observed);
+    assertSmartAccountValidatorSwitchCurrent(intent.command, observed);
   };
   return new NativeSmartAccountOperation({
     account: account.address,
@@ -192,7 +192,7 @@ export function createNativeSmartOperation(
       } else if (
         intent.kind !== 'deploy' &&
         intent.kind !== 'guardian-policy' &&
-        intent.kind !== 'wallet-authenticator'
+        intent.kind !== 'authenticator'
       ) {
         await assertSmartAccountTargetsAllowed(
           getBlacklistTargetsForEvmCall(
@@ -231,7 +231,7 @@ export function createNativeSmartOperation(
         assertCurrent();
         return { kind: 'already-deployed' };
       }
-      if (intent.kind === 'wallet-authenticator') {
+      if (intent.kind === 'authenticator') {
         if (state !== 'deployed')
           throw new Error('Smart account must be deployed');
         metadata = await readSmartAccountValidatorMetadata({
@@ -241,7 +241,7 @@ export function createNativeSmartOperation(
           assertCurrent,
         });
         assertCurrent();
-        assertPaliWalletValidatorSwitchCurrent(intent.command, metadata);
+        assertSmartAccountValidatorSwitchCurrent(intent.command, metadata);
         if (intent.command.executions.length === 0)
           return { kind: 'already-configured' };
       } else if (
@@ -351,7 +351,7 @@ export function createNativeSmartOperation(
         };
       }
       issued = await prepare(
-        intent.kind === 'wallet-authenticator'
+        intent.kind === 'authenticator'
           ? intent.command.executions.map((execution) => ({ ...execution }))
           : intent.kind === 'guardian-policy'
           ? buildGuardianPolicyExecutions(intent.command)
@@ -566,7 +566,7 @@ export function createNativeSmartOperation(
             waitForConfirmation:
               intent.kind === 'deploy' ||
               intent.kind === 'guardian-policy' ||
-              intent.kind === 'wallet-authenticator',
+              intent.kind === 'authenticator',
           },
           {
             chainId,

@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -46,6 +47,10 @@ async function fixture(smart = true) {
   const listeners = new Set<() => void>();
   const trezor = { subscribe: () => () => undefined };
   let runtime: any = { catalogue: { getSnapshot: () => catalogue }, trezor };
+  const slhCounts = { opened: 0, installed: 0 };
+  const slhOperation = { dispose() {} };
+  runtime.openSlhDsaAccount = async (check: () => void) => { slhCounts.opened++; check(); return { installedKeys: [] }; };
+  runtime.openSlhDsaInstallation = async (_keyId: string, _signal: AbortSignal, check: () => void) => { slhCounts.installed++; check(); return slhOperation; };
   let locks = 0;
   class Authority {
     private readonly factory: { open(): Promise<unknown> };
@@ -79,6 +84,7 @@ async function fixture(smart = true) {
   security.custodyIdle.begin({}, () => undefined);
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
       createNativeSentryCryptoExecutor: (isolated: unknown) => {
@@ -193,7 +199,7 @@ async function fixture(smart = true) {
   const read = (signal = new AbortController().signal) =>
     controllers.readGuardianRecovery(signal, () => undefined);
   return {
-    rpc,
+    rpc, controllers, slhCounts, slhOperation,
     read,
     listeners,
     snapshot: () => snapshot,
@@ -299,4 +305,20 @@ for (const failure of ['rpc', 'storage', 'stale', 'old-runtime'] as const) test(
     assert.equal(f.snapshot().phase, failure === 'storage' ? 'locked' : 'ready');
     assert.equal(f.locks(), failure === 'storage' ? 1 : 0);
   } finally { operation.dispose(); }
+});
+
+test('native SLH factory rejects an async management owner before opening its private facade', async () => {
+  const f = await fixture();
+  await assert.rejects(f.controllers.openSlhDsaManagement(new AbortController().signal, async () => undefined), /guard must be synchronous/);
+  assert.equal(f.slhCounts.opened, 0); assert.equal(f.slhCounts.installed, 0);
+});
+
+test('native SLH factory rejects an async installation view before private installation', async () => {
+  const f = await fixture(), signal = new AbortController().signal;
+  const manager = await f.controllers.openSlhDsaManagement(signal, () => undefined);
+  assert.equal(f.slhCounts.opened, 1);
+  await assert.rejects(manager.openInstall('exact-public-key', signal, async () => undefined), /guard must be synchronous/);
+  assert.equal(f.slhCounts.installed, 0);
+  assert.equal(await manager.openInstall('exact-public-key', signal, () => undefined), f.slhOperation);
+  assert.equal(f.slhCounts.installed, 1);
 });
