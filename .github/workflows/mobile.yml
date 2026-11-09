@@ -104,6 +104,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run postinstall
       - run: node scripts/qualification-sdk.cjs
+      - name: Check bounded native SLH guards and pinned profile
+        run: sh modules/pali-wallet-crypto/tests/run-slh-native.sh
       - name: Reject moderate and higher dependency advisories
         run: npm audit --audit-level=moderate
       - run: npm run lint
