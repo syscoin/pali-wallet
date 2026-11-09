@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import Foundation
+import UIKit
 
 private final class PaliCryptoOperationException: Exception {
   override var reason: String { "Native cryptographic operation failed" }
@@ -70,6 +71,10 @@ final class PaliCryptoContext: SharedObject {
     defer { data.resetBytes(in: 0..<data.count) }
     return try registerKey("SLH-DSA-SEED", ["derivePublic"], data)
   }
+  func importSlhMaterial(_ data: Data, seed: Bool) throws -> PaliCryptoKey {
+    guard data.count == (seed ? 48 : 64) else { throw PaliCryptoFailure.invalidInput }
+    return try registerKey(seed ? "SLH-DSA-SEED" : "SLH-DSA-SK", [seed ? "derivePublic" : "sign"], data)
+  }
 
   private func registerKey(_ kind: String, _ usages: [String], _ data: Data) throws -> PaliCryptoKey {
     mutex.lock(); defer { mutex.unlock() }
@@ -117,12 +122,26 @@ public final class PaliWalletCryptoModule: Module {
   private func operation<T>(_ body: () throws -> T) throws -> T {
     do { return try body() } catch { throw PaliCryptoOperationException() }
   }
+  private func slhForeground() -> Bool {
+    if Thread.isMainThread { return UIApplication.shared.applicationState == .active }
+    return DispatchQueue.main.sync { UIApplication.shared.applicationState == .active }
+  }
 
   public func definition() -> ModuleDefinition {
     Name("PaliWalletCrypto")
     Function("info") { ["apiVersion": 1, "implementation": "apple-cryptokit-commoncrypto"] as [String: Any] }
     Function("createContext") { PaliCryptoContext() }
+    Function("createSlhContext") { (namespace: String) in try self.operation {
+      guard self.slhForeground() else { throw PaliSlhFailure.unavailable }
+      return try PaliSlhContext(namespace: namespace, owner: self.slhOwner)
+    } }
+    Function("prepareSlhCachePurge") { (namespace: String) in try self.operation {
+      guard self.slhForeground() else { throw PaliSlhFailure.unavailable }
+      return try PaliSlhCachePurge(namespace: namespace, owner: self.slhOwner)
+    } }
     OnDestroy { self.publicMerkleOwner.retire(); self.slhOwner.retire() }
+    OnAppEntersBackground { self.slhOwner.background() }
+    OnAppEntersForeground { self.slhOwner.resume() }
     AsyncFunction("publicMerkleBatch") { (program: Data, promise: Promise) in
       PaliPublicMerkleBatch.shared.execute(program, owner: self.publicMerkleOwner) { result in
         switch result {
@@ -131,7 +150,43 @@ public final class PaliWalletCryptoModule: Module {
         }
       }
     }
-    Class("Key", PaliCryptoKey.self) {}
+    Class("Key", PaliCryptoKey.self) { Function("destroy") { (key: PaliCryptoKey) in key.destroy() } }
+    Class("SlhTree", PaliSlhTree.self) {
+      AsyncFunction("release") { (tree: PaliSlhTree, erase: Bool, promise: Promise) in
+        // No whole-tree heap copy exists to erase. Drop this owned mapping/FD;
+        // published public cache survives, and owned unpublished files are removed.
+        tree.release { good in
+          if good { promise.resolve() } else { promise.reject("ERR_SLH_EXECUTION", "Native SLH execution unavailable") }
+        }
+      }
+    }
+    Class("SlhOperation", PaliSlhOperation.self) {
+      Function("cancel") { (operation: PaliSlhOperation) in operation.cancel() }
+      AsyncFunction("run") { (operation: PaliSlhOperation, promise: Promise) in operation.run(promise) }
+    }
+    Class("SlhCachePurge", PaliSlhCachePurge.self) {
+      Function("cancel") { (operation: PaliSlhCachePurge) in operation.cancel() }
+      AsyncFunction("run") { (operation: PaliSlhCachePurge, promise: Promise) in operation.run(promise) }
+    }
+    Class("SlhContext", PaliSlhContext.self) {
+      Function("close") { (context: PaliSlhContext) in context.close() }
+      Function("isRetired") { (context: PaliSlhContext) in context.isRetired() }
+      AsyncFunction("dispose") { (context: PaliSlhContext, promise: Promise) in context.dispose(promise) }
+      Function("importSlhKeyHex") { (context: PaliSlhContext, value: String) in try self.operation { try context.importMaterial(value, seed: false) } }
+      Function("importSlhSeedHex") { (context: PaliSlhContext, value: String) in try self.operation { try context.importMaterial(value, seed: true) } }
+      Function("allocateTree") { (context: PaliSlhContext) in try self.operation { try context.allocateTree() } }
+      Function("loadTree") { (context: PaliSlhContext, id: String) in try self.operation { try context.loadTree(id) } }
+      Function("publishTree") { (context: PaliSlhContext, tree: PaliSlhTree, id: String) in try self.operation { try context.publishTree(tree, id: id) } }
+      Function("readTreeRoot") { (context: PaliSlhContext, tree: PaliSlhTree) in try self.operation { try context.readRoot(tree) } }
+      Function("writeTreeLeaves") { (context: PaliSlhContext, tree: PaliSlhTree, start: Double, value: String) in try self.operation { try context.writeLeaves(tree, start: start, hex: value) } }
+      Function("treeChunk") { (context: PaliSlhContext, key: PaliCryptoKey, tree: PaliSlhTree, level: Double, start: Double, count: Double) in try self.operation { try context.treeChunk(key, value: tree, level: level, start: start, count: count) } }
+      Function("leafChunk") { (context: PaliSlhContext, key: PaliCryptoKey, start: Double, count: Double) in try self.operation { try context.leafChunk(key, start: start, count: count) } }
+      Function("prelude") { (context: PaliSlhContext, key: PaliCryptoKey, message: String, random: String) in try self.operation { try context.prelude(key, message: message, optrand: random) } }
+      Function("fors") { (context: PaliSlhContext, key: PaliCryptoKey, prelude: String, index: Double) in try self.operation { try context.fors(key, prelude: prelude, index: index) } }
+      Function("finish") { (context: PaliSlhContext, key: PaliCryptoKey, message: String, prelude: String, fors: String, roots: String, tree: PaliSlhTree) in try self.operation { try context.finish(key, message: message, prelude: prelude, fors: fors, roots: roots, value: tree) } }
+      Function("cached") { (context: PaliSlhContext, key: PaliCryptoKey, message: String, random: String, tree: PaliSlhTree) in try self.operation { try context.cached(key, message: message, optrand: random, value: tree) } }
+      Function("prepareVerify") { (context: PaliSlhContext, key: String, action: String, signature: String) in try self.operation { try context.prepareVerify(key, action: action, signature: signature) } }
+    }
     Class("SlhLeafOperation", PaliSlhLeafOperation.self) {
       Function("cancel") { (operation: PaliSlhLeafOperation) in operation.cancel() }
       AsyncFunction("run") { (operation: PaliSlhLeafOperation, promise: Promise) in

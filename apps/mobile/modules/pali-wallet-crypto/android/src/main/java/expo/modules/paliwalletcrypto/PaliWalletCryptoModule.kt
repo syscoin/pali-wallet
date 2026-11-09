@@ -62,6 +62,10 @@ class PaliCryptoContext : SharedObject() {
     require(data.size == 48)
     return registerKey("SLH-DSA-SEED", setOf("derivePublic"), data)
   }
+  @Synchronized internal fun registerSlhMaterial(data: ByteArray, seed: Boolean): PaliCryptoKey {
+    ensureOpen(); require(data.size == (if (seed) 48 else 64))
+    return registerKey(if (seed) "SLH-DSA-SEED" else "SLH-DSA-SK", setOf(if (seed) "derivePublic" else "sign"), data)
+  }
 
   private fun registerKey(kind: String, usages: Set<String>, data: ByteArray): PaliCryptoKey {
     keys.removeAll { it.get() == null }
@@ -104,9 +108,19 @@ class PaliWalletCryptoModule : Module() {
     Name("PaliWalletCrypto")
     Function("info") { mapOf("apiVersion" to 1, "implementation" to "android-jca-bc") }
     Function("createContext") { PaliCryptoContext() }
+    Function("createSlhContext") { namespace: String -> operation {
+      check(appContext.reactContext?.lifecycleState == com.facebook.react.common.LifecycleState.RESUMED)
+      PaliSlhContext(checkNotNull(appContext.reactContext), namespace, slhOwner)
+    } }
+    Function("prepareSlhCachePurge") { namespace: String -> operation {
+      check(appContext.reactContext?.lifecycleState == com.facebook.react.common.LifecycleState.RESUMED)
+      PaliSlhCachePurge(checkNotNull(appContext.reactContext), namespace, slhOwner)
+    } }
+    OnActivityEntersBackground { slhOwner.background() }
+    OnActivityEntersForeground { slhOwner.resume() }
     OnDestroy {
       publicMerkleOwner.retired.set(true)
-      slhOwner.retired.set(true)
+      slhOwner.retire()
       queue.cancel()
       dispatcher.close()
     }
@@ -116,6 +130,41 @@ class PaliWalletCryptoModule : Module() {
     Class("Key", PaliCryptoKey::class) {
       // Expo requires a constructor declaration even for factory-only handles.
       Constructor { throw CryptoOperationException() }
+      Function("destroy") { key: PaliCryptoKey -> key.destroy() }
+    }
+    Class("SlhTree", PaliSlhTree::class) {
+      Constructor { throw CryptoOperationException() }
+      AsyncFunction("release") { tree: PaliSlhTree, erase: Boolean, promise: expo.modules.kotlin.Promise -> tree.release(promise) }
+    }
+    Class("SlhOperation", PaliSlhOperation::class) {
+      Constructor { throw CryptoOperationException() }
+      Function("cancel") { operation: PaliSlhOperation -> operation.cancel() }
+      AsyncFunction("run") { operation: PaliSlhOperation, promise: expo.modules.kotlin.Promise -> operation.run(promise) }
+    }
+    Class("SlhCachePurge", PaliSlhCachePurge::class) {
+      Constructor { throw CryptoOperationException() }
+      Function("cancel") { operation: PaliSlhCachePurge -> operation.cancel() }
+      AsyncFunction("run") { operation: PaliSlhCachePurge, promise: expo.modules.kotlin.Promise -> operation.run(promise) }
+    }
+    Class("SlhContext", PaliSlhContext::class) {
+      Constructor { throw CryptoOperationException() }
+      Function("close") { context: PaliSlhContext -> context.close() }
+      Function("isRetired") { context: PaliSlhContext -> context.isRetired() }
+      AsyncFunction("dispose") { context: PaliSlhContext, promise: expo.modules.kotlin.Promise -> context.dispose(promise) }
+      Function("importSlhKeyHex") { context: PaliSlhContext, value: String -> operation { context.importMaterial(value, false) } }
+      Function("importSlhSeedHex") { context: PaliSlhContext, value: String -> operation { context.importMaterial(value, true) } }
+      Function("allocateTree") { context: PaliSlhContext -> operation { context.allocateTree() } }
+      Function("loadTree") { context: PaliSlhContext, id: String -> operation { context.loadTree(id) } }
+      Function("publishTree") { context: PaliSlhContext, tree: PaliSlhTree, id: String -> operation { context.publishTree(tree, id) } }
+      Function("readTreeRoot") { context: PaliSlhContext, tree: PaliSlhTree -> operation { context.readTreeRoot(tree) } }
+      Function("writeTreeLeaves") { context: PaliSlhContext, tree: PaliSlhTree, start: Double, value: String -> operation { context.writeTreeLeaves(tree, start, value) } }
+      Function("treeChunk") { context: PaliSlhContext, key: PaliCryptoKey, tree: PaliSlhTree, level: Double, start: Double, count: Double -> operation { context.treeChunk(key, tree, level, start, count) } }
+      Function("leafChunk") { context: PaliSlhContext, key: PaliCryptoKey, start: Double, count: Double -> operation { context.leafChunk(key, start, count) } }
+      Function("prelude") { context: PaliSlhContext, key: PaliCryptoKey, message: String, random: String -> operation { context.prelude(key, message, random) } }
+      Function("fors") { context: PaliSlhContext, key: PaliCryptoKey, prefix: String, index: Double -> operation { context.fors(key, prefix, index) } }
+      Function("finish") { context: PaliSlhContext, key: PaliCryptoKey, message: String, prefix: String, fors: String, roots: String, tree: PaliSlhTree -> operation { context.finish(key, message, prefix, fors, roots, tree) } }
+      Function("cached") { context: PaliSlhContext, key: PaliCryptoKey, message: String, random: String, tree: PaliSlhTree -> operation { context.cached(key, message, random, tree) } }
+      Function("prepareVerify") { context: PaliSlhContext, key: String, action: String, signature: String -> operation { context.prepareVerify(key, action, signature) } }
     }
     Class("SlhLeafOperation", PaliSlhLeafOperation::class) {
       Constructor { throw CryptoOperationException() }

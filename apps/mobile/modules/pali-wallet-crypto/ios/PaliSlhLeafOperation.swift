@@ -4,11 +4,43 @@ import Foundation
 final class PaliSlhOperationOwner: @unchecked Sendable {
   private let mutex = NSLock()
   private var closed = false
-  func retire() { mutex.lock(); closed = true; mutex.unlock() }
-  var isOpen: Bool { mutex.lock(); defer { mutex.unlock() }; return !closed }
+  private var foreground = true
+  private var retirements: [() -> Void] = []
+  private var namespaces: [String: Int] = [:]
+  private var purging: Set<String> = []
+  private var poisoned: Set<String> = []
+  func openNamespace(_ namespace: String) -> Bool {
+    mutex.lock(); defer { mutex.unlock() }
+    guard !closed && foreground && !purging.contains(namespace) && !poisoned.contains(namespace) else { return false }
+    namespaces[namespace, default: 0] += 1; return true
+  }
+  func closeNamespace(_ namespace: String, clean: Bool) {
+    mutex.lock(); defer { mutex.unlock() }
+    if clean { namespaces[namespace, default: 0] -= 1 } else { poisoned.insert(namespace) }
+  }
+  func beginPurge(_ namespace: String) -> Bool {
+    mutex.lock(); defer { mutex.unlock() }
+    guard !closed && foreground && namespaces[namespace, default: 0] == 0 && !purging.contains(namespace) && !poisoned.contains(namespace) else { return false }
+    purging.insert(namespace); return true
+  }
+  func endPurge(_ namespace: String, clean: Bool) {
+    mutex.lock(); defer { mutex.unlock() }
+    if clean { purging.remove(namespace) } else { poisoned.insert(namespace) }
+  }
+  func retire() {
+    mutex.lock(); closed = true; let callbacks = retirements; retirements.removeAll(); mutex.unlock()
+    callbacks.forEach { $0() }
+  }
+  func onRetire(_ callback: @escaping () -> Void) {
+    mutex.lock(); let retired = closed || !foreground; if !retired { retirements.append(callback) }; mutex.unlock()
+    if retired { callback() }
+  }
+  func background() { mutex.lock(); foreground = false; let callbacks = retirements; mutex.unlock(); callbacks.forEach { $0() } }
+  func resume() { mutex.lock(); foreground = true; mutex.unlock() }
+  var isOpen: Bool { mutex.lock(); defer { mutex.unlock() }; return !closed && foreground }
 }
 
-enum PaliSlhLeafFailure: Error { case unavailable }
+enum PaliSlhLeafFailure: Error, Sendable { case unavailable }
 
 private final class PaliSlhOwnedSeed: @unchecked Sendable {
   var bytes: Data
@@ -42,6 +74,7 @@ final class PaliSlhLeafOperation: SharedObject, @unchecked Sendable {
     self.context = context; self.key = key; self.owner = owner
     self.start = firstLeaf; self.count = leafCount
     super.init()
+    owner.onRetire { [weak self] in self?.cancel() }
   }
 
   func cancel() { mutex.lock(); retired = true; mutex.unlock() }
@@ -90,32 +123,41 @@ final class PaliSlhLeafOperation: SharedObject, @unchecked Sendable {
   }
 }
 
-private final class PaliSlhLeafWorker: @unchecked Sendable {
+final class PaliSlhLeafWorker: @unchecked Sendable {
   static let shared = PaliSlhLeafWorker()
   private let mutex = NSLock()
   private let queue = DispatchQueue(label: "org.paliwallet.slh-setup", qos: .userInitiated)
   private var busy = false
+  func cleanup(_ work: @escaping @Sendable () -> Void) { queue.async(execute: work) }
+
+  func enqueue<T: Sendable>(_ work: @escaping @Sendable () -> T,
+                           complete: @escaping @Sendable (T) -> Void) -> Bool {
+    mutex.lock(); let admitted = !busy; if admitted { busy = true }; mutex.unlock()
+    guard admitted else { return false }
+    queue.async {
+      let result = work()
+      self.mutex.lock(); self.busy = false; self.mutex.unlock()
+      complete(result)
+    }
+    return true
+  }
 
   func execute(_ operation: PaliSlhLeafOperation,
                _ complete: @escaping @Sendable (Result<Data, PaliSlhLeafFailure>) -> Void) {
-    mutex.lock()
-    let admitted = !busy
-    if admitted { busy = true }
-    mutex.unlock()
-    guard admitted else { complete(.failure(.unavailable)); return }
     let copied: PaliSlhOwnedSeed
     do { copied = try operation.copySeed() }
     catch {
-      mutex.lock(); busy = false; mutex.unlock()
       complete(.failure(.unavailable))
       return
     }
-    queue.async {
+    let admitted = enqueue({
       let result = operation.run(seed: &copied.bytes)
       // Cancellation retires output only. The live C input stays owned until return.
       copied.clear()
-      self.mutex.lock(); self.busy = false; self.mutex.unlock()
+      return result
+    }, complete: { result in
       operation.deliver(result, complete)
-    }
+    })
+    if !admitted { copied.clear(); complete(.failure(.unavailable)) }
   }
 }

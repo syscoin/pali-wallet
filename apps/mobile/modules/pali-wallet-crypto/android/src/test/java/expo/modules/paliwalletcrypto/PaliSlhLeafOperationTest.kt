@@ -22,7 +22,7 @@ class PaliSlhLeafOperationTest {
       { operation, _, _, _ -> operation.sharedObjectDidRelease() },
       { _, context, _, _ -> context.close() },
       { _, _, key, _ -> key.sharedObjectDidRelease() },
-      { _, _, _, owner -> owner.retired.set(true) }
+      { _, _, _, owner -> owner.retire() }
     )
 
     for (retire in retirements) {
@@ -47,6 +47,43 @@ class PaliSlhLeafOperationTest {
       admitted.fill(0)
       context.close()
     }
+  }
+
+  @Test fun publicPurgeExcludesLiveAndUncleanNamespacesUntilDrain() {
+    val owner = PaliSlhOperationOwner()
+    val scope = "0x" + "12".repeat(32)
+    assertEquals(true, owner.openNamespace(scope))
+    assertEquals(false, owner.beginPurge(scope))
+    owner.closeNamespace(scope, true)
+    assertEquals(true, owner.beginPurge(scope))
+    assertEquals(false, owner.openNamespace(scope))
+    owner.endPurge(scope, true)
+    assertEquals(true, owner.openNamespace(scope))
+    owner.closeNamespace(scope, false)
+    assertEquals(false, owner.beginPurge(scope))
+    assertEquals(false, owner.openNamespace(scope))
+  }
+
+  @Test fun nativeBackgroundRevokesOwnersWithoutReopeningOldWorkOnResume() {
+    val owner = PaliSlhOperationOwner()
+    val context = PaliCryptoContext()
+    val key = context.registerPublicSlhFixtureSeed(ByteArray(48))
+    val old = PaliSlhLeafOperation(context, key, owner, 0.0, 1.0)
+    var retired = false
+    owner.onRetire { retired = true }
+    owner.background()
+    assertEquals(true, retired)
+    assertEquals(false, owner.isOpen)
+    assertEquals(false, owner.openNamespace("scope"))
+    owner.resume()
+    assertEquals(true, owner.isOpen)
+    assertThrows(IllegalStateException::class.java) { old.copySeed() }
+    val fresh = PaliSlhLeafOperation(context, key, owner, 0.0, 1.0)
+    fresh.copySeed().fill(0)
+    owner.retire()
+    owner.resume()
+    assertEquals(false, owner.isOpen)
+    context.close()
   }
 
   @Test fun admissionBindsTheContextKeyKindAndRange() {
