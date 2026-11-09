@@ -51,6 +51,7 @@ export type NativeConnectionSigningHost = Readonly<{
   /** Stable wallet/runtime lifetime, deliberately independent of lock state. */
   assertOwner(): void;
   sessionGeneration(): number;
+  verifyPersonalMessage(message: string, signature: string): string;
   supportsAtomicCalls(accountId: string): boolean;
   supportsSmartAccountMessages(accountId: string): boolean;
   /** Caller proves that the per-call consent sequence no longer exists. */

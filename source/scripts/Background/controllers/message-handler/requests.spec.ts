@@ -12,6 +12,38 @@ import { getMethodConfig } from './method-registry';
 import { getPipelineInstance } from './request-pipeline';
 import { methodRequest } from './requests';
 
+describe('public read lifetime propagation through actual method admission', () => {
+  afterEach(() => jest.restoreAllMocks());
+  it.each([
+    'eth_getLogs',
+    'eth_getProof',
+    'web3_clientVersion',
+    'net_listening',
+    'net_peerCount',
+    'personal_ecRecover',
+  ])(
+    '%s retains the exact producer signal in its enhanced pipeline context',
+    async (method) => {
+      const lifetime = new AbortController(),
+        sender = { tab: { id: 17 }, documentId: 'public-read-document' };
+      const execute = jest
+        .spyOn(getPipelineInstance()!, 'execute')
+        .mockResolvedValueOnce(null);
+      await methodRequest(
+        'https://requester.example',
+        { method, params: [] },
+        { sender, signal: lifetime.signal }
+      );
+      const context = execute.mock.calls[0]![0];
+      expect(context.originalRequest.signal).toBe(lifetime.signal);
+      expect(context.originalRequest.sender).toBe(sender);
+      expect(context.methodConfig.hasPopup).toBe(false);
+      lifetime.abort();
+      expect(context.originalRequest.signal!.aborted).toBe(true);
+    }
+  );
+});
+
 describe('malformed transaction requests settle before admission', () => {
   it.each([
     { value: 'invalid' },

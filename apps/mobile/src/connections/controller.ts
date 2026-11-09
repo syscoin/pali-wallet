@@ -11,7 +11,7 @@ import {
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import { NativeDappControlRequests } from './controlRequests.ts';
 import { isDappPermissionMethod, readDappPermissionRequest, projectDappPermissions } from '../../../../source/shared/dappPermissions.ts';
-import { DAPP_RPC_READ_METHODS, isDappRpcReadMethod, normalizeDappRpcRead } from '../../../../source/shared/dappRpcReads.ts';
+import { DAPP_PUBLIC_RPC_METHODS, isDappPublicRpcMethod, normalizeDappRpcRequest } from '../../../../source/shared/dappRpcReads.ts';
 import { createDappReturnTarget } from './pairingReturn.ts';
 import { isDappWalletControlMethod, normalizeDappWalletControl } from '../../../../source/shared/dappWalletControl.ts';
 import {
@@ -86,7 +86,7 @@ const METHODS = Object.freeze([
   'wallet_getPermissions',
   'wallet_requestPermissions',
   'wallet_revokePermissions',
-  ...DAPP_RPC_READ_METHODS,
+  ...DAPP_PUBLIC_RPC_METHODS,
   ...DAPP_SYSCOIN_READ_METHODS,
   ...DAPP_MODE_METHODS,
   ...SENTRY_DAPP_METHODS,
@@ -1465,7 +1465,7 @@ export class NativeConnectionsController {
     if (this.hasPendingWire(wire)) return;
     if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin) return respond({ error: { code: -32005, message: 'Too many requests' } });
     let request;
-    try { request = syscoin ? normalizeDappSyscoinRead(wire.method, wire.params) : normalizeDappRpcRead(wire.method, wire.params); }
+    try { request = syscoin ? normalizeDappSyscoinRead(wire.method, wire.params) : normalizeDappRpcRequest(wire.method, wire.params); }
     catch (cause) { return respond({ error: { code: cause instanceof EthereumRpcErrorHandler ? cause.code : -32602, message: cause instanceof Error ? cause.message : 'Invalid RPC read' } }); }
     const session = connection.session, revision = this.options.source.getSnapshot().revision, network = JSON.stringify(context.network), utxoNetwork = syscoin ? JSON.stringify(this.host!.syscoin.registration()) : null;
     const lifetime = new AbortController(), finish = this.disposal.begin();
@@ -1477,7 +1477,7 @@ export class NativeConnectionsController {
     const timer = setTimeout(() => lifetime.abort(), Math.max(0, Math.min(wire.expiresAt, session.expiry * 1000) - Date.now()));
     this.reads.set(key, entry);
     try {
-      check(); const result = isDappSyscoinRead(request.method) ? await this.host!.syscoin.read(request as ReturnType<typeof normalizeDappSyscoinRead>, account, lifetime.signal, check) : await this.host!.reads.read(request as ReturnType<typeof normalizeDappRpcRead>, lifetime.signal, check); check();
+      check(); const result = isDappSyscoinRead(request.method) ? await this.host!.syscoin.read(request as ReturnType<typeof normalizeDappSyscoinRead>, account, lifetime.signal, check) : await this.host!.reads.read(request as ReturnType<typeof normalizeDappRpcRequest>, lifetime.signal, check); check();
       await respond({ result }, check);
     } catch (cause) {
       check();
@@ -1492,7 +1492,7 @@ export class NativeConnectionsController {
       return;
     }
     if ((SENTRY_DAPP_METHODS as readonly string[]).includes(request.method)) { await this.queueSentryRequest(request); return; }
-    if (isDappRpcReadMethod(request.method) || isDappSyscoinRead(request.method)) {
+    if (isDappPublicRpcMethod(request.method) || isDappSyscoinRead(request.method)) {
       await this.respondRead(request);
       return;
     }

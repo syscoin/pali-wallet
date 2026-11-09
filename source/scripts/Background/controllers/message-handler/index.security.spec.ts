@@ -25,6 +25,54 @@ describe('runtime provider request boundary', () => {
     };
   });
 
+  it.each([
+    'eth_getLogs',
+    'eth_getProof',
+    'web3_clientVersion',
+    'net_listening',
+    'net_peerCount',
+    'personal_ecRecover',
+  ])(
+    'attaches a real document lifetime to nonpopup public %s before method admission',
+    async (method) => {
+      let received:
+        | { sender: chrome.runtime.MessageSender; signal: AbortSignal }
+        | undefined;
+      let release!: (value: unknown) => void;
+      methodRequestMock.mockImplementationOnce((_host, _data, context) => {
+        received = context;
+        return new Promise((resolve) => {
+          release = resolve;
+        });
+      });
+      const sender = {
+        tab: { id: 17 },
+        url: 'https://example.com/page',
+        origin: 'https://example.com',
+        documentId: 'public-read-document',
+      };
+      const config = getMethodConfig(method)!;
+      expect(config.hasPopup).toBe(false);
+      expect(config.requiresConnection).toBe(false);
+      const reply = onMessage(
+        { type: 'METHOD_REQUEST', data: { method, params: [] } },
+        sender
+      );
+      expect(received?.sender).toBe(sender);
+      expect(received?.signal).toBeInstanceOf(AbortSignal);
+      expect(received?.signal.aborted).toBe(false);
+      const onUpdated = jest.mocked(chrome.tabs.onUpdated.addListener).mock
+        .calls[0]![0]!;
+      onUpdated(17, { status: 'loading' }, {} as chrome.tabs.Tab);
+      expect(received?.signal.aborted).toBe(true);
+      release(null);
+      await reply;
+      expect(chrome.tabs.onUpdated.removeListener).toHaveBeenCalledWith(
+        onUpdated
+      );
+    }
+  );
+
   it('uses complete origin identities and replies through the originating channel', async () => {
     const request = {
       id: 'request',

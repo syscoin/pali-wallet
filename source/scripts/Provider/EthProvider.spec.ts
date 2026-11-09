@@ -19,11 +19,20 @@ jest.mock(
 );
 jest.mock('utils/ethUtil', () => ({ decodeTransactionData: jest.fn() }));
 
+import { createNativeDappRpcReadHost } from '../../../apps/mobile/src/custody/dappRpcReads';
+import { createNativeNetwork } from '../../../apps/mobile/src/custody/networkContext';
+import { normalizeDappRpcRequest } from '../../shared/dappRpcReads';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
 import { requestCoordinator } from 'scripts/Background/controllers/message-handler/request-pipeline';
-import { MethodRoute } from 'scripts/Background/controllers/message-handler/types';
+import {
+  MethodRoute,
+  MethodHandlerType,
+  NetworkEnforcement,
+  NetworkPreference,
+  type IEnhancedRequestContext,
+} from 'scripts/Background/controllers/message-handler/types';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { decodeTransactionData } from 'utils/ethUtil';
@@ -36,6 +45,21 @@ const TO = `0x${'22'.repeat(20)}`;
 const OTHER_FROM = `0x${'33'.repeat(20)}`;
 const HOST = 'https://transaction.test';
 const HASH = `0x${'44'.repeat(32)}`;
+const NODE_PUBLIC_CASES = [
+  ['eth_coinbase', [], OTHER_FROM],
+  ['web3_sha3', ['0Xabcd'], HASH],
+  ['eth_getFilterChanges', ['0x0000aBcD'], []],
+  ['eth_getFilterLogs', ['opaque-filter-ID'], []],
+  ['eth_newBlockFilter', [], 'opaque-block-filter'],
+  ['eth_newFilter', [{ topics: [null] }], '0x0000aBcD'],
+  ['eth_newPendingTransactionFilter', [true], 'opaque-pending-filter'],
+  ['eth_uninstallFilter', ['0x0000aBcD'], false],
+  ['eth_getWork', [], [HASH, HASH, HASH, '0x1']],
+  ['eth_hashrate', [], '0x0'],
+  ['eth_mining', [], false],
+  ['eth_submitHashrate', [`0x${'00'.repeat(31)}01`, HASH], false],
+  ['eth_submitWork', ['0x0000000000000001', HASH, HASH], false],
+] as const;
 const transaction = { from: FROM, to: TO, value: '0x0' };
 const controllerMock = getController as jest.Mock;
 const stateMock = store.getState as jest.Mock;
@@ -48,9 +72,31 @@ const sessionGenerationMock = jest.fn();
 let wallet: any;
 let vault: any;
 let vaultGlobal: any;
+let requestLifetime: AbortController;
+const readContext = (): IEnhancedRequestContext => ({
+  methodConfig: {
+    name: 'public-read-test',
+    allowHardwareWallet: true,
+    handlerType: MethodHandlerType.Eth,
+    requiresTabId: true,
+    requiresAuth: false,
+    requiresConnection: false,
+    networkPreference: NetworkPreference.EVM,
+    networkEnforcement: NetworkEnforcement.Never,
+    hasPopup: false,
+  },
+  originalRequest: {
+    host: HOST,
+    method: 'public-read-test',
+    type: 'ethereum',
+    sender: {},
+    signal: requestLifetime.signal,
+  },
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
+  requestLifetime = new AbortController();
   (getUnrestrictedMethods as jest.Mock).mockReturnValue([]);
   rpc.getBlock.mockResolvedValue({ baseFeePerGas: '0x3b9aca00' });
   popupMock.mockResolvedValue(HASH);
@@ -87,6 +133,196 @@ describe('EthProvider public RPC admission and errors', () => {
     ]);
   });
 
+  it.each([
+    [
+      'eth_getLogs',
+      [{ fromBlock: '0x00', toBlock: 'pending', topics: [null, [HASH, null]] }],
+      [],
+    ],
+    ['eth_getProof', [FROM, ['0XABC', '0x', HASH], null], { storageProof: [] }],
+    [
+      'eth_getProof',
+      [FROM, [], `0x${'00'.repeat(31)}01`],
+      { storageProof: [] },
+    ],
+    ['web3_clientVersion', [], 'Example/v1'],
+    ['net_listening', [], false],
+    ['net_peerCount', [], '0x0'],
+    ...NODE_PUBLIC_CASES,
+  ])(
+    'shares %s request/result semantics with the native owned read host',
+    async (method, params, result) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue([method]);
+      rpc.send.mockResolvedValue(result);
+      const expected = normalizeDappRpcRequest(method as string, params);
+      const extensionResult = await EthProvider(
+        HOST,
+        readContext()
+      ).unrestrictedRPCMethods(method as string, params as any[]);
+      const observed: { method: string; params: unknown[] }[] = [];
+      const registration = createNativeNetwork({
+        id: 'custom-provider',
+        name: 'Example',
+        kind: 'evm',
+        chainId: '31337',
+        slip44: 60,
+        rpcUrl: 'https://custom.example',
+        symbol: 'TEST',
+        decimals: 18,
+        testnet: true,
+      });
+      const native = createNativeDappRpcReadHost({
+        registration: () => registration,
+        verifyPersonalMessage() {
+          throw Error('RPC reads must not recover');
+        },
+        async fetch(_url, init) {
+          const request = JSON.parse(init.body as string);
+          observed.push(request);
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: request.id,
+              result: request.method === 'eth_chainId' ? '0x7a69' : result,
+            }),
+            { headers: { 'content-type': 'application/json' } }
+          );
+        },
+      });
+      expect(
+        await native.read(expected, new AbortController().signal, () => {})
+      ).toEqual(extensionResult);
+      expect(rpc.send).toHaveBeenCalledTimes(1);
+      expect(rpc.send).toHaveBeenCalledWith(method, [...expected.params]);
+      expect(observed.map((value) => value.method)).toEqual([
+        'eth_chainId',
+        method,
+        'eth_chainId',
+      ]);
+      expect(observed[1]!.params).toEqual(expected.params);
+      expect(popupMock).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(NODE_PUBLIC_CASES)(
+    'preserves node capability errors for %s without fallback/retry',
+    async (method, params) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue([method]);
+      const failure = {
+        code: -32601,
+        message: 'Method unavailable on this node',
+      };
+      rpc.send.mockRejectedValueOnce(failure);
+      await expect(
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods(method, [
+          ...params,
+        ])
+      ).rejects.toBe(failure);
+      expect(rpc.send).toHaveBeenCalledTimes(1);
+      expect(popupMock).not.toHaveBeenCalled();
+    }
+  );
+  it.each([
+    'future_unclassified',
+    'eth_accounts',
+    'eth_chainId',
+    'net_version',
+    'eth_subscribe',
+    'eth_unsubscribe',
+  ])(
+    'never sends unclassified/custom/unsupported %s to the generic node transport',
+    async (method) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue([method]);
+      await expect(
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods(method, [])
+      ).rejects.toMatchObject({ code: 4200 });
+      expect(rpc.send).not.toHaveBeenCalled();
+    }
+  );
+  it.each(NODE_PUBLIC_CASES)(
+    'drops a stale %s response after dispatch without repeating a node operation',
+    async (method, params, result) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue([method]);
+      rpc.send.mockImplementationOnce(async () => {
+        vault.activeNetwork = {
+          ...vault.activeNetwork,
+          url: 'https://new.example',
+        };
+        return result;
+      });
+      await expect(
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods(method, [
+          ...params,
+        ])
+      ).rejects.toMatchObject({ code: 4100 });
+      expect(rpc.send).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('uses the common local recovery/checksum path without a node request or popup', async () => {
+    (getUnrestrictedMethods as jest.Mock).mockReturnValue([
+      'personal_ecRecover',
+    ]);
+    wallet.ethereumTransaction.verifyPersonalMessage = jest.fn(
+      () => '0x52908400098527886e0f7030069857d2e4169ee7'
+    );
+    await expect(
+      EthProvider(HOST, readContext()).unrestrictedRPCMethods(
+        'personal_ecRecover',
+        ['0xabc', 'compact-signature']
+      )
+    ).resolves.toBe('0x52908400098527886E0F7030069857D2E4169EE7');
+    expect(
+      wallet.ethereumTransaction.verifyPersonalMessage
+    ).toHaveBeenCalledWith('0xabc', 'compact-signature');
+    expect(rpc.send).not.toHaveBeenCalled();
+    expect(popupMock).not.toHaveBeenCalled();
+  });
+
+  it('requires an explicit request lifetime before public read execution', async () => {
+    (getUnrestrictedMethods as jest.Mock).mockReturnValue(['net_listening']);
+    const context = readContext();
+    delete context.originalRequest.signal;
+    await expect(
+      EthProvider(HOST, context).unrestrictedRPCMethods('net_listening', [])
+    ).rejects.toMatchObject({ code: 4001 });
+    expect(rpc.send).not.toHaveBeenCalled();
+  });
+
+  it.each(['network', 'account', 'session', 'provider', 'document'])(
+    'retires a held public read after %s changes',
+    async (change) => {
+      (getUnrestrictedMethods as jest.Mock).mockReturnValue(['eth_getLogs']);
+      let release!: (value: unknown) => void;
+      rpc.send.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          })
+      );
+      const reading = EthProvider(HOST, readContext()).unrestrictedRPCMethods(
+        'eth_getLogs',
+        [{}]
+      );
+      const rejected = expect(reading).rejects.toMatchObject({
+        code: change === 'document' ? 4001 : 4100,
+      });
+      if (change === 'network')
+        vault.activeNetwork = {
+          ...vault.activeNetwork,
+          url: 'https://replacement.example',
+        };
+      else if (change === 'account')
+        vault.activeAccount = { ...vault.activeAccount, id: 1 };
+      else if (change === 'session') sessionGenerationMock.mockReturnValue(2);
+      else if (change === 'provider')
+        wallet.ethereumTransaction.web3Provider = { send: jest.fn() };
+      else requestLifetime.abort();
+      release([]);
+      await rejected;
+    }
+  );
+
   it.each(['eth_call', 'eth_estimateGas'])(
     'forwards a bounded type-1 %s simulation without signing approval',
     async (method) => {
@@ -105,7 +341,7 @@ describe('EthProvider public RPC admission and errors', () => {
       const original = JSON.parse(JSON.stringify(params));
       rpc.send.mockResolvedValueOnce('0x5208');
       await expect(
-        EthProvider(HOST).unrestrictedRPCMethods(method, params)
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods(method, params)
       ).resolves.toBe('0x5208');
       expect(rpc.send).toHaveBeenCalledTimes(1);
       expect(rpc.send).toHaveBeenCalledWith(method, original);
@@ -127,7 +363,7 @@ describe('EthProvider public RPC admission and errors', () => {
     'rejects malformed receipt params %p before RPC work',
     async (...params) => {
       await expect(
-        EthProvider(HOST).unrestrictedRPCMethods(
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods(
           'eth_getTransactionReceipt',
           params
         )
@@ -143,7 +379,7 @@ describe('EthProvider public RPC admission and errors', () => {
       const original = JSON.parse(JSON.stringify(params));
       rpc.send.mockResolvedValueOnce(null);
       await expect(
-        EthProvider(HOST).unrestrictedRPCMethods(
+        EthProvider(HOST, readContext()).unrestrictedRPCMethods(
           'eth_getTransactionReceipt',
           params
         )
@@ -167,7 +403,10 @@ describe('EthProvider public RPC admission and errors', () => {
   ])('does not mask a raw-transaction RPC failure %p', async (error) => {
     rpc.send.mockRejectedValueOnce(error);
     await expect(
-      EthProvider(HOST).restrictedRPCMethods('eth_sendRawTransaction', ['0x00'])
+      EthProvider(HOST, readContext()).restrictedRPCMethods(
+        'eth_sendRawTransaction',
+        ['0x00']
+      )
     ).rejects.toBe(error);
     expect(rpc.send).toHaveBeenCalledTimes(1);
   });
@@ -194,7 +433,7 @@ describe('EthProvider transaction admission', () => {
     'type',
   ])('rejects malformed %s before controller or popup work', async (field) => {
     await expect(
-      EthProvider(HOST).sendTransaction({
+      EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         [field]: 'invalid',
       } as any)
@@ -220,7 +459,10 @@ describe('EthProvider transaction admission', () => {
     ],
   ])('rejects %s before controller or popup work', async (_label, fields) => {
     await expect(
-      EthProvider(HOST).sendTransaction({ ...transaction, ...(fields as any) })
+      EthProvider(HOST, readContext()).sendTransaction({
+        ...transaction,
+        ...(fields as any),
+      })
     ).rejects.toMatchObject({ code: -32602 });
     expect(controllerMock).not.toHaveBeenCalled();
     expectNoRpcOrPopup();
@@ -228,9 +470,10 @@ describe('EthProvider transaction admission', () => {
 
   it('also rejects invalid values through restrictedRPCMethods', async () => {
     await expect(
-      EthProvider(HOST).restrictedRPCMethods('eth_sendTransaction', [
-        { ...transaction, value: 'invalid' },
-      ])
+      EthProvider(HOST, readContext()).restrictedRPCMethods(
+        'eth_sendTransaction',
+        [{ ...transaction, value: 'invalid' }]
+      )
     ).rejects.toMatchObject({ code: -32602 });
     expectNoRpcOrPopup();
   });
@@ -239,7 +482,10 @@ describe('EthProvider transaction admission', () => {
     'rejects unsupported type %s before RPC work',
     async (type) => {
       await expect(
-        EthProvider(HOST).sendTransaction({ ...transaction, type } as any)
+        EthProvider(HOST, readContext()).sendTransaction({
+          ...transaction,
+          type,
+        } as any)
       ).rejects.toMatchObject({ code: 4200 });
       expect(controllerMock).not.toHaveBeenCalled();
       expectNoRpcOrPopup();
@@ -266,9 +512,9 @@ describe('EthProvider transaction admission', () => {
     };
     const original = JSON.parse(JSON.stringify(input));
 
-    await expect(EthProvider(HOST).sendTransaction(input as any)).resolves.toBe(
-      HASH
-    );
+    await expect(
+      EthProvider(HOST, readContext()).sendTransaction(input as any)
+    ).resolves.toBe(HASH);
 
     const approvedTx = popupMock.mock.calls[0][0].data.tx;
     expect(approvedTx).toEqual({
@@ -316,7 +562,7 @@ describe('EthProvider transaction admission', () => {
     async (fees) => {
       vault.accounts.HDAccount[0].isSmartAccount = true;
       await expect(
-        EthProvider(HOST).sendTransaction({
+        EthProvider(HOST, readContext()).sendTransaction({
           ...transaction,
           ...fees,
           data: '0x',
@@ -329,7 +575,7 @@ describe('EthProvider transaction admission', () => {
   it.each(['0x0', '0xba43b7400'])(
     'keeps an untyped gasPrice-only request legacy on an EIP-1559 network: %s',
     async (gasPrice) => {
-      await EthProvider(HOST).sendTransaction({
+      await EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         gasPrice,
         data: '0x',
@@ -344,7 +590,7 @@ describe('EthProvider transaction admission', () => {
   it.each(['Example.eth', '🚀.eth', TO, null, undefined])(
     'preserves ENS, address and creation recipient %p',
     async (to) => {
-      await EthProvider(HOST).sendTransaction({
+      await EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         to,
         data: '0x60806040',
@@ -355,7 +601,10 @@ describe('EthProvider transaction admission', () => {
   );
 
   it('injects only an omitted sender and preserves the supplied wallet account', async () => {
-    await EthProvider(HOST).sendTransaction({ to: TO, value: 0 } as any);
+    await EthProvider(HOST, readContext()).sendTransaction({
+      to: TO,
+      value: 0,
+    } as any);
     expect(connectedAccountMock).toHaveBeenCalledWith(HOST);
     expect(popupMock.mock.calls[0][0].data.tx).toMatchObject({
       from: FROM,
@@ -365,7 +614,7 @@ describe('EthProvider transaction admission', () => {
     jest.clearAllMocks();
     // The consent middleware has selected the dapp's requested wallet account.
     vault.accounts.HDAccount[0].address = OTHER_FROM;
-    await EthProvider(HOST).sendTransaction({
+    await EthProvider(HOST, readContext()).sendTransaction({
       ...transaction,
       from: OTHER_FROM,
     } as any);
@@ -376,13 +625,16 @@ describe('EthProvider transaction admission', () => {
 
   it('preserves a hex address with mixed case without adding checksum rejection', async () => {
     const to = `0x${'aB'.repeat(20)}`;
-    await EthProvider(HOST).sendTransaction({ ...transaction, to } as any);
+    await EthProvider(HOST, readContext()).sendTransaction({
+      ...transaction,
+      to,
+    } as any);
     expect(popupMock.mock.calls[0][0].data.tx.to).toBe(to);
   });
 
   it('rejects a mismatched chain before RPC decoding or approval', async () => {
     await expect(
-      EthProvider(HOST).sendTransaction({
+      EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         chainId: '0x2',
       } as any)
@@ -392,7 +644,7 @@ describe('EthProvider transaction admission', () => {
 
   it('rejects a sender that is no longer selected after consent middleware', async () => {
     await expect(
-      EthProvider(HOST).sendTransaction({
+      EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         data: '0x',
         from: OTHER_FROM,
@@ -481,7 +733,7 @@ describe('EthProvider transaction admission', () => {
       vault.activeAccount.type = type;
       vault.accounts[type] = { 0: { address: FROM, ...flags } };
       await expect(
-        EthProvider(HOST).sendTransaction({
+        EthProvider(HOST, readContext()).sendTransaction({
           ...transaction,
           nonce: '0x0',
         } as any)
@@ -494,7 +746,7 @@ describe('EthProvider transaction admission', () => {
     vault.activeAccount.type = KeyringAccountType.SmartAccount;
     vault.accounts.SmartAccount = { 0: { address: FROM } };
     await expect(
-      EthProvider(HOST).sendTransaction({
+      EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         type: '0x2',
         accessList: [{ address: TO, storageKeys: [] }],
@@ -506,7 +758,10 @@ describe('EthProvider transaction admission', () => {
   it('rejects explicit type 2 on a legacy network before decoding or approval', async () => {
     rpc.getBlock.mockResolvedValue({});
     await expect(
-      EthProvider(HOST).sendTransaction({ ...transaction, type: '0x2' } as any)
+      EthProvider(HOST, readContext()).sendTransaction({
+        ...transaction,
+        type: '0x2',
+      } as any)
     ).rejects.toMatchObject({ code: 4200 });
     expect(rpc.getBlock).toHaveBeenCalledWith('latest');
     expect(decodeMock).not.toHaveBeenCalled();
@@ -537,7 +792,7 @@ describe('EthProvider transaction admission', () => {
     'rejects an untyped zero maximum fee with priority %s before RPC work',
     async (priority) => {
       await expect(
-        EthProvider(HOST).sendTransaction({
+        EthProvider(HOST, readContext()).sendTransaction({
           ...transaction,
           maxFeePerGas: '0x0',
           ...(priority === undefined ? {} : { maxPriorityFeePerGas: priority }),
@@ -551,7 +806,7 @@ describe('EthProvider transaction admission', () => {
   it('rejects an untyped zero priority fee on a legacy network after checking compatibility', async () => {
     rpc.getBlock.mockResolvedValue({});
     await expect(
-      EthProvider(HOST).sendTransaction({
+      EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         maxPriorityFeePerGas: '0x0',
       } as any)
@@ -566,7 +821,7 @@ describe('EthProvider transaction admission', () => {
 
   it('preserves an untyped positive fee cap and zero priority for London approval', async () => {
     await expect(
-      EthProvider(HOST).sendTransaction({
+      EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         maxFeePerGas: '0x77359400',
         maxPriorityFeePerGas: '0x0',
@@ -586,7 +841,7 @@ describe('EthProvider transaction admission', () => {
   it('preserves untyped gasPrice-only requests on a legacy network', async () => {
     rpc.getBlock.mockResolvedValue({});
     await expect(
-      EthProvider(HOST).sendTransaction({
+      EthProvider(HOST, readContext()).sendTransaction({
         ...transaction,
         gasPrice: '0x3b9aca00',
       } as any)
@@ -604,7 +859,7 @@ describe('EthProvider transaction admission', () => {
     'preserves untyped %s for EIP-1559 approval',
     async (field) => {
       await expect(
-        EthProvider(HOST).sendTransaction({
+        EthProvider(HOST, readContext()).sendTransaction({
           ...transaction,
           [field]: '0x1',
         } as any)
