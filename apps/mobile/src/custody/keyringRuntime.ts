@@ -1,6 +1,9 @@
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
-import { assertPaliWalletValidatorSwitchApplied, buildPaliWalletValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
+import { buildECDSAAuthenticator, buildSLHDSAAuthenticator } from '../../../../source/utils/smartAccount/authenticators.ts';
+import { getSLHDSAStateStorageKey } from '../../../../source/utils/slhDsa/constants.ts';
+import { parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaState.ts';
+import { assertSmartAccountValidatorSwitchApplied, buildSmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import { NativePrivateWithdrawal } from './privateWithdrawal.ts';
 import { createPrivacyWithdrawalsController, PRIVACY_WITHDRAWAL_GAS } from '../../../../source/wallet/privacyWithdrawals.ts';
 import { capturePrivateWithdrawalAttempt, privateWithdrawalUnsignedBytes } from '../../../../source/utils/privacy/withdrawalMetadata.ts';
@@ -278,6 +281,8 @@ export function createNativeRetirementReadForChain(
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
 export type NativeSlhDsaAccount = Readonly<{
   installedKeys: readonly NativeSlhInstalledKey[];
+  readPrepared(): Promise<readonly import('../smartAccount/slhDsaRuntime.ts').NativeSlhPublicState[]>;
+  rebuildPrepared(keyId: string, progress: Parameters<NativeSlhDsaRuntime['rebuildInstalled']>[2]): ReturnType<NativeSlhDsaRuntime['rebuildInstalled']>;
   prepareFresh: (progress: Parameters<NativeSlhDsaRuntime['prepareFresh']>[2]) => ReturnType<NativeSlhDsaRuntime['prepareFresh']>;
   hydrateInstalled(keyId: string): ReturnType<NativeSlhDsaRuntime['hydrateInstalled']>;
   rebuildInstalled(keyId: string, progress: Parameters<NativeSlhDsaRuntime['rebuildInstalled']>[2]): ReturnType<NativeSlhDsaRuntime['rebuildInstalled']>;
@@ -289,6 +294,9 @@ export interface KeyringRuntime extends CustodyRuntime {
   readonly trezor: NativeTrezorView;
   openConnectionHost(): Promise<NativeConnectionSigningHost>;
   openSlhDsaAccount(assertCurrent: () => void): Promise<NativeSlhDsaAccount>;
+  canSignSmartAccount(): boolean;
+  canManageSlhDsa(): boolean;
+  openSlhDsaInstallation(keyId: string, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   prepareConnectionPsbt(request: import('../connections/psbtRequests.ts').NativePsbtRequest,
     signal: AbortSignal, assertCurrent: () => void): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
   readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
@@ -1375,6 +1383,23 @@ export function createKeyringRuntimeFactory(
           };
           return Object.freeze({
             installedKeys,
+            readPrepared: () => track(async () => {
+              const snapshot = await storage.recovery!.readSnapshot(); check();
+              if (snapshot.identity?.root?.profileId !== verifiedIdentity?.root?.profileId) throw new KeyringRuntimeError('CANCELLED');
+              const prepared = [];
+              for (const row of snapshot.records) {
+                const keyId = parseSLHDSAStateStorageKey(row.key);
+                if (keyId === null || installedKeys.some(key => key.keyId === keyId)) continue;
+                const entry = await runtime.inspectPrepared(keyId, accountIndex, check); check();
+                if (entry) prepared.push(entry);
+              }
+              return Object.freeze(prepared);
+            }),
+            rebuildPrepared: (keyId, progress) => track(async () => {
+              const prepared = await runtime.inspectPrepared(keyId, accountIndex, check); check();
+              if (!prepared || installedKeys.some(key => key.keyId === keyId)) throw new KeyringRuntimeError('NOT_READY');
+              return runtime.rebuildInstalled(prepared, check, progress);
+            }),
             prepareFresh(progress) {
               check();
               const auth = requireSmartAccountAuthenticator(metadata);
@@ -3086,6 +3111,27 @@ export function createKeyringRuntimeFactory(
           await dataBinding(captured, check); check();
           return inspected;
         };
+        const canSignSmartAccount = () => {
+          if (!catalogueSnapshot || !keyring.isUnlocked()) return false;
+          try {
+            const selected = selectedAccount(), account = selected.type === 'SmartAccount' ? state.accounts.SmartAccount[selected.index] : undefined;
+            if (!account?.smartAccount) return false;
+            requireSmartAccountAddressIdentity(account, account.smartAccount.chainId);
+            const localOwners: NativeSmartAccountSigningOwner[] = [];
+            for (const type of ['HDAccount', 'Imported'] as const)
+              for (const owner of Object.values(state.accounts[type]))
+                if (!owner.isSmartAccount && !owner.isLedgerWallet && !owner.isTrezorWallet) localOwners.push({ address: owner.address, id: owner.id, type });
+            return canSignNativeSmartAccountActionHash(account.smartAccount, localOwners, { slhDsa: slhCapability !== null });
+          } catch { return false; }
+        };
+        const canManageSlhDsa = () => {
+          if (slhCapability === null || !catalogueSnapshot || !keyring.isUnlocked()) return false;
+          try {
+            const selected = selectedAccount(), account = selected.type === 'SmartAccount' ? state.accounts.SmartAccount[selected.index] : undefined;
+            if (!account?.smartAccount) return false;
+            requireSmartAccountAddressIdentity(account, account.smartAccount.chainId); return true;
+          } catch { return false; }
+        };
         const canManageGuardianPolicy = () => {
           if (!catalogueSnapshot || !keyring.isUnlocked()) return false;
           const selected = selectedAccount();
@@ -3694,8 +3740,8 @@ export function createKeyringRuntimeFactory(
                 snapshot = catalogueSnapshot!;
                 selected = selectedAccount();
                 account = state.accounts.SmartAccount[selected.index]!;
-                if (intent.kind === 'wallet-authenticator') {
-                  assertPaliWalletValidatorSwitchApplied(intent.command, account.smartAccount!);
+                if (intent.kind === 'authenticator') {
+                  assertSmartAccountValidatorSwitchApplied(intent.command, account.smartAccount!);
                 }
                 if (intent.kind === 'guardian-policy') {
                   if (intent.command.kind === 'remove') {
@@ -3775,15 +3821,16 @@ export function createKeyringRuntimeFactory(
             return openSmartAccountOperation({ kind: 'guardian-policy', command }, assertOwner, undefined, assertPolicy);
           },
           openSlhDsaAccount,
+          canSignSmartAccount, canManageSlhDsa,
           openSmartAccountDeployment: (assertOwner) => openSmartAccountOperation({ kind: 'deploy' }, assertOwner),
           canUseWalletAuthenticator: () => {
-            if (!canManageGuardianPolicy()) return false;
+            if (!canSignSmartAccount()) return false;
             const selected = selectedAccount();
             return state.accounts.SmartAccount[selected.index]?.smartAccount?.isDeployed === true;
           },
           async openWalletAuthenticator(signal, assertOwner) {
             const captured = generation, before = catalogueSnapshot;
-            if (!before || !canManageGuardianPolicy()) throw new KeyringRuntimeError('NOT_READY');
+            if (!before || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const address = selectedAccount().address;
             const check = () => {
               current(captured); checkGuard(assertOwner);
@@ -3793,7 +3840,7 @@ export function createKeyringRuntimeFactory(
             };
             await refreshSmartAccountMetadata(signal, check);
             check();
-            if (!canManageGuardianPolicy()) throw new KeyringRuntimeError('NOT_READY');
+            if (!canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const selected = selectedAccount();
             const account = state.accounts.SmartAccount[selected.index];
             if (!account?.smartAccount) throw new KeyringRuntimeError('NOT_READY');
@@ -3803,8 +3850,9 @@ export function createKeyringRuntimeFactory(
             if (!owner || owner.isSmartAccount || owner.isLedgerWallet || owner.isTrezorWallet)
               throw new KeyringRuntimeError('NOT_READY');
             const ownerId = owner.id, ownerAddress = owner.address;
-            const command = buildPaliWalletValidatorSwitch({ accountAddress: account.address,
-              chainId: account.smartAccount.chainId, metadata: account.smartAccount, ownerAddress });
+            const command = buildSmartAccountValidatorSwitch({ accountAddress: account.address,
+              chainId: account.smartAccount.chainId, metadata: account.smartAccount,
+              target: buildECDSAAuthenticator({ chainId: account.smartAccount.chainId, config: { owners: [ownerAddress], threshold: 1 } }) });
             const checkOwner = () => {
               check();
               const currentOwner = state.accounts[ownerType][ownerId];
@@ -3812,7 +3860,37 @@ export function createKeyringRuntimeFactory(
                   currentOwner.isSmartAccount || currentOwner.isLedgerWallet || currentOwner.isTrezorWallet)
                 throw new KeyringRuntimeError('CANCELLED');
             };
-            return openSmartAccountOperation({ kind: 'wallet-authenticator', command }, checkOwner);
+            return openSmartAccountOperation({ kind: 'authenticator', command }, checkOwner);
+          },
+          async openSlhDsaInstallation(keyId, signal, assertOwner) {
+            if (typeof keyId !== 'string' || parseSLHDSAStateStorageKey(getSLHDSAStateStorageKey(keyId)) !== keyId) throw new KeyringRuntimeError('INVALID_INPUT');
+            const captured = generation, before = catalogueSnapshot;
+            if (!before || !canManageSlhDsa() || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
+            const address = selectedAccount().address;
+            const check = () => {
+              current(captured); checkGuard(assertOwner);
+              if (signal.aborted || catalogueSnapshot?.active.accountId !== before.active.accountId ||
+                  catalogueSnapshot.active.networkId !== before.active.networkId || selectedAccount().address !== address)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            await refreshSmartAccountMetadata(signal, check); check();
+            const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
+            if (!account?.smartAccount || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
+            const descriptor = account.smartAccount.descriptor;
+            if (!descriptor) throw new KeyringRuntimeError('NOT_READY');
+            const runtime = await getSlhDsa(captured); check();
+            const installed = account.smartAccount.installedModules?.find((module: NonNullable<ISmartAccountMetadata['installedModules']>[number]): module is Extract<SmartAccountValidatorModule, { id: 'slh-dsa' }> =>
+              module.type === 'validator' && module.id === 'slh-dsa' && module.config.keyId === keyId);
+            const prepared = installed
+              ? await runtime.hydrateInstalled(installed.config, check)
+              : await runtime.inspectPrepared(keyId, descriptor.accountIndex, check);
+            check();
+            if (!prepared) throw new KeyringRuntimeError('NOT_READY');
+            const target = buildSLHDSAAuthenticator({ chainId: account.smartAccount.chainId, config: {
+              keyId: prepared.keyId, parameterSet: prepared.parameterSet, pkRoot: prepared.pkRoot, pkSeed: prepared.pkSeed, signatureLimit: prepared.signatureLimit,
+            } });
+            const command = buildSmartAccountValidatorSwitch({ accountAddress: account.address, chainId: account.smartAccount.chainId, metadata: account.smartAccount, target });
+            return openSmartAccountOperation({ kind: 'authenticator', command }, check);
           },
           async openSmartAccountSend(recipient, amount, assertOwner) {
             let intent: NativeSmartAccountIntent;

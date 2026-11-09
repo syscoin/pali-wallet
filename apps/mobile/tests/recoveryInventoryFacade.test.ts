@@ -1,3 +1,4 @@
+import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -77,6 +78,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   class PassiveController { readonly view = {}; dispose() {} }
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
       createNativeSentryCryptoExecutor: (isolated: unknown) => {

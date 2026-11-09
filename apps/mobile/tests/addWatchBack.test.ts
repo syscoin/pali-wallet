@@ -96,7 +96,7 @@ function renderer() {
   };
 }
 
-for (const kind of ['native', 'smart', 'watch', 'activity'] as const) {
+for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as const) {
   for (const order of ['parent-first', 'child-first'] as const) {
     test(`${kind} real screen and shell consume nested Back before exit (${order})`, async () => {
       const back = backHandler(); const render = renderer();
@@ -120,25 +120,25 @@ for (const kind of ['native', 'smart', 'watch', 'activity'] as const) {
       const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
       const idle = createIdleComponentFixture(render.api, native);
-      const dependencies = { '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+      const dependencies = { '../platform/localization': nativeTranslationFixture, '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoAddresses': { canUseUtxoCustodyAddress },
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
-        '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
+        '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => kind === 'smart-signable' },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
         './PortfolioQuote': evaluate(load('src/screens/PortfolioQuote.tsx'), { react: render.api, 'react-native': native, '../ui': ui }),
-        './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
+        './NativeTokens': { NativeTokens: 'NativeTokens' }, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
         '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
         '../../../../source/shared/sptInventory': sptInventory,
         './NativeSptAssets': { NativeSptAssets: 'NativeSptAssets' },
       };
-      const source = (kind === 'native' || kind === 'smart') ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
+      const source = (kind === 'native' || kind === 'smart' || kind === 'smart-signable') ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
         : kind === 'activity' ? load('src/screens/NativeActivity.tsx') + '\nexport { NativeActivityContent };' : load('src/screens/WatchAccountPortfolio.tsx');
       const exports = evaluate(source, dependencies);
-      const leaf = ((kind === 'native' || kind === 'smart') ? exports.NativePortfolioContent : kind === 'activity' ? exports.NativeActivityContent : exports.WatchAccountPortfolio) as Component;
-      let exits = 0;
+      const leaf = ((kind === 'native' || kind === 'smart' || kind === 'smart-signable') ? exports.NativePortfolioContent : kind === 'activity' ? exports.NativeActivityContent : exports.WatchAccountPortfolio) as Component;
+      let exits = 0, sent = 0, tokenSent = 0, collectibleSent = 0;
       let shell!: { tab: RealTab; goBack(): void; select(tab: RealTab): void; finishLeave(tab: RealTab): void; navigation: ShellLeafNavigation };
       const parent = render.instance(), child = render.instance();
       const Root = () => {
@@ -151,15 +151,29 @@ for (const kind of ['native', 'smart', 'watch', 'activity'] as const) {
       const account = core.createWatchAccount('watch', 'Public account', '0x1111111111111111111111111111111111111111');
       const authority = new core.WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
       authority.unlock(); await authority.refresh();
-      const props = () => (kind === 'native' || kind === 'smart') ? {
+      const props = () => (kind === 'native' || kind === 'smart' || kind === 'smart-signable') ? {
         model: { isCurrent: () => true, getNetworkRegistration: () => ({ id: 'ethereum' }), getUtxoNetwork: () => findUtxoNetwork('ethereum') }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
         accountLabel: 'Public account', onExit() { exits++; }, onLock() {}, onViewRecovery() {}, navigation: shell.navigation,
-        ...(kind === 'smart' ? { smartAccount: { chainId: 1, isDeployed: false, managementAddress: '0x2222222222222222222222222222222222222222' }, onSend() { assert.fail('Smart account must not enter EOA send'); } } : {}),
+        ...((kind === 'smart' || kind === 'smart-signable') ? { smartAccount: { chainId: 1, isDeployed: true, localEcdsa: false, managementAddress: '0x2222222222222222222222222222222222222222' }, onSend() { if (kind !== 'smart-signable') assert.fail('Smart account must not enter EOA send'); sent++; },
+          ...(kind === 'smart-signable' ? { tokenView: {}, onSendToken() { tokenSent++; }, onSendCollectible() { collectibleSent++; } } : {}) } : {}),
       } : kind === 'activity' ? { controller: { async setView() {} },
         snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },
         accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
       } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
       owner = 'child'; let tree = render.render(child, leaf, props()); render.flush(child);
+      if (kind === 'smart-signable') {
+        press(get(tree, element => element.props.title === 'Send')); assert.equal(sent, 1);
+        const tokens = get(tree, element => element.type === 'NativeTokens');
+        assert(typeof tokens.props.onSend === 'function'); assert(typeof tokens.props.onSendCollectible === 'function');
+        tokens.props.onSend({symbol:'PUBLIC'}); tokens.props.onSendCollectible({contractAddress:'public'});
+        assert.equal(tokenSent, 1); assert.equal(collectibleSent, 1);
+        assert(!JSON.stringify(tree).includes('signing is not yet available'));
+        tree = render.render(child, leaf, {...props(),onSend:undefined,onSendToken:undefined,onSendCollectible:undefined}); render.flush(child);
+        assert.equal(find(tree, element => element.props.title === 'Send'), undefined);
+        assert.equal(get(tree, element => element.type === 'NativeTokens').props.onSend, undefined);
+        assert.equal(get(tree, element => element.type === 'NativeTokens').props.onSendCollectible, undefined);
+        tree = render.render(child, leaf, props()); render.flush(child);
+      }
       if (kind !== 'activity') {
         if (kind === 'smart') assert.equal(find(tree, (element) => element.props.title === 'Send'), undefined);
         press(get(tree, (element) => element.props.title === 'Receive'));

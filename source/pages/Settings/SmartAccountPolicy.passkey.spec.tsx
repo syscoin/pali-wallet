@@ -15,6 +15,15 @@ import {
   signalUnknownPasskeyCredential,
   signP256WebAuthnActionHash,
 } from 'utils/passkey';
+import {
+  getSLHDSAKeyId,
+  SLH_DSA_SIGNATURE_LIMIT,
+} from 'utils/slhDsa/constants';
+import {
+  buildECDSAAuthenticator,
+  buildP256WebAuthnAuthenticator,
+  buildSLHDSAAuthenticator,
+} from 'utils/smartAccount/authenticators';
 import { getPaliModuleAddress } from 'utils/smartAccount/contracts';
 
 import SmartAccountPolicy from './SmartAccountPolicy';
@@ -385,14 +394,20 @@ describe('SmartAccountPolicy passkey preservation', () => {
   });
 
   it('keeps normal ECDSA-authorized passkey rotation working without pruning the old credential', async () => {
-    metadata.auth = { module: 'ecdsa', validator: ECDSA, data: '0x' };
+    const source = buildECDSAAuthenticator({
+      chainId: CHAIN_ID,
+      config: { owners: [OWNER], threshold: 1 },
+    });
+    metadata = { ...metadata, ...source.metadata, auth: source.auth };
+    const target = buildP256WebAuthnAuthenticator({
+      chainId: CHAIN_ID,
+      config: { publicKey: PUBLIC_KEY },
+    });
     const original = emitter.getMockImplementation()!;
     emitter.mockImplementation(async (path: string[], params: any[]) => {
-      if (path[1] === 'hydrateSmartAccount')
-        return {
-          ...metadata,
-          auth: { module: 'p256-webauthn', validator: P256, data: '0x' },
-        };
+      if (path[1] === 'submitSmartAccountExecution') {
+        metadata = { ...metadata, ...target.metadata, auth: target.auth };
+      }
       return original(path, params);
     });
     await recreate();
@@ -409,4 +424,140 @@ describe('SmartAccountPolicy passkey preservation', () => {
     expect(signalUnknownPasskeyCredential).not.toHaveBeenCalled();
     expect(signalAcceptedPasskeyCredentials).not.toHaveBeenCalled();
   });
+
+  it.each(['wrong config', 'unavailable metadata'])(
+    'keeps the pending credential when the confirmed target has %s',
+    async (failure) => {
+      const source = buildECDSAAuthenticator({
+        chainId: CHAIN_ID,
+        config: { owners: [OWNER], threshold: 1 },
+      });
+      metadata = { ...metadata, ...source.metadata, auth: source.auth };
+      const target = buildP256WebAuthnAuthenticator({
+        chainId: CHAIN_ID,
+        config: { publicKey: PUBLIC_KEY },
+      });
+      const original = emitter.getMockImplementation()!;
+      let submitted = false;
+      emitter.mockImplementation(async (path: string[], params: any[]) => {
+        if (path[1] === 'submitSmartAccountExecution') {
+          submitted = true;
+          metadata = { ...metadata, ...target.metadata, auth: target.auth };
+          metadata.installedModules[0].config.publicKey = {
+            ...PUBLIC_KEY,
+            originHash: `0x${'99'.repeat(32)}`,
+          };
+        }
+        if (
+          path[1] === 'hydrateSmartAccount' &&
+          submitted &&
+          failure === 'unavailable metadata'
+        )
+          throw new Error('RPC unavailable');
+        return original(path, params);
+      });
+      await recreate();
+      expect(submitted).toBe(true);
+      expect(alert.success).not.toHaveBeenCalled();
+      expect(alert.error).toHaveBeenCalled();
+      expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe(
+        'b2xk'
+      );
+      expect(
+        getPasskeyAccountRecords(ACCOUNT).pending?.profile.credentialId
+      ).toBe('bmV3');
+    }
+  );
+
+  it('refuses a changed canonical source immediately before submission', async () => {
+    const source = buildECDSAAuthenticator({
+      chainId: CHAIN_ID,
+      config: { owners: [OWNER], threshold: 1 },
+    });
+    metadata = { ...metadata, ...source.metadata, auth: source.auth };
+    const original = emitter.getMockImplementation()!;
+    emitter.mockImplementation(async (path: string[], params: any[]) => {
+      if (path[1] === 'hydrateSmartAccount') {
+        const changed = buildECDSAAuthenticator({
+          chainId: CHAIN_ID,
+          config: { owners: [ACCOUNT], threshold: 1 },
+        });
+        return { ...metadata, ...changed.metadata, auth: changed.auth };
+      }
+      return original(path, params);
+    });
+    await recreate();
+    expect(
+      emitter.mock.calls.some(
+        ([[, method]]) => method === 'submitSmartAccountExecution'
+      )
+    ).toBe(false);
+    expect(alert.success).not.toHaveBeenCalled();
+    expect(getPasskeyAccountRecords(ACCOUNT).active?.credentialId).toBe('b2xk');
+  });
+
+  it.each([false, true])(
+    'uses the shared command for an owned prepared SLH key and checks hydrated config (mismatch %s)',
+    async (mismatch) => {
+      const source = buildECDSAAuthenticator({
+        chainId: CHAIN_ID,
+        config: { owners: [OWNER], threshold: 1 },
+      });
+      metadata = { ...metadata, ...source.metadata, auth: source.auth };
+      const publicKey = {
+        pkRoot: `0x${'44'.repeat(16)}${'00'.repeat(16)}`,
+        pkSeed: `0x${'55'.repeat(16)}${'00'.repeat(16)}`,
+      };
+      const config = {
+        ...publicKey,
+        keyId: getSLHDSAKeyId(publicKey),
+        parameterSet: 'SLH-DSA-SHA2-128-24' as const,
+        signatureLimit: SLH_DSA_SIGNATURE_LIMIT,
+      };
+      const target = buildSLHDSAAuthenticator({ chainId: CHAIN_ID, config });
+      const original = emitter.getMockImplementation()!;
+      emitter.mockImplementation(async (path: string[], params: any[]) => {
+        if (path[1] === 'getSLHDSAPreparedSmartAccountSigner')
+          return { accountId: 1, config, version: 1, updatedAt: 1 };
+        if (path[1] === 'hasSLHDSALocalSignerState') return true;
+        if (path[1] === 'clearSLHDSASmartAccountSetupStatus') return;
+        if (path[1] === 'submitSmartAccountExecution') {
+          metadata = { ...metadata, ...target.metadata, auth: target.auth };
+          if (mismatch)
+            metadata.installedModules[0].config = {
+              ...config,
+              pkRoot: `0x${'66'.repeat(32)}`,
+            };
+        }
+        return original(path, params);
+      });
+      const card = find(render(), (element) =>
+        String(element.key).includes('slh-dsa')
+      )!;
+      expect(card).toBeDefined();
+      await find(card, (element) => element.type === 'button')!.props.onClick();
+      const confirmation = find(
+        render(),
+        (element) => element.props.title === 'settings.slhDsaAuthenticator'
+      )!;
+      expect(confirmation.props.show).toBe(true);
+      await confirmation.props.onClick();
+      const methods = emitter.mock.calls.map(([[, method]]) => method);
+      expect(
+        methods.filter((method) => method === 'submitSmartAccountExecution')
+      ).toHaveLength(1);
+      expect(methods).not.toContain('startSLHDSASmartAccountValidatorSetup');
+      if (mismatch) {
+        expect(methods).not.toContain('clearSLHDSASmartAccountSetupStatus');
+        expect(alert.success).not.toHaveBeenCalled();
+        expect(alert.error).toHaveBeenCalled();
+      } else {
+        expect(methods).toContain('clearSLHDSASmartAccountSetupStatus');
+        expect(alert.error).not.toHaveBeenCalled();
+        expect(alert.success).toHaveBeenCalledWith(
+          'settings.smartAccountAuthenticatorConfigured'
+        );
+      }
+    }
+  );
 });

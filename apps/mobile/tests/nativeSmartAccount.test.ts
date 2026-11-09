@@ -299,6 +299,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     observedEcdsaOwners(addresses: string[], threshold: number) { observedOwners = addresses; observedThreshold = threshold; },
     observedComposite(threshold = 1, ecdsaFirst = false) { composite = { threshold, ecdsaFirst }; },
     observedSlh(key: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'>) { observedSlh = { pkRoot: key.pkRoot, pkSeed: key.pkSeed }; },
+    clearObservedSlh() { observedSlh = undefined; composite = undefined; },
     replaceSoftwareOwner(type: 'HDAccount' | 'Imported', id: number) { assert(replaceSoftwareOwner); replaceSoftwareOwner(type, id); },
     gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
     loseGasCredit() { gasCredit = 0n; },
@@ -423,9 +424,11 @@ for (const delayedMetadata of [false, 'stale', 'unavailable'] as const) test(`wa
     await operation.prepare();
     assert.equal(operation.getSnapshot().phase, 'authorize');
     const intent = operation.getSnapshot().intent;
-    assert.equal(intent.kind, 'wallet-authenticator');
-    if (intent.kind !== 'wallet-authenticator') throw Error('Wrong intent');
-    assert.equal(intent.command.ownerAddress.toLowerCase(), target.toLowerCase());
+    assert.equal(intent.kind, 'authenticator');
+    if (intent.kind !== 'authenticator') throw Error('Wrong intent');
+    assert.equal(intent.command.targetModule.id, 'ecdsa');
+    if (intent.command.targetModule.id !== 'ecdsa') throw Error('Wrong target');
+    assert.deepEqual(intent.command.targetModule.config.owners.map(owner => owner.toLowerCase()), [target.toLowerCase()]);
     assert.equal(intent.command.executions.length, 1);
     const rotation = paliSmartAccountInterface.decodeFunctionData('rotateValidator', intent.command.executions[0]!.data);
     assert.equal(rotation[0].toLowerCase(), getConfiguredAuthenticatorAddress(1, 'ecdsa').toLowerCase());
@@ -2264,6 +2267,7 @@ async function compositeMessageFixture(ownerThreshold = 2, childThreshold = 1, e
 }
 for (const ecdsaFirst of [false, true]) test(`composite Smart messages preserve shared child slots, inner owner threshold and ERC-7739 proof (ECDSA first ${ecdsaFirst})`, async () => {
   const { f, owners, connection } = await compositeMessageFixture(2, 1, ecdsaFirst);
+  assert.equal(f.runtime.canSignSmartAccount(), true);
   const { host, selected, approval } = connection;
   const bound: string[] = [], bind = approval.bindSigner;
   approval.bindSigner = (key, current) => { bound.push(key); bind(key, current); };
@@ -2297,6 +2301,7 @@ test('composite Smart message capability refuses missing owner keys and unavaila
   const { f, connection } = await compositeMessageFixture(1, 2);
   try {
     assert.equal(connection.host.supportsSmartAccountMessages(connection.selected.id), false);
+    assert.equal(f.runtime.canSignSmartAccount(), false);
     f.observedComposite(1); f.observedEcdsaOwners(['0x' + '66'.repeat(20)], 1);
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     const next = await f.runtime.openConnectionHost();
@@ -2395,6 +2400,18 @@ test('native SLH stays explicitly unavailable until full primitive/cache qualifi
   } finally { await f.close(); }
 });
 
+test('native SLH management and send availability remain closed without the qualified execution port', async () => {
+  const f = await fixture({}, true);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Capability-only admission', password: PASSWORD });
+    assert.equal(f.runtime.canSignSmartAccount(), true); assert.equal(f.runtime.canManageSlhDsa(), false);
+    f.guardianStatus('no-policy'); f.observedSlh({pkRoot:`0x${'44'.repeat(16)}${'00'.repeat(16)}`,pkSeed:`0x${'33'.repeat(16)}${'00'.repeat(16)}`});
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    assert.equal(f.runtime.canSignSmartAccount(), false); assert.equal(f.runtime.canManageSlhDsa(), false); assert.equal(f.runtime.canUseWalletAuthenticator(), false);
+    assert.deepEqual(f.slhDerivations, []); assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
 test('real selected Smart metadata prevents fresh SLH setup over an installed key or missing state', async () => {
   let executionCalls = 0;
   const f = await fixture({}, false, { open() { executionCalls++; throw Error('native crypto must not start'); }, async purgePublicCache(_namespace, check) { check(); } });
@@ -2459,9 +2476,11 @@ test('fresh SLH setup refuses a missing descriptor at facade admission before SD
 function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) {
   const roots = new WeakMap<NativeSlhTree, Uint8Array>(), cached = new Map<string, Uint8Array>();
   const actions: string[] = [];
+  let opened = 0;
   const capability: NativeSlhExecutionCapability = {
     open(owner) {
       owner.assertCurrent();
+      opened++;
       let retired = false;
       const tree = () => { const value = { async release() {} }; roots.set(value, new Uint8Array(16).fill(0x44)); return value; };
       const host: SlhDsaExecutionHost<NativeSlhTree, NativeSlhKey> = {
@@ -2484,7 +2503,7 @@ function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) 
     },
     async purgePublicCache(_namespace, check) { check(); cached.clear(); },
   };
-  return { capability, actions };
+  return { capability, actions, get opened() { return opened; }, forgetCache() { cached.clear(); } };
 }
 async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
   await f.change({ kind: 'create-smart', label: 'Owned SLH signer', password: PASSWORD });
@@ -2494,6 +2513,108 @@ async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
   await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
   return key;
 }
+
+test('prepared uninstalled SLH status survives cold unlock without rederivation or native execution', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Prepared signer', password: PASSWORD });
+    let facade = await f.runtime.openSlhDsaAccount(() => undefined);
+    const key = await facade.prepareFresh(() => undefined);
+    const row = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
+    assert.deepEqual(await facade.readPrepared(), [key]);
+    assert.equal(f.runtime.canManageSlhDsa(), true); assert.equal(f.runtime.canSignSmartAccount(), true);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    const opened = backend.opened;
+    facade = await f.runtime.openSlhDsaAccount(() => undefined);
+    assert.deepEqual(await facade.readPrepared(), [key]);
+    assert.equal(backend.opened, opened, 'status must not create a native context');
+    assert.deepEqual(f.slhDerivations, [0]);
+    assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), row);
+    f.mutateSelectedSmart(account => { account.smartAccount!.descriptor!.accountIndex++; });
+    await assert.rejects(Promise.resolve().then(() => facade.readPrepared()), /CANCELLED/);
+    assert.deepEqual(f.slhDerivations, [0]); assert.equal(backend.actions.length, 0);
+  } finally { await f.close(); }
+});
+
+test('previously used uninstalled SLH key explicitly rebuilds missing cache without resetting usage', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    const key = await provisionSlhSmart(f);
+    connection = await smartMessageApproval(f);
+    await connection.host.signMessage({ accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
+      request: { method: 'personal_sign', address: connection.selected.address, message: 'Retained prepared usage' } });
+    connection.approval.dispose(); connection = undefined;
+    f.clearObservedSlh();
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    await f.reopen(); await f.owner.unlock(PASSWORD); backend.forgetCache();
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined), opened = backend.opened;
+    const [saved] = await facade.readPrepared(); assert(saved);
+    assert.equal(saved.signatureCount, 1); assert.equal(backend.opened, opened);
+    const rebuilt = await facade.rebuildPrepared(key.keyId, () => undefined);
+    assert.equal(rebuilt.keyId, key.keyId); assert.equal(rebuilt.signatureCount, 1);
+    assert.deepEqual(f.slhDerivations, [0, 0]); assert.equal(backend.actions.length, 1);
+    assert.equal((await facade.readPrepared())[0]!.signatureCount, 1);
+  } finally { connection?.approval.dispose(); await f.close(); }
+});
+
+for (const delayedMetadata of [false, true]) test(`SLH installation uses exact prepared target and preserves confirmed hash (${delayedMetadata})`, async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Install prepared signer', password: PASSWORD });
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined), key = await facade.prepareFresh(() => undefined);
+    f.guardianStatus('no-policy'); f.fundedSmart();
+    operation = await f.runtime.openSlhDsaInstallation(key.keyId, new AbortController().signal, () => undefined);
+    const intent = operation.getSnapshot().intent;
+    assert.equal(intent.kind, 'authenticator');
+    if (intent.kind !== 'authenticator') throw Error('Wrong intent');
+    assert.equal(intent.command.targetModule.id, 'slh-dsa');
+    if (intent.command.targetModule.id !== 'slh-dsa') throw Error('Wrong target');
+    assert.equal(intent.command.targetModule.config.pkRoot, key.pkRoot);
+    assert.equal(intent.command.targetModule.config.pkSeed, key.pkSeed);
+    assert.equal(intent.command.targetModule.config.keyId, key.keyId);
+    f.onBroadcast(() => { if (!delayedMetadata) f.observedSlh(key); });
+    await confirmPolicyOperation(operation);
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    assert.equal(operation.getSnapshot().metadataRefresh, delayedMetadata ? 'failed' : 'complete');
+    const hash = operation.getSnapshot().transactionHash; assert(hash);
+    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1); assert.deepEqual(backend.actions, []);
+    if (delayedMetadata) {
+      f.observedSlh(key); await operation.retryMetadata();
+      assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+      assert.equal(operation.getSnapshot().transactionHash, hash);
+      await operation.authorize(operation.getSnapshot().revision);
+      assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
+    }
+    assert.equal(f.runtime.canSignSmartAccount(), true); assert.equal(f.runtime.canUseWalletAuthenticator(), true);
+    const installed = await f.runtime.openSlhDsaAccount(() => undefined);
+    assert.equal((await installed.hydrateInstalled(key.keyId)).signatureCount, 0);
+    await assert.rejects(Promise.resolve().then(() => installed.prepareFresh(() => undefined)), /NOT_READY/);
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('SLH installation refuses a missing saved key and retains uncertain submission without a second transaction', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Uncertain signer installation', password: PASSWORD });
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined), key = await facade.prepareFresh(() => undefined);
+    f.guardianStatus('no-policy'); f.fundedSmart();
+    const missing = getSLHDSAKeyId({ pkSeed: key.pkSeed, pkRoot: `0x${'55'.repeat(16)}${'00'.repeat(16)}` });
+    await assert.rejects(f.runtime.openSlhDsaInstallation(missing, new AbortController().signal, () => undefined), /NOT_READY/);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    operation = await f.runtime.openSlhDsaInstallation(key.keyId, new AbortController().signal, () => undefined);
+    f.holdReceipts(); f.onBroadcast(() => { throw Error('Reply lost after dispatch'); });
+    await confirmPolicyOperation(operation);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.match(operation.getSnapshot().error!, /Check the account and Activity/);
+    const hash = operation.getSnapshot().transactionHash; assert(hash);
+    assert.equal(operation.getSnapshot().userOperationSubmissionStarted, true);
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().transactionHash, hash); assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
+  } finally { await operation?.dispose(); await f.close(); }
+});
 
 test('healthy wallet lock waits for the captured SLH execution to drain', async () => {
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();

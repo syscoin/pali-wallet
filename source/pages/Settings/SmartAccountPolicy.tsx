@@ -22,7 +22,6 @@ import {
   IPasskeyCredentialProfile,
   ISmartAccountMetadata,
   KeyringAccountType,
-  SmartAccountValidatorModule,
 } from 'types/network';
 import { getAddress } from 'utils/ethersV6Compat';
 import { IEvmTransactionContext } from 'utils/evmTransactionContext';
@@ -42,9 +41,9 @@ import {
 } from 'utils/passkey';
 import { getSLHDSAKeyId, normalizeSLHDSAPublicKeyField } from 'utils/slhDsa';
 import {
+  buildECDSAAuthenticator,
   buildP256WebAuthnAuthenticator,
   buildSLHDSAAuthenticator,
-  buildSmartAccountValidatorSwitchPlan,
   clearStaleGuardianRecoveryOperation,
   encodeEcdsaValidatorInitData,
   encodeSmartAccountAuthenticatorSignature,
@@ -76,10 +75,10 @@ import {
   GuardianRecoveryObservation,
 } from 'utils/smartAccount/guardianStatus';
 import {
-  assertPaliWalletValidatorSwitchApplied,
-  assertPaliWalletValidatorSwitchCurrent,
-  buildPaliWalletValidatorSwitch,
-  type PaliWalletValidatorSwitch,
+  assertSmartAccountValidatorSwitchApplied,
+  assertSmartAccountValidatorSwitchCurrent,
+  buildSmartAccountValidatorSwitch,
+  type SmartAccountValidatorSwitch,
 } from 'utils/smartAccount/validatorSwitch';
 import {
   getSmartAccountActionErrorMessage,
@@ -183,7 +182,7 @@ type PolicyApprovalScope = {
 };
 type WalletAuthenticatorReconciliation = {
   approval: PolicyApprovalScope;
-  command: PaliWalletValidatorSwitch;
+  command: SmartAccountValidatorSwitch;
   hash: string;
   scope: string;
 };
@@ -1444,36 +1443,23 @@ const SmartAccountPolicy = () => {
       return;
     }
     const isCurrentUi = createUiGuard();
-    await assertApprovalSession(approval);
-    const activeValidator = metadata.installedModules?.find(
-      (module) =>
-        module.type === 'validator' &&
-        metadata.auth?.validator?.toLowerCase() === module.address.toLowerCase()
-    );
-    if (!activeValidator || activeValidator.type !== 'validator') {
-      throw new Error(t('settings.noActiveAuthenticator'));
-    }
-
-    const installedValidators =
-      (metadata.installedModules?.filter(
-        (module): module is SmartAccountValidatorModule =>
-          module.type === 'validator'
-      ) as SmartAccountValidatorModule[]) || [];
-    const plan = buildSmartAccountValidatorSwitchPlan({
+    const command = buildSmartAccountValidatorSwitch({
       accountAddress: account.address,
-      activeValidator,
-      installedValidators,
-      target: authenticator.auth,
+      chainId: activeNetwork.chainId,
+      metadata,
+      target: authenticator,
     });
+    await assertApprovalSession(approval);
 
-    if (plan.executions.length === 0) {
+    if (command.executions.length === 0) {
+      assertSmartAccountValidatorSwitchApplied(command, metadata);
       return;
     }
 
     const switchKey = [
       account.address.toLowerCase(),
-      plan.targetValidator.toLowerCase(),
-      authenticator.auth.data,
+      command.target.validator.toLowerCase(),
+      command.target.data,
     ].join(':');
     if (validatorSwitchRef.current?.key === switchKey) {
       return validatorSwitchRef.current.promise;
@@ -1485,10 +1471,16 @@ const SmartAccountPolicy = () => {
         accountId: account.id,
         authenticatorContexts: getLocalOwnerContexts(),
         controllerEmitter,
-        executions: plan.executions,
+        executions: command.executions.map((execution) => ({ ...execution })),
         expectedContext: approval.expectedContext,
         onPrepared: approval.assertCurrent,
-        onBeforeSubmit: () => assertApprovalSession(approval),
+        onBeforeSubmit: async () => {
+          // refreshMetadata retains the existing approval/session check before
+          // reading the source; this adds one hydration per validator switch.
+          const current = await refreshMetadata(approval);
+          if (!current) throw new Error('Smart account metadata unavailable');
+          assertSmartAccountValidatorSwitchCurrent(command, current);
+        },
         onAuthenticatorSigningResolved: (authenticatorId) => {
           if (authenticatorId === 'slh-dsa' && isCurrentUi()) {
             setIsSLHDSASigning(false);
@@ -1505,15 +1497,9 @@ const SmartAccountPolicy = () => {
         useCachedMetadata: true,
         waitForConfirmation: true,
       });
-      const hydrated = await refreshMetadata(approval, false).catch(() => null);
-      if (hydrated) {
-        if (
-          hydrated.auth?.validator?.toLowerCase() !==
-          plan.targetValidator.toLowerCase()
-        ) {
-          throw new Error(t('settings.smartAccountAuthenticatorUpdateFailed'));
-        }
-      }
+      const hydrated = await refreshMetadata(approval, false);
+      if (!hydrated) throw new Error('Smart account metadata unavailable');
+      assertSmartAccountValidatorSwitchApplied(command, hydrated);
     })();
     validatorSwitchRef.current = {
       key: switchKey,
@@ -1755,7 +1741,7 @@ const SmartAccountPolicy = () => {
     await assertApprovalSession(pending.approval);
     const hydrated = await refreshMetadata(pending.approval, false);
     if (!hydrated) throw new Error('Smart account metadata unavailable');
-    assertPaliWalletValidatorSwitchApplied(pending.command, hydrated);
+    assertSmartAccountValidatorSwitchApplied(pending.command, hydrated);
     if (isCurrentUi() && walletAuthenticatorPendingRef.current === pending) {
       walletAuthenticatorPendingRef.current = null;
       setWalletAuthenticatorPending(null);
@@ -1799,11 +1785,15 @@ const SmartAccountPolicy = () => {
       const approval = await capturePolicyApproval();
       const hydrated = await refreshMetadata(approval);
       if (!hydrated) throw new Error('Smart account metadata unavailable');
-      const command = buildPaliWalletValidatorSwitch({
+      const ownerAddress = getAddress(walletManagementAddress);
+      const command = buildSmartAccountValidatorSwitch({
         accountAddress: account.address,
         chainId: activeNetwork.chainId,
         metadata: hydrated,
-        ownerAddress: walletManagementAddress,
+        target: buildECDSAAuthenticator({
+          chainId: activeNetwork.chainId,
+          config: { owners: [ownerAddress], threshold: 1 },
+        }),
       });
       const boundApproval: PolicyApprovalScope = {
         expectedContext: approval.expectedContext,
@@ -1811,7 +1801,7 @@ const SmartAccountPolicy = () => {
           approval.assertCurrent();
           if (
             walletManagementAddressRef.current.toLowerCase() !==
-            command.ownerAddress.toLowerCase()
+            ownerAddress.toLowerCase()
           )
             throw new Error('PALI_TRANSACTION_CONTEXT_CHANGED');
         },
@@ -1832,7 +1822,7 @@ const SmartAccountPolicy = () => {
           onBeforeSubmit: async () => {
             const current = await refreshMetadata(boundApproval);
             if (!current) throw new Error('Smart account metadata unavailable');
-            assertPaliWalletValidatorSwitchCurrent(command, current);
+            assertSmartAccountValidatorSwitchCurrent(command, current);
           },
         }
       );
@@ -1904,10 +1894,6 @@ const SmartAccountPolicy = () => {
           'Prepared SLH-DSA key does not match the active validator'
         );
       }
-      if (isCurrentUi()) {
-        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
-      }
-      return;
     }
 
     await replaceActiveValidator(
@@ -1917,6 +1903,12 @@ const SmartAccountPolicy = () => {
       }),
       approval
     );
+    if (activeSLHDSAValidator?.type === 'validator') {
+      if (isCurrentUi()) {
+        alert.success(t('settings.smartAccountAuthenticatorConfigured'));
+      }
+      return;
+    }
     try {
       await assertApprovalSession(approval);
     } catch {

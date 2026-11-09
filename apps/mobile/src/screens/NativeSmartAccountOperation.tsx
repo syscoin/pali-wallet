@@ -18,6 +18,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNativeTranslation } from '../platform/localization';
 import { formatBaseUnits } from '../core/amounts';
 import { getNativeSendContext } from '../custody/networkContext';
 import type {
@@ -190,6 +191,7 @@ export function NativeSmartAccountOperationContent({
   before?: React.ReactNode;
   disabled?: boolean;
 }) {
+  const { t } = useNativeTranslation();
   const [details, setDetails] = useState(false);
   const network = getNativeSendContext(state.network);
   const amount = (units: string, token?: Erc20Metadata) => {
@@ -214,13 +216,13 @@ export function NativeSmartAccountOperationContent({
   const batch = state.intent.kind === 'dapp-batch' ? state.intent : null;
   const guardian =
     state.intent.kind === 'guardian-policy' ? state.intent.command : null;
-  const walletAuthenticator =
-    state.intent.kind === 'wallet-authenticator' ? state.intent.command : null;
+  const authenticator =
+    state.intent.kind === 'authenticator' ? state.intent.command : null;
   const transfer =
     state.intent.kind !== 'deploy' &&
     state.intent.kind !== 'dapp-batch' &&
     state.intent.kind !== 'guardian-policy' &&
-    state.intent.kind !== 'wallet-authenticator'
+    state.intent.kind !== 'authenticator'
       ? state.intent
       : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
@@ -232,8 +234,8 @@ export function NativeSmartAccountOperationContent({
         <Header
           title={
             state.phase === 'authorize'
-              ? walletAuthenticator
-                ? 'Review Pali wallet authenticator'
+              ? authenticator
+                ? t('settings.smartAccountCurrentApprovalMethod')
                 : guardian
                 ? guardian.kind === 'remove'
                   ? 'Review guardian removal'
@@ -247,8 +249,8 @@ export function NativeSmartAccountOperationContent({
                 : 'Authorize deployment'
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
-              : walletAuthenticator
-              ? 'Use Pali wallet'
+              : authenticator
+              ? t(authenticator.targetModule.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : 'settings.ecdsaAuthenticator')
               : guardian
               ? guardian.kind === 'remove'
                 ? 'Guardian removal'
@@ -269,19 +271,19 @@ export function NativeSmartAccountOperationContent({
           </Text>
           <Text style={s.label}>Chain ID {state.network.chainId}</Text>
         </Card>
-        {walletAuthenticator && (
+        {authenticator && (
           <Card style={s.card}>
-            <Text style={s.label}>ECDSA authenticator</Text>
-            <Text style={s.label}>New owner</Text>
-            <Text selectable style={s.address}>
-              {walletAuthenticator.ownerAddress}
-            </Text>
-            <Text style={s.label}>Owner threshold · 1</Text>
-            <Text style={s.label}>
-              {walletAuthenticator.sourceModule === 'ecdsa'
-                ? 'This rotates the smart account’s ECDSA ownership to the Pali wallet owner shown above, with a threshold of 1.'
-                : 'This changes the smart account’s authenticator to the Pali wallet ECDSA owner shown above, with a threshold of 1.'}
-            </Text>
+            <Text style={s.label}>{t(authenticator.targetModule.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : authenticator.targetModule.id === 'ecdsa' ? 'settings.ecdsaAuthenticator' : 'settings.compositeAuthenticator')}</Text>
+            <Text selectable style={s.address}>{authenticator.target.validator}</Text>
+            {authenticator.targetModule.id === 'ecdsa' && <>
+              {authenticator.targetModule.config.owners.map(owner => <Text key={owner} selectable style={s.address}>{owner}</Text>)}
+              <Text style={s.label}>{t('smartAccountHub.compositeThreshold')}</Text><Text>{authenticator.targetModule.config.threshold}</Text>
+            </>}
+            {authenticator.targetModule.id === 'slh-dsa' && <>
+              <Text selectable style={s.address}>{authenticator.targetModule.config.pkSeed}</Text>
+              <Text selectable style={s.address}>{authenticator.targetModule.config.pkRoot}</Text>
+              <Text style={s.label}>{t('settings.slhDsaModuleHint')}</Text>
+            </>}
           </Card>
         )}
         {guardian && (
@@ -401,8 +403,8 @@ export function NativeSmartAccountOperationContent({
           <>
             <Notice
               title={
-                walletAuthenticator
-                  ? 'Authorize Pali wallet ownership'
+                authenticator
+                  ? t('settings.useSmartAccountValidator')
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Authorize guardian removal'
@@ -416,8 +418,10 @@ export function NativeSmartAccountOperationContent({
                   : 'Create this account on the network'
               }
               body={
-                walletAuthenticator
-                  ? 'Authorize replacing the current authenticator settings with the owner and threshold shown above. The following review confirms the paying account and submission fee.'
+                authenticator
+                  ? authenticator.targetModule.id === 'slh-dsa'
+                    ? t('settings.slhDsaSetupConfirmDescription')
+                    : 'Authorize replacing the current authenticator settings with the owner and threshold shown above. The following review confirms the paying account and submission fee.'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Authorize removing guardian recovery from this account. The following review confirms the paying account and submission fee.'
@@ -474,7 +478,7 @@ export function NativeSmartAccountOperationContent({
             </Card>
             <Button
               title={
-                walletAuthenticator
+                authenticator
                   ? 'Authorize authenticator change'
                   : guardian
                   ? guardian.kind === 'remove'
@@ -499,7 +503,7 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Fund the account charge'
-                  : walletAuthenticator
+                  : authenticator
                   ? 'Submit the authorized authenticator change'
                   : guardian
                   ? guardian.kind === 'remove'
@@ -516,8 +520,8 @@ export function NativeSmartAccountOperationContent({
               body={
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
-                  : walletAuthenticator
-                  ? 'This transaction submits the Pali wallet owner and threshold you authorized.'
+                  : authenticator
+                  ? t('smartAccountHub.compositeOnchainHint')
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'This transaction submits the guardian removal you authorized.'
@@ -555,7 +559,7 @@ export function NativeSmartAccountOperationContent({
               title={
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
-                  : walletAuthenticator
+                  : authenticator
                   ? 'Confirm authenticator change'
                   : guardian
                   ? guardian.kind === 'remove'
@@ -582,7 +586,7 @@ export function NativeSmartAccountOperationContent({
                 ? state.error
                 : state.phase === 'waiting'
                 ? 'Waiting for the network…'
-                : walletAuthenticator
+                : authenticator
                 ? 'Preparing authenticator change…'
                 : guardian
                 ? guardian.kind === 'remove'
@@ -599,10 +603,10 @@ export function NativeSmartAccountOperationContent({
         {state.phase === 'complete' && (
           <Notice
             title={
-              walletAuthenticator
+              authenticator
                 ? state.transactionHash
                   ? 'Authenticator transaction confirmed'
-                  : 'Pali wallet already configured'
+                  : t('settings.smartAccountAuthenticatorConfigured')
                 : guardian
                 ? guardian.kind === 'remove'
                   ? 'Guardian recovery removed'
@@ -616,10 +620,10 @@ export function NativeSmartAccountOperationContent({
                 : 'Smart account deployed'
             }
             body={
-              walletAuthenticator
+              authenticator
                 ? state.transactionHash
                   ? 'The network confirmed the authenticator change.'
-                  : 'The account already uses this Pali wallet owner with a threshold of 1.'
+                  : t('settings.smartAccountCurrentApprovalMethodHint')
                 : guardian
                 ? guardian.kind === 'remove'
                   ? 'The network confirmed this guardian removal transaction.'
@@ -632,19 +636,19 @@ export function NativeSmartAccountOperationContent({
             }
           />
         )}
-        {(guardian || walletAuthenticator) &&
+        {(guardian || authenticator) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'refreshing' && (
             <Text>Refreshing account status…</Text>
           )}
-        {(guardian || walletAuthenticator) &&
+        {(guardian || authenticator) &&
           state.phase === 'complete' &&
           state.metadataRefresh === 'failed' && (
             <>
               <Notice
                 title="Account status unavailable"
                 body={
-                  walletAuthenticator
+                  authenticator
                     ? 'The authenticator transaction is confirmed. Refresh the saved account status to see the updated owner.'
                     : 'The policy transaction is confirmed. Refresh the saved account status to see the updated policy.'
                 }
@@ -660,7 +664,7 @@ export function NativeSmartAccountOperationContent({
         {state.error && state.phase !== 'preparing' && (
           <Notice
             title={
-              walletAuthenticator
+              authenticator
                 ? 'Check authenticator status'
                 : guardian
                 ? guardian.kind === 'remove'
@@ -679,7 +683,7 @@ export function NativeSmartAccountOperationContent({
         {state.transactionHash && (
           <Card style={s.card}>
             <Text style={s.label}>
-              {walletAuthenticator && state.phase === 'complete'
+              {authenticator && state.phase === 'complete'
                 ? 'Confirmed transaction'
                 : 'Latest transaction'}
             </Text>

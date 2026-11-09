@@ -12,6 +12,7 @@ import {
   getNativeSendContext,
 } from '../src/custody/networkContext.ts';
 import type { NativeSmartAccountOperationSnapshot } from '../src/smartAccount/operation.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = {
   type: unknown;
@@ -81,6 +82,7 @@ function fixture() {
   const module = { exports: {} as Record<string, unknown> };
   const imports: Record<string, unknown> = {
     react,
+    '../platform/localization': nativeTranslationFixture,
     'react-native': {
       ActivityIndicator: 'ActivityIndicator',
       View: 'View',

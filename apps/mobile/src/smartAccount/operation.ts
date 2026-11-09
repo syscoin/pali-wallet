@@ -1,6 +1,6 @@
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
-import type { PaliWalletValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
+import type { SmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import {
   createSmartAccountCallsExecutions,
   type DappCall,
@@ -27,8 +27,8 @@ import { getSmartAccountUserOpRequiredPrefund } from '../../../../source/utils/s
 export type NativeSmartAccountResolvedIntent =
   | Readonly<{ kind: 'deploy' }>
   | Readonly<{
-      kind: 'wallet-authenticator';
-      command: PaliWalletValidatorSwitch;
+      kind: 'authenticator';
+      command: SmartAccountValidatorSwitch;
     }>
   | Readonly<{ kind: 'guardian-policy'; command: GuardianPolicyCommand }>
   | Readonly<{ kind: 'dapp-batch'; calls: readonly DappCall[] }>
@@ -185,7 +185,7 @@ export class NativeSmartAccountOperation {
     this.host = host;
     if (
       (host.intent.kind === 'guardian-policy' ||
-        host.intent.kind === 'wallet-authenticator') &&
+        host.intent.kind === 'authenticator') &&
       typeof host.refreshMetadata !== 'function'
     )
       throw new Error('Smart account metadata reconciliation is required');
@@ -291,7 +291,7 @@ export class NativeSmartAccountOperation {
       this.check();
       if (result.kind === 'already-configured') {
         if (
-          this.host.intent.kind !== 'wallet-authenticator' ||
+          this.host.intent.kind !== 'authenticator' ||
           this.host.intent.command.executions.length !== 0
         )
           throw new Error('Invalid authenticator outcome');
@@ -310,11 +310,11 @@ export class NativeSmartAccountOperation {
       const intent = result.intent;
       if (
         intent.kind === 'guardian-policy' ||
-        intent.kind === 'wallet-authenticator'
+        intent.kind === 'authenticator'
       ) {
         if (
           (this.host.intent.kind !== 'guardian-policy' &&
-            this.host.intent.kind !== 'wallet-authenticator') ||
+            this.host.intent.kind !== 'authenticator') ||
           this.host.intent.kind !== intent.kind ||
           this.host.intent.command !== intent.command
         )
@@ -359,7 +359,7 @@ export class NativeSmartAccountOperation {
         if (
           requested.kind === 'dapp-batch' ||
           requested.kind === 'guardian-policy' ||
-          requested.kind === 'wallet-authenticator'
+          requested.kind === 'authenticator'
         )
           throw new Error('SMART_OPERATION_EXPIRED');
         const expected =
@@ -484,7 +484,7 @@ export class NativeSmartAccountOperation {
       });
       if (
         this.host.intent.kind === 'guardian-policy' ||
-        this.host.intent.kind === 'wallet-authenticator'
+        this.host.intent.kind === 'authenticator'
       )
         await this.retryMetadata();
     } catch (error) {
@@ -514,7 +514,7 @@ export class NativeSmartAccountOperation {
       this.lifetime.signal.aborted ||
       this.snapshot.phase !== 'complete' ||
       (this.host.intent.kind !== 'guardian-policy' &&
-        this.host.intent.kind !== 'wallet-authenticator') ||
+        this.host.intent.kind !== 'authenticator') ||
       this.snapshot.metadataRefresh === 'refreshing' ||
       this.snapshot.metadataRefresh === 'complete'
     )
