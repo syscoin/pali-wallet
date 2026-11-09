@@ -2456,7 +2456,7 @@ test('fresh SLH setup refuses a missing descriptor at facade admission before SD
 
 
 /** Public primitive double; the host, SDK profile encryption, signer and SQLite stay real. */
-function slhSmartBackend() {
+function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) {
   const roots = new WeakMap<NativeSlhTree, Uint8Array>(), cached = new Map<string, Uint8Array>();
   const actions: string[] = [];
   const capability: NativeSlhExecutionCapability = {
@@ -2480,7 +2480,7 @@ function slhSmartBackend() {
         signCached() { throw Error('No fallback expected'); },
         randomFill: bytes => { bytes.fill(7); }, yield: async () => undefined,
       };
-      return { host, isRetired: () => retired, async retire() { retired = true; }, async verify() { throw Error('Native crypto remains unqualified'); } };
+      return { host, isRetired: () => retired, async retire() { retired = true; await onRetire(); }, async verify() { throw Error('Native crypto remains unqualified'); } };
     },
     async purgePublicCache(_namespace, check) { check(); cached.clear(); },
   };
@@ -2494,6 +2494,56 @@ async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
   await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
   return key;
 }
+
+test('healthy wallet lock waits for the captured SLH execution to drain', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const backend = slhSmartBackend(async () => { entered.resolve(); await release.promise; });
+  const f = await fixture({}, true, backend.capability);
+  try {
+    await provisionSlhSmart(f);
+    let settled = false;
+    const locked = f.runtime.session.lock().finally(() => { settled = true; });
+    await entered.promise;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(settled, false, 'healthy lock must retain the native drain barrier');
+    await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
+    release.resolve(); await locked;
+    assert.equal(settled, true);
+  } finally { release.resolve(); await f.close(); }
+});
+
+test('lost storage acknowledgement quarantines before held SLH drainage and still drains before close', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), fault = Promise.withResolvers<void>();
+  const backend = slhSmartBackend(async () => { entered.resolve(); await release.promise; });
+  let armed = false;
+  const f = await fixture({ after: (kind, sql) => {
+    if (armed && kind === 'exec' && sql === 'COMMIT') {
+      armed = false; fault.resolve(); throw Error('lost catalogue acknowledgement');
+    }
+  } }, true, backend.capability);
+  try {
+    const key = await provisionSlhSmart(f);
+    const retained = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
+    armed = true;
+    const change = f.change({ kind: 'select', id: 'hd:60:0' });
+    const rejected = assert.rejects(change, /UNAVAILABLE/);
+    await entered.promise; await fault.promise;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(f.owner.getSnapshot().phase, 'unavailable', 'quarantine must not await native drainage');
+    await assert.rejects(f.owner.unlock(PASSWORD), /NOT_READY/);
+    await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CANCELLED/);
+    await rejected;
+    let closed = false;
+    const close = f.owner.dispose().finally(() => { closed = true; });
+    const closeRejected = assert.rejects(close, /CLEANUP_FAILED/);
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(closed, false, 'quarantined close must still join the native drain');
+    release.resolve(); await closeRejected;
+    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), retained);
+    assert.deepEqual(f.slhDerivations, [0]);
+  } finally { armed = false; release.resolve(); await f.close().catch(() => undefined); }
+});
 
 for (const method of ['personal_sign', 'eth_signTypedData_v4'] as const) test(`actual Smart ${method} withholds the SLH envelope until encrypted usage COMMIT`, async () => {
   const backend = slhSmartBackend();

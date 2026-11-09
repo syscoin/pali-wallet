@@ -186,6 +186,7 @@ test('native report validation requires the generated mnemonic entropy evidence'
   const end = source.indexOf('const waitReport =', start);
   assert(start >= 0 && end > start);
   const validate = runInNewContext(source.slice(start, end) + '\nvalidateReport;', {
+    fullSlhConfiguration: null, fullSlhEnabled: false,
     decodeNativeReport, assertFullNativeReport, simulatorVersion: undefined,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
@@ -232,6 +233,7 @@ test('a pre-parameter startup failure is read immediately instead of waiting for
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
+    fullSlhConfiguration: null, fullSlhEnabled: false,
     decodeNativeReport, assertFullNativeReport, simulatorVersion: undefined,
     isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',

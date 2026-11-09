@@ -635,10 +635,13 @@ export function createKeyringRuntimeFactory(
           pendingBalance?.abort();
           pendingRegistration?.abort();
           utxoSend?.cancel(); utxoSend = undefined;
-          // Retire secrets synchronously, then report quarantine asynchronously.
-          // storage.close() must still install its cleanup promise and drain work.
-          return Promise.all([retired, slhRetirement]).then(() => {
+          // Publish an existing storage fault before waiting for native drainage.
+          // closeRuntime independently joins SLH retirement, including on failure.
+          return retired.then(() => {
             if (requiresReopen()) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            return slhRetirement.then(() => {
+              if (requiresReopen()) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            });
           });
         };
         const closeRuntime = (capturePair: boolean, beforeClose?: () => Promise<void>): Promise<void> => {
