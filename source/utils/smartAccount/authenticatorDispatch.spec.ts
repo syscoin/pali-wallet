@@ -1,3 +1,5 @@
+import { Wallet } from 'ethers/wallet';
+
 import { defaultAbiCoder } from '../ethersV6Compat';
 import { signP256WebAuthnActionHash } from '../passkey/authenticator';
 
@@ -25,7 +27,11 @@ jest.mock('../passkey/authenticator', () => ({
 }));
 
 const digest = `0x${'12'.repeat(32)}`;
-const owners = [`0x${'21'.repeat(20)}`, `0x${'22'.repeat(20)}`];
+const signers = [
+  new Wallet('0x' + '21'.repeat(32)),
+  new Wallet('0x' + '22'.repeat(32)),
+];
+const owners = signers.map((signer) => signer.address);
 const validators = {
   ecdsa: `0x${'31'.repeat(20)}`,
   passkey: `0x${'32'.repeat(20)}`,
@@ -33,7 +39,9 @@ const validators = {
   slh: `0x${'34'.repeat(20)}`,
   custom: `0x${'35'.repeat(20)}`,
 };
-const signatures = [`0x${'41'.repeat(65)}`, `0x${'42'.repeat(65)}`];
+const signatures = signers.map(
+  (signer) => signer.signingKey.sign(digest).serialized
+);
 const localOwners = owners.map((address, id) => ({
   address,
   id,
@@ -328,6 +336,23 @@ it('does not skip rejected or stale composite child approvals', async () => {
     })
   ).rejects.toThrow('stale');
   expect(ecdsa).not.toHaveBeenCalled();
+});
+
+it('does not skip an invalid ECDSA proof in favor of a later composite authenticator', async () => {
+  const passkey = jest.fn(async () => ({ signature: '0xab' }));
+  await expect(
+    signSmartAccountActionHash({
+      smartAccount: composite([validators.ecdsa, validators.passkey], 1),
+      actionHash: digest,
+      assertBeforeAuthentication: async () => undefined,
+      ports: {
+        ecdsa: { localOwners, signActionHash: async () => signatures[1] },
+        p256WebAuthn: { signActionHash: passkey },
+        slhDsa: null,
+      },
+    })
+  ).rejects.toThrow('owner signature is invalid');
+  expect(passkey).not.toHaveBeenCalled();
 });
 
 it('queries actual host ports through the same owner and composite thresholds without signing', () => {

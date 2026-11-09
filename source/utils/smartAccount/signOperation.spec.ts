@@ -1,3 +1,5 @@
+import { Wallet } from 'ethers/wallet';
+
 import { encodeEcdsaValidatorInitData } from './account';
 import {
   getSmartAccountLocalEcdsaOwners,
@@ -8,7 +10,11 @@ import type {
   KeyringAccountType,
 } from '../../types/network';
 
-const addresses = ['0x' + '11'.repeat(20), '0x' + '22'.repeat(20)];
+const signers = [
+  new Wallet('0x' + '11'.repeat(32)),
+  new Wallet('0x' + '22'.repeat(32)),
+];
+const addresses = signers.map((signer) => signer.address);
 const owner = (address: string) => ({
   id: addresses.indexOf(address),
   type: 'HDAccount' as KeyringAccountType,
@@ -33,7 +39,9 @@ it('uses the same threshold and ordered local owners for capability and signing'
     assertCurrent: () => undefined,
     async signOwner(address) {
       signed.push(address);
-      return '0x1234';
+      return signers[addresses.indexOf(address)].signingKey.sign(
+        '0x' + '33'.repeat(32)
+      ).serialized;
     },
   });
   expect(signed).toEqual(selected.owners.map((value) => value.address));

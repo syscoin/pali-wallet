@@ -1,4 +1,3 @@
-import { recoverAddress } from 'ethers/transaction';
 import {
   getAddress,
   isHexString,
@@ -197,12 +196,6 @@ export async function signNativeSmartAccountActionHash(
             ownerCurrent
           );
           ownerCurrent();
-          if (
-            !isHexString(signature, 65) ||
-            getAddress(recoverAddress(request.actionHash, signature)) !==
-              owner.address
-          )
-            throw new Error('Native smart account owner signature is invalid');
           return signature;
         },
       },

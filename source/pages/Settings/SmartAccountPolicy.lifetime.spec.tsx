@@ -8,6 +8,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { Wallet } from 'ethers/wallet';
 import React from 'react';
 
 import { KeyringAccountType } from 'types/network';
@@ -91,7 +92,8 @@ jest.mock('utils/passkey', () => ({
 }));
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
-const OWNER = '0x2222222222222222222222222222222222222222';
+const mockOwnerWallet = new Wallet('0x' + '32'.repeat(32));
+const OWNER = mockOwnerWallet.address;
 const GUARDIAN = '0x3333333333333333333333333333333333333333';
 const CHAIN_ID = 57057;
 const POLICY_ROUTE = '/settings/account/smart-account-policy';
@@ -310,7 +312,8 @@ describe('SmartAccountPolicy async UI lifetime', () => {
   it.each(['unavailable', 'stale', 'receipt unavailable'])(
     'keeps a submitted wallet-owner rotation with %s metadata and retries only verification',
     async (mode) => {
-      const priorOwner = '0x4444444444444444444444444444444444444444';
+      const priorOwnerWallet = new Wallet('0x' + '44'.repeat(32));
+      const priorOwner = priorOwnerWallet.address;
       const initial = metadata();
       initial.auth.data = encodeEcdsaValidatorInitData([priorOwner], 1);
       Object.assign(initial.installedModules[0]!, {
@@ -355,7 +358,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         )
           return;
         if (path[1] === 'signSmartAccountActionDigestInternal')
-          return `0x${'88'.repeat(65)}`;
+          return priorOwnerWallet.signingKey.sign(params[0][1]).serialized;
         if (path[1] === 'submitSmartAccountExecution') {
           expect(params[0].waitForConfirmation).toBe(false);
           submitted = true;
@@ -403,7 +406,8 @@ describe('SmartAccountPolicy async UI lifetime', () => {
   it.each(['owner', 'session', 'route'])(
     'refuses wallet-owner signing after %s changes during preparation',
     async (changed) => {
-      const priorOwner = '0x4444444444444444444444444444444444444444';
+      const priorOwnerWallet = new Wallet('0x' + '44'.repeat(32));
+      const priorOwner = priorOwnerWallet.address;
       const initial = metadata();
       initial.auth.data = encodeEcdsaValidatorInitData([priorOwner], 1);
       Object.assign(initial.installedModules[0]!, {
@@ -1096,7 +1100,9 @@ describe('SmartAccountPolicy async UI lifetime', () => {
             ? Promise.resolve()
             : Promise.reject(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'));
         if (path[1] === 'signSmartAccountActionDigestInternal')
-          return Promise.resolve(`0x${'88'.repeat(65)}`);
+          return Promise.resolve(
+            mockOwnerWallet.signingKey.sign(params[0][1]).serialized
+          );
         if (path[1] === 'submitSmartAccountExecution')
           return Promise.resolve({ hash: `0x${'99'.repeat(32)}` });
         return original(path, params);

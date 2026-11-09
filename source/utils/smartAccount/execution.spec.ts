@@ -1,4 +1,5 @@
 import { createHash, webcrypto } from 'crypto';
+import { Wallet } from 'ethers/wallet';
 
 import { KeyringAccountType } from 'types/network';
 import { SLH_DSA_SIGNATURE_LENGTH } from 'utils/slhDsa/constants';
@@ -573,12 +574,14 @@ describe('signAndSubmitSmartAccountExecutions', () => {
 describe('getSmartAccountLocalOwnerContexts', () => {
   it('keeps raw action-digest signing on the internal controller path', async () => {
     const owner = {
-      address: '0x1111111111111111111111111111111111111111',
+      address: new Wallet('0x' + '11'.repeat(32)).address,
       id: 0,
       type: KeyringAccountType.HDAccount,
     };
     const actionHash = `0x${'22'.repeat(32)}`;
-    const signature = `0x${'33'.repeat(65)}`;
+    const signature = new Wallet('0x' + '11'.repeat(32)).signingKey.sign(
+      actionHash
+    ).serialized;
     const controllerEmitter = jest.fn().mockResolvedValue(signature);
     const contexts = getSmartAccountLocalOwnerContexts({
       accounts: {
@@ -607,12 +610,14 @@ describe('getSmartAccountLocalOwnerContexts', () => {
 
   it('hands the local ECDSA signer the canonical action hash', async () => {
     const owner = {
-      address: '0x1111111111111111111111111111111111111111',
+      address: new Wallet('0x' + '11'.repeat(32)).address,
       id: 0,
       type: KeyringAccountType.HDAccount,
     };
     const actionHash = `0x${'44'.repeat(32)}`;
-    const signature = `0x${'55'.repeat(65)}`;
+    const signature = new Wallet('0x' + '11'.repeat(32)).signingKey.sign(
+      actionHash
+    ).serialized;
     const signActionHash = jest.fn().mockResolvedValue(signature);
     const ecdsaSmartAccount = {
       auth: {

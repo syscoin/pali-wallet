@@ -1,6 +1,7 @@
 /** @jest-environment jsdom */
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { Wallet } from 'ethers/wallet';
 import React from 'react';
 
 import { KeyringAccountType } from 'types/network';
@@ -50,7 +51,7 @@ jest.mock('react-redux', () => ({
       vault: {
         accounts: {
           HDAccount: {
-            0: { id: 0, address: '0x1111111111111111111111111111111111111111' },
+            0: { id: 0, address: mockOwnerWallet.address },
           },
         },
         activeNetwork: { chainId: 57057 },
@@ -69,7 +70,8 @@ jest.mock('utils/smartAccount', () => ({
 const CHAIN_ID = 57057;
 const ACCOUNT_ID = 19;
 const ACCOUNT = '0x2222222222222222222222222222222222222222';
-const OWNER = '0x1111111111111111111111111111111111111111';
+const mockOwnerWallet = new Wallet('0x' + '32'.repeat(32));
+const OWNER = mockOwnerWallet.address;
 const ECDSA = getPaliModuleAddress(CHAIN_ID, 'ecdsa');
 const SLH_DSA = getPaliModuleAddress(CHAIN_ID, 'slh-dsa');
 const CONFIG = {
@@ -133,7 +135,7 @@ describe('wallet-managed SLH-DSA creation boundary', () => {
               smartAccount: BOOTSTRAP,
             };
           case 'signSmartAccountActionDigestInternal':
-            return `0x${'66'.repeat(65)}`;
+            return mockOwnerWallet.signingKey.sign(params[0][1]).serialized;
           case 'submitSmartAccountExecution':
             return { hash: `0x${'77'.repeat(32)}` };
           case 'hydrateSmartAccount': {

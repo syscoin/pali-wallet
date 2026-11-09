@@ -1,4 +1,5 @@
 import { webcrypto } from 'crypto';
+import { Wallet } from 'ethers/wallet';
 
 import type {
   ISmartAccountMetadata,
@@ -25,9 +26,10 @@ jest.mock('utils/passkey/authenticator', () => ({
 const COMPOSITE = `0x${'11'.repeat(20)}`;
 const P256 = `0x${'22'.repeat(20)}`;
 const ECDSA = `0x${'33'.repeat(20)}`;
-const OWNER = `0x${'44'.repeat(20)}`;
+const owner = new Wallet('0x' + '44'.repeat(32));
+const OWNER = owner.address;
 const ACTION_HASH = `0x${'55'.repeat(32)}`;
-const ECDSA_SIGNATURE = `0x${'66'.repeat(65)}`;
+const ECDSA_SIGNATURE = owner.signingKey.sign(ACTION_HASH).serialized;
 const P256_SIGNATURE = '0x7788';
 const SLH = `0x${'cc'.repeat(20)}`;
 const CUSTOM = `0x${'dd'.repeat(20)}`;
@@ -128,8 +130,8 @@ describe('normal local composite approvals', () => {
       ).toBe(true);
       const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
 
-      // Real production dispatcher and child drivers; only cryptographic I/O
-      // is synthetic. No signature, RPC, chain or browser capability is used.
+      // Real dispatcher with a disposable ECDSA key and synthetic passkey I/O.
+      // No wallet records, RPC, chain or browser capability is used.
       const result = await signSmartAccountActionHash({
         assertBeforeAuthentication: async () => undefined,
         accountId: 7,
