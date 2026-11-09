@@ -173,6 +173,8 @@ jobs:
       - run: npx --no-install expo prebuild --platform ios --no-install
       - run: pod install --project-directory=ios
       - name: Verify native SLH SHA256 compression conformance
+        env:
+          PALI_SLH_FULL_EQUIVALENCE: ${{ inputs.full_slh && '1' || '0' }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/pali-native-ios/slh-sha256"

@@ -40,6 +40,7 @@ type Counts = {
 type Signed = Readonly<{
   actionHash: string;
   signatureHash: string;
+  signMs: number;
   count: number;
   verified: true;
   mutatedSignatureRefused: true;
@@ -57,6 +58,11 @@ export type FullSlhEvidence = Readonly<
     deriveCalls: 0 | 1;
     prepared: boolean;
     canceledAdmissionDrained: boolean;
+    timings: Readonly<{
+      deriveSetupSecretMs: number | null;
+      prepareFreshMs: number | null;
+      hydrateInstalledMs: number;
+    }>;
     healthy: Signed;
     fallback: Signed | null;
   }
@@ -75,6 +81,11 @@ const exact = (
   keys.every((key) => Object.hasOwn(input, key));
 const hash = (input: unknown): input is string =>
   typeof input === 'string' && /^0x[0-9a-f]{64}$/.test(input);
+const milliseconds = (input: unknown): input is number =>
+  typeof input === 'number' &&
+  Number.isFinite(input) &&
+  input >= 0 &&
+  input <= FULL_SLH_PHASE_TIMEOUT_MS;
 const blank = (): Counts => ({
   loads: 0,
   setups: 0,
@@ -87,6 +98,7 @@ const blank = (): Counts => ({
 const signedKeys = [
   'actionHash',
   'signatureHash',
+  'signMs',
   'count',
   'verified',
   'mutatedSignatureRefused',
@@ -98,6 +110,7 @@ function signed(input: unknown, count: number, fallback: boolean): boolean {
     !exact(input, signedKeys) ||
     input.actionHash !== `0x${String(count).padStart(2, '0').repeat(32)}` ||
     !hash(input.signatureHash) ||
+    !milliseconds(input.signMs) ||
     input.count !== count ||
     input.verified !== true ||
     input.mutatedSignatureRefused !== true ||
@@ -142,6 +155,7 @@ export function readFullSlhEvidence(
       'deriveCalls',
       'prepared',
       'canceledAdmissionDrained',
+      'timings',
       'healthy',
       'fallback',
     ]) ||
@@ -157,6 +171,18 @@ export function readFullSlhEvidence(
     value.deriveCalls !== (phase === 'create' ? 1 : 0) ||
     value.prepared !== (phase === 'create') ||
     value.canceledAdmissionDrained !== (phase === 'create') ||
+    !exact(value.timings, [
+      'deriveSetupSecretMs',
+      'prepareFreshMs',
+      'hydrateInstalledMs',
+    ]) ||
+    !milliseconds(value.timings.hydrateInstalledMs) ||
+    (phase === 'create'
+      ? !milliseconds(value.timings.deriveSetupSecretMs) ||
+        !milliseconds(value.timings.prepareFreshMs) ||
+        value.timings.deriveSetupSecretMs > value.timings.prepareFreshMs
+      : value.timings.deriveSetupSecretMs !== null ||
+        value.timings.prepareFreshMs !== null) ||
     !signed(value.healthy, phase === 'create' ? 1 : 3, false) ||
     (phase === 'create'
       ? !signed(value.fallback, 2, true)
@@ -225,10 +251,12 @@ export async function qualifyNativeSlhFull(
     randomFill(bytes: Uint8Array): void;
     yield(): Promise<void>;
     digest(bytes: Uint8Array): Promise<Uint8Array>;
+    now(): number;
   }>
 ): Promise<FullSlhEvidence> {
   if (
     ports.productionCapability !== null ||
+    typeof ports.now !== 'function' ||
     !['create', 'restart'].includes(ports.phase) ||
     (ports.phase === 'create'
       ? ports.previous !== null
@@ -262,6 +290,21 @@ export async function qualifyNativeSlhFull(
     return bytesToHex(result);
   };
   const profileHash = await digest(new TextEncoder().encode(namespace));
+  let lastTime = 0;
+  const clock = () => {
+    const value = ports.now();
+    if (!Number.isFinite(value) || value < lastTime) fail();
+    lastTime = value;
+    return value;
+  };
+  const elapsed = (start: number) => {
+    const value = clock() - start;
+    if (!milliseconds(value)) fail();
+    return value;
+  };
+  let deriveSetupSecretMs: number | null = null,
+    prepareFreshMs: number | null = null,
+    hydrateInstalledMs = 0;
   let stage: 'setup' | 'cancel' | 'healthy' | 'fallback' | 'restart' =
     ports.phase === 'create' ? 'setup' : 'restart';
   let counts = blank(),
@@ -334,9 +377,11 @@ export async function qualifyNativeSlhFull(
       )
         fail();
       deriveCalls++;
+      const start = clock();
       const result = await ports.keyring.deriveSLHDSASetupSecretForAccount(
         request
       );
+      deriveSetupSecretMs = elapsed(start);
       owner();
       return result;
     },
@@ -361,9 +406,12 @@ export async function qualifyNativeSlhFull(
   try {
     let state: NativeSlhPublicState;
     if (ports.phase === 'create') {
+      const start = clock();
+      // Includes SDK/seed derivation, XMSS cache generation and durable setup.
       state = await runtime.prepareFresh(0, owner, () => {
         owner();
       });
+      prepareFreshMs = elapsed(start);
       owner();
       if (
         state.accountIndex !== 0 ||
@@ -400,7 +448,9 @@ export async function qualifyNativeSlhFull(
       runtime = create();
       stage = 'healthy';
       counts = blank();
+      const hydrateStart = clock();
       state = await runtime.hydrateInstalled(key, owner);
+      hydrateInstalledMs = elapsed(hydrateStart);
       owner();
       if (state.signatureCount !== 0) fail();
     } else {
@@ -416,7 +466,9 @@ export async function qualifyNativeSlhFull(
         previous.keyIdHash
       )
         fail();
+      const hydrateStart = clock();
       state = await runtime.hydrateInstalled(key, owner);
+      hydrateInstalledMs = elapsed(hydrateStart);
       owner();
       if (state.signatureCount !== 2) fail();
     }
@@ -432,11 +484,15 @@ export async function qualifyNativeSlhFull(
       expected: number
     ): Promise<Signed> => {
       const actionHash = `0x${byte.repeat(32)}`;
+      const start = clock();
       const signatureHex = await runtime.signActionHash(
         { ...key, actionHash },
         null,
         owner
       );
+      // Includes signer state/cache I/O and usage persistence; excludes the
+      // following verifier calls, mutation checks, readback and report digest.
+      const signMs = elapsed(start);
       owner();
       const signature = hexToBytes(signatureHex),
         action = hexToBytes(actionHash);
@@ -462,6 +518,7 @@ export async function qualifyNativeSlhFull(
       return Object.freeze({
         actionHash,
         signatureHash: await digest(signature),
+        signMs,
         count: expected,
         verified: true,
         mutatedSignatureRefused: true,
@@ -492,6 +549,11 @@ export async function qualifyNativeSlhFull(
         deriveCalls,
         prepared: ports.phase === 'create',
         canceledAdmissionDrained: ports.phase === 'create',
+        timings: Object.freeze({
+          deriveSetupSecretMs,
+          prepareFreshMs,
+          hydrateInstalledMs,
+        }),
         healthy,
         fallback,
       },

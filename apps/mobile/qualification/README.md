@@ -12,6 +12,28 @@ refusal. It does not qualify custody. The Android job retains the full custody
 and cold-restart checks below. Both jobs also require the native HTTP companion
 described below before any protected-storage admission.
 
+## Full native SLH qualification
+
+The explicit `full_slh` dispatch retains the Android real-OS-RNG setup,
+healthy six-FORS signature, forced cached fallback and cold-restart usage
+checks. Production native SLH capability remains disabled. Reports record
+monotonic SDK setup-secret derivation, inclusive `prepareFresh`, initial
+hydration and individual signing durations. Signing durations include state,
+cache and usage persistence, and stop before report verification and readback.
+Create reports require derivation/setup timings; restart reports require null
+for those unexecuted operations. Earlier reports lacking timings are rejected.
+
+That dispatch also opts the existing macOS compression conformance step into
+one public full-profile KAT. It generates one complete XMSS tree and compares
+the 32-byte public key and both 3,856-byte cached/sharded signatures with the
+hash-pinned canonical counter-0 vector. Its fixture, fixed zero optrand and
+public test seed stay in host tests. The oracle was independently matched
+against the pinned extension WASM and prior scalar full generation; the host
+gate records its asset/source pins and exact-byte result in
+`slh-sha256/*/full-equivalence.json`. Its host tree/sign timings do not establish
+mobile performance. The Android reports remain the device execution and
+durability evidence; iOS Simulator retains its protected-storage refusal.
+
 ## Limited native private proof scenario
 
 The native workflow accepts an explicit `private_proof` dispatch input. It uses

@@ -186,6 +186,7 @@ test('full SLH is manual, mutually exclusive, source/lock bound and never a prod
     assert.equal(fs.readFileSync(path.join(root, 'index.ts'), 'utf8'), 'PUBLIC untouched production entry');
     const workflow = fs.readFileSync(path.resolve(path.dirname(require.resolve('./configure.test.cjs')), '../../../.github/workflows/mobile-native-qualification.yml'), 'utf8');
     assert.match(workflow, /full_slh:\n\s+description:[^\n]+\n\s+type: boolean\n\s+default: false/);
+    assert.match(workflow, /PALI_SLH_FULL_EQUIVALENCE: \$\{\{ inputs\.full_slh && '1' \|\| '0' \}\}/);
     assert.equal((workflow.match(/timeout-minutes: 90/g) || []).length, 2);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

@@ -679,6 +679,7 @@ function QualificationApp() {
               randomFill: bytes => { nativeCrypto.getRandomValues(bytes); },
               yield: () => new Promise(resolve => setTimeout(resolve, 0)),
               digest: async bytes => new Uint8Array(await nativeCrypto.subtle.digest('SHA-256', new Uint8Array(bytes).buffer)),
+              now: () => performance.now(),
             }));
             assertCurrent();
           } finally { owner.abort(); appState.remove(); blur?.remove(); }

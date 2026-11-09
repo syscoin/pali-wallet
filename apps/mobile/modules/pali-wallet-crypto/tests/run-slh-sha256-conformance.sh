@@ -4,6 +4,8 @@ test_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source_dir=$(dirname -- "$test_dir")/shared/slh
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/pali-slh-sha256.XXXXXXXX")
 compiler=${CC:-clang}
+full_equivalence=${PALI_SLH_FULL_EQUIVALENCE:-0}
+case "$full_equivalence" in 0|1) ;; *) echo 'Full SLH equivalence must be explicitly 0 or 1' >&2; exit 1 ;; esac
 : "${PALI_SLH_OPENSSL_ROOT:?Use the verified QuickCrypto OpenSSL 3.6.2 artifact directory}"
 if [ "$(uname -s)" != Darwin ]; then
   echo 'This focused runner requires the pinned macOS host archive, not an Android/iOS build.' >&2
@@ -73,4 +75,94 @@ if "$compiler" -std=c11 -DPALI_SLH_OPENSSL_SHA256=1 -I"$scratch/wrong-version" \
 fi
 grep -F 'Native SLH requires the pinned OpenSSL 3.6.2 headers' "$scratch/wrong-version.log" > /dev/null
 printf 'Matched %s fixed public vectors; ASAN/UBSAN and compile refusals passed.\n' "$(wc -l < "$scratch/reference.txt" | tr -d ' ')"
-printf 'Artifacts: %s\nNo full-profile signature, device qualification or performance claim.\n' "$scratch"
+if [ "$full_equivalence" = 1 ]; then
+  # Separate public host KAT only. The Android custody/restart fixture retains
+  # real OS randomness and its existing wallet key, state and cache identities.
+  python3 - "$test_dir" "$source_dir" "$scratch" <<'PY'
+import hashlib, json, os, pathlib, sys
+tests, source, scratch = map(pathlib.Path, sys.argv[1:])
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+def pinned(file, expected):
+    data = file.read_bytes()
+    if digest(data) != expected:
+        raise SystemExit('Full SLH oracle pin changed: ' + str(file))
+    return data
+fixture = pinned(tests / 'fixtures/slh_dsa_sha2_128_24_sp800_230_ipd_counter0.json',
+    '133fe2a7f6a4218286ac501da8c2b875423510d7717606bba948ffc9219a2272')
+assets = tests.parents[4] / 'source/assets/slh-dsa'
+pins = {
+    assets / 'slhdsa-sha2-128-24.js': '1a820c2db7f7fdafcfebada35803dc6ffe77a987f877b4a148f0900cd483743d',
+    assets / 'slhdsa-sha2-128-24.wasm': 'abe90468c37702811ced74ec6e785d4faae38676f7f7c7f95ab6ddb3d04adef5',
+    source / 'source-manifest.json': '3922e7b73cc95353aace974a15598e8bb5d22af6004f525f1a21592c5ab52e16',
+    source / 'params.h': '35e262c1f61043e65a6376ac5e34635bc98a9a30413335e137b7138f8f9c3f9c',
+    source / 'slhdsa_emscripten_wrapper.c': '06f0b89b160a2ded31095f8eec870cc1ca2a130473354d96fee836d58578071c',
+}
+for file, expected in pins.items():
+    pinned(file, expected)
+vector = json.loads(fixture)
+def unhex(value):
+    return bytes.fromhex(value.removeprefix('0x'))
+inputs = vector['inputs']
+signature = unhex(vector['signature'])
+packed = b''.join([unhex(inputs['skSeed']), unhex(inputs['skPrf']),
+    unhex(inputs['pkSeed']), unhex(vector['pkRoot'])[:16],
+    unhex(vector['message']), unhex(inputs['optRand']), signature])
+if len(packed) != 3968 or digest(packed) != '0b950412cc54c46048a9905d77dfc7191c6ac14938378f5dfbc84610c17eca20':
+    raise SystemExit('Full SLH packed public input changed')
+if digest(signature) != '4120ddc01b07ed53ce966bcca6b7e2c7c95144df39c969b1d3b25ad59caa0d88':
+    raise SystemExit('Full SLH expected signature changed')
+(scratch / 'full-fixture.bin').write_bytes(packed)
+(scratch / 'full-provenance.json').write_text(json.dumps({
+    'version': 1, 'sourceRevision': os.environ.get('GITHUB_SHA'),
+    'fixtureId': vector['id'], 'fixtureSha256': digest(fixture),
+    'packedInputSha256': digest(packed), 'expectedSignatureSha256': digest(signature),
+    'oraclePins': {file.name: value for file, value in pins.items()},
+    'nativeSourcesSha256': {file.name: digest(file.read_bytes()) for file in sorted(source.iterdir())
+        if file.suffix in ('.c', '.h')},
+    'testSourceSha256': digest((tests / 'slh-full-equivalence.c').read_bytes()),
+    'opensslArchiveSha256': '5d50f86e0238df4cb626b75d968a1746eaf72782652babd6b3693e20d9650ac7',
+    'scope': 'macOS host public KAT only; one full XMSS tree, cached and six-FORS signatures; no mobile device or custody claim',
+    'timingScope': 'CLOCK_MONOTONIC; tree excludes allocation; sign APIs include internal native verification; no scalar timing comparison',
+}, indent=2) + '\n')
+PY
+  "$compiler" --version > "$scratch/full-compiler.txt"
+  # Component sanitizer checks above remain bounded. This opt-in full-profile
+  # execution uses the native backend only, with no scalar full-tree rerun.
+  "$compiler" -std=c11 -Wall -Wextra -Werror -pedantic -O2 -pthread \
+    -DPALI_SLH_OPENSSL_SHA256=1 -I"$source_dir" \
+    -I"$PALI_SLH_OPENSSL_ROOT" -I"$PALI_SLH_OPENSSL_ROOT/include" \
+    "$test_dir/slh-full-equivalence.c" "$source_dir/sha2.c" "$@" \
+    "$source_dir/pali_slh_sha256_openssl.c" "$library" -o "$scratch/full-equivalence"
+  if ! "$scratch/full-equivalence" "$scratch/full-fixture.bin" \
+      "$scratch/full-generated.bin" "$scratch/full-timings.json" \
+      > "$scratch/full-equivalence.log" 2>&1; then
+    cat "$scratch/full-equivalence.log"
+    exit 1
+  fi
+  cat "$scratch/full-equivalence.log"
+  python3 - "$scratch" <<'PY'
+import hashlib, json, math, pathlib, sys
+scratch = pathlib.Path(sys.argv[1])
+fixture = (scratch / 'full-fixture.bin').read_bytes()
+generated = (scratch / 'full-generated.bin').read_bytes()
+expected = fixture[32:64] + fixture[112:] + fixture[112:]
+if generated != expected:
+    raise SystemExit('Full native public key or signature bytes differ from the canonical oracle')
+timings = json.loads((scratch / 'full-timings.json').read_text())
+if set(timings) != {'xmssTreeMs', 'cachedSignMs', 'shardedSignMs'} or any(
+    type(value) not in (int, float) or not math.isfinite(value) or value < 0 for value in timings.values()):
+    raise SystemExit('Full SLH monotonic timing evidence invalid')
+report = json.loads((scratch / 'full-provenance.json').read_text())
+report.update(result='passed', publicKeyBytes=32, signatureBytes=3856,
+    xmssLeaves=4194304, forsTreesPerSignature=6, cachedExact=True, shardedExact=True,
+    publicKeySha256=hashlib.sha256(generated[:32]).hexdigest(),
+    generatedSha256=hashlib.sha256(generated).hexdigest(), timings=timings,
+    compiler=(scratch / 'full-compiler.txt').read_text().strip(),
+    compileFlags='-std=c11 -Wall -Wextra -Werror -pedantic -O2 -pthread -DPALI_SLH_OPENSSL_SHA256=1')
+(scratch / 'full-equivalence.json').write_text(json.dumps(report, indent=2) + '\n')
+PY
+else
+  printf 'Full-profile signature equivalence was not requested.\n'
+fi
+printf 'Artifacts: %s\nHost evidence does not qualify mobile device performance.\n' "$scratch"
