@@ -27,7 +27,10 @@ import {
   transactionApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
-import { requireMessageSignApproval } from './messageSignApproval';
+import {
+  requireMessageSignApproval,
+  runBoundEncryptionApproval,
+} from './messageSignApproval';
 import { assertWalletControllerRoute } from './walletControllerRoutes';
 import type { EvmDappSubmission } from '../../../shared/evmDappReview';
 
@@ -284,7 +287,16 @@ export const handleMasterControllerResponses = (
 
       const signer = messageSignApproval?.signer;
       const route = signer ? ['wallet', signer.method] : methods;
-      if (manualNonceRoute) {
+      if (
+        Array.isArray(methods) &&
+        methods.length === 2 &&
+        methods[0] === 'wallet' &&
+        methods[1] === 'performDappEncryptionApproval'
+      ) {
+        if (!Array.isArray(params) || params.length !== 1)
+          throw new Error('Invalid approval operation');
+        targetMethod = () => runBoundEncryptionApproval(sender, params[0]);
+      } else if (manualNonceRoute) {
         targetMethod = async (nonce: unknown) => {
           const approval = captureDappEvmSubmission(sender);
           if (!approval) throw transactionApprovalExpired();

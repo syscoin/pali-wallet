@@ -307,6 +307,14 @@ function fixture(
     assertOwner() {},
     verifyPersonalMessage() { throw new Error('Public recovery is outside this fixture'); },
     sessionGeneration: () => snapshot.revision,
+    encryptionSdk(input) {
+      input.approval.assertCurrent();
+      assert.equal(input.accountId, selectedAccountId);
+      return {
+        getEncryptedPubKey() { input.approval.assertCurrent(); signatures.push('encryption-key'); return 'public-encryption-key'; },
+        decryptMessage(params) { input.approval.assertCurrent(); signatures.push(params); return '  public plaintext\n'; },
+      };
+    },
     async signMessage(input) {
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
@@ -436,6 +444,8 @@ function fixture(
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
+          'eth_getEncryptionPublicKey',
+          'eth_decrypt',
           'personal_sign',
           'eth_signTypedData',
           'eth_signTypedData_v3',
@@ -466,6 +476,8 @@ function fixture(
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
+          'eth_getEncryptionPublicKey',
+          'eth_decrypt',
           'personal_sign',
           'eth_signTypedData',
           'eth_signTypedData_v3',
@@ -1648,6 +1660,84 @@ async function syscoinRequest(f: ReturnType<typeof fixture>, method: string, par
   f.event({ type: 'request', request: { freshness: 'fresh', id, session: f.session, method, params, chainId: dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
   await settle();
 }
+
+for (const method of ['eth_getEncryptionPublicKey', 'eth_decrypt']) test(`${method} uses the existing FIFO and a fresh common encryption approval`, async () => {
+  const f = await connectedFixture();
+  try {
+    const review = await messageRequest(f, method, method === 'eth_decrypt' ? ['0xab', ADDRESS] : [ADDRESS]);
+    assert.equal(review?.kind, 'encryption'); assert(review);
+    assert.equal(f.signatures.length, 0); assert.equal(f.responses.length, 0);
+    if (method === 'eth_decrypt') {
+      assert.equal(await f.view.previewEncryption(review.id, review.revision), '  public plaintext\n');
+      assert.equal(f.responses.length, 0);
+      assert(!JSON.stringify(f.view.getSnapshot()).includes('public plaintext'));
+    }
+    const current = f.view.getSnapshot().signingReview!;
+    await f.view.approveRequest(current.id, current.revision, false);
+    assert.deepEqual(f.responses, [{ id: 10, result: { result: method === 'eth_decrypt' ? '  public plaintext\n' : 'public-encryption-key' } }]);
+    assert.equal(f.signatures.length, method === 'eth_decrypt' ? 2 : 1);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    await assert.rejects(f.view.approveRequest(current.id, current.revision, false));
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart connections do not advertise software encryption or reach its private SDK capability', async () => {
+  const f = await connectedFixture({ smart: true, smartMessages: true, accountId: 'smart:60:0' });
+  try {
+    assert(!f.session.namespaces.eip155!.methods.includes('eth_decrypt'));
+    assert(!f.session.namespaces.eip155!.methods.includes('eth_getEncryptionPublicKey'));
+    await messageRequest(f, 'eth_decrypt', ['0xab', '0x' + '33'.repeat(20)]);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('encryption preview and consent cannot overtake an earlier message or retarget the receiver', async () => {
+  const f = await connectedFixture();
+  try {
+    const first = await messageRequest(f);
+    await messageRequest(f, 'eth_decrypt', ['0xab', ADDRESS], 11);
+    assert.equal(f.view.getSnapshot().signingReview?.id, first!.id);
+    await f.view.rejectRequest(first!.id);
+    const next = f.view.getSnapshot().signingReview!;
+    assert.equal(next.kind, 'encryption');
+    await assert.rejects(f.view.previewEncryption(next.id, first!.revision));
+    assert.equal(f.signatures.length, 0);
+    await f.view.rejectRequest(next.id);
+    await messageRequest(f, 'eth_decrypt', [ADDRESS, '0xab'], 12);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally { await f.controller.dispose(); }
+});
+
+test('encryption response uncertainty consumes the approval and blocks private-operation retries', async () => {
+  const f = await connectedFixture();
+  try {
+    const review = await messageRequest(f, 'eth_decrypt', ['0xab', ADDRESS]); assert(review);
+    f.failDispatch();
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false));
+    const current = f.view.getSnapshot().signingReview!;
+    assert.equal(current.error, 'DELIVERY_UNCERTAIN');
+    await assert.rejects(f.view.approveRequest(current.id, current.revision, false));
+    assert.equal(f.signatures.length, 1); assert.equal(f.handedOff.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const change of ['lock', 'network', 'session'] as const) test(`encryption disclosure waits for the existing response gate and refuses ${change} changes`, async () => {
+  const f = await connectedFixture(); let release!: () => void;
+  try {
+    const review = await messageRequest(f, 'eth_decrypt', ['0xab', ADDRESS]); assert(review);
+    f.setResponseWait(new Promise(resolve => { release = resolve; }));
+    const work = f.view.approveRequest(review.id, review.revision, false);
+    const rejected = assert.rejects(work);
+    await settle(); assert.equal(f.signatures.length, 1); assert.equal(f.handedOff.length, 0);
+    if (change === 'lock') f.lock();
+    else if (change === 'network') f.selectChain(5700);
+    else f.event({ type: 'session-ended', topic: TOPIC });
+    release(); await rejected; await settle();
+    assert(!f.responses.some(value => JSON.stringify(value).includes('public plaintext')));
+    assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally { release?.(); await f.controller.dispose(); }
+});
 for (const method of PSBT_DAPP_METHODS) test(`${method} is negotiated only in bip122 and signs the original structured request after explicit consent`, async () => {
   const f = await connectedFixture({ utxo: true });
   try {

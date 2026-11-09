@@ -172,8 +172,8 @@ it('settles an approved public-key request without closing a replacement page af
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'getEncryptionPublicKeyForAccount'],
-    [`0x${'11'.repeat(20)}`]
+    ['wallet', 'performDappEncryptionApproval'],
+    ['approve']
   );
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   view.unmount();
@@ -181,11 +181,8 @@ it('settles an approved public-key request without closing a replacement page af
 
   await act(async () => finish('public-synthetic-encryption-key'));
 
-  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
-    'eth_getEncryptionPublicKey.https://synthetic.invalid',
-    'public-synthetic-encryption-key'
-  );
-  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(screen.getByText('Replacement wallet page')).toBeDefined();
   expect(window.close).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
@@ -197,11 +194,8 @@ it('settles and closes a current public-key approval normally', async () => {
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
-  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
-    'eth_getEncryptionPublicKey.https://synthetic.invalid',
-    'public-synthetic-encryption-key'
-  );
-  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(window.close).toHaveBeenCalledTimes(1);
 });
 
@@ -222,10 +216,7 @@ it('keeps a failed current public-key request retryable', async () => {
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
   expect(mockEmitter).toHaveBeenCalledTimes(2);
-  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
-    'eth_getEncryptionPublicKey.https://synthetic.invalid',
-    'public-synthetic-encryption-key'
-  );
-  expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(window.close).toHaveBeenCalledTimes(1);
 });

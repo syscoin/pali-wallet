@@ -1,3 +1,4 @@
+import type { DappEncryptionSdk } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
 import type { NativePreparedConnectionTransaction } from './transactionRuntime.ts';
@@ -80,6 +81,7 @@ export type NativeConnectionSigningHost = Readonly<{
     }>,
     assertCurrent: () => void
   ): Promise<NativePreparedSmartConnectionTransaction>;
+  encryptionSdk(input: Readonly<{ accountId: string; networkId: string; approval: ReturnType<typeof createDappSigningApproval> }>): DappEncryptionSdk;
   signMessage(input: NativeConnectionMessageSigning): Promise<string>;
   prepareTransaction(
     input: NativeConnectionTransactionSigning,

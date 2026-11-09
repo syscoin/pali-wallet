@@ -1,3 +1,4 @@
+import { NativeEncryptionReviewScreen } from './NativeEncryptionReview';
 import { NativeSlhDsaManagementScreen } from './NativeSlhDsaManagement';
 import { NativeSentryHub } from './NativeSentryHub';
 import { NativeSentryReview } from './NativeSentryReview';
@@ -866,7 +867,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.controlReview && connectionView)
     return <NativeDappControlReview key={connectionSnapshot.controlReview.id} review={connectionSnapshot.controlReview} controller={connectionView} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && signingReview && connectionView)
-    return signingReview.kind === 'smart-transaction'
+    return signingReview.kind === 'encryption'
+      ? <NativeEncryptionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
+      : signingReview.kind === 'smart-transaction'
       ? <NativeSmartTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
       : signingReview.kind === 'transaction'
       ? <NativeTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} />

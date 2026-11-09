@@ -171,8 +171,8 @@ it('waits for deferred decrypted-message copy without announcing an address', as
   expect(mockAlert.info).toHaveBeenCalledWith('transactions.messageCopied');
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'ethereumTransaction', 'decryptMessage'],
-    [[CIPHERTEXT, ADDRESS]]
+    ['wallet', 'performDappEncryptionApproval'],
+    ['preview']
   );
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(window.close).not.toHaveBeenCalled();
@@ -192,7 +192,7 @@ it('handles rejected decrypted-message copy without exposing an internal error',
   expect(screen.queryByText('Private clipboard diagnostic')).toBeNull();
 });
 
-it('preserves the approved encryption-key request and dispatch payload', async () => {
+it('confirms the bound encryption-key request without a renderer response payload', async () => {
   mockQuery[0] = ADDRESS;
   mockEmitter.mockResolvedValueOnce('synthetic-public-encryption-key');
   render(<EncryptPubKey />);
@@ -200,13 +200,10 @@ it('preserves the approved encryption-key request and dispatch payload', async (
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'getEncryptionPublicKeyForAccount'],
-    [ADDRESS]
+    ['wallet', 'performDappEncryptionApproval'],
+    ['approve']
   );
-  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
-    'synthetic-encryption-request.synthetic.example.invalid',
-    'synthetic-public-encryption-key'
-  );
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(mockCopy).not.toHaveBeenCalled();
 });
 
@@ -248,19 +245,16 @@ it('exposes a keyboard-native preview action and disables it until decryption co
   ).toBeNull();
 });
 
-it('preserves the approved decrypt request and dispatch payload', async () => {
+it('confirms the bound decryption without a renderer response payload', async () => {
   render(<Decrypt />);
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'ethereumTransaction', 'decryptMessage'],
-    [[CIPHERTEXT, ADDRESS]]
+    ['wallet', 'performDappEncryptionApproval'],
+    ['approve']
   );
-  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
-    'synthetic-encryption-request.synthetic.example.invalid',
-    PLAINTEXT
-  );
+  expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(mockCopy).not.toHaveBeenCalled();
 });
 
@@ -401,8 +395,8 @@ it('renders decrypted paragraph boundaries and repeated spaces while copying the
   await waitFor(() => expect(mockCopy).toHaveBeenCalledWith(plaintext));
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'ethereumTransaction', 'decryptMessage'],
-    [[CIPHERTEXT, ADDRESS]]
+    ['wallet', 'performDappEncryptionApproval'],
+    ['preview']
   );
   expect(dispatchBackgroundEvent).not.toHaveBeenCalled();
   expect(window.close).not.toHaveBeenCalled();

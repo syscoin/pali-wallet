@@ -1,9 +1,20 @@
 import {
+  isDappEncryptionMethod,
+  readDappEncryptionRequest,
+  supportsDappEncryptionAccount,
+  type DappEncryptionMethod,
+  type DappEncryptionAccount,
+} from '../../../shared/dappEncryptionRequest';
+import {
   isDappMessageMethod,
   readDappMessageRequest,
   matchesDappMessageRequest,
   type DappMessageMethod,
 } from '../../../shared/dappMessageRequest';
+import {
+  prepareDappEncryptionApproval,
+  type DappEncryptionSdk,
+} from '../../../wallet/dappEncryptionApproval';
 import {
   createDappSigningApproval,
   dappSigningApprovalExpired,
@@ -32,7 +43,7 @@ export const watchConnectedMessageSignGrant = ({
   signal,
 }: IEnhancedRequestContext['originalRequest']) => {
   if (
-    !isDappMessageMethod(method) ||
+    (!isDappMessageMethod(method) && !isDappEncryptionMethod(method)) ||
     !sender?.documentId ||
     matchAttestedDappOrigin(sender.url, sender.origin) !== host ||
     getMessageSignGrantReplacement(signal)
@@ -72,7 +83,7 @@ export const watchConnectedMessageSignGrant = ({
   };
 };
 
-export const captureMessageSignApproval = ({
+export const captureDappAccountApproval = ({
   host,
   method,
   params,
@@ -82,7 +93,7 @@ export const captureMessageSignApproval = ({
 }: {
   getWalletSessionGeneration: () => number;
   host: string;
-  method: DappMessageMethod;
+  method: DappMessageMethod | DappEncryptionMethod;
   params: unknown;
   sender?: chrome.runtime.MessageSender;
   signal?: AbortSignal;
@@ -108,7 +119,24 @@ export const captureMessageSignApproval = ({
   )
     throw dappSigningApprovalExpired();
 
+  const record = accounts[type]?.[id];
+  const encryptionAccount: DappEncryptionAccount = Object.freeze({
+    type,
+    isSmartAccount: record?.isSmartAccount,
+    isLedgerWallet: record?.isLedgerWallet,
+    isTrezorWallet: record?.isTrezorWallet,
+  });
+  if (
+    isDappEncryptionMethod(method) &&
+    !supportsDappEncryptionAccount(encryptionAccount)
+  )
+    throw Object.assign(new Error('Unsupported method'), { code: 4200 });
   const request = readDappMessageRequest(method, params, address);
+  const encryptionRequest = isDappEncryptionMethod(method)
+    ? readDappEncryptionRequest(method, params, address)
+    : undefined;
+  if (isDappEncryptionMethod(method) && !encryptionRequest)
+    throw dappSigningApprovalExpired();
   const lifetime = createDappSigningApproval({
     signal,
     subscribe: (changed) => store.subscribe(changed),
@@ -130,6 +158,18 @@ export const captureMessageSignApproval = ({
       };
     },
   });
+  if (encryptionRequest) {
+    const network = JSON.stringify(activeNetwork);
+    lifetime.bindSigner('encryption-context', () => {
+      const current = store.getState().vault;
+      return (
+        supportsDappEncryptionAccount({
+          ...current.accounts[type]?.[id],
+          type,
+        }) && JSON.stringify(current.activeNetwork) === network
+      );
+    });
+  }
   const assertCurrent = lifetime.assertCurrent;
   const assertLiveDocument = (live: boolean) => {
     if (!live) lifetime.retire();
@@ -137,6 +177,9 @@ export const captureMessageSignApproval = ({
   };
 
   return {
+    encryptionAccount,
+    encryptionRequest,
+    bindSigner: lifetime.bindSigner,
     signal: lifetime.signal,
     isCurrent: lifetime.isCurrent,
     retire: lifetime.retire,
@@ -285,22 +328,45 @@ export const captureMessageSignApproval = ({
   };
 };
 
-type MessageSignApproval = ReturnType<typeof captureMessageSignApproval>;
+type DappAccountApproval = ReturnType<typeof captureDappAccountApproval>;
 const approvals = new Map<
   string,
-  { approval: MessageSignApproval; approverIsLive: () => Promise<boolean> }
+  {
+    approval: DappAccountApproval;
+    approverIsLive: () => Promise<boolean>;
+    encryption?: ReturnType<typeof prepareDappEncryptionApproval>;
+  }
 >();
 
 /** Only a Chrome-authenticated approval document can be bound by the popup. */
-export const bindMessageSignApproval = (
+export const bindDappAccountApproval = (
   documentId: string,
-  approval: MessageSignApproval,
-  approverIsLive: () => Promise<boolean>
+  approval: DappAccountApproval,
+  approverIsLive: () => Promise<boolean>,
+  encryptionPorts: {
+    assertCurrent(): void;
+    deliver(
+      value: string,
+      assertCurrent: () => void,
+      onDispatch: () => void
+    ): Promise<void>;
+    sdk: DappEncryptionSdk;
+  }
 ) => {
-  const binding = { approval, approverIsLive };
+  const encryption = approval.encryptionRequest
+    ? prepareDappEncryptionApproval({
+        ...encryptionPorts,
+        account: approval.encryptionAccount,
+        request: approval.encryptionRequest,
+        approval,
+        checkDocument: () => approval.checkDocument(approverIsLive, true),
+      })
+    : undefined;
+  const binding = { approval, approverIsLive, encryption };
   approvals.set(documentId, binding);
   return () => {
     if (approvals.get(documentId) === binding) approvals.delete(documentId);
+    encryption?.retire();
   };
 };
 
@@ -332,6 +398,14 @@ export const requireMessageSignApproval = (
   args: unknown
 ) => {
   if (!Array.isArray(methods) || methods[0] !== 'wallet') return undefined;
+  if (
+    (methods.length === 2 &&
+      methods[1] === 'getEncryptionPublicKeyForAccount') ||
+    (methods.length === 3 &&
+      methods[1] === 'ethereumTransaction' &&
+      methods[2] === 'decryptMessage')
+  )
+    throw dappSigningApprovalExpired();
   const rawDigest =
     (methods.length === 2 &&
       ['signSmartAccountActionDigestInternal', 'signSLHDSAActionHash'].includes(
@@ -371,3 +445,20 @@ export const requireMessageSignApproval = (
 };
 
 export { dappSigningApprovalExpired } from '../../../wallet/dappSigningApproval';
+
+/** The bound document chooses preview or consent, never a payload or receiver. */
+export const runBoundEncryptionApproval = (
+  sender: chrome.runtime.MessageSender,
+  action: unknown
+) => {
+  const binding = sender.documentId && approvals.get(sender.documentId);
+  if (
+    !binding ||
+    !binding.encryption ||
+    (action !== 'preview' && action !== 'approve')
+  )
+    throw dappSigningApprovalExpired();
+  return action === 'preview'
+    ? binding.encryption.preview()
+    : binding.encryption.approve().then(() => true);
+};

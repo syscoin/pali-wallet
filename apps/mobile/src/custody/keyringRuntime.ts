@@ -1,3 +1,4 @@
+import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
 import { buildECDSAAuthenticator, buildSLHDSAAuthenticator } from '../../../../source/utils/smartAccount/authenticators.ts';
@@ -4393,6 +4394,16 @@ export function createKeyringRuntimeFactory(
                   NATIVE_EVM_FEE_FUNDING,
                   { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding)
                 );
+              },
+              encryptionSdk(input) {
+                const { selected, account, check, binding } = captureTransaction({ ...input, transaction: {} }, input.approval.assertCurrent);
+                if (!supportsDappEncryptionAccount({ ...account, type: selected.type })) throw new KeyringRuntimeError('INVALID_INPUT');
+                const ring = binding.current(), transaction = ring.ethereumTransaction;
+                input.approval.bindSigner('native-encryption-sdk', () => binding.matches() && binding.current().ethereumTransaction === transaction);
+                return {
+                  getEncryptedPubKey() { check(); try { return transaction.getEncryptedPubKey(); } finally { check(); } },
+                  decryptMessage(params) { check(); try { return transaction.decryptMessage(params); } finally { check(); } },
+                };
               },
               signMessage(input) {
                 assertOwner();

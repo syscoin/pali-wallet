@@ -4,6 +4,11 @@ import {
   normalizeDappModeRequest,
   requiresDappModeSwitch,
 } from '../../../../shared/dappChainScope.ts';
+import {
+  isDappEncryptionMethod,
+  readDappEncryptionRequest,
+  supportsDappEncryptionAccount,
+} from '../../../../shared/dappEncryptionRequest';
 import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
 import { DAPP_REQUEST_LIMITS } from '../../../../utils/requestPayloadBudget';
 import {
@@ -844,22 +849,16 @@ const extractEvmAddressFromParams = (
   method: string,
   params: any[]
 ): string | undefined => {
-  if (method === 'eth_getEncryptionPublicKey' || method === 'eth_decrypt') {
-    const decrypt = method === 'eth_decrypt';
-    const address = params?.[decrypt ? 1 : 0];
-    if (
-      !Array.isArray(params) ||
-      params.length !== (decrypt ? 2 : 1) ||
-      typeof address !== 'string' ||
-      !/^0x[\da-f]{40}$/i.test(address) ||
-      (decrypt &&
-        (typeof params[0] !== 'string' ||
-          !/^0x(?:[\da-f]{2})+$/i.test(params[0])))
-    )
+  if (isDappEncryptionMethod(method)) {
+    const address = params?.[method === 'eth_decrypt' ? 1 : 0];
+    const request =
+      typeof address === 'string' &&
+      readDappEncryptionRequest(method, params, address);
+    if (!request)
       throw cleanErrorStack(
         ethErrors.rpc.invalidParams('Invalid encryption request')
       );
-    return address;
+    return request.address;
   }
 
   // Handle eth_sendTransaction
@@ -1031,6 +1030,17 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
         )
       );
     }
+
+    if (
+      isDappEncryptionMethod(originalRequest.method) &&
+      !supportsDappEncryptionAccount({
+        ...accountInfo.account,
+        type: accountInfo.accountType,
+      })
+    )
+      throw cleanErrorStack(
+        ethErrors.provider.unsupportedMethod('Unsupported method')
+      );
 
     // The popup approves this identity. The same slot can be reused before
     // its response reaches the durable permission update.

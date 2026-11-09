@@ -9,7 +9,6 @@ import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
-import { dispatchBackgroundEvent } from 'utils/browser';
 
 import { EncryptionReview } from './EncryptionReview';
 
@@ -44,9 +43,9 @@ const Decrypt: React.FC<ISign> = () => {
     activeAccountMeta.type,
     activeAccountMeta.id,
     activeAccount?.address,
+    activeAccount?.xpub,
     isBitcoinBased,
-    activeNetwork?.chainId,
-    activeNetwork?.url,
+    activeNetwork,
     host,
     data.eventName,
     data[0],
@@ -104,7 +103,7 @@ const Decrypt: React.FC<ISign> = () => {
 
   const { address } = activeAccount;
 
-  const getDecryptParams = () => {
+  const assertReceiver = () => {
     if (
       typeof data[1] !== 'string' ||
       data[1].toLowerCase() !== address.toLowerCase()
@@ -112,7 +111,6 @@ const Decrypt: React.FC<ISign> = () => {
       throw Object.assign(new Error('Requested account is not active'), {
         code: 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE',
       });
-    return [data[0], data[1]];
   };
 
   const handleDecrypt = async () => {
@@ -142,9 +140,10 @@ const Decrypt: React.FC<ISign> = () => {
 
     setIsDecrypting(true);
     try {
+      assertReceiver();
       const decrypted = await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'decryptMessage'],
-        [getDecryptParams()]
+        ['wallet', 'performDappEncryptionApproval'],
+        ['preview']
       );
       if (isCurrent())
         setPreview({ message: decrypted as string, scope: previewScope });
@@ -164,7 +163,6 @@ const Decrypt: React.FC<ISign> = () => {
     if (!mounted.current || currentPreviewScope.current !== previewScope)
       return;
     setLoading(true);
-    const type = data.eventName;
 
     // Safety check: decryption is only for EVM networks
     if (isBitcoinBased) {
@@ -178,19 +176,20 @@ const Decrypt: React.FC<ISign> = () => {
     }
 
     try {
-      const response = await controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'decryptMessage'],
-        [getDecryptParams()]
+      assertReceiver();
+      await controllerEmitter(
+        ['wallet', 'performDappEncryptionApproval'],
+        ['approve']
       );
-
-      dispatchBackgroundEvent(`${type}.${host}`, response);
-      if (!mounted.current) return;
+      if (!mounted.current || currentPreviewScope.current !== previewScope)
+        return;
       setConfirmed(true);
 
       setLoading(false);
       window.close();
     } catch (error: any) {
-      if (!mounted.current) return;
+      if (!mounted.current || currentPreviewScope.current !== previewScope)
+        return;
       setErrorMsg(
         error.code === 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE'
           ? t('transactions.requestedAccountNotActive')

@@ -24,7 +24,7 @@ import {
   readImportedRecoverySecret,
 } from '../../../wallet/importedAccountRecovery';
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
-import { bindMessageSignApproval } from '../handlers/messageSignApproval';
+import { bindDappAccountApproval } from '../handlers/messageSignApproval';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, {
   persistAccountLabel,
@@ -579,9 +579,12 @@ const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
   // This fixture exercises the wallet setup gate after an admitted signature.
   // The actual dapp/popup enrollment is covered in the connection suite.
   const unbind = ['signPersonalMessage', 'signTypedData'].includes(method)
-    ? bindMessageSignApproval(
+    ? bindDappAccountApproval(
         documentId,
         {
+          encryptionAccount: { type: 'HDAccount' },
+          encryptionRequest: undefined,
+          bindSigner: () => undefined,
           signal: new AbortController().signal,
           isCurrent: () => true,
           assertCurrent: () => undefined,
@@ -591,7 +594,23 @@ const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
           retire: () => undefined,
           dispose: () => undefined,
         },
-        async () => true
+        async () => true,
+        {
+          sdk: {
+            getEncryptedPubKey() {
+              throw new Error('Unexpected encryption');
+            },
+            decryptMessage() {
+              throw new Error('Unexpected encryption');
+            },
+          },
+          assertCurrent() {
+            throw new Error('Unexpected encryption');
+          },
+          async deliver() {
+            throw new Error('Unexpected encryption');
+          },
+        }
       )
     : undefined;
   expect(

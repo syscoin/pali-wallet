@@ -11,7 +11,7 @@ export function signingFixtureHost(host: NativeConnectionSigningHost): NativeCon
     sentry: { prepare: unusedAsync, revalidate() {} }, psbt: { prepare: unusedAsync, cancelHandoff: unusedAsync } };
 }
 export const unsupportedDappViews: Pick<NativeConnectionsView,
-  'approveControl' | 'rejectControl' | 'approveSentry' | 'rejectSentry' | 'returnToDapp' | 'approvePsbt' | 'rejectPsbt' | 'backgroundPsbt' | 'cancelPsbtHandoff' | 'resumePsbt'> = {
-  approveControl: unusedAsync, rejectControl: unusedAsync, approveSentry: unusedAsync, rejectSentry: unusedAsync, returnToDapp: unusedAsync,
+  'previewEncryption' | 'approveControl' | 'rejectControl' | 'approveSentry' | 'rejectSentry' | 'returnToDapp' | 'approvePsbt' | 'rejectPsbt' | 'backgroundPsbt' | 'cancelPsbtHandoff' | 'resumePsbt'> = {
+  previewEncryption: unusedAsync, approveControl: unusedAsync, rejectControl: unusedAsync, approveSentry: unusedAsync, rejectSentry: unusedAsync, returnToDapp: unusedAsync,
   approvePsbt: unusedAsync, rejectPsbt: unusedAsync, backgroundPsbt: unused, cancelPsbtHandoff: unusedAsync, resumePsbt: unusedAsync,
 };

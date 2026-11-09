@@ -5,7 +5,6 @@ import { useSelector } from 'react-redux';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
-import { dispatchBackgroundEvent } from 'utils/browser';
 
 import { EncryptionReview } from './EncryptionReview';
 
@@ -33,10 +32,8 @@ const EncryptPubKey: React.FC<ISign> = () => {
   const copyScope = JSON.stringify([
     activeAccountMeta,
     address,
-    activeNetwork.kind,
-    activeNetwork.chainId,
-    activeNetwork.url,
-    activeNetwork.apiUrl,
+    activeAccount.xpub,
+    activeNetwork,
     host,
     data.eventName,
     data[0],
@@ -72,7 +69,6 @@ const EncryptPubKey: React.FC<ISign> = () => {
     if (!copyContext.current.active || copyScopeRef.current !== copyScope)
       return;
     setLoading(true);
-    const type = data.eventName;
     try {
       if (
         typeof data[0] !== 'string' ||
@@ -81,18 +77,19 @@ const EncryptPubKey: React.FC<ISign> = () => {
         throw Object.assign(new Error('Requested account is not active'), {
           code: 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE',
         });
-      const response = await controllerEmitter(
-        ['wallet', 'getEncryptionPublicKeyForAccount'],
-        [data[0]]
+      await controllerEmitter(
+        ['wallet', 'performDappEncryptionApproval'],
+        ['approve']
       );
-      dispatchBackgroundEvent(`${type}.${host}`, response);
-      if (!copyContext.current.active) return;
+      if (!copyContext.current.active || copyScopeRef.current !== copyScope)
+        return;
       setConfirmed(true);
 
       setLoading(false);
       window.close();
     } catch (error: any) {
-      if (!copyContext.current.active) return;
+      if (!copyContext.current.active || copyScopeRef.current !== copyScope)
+        return;
       setErrorMsg(
         error.code === 'PALI_REQUESTED_ACCOUNT_NOT_ACTIVE'
           ? t('transactions.requestedAccountNotActive')

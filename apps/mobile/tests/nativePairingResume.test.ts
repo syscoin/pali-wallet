@@ -344,6 +344,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },
     './NativeConnections': { NativeConnections: 'NativeConnections' },
+    './NativeEncryptionReview': { NativeEncryptionReviewScreen: 'NativeEncryptionReviewScreen' },
     './NativeMessageReview': {
       NativeMessageReviewScreen: 'NativeMessageReviewScreen',
     },
@@ -547,6 +548,7 @@ for (const expired of [false, true])
 
 for (const [kind, screen] of [
   ['message', 'NativeMessageReviewScreen'],
+  ['encryption', 'NativeEncryptionReviewScreen'],
   ['transaction', 'NativeTransactionReviewScreen'],
 ] as const)
   test(`an incoming pairing never replaces an already active ${kind} approval`, async () => {

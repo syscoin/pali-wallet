@@ -26,7 +26,7 @@ import { NATIVE_CONNECTION_STORAGE_KEY } from '../src/connections/storage.ts';
 import type { DappGrant } from '../../../source/shared/dappTypes.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
-import { recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
+import { encrypt, recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
 const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -738,6 +738,35 @@ function approveRuntimeMessage(
   });
   return { accountId, networkId: host.context().networkId, request, approval };
 }
+
+test('connection encryption captures the actual software SDK and preserves plaintext without an owner fallback', async () => {
+  const f = await readyAccounts();
+  try {
+    for (const imported of [false, true]) {
+      if (imported) await importTestKey(f);
+      const host = await f.runtime.openConnectionHost();
+      const address = f.authority.getSnapshot().account!.address;
+      const input = approveRuntimeMessage(f, host, { method: 'personal_sign', message: 'Public approval fixture', address });
+      const primitive = host.encryptionSdk(input);
+      const publicKey = primitive.getEncryptedPubKey();
+      assert.equal(Buffer.from(publicKey, 'base64').length, 32);
+      for (const plaintext of ['', ' \t\n ', 'Public Unicode: ☃ 👋']) {
+        const ciphertext = '0x' + Buffer.from(JSON.stringify(encrypt({ publicKey, data: plaintext, version: 'x25519-xsalsa20-poly1305' }))).toString('hex');
+        if (plaintext === '') assert.throws(() => primitive.decryptMessage([ciphertext, address]), /Decryption failed/);
+        else assert.equal(primitive.decryptMessage([ciphertext, address]), plaintext);
+        assert.throws(() => primitive.decryptMessage([ciphertext, '0x' + '22'.repeat(20)]), /wrong receiver/);
+      }
+      input.approval.dispose();
+      assert.throws(() => primitive.getEncryptedPubKey());
+    }
+    const host = await f.runtime.openConnectionHost();
+    const input = approveRuntimeMessage(f, host, { method: 'personal_sign', message: 'Public approval fixture', address: f.authority.getSnapshot().account!.address });
+    const primitive = host.encryptionSdk(input);
+    f.authority.lock();
+    assert.throws(() => primitive.getEncryptedPubKey());
+    input.approval.dispose();
+  } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
 
 test('connection message signing uses the published SDK for personal and typed V1/V3/V4 without changing selection', async () => {
   const f = await readyAccounts();

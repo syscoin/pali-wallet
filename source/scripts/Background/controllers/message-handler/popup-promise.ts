@@ -1,5 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
+import { isDappEncryptionMethod } from '../../../../shared/dappEncryptionRequest';
 import { isDappMessageMethod } from '../../../../shared/dappMessageRequest';
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import {
@@ -10,8 +11,8 @@ import {
   type TransactionApprovalDocument,
 } from '../../handlers/approvalSubmission';
 import {
-  bindMessageSignApproval,
-  captureMessageSignApproval,
+  bindDappAccountApproval,
+  captureDappAccountApproval,
   dappSigningApprovalExpired,
 } from '../../handlers/messageSignApproval';
 import { getController } from 'scripts/Background';
@@ -26,6 +27,7 @@ import {
   requestCancelledError,
 } from './request-lifetime';
 import { MethodRoute } from './types';
+import type { DappEncryptionSdk } from '../../../../wallet/dappEncryptionApproval';
 
 const readApprovalUrl = (url: string, approvalId: string): URL | undefined => {
   try {
@@ -119,10 +121,13 @@ interface IPopupRequest {
 
 /** Opens an approval popup for the original request document. */
 export const popupPromise = async (request: IPopupRequest) => {
-  if (!isDappMessageMethod(request.eventName))
+  if (
+    !isDappMessageMethod(request.eventName) &&
+    !isDappEncryptionMethod(request.eventName)
+  )
     return openApprovalPopup(request);
   const { wallet } = getController();
-  const approval = captureMessageSignApproval({
+  const approval = captureDappAccountApproval({
     host: request.host,
     method: request.eventName,
     params: Array.isArray(request.data) ? request.data : undefined,
@@ -132,9 +137,20 @@ export const popupPromise = async (request: IPopupRequest) => {
   });
   try {
     approval.assertCurrent();
+    const encryptionSdk = approval.encryptionRequest
+      ? wallet.ethereumTransaction
+      : undefined;
+    if (encryptionSdk)
+      approval.bindSigner(
+        'encryption-sdk',
+        () =>
+          getController().wallet === wallet &&
+          wallet.ethereumTransaction === encryptionSdk
+      );
     return await openApprovalPopup(
       { ...request, signal: approval.signal },
-      approval
+      approval,
+      encryptionSdk
     );
   } finally {
     approval.dispose();
@@ -143,7 +159,8 @@ export const popupPromise = async (request: IPopupRequest) => {
 
 const openApprovalPopup = async (
   { data, eventName, host, route, signal, sender }: IPopupRequest,
-  messageSignApproval?: ReturnType<typeof captureMessageSignApproval>
+  messageSignApproval?: ReturnType<typeof captureDappAccountApproval>,
+  encryptionSdk?: DappEncryptionSdk
 ) => {
   assertRequestActive(signal);
   if (!(await isRequestDocumentLive(sender))) throw requestCancelledError();
@@ -207,6 +224,16 @@ const openApprovalPopup = async (
     evmContext || utxoReview || smartMethods
   );
 
+  const wallet = getController().wallet;
+  if (messageSignApproval?.encryptionRequest && !encryptionSdk)
+    throw dappSigningApprovalExpired();
+  let deliverEncryption:
+    | ((
+        value: string,
+        assertCurrent: () => void,
+        onDispatch: () => void
+      ) => Promise<void>)
+    | undefined;
   let popup = null;
   let approvalClientId: string | null = null;
   let approvalDocumentId: string | null = null;
@@ -303,10 +330,25 @@ const openApprovalPopup = async (
         ) {
           const unbind =
             messageSignApproval &&
-            bindMessageSignApproval(
+            bindDappAccountApproval(
               approvalDocumentId,
               messageSignApproval,
-              approverIsLive
+              approverIsLive,
+              {
+                sdk: encryptionSdk!,
+                assertCurrent: () => {
+                  messageSignApproval.assertCurrent();
+                  if (
+                    encryptionSdk &&
+                    wallet.ethereumTransaction !== encryptionSdk
+                  )
+                    throw dappSigningApprovalExpired();
+                },
+                deliver: (value, assertCurrent, onDispatch) => {
+                  if (!deliverEncryption) throw dappSigningApprovalExpired();
+                  return deliverEncryption(value, assertCurrent, onDispatch);
+                },
+              }
             );
           const retire = () => {
             if (tracksTransactionDocument) {
@@ -508,6 +550,14 @@ const openApprovalPopup = async (
       );
       resolve(result);
     };
+    deliverEncryption = async (value, assertCurrent, onDispatch) => {
+      if (resolved || processingResponse) throw dappSigningApprovalExpired();
+      assertCurrent();
+      onDispatch();
+      processingResponse = true;
+      safeResolve(value);
+      if (!resolved) throw dappSigningApprovalExpired();
+    };
     const cancellationError = () =>
       submissionStarted
         ? cleanErrorStack(
@@ -521,7 +571,12 @@ const openApprovalPopup = async (
 
     // Message handler
     responseHandler = (swEvent: any) => {
-      if (resolved || processingResponse) return;
+      if (
+        messageSignApproval?.encryptionRequest ||
+        resolved ||
+        processingResponse
+      )
+        return;
       handleResponseEvent(
         swEvent,
         eventName,
