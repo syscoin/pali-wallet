@@ -372,6 +372,7 @@ final class PaliProofHost: SharedObject {
       document?.invoke(sentry ? "startSentry" : "start", arguments: ["id": id, "input": input])
     } else if sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted {
       sdkStarted = true
+      emit(event: "progress", payload: json)
     } else if !sentry && type == "progress" && keys == ["version", "id", "type", "progress"] && submitted {
       emit(event: "progress", payload: json)
     } else if submitted && domain && ((type == "success" && keys == basic.union(["result"])) ||

@@ -81,6 +81,7 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let poll: ReturnType<typeof setInterval> | undefined;
   let revoked = false;
+  let sdkStarted = false;
   let revocationError = privacyProofAbortError(undefined);
   let result: Result;
   let rejectRevoked: (error: Error) => void = () => undefined;
@@ -119,6 +120,11 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
       try {
         check();
         const message = input!.read(json, id);
+        if (message.type === 'sdk-start') {
+          if (sdkStarted) throw new Error('privacy_proof_failed');
+          sdkStarted = true;
+          return;
+        }
         if (message.type !== 'progress')
           throw new Error('privacy_proof_failed');
         if (!message.progress) throw new Error('privacy_proof_failed');
@@ -134,7 +140,7 @@ async function runOwnedJob<Context extends NativeResourceContext, Result>(
         revoke(privacyProofAbortError(error));
       }
     }, 250);
-    timer = setTimeout(() => revoke(nativeExecutionError('privacy_proof_cancelled', { nativeExecutionCode: 'job-timeout' })), 120000);
+    timer = setTimeout(() => revoke(nativeExecutionError('privacy_proof_cancelled', { nativeExecutionCode: sdkStarted ? 'sdk-job-timeout' : 'job-timeout' })), 120000);
     check();
     const pending = plan.run(context, id, input.json).catch(error => {
       // Retain the existing fixed pending outcome without inspecting native

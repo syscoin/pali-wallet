@@ -290,7 +290,10 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
           input = null
           checkNotNull(nativePort).postMessage(WebMessage(request.toString()))
         }
-        sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted -> sdkStarted = true
+        sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted -> {
+          sdkStarted = true
+          emit("progress", json)
+        }
         !sentry && type == "progress" && keys == basic + "progress" && submitted -> emit("progress", json)
         submitted && domain && ((type == "success" && keys == basic + "result") || (type == "error" && keys == basic)) -> {
           workerRetired = true; deadline?.let { main.removeCallbacks(it) }

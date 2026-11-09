@@ -85,6 +85,8 @@ test('native SDK timeout evidence requires one exact observed entry and leaves b
   assert(receive.indexOf('document?.ownsForegroundWindow == true') < entry);
   const branch = receive.slice(entry, receive.indexOf('} else if', entry));
   assert.doesNotMatch(branch, /resolve|deadline|cancel|invoke/);
+  assert.match(branch, /emit\(event: "progress", payload: json\)/);
+  assert.match(android, /!sdkStarted -> \{\s*sdkStarted = true\s*emit\("progress", json\)/);
   assert.match(android, /if \(submitted\) \{ if \(sdkStarted\) ProofFailure\.SDK_JOB_TIMEOUT else ProofFailure\.JOB_TIMEOUT \} else ProofFailure\.READINESS_TIMEOUT/);
   assert.match(android, /main\.postDelayed\(it, 120000\)/);
   assert.match(android, /main\.postDelayed\(it, 3000\)/);
