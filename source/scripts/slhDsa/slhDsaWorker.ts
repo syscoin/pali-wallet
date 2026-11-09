@@ -1,25 +1,15 @@
 import {
-  SLH_DSA_FORS_ROOTS_LENGTH,
-  SLH_DSA_FORS_SIGNATURE_LENGTH,
-  SLH_DSA_FORS_TREE_COUNT,
-  SLH_DSA_FORS_TREE_OUTPUT_LENGTH,
-  SLH_DSA_FORS_TREE_SIGNATURE_LENGTH,
-  SLH_DSA_PARAMETER_SET,
-  SLH_DSA_PUBLIC_KEY_FIELD_LENGTH,
-  SLH_DSA_SECRET_KEY_LENGTH,
-  SLH_DSA_SIGNING_PRELUDE_LENGTH,
+  createSlhDsaExecution,
+  type SlhDsaExecutionHost,
+} from '../../wallet/slhDsaExecution';
+import {
   SLH_DSA_SIGNATURE_LENGTH,
+  SLH_DSA_SIGNING_PRELUDE_LENGTH,
   SLH_DSA_WASM_ASSET_PATH,
   SLH_DSA_WASM_GLUE_ASSET_PATH,
   SLH_DSA_XMSS_TREE_CACHE_LENGTH,
 } from 'utils/slhDsa/constants';
-import { deriveSLHDSASeedMaterial } from 'utils/slhDsa/derivation';
-import {
-  bytesToHex,
-  concatBytes,
-  hexToBytes,
-  normalizeSLHDSAPublicKeyField,
-} from 'utils/slhDsa/hex';
+import { concatBytes, hexToBytes } from 'utils/slhDsa/hex';
 import type {
   SLHDSAWorkerRequest,
   SLHDSAWorkerResponse,
@@ -109,21 +99,6 @@ let signerPromise: Promise<WasmSignerExports> | null = null;
 const XMSS_TREE_DB_NAME = 'pali-slh-dsa-xmss-tree-cache';
 const XMSS_TREE_DB_VERSION = 1;
 const XMSS_TREE_STORE_NAME = 'trees';
-const SLH_DSA_XMSS_FULL_HEIGHT = 22;
-const SLH_DSA_XMSS_ROOT_OFFSET =
-  ((1 << (SLH_DSA_XMSS_FULL_HEIGHT + 1)) - 2) * 16;
-const SLH_DSA_XMSS_TOTAL_NODES = (1 << (SLH_DSA_XMSS_FULL_HEIGHT + 1)) - 1;
-const SLH_DSA_XMSS_LEAF_CHUNK_SIZE = 512;
-const SLH_DSA_XMSS_PARALLEL_LEAF_CHUNK_SIZE = 8_192;
-const SLH_DSA_XMSS_MAX_SETUP_WORKERS = 6;
-const SLH_DSA_XMSS_INTERNAL_CHUNK_SIZE = 16_384;
-
-let activeXmssTreePointer: {
-  bytes: number;
-  keyId: string;
-  ptr: number;
-} | null = null;
-
 const getExtensionAssetUrl = (path: string) =>
   new URL(path, `${self.location.origin}/`).toString();
 
@@ -308,18 +283,6 @@ const postForsShardRequest = ({
     );
   });
 
-const getSetupWorkerCount = () => {
-  const hardwareConcurrency =
-    typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 1 : 1;
-  return Math.max(
-    1,
-    Math.min(
-      SLH_DSA_XMSS_MAX_SETUP_WORKERS,
-      Math.max(1, hardwareConcurrency - 1)
-    )
-  );
-};
-
 const postXmssLeafRequest = ({
   count,
   seed48,
@@ -365,463 +328,207 @@ const postXmssLeafRequest = ({
     );
   });
 
-const signWithCachedXmss = ({
-  message,
-  optrand,
-  secretKey,
-  signer,
-  xmssTreePtr,
-}: {
-  message: Uint8Array;
-  optrand: Uint8Array;
-  secretKey: Uint8Array;
-  signer: WasmSignerExports;
-  xmssTreePtr: number;
-}) => {
-  const { output, result } = callWithBytes(
-    signer,
-    [secretKey, message, optrand],
-    SLH_DSA_SIGNATURE_LENGTH,
-    ([secretKeyPtr, messagePtr, optrandPtr], outPtr) =>
-      signer._slh_dsa_sign_action_hash_with_sk_and_xmss_tree(
-        secretKeyPtr,
-        messagePtr,
-        message.length,
-        optrandPtr,
-        xmssTreePtr,
-        outPtr
-      )
-  );
-  if (result !== SLH_DSA_SIGNATURE_LENGTH) {
-    throw new Error(`SLH-DSA signing failed with code ${result}`);
-  }
-  return output;
-};
-
-const signWithParallelFors = async ({
-  message,
-  optrand,
-  secretKey,
-  signer,
-  xmssTreePtr,
-}: {
-  message: Uint8Array;
-  optrand: Uint8Array;
-  secretKey: Uint8Array;
-  signer: WasmSignerExports;
-  xmssTreePtr: number;
-}) => {
-  const { output: prelude, result: preludeResult } = callWithBytes(
-    signer,
-    [secretKey, message, optrand],
-    SLH_DSA_SIGNING_PRELUDE_LENGTH,
-    ([secretKeyPtr, messagePtr, optrandPtr], outPtr) =>
-      signer._slh_dsa_sign_prelude(
-        secretKeyPtr,
-        messagePtr,
-        message.length,
-        optrandPtr,
-        outPtr
-      )
-  );
-  if (preludeResult !== SLH_DSA_SIGNING_PRELUDE_LENGTH) {
-    throw new Error(
-      `SLH-DSA signing prelude failed with code ${preludeResult}`
-    );
-  }
-
-  const forsContext = concatBytes(
-    secretKey.slice(0, 16),
-    secretKey.slice(32, 48)
-  );
-  const forsSignature = new Uint8Array(SLH_DSA_FORS_SIGNATURE_LENGTH);
-  const forsRoots = new Uint8Array(SLH_DSA_FORS_ROOTS_LENGTH);
-  try {
-    const shards = await Promise.all(
-      Array.from({ length: SLH_DSA_FORS_TREE_COUNT }, (_, treeIndex) =>
-        postForsShardRequest({ forsContext, prelude, treeIndex })
-      )
-    );
-    shards.sort((a, b) => a.treeIndex - b.treeIndex);
-
-    shards.forEach((shard) => {
-      const bytes = hexToBytes(shard.shardHex);
-      if (bytes.length !== SLH_DSA_FORS_TREE_OUTPUT_LENGTH) {
-        throw new Error('SLH-DSA FORS shard returned invalid length');
-      }
-      forsSignature.set(
-        bytes.slice(0, SLH_DSA_FORS_TREE_SIGNATURE_LENGTH),
-        shard.treeIndex * SLH_DSA_FORS_TREE_SIGNATURE_LENGTH
-      );
-      forsRoots.set(
-        bytes.slice(SLH_DSA_FORS_TREE_SIGNATURE_LENGTH),
-        shard.treeIndex * 16
-      );
-      bytes.fill(0);
-    });
-
-    const { output, result } = callWithBytes(
-      signer,
-      [secretKey, prelude, forsSignature, forsRoots],
-      SLH_DSA_SIGNATURE_LENGTH,
-      ([secretKeyPtr, preludePtr, forsSignaturePtr, forsRootsPtr], outPtr) =>
-        signer._slh_dsa_finish_signature_with_fors_and_xmss_tree(
-          secretKeyPtr,
-          preludePtr,
-          forsSignaturePtr,
-          forsRootsPtr,
-          xmssTreePtr,
-          outPtr
-        )
-    );
-    if (result !== SLH_DSA_SIGNATURE_LENGTH) {
-      throw new Error(`SLH-DSA signature assembly failed with code ${result}`);
-    }
-
-    return output;
-  } finally {
-    prelude.fill(0);
-    forsContext.fill(0);
-    forsSignature.fill(0);
-    forsRoots.fill(0);
-  }
-};
-
-const postProgress = (
-  id: string,
-  result: Extract<SLHDSAWorkerResponse, { type: 'progress' }>['result']
+type TreeHandle = { bytes: number; ptr: number };
+const checkedOutput = (
+  value: { output: Uint8Array; result: number },
+  length: number,
+  label: string
 ) => {
-  self.postMessage({
-    id,
-    result,
-    type: 'progress',
-  } satisfies SLHDSAWorkerResponse);
+  if (value.result !== length) {
+    value.output.fill(0);
+    throw new Error(`SLH-DSA ${label} failed with code ${value.result}`);
+  }
+  return value.output;
 };
 
-const buildPreparedKeypair = async (
-  signer: WasmSignerExports,
-  requestId: string,
-  setupSecretHex: string
-) => {
-  const { seed48Hex } = await deriveSLHDSASeedMaterial(setupSecretHex);
-  const seed48 = hexToBytes(seed48Hex);
-  const seedPtr = signer._malloc(seed48.length);
-  const treePtr = signer._malloc(SLH_DSA_XMSS_TREE_CACHE_LENGTH);
-  let completed = 0;
-  try {
-    signer.HEAPU8.set(seed48, seedPtr);
-
-    const leafCount = 1 << SLH_DSA_XMSS_FULL_HEIGHT;
-    const workerCount = getSetupWorkerCount();
-    if (workerCount > 1) {
-      const workers = Array.from(
-        { length: workerCount },
-        () => new Worker(new URL('./slhDsaXmssWorker.ts', import.meta.url))
-      );
-      let nextStart = 0;
-
-      const runWorker = async (worker: Worker) => {
-        while (nextStart < leafCount) {
-          const start = nextStart;
-          const count = Math.min(
-            SLH_DSA_XMSS_PARALLEL_LEAF_CHUNK_SIZE,
-            leafCount - start
-          );
-          nextStart += count;
-
-          const result = await postXmssLeafRequest({
-            count,
-            seed48,
-            start,
-            worker,
-          });
-          if (result.count !== count || result.start !== start) {
-            throw new Error(
-              'SLH-DSA XMSS worker returned an unexpected leaf range'
-            );
-          }
-          const leaves = new Uint8Array(result.leaves);
-          if (leaves.length !== count * SLH_DSA_PUBLIC_KEY_FIELD_LENGTH) {
-            throw new Error('SLH-DSA XMSS worker returned invalid leaf data');
-          }
-          signer.HEAPU8.set(
-            leaves,
-            treePtr + start * SLH_DSA_PUBLIC_KEY_FIELD_LENGTH
-          );
-          completed += count;
-          postProgress(requestId, {
-            completed,
-            level: 0,
-            phase: 'xmss-cache',
-            total: SLH_DSA_XMSS_TOTAL_NODES,
-          });
-        }
-      };
-
-      try {
-        await Promise.all(workers.map((worker) => runWorker(worker)));
-      } finally {
-        workers.forEach((worker) => worker.terminate());
-      }
-    } else {
-      for (
-        let start = 0;
-        start < leafCount;
-        start += SLH_DSA_XMSS_LEAF_CHUNK_SIZE
-      ) {
-        const count = Math.min(SLH_DSA_XMSS_LEAF_CHUNK_SIZE, leafCount - start);
-        const result = signer._slh_dsa_build_xmss_tree_chunk(
-          seedPtr,
-          treePtr,
-          0,
-          start,
-          count
-        );
-        if (result !== count) {
-          throw new Error(
-            `SLH-DSA XMSS cache build failed with code ${result}`
-          );
-        }
-        completed += count;
-        if (start % (SLH_DSA_XMSS_LEAF_CHUNK_SIZE * 8) === 0) {
-          postProgress(requestId, {
-            completed,
-            level: 0,
-            phase: 'xmss-cache',
-            total: SLH_DSA_XMSS_TOTAL_NODES,
-          });
-          await new Promise((resolve) => setTimeout(resolve, 0));
-        }
-      }
-    }
-
-    for (let level = 1; level <= SLH_DSA_XMSS_FULL_HEIGHT; level++) {
-      const levelNodes = 1 << (SLH_DSA_XMSS_FULL_HEIGHT - level);
-
-      for (
-        let start = 0;
-        start < levelNodes;
-        start += SLH_DSA_XMSS_INTERNAL_CHUNK_SIZE
-      ) {
-        const count = Math.min(
-          SLH_DSA_XMSS_INTERNAL_CHUNK_SIZE,
-          levelNodes - start
-        );
-        const result = signer._slh_dsa_build_xmss_tree_chunk(
-          seedPtr,
-          treePtr,
-          level,
-          start,
-          count
-        );
-        if (result !== count) {
-          throw new Error(
-            `SLH-DSA XMSS cache build failed with code ${result}`
-          );
-        }
-        completed += count;
-
-        postProgress(requestId, {
-          completed,
-          level,
-          phase: 'xmss-cache',
-          total: SLH_DSA_XMSS_TOTAL_NODES,
-        });
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    }
-
-    const pkRootBytes = signer.HEAPU8.slice(
-      treePtr + SLH_DSA_XMSS_ROOT_OFFSET,
-      treePtr + SLH_DSA_XMSS_ROOT_OFFSET + 16
-    );
-    const pkSeedBytes = seed48.slice(32, 48);
-    const pkRoot = normalizeSLHDSAPublicKeyField(bytesToHex(pkRootBytes));
-    const pkSeed = normalizeSLHDSAPublicKeyField(bytesToHex(pkSeedBytes));
-    const secretKey = concatBytes(
-      seed48.slice(0, 16),
-      seed48.slice(16, 32),
-      pkSeedBytes,
-      pkRootBytes
-    );
-    const keyId = `${SLH_DSA_PARAMETER_SET}:${pkSeed}:${pkRoot}`;
-
-    const tree = signer.HEAPU8.slice(
-      treePtr,
-      treePtr + SLH_DSA_XMSS_TREE_CACHE_LENGTH
-    );
-    await setStoredXmssTree(keyId, tree);
-
-    if (activeXmssTreePointer) {
-      signer._free(activeXmssTreePointer.ptr);
-    }
-    activeXmssTreePointer = {
+const createExecution = (signer: WasmSignerExports) => {
+  const host: SlhDsaExecutionHost<TreeHandle, Uint8Array> = {
+    hardwareConcurrency:
+      typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 1 : 1,
+    forsConcurrency: 6,
+    allocateTree: () => ({
+      ptr: signer._malloc(SLH_DSA_XMSS_TREE_CACHE_LENGTH),
       bytes: SLH_DSA_XMSS_TREE_CACHE_LENGTH,
-      keyId,
-      ptr: treePtr,
-    };
-
-    postProgress(requestId, {
-      completed: SLH_DSA_XMSS_TOTAL_NODES,
-      level: SLH_DSA_XMSS_FULL_HEIGHT,
-      phase: 'xmss-cache',
-      total: SLH_DSA_XMSS_TOTAL_NODES,
-    });
-
-    const secretKeyHex = bytesToHex(secretKey);
-    secretKey.fill(0);
-
-    return {
-      pkRoot,
-      pkSeed,
-      secretKeyHex,
-    };
-  } catch (error) {
-    signer._free(treePtr);
-    throw error;
-  } finally {
-    signer.HEAPU8.fill(0, seedPtr, seedPtr + seed48.length);
-    signer._free(seedPtr);
-    seed48.fill(0);
-  }
-};
-
-const publicFieldsFromSecretKey = (secretKey: Uint8Array) => {
-  if (secretKey.length !== SLH_DSA_SECRET_KEY_LENGTH) {
-    throw new Error('SLH-DSA provisioned secret key has invalid length');
-  }
-
-  return {
-    pkRoot: normalizeSLHDSAPublicKeyField(bytesToHex(secretKey.slice(48, 64))),
-    pkSeed: normalizeSLHDSAPublicKeyField(bytesToHex(secretKey.slice(32, 48))),
-  };
-};
-
-const ensureXmssTreePointer = async (
-  signer: WasmSignerExports,
-  keyId: string
-) => {
-  if (activeXmssTreePointer?.keyId === keyId) {
-    return activeXmssTreePointer;
-  }
-
-  if (activeXmssTreePointer) {
-    signer._free(activeXmssTreePointer.ptr);
-    activeXmssTreePointer = null;
-  }
-
-  const storedTree = await getStoredXmssTree(keyId);
-  if (storedTree?.length === SLH_DSA_XMSS_TREE_CACHE_LENGTH) {
-    const ptr = signer._malloc(SLH_DSA_XMSS_TREE_CACHE_LENGTH);
-    signer.HEAPU8.set(storedTree, ptr);
-    activeXmssTreePointer = {
-      bytes: SLH_DSA_XMSS_TREE_CACHE_LENGTH,
-      keyId,
-      ptr,
-    };
-    return activeXmssTreePointer;
-  }
-
-  throw new Error(
-    'SLH-DSA XMSS cache is missing. Re-run PQ validator setup so signing stays on the fast cached path.'
-  );
-};
-
-const clearActiveXmssTreePointer = async (signer: WasmSignerExports) => {
-  if (!activeXmssTreePointer) {
-    return;
-  }
-
-  signer.HEAPU8.fill(
-    0,
-    activeXmssTreePointer.ptr,
-    activeXmssTreePointer.ptr + activeXmssTreePointer.bytes
-  );
-  signer._free(activeXmssTreePointer.ptr);
-  activeXmssTreePointer = null;
-};
-
-const signActionHash = async (
-  signer: WasmSignerExports,
-  payload: Extract<SLHDSAWorkerRequest, { type: 'sign_action_hash' }>['payload']
-) => {
-  const message = concatBytes(
-    new Uint8Array([0, 0]),
-    hexToBytes(payload.actionHash)
-  );
-  const optrand = crypto.getRandomValues(new Uint8Array(16));
-
-  if (payload.secretKeyHex) {
-    const secretKey = hexToBytes(payload.secretKeyHex);
-    try {
-      const publicFields = publicFieldsFromSecretKey(secretKey);
-      if (
-        publicFields.pkSeed.toLowerCase() !==
-          normalizeSLHDSAPublicKeyField(payload.pkSeed).toLowerCase() ||
-        publicFields.pkRoot.toLowerCase() !==
-          normalizeSLHDSAPublicKeyField(payload.pkRoot).toLowerCase()
-      ) {
-        throw new Error(
-          'SLH-DSA provisioned secret key does not match validator metadata'
-        );
-      }
-
-      const xmssTree = await ensureXmssTreePointer(signer, payload.keyId);
-      let signature: Uint8Array;
-      try {
-        signature = await signWithParallelFors({
-          message,
-          optrand,
-          secretKey,
-          signer,
-          xmssTreePtr: xmssTree.ptr,
-        });
-      } catch (error) {
-        signature = signWithCachedXmss({
-          message,
-          optrand,
-          secretKey,
-          signer,
-          xmssTreePtr: xmssTree.ptr,
-        });
-      }
-
+    }),
+    releaseTree(tree, erase) {
+      if (erase) signer.HEAPU8.fill(0, tree.ptr, tree.ptr + tree.bytes);
+      signer._free(tree.ptr);
+    },
+    readTree: (tree, offset, length) =>
+      signer.HEAPU8.slice(tree.ptr + offset, tree.ptr + offset + length),
+    writeTree: (tree, offset, bytes) => {
+      signer.HEAPU8.set(bytes, tree.ptr + offset);
+    },
+    async loadTree(keyId) {
+      const bytes = await getStoredXmssTree(keyId);
+      // Reject a corrupt stored size before allocating/importing a WASM tree.
+      if (bytes?.length !== SLH_DSA_XMSS_TREE_CACHE_LENGTH) return null;
+      const tree = { ptr: signer._malloc(bytes.length), bytes: bytes.length };
+      signer.HEAPU8.set(bytes, tree.ptr);
+      return { tree, bytes: tree.bytes, keyId };
+    },
+    saveTree: (keyId, tree) =>
+      setStoredXmssTree(
+        keyId,
+        signer.HEAPU8.slice(tree.ptr, tree.ptr + tree.bytes)
+      ),
+    openSetup(seed48) {
+      const ptr = signer._malloc(seed48.length);
+      signer.HEAPU8.set(seed48, ptr);
       return {
-        ...publicFields,
-        signature: bytesToHex(signature),
+        buildChunk: (tree, level, start, count) =>
+          signer._slh_dsa_build_xmss_tree_chunk(
+            ptr,
+            tree.ptr,
+            level,
+            start,
+            count
+          ),
+        dispose() {
+          signer.HEAPU8.fill(0, ptr, ptr + seed48.length);
+          signer._free(ptr);
+        },
       };
-    } finally {
-      secretKey.fill(0);
-    }
-  }
-
-  throw new Error('SLH-DSA signing requires provisioned local key material');
+    },
+    createLeafLanes: (count) =>
+      Array.from({ length: count }, () => {
+        const worker = new Worker(
+          new URL('./slhDsaXmssWorker.ts', import.meta.url)
+        );
+        return {
+          async buildLeaves(seed48, start, leafCount) {
+            const result = await postXmssLeafRequest({
+              seed48,
+              start,
+              count: leafCount,
+              worker,
+            });
+            return { ...result, leaves: new Uint8Array(result.leaves) };
+          },
+          dispose: () => worker.terminate(),
+        };
+      }),
+    importKey: (bytes) => bytes.slice(),
+    releaseKey: (key) => {
+      key.fill(0);
+    },
+    signPrelude: (key, message, optrand) =>
+      checkedOutput(
+        callWithBytes(
+          signer,
+          [key, message, optrand],
+          SLH_DSA_SIGNING_PRELUDE_LENGTH,
+          ([secretKeyPtr, messagePtr, optrandPtr], outPtr) =>
+            signer._slh_dsa_sign_prelude(
+              secretKeyPtr,
+              messagePtr,
+              message.length,
+              optrandPtr,
+              outPtr
+            )
+        ),
+        SLH_DSA_SIGNING_PRELUDE_LENGTH,
+        'signing prelude'
+      ),
+    async signForsTree(key, prelude, treeIndex) {
+      const forsContext = concatBytes(
+        key.subarray(0, 16),
+        key.subarray(32, 48)
+      );
+      try {
+        const result = await postForsShardRequest({
+          forsContext,
+          prelude,
+          treeIndex,
+        });
+        return {
+          treeIndex: result.treeIndex,
+          shard: hexToBytes(result.shardHex),
+        };
+      } finally {
+        forsContext.fill(0);
+      }
+    },
+    finishSignature: (key, _message, prelude, signature, roots, tree) =>
+      checkedOutput(
+        callWithBytes(
+          signer,
+          [key, prelude, signature, roots],
+          SLH_DSA_SIGNATURE_LENGTH,
+          ([secretKeyPtr, preludePtr, forsSigPtr, forsRootsPtr], outPtr) =>
+            signer._slh_dsa_finish_signature_with_fors_and_xmss_tree(
+              secretKeyPtr,
+              preludePtr,
+              forsSigPtr,
+              forsRootsPtr,
+              tree.ptr,
+              outPtr
+            )
+        ),
+        SLH_DSA_SIGNATURE_LENGTH,
+        'signature assembly'
+      ),
+    signCached: (key, message, optrand, tree) =>
+      checkedOutput(
+        callWithBytes(
+          signer,
+          [key, message, optrand],
+          SLH_DSA_SIGNATURE_LENGTH,
+          ([secretKeyPtr, messagePtr, optrandPtr], outPtr) =>
+            signer._slh_dsa_sign_action_hash_with_sk_and_xmss_tree(
+              secretKeyPtr,
+              messagePtr,
+              message.length,
+              optrandPtr,
+              tree.ptr,
+              outPtr
+            )
+        ),
+        SLH_DSA_SIGNATURE_LENGTH,
+        'signing'
+      ),
+    randomFill: (bytes) => {
+      crypto.getRandomValues(bytes);
+    },
+    yield: () => new Promise((resolve) => setTimeout(resolve, 0)),
+  };
+  return createSlhDsaExecution(host);
 };
 
+let executionPromise: Promise<ReturnType<typeof createExecution>> | null = null;
+let requestGeneration = 0;
 const handleRequest = async (
-  request: SLHDSAWorkerRequest
+  request: SLHDSAWorkerRequest,
+  assertCurrent: () => void
 ): Promise<SLHDSAWorkerResponse> => {
   try {
-    const signer = await loadSigner();
+    if (!executionPromise)
+      executionPromise = loadSigner().then(createExecution);
+    const execution = await executionPromise;
+    assertCurrent();
     if (request.type === 'prepare_keypair') {
-      const result = await buildPreparedKeypair(
-        signer,
-        request.id,
-        request.payload.setupSecretHex
+      const result = await execution.prepareKeypair(
+        request.payload.setupSecretHex,
+        assertCurrent,
+        (progress) => {
+          self.postMessage({
+            id: request.id,
+            result: progress,
+            type: 'progress',
+          } satisfies SLHDSAWorkerResponse);
+        }
       );
       return { id: request.id, result, type: 'success' };
     }
     if (request.type === 'clear_xmss_cache') {
-      await clearActiveXmssTreePointer(signer);
+      await execution.clearXmssCache(assertCurrent);
       return { id: request.id, result: {}, type: 'success' };
     }
-
-    const result = await signActionHash(signer, request.payload);
-    return {
-      id: request.id,
-      result,
-      type: 'success',
-    };
+    const result = await execution.signActionHash(
+      request.payload,
+      assertCurrent
+    );
+    return { id: request.id, result, type: 'success' };
   } catch (error: any) {
     return {
       error: error?.message || String(error),
@@ -832,6 +539,11 @@ const handleRequest = async (
 };
 
 self.onmessage = async (event: MessageEvent<SLHDSAWorkerRequest>) => {
-  const response = await handleRequest(event.data);
+  const generation = ++requestGeneration;
+  const assertCurrent = () => {
+    if (generation !== requestGeneration)
+      throw new Error('SLH-DSA worker request cancelled');
+  };
+  const response = await handleRequest(event.data, assertCurrent);
   self.postMessage(response);
 };
