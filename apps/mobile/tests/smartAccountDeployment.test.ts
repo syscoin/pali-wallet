@@ -90,7 +90,7 @@ function fixture() {
         assert.equal(signal.aborted, false);
         guard();
         submitted++;
-        onBroadcast(hash);
+        onBroadcast(hash, 'submit-operation');
         return hash;
       },
     },
@@ -128,6 +128,7 @@ test('deployment requires separate exact UserOperation and payer approvals', asy
     const sending = f.model.authorize(f.model.getSnapshot().revision);
     await flush();
     assert.equal(f.model.getSnapshot().phase, 'review-fee');
+    assert.equal(f.model.getSnapshot().userOperationSubmissionStarted, false);
     assert.equal(f.counts().signed, 1);
     assert.equal(f.counts().submitted, 0);
     f.model.confirmPayer(-1);
@@ -136,6 +137,7 @@ test('deployment requires separate exact UserOperation and payer approvals', asy
     await sending;
     assert.equal(f.model.getSnapshot().phase, 'complete');
     assert.equal(f.model.getSnapshot().transactionHash, hash);
+    assert.equal(f.model.getSnapshot().userOperationSubmissionStarted, true);
     assert.deepEqual(f.counts(), {
       signed: 1,
       submitted: 1,
@@ -197,7 +199,7 @@ for (const event of ['cancel', 'expiry'] as const)
     if (event === 'expiry')
       context.mock.timers.enable({ apis: ['setTimeout'] });
     let clock = 0;
-    let broadcast: ((value: string) => void) | undefined;
+    let broadcast: ((value: string, purpose: 'submit-operation') => void) | undefined;
     let finish: (() => void) | undefined;
     const model = new NativeSmartAccountOperation(
       {
@@ -240,7 +242,7 @@ for (const event of ['cancel', 'expiry'] as const)
         model.cancel();
       }
       assert.equal(model.getSnapshot().phase, 'failed');
-      broadcast(hash);
+      broadcast(hash, 'submit-operation');
       assert.equal(model.getSnapshot().phase, 'failed');
       assert.equal(model.getSnapshot().transactionHash, hash);
       finish!();

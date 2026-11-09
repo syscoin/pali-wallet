@@ -87,6 +87,7 @@ const initial: NativeSmartTransactionReview = {
     },
     payerReview: null,
     transactionHash: null,
+    userOperationSubmissionStarted: false,
     error: null,
   },
 };

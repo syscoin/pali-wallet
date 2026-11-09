@@ -56,6 +56,7 @@ let snapshot: NativeSmartAccountOperationSnapshot = {
   },
   payerReview: null,
   transactionHash: null,
+  userOperationSubmissionStarted: false,
   error: null,
 };
 

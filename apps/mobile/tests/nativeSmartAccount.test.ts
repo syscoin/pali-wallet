@@ -550,6 +550,8 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     await f.change({ kind: 'create-smart', label: 'Deploy fixture', password: PASSWORD });
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
+    const submissionAtWire: boolean[] = [];
+    f.onBroadcast(() => submissionAtWire.push(deployment!.getSnapshot().userOperationSubmissionStarted));
     await deployment.prepare();
     assert.equal(deployment.getSnapshot().phase, 'authorize');
     assert.equal(f.submitted.length, 0);
@@ -562,6 +564,7 @@ test('real smart deployment uses the owned payer, separate consent and durable S
     await pending;
     assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
     assert.equal(f.submitted.length, 2);
+    assert.deepEqual(submissionAtWire, [false, true], 'funding must not retire the UserOperation review');
     const funding = Transaction.from(f.submitted[0]!);
     const execution = Transaction.from(f.submitted[1]!);
     assert.equal(funding.from, owner);
@@ -676,6 +679,7 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     await operation.prepare();
     const ready = operation.getSnapshot();
     assert.equal(ready.phase, 'authorize', JSON.stringify(ready));
+    assert.equal(ready.userOperationSubmissionStarted, false);
     assert.deepEqual(ready.intent, { kind: 'native-transfer', recipient, amountUnits: '9' });
     assert.equal(f.submitted.length, 0);
     assert.equal(ready.authorization!.initCode === '0x', alreadyDeployed);
@@ -687,10 +691,13 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
     assert.equal(review.transaction.from, payer);
     assert.equal(review.purpose, 'submit-operation');
     assert.equal(f.submitted.length, 0);
+    let submissionAtWire = false;
+    f.onBroadcast(() => { submissionAtWire = operation!.getSnapshot().userOperationSubmissionStarted; });
     operation.confirmPayer(review.id);
     await pending;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, 1);
+    assert.equal(submissionAtWire, true, 'the actual handleOps POST must publish its admission');
     const outer = Transaction.from(f.submitted[0]!);
     assert.equal(outer.from, payer);
     assert.equal(outer.value, 0n);

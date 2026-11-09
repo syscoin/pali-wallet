@@ -226,6 +226,7 @@ export function NativeGuardianPolicyFixture() {
                   },
                   payerReview: null,
                   transactionHash: null,
+                  userOperationSubmissionStarted: false,
                   error: null,
                 };
                 // The real host performs this check too. Returning a late public fixture

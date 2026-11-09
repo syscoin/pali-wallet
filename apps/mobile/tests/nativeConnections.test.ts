@@ -270,7 +270,7 @@ function fixture(
         async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
         async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
           await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
-          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash); return hash;
+          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
         },
       });
       return { operation, approval: null, batchApprovals: intent.calls.map(call => summarizeApproval(call.data, call.to!, approvalMetadata)) };
@@ -335,7 +335,7 @@ function fixture(
           async sign(_prepared, guard) { await signWait; guard(); signatures.push(intent); return '0x1234'; },
           async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
             await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
-            guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash); return hash;
+            guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
           },
         });
         const dispose = operation.dispose.bind(operation);

@@ -487,7 +487,12 @@ export function createNativeSmartOperation(
         guard();
         let acknowledged: Promise<void> = Promise.resolve();
         const hash = await quote.submit(guard, (hash) => {
-          onBroadcast(hash);
+          onBroadcast(
+            hash,
+            transactionMetadata?.smartAccountExecution === true
+              ? 'submit-operation'
+              : 'fund-account'
+          );
           acknowledged = Promise.resolve(options.onBroadcast?.({ hash }));
           void acknowledged.catch(() => undefined);
         }, { kind: 'transaction' });

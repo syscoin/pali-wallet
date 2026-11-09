@@ -142,6 +142,8 @@ export function NativeSmartAccountSend({
   const recipientRequest = useRef<{
     abort: AbortController;
     ticket?: NativeRecipientResolution;
+    reviewReleased: boolean;
+    unsubscribe?: () => void;
   } | null>(null);
   const latestOwner = useRef({ open, account, context, recipientResolver, recipient });
   useLayoutEffect(() => {
@@ -150,6 +152,7 @@ export function NativeSmartAccountSend({
   const retireRecipient = useCallback(() => {
     const held = recipientRequest.current;
     recipientRequest.current = null;
+    held?.unsubscribe?.();
     held?.abort.abort();
     held?.ticket?.dispose();
     setResolvedRecipient(null);
@@ -210,7 +213,12 @@ export function NativeSmartAccountSend({
     current.busy = true;
     setBusy(true);
     setError('');
-    const held = { abort: new AbortController(), ticket: undefined as NativeRecipientResolution | undefined };
+    const held = {
+      abort: new AbortController(),
+      ticket: undefined as NativeRecipientResolution | undefined,
+      reviewReleased: false,
+      unsubscribe: undefined as (() => void) | undefined,
+    };
     recipientRequest.current = held;
     const captured = latestOwner.current;
     const checkOwner = () => {
@@ -221,7 +229,10 @@ export function NativeSmartAccountSend({
           actual.account.revision !== captured.account.revision || actual.context.registrationHash !== captured.context.registrationHash)
         throw new Error('RECIPIENT_EXPIRED');
     };
-    const check = () => { checkOwner(); held.ticket?.assertCurrent(); };
+    const check = () => {
+      checkOwner();
+      if (!held.reviewReleased) held.ticket?.assertCurrent();
+    };
     try {
       let nftRequest: NativeSmartAccountAmount | undefined;
       if (collectible) {
@@ -258,7 +269,7 @@ export function NativeSmartAccountSend({
         address = ticket.address;
         setResolvedRecipient(ticket);
         ticket.signal.addEventListener('abort', () => {
-          if (recipientRequest.current !== held || !current.active) return;
+          if (recipientRequest.current !== held || !current.active || held.reviewReleased) return;
           retireRecipient();
           void Promise.resolve(current.operation?.dispose()).catch(() => undefined);
           setController(null);
@@ -280,6 +291,28 @@ export function NativeSmartAccountSend({
         current.operation = operation;
         try {
           check();
+          if (held.ticket) {
+            const releaseRecipientReview = () => {
+              const snapshot = operation.getSnapshot();
+              if (
+                held.reviewReleased || current.operation !== operation ||
+                !snapshot.userOperationSubmissionStarted || snapshot.phase === 'failed'
+              ) return;
+              try {
+                checkOwner();
+              } catch {
+                return;
+              }
+              // This marker comes from admitted handleOps dispatch, before its
+              // transport. Funding and generic waiting phases cannot release ENS.
+              held.reviewReleased = true;
+              held.unsubscribe?.();
+              held.unsubscribe = undefined;
+              held.ticket?.dispose();
+            };
+            held.unsubscribe = operation.subscribe(releaseRecipientReview);
+            releaseRecipientReview();
+          }
           setController(operation);
         } catch (error) {
           await operation.dispose();

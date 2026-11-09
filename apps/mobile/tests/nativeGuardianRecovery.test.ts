@@ -211,7 +211,7 @@ async function fixture(smart = true) {
         return new NativeSmartAccountOperation({ intent, account: GUARDIAN_FIXTURE_ACCOUNT, network, assertCurrent: guard,
           async prepare() { return { kind: 'authorization', intent, operation: prepared }; },
           async sign() { return '0xsigned'; },
-          async submit(_operation, _signature, _lifetime, check, _review, acknowledge) { check(); acknowledge(prepared.actionHash); return prepared.actionHash; },
+          async submit(_operation, _signature, _lifetime, check, _review, acknowledge) { check(); acknowledge(prepared.actionHash, 'submit-operation'); return prepared.actionHash; },
           async refreshMetadata() {
             if (failure === 'storage') catalogue = null;
             if (failure === 'stale') snapshot = { ...snapshot, revision: snapshot.revision + 1 };
