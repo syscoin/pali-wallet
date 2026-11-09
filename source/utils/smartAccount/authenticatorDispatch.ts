@@ -6,7 +6,10 @@ import {
   getInstalledValidatorModuleByAddress,
 } from './modules.ts';
 import type { SmartAccountAuthenticatorSignature } from './signature.ts';
-import { isPaliSignableValidator } from './validatorSignability.ts';
+import {
+  isPaliSignableValidator,
+  isPaliValidatorAlgorithmSupported,
+} from './validatorSignability.ts';
 import type {
   ISmartAccountMetadata,
   SmartAccountP256WebAuthnConfig,
@@ -198,6 +201,58 @@ const p256WebAuthnDriver: SmartAccountAuthenticatorDriver<
   },
 };
 
+const localEcdsaOwners = (
+  validator: Extract<SmartAccountValidatorModule, { id: 'ecdsa' }>,
+  inventory: readonly SmartAccountLocalOwner[] | null
+) =>
+  (inventory ?? []).filter((owner) =>
+    validator.config.owners.some(
+      (configuredOwner) =>
+        configuredOwner.toLowerCase() === owner.address.toLowerCase()
+    )
+  );
+
+export type SmartAccountAuthenticatorAvailability = Readonly<{
+  ecdsa: readonly SmartAccountLocalOwner[] | null;
+  p256WebAuthn: boolean;
+  slhDsa: boolean;
+}>;
+
+/** Public capability query over the same modules, owner selection and child thresholds. */
+export function canSignSmartAccountActionHash(
+  smartAccount: ISmartAccountMetadata,
+  available: SmartAccountAuthenticatorAvailability
+): boolean {
+  if (
+    !available ||
+    !Object.hasOwn(available, 'ecdsa') ||
+    !Object.hasOwn(available, 'p256WebAuthn') ||
+    !Object.hasOwn(available, 'slhDsa') ||
+    (available.ecdsa !== null && !Array.isArray(available.ecdsa)) ||
+    typeof available.p256WebAuthn !== 'boolean' ||
+    typeof available.slhDsa !== 'boolean'
+  )
+    throw new TypeError(
+      'Explicit smart account authenticator availability is required'
+    );
+  return isPaliSignableValidator(
+    getCurrentValidatorModule(smartAccount),
+    smartAccount,
+    (validator) => {
+      if (validator.id === 'ecdsa')
+        return (
+          Number.isSafeInteger(validator.config.threshold) &&
+          validator.config.threshold >= 1 &&
+          localEcdsaOwners(validator, available.ecdsa).length >=
+            validator.config.threshold
+        );
+      if (validator.id === 'p256-webauthn') return available.p256WebAuthn;
+      if (validator.id === 'slh-dsa') return available.slhDsa;
+      return false;
+    }
+  );
+}
+
 const ecdsaDriver: SmartAccountAuthenticatorDriver<
   Extract<SmartAccountValidatorModule, { id: 'ecdsa' }>
 > = {
@@ -214,11 +269,9 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
   id: 'ecdsa',
   signActionHash: async (context) => {
     const runtimeContext = context.ports.ecdsa;
-    const localOwners = (runtimeContext?.localOwners ?? []).filter((owner) =>
-      context.validator.config.owners.some(
-        (configuredOwner) =>
-          configuredOwner.toLowerCase() === owner.address.toLowerCase()
-      )
+    const localOwners = localEcdsaOwners(
+      context.validator,
+      runtimeContext?.localOwners ?? null
     );
     const threshold = context.validator.config.threshold;
 
@@ -334,7 +387,13 @@ const compositeDriver: SmartAccountAuthenticatorDriver<
     ),
   id: 'composite',
   signActionHash: async (context) => {
-    if (!isPaliSignableValidator(context.validator, context.smartAccount)) {
+    if (
+      !isPaliSignableValidator(
+        context.validator,
+        context.smartAccount,
+        isPaliValidatorAlgorithmSupported
+      )
+    ) {
       throw new SmartAccountExternalSignatureRequired(
         compositeDriver.createExternalSignatureRequest(context)
       );

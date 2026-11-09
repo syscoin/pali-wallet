@@ -15,6 +15,7 @@ import {
   signSmartAccountActionHash,
   SmartAccountExternalSignatureRequired,
 } from './execution';
+import { isPaliValidatorAlgorithmSupported } from './validatorSignability';
 
 jest.mock('utils/passkey/authenticator', () => ({
   ...jest.requireActual('utils/passkey/authenticator'),
@@ -118,7 +119,13 @@ describe('normal local composite approvals', () => {
       const composite = smartAccount.installedModules!.find(
         (module) => module.id === 'composite'
       ) as SmartAccountValidatorModule;
-      expect(isPaliSignableValidator(composite, smartAccount)).toBe(true);
+      expect(
+        isPaliSignableValidator(
+          composite,
+          smartAccount,
+          isPaliValidatorAlgorithmSupported
+        )
+      ).toBe(true);
       const signEcdsa = jest.fn().mockResolvedValue(ECDSA_SIGNATURE);
 
       // Real production dispatcher and child drivers; only cryptographic I/O

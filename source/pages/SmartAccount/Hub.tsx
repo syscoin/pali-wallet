@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { isPaliValidatorAlgorithmSupported } from '../../utils/smartAccount/validatorSignability';
 import {
   AddressText,
   Button,
@@ -945,7 +946,11 @@ const SmartAccountHub = () => {
       );
       return (
         childModule &&
-        isPaliSignableValidator(childModule, metadata) &&
+        isPaliSignableValidator(
+          childModule,
+          metadata,
+          isPaliValidatorAlgorithmSupported
+        ) &&
         childModule.id !== 'composite'
       );
     });

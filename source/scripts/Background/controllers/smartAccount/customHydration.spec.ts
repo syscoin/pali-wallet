@@ -1,4 +1,5 @@
 import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
@@ -31,6 +32,7 @@ import {
   isPaliSignableValidator,
   listCompositeChildCandidates,
 } from 'utils/smartAccount/custom';
+import { isPaliValidatorAlgorithmSupported } from 'utils/smartAccount/validatorSignability';
 
 import SmartAccountController from './index';
 
@@ -149,7 +151,8 @@ describe('custom validator hydration address identity', () => {
           id: 'composite',
           config: { childValidators: [ECDSA, SLH], threshold: 2 },
         },
-        result
+        result,
+        isPaliValidatorAlgorithmSupported
       )
     ).toBe(true);
   });
@@ -182,6 +185,12 @@ describe('custom validator hydration address identity', () => {
       data: '0x1234',
     });
     expect(result.customModules).toBe(customModules);
-    expect(isPaliSignableValidator(customs[0], result)).toBe(false);
+    expect(
+      isPaliSignableValidator(
+        customs[0],
+        result,
+        isPaliValidatorAlgorithmSupported
+      )
+    ).toBe(false);
   });
 });

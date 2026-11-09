@@ -9,6 +9,7 @@ import {
   preflightCustomValidatorInstall,
   SmartAccountLockoutError,
 } from './custom';
+import { isPaliValidatorAlgorithmSupported } from './validatorSignability';
 
 const ECDSA_ADDR = '0x1111111111111111111111111111111111111111';
 const CUSTOM_ADDR = '0x2222222222222222222222222222222222222222';
@@ -158,7 +159,8 @@ describe('isPaliSignableValidator', () => {
       expect(
         isPaliSignableValidator(
           composite,
-          metadataWith([child, ecdsaModule, composite])
+          metadataWith([child, ecdsaModule, composite]),
+          isPaliValidatorAlgorithmSupported
         )
       ).toBe(false);
     }
@@ -166,26 +168,41 @@ describe('isPaliSignableValidator', () => {
 
   it('treats builtin single validators as signable', () => {
     expect(
-      isPaliSignableValidator(ecdsaModule, metadataWith([ecdsaModule]))
+      isPaliSignableValidator(
+        ecdsaModule,
+        metadataWith([ecdsaModule]),
+        isPaliValidatorAlgorithmSupported
+      )
     ).toBe(true);
   });
 
   it('treats custom validators as not signable', () => {
     expect(
-      isPaliSignableValidator(customModule, metadataWith([customModule]))
+      isPaliSignableValidator(
+        customModule,
+        metadataWith([customModule]),
+        isPaliValidatorAlgorithmSupported
+      )
     ).toBe(false);
   });
 
   it('requires threshold-many signable children for composites', () => {
     const composite = compositeOf([ECDSA_ADDR, CUSTOM_ADDR], 1);
     const metadata = metadataWith([ecdsaModule, customModule, composite]);
-    expect(isPaliSignableValidator(composite, metadata)).toBe(true);
+    expect(
+      isPaliSignableValidator(
+        composite,
+        metadata,
+        isPaliValidatorAlgorithmSupported
+      )
+    ).toBe(true);
 
     const strictComposite = compositeOf([ECDSA_ADDR, CUSTOM_ADDR], 2);
     expect(
       isPaliSignableValidator(
         strictComposite,
-        metadataWith([ecdsaModule, customModule, strictComposite])
+        metadataWith([ecdsaModule, customModule, strictComposite]),
+        isPaliValidatorAlgorithmSupported
       )
     ).toBe(false);
 
@@ -193,7 +210,8 @@ describe('isPaliSignableValidator', () => {
     expect(
       isPaliSignableValidator(
         customOnly,
-        metadataWith([customModule, customOnly])
+        metadataWith([customModule, customOnly]),
+        isPaliValidatorAlgorithmSupported
       )
     ).toBe(false);
   });
@@ -212,7 +230,8 @@ describe('isPaliSignableValidator', () => {
       expect(
         isPaliSignableValidator(
           composite,
-          metadataWith([ecdsaModule, composite])
+          metadataWith([ecdsaModule, composite]),
+          isPaliValidatorAlgorithmSupported
         )
       ).toBe(false);
       expect(() =>
@@ -289,7 +308,13 @@ describe('listCompositeChildCandidates', () => {
       expect(candidates).toHaveLength(2);
       expect(candidates[0]).toBe(builtin);
       expect(candidates[1]).toBe(customModule);
-      expect(isPaliSignableValidator(candidates[0], metadata)).toBe(true);
+      expect(
+        isPaliSignableValidator(
+          candidates[0],
+          metadata,
+          isPaliValidatorAlgorithmSupported
+        )
+      ).toBe(true);
       expect(JSON.stringify(metadata)).toBe(original);
     }
   );
@@ -308,7 +333,13 @@ describe('listCompositeChildCandidates', () => {
     };
     const metadata = metadataWith([unverifiedAlias]);
     expect(listCompositeChildCandidates(metadata)).toEqual([unverifiedAlias]);
-    expect(isPaliSignableValidator(unverifiedAlias, metadata)).toBe(false);
+    expect(
+      isPaliSignableValidator(
+        unverifiedAlias,
+        metadata,
+        isPaliValidatorAlgorithmSupported
+      )
+    ).toBe(false);
     expect(() =>
       assertValidatorActivationAllowed(metadata, ECDSA_ADDR)
     ).toThrow(SmartAccountLockoutError);
