@@ -46,8 +46,9 @@ test('portable recovery output is exercised in the existing CI budget and upload
   assert.equal(manifest.scripts['test:recovery-ui'], 'node scripts/build-native-recovery-ui.cjs && playwright test --config playwright.recovery.config.ts');
   const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/mobile.yml'), 'utf8'));
   const { foundation, browser, validate } = workflow.jobs;
+  assert.equal(foundation['timeout-minutes'], 30);
+  assert.equal(browser['timeout-minutes'], 20);
   for (const job of [foundation, browser]) {
-    assert.equal(job['timeout-minutes'], 20);
     assert.equal(job.defaults.run['working-directory'], 'apps/mobile');
   }
   for (const command of ['npm run lint', 'npm run typecheck', 'npm test'])
