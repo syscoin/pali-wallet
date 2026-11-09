@@ -4,6 +4,7 @@ import {
   DAPP_REQUEST_LIMITS,
 } from '../../../../source/utils/requestPayloadBudget.ts';
 import { getDappOrigin } from '../../../../source/utils/dappOrigin.ts';
+import { CONNECTION_RECORD_LIMITS } from '../storage/connectionRecordKey.ts';
 import type {
   NativeConnectionBinding,
   NativeConnectionRepository,
@@ -42,6 +43,8 @@ export type WalletConnectSession = Readonly<{
   namespaces: WalletConnectNamespaces;
 }>;
 export type WalletConnectRequest = Readonly<{
+  /** Derived only by this SDK adapter; omission never grants hardware admission. */
+  freshness: 'fresh' | 'unproven';
   id: number;
   expiresAt: number;
   session: WalletConnectSession;
@@ -74,6 +77,7 @@ export type WalletConnectResponse = Readonly<
 interface CoreClient {
   dispose(): Promise<void>;
   storage: NativeConnectionRepository['transport'];
+  history: { readonly values: unknown[]; readonly records: ReadonlyMap<number, unknown>; get(topic: string, id: number): Promise<unknown> };
   pairing: {
     pairings: { getAll(): unknown[] };
     disconnect(input: { topic: string }): Promise<void>;
@@ -85,6 +89,7 @@ interface SignClient {
   session: { get(topic: string): unknown; getAll(): unknown[] };
   proposal: { get(id: number): unknown; getAll(): unknown[] };
   pendingRequest: { get(id: number): unknown };
+  getPendingSessionRequests(): unknown[];
   on(event: EventName, listener: (value: unknown) => void): unknown;
   off(event: EventName, listener: (value: unknown) => void): unknown;
   pair(input: { uri: string }): Promise<unknown>;
@@ -168,6 +173,8 @@ export type WalletConnectTransport = Readonly<{
     event: { name: string; data: unknown },
     assertCurrent: () => void
   ): Promise<void>;
+  /** Same live adapter only: never creates an admission from saved public data. */
+  pending(binding: NativeConnectionBinding, id: number, assertCurrent: () => void): Promise<WalletConnectRequest | null>;
   sessions(): Promise<readonly WalletConnectSession[]>;
   close(): Promise<void>;
 }>;
@@ -191,6 +198,7 @@ const HEX = /^[0-9a-f]{64}$/;
 const MAX_PENDING_EVENTS = DAPP_REQUEST_LIMITS.pendingRequests;
 const MAX_REQUESTS_PER_PEER = DAPP_REQUEST_LIMITS.requestsPerOrigin;
 const MAX_PENDING_REQUEST_BYTES = 4 * DAPP_REQUEST_LIMITS.bytes;
+const MAX_SEEN_REQUEST_IDS = CONNECTION_RECORD_LIMITS.nodes;
 const DISCONNECT_REASON = Object.freeze({
   code: 6000,
   message: 'User disconnected',
@@ -390,8 +398,22 @@ export async function openWalletConnectTransport(options: {
   const owned = <T>(promise: Promise<T>) => Promise.race([promise, aborted]);
   const listeners = new Map<EventName, (value: unknown) => void>();
   const proposals = new Map<number, WalletConnectProposal>();
-  const requests = new Map<string, string>();
+  const requests = new Map<string, Readonly<{ serialized: string; wire: WalletConnectRequest; session: string }>>();
   const dispatchedRequests = new Set<string>();
+  // Core history is keyed globally by numeric id, including across topics. Never
+  // evict a negative identity: an overflow makes hardware replay proof unavailable.
+  const seenRequestIds = new Set<number>();
+  const startupTopics = new Set<string>();
+  let replayProofUnavailable = false;
+  const ownField = (value: unknown, key: string) => {
+    const descriptor = Object.getOwnPropertyDescriptor(record(value), key);
+    return descriptor && 'value' in descriptor ? descriptor.value : fail();
+  };
+  const rememberRequestId = (id: number) => {
+    if (seenRequestIds.has(id)) return;
+    if (seenRequestIds.size >= MAX_SEEN_REQUEST_IDS) replayProofUnavailable = true;
+    else seenRequestIds.add(id);
+  };
   let queuedEvents = 0;
   let requestExpirySeconds: WalletConnectSdk['requestExpirySeconds'];
   const guard = (check = options.assertOwner) => {
@@ -457,6 +479,8 @@ export async function openWalletConnectTransport(options: {
     proposals.clear();
     requests.clear();
     dispatchedRequests.clear();
+    seenRequestIds.clear();
+    startupTopics.clear();
     // Retirement is local and must also complete offline. Per-session remote
     // disconnect remains an explicit command, never a prerequisite to erasure.
     // Core disposal aborts in-flight initialization and drains admitted storage
@@ -532,6 +556,40 @@ export async function openWalletConnectTransport(options: {
       return fail();
     return current;
   };
+  const unresolvedHistoryMatches = (historical: unknown, topic: string, id: number, params: unknown) => {
+    try {
+      if (historical === undefined || historical !== core!.history.records.get(id)) return false;
+      const priorRequest = record(ownField(historical, 'request')),
+        response = Object.getOwnPropertyDescriptor(record(historical), 'response');
+      return checkedId(ownField(historical, 'id')) === id &&
+        ownField(historical, 'topic') === topic &&
+        ownField(priorRequest, 'method') === 'wc_sessionRequest' &&
+        JSON.stringify(copy(ownField(priorRequest, 'params'), DAPP_REQUEST_LIMITS.bytes + 1024)) === JSON.stringify(params) &&
+        (!response || ('value' in response && response.value === undefined));
+    } catch { return false; }
+  };
+  const readHistory = async (topic: string, id: number, assertCurrent: () => void) => {
+    guard(); guard(assertCurrent);
+    let historical: unknown;
+    try { historical = await owned(core!.history.get(topic, id)); }
+    catch { /* A failed lookup never proves an unresolved request. */ }
+    guard(); guard(assertCurrent);
+    return historical;
+  };
+  type AdmittedRequest = NonNullable<ReturnType<typeof requests.get>>;
+  const matchesPending = (binding: NativeConnectionBinding, id: number, admitted: AdmittedRequest) => {
+    const key = `${binding.topic}:${id}`;
+    if (requests.get(key) !== admitted || dispatchedRequests.has(key) || admitted.wire.expiresAt <= Date.now()) return false;
+    try {
+      const current = readSession(binding), pending = record(client!.pendingRequest.get(id));
+      return JSON.stringify(current) === admitted.session && pending.topic === binding.topic &&
+        JSON.stringify({ params: copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024),
+          verification: readVerification(pending.verifyContext, current.metadata.url) }) === admitted.serialized;
+    } catch { return false; }
+  };
+  const retireRequest = (key: string, admitted: AdmittedRequest) => {
+    if (requests.get(key) === admitted && !dispatchedRequests.has(key)) requests.delete(key);
+  };
   const readProposal = (
     raw: unknown
   ): Omit<WalletConnectProposal, 'verification'> => {
@@ -594,6 +652,14 @@ export async function openWalletConnectTransport(options: {
   };
   const dispatch = (name: EventName, raw: unknown) => {
     if (closed) return;
+    let seenRequest = false;
+    if (name === 'session_request') {
+      try {
+        const id = checkedId(ownField(raw, 'id'));
+        seenRequest = seenRequestIds.has(id);
+        rememberRequestId(id);
+      } catch { replayProofUnavailable = true; }
+    }
     let data: Record<string, unknown>;
     try {
       if (queuedEvents >= MAX_PENDING_EVENTS)
@@ -668,7 +734,7 @@ export async function openWalletConnectTransport(options: {
             key.startsWith(`${current.binding.topic}:`)
           ).length;
           const totalBytes = [...requests.values()].reduce(
-            (total, value) => total + new TextEncoder().encode(value).length,
+            (total, value) => total + new TextEncoder().encode(value.serialized).length,
             0
           );
           if (
@@ -678,10 +744,13 @@ export async function openWalletConnectTransport(options: {
               MAX_PENDING_REQUEST_BYTES
           )
             return fail();
-          requests.set(key, serialized);
-          event = {
-            type: 'request',
-            request: Object.freeze({
+          const historical = await readHistory(current.binding.topic, id, options.assertOwner);
+          if (JSON.stringify(readSession(current.binding)) !== JSON.stringify(current)) return fail();
+          const currentHistoryMatches = unresolvedHistoryMatches(historical, current.binding.topic, id, payload);
+          const wire: WalletConnectRequest = Object.freeze({
+              freshness: replayProofUnavailable || seenRequest || !currentHistoryMatches ||
+                (startupTopics.has(current.binding.topic) && request.expiryTimestamp === undefined)
+                ? 'unproven' : 'fresh',
               id,
               expiresAt,
               session: current,
@@ -692,8 +761,9 @@ export async function openWalletConnectTransport(options: {
                   ? undefined
                   : immutable(copy(request.params, DAPP_REQUEST_LIMITS.bytes)),
               verification,
-            }),
-          };
+            });
+          requests.set(key, Object.freeze({ serialized, wire, session: JSON.stringify(current) }));
+          event = { type: 'request', request: wire };
         } else if (name === 'session_update') {
           event = {
             type: 'session',
@@ -776,7 +846,22 @@ export async function openWalletConnectTransport(options: {
       });
     });
     client = await owned(initializing);
-    if (typeof client.dispose !== 'function') return fail();
+    if (typeof client.dispose !== 'function' || typeof client.getPendingSessionRequests !== 'function') return fail();
+    // Snapshot before the first post-init storage barrier/listener admission.
+    // SDK cached relay replay can arrive later than the pending snapshot. Its
+    // original explicit expiry is at most seven days; Core history retains ids
+    // for thirty days. Timestamp-less cached requests have no such age proof.
+    try {
+      if (requestExpirySeconds.max >= 30 * 24 * 60 * 60) replayProofUnavailable = true;
+      const pending = client.getPendingSessionRequests(), history = core.history.values,
+        sessions = client.session.getAll();
+      if (!Array.isArray(pending) || !Array.isArray(history) || !Array.isArray(sessions) ||
+        pending.length > MAX_SEEN_REQUEST_IDS || history.length > MAX_SEEN_REQUEST_IDS ||
+        sessions.length > MAX_PENDING_EVENTS) throw Error('Unbounded SDK snapshot');
+      for (const values of [pending, history]) for (const value of values)
+        rememberRequestId(checkedId(ownField(value, 'id')));
+      for (const value of sessions) startupTopics.add(checkedTopic(ownField(value, 'topic')));
+    } catch { replayProofUnavailable = true; }
     if (client.core !== core || client.core.storage !== protocolStorage)
       return fail();
     await barrier();
@@ -936,22 +1021,9 @@ export async function openWalletConnectTransport(options: {
           if (!handedOff) assertRequestCurrent();
         };
         return run(async () => {
-          const current = readSession(binding);
           const key = `${binding.topic}:${checkedId(id)}`;
-          const pending = record(client!.pendingRequest.get(id));
-          if (
-            pending.topic !== binding.topic ||
-            !requests.has(key) ||
-            dispatchedRequests.has(key) ||
-            JSON.stringify({
-              params: copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024),
-              verification: readVerification(
-                pending.verifyContext,
-                current.metadata.url
-              ),
-            }) !== requests.get(key)
-          )
-            return fail();
+          const admitted = requests.get(key);
+          if (!admitted || !matchesPending(binding, id, admitted)) return fail();
           const result = copy(response, DAPP_REQUEST_LIMITS.bytes);
           const names = Object.keys(record(result));
           if (names.length !== 1 || !['result', 'error'].includes(names[0]!))
@@ -963,6 +1035,12 @@ export async function openWalletConnectTransport(options: {
               result.error.message.length > 256)
           )
             return fail();
+          const historical = await readHistory(binding.topic, id, assertRequestCurrent);
+          if (!unresolvedHistoryMatches(historical, binding.topic, id, JSON.parse(admitted.serialized).params) ||
+              !matchesPending(binding, id, admitted)) {
+            retireRequest(key, admitted);
+            return fail();
+          }
           guard(assertRequestCurrent);
           dispatchedRequests.add(key);
           const dispatchResult = onDispatch();
@@ -975,8 +1053,10 @@ export async function openWalletConnectTransport(options: {
             topic: binding.topic,
             response: { ...result, id, jsonrpc: '2.0' },
           });
-          requests.delete(key);
-          dispatchedRequests.delete(key);
+          if (requests.get(key) === admitted) {
+            requests.delete(key);
+            dispatchedRequests.delete(key);
+          }
         }, assertBeforeHandoff);
       },
       disconnect: (binding: NativeConnectionBinding) =>
@@ -1016,6 +1096,35 @@ export async function openWalletConnectTransport(options: {
             event: copy(event),
           });
         }, assertCurrent);
+      },
+      pending: (binding: NativeConnectionBinding, id: number, assertCurrent: () => void) => {
+        const key = `${binding.topic}:${checkedId(id)}`;
+        let admitted: AdmittedRequest | undefined;
+        const matches = () => !!admitted && matchesPending(binding, id, admitted);
+        const check = () => { guard(assertCurrent); if (admitted && !matches()) fail(); };
+        return run(async () => {
+          // A queued session/expiry event must settle before a restore decision.
+          await eventTail;
+          guard(assertCurrent);
+          admitted = requests.get(key);
+          if (!matches()) { admitted = undefined; return null; }
+          return admitted!.wire;
+        }, check).then(async wire => {
+          if (!wire || !admitted) return null;
+          // History is independent of pendingRequest: SDK sendError can answer
+          // a duplicate id while leaving the original pending row untouched.
+          // Read after run's final storage barrier, then repeat the sync scope checks.
+          const captured = admitted;
+          const historical = await readHistory(binding.topic, id, check);
+          if (!unresolvedHistoryMatches(historical, binding.topic, id, JSON.parse(captured.serialized).params) || !matches()) {
+            retireRequest(key, captured);
+            return null;
+          }
+          return wire;
+        }).catch(() => {
+          if (!closed && ownerOrStorageFailed()) signalUnavailable();
+          return fail();
+        });
       },
       sessions: () =>
         run(async () => Object.freeze(client!.session.getAll().map(session))),

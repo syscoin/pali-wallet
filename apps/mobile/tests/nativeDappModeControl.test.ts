@@ -107,7 +107,7 @@ for (const committed of [false, true]) test(`real authority ${committed ? 'held 
     const contextRevision = authority.getSnapshot().revision;
     const networks = createNativeNetworkView(authority, { utxoSendAvailable: true, fetch: async () => { assert.fail('Mode selection must not use HTTP'); } });
     const context = () => { const state = authority.getSnapshot(), value = authority.getCatalogue(); return state.phase === 'ready' && value ? { revision: state.revision, catalogueRevision: value.revision, activeAccountId: value.active.accountId, networkId: value.active.networkId, networkLabel: 'Ethereum', accounts: value.accounts } : null; };
-    const wire: WalletConnectRequest = { id: 1, method: 'sys_changeUTXOEVM', params: [{ chainId: 57 }], chainId: 'eip155:1', expiresAt: now + 60000, verification: { validation: 'UNKNOWN', isScam: false },
+    const wire: WalletConnectRequest = { freshness: 'fresh', id: 1, method: 'sys_changeUTXOEVM', params: [{ chainId: 57 }], chainId: 'eip155:1', expiresAt: now + 60000, verification: { validation: 'UNKNOWN', isScam: false },
       session: { binding: { topic: 'ab'.repeat(32), peerPublicKey: 'cd'.repeat(32), origin: 'https://dapp.example' }, expiry: Math.floor(now / 1000) + 600, metadata: { name: 'Dapp', description: '', url: 'https://dapp.example', icons: [] }, namespaces: {} } };
     manager = new NativeDappControlRequests({ host: () => ({ context, async prepare(request, owner, signal, check) { assert('kind' in request); return prepareNativeDappModeControl({ networks, context, utxoNetworks: () => [target] }, request, owner, signal, check); } }),
       foreground: () => true, changed() {}, checkSite: async () => ({ isBlacklisted: false }), async retireCommitted(value) { retired.push(value); },

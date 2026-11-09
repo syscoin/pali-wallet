@@ -22,6 +22,7 @@ type Admission = Readonly<{
   owner: NativeTrezorHandoffOwner;
   sessionGeneration: number;
   assertCurrent(): void;
+  beforeSuiteOpen?(expiresAt: number, job: object): (opened: boolean) => void;
 }>;
 export type NativeTrezorSessions = Readonly<{
   /** Call once after each successful real unlock, not on a resume button press. */
@@ -73,7 +74,8 @@ export function createTrezorSessions(
       job: NativeTrezorHandoffJob;
       invocation: Parameters<NativeTrezorHandoff['finish']>[0];
     },
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    beforeSuiteOpen?: Admission['beforeSuiteOpen']
   ): NativeTrezorSession => {
     let currentGuard: (() => void) | undefined = assertCurrent;
     const check = () => {
@@ -92,6 +94,11 @@ export function createTrezorSessions(
       handoff,
       invocation: tokens.invocation,
       assertCurrent: check,
+      beforeSuiteOpen: beforeSuiteOpen ? () => {
+        check(); const snapshot = handoff.getSnapshot();
+        if (snapshot?.job !== tokens.job) throw Error('TREZOR_HANDOFF_INVALID');
+        return beforeSuiteOpen(snapshot.expiresAt, snapshot.job);
+      } : undefined,
     });
     const set = hosts.get(tokens.job) ?? new Set();
     set.add(owned);
@@ -157,7 +164,7 @@ export function createTrezorSessions(
         request.expiresAt,
         request
       );
-      return session(tokens, request.assertCurrent);
+      return session(tokens, request.assertCurrent, request.beforeSuiteOpen);
     },
     resume(request) {
       if (request.sessionGeneration !== generation || generation === 0)
@@ -167,7 +174,8 @@ export function createTrezorSessions(
           job: request.job,
           invocation: handoff.acceptFresh(request.job, request.owner, request),
         },
-        request.assertCurrent
+        request.assertCurrent,
+        request.beforeSuiteOpen
       );
     },
     getSnapshot() {

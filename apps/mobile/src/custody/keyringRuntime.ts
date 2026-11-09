@@ -298,8 +298,9 @@ export interface KeyringRuntime extends CustodyRuntime {
   canSignSmartAccount(): boolean;
   canManageSlhDsa(): boolean;
   openSlhDsaInstallation(keyId: string, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  cancelConnectionPsbtHandoff(job: object): Promise<void>;
   prepareConnectionPsbt(request: import('../connections/psbtRequests.ts').NativePsbtRequest,
-    signal: AbortSignal, assertCurrent: () => void): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
+    signal: AbortSignal, assertCurrent: () => void, handoff: import('../connections/psbtRequests.ts').NativePsbtHandoff): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
   readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
     owner: Readonly<{ accountId: string; xpub: string }>, isChangeAddress: boolean,
     signal: AbortSignal, assertCurrent: () => void): Promise<string>;
@@ -480,7 +481,7 @@ export function createKeyringRuntimeFactory(
           label: string;
           networkLabel: string;
           accountLabel: string;
-          operation: 'import' | 'send' | 'utxo-send';
+          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt';
           resume?: NativeTrezorResumeIntent;
           accepted: boolean;
         } | undefined;
@@ -1153,8 +1154,9 @@ export function createKeyringRuntimeFactory(
           return pending;
         };
         const openTrezorAttempt = async (captured: number, check: () => void,
-          operation: 'import' | 'send' | 'utxo-send', label: string, resume: NativeTrezorResumeIntent | undefined,
-          transferred: (source: IndexedKeyring, target: IndexedKeyring, session: NativeTrezorSession) => void) => {
+          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt', label: string, resume: NativeTrezorResumeIntent | undefined,
+          transferred: (source: IndexedKeyring, target: IndexedKeyring, session: NativeTrezorSession) => void,
+          beforeSuiteOpen?: (expiresAt: number, job: object) => (opened: boolean) => void) => {
           const sessions = dependencies.trezorSessions;
           if (!sessions || !trezorSessionGeneration || trezorSession) throw new KeyringRuntimeError('NOT_READY');
           await trezorCleanup;
@@ -1168,9 +1170,9 @@ export function createKeyringRuntimeFactory(
             throw new TrezorReviewChangedError();
           }
           const session = existing
-            ? sessions.resume({ job: existing.job, owner, sessionGeneration: trezorSessionGeneration, accepted: true, assertCurrent: check })
+            ? sessions.resume({ job: existing.job, owner, sessionGeneration: trezorSessionGeneration, accepted: true, assertCurrent: check, beforeSuiteOpen })
             : sessions.start({ owner, workflow: operation === 'import' ? 'import' : 'send', expiresAt: Date.now() + 5 * 60_000,
-                sessionGeneration: trezorSessionGeneration, assertCurrent: check });
+                sessionGeneration: trezorSessionGeneration, assertCurrent: check, beforeSuiteOpen });
           const snapshot = catalogueSnapshot!;
           const selected = snapshot.accounts.find(account => account.id === snapshot.active.accountId);
           const network = findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks) ?? getNativeNetwork(snapshot.active.networkId, snapshot.networks);
@@ -4970,13 +4972,31 @@ export function createKeyringRuntimeFactory(
             const lifetime = (contextReadLifetime ??= new AbortController()).signal;
             return openSentryApprovals(lifetime, () => current(captured));
           },
-          async prepareConnectionPsbt(request, signal, assertOwner) {
-            const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
+          async cancelConnectionPsbtHandoff(job) {
+            if (pendingTrezor?.operation === 'external-psbt' && pendingTrezor.job === job) await cancelTrezor();
+          },
+          async prepareConnectionPsbt(request, signal, assertOwner, handoff) {
+            const captured = generation, snapshot = catalogueSnapshot, admittedTrezorEpoch = trezorEpoch;
+            let ring = keyring;
+            let trezorAttempt: Awaited<ReturnType<typeof openTrezorAttempt>> | undefined;
             const selected = selectedAccount(), network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
             if (!dependencies.utxoFetch || !utxoRecords || !network ||
-                (selected.type !== 'HDAccount' && selected.type !== 'Imported' && selected.type !== 'Ledger') ||
-                (selected.type !== 'Ledger' && !supportsUtxoSoftwareCustody(network)))
+                (selected.type !== 'HDAccount' && selected.type !== 'Imported' && selected.type !== 'Ledger' && selected.type !== 'Trezor') ||
+                (selected.type !== 'Ledger' && selected.type !== 'Trezor' && !supportsUtxoSoftwareCustody(network)))
               throw new KeyringRuntimeError('NOT_READY');
+            if (selected.type === 'Trezor') {
+              const check = () => {
+                current(captured); checkGuard(assertOwner);
+                if (signal.aborted || admittedTrezorEpoch !== trezorEpoch || catalogueSnapshot !== snapshot || active || reserved || selectedAccount().id !== selected.id)
+                  throw new KeyringRuntimeError('CANCELLED');
+              };
+              const resume: NativeTrezorResumeIntent = Object.freeze({ kind: 'external-psbt', id: handoff.id, accountId: selected.id, networkId: network.id });
+              trezorAttempt = await openTrezorAttempt(captured, check, 'external-psbt', selected.label, resume, () => undefined, handoff.beforeSuiteOpen);
+              ring = trezorAttempt.ring;
+            }
+            const ownedTrezor = trezorAttempt?.session;
+            const stillOwned = () => !!ownedTrezor && (trezorSession === ownedTrezor || pendingTrezor?.job === ownedTrezor.job);
+            try {
             const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
             const { xpub } = account;
             if (selected.type === 'Imported') checkedUtxoImport(account, network);
@@ -4984,7 +5004,7 @@ export function createKeyringRuntimeFactory(
             const assertContext = () => {
               current(captured); checkGuard(assertOwner); current(captured);
               const actual = state.activeNetwork, live = state.accounts[selected.type][selected.index];
-              if (signal.aborted || ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
+              if (signal.aborted || selected.type === 'Trezor' && admittedTrezorEpoch !== trezorEpoch || ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
                   live !== account || live.xpub !== xpub || live.address !== selected.address ||
                   state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type ||
                   actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId ||
@@ -5012,19 +5032,41 @@ export function createKeyringRuntimeFactory(
                   ? withOwnedLedgerConnection({ signal, assertCurrent: assertContext,
                       connected: () => ledger.isConnected(), current: () => ledgerTransport, retire: retireLedger,
                     }, check => { assertSigningCurrent = check; return ring.syscoinTransaction.signPSBT(input, read); })
-                  : ring.syscoinTransaction.signPSBT(input, read),
+                  : (async () => {
+                      const signed = await ring.syscoinTransaction.signPSBT(input, read); guard();
+                      if (trezorAttempt) {
+                        // Revoke resume before the common engine can release or submit signed bytes.
+                        handoff.beforeSignature(); guard();
+                        await finishTrezor(trezorAttempt.session, guard); guard();
+                      }
+                      return signed;
+                    })(),
               },
               records: utxoRecords, fetch: dependencies.utxoFetch, collateral, sentry: sentryApprovals?.operations ?? null,
             });
-            try { guard(); approval.assertCurrent(); } catch (cause) { approval.dispose(); throw cause; }
-            return Object.freeze({ ...approval, async approve() {
+            const retire = () => {
+              if (!stillOwned()) return;
+              const closing = handoff.isSuspended() ? retireTrezor() : cancelTrezor();
+              void closing?.catch(() => undefined);
+            };
+            signal.addEventListener('abort', retire, { once: true });
+            const dispose = () => { approval.dispose(); retire(); signal.removeEventListener('abort', retire); };
+            try { guard(); approval.assertCurrent(); } catch (cause) { dispose(); throw cause; }
+            return Object.freeze({ ...approval, dispose, async approve() {
               const pending = approval.approve(); pendingSubmissions.add(pending);
               try { return await pending; }
-              finally {
+              catch (cause) {
+                if (stillOwned() && !handoff.isSuspended()) await cancelTrezor();
+                throw cause;
+              } finally {
                 pendingSubmissions.delete(pending);
                 if (utxoRecords.requiresReopen) void lock().catch(() => undefined);
               }
             } });
+            } catch (cause) {
+              if (stillOwned() && !handoff.isSuspended()) await cancelTrezor();
+              throw cause;
+            }
           },
           ...(dependencies.utxoFetch && utxoRecords ? { async openUtxoSend(assertOwner: () => void) {
             const captured = generation, snapshot = catalogueSnapshot;

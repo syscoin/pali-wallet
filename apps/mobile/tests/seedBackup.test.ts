@@ -19,6 +19,7 @@ async function fixture() {
   let fingerprint = 'wallet-one';
   let confirms = 0;
   const runtime: KeyringRuntime = {
+    async cancelConnectionPsbtHandoff() { throw Error('Hardware is outside this fixture'); },
     trezor: { getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null }),
       subscribe: () => () => {}, async startImport() { throw new Error('Hardware is outside this fixture'); },
       async resumeImport() { throw new Error('Hardware is outside this fixture'); },

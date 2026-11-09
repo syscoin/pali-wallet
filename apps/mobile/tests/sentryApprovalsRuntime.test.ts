@@ -24,6 +24,7 @@ import { metadata } from './publicWatchFixtures.ts';
 import { resolveUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Public Sentry runtime password 1!';
@@ -263,7 +264,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
       return { result, child: { method: 'sys_sign' as const, origin, psbt: PsbtUtils.toPali(psbt) } };
     };
     const first = await authorize();
-    const prepared = await runtime.prepareConnectionPsbt(first.child, new AbortController().signal, checkGrant);
+    const prepared = await runtime.prepareConnectionPsbt(first.child, new AbortController().signal, checkGrant, softwarePsbtHandoff);
     assert.equal(prepared.review.sentry?.operation, 'updateService'); assert.equal(prepared.review.feeSatoshis, '1000');
     const signed = await prepared.approve(); assert('psbt' in signed);
     const transaction = PsbtUtils.fromPali(signed, { currency: 'sys', slip44: 57 }).extractTransaction();
@@ -272,10 +273,10 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
     assert.throws(() => manager.operations.prepareFeePsbt(first.result.transactionHex, origin)); prepared.dispose();
     const second = await authorize(), child = new AbortController();
     held = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
-    const cancelled = runtime.prepareConnectionPsbt(second.child, child.signal, checkGrant);
+    const cancelled = runtime.prepareConnectionPsbt(second.child, child.signal, checkGrant, softwarePsbtHandoff);
     const cancellation = assert.rejects(cancelled); await held.entered.promise; child.abort(); await cancellation;
     assert(held.signal!.aborted); held.release.resolve(); held = undefined;
-    const next = await runtime.prepareConnectionPsbt(second.child, new AbortController().signal, checkGrant);
+    const next = await runtime.prepareConnectionPsbt(second.child, new AbortController().signal, checkGrant, softwarePsbtHandoff);
     held = { entered: Promise.withResolvers<void>(), release: Promise.withResolvers<void>() };
     const approval = next.approve(), rejected = assert.rejects(approval); await held.entered.promise;
     const locking = authority.lock(); await rejected; assert(held.signal!.aborted); held.release.resolve(); held = undefined; await locking;

@@ -9,7 +9,7 @@ function fixture() {
   let signing = Promise.resolve(), response = Promise.resolve();
   let responseError = false;
   const scope = new AbortController(), check = () => { if (!current) throw Error('CONTEXT_CHANGED'); };
-  const wire: WalletConnectRequest = { id: 9, method: 'sys_linkSentryNode', chainId: 'bip122:' + 'ab'.repeat(16), params: [{ version: 1 }], expiresAt: Date.now() + 120000,
+  const wire: WalletConnectRequest = { freshness: 'fresh', id: 9, method: 'sys_linkSentryNode', chainId: 'bip122:' + 'ab'.repeat(16), params: [{ version: 1 }], expiresAt: Date.now() + 120000,
     session: { binding: { topic: 'aa'.repeat(32), peerPublicKey: 'bb'.repeat(32), origin: 'https://original.test' },
       metadata: { name: 'Reported name', description: '', url: 'https://not-authority.test', icons: [] }, expiry: Math.ceil(Date.now()/1000) + 600,
       namespaces: { bip122: { methods: ['sys_linkSentryNode'], accounts: [], events: [] } } }, verification: { validation: 'UNKNOWN', isScam: false } };

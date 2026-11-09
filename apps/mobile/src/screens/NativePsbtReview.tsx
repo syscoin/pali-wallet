@@ -11,7 +11,7 @@ import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useDappLedgerConnection } from './useDappLedgerConnection';
 
 /** Only the common engine's verified public review enters this screen. */
-export function NativePsbtReview({ review, controller, ledgerConnection }: { review: Review; controller: Pick<NativeConnectionsView, 'approvePsbt' | 'rejectPsbt' | 'getSnapshot'>; ledgerConnection?: NativeLedgerConnectionView }) {
+export function NativePsbtReview({ review, controller, ledgerConnection }: { review: Review; controller: Pick<NativeConnectionsView, 'approvePsbt' | 'rejectPsbt' | 'getSnapshot' | 'backgroundPsbt'>; ledgerConnection?: NativeLedgerConnectionView }) {
   const ledger = useDappLedgerConnection({ review, controller, ledgerConnection });
   const { t } = useNativeTranslation();
   const identity = `${review.id}:${review.expiresAt}`, details = review.details;
@@ -33,14 +33,18 @@ export function NativePsbtReview({ review, controller, ledgerConnection }: { rev
     const retained = owner.current;
     retained.active = true; busy.current = false; attempt.current = null;
     const timer = setTimeout(reject, Math.max(0, review.expiresAt - Date.now()));
-    const app = AppState.addEventListener('change', state => { if (state !== 'active') reject(); });
+    const app = AppState.addEventListener('change', state => { if (state !== 'active') {
+      if (owner.current.identity === identity) { owner.current.active = false; attempt.current = null; }
+      setRetired(identity); controller.backgroundPsbt();
+    } });
     const back = BackHandler.addEventListener('hardwareBackPress', () => { reject(); return true; });
     return () => {
       retained.active = false; attempt.current = null;
       clearTimeout(timer); app.remove(); back.remove();
-      void controller.rejectPsbt(review.id).catch(() => undefined);
+      if (AppState.currentState !== 'active') controller.backgroundPsbt();
+      else void controller.rejectPsbt(review.id).catch(() => undefined);
     };
-  }, [controller, review.id, review.expiresAt, reject]);
+  }, [controller, review.id, review.expiresAt, reject, identity]);
   const unavailable = !details || !!review.error || retired === identity;
   const blocked = unavailable || ledger.blocked || review.busy || review.attempted || submitting === identity;
   const approve = async () => {

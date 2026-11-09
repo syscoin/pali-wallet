@@ -28,6 +28,7 @@ import { createDappSigningApproval } from '../../../source/wallet/dappSigningApp
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import { recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
+const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
 const ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
@@ -374,16 +375,16 @@ test('connection external PSBT runtime captures the selected account and aborts 
     psbt.addInput({ hash: previous.getId(), index: 0, witnessUtxo: { script, value: BigInt(10000) } });
     psbt.addOutput({ script, value: BigInt(9000) });
     const request = { method: 'sys_sign' as const, origin: 'https://original.example', psbt: PsbtUtils.toPali(psbt) };
-    const review = await runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined);
+    const review = await runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined, softwarePsbtHandoff);
     assert.equal(review.review.origin, request.origin); assert.equal(review.review.feeSatoshis, '1000');
     await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     assert.throws(review.assertCurrent); await assert.rejects(review.approve()); review.dispose();
     const before = calls;
-    await assert.rejects(runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined), /NOT_READY/);
+    await assert.rejects(runtime.prepareConnectionPsbt(request, new AbortController().signal, () => undefined, softwarePsbtHandoff), /NOT_READY/);
     assert.equal(calls, before);
     await owner.selectNetwork('bitcoin', owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
     held = true; const lifetime = new AbortController();
-    const opening = runtime.prepareConnectionPsbt(request, lifetime.signal, () => undefined);
+    const opening = runtime.prepareConnectionPsbt(request, lifetime.signal, () => undefined, softwarePsbtHandoff);
     const rejected = assert.rejects(opening); await entered.promise; lifetime.abort();
     await rejected; assert.equal(readSignal?.aborted, true);
     release.resolve();
@@ -2735,6 +2736,7 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
       async openTransport(options) {
         event = options.onEvent;
         return {
+          async pending() { return null; },
           async sessions() { return [session]; },
           async pair() { throw Error('Unexpected pair'); },
           async approve() { throw Error('Unexpected approval'); },
@@ -2745,7 +2747,7 @@ for (const outcome of ['sign', 'reject', 'transaction-sign', 'transaction-reject
       },
     });
     for (let i = 0; i < 20 && !controller.view.getSnapshot().sessions.length; i++) await new Promise<void>(resolve => setImmediate(resolve));
-    event({ type: 'request', request: { id: 42, expiresAt: Date.now() + 60000, session, chainId: 'eip155:1', method: transaction ? 'eth_sendTransaction' : 'personal_sign', params: transaction ? [{ from: ADDRESS, to: `0x${'22'.repeat(20)}`, value: '0x1' }] : ['Hello', ADDRESS], verification: { validation: 'VALID', isScam: false } } });
+    event({ type: 'request', request: { freshness: 'fresh', id: 42, expiresAt: Date.now() + 60000, session, chainId: 'eip155:1', method: transaction ? 'eth_sendTransaction' : 'personal_sign', params: transaction ? [{ from: ADDRESS, to: `0x${'22'.repeat(20)}`, value: '0x1' }] : ['Hello', ADDRESS], verification: { validation: 'VALID', isScam: false } } });
     for (let i = 0; i < 20 && controller.view.getSnapshot().signingReview?.busy !== false; i++) await new Promise<void>(resolve => setImmediate(resolve));
     const review = controller.view.getSnapshot().signingReview;
     assert(review?.needsAccountSwitch);

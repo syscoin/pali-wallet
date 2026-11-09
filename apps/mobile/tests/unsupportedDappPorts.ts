@@ -8,10 +8,10 @@ const unusedAsync = async (): Promise<never> => unused();
 export function signingFixtureHost(host: NativeConnectionSigningHost): NativeConnectionHost {
   return { ...host, controls: { context: () => null, prepare: unusedAsync },
     reads: { read: unusedAsync }, syscoin: { registration: unused, anchor: unused, read: unusedAsync },
-    sentry: { prepare: unusedAsync, revalidate() {} }, psbt: { prepare: unusedAsync } };
+    sentry: { prepare: unusedAsync, revalidate() {} }, psbt: { prepare: unusedAsync, cancelHandoff: unusedAsync } };
 }
 export const unsupportedDappViews: Pick<NativeConnectionsView,
-  'approveControl' | 'rejectControl' | 'approveSentry' | 'rejectSentry' | 'returnToDapp' | 'approvePsbt' | 'rejectPsbt'> = {
+  'approveControl' | 'rejectControl' | 'approveSentry' | 'rejectSentry' | 'returnToDapp' | 'approvePsbt' | 'rejectPsbt' | 'backgroundPsbt' | 'cancelPsbtHandoff' | 'resumePsbt'> = {
   approveControl: unusedAsync, rejectControl: unusedAsync, approveSentry: unusedAsync, rejectSentry: unusedAsync, returnToDapp: unusedAsync,
-  approvePsbt: unusedAsync, rejectPsbt: unusedAsync,
+  approvePsbt: unusedAsync, rejectPsbt: unusedAsync, backgroundPsbt: unused, cancelPsbtHandoff: unusedAsync, resumePsbt: unusedAsync,
 };

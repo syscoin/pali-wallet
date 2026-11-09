@@ -52,7 +52,7 @@ function fixture(
     alive = true,
     foreground = options.foreground ?? true,
     blacklist = options.blocked ?? false;
-  const wire: WalletConnectRequest = {
+  const wire: WalletConnectRequest = { freshness: 'fresh',
     id: 7,
     expiresAt: Date.now() + 60000,
     method: 'wallet_switchEthereumChain',

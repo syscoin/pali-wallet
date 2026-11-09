@@ -9,6 +9,7 @@ import {
   type WalletConnectRequest,
 } from '../src/connections/walletConnect.ts';
 import type { NativeConnectionRepository } from '../src/connections/storage.ts';
+import { CONNECTION_RECORD_LIMITS } from '../src/storage/connectionRecordKey.ts';
 
 const TOPIC = 'a1'.repeat(32),
   PEER = 'b2'.repeat(32),
@@ -86,6 +87,7 @@ function fixture() {
     [7, structuredClone(rawProposal)],
   ]);
   const pending = new Map<number, unknown>();
+  const history: unknown[] = [];
   const listeners = new Map<string, (event: unknown) => void>();
   const repository = {
     assertHealthy() {
@@ -129,6 +131,9 @@ function fixture() {
   } satisfies Omit<NativeConnectionRepository, 'calls'>;
   const core: ReturnType<WalletConnectSdk['createCore']> = {
     storage: repository.transport,
+    history: { values: history,
+      get records() { return new Map(history.map(value => [(value as { id: number }).id, value])); },
+      get: async (_topic, id) => history.find(value => (value as { id?: number }).id === id) },
     pairing: {
       pairings: { getAll: () => [{ topic: PAIRING }] },
       async disconnect() {
@@ -153,6 +158,7 @@ function fixture() {
       getAll: () => [...proposals.values()],
     },
     pendingRequest: { get: (id) => pending.get(id) },
+    getPendingSessionRequests: () => [...pending.values()],
     on(name, listener) {
       listeners.set(name, listener);
     },
@@ -234,6 +240,16 @@ function fixture() {
     },
     loadSdk: async () => sdk,
   };
+  const emit = (name: string, event: unknown) => {
+    if (name === 'session_request' && event && typeof event === 'object') {
+      const data = event as { id: number; topic: string; params: unknown };
+      // The real SDK awaits history.set before emitting; duplicate global ids
+      // deliberately retain the original record, even across protocol methods.
+      if (!history.some(value => (value as { id?: number }).id === data.id))
+        history.push({ id: data.id, topic: data.topic, request: { method: 'wc_sessionRequest', params: data.params } });
+    }
+    listeners.get(name)?.(event);
+  };
   const request = (id = 1) => {
     const params = {
       chainId: 'eip155:1',
@@ -243,7 +259,7 @@ function fixture() {
       },
     };
     pending.set(id, { id, topic: TOPIC, params });
-    listeners.get('session_request')!({ id, topic: TOPIC, params });
+    emit('session_request', { id, topic: TOPIC, params });
   };
   return {
     options,
@@ -252,6 +268,8 @@ function fixture() {
     calls,
     responders,
     protocolValues,
+    pending,
+    history,
     client,
     core,
     sessions,
@@ -284,7 +302,7 @@ function fixture() {
     setPending(id: number, value: unknown) {
       pending.set(id, value);
     },
-    emit: (name: string, event: unknown) => listeners.get(name)?.(event),
+    emit,
   };
 }
 async function proposal(
@@ -1116,4 +1134,269 @@ test('pair cancellation exposes its scoped handle before a delayed SDK completio
   assert.equal(f.calls.includes('session-disconnect'), false);
   assert.equal(f.calls.includes('pairing-disconnect'), true);
   await transport.close();
+});
+
+
+test('authoritative pending lookup preserves original timestamp-less wire expiry in the same live adapter', async () => {
+  const f = fixture(), now = Date.now; let clock = now(); Date.now = () => clock;
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    f.request(); await settle(); const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    const wire = event.request, original = wire.expiresAt;
+    clock += 1000;
+    assert.equal((await transport.pending(wire.session.binding, wire.id, () => {}))?.expiresAt, original);
+    assert.equal(await transport.pending(wire.session.binding, 999, () => {}), null);
+    clock = original + 1;
+    assert.equal(await transport.pending(wire.session.binding, wire.id, () => {}), null);
+  } finally { Date.now = now; await transport.close(); }
+});
+
+for (const change of ['missing', 'payload', 'completed', 'dispatch-uncertain', 'session-update-queued', 'session-expiry-changed'] as const) test(`authoritative pending lookup refuses ${change}`, async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  try {
+    f.request(); await settle(); const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    const wire = event.request;
+    if (change === 'missing') f.pending.delete(wire.id);
+    else if (change === 'payload') f.pending.set(wire.id, { id: wire.id, topic: TOPIC, params: { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['different'] } } });
+    else if (change === 'completed') await transport.respond(wire.session.binding, wire.id, { result: 'complete' }, () => {}, () => {});
+    else if (change === 'dispatch-uncertain') {
+      f.setBeforeRespond(async () => { throw Error('lost SDK response acknowledgement'); });
+      await assert.rejects(transport.respond(wire.session.binding, wire.id, { result: 'uncertain' }, () => {}, () => {}));
+    } else {
+      const raw = structuredClone(rawSession);
+      if (change === 'session-expiry-changed') raw.expiry++;
+      else raw.namespaces.eip155.methods = ['eth_chainId'];
+      f.sessions.set(TOPIC, raw);
+      if (change === 'session-update-queued') f.emit('session_update', { topic: TOPIC });
+    }
+    assert.equal(await transport.pending(wire.session.binding, wire.id, () => {}), null);
+  } finally { await transport.close(); }
+});
+
+test('pending lookup rechecks SDK session identity after the durable read barrier', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  try {
+    f.request(); await settle(); const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    const held = deferred(), entered = deferred(), read = f.options.repository.transport.getKeys;
+    let calls = 0;
+    f.options.repository.transport.getKeys = async () => { if (++calls === 2) { entered.release(); await held.promise; } return read(); };
+    const pending = transport.pending(event.request.session.binding, event.request.id, () => {}), refused = assert.rejects(pending);
+    await entered.promise;
+    const raw = structuredClone(rawSession); raw.namespaces.eip155.methods = ['eth_chainId']; f.sessions.set(TOPIC, raw);
+    held.release(); await refused;
+  } finally { await transport.close(); }
+});
+
+test('a new adapter cannot manufacture pending admission from an SDK store entry without an authoritative request event', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  try {
+    f.pending.set(1, { id: 1, topic: TOPIC, params: { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['hello'] } } });
+    const session = (await transport.sessions())[0]!;
+    assert.equal(await transport.pending(session.binding, 1, () => {}), null);
+  } finally { await transport.close(); }
+});
+
+for (const operation of ['pending', 'respond'] as const) for (const change of ['missing', 'id', 'topic', 'method', 'params', 'response', 'lookup-error'] as const)
+  test(`${operation} refuses ${change} history after fresh request admission`, async () => {
+    const f = fixture(), transport = await openWalletConnectTransport(f.options);
+    try {
+      f.request(); await settle(); const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+      const wire = event.request;
+      const historical = structuredClone(f.history[0]) as { id: number; topic: string; request: { method: string; params: unknown }; response?: unknown };
+      if (change === 'missing') f.core.history.get = async () => undefined;
+      else if (change === 'lookup-error') f.core.history.get = async () => { throw Error('SDK lookup failed'); };
+      else {
+        if (change === 'id') historical.id++;
+        else if (change === 'topic') historical.topic = 'e5'.repeat(32);
+        else if (change === 'method') historical.request.method = 'wc_sessionPing';
+        else if (change === 'params') historical.request.params = {};
+        else historical.response = { error: { code: -32602, message: 'SDK answered' } };
+        f.core.history.get = async () => historical;
+      }
+      let dispatched = false;
+      if (operation === 'pending') assert.equal(await transport.pending(wire.session.binding, wire.id, () => {}), null);
+      else await assert.rejects(transport.respond(wire.session.binding, wire.id, { result: 'must not escape' }, () => {}, () => { dispatched = true; }));
+      assert.equal(dispatched, false); assert.deepEqual(f.responders, []);
+      assert.equal((await transport.sessions()).length, 1);
+      // A failed check retires only this captured request, without closing a healthy session.
+      f.request(2); await settle(); assert(f.events.some(value => value.type === 'request' && value.request.id === 2));
+    } finally { await transport.close(); }
+  });
+
+test('response rechecks captured pending/session identity after the history await', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options), held = deferred(), entered = deferred();
+  try {
+    f.request(); await settle(); const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    const wire = event.request, get = f.core.history.get;
+    f.core.history.get = async (topic, id) => { const value = await get(topic, id); entered.release(); await held.promise; return value; };
+    let dispatched = false;
+    const response = transport.respond(wire.session.binding, wire.id, { result: 'must not escape' }, () => {}, () => { dispatched = true; });
+    const refused = assert.rejects(response); await entered.promise;
+    const raw = structuredClone(rawSession); raw.namespaces.eip155.methods = ['eth_chainId']; f.sessions.set(TOPIC, raw);
+    held.release(); await refused;
+    assert.equal(dispatched, false); assert.deepEqual(f.responders, []);
+  } finally { held.release(); await transport.close(); }
+});
+
+
+test('SDK init pending items remain restored across rejection, duplicate events and caller freshness claims', async () => {
+  const f = fixture(), params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['hello'], freshness: 'fresh' } };
+  f.pending.set(1, { id: 1, topic: TOPIC, params });
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    f.emit('session_request', { id: 1, topic: TOPIC, params }); await settle();
+    let requests = f.events.filter((value): value is Extract<WalletConnectTransportEvent, { type: 'request' }> => value.type === 'request');
+    assert.equal(requests.length, 1); assert.equal(requests[0]!.request.freshness, 'unproven');
+    await transport.respond(requests[0]!.request.session.binding, 1, { error: { code: 4200, message: 'Fresh request required' } }, () => {}, () => {});
+    f.emit('session_request', { id: 1, topic: TOPIC, params }); await settle();
+    requests = f.events.filter((value): value is Extract<WalletConnectTransportEvent, { type: 'request' }> => value.type === 'request');
+    assert.equal(requests.length, 2); assert.equal(requests[1]!.request.freshness, 'unproven');
+    const fresh = { ...params, request: { ...params.request, expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    f.pending.set(2, { id: 2, topic: TOPIC, params: fresh });
+    f.emit('session_request', { id: 2, topic: TOPIC, params: fresh }); await settle();
+    const live = f.events.find(value => value.type === 'request' && value.request.id === 2); assert(live?.type === 'request');
+    assert.equal(live.request.freshness, 'fresh');
+  } finally { await transport.close(); }
+});
+
+test('delayed cached SDK replay is negative-tagged from startup history even with an empty pending snapshot', async () => {
+  const f = fixture(); f.history.push({ id: 17 });
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['hello'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    f.pending.set(17, { id: 17, topic: TOPIC, params });
+    f.emit('session_request', { id: 17, topic: TOPIC, params }); await settle();
+    const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    assert.equal(event.request.freshness, 'unproven');
+    assert.equal(event.request.expiresAt, params.request.expiryTimestamp * 1000);
+  } finally { await transport.close(); }
+});
+
+test('startup topics reject ambiguous timestamp-less replay while permitting fresh original explicit expiry', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  try {
+    f.request(1); await settle();
+    const first = f.events.find(value => value.type === 'request'); assert(first?.type === 'request');
+    assert.equal(first.request.freshness, 'unproven');
+    const expiryTimestamp = Math.floor(Date.now() / 1000) + 300;
+    const params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp } };
+    f.pending.set(2, { id: 2, topic: TOPIC, params });
+    f.emit('session_request', { id: 2, topic: TOPIC, params }); await settle();
+    const fresh = f.events.find(value => value.type === 'request' && value.request.id === 2); assert(fresh?.type === 'request');
+    assert.equal(fresh.request.freshness, 'fresh'); assert.equal(fresh.request.expiresAt, expiryTimestamp * 1000);
+    const addedTopic = 'e5'.repeat(32);
+    f.sessions.set(addedTopic, { ...structuredClone(rawSession), topic: addedTopic });
+    f.emit('session_request', { id: 3, topic: addedTopic, params: { ...params, request: { method: 'personal_sign', params: ['live paired'] } } }); await settle();
+    const live = f.events.find(value => value.type === 'request' && value.request.id === 3); assert(live?.type === 'request');
+    assert.equal(live.request.freshness, 'fresh');
+  } finally { await transport.close(); }
+});
+
+test('global numeric ids remain negative after response and across topics without changing active duplicate admission', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  try {
+    const params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    const emit = (topic: string) => { f.pending.set(4, { id: 4, topic, params }); f.emit('session_request', { id: 4, topic, params }); };
+    emit(TOPIC); await settle(); emit(TOPIC); await settle();
+    let events = f.events.filter((value): value is Extract<WalletConnectTransportEvent, { type: 'request' }> => value.type === 'request');
+    assert.equal(events.length, 1); assert.equal(events[0]!.request.freshness, 'fresh');
+    await transport.respond(events[0]!.request.session.binding, 4, { result: 'finished' }, () => {}, () => {});
+    emit(TOPIC); await settle();
+    const addedTopic = 'e5'.repeat(32); f.sessions.set(addedTopic, { ...structuredClone(rawSession), topic: addedTopic });
+    emit(addedTopic); await settle();
+    events = f.events.filter((value): value is Extract<WalletConnectTransportEvent, { type: 'request' }> => value.type === 'request');
+    assert.equal(events.length, 3); assert.equal(events[1]!.request.freshness, 'unproven'); assert.equal(events[2]!.request.freshness, 'unproven');
+    assert.equal(await transport.pending(events[0]!.request.session.binding, 4, () => {}), null);
+  } finally { await transport.close(); }
+});
+
+for (const corruption of ['malformed', 'overflow', 'retention'] as const) test(`uncertain ${corruption} startup evidence gates hardware without closing the transport`, async () => {
+  const f = fixture();
+  if (corruption === 'malformed') f.history.push({ id: 'untrusted' });
+  else if (corruption === 'overflow') for (let id = 0; id <= CONNECTION_RECORD_LIMITS.nodes; id++) f.history.push({ id });
+  else Object.defineProperty(await f.options.loadSdk(), 'requestExpirySeconds', { value: { min: 300, max: 30 * 24 * 60 * 60 } });
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    f.emit('session_request', { id: 8, topic: TOPIC, params }); await settle();
+    const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    assert.equal(event.request.freshness, 'unproven'); assert.equal((await transport.sessions()).length, 1);
+    assert.equal(f.events.some(value => value.type === 'unavailable'), false);
+  } finally { await transport.close(); }
+});
+
+test('seen id resource exhaustion stays negative without eviction or renewed admission authority', async () => {
+  const f = fixture();
+  for (let id = 0; id < CONNECTION_RECORD_LIMITS.nodes; id++) f.history.push({ id });
+  const transport = await openWalletConnectTransport(f.options);
+  try {
+    const params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    f.emit('session_request', { id: CONNECTION_RECORD_LIMITS.nodes, topic: TOPIC, params }); await settle();
+    const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    assert.equal(event.request.freshness, 'unproven');
+    f.emit('session_request', { id: 0, topic: TOPIC, params }); await settle();
+    const original = f.events.find(value => value.type === 'request' && value.request.id === 0); assert(original?.type === 'request');
+    assert.equal(original.request.freshness, 'unproven');
+  } finally { await transport.close(); }
+});
+
+for (const change of ['missing', 'id', 'topic', 'method', 'params', 'response', 'lookup-error'] as const) test(`a ${change} current global history record cannot prove a fresh hardware wire`, async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  try {
+    const params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    const historical = { id: 27, topic: TOPIC, request: { method: 'wc_sessionRequest', params }, response: undefined as unknown };
+    if (change === 'missing') f.core.history.get = async () => undefined;
+    else if (change === 'id') f.core.history.get = async () => ({ ...historical, id: 28 });
+    else if (change === 'lookup-error') f.core.history.get = async () => { throw Error('SDK lookup failed'); };
+    else {
+      if (change === 'topic') historical.topic = 'e5'.repeat(32);
+      else if (change === 'method') historical.request.method = 'wc_sessionPing';
+      else if (change === 'params') historical.request.params = { ...params, request: { ...params.request, params: ['different'] } };
+      else historical.response = { id: 27, jsonrpc: '2.0', result: 'previously handed off' };
+      // Added during this process, after the startup negative snapshot.
+      f.history.push(historical);
+    }
+    f.emit('session_request', { id: 27, topic: TOPIC, params }); await settle();
+    const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    assert.equal(event.request.freshness, 'unproven');
+  } finally { await transport.close(); }
+});
+
+for (const rejected of [false, true]) test(`owner retirement during ${rejected ? 'failed' : 'successful'} direct history lookup cannot admit a late wire`, async () => {
+  const f = fixture(), held = deferred(), entered = deferred(), transport = await openWalletConnectTransport(f.options);
+  try {
+    f.core.history.get = async () => { entered.release(); await held.promise; if (rejected) throw Error('SDK lookup failed'); return undefined; };
+    f.request(); await entered.promise; f.setOwner(false); held.release(); await settle();
+    assert.equal(f.events.some(value => value.type === 'request'), false);
+    assert.equal(f.events.some(value => value.type === 'unavailable'), true);
+  } finally { held.release(); await transport.close(); }
+});
+
+test('per-request history proof uses direct public lookup without materializing history values again', async () => {
+  const f = fixture(), transport = await openWalletConnectTransport(f.options);
+  try {
+    Object.defineProperty(f.core.history, 'values', { get() { throw Error('History values must only be read at startup'); } });
+    const params = { chainId: 'eip155:1', request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    f.emit('session_request', { id: 41, topic: TOPIC, params }); await settle();
+    const event = f.events.find(value => value.type === 'request'); assert(event?.type === 'request');
+    assert.equal(event.request.freshness, 'fresh');
+  } finally { await transport.close(); }
+});
+
+for (const change of ['namespace', 'expiry', 'deleted'] as const) test(`queued session ${change} during direct history lookup cannot admit the old wire`, async () => {
+  const f = fixture(), held = deferred(), entered = deferred(), transport = await openWalletConnectTransport(f.options);
+  try {
+    const get = f.core.history.get;
+    f.core.history.get = async (topic, id) => { entered.release(); await held.promise; return get(topic, id); };
+    f.request(); await entered.promise;
+    if (change === 'deleted') { f.sessions.delete(TOPIC); f.emit('session_delete', { topic: TOPIC }); }
+    else {
+      const current = structuredClone(rawSession);
+      if (change === 'expiry') current.expiry++;
+      else current.namespaces.eip155.methods = ['eth_chainId'];
+      f.sessions.set(TOPIC, current); f.emit('session_update', { topic: TOPIC });
+    }
+    held.release(); await settle();
+    assert.equal(f.events.some(value => value.type === 'request'), false);
+  } finally { held.release(); await transport.close(); }
 });

@@ -1,7 +1,7 @@
 import { dappCaipChain, DAPP_MODE_METHODS } from '../../../source/shared/dappChainScope.ts';
 import { DAPP_SYSCOIN_READ_METHODS } from '../../../source/shared/dappSyscoinReads.ts';
 import { SENTRY_DAPP_METHODS, type NativeSentryDetails, type NativeSentryAssent } from '../src/connections/sentryRequests.ts';
-import { PSBT_DAPP_METHODS } from '../src/connections/psbtRequests.ts';
+import { PSBT_DAPP_METHODS, type NativePsbtHandoff } from '../src/connections/psbtRequests.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
@@ -19,6 +19,7 @@ import { NativeConnectionsController } from '../src/connections/controller.ts';
 import type { NativeConnectionHost } from '../src/connections/host.ts';
 import type {
   WalletConnectTransportEvent,
+  WalletConnectRequest,
   WalletConnectSession,
   WalletConnectProposal,
   WalletConnectVerification,
@@ -99,6 +100,8 @@ function fixture(
   const sentryRequests: unknown[] = [], sentryAssents: NativeSentryAssent[] = [];
   const psbtRequests: unknown[] = [], psbtApprovals: unknown[] = [];
   let psbtWait = Promise.resolve(), psbtSignWait = Promise.resolve(), psbtDisposals = 0;
+  let psbtHandoff: NativePsbtHandoff | undefined, pendingOverride: 'missing' | 'method' | null = null, pendingReads = 0;
+  const wireAdmissions = new Map<number, WalletConnectRequest>(), canceledPsbtJobs: object[] = [];
   let readWait: Promise<void> = Promise.resolve();
   let readError: Error | undefined;
   const readRequests: unknown[] = [];
@@ -212,14 +215,15 @@ function fixture(
       const details = (request.method === 'sys_linkSentryNode' ? { kind: 'link', approval } : request.method === 'sys_signSentryVote' ? { kind: 'vote', approval: { ...approval, nodes: [], missingVotingKeys: [] } } : { kind: 'operation', approval: { ...approval, keys: [] } }) as NativeSentryDetails;
       return { details, disclose: check, assertCurrent: () => { check(); if (signal.aborted) throw new Error('CANCELLED'); }, async approve(assent, guard) { check(); guard(); sentryAssents.push(assent); return { method: request.method }; }, dispose() {} };
     } },
-    psbt: { async prepare(request, signal, check) {
+    psbt: { async cancelHandoff(job) { canceledPsbtJobs.push(job); }, async prepare(request, signal, check, handoff) {
+      psbtHandoff = handoff;
       psbtRequests.push(request); await psbtWait;
       let disposed = false;
       const current = () => { check(); if (disposed || signal.aborted) throw Error('CANCELLED'); };
       return { review: { method: request.method, origin: request.origin, feeSatoshis: '100', unsignedHash: 'ab'.repeat(32),
         transactionType: 'bitcoin', transactionOptions: { rbf: false }, complete: false, inputs: [], outputs: [], sentry: null },
         assertCurrent: current, disposition: () => ({ transactionNotBroadcast: true }),
-        async approve() { current(); psbtApprovals.push(request); await psbtSignWait; current(); return request.method === 'sys_sign' ? request.psbt : { txid: 'ef'.repeat(32) }; },
+        async approve() { current(); psbtApprovals.push(request); await psbtSignWait; current(); if (options.hardware === 'Trezor') handoff.beforeSignature(); return request.method === 'sys_sign' ? request.psbt : { txid: 'ef'.repeat(32) }; },
         dispose() { disposed = true; psbtDisposals++; } };
     } },
     reads: { async read(request, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('ABORTED'); if (readError) throw readError; return '0x42'; } },
@@ -601,6 +605,13 @@ function fixture(
           emissionScopes.push(chain);
           emissions.push(value);
         },
+        pending: async (binding, id, guard) => {
+          guard(); pendingReads++;
+          const wire = wireAdmissions.get(id);
+          if (!wire || pendingOverride === 'missing' || JSON.stringify(wire.session.binding) !== JSON.stringify(binding) || wire.expiresAt <= Date.now() ||
+              handedOff.some(value => (value as { id: number }).id === id)) return null;
+          return pendingOverride === 'method' ? { ...wire, method: 'sys_signAndSend' } : wire;
+        },
         sessions: async () => {
           if (inventoryFailures-- > 0) throw new Error('Inventory unavailable');
           return inventory;
@@ -619,6 +630,8 @@ function fixture(
     setPsbtWait(value: Promise<void>) { psbtWait = value; },
     setPsbtSignWait(value: Promise<void>) { psbtSignWait = value; },
     psbtDisposals: () => psbtDisposals,
+    psbtHandoff: () => psbtHandoff!, canceledPsbtJobs, pendingReads: () => pendingReads,
+    setPendingOverride(value: typeof pendingOverride) { pendingOverride = value; },
     setSentryWait(value: Promise<void>) { sentryWait = value; },
     rotateReceiving(value: string) { receivingAddress = value; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
     setReadWait(value: Promise<void>) { readWait = value; },
@@ -677,7 +690,11 @@ function fixture(
     session,
     proposal,
     repository: restoredRepository,
-    event: (value: WalletConnectTransportEvent) => event(value),
+    event: (value: WalletConnectTransportEvent) => {
+      if (value.type === 'request') wireAdmissions.set(value.request.id, value.request);
+      else if (value.type === 'request-expired') wireAdmissions.delete(value.id);
+      event(value);
+    },
     eventFrom: (index: number, value: WalletConnectTransportEvent) =>
       transportEvents[index]!(value),
     opened: () => opened,
@@ -769,7 +786,7 @@ test('native controller shares a reviewed public account through the common gran
     assert.equal(f.view.getSnapshot().sessions.length, 1);
     f.event({
       type: 'request',
-      request: {
+      request: { freshness: 'fresh',
         id: 1,
         expiresAt: Date.now() + 300000,
         verification: UNKNOWN,
@@ -909,6 +926,7 @@ test('failed SDK initialization cleanup blocks Retry and lock-unlock admission',
       requestExpirySeconds: { min: 60, max: 300 },
       createCore: ({ storage }) => ({
         storage,
+        history: { values: [], records: new Map(), get: async () => undefined },
         pairing: {
           pairings: { getAll: () => [] },
           disconnect: async () => undefined,
@@ -977,7 +995,7 @@ test('locking cancels disclosure while retaining durable grants and transport li
     assert.equal(JSON.stringify([...f.rows]), persisted);
     f.event({
       type: 'request',
-      request: {
+      request: { freshness: 'fresh',
         id: 2,
         expiresAt: Date.now() + 300000,
         verification: UNKNOWN,
@@ -1068,7 +1086,7 @@ test('network changes use the approved session chain without extending its grant
     assert.deepEqual(f.session.namespaces.eip155!.chains, ['eip155:1']);
     f.event({
       type: 'request',
-      request: {
+      request: { freshness: 'fresh',
         id: 10,
         expiresAt: Date.now() + 300000,
         verification: UNKNOWN,
@@ -1090,7 +1108,7 @@ test('network changes use the approved session chain without extending its grant
     assert.deepEqual(f.emissions.at(-1), { name: 'chainChanged', data: '0x1' });
     f.event({
       type: 'request',
-      request: {
+      request: { freshness: 'fresh',
         id: 11,
         expiresAt: Date.now() + 300000,
         verification: UNKNOWN,
@@ -1540,7 +1558,7 @@ for (const retirement of [
       );
       f.event({
         type: 'request',
-        request: {
+        request: { freshness: 'fresh',
           id: 9,
           expiresAt: Date.now() + 300000,
           verification: UNKNOWN,
@@ -1612,7 +1630,7 @@ async function messageRequest(
 ) {
   f.event({
     type: 'request',
-    request: {
+    request: { freshness: 'fresh',
       id,
       session: f.session,
       chainId: 'eip155:1',
@@ -1626,7 +1644,7 @@ async function messageRequest(
   return f.view.getSnapshot().signingReview;
 }
 async function syscoinRequest(f: ReturnType<typeof fixture>, method: string, params: unknown = [], id = 10) {
-  f.event({ type: 'request', request: { id, session: f.session, method, params, chainId: dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+  f.event({ type: 'request', request: { freshness: 'fresh', id, session: f.session, method, params, chainId: dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
   await settle();
 }
 for (const method of PSBT_DAPP_METHODS) test(`${method} is negotiated only in bip122 and signs the original structured request after explicit consent`, async () => {
@@ -1682,7 +1700,7 @@ for (const change of ['lock', 'network', 'session', 'revoke', 'expiry', 'dispose
     else if (change === 'expiry') now += 300001; else disposing = f.controller.dispose();
     held.resolve(); await settle(); await disposing;
     assert.equal(f.view.getSnapshot().psbtReview, null); assert.equal(f.psbtApprovals.length, 0); assert.equal(f.psbtDisposals(), 1);
-    assert.equal(f.responses.some(value => (value as { id: number }).id === 10), false);
+    assert.equal(f.responses.some(value => (value as { id: number; result: object }).id === 10 && 'result' in (value as { result: object }).result), false);
   } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
 });
 test('a retired PSBT signing request cannot deliver its late structured result', async () => {
@@ -1691,7 +1709,7 @@ test('a retired PSBT signing request cannot deliver its late structured result',
     await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT]); const review = f.view.getSnapshot().psbtReview; assert(review?.details);
     f.setPsbtSignWait(held.promise); const signing = f.view.approvePsbt(review.id, review.revision); await settle();
     f.lock(); held.resolve(); await assert.rejects(signing); await settle();
-    assert.equal(f.responses.length, 0); assert.equal(f.view.getSnapshot().psbtReview, null);
+    assert(!f.responses.some(value => 'result' in (value as { result: object }).result)); assert.equal(f.view.getSnapshot().psbtReview, null);
   } finally { held.resolve(); await f.controller.dispose(); }
 });
 for (const hardware of ['Ledger', 'Trezor'] as const) test(`${hardware} proposal exposes only its wired EVM message methods and retains the existing calls exclusion`, async () => {
@@ -1711,7 +1729,7 @@ for (const mismatch of ['family', 'chain'] as const) test(`session updates canno
     const chainId = mismatch === 'family' ? 'eip155:1' : 'eip155:10';
     const updated = { ...f.session, namespaces: { eip155: { accounts: [`${chainId}:${ADDRESS}`], chains: [chainId], methods: ['personal_sign'], events: [] } } };
     f.event({ type: 'session', session: updated });
-    f.event({ type: 'request', request: { id: 10, session: updated, chainId, method: 'personal_sign', params: ['Hello', ADDRESS], expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    f.event({ type: 'request', request: { freshness: 'fresh', id: 10, session: updated, chainId, method: 'personal_sign', params: ['Hello', ADDRESS], expiresAt: Date.now() + 300000, verification: UNKNOWN } });
     await settle();
     assert.equal(f.view.getSnapshot().signingReview, null); assert.equal(f.signatures.length, 0);
     assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, mismatch === 'family' ? 4100 : 4901);
@@ -1744,7 +1762,7 @@ for (const mismatch of ['method', 'account', 'chain', 'origin'] as const) test(`
     const session = { ...f.session, binding: mismatch === 'origin' ? { ...f.session.binding, origin: 'https://other.example' } : f.session.binding };
     if (mismatch === 'method') Object.assign(f.session.namespaces.bip122!, { methods: [] });
     if (mismatch === 'account') Object.assign(f.session.namespaces.bip122!, { accounts: [`${dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' })}:${UTXO_ADDRESSES.bitcoin}`] });
-    f.event({ type: 'request', request: { id: 10, session, method: 'sys_getPublicKey', params: [], chainId: mismatch === 'chain' ? 'bip122:' + '00'.repeat(16) : dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    f.event({ type: 'request', request: { freshness: 'fresh', id: 10, session, method: 'sys_getPublicKey', params: [], chainId: mismatch === 'chain' ? 'bip122:' + '00'.repeat(16) : dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
     await settle(); assert.equal(f.readRequests.length, 0);
     assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, mismatch === 'chain' ? 4901 : 4100);
   } finally { await f.controller.dispose(); }
@@ -2145,7 +2163,7 @@ for (const mismatch of ['chain', 'method', 'account', 'origin', 'parameters'] as
     if (mismatch === 'method') Object.assign(f.session.namespaces.eip155!, { methods: f.session.namespaces.eip155!.methods.filter(value => value !== 'eth_getBalance') });
     if (mismatch === 'account') Object.assign(f.session.namespaces.eip155!, { accounts: [`eip155:1:0x${'22'.repeat(20)}`] });
     const session = mismatch === 'origin' ? { ...f.session, binding: { ...f.session.binding, origin: 'https://other.example' } } : f.session;
-    f.event({ type: 'request', request: { id: 10, session, chainId: 'eip155:1', method: 'eth_getBalance', params: mismatch === 'parameters' ? ['invalid'] : [ADDRESS], expiresAt: Date.now() + 300000, verification: UNKNOWN } });
+    f.event({ type: 'request', request: { freshness: 'fresh', id: 10, session, chainId: 'eip155:1', method: 'eth_getBalance', params: mismatch === 'parameters' ? ['invalid'] : [ADDRESS], expiresAt: Date.now() + 300000, verification: UNKNOWN } });
     await settle();
     assert.equal(f.readRequests.length, 0);
     assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, mismatch === 'chain' ? 4901 : mismatch === 'parameters' ? -32602 : 4100);
@@ -2220,7 +2238,7 @@ test('control requests cannot bypass method, source-chain, origin or blacklist i
     await messageRequest(f, 'wallet_watchAsset', [{ type: 'ERC1155', options: { address: `0x${'12'.repeat(20)}`, tokenId: 2 ** 53 } }], 802);
     assert.equal(f.view.getSnapshot().controlReview, null);
     assert.equal((f.responses.at(-1) as any).result.error.code, -32602);
-    f.event({ type: 'request', request: { id: 803, session: { ...f.session, binding: { ...f.session.binding, origin: 'https://different.example' } }, method: 'wallet_switchEthereumChain', chainId: 'eip155:1', params: [{ chainId: '0xa' }], verification: UNKNOWN, expiresAt: Date.now() + 60000 } });
+    f.event({ type: 'request', request: { freshness: 'fresh', id: 803, session: { ...f.session, binding: { ...f.session.binding, origin: 'https://different.example' } }, method: 'wallet_switchEthereumChain', chainId: 'eip155:1', params: [{ chainId: '0xa' }], verification: UNKNOWN, expiresAt: Date.now() + 60000 } });
     await settle(); assert.equal(f.view.getSnapshot().controlReview, null); assert.equal(f.controlCommits.length, 0);
   } finally { await f.controller.dispose(); }
 });
@@ -2304,7 +2322,7 @@ for (const [params, expected] of [
       if (params === undefined) {
         f.event({
           type: 'request',
-          request: {
+          request: { freshness: 'fresh',
             id: 10,
             method: 'wallet_getCapabilities',
             params: undefined,
@@ -2394,7 +2412,7 @@ for (const field of ['origin', 'peerPublicKey', 'topic'] as const) {
     try {
       f.event({
         type: 'request',
-        request: {
+        request: { freshness: 'fresh',
           id: 10,
           method: 'wallet_getCapabilities',
           params: [ADDRESS],
@@ -2435,7 +2453,7 @@ test('capabilities do not expand an approved chain after network selection chang
     assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: {} } });
     f.event({
       type: 'request',
-      request: {
+      request: { freshness: 'fresh',
         id: 11,
         method: 'wallet_getCapabilities',
         params: [ADDRESS, ['0xa']],
@@ -2916,7 +2934,7 @@ test('the same reported origin on an unapproved peer cannot use a saved grant', 
   try {
     f.event({
       type: 'request',
-      request: {
+      request: { freshness: 'fresh',
         id: 50,
         chainId: 'eip155:1',
         method: 'personal_sign',
@@ -2943,7 +2961,7 @@ test('expired requests never produce a review and queued messages advance after 
   try {
     f.event({
       type: 'request',
-      request: {
+      request: { freshness: 'fresh',
         id: 50,
         session: f.session,
         chainId: 'eip155:1',
@@ -3438,7 +3456,7 @@ async function pairedSmart() {
   return f;
 }
 function requestSmart(f: Awaited<ReturnType<typeof pairedSmart>>, id = 700, transaction: object = {}) {
-  f.event({ type: 'request', request: { session: f.session, id, chainId: 'eip155:1', method: 'eth_sendTransaction',
+  f.event({ type: 'request', request: { freshness: 'fresh', session: f.session, id, chainId: 'eip155:1', method: 'eth_sendTransaction',
     params: [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x0', data: '0x1234', ...transaction }],
     expiresAt: Date.now() + 60000, verification: UNKNOWN } });
 }
@@ -3842,7 +3860,7 @@ for (const method of ['wallet_getCallsStatus', 'wallet_showCallsStatus']) {
             methods: f.session.namespaces.eip155!.methods.filter((entry) => entry !== method),
           });
         } else Object.assign(f.session.namespaces.eip155!, { accounts: [`eip155:1:0x${'22'.repeat(20)}`] });
-        f.event({ type: 'request', request: {
+        f.event({ type: 'request', request: { freshness: 'fresh',
           id: 10, session, chainId, method, params: ['0x1234'],
           expiresAt: Date.now() + 300000, verification: UNKNOWN,
         } });
@@ -4314,7 +4332,71 @@ for (const change of ['lock', 'network', 'session', 'revoke', 'expiry'] as const
     else if (change === 'revoke') await syscoinRequest(f, 'wallet_revokePermissions', [{ eth_accounts: {} }], 11);
     else now += 300001;
     held.resolve(); await rejected; await settle();
-    assert(!f.responses.some(value => (value as { id: number }).id === 10));
+    assert(!f.responses.some(value => (value as { id: number; result: object }).id === 10 && 'result' in (value as { result: object }).result));
     assert.equal(f.view.getSnapshot().psbtReview, null);
   } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
+});
+
+
+test('Trezor external PSBT resumes only the authoritative original pending wire, makes a fresh review and waits for a separate approve', async () => {
+  const f = await connectedFixture({ utxo: true, hardware: 'Trezor' }), held = Promise.withResolvers<void>();
+  try {
+    f.setPsbtSignWait(held.promise); await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT]);
+    const first = f.view.getSnapshot().psbtReview; assert(first?.details);
+    const original = f.view.approvePsbt(first.id, first.revision), retired = assert.rejects(original); await settle();
+    const selector = f.psbtHandoff().id; f.psbtHandoff().beforeSuiteOpen(Date.now() + 60000, {})(true);
+    f.view.backgroundPsbt(); f.lock(); held.resolve(); await retired; await settle();
+    assert.equal(f.view.getSnapshot().psbtReview, null); assert.equal(f.responses.length, 0);
+    await assert.rejects(f.view.resumePsbt(selector));
+    f.unlock(); await settle(); await f.view.resumePsbt(selector); await settle();
+    const fresh = f.view.getSnapshot().psbtReview; assert(fresh?.details); assert.notEqual(fresh.id, first.id);
+    assert(fresh.expiresAt <= first.expiresAt); assert.equal(f.pendingReads(), 1);
+    assert.equal(f.psbtRequests.length, 2); assert.equal(f.psbtApprovals.length, 1); assert.equal(f.responses.length, 0);
+    await assert.rejects(f.view.approvePsbt(first.id, first.revision));
+    await f.view.approvePsbt(fresh.id, fresh.revision);
+    assert.deepEqual(f.responses, [{ id: 10, result: { result: EXTERNAL_PSBT } }]);
+    await assert.rejects(f.view.resumePsbt(selector)); assert.equal(f.psbtApprovals.length, 2);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const pending of ['missing', 'method'] as const) test(`Trezor resume with ${pending} authoritative pending data cancels only the exact old job and never prepares`, async () => {
+  const f = await connectedFixture({ utxo: true, hardware: 'Trezor' }), held = Promise.withResolvers<void>(), job = {};
+  try {
+    f.setPsbtSignWait(held.promise); await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT]);
+    const first = f.view.getSnapshot().psbtReview; assert(first?.details);
+    const signing = f.view.approvePsbt(first.id, first.revision), rejected = assert.rejects(signing); await settle();
+    const selector = f.psbtHandoff().id; f.psbtHandoff().beforeSuiteOpen(Date.now() + 60000, job);
+    f.view.backgroundPsbt(); f.lock(); held.resolve(); await rejected; f.unlock(); await settle();
+    f.setPendingOverride(pending); await assert.rejects(f.view.resumePsbt(selector)); await settle();
+    assert.equal(f.psbtRequests.length, 1); assert.equal(f.responses.length, 0); assert.deepEqual(f.canceledPsbtJobs, [job]);
+    await assert.rejects(f.view.resumePsbt(selector));
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('explicit Trezor handoff cancel uses still-pending SDK data for one rejection and cannot resume', async () => {
+  const f = await connectedFixture({ utxo: true, hardware: 'Trezor' }), held = Promise.withResolvers<void>(), job = {};
+  try {
+    f.setPsbtSignWait(held.promise); await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT]);
+    const first = f.view.getSnapshot().psbtReview; assert(first?.details);
+    const signing = f.view.approvePsbt(first.id, first.revision), rejected = assert.rejects(signing); await settle();
+    const selector = f.psbtHandoff().id; f.psbtHandoff().beforeSuiteOpen(Date.now() + 60000, job);
+    f.view.backgroundPsbt(); f.lock(); held.resolve(); await rejected;
+    await f.view.cancelPsbtHandoff(); await settle();
+    assert.deepEqual(f.responses, [{ id: 10, result: { error: { code: 4001, message: 'User rejected' } } }]);
+    assert.deepEqual(f.canceledPsbtJobs, [job]); f.unlock(); await settle(); await assert.rejects(f.view.resumePsbt(selector));
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+
+for (const freshness of ['unproven', undefined, 'caller-claimed'] as const) test(`Trezor PSBT freshness ${freshness} cannot enter custody or become fresh after account selection`, async () => {
+  const f = await connectedFixture({ utxo: true, hardware: 'Trezor' });
+  try {
+    const wire = { id: 10, session: f.session, method: 'sys_sign', params: [EXTERNAL_PSBT], freshness,
+      chainId: dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } as WalletConnectRequest;
+    f.event({ type: 'request', request: wire }); await settle();
+    assert.equal(f.psbtRequests.length, 0); assert.equal(f.view.getSnapshot().psbtReview, null);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4200);
+    f.selectEvm(); f.selectUtxo(); f.event({ type: 'request', request: wire }); await settle();
+    assert.equal(f.psbtRequests.length, 0); assert.equal(f.psbtApprovals.length, 0);
+  } finally { await f.controller.dispose(); }
 });

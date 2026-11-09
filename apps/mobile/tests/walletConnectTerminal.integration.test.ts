@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   openWalletConnectTransport,
   type WalletConnectSdk,
+  type WalletConnectTransportEvent,
 } from '../src/connections/walletConnect.ts';
 import type { NativeConnectionRepository } from '../src/connections/storage.ts';
 
@@ -14,7 +15,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function fixture(holdKeychain = false) {
+async function fixture(holdKeychain = false, initializeSession = false) {
   const [
     { Core },
     { SignClient, SESSION_REQUEST_EXPIRY_BOUNDARIES },
@@ -25,6 +26,8 @@ async function fixture(holdKeychain = false) {
     import('@walletconnect/utils'),
   ]);
   const values = new Map<string, unknown>();
+  const events: WalletConnectTransportEvent[] = [];
+  const topic = 'a1'.repeat(32), peer = 'b2'.repeat(32), pairing = 'c3'.repeat(32);
   const readStarted = deferred(),
     held = deferred();
   let core: InstanceType<typeof Core> | undefined;
@@ -82,6 +85,18 @@ async function fixture(holdKeychain = false) {
         core: core!,
         metadata: { ...options.metadata, icons: [...options.metadata.icons] },
       });
+      if (initializeSession) {
+        await client.session.set(topic, {
+          topic, pairingTopic: pairing, relay: { protocol: 'irn' }, expiry: Math.floor(Date.now() / 1000) + 3600,
+          acknowledged: true, controller: peer, requiredNamespaces: {}, optionalNamespaces: {},
+          namespaces: { eip155: { accounts: ['eip155:1:0x' + '11'.repeat(20)], methods: ['personal_sign'], events: [] } },
+          self: { publicKey: 'd4'.repeat(32), metadata: { name: 'Pali', description: '', url: 'https://paliwallet.com', icons: [] } },
+          peer: { publicKey: peer, metadata: { name: 'Dapp', description: '', url: 'https://example.com', icons: [] } },
+        });
+        await core!.history.set(topic, { id: 17, jsonrpc: '2.0', method: 'wc_sessionRequest', params: {
+          chainId: 'eip155:1', request: { method: 'personal_sign', params: ['cached'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 },
+        } });
+      }
       return client;
     },
   };
@@ -102,11 +117,13 @@ async function fixture(holdKeychain = false) {
       if (owner.signal.aborted) throw Error('Retired');
     },
     async preparePlatform() {},
-    onEvent() {},
+    onEvent(event: WalletConnectTransportEvent) { events.push(event); },
     loadSdk: async () => sdk,
   };
   return {
     options,
+    events,
+    topic,
     owner,
     held,
     readStarted,
@@ -159,4 +176,157 @@ test('actual SDK initialization retirement drains the admitted keychain read', a
   assert.equal(f.client, undefined);
   assert.deepEqual(f.core.heartbeat.events.eventNames(), []);
   assert.deepEqual(f.core.relayer.events.eventNames(), []);
+});
+
+test('actual SDK public history proves fresh original-expiry requests and fences delayed/cross-protocol replay', async () => {
+  const f = await fixture(false, true), transport = await openWalletConnectTransport(f.options);
+  try {
+    assert.deepEqual(f.client!.getPendingSessionRequests(), []);
+    const emit = async (id: number, params: { chainId: string; request: { method: string; params: string[]; expiryTimestamp: number } }) => {
+      const request = { id, topic: f.topic, params, verifyContext: { verified: {
+        validation: 'UNKNOWN' as const, origin: 'https://example.com', verifyUrl: 'https://verify.walletconnect.com',
+      } } };
+      await f.client!.pendingRequest.set(id, request);
+      f.client!.events.emit('session_request', request);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      const event = f.events.find(value => value.type === 'request' && value.request.id === id);
+      assert(event?.type === 'request'); return event.request;
+    };
+    const cached = await f.core.history.get(f.topic, 17);
+    const original = cached.request.params as { chainId: string; request: { method: string; params: string[]; expiryTimestamp: number } };
+    assert.equal((await emit(17, original)).freshness, 'unproven');
+    const fresh = { ...original, request: { ...original.request, params: ['fresh'] } };
+    await f.core.history.set(f.topic, { id: 18, jsonrpc: '2.0', method: 'wc_sessionRequest', params: fresh });
+    const wire = await emit(18, fresh);
+    assert.equal(wire.freshness, 'fresh'); assert.equal(wire.expiresAt, fresh.request.expiryTimestamp * 1000);
+    assert.equal(await transport.pending(wire.session.binding, 18, () => {}), wire);
+    await f.core.history.set(f.topic, { id: 19, jsonrpc: '2.0', method: 'wc_sessionPing', params: {} });
+    await f.core.history.set(f.topic, { id: 19, jsonrpc: '2.0', method: 'wc_sessionRequest', params: fresh });
+    assert.equal((await f.core.history.get(f.topic, 19)).request.method, 'wc_sessionPing');
+    assert.equal((await emit(19, fresh)).freshness, 'unproven');
+  } finally { await transport.close(); }
+});
+
+async function encryptedRequests() {
+  const f = await fixture(false, true), transport = await openWalletConnectTransport(f.options);
+  const published: unknown[] = [];
+  // Only network boundaries are replaced. Receive, decrypt, history, validation,
+  // pending storage, sendError and response serialization use the installed SDK.
+  f.core.verify.resolve = async () => ({ origin: 'https://example.com' });
+  f.core.relayer.confirmOnlineStateOrThrow = async () => {};
+  f.core.relayer.publish = async (topic, message) => {
+    published.push(await f.core.crypto.decode(topic, message));
+  };
+  await f.core.crypto.setSymKey('e5'.repeat(32), f.topic);
+  const receive = async (id: number, chainId = 'eip155:1') => {
+    const params = { chainId, request: { method: 'personal_sign', params: ['fresh'], expiryTimestamp: Math.floor(Date.now() / 1000) + 300 } };
+    const message = await f.core.crypto.encode(f.topic, { id, jsonrpc: '2.0', method: 'wc_sessionRequest', params });
+    // Exercise the actual encrypted receive entry without connecting a relay.
+    const engine = f.client!.engine as unknown as { onRelayMessage(event: { topic: string; message: string; transportType: 'relay' }): Promise<void> };
+    await engine.onRelayMessage({ topic: f.topic, message, transportType: 'relay' });
+    await new Promise<void>(resolve => setImmediate(resolve));
+  };
+  return { ...f, transport, published, receive };
+}
+
+for (const operation of ['pending', 'respond'] as const) test(`actual SDK answered duplicate cannot authorize ${operation} from its surviving pending row`, async () => {
+  const f = await encryptedRequests();
+  try {
+    await f.receive(81);
+    const event = f.events.find(value => value.type === 'request' && value.request.id === 81);
+    assert(event?.type === 'request'); const wire = event.request;
+    assert.equal(wire.freshness, 'fresh');
+    assert.equal(await f.transport.pending(wire.session.binding, 81, () => {}), wire);
+    const original = f.client!.pendingRequest.get(81);
+    await f.receive(81, 'eip155:999');
+    assert.deepEqual(f.client!.pendingRequest.get(81), original);
+    const answered = await f.core.history.get(f.topic, 81);
+    assert(answered.response && 'error' in answered.response);
+    assert.equal(f.published.length, 1);
+    let dispatched = 0;
+    if (operation === 'pending') assert.equal(await f.transport.pending(wire.session.binding, 81, () => {}), null);
+    await assert.rejects(f.transport.respond(wire.session.binding, 81, { result: 'must not escape' }, () => {}, () => { dispatched++; }));
+    assert.equal(dispatched, 0); assert.equal(f.published.length, 1);
+    assert.deepEqual(await f.core.history.get(f.topic, 81), answered);
+  } finally { await f.transport.close(); }
+});
+
+test('actual SDK fresh encrypted request still permits one response and no repeat', async () => {
+  const f = await encryptedRequests();
+  try {
+    await f.receive(82);
+    const event = f.events.find(value => value.type === 'request' && value.request.id === 82);
+    assert(event?.type === 'request'); const wire = event.request;
+    let dispatched = 0;
+    await f.transport.respond(wire.session.binding, 82, { result: 'approved' }, () => {}, () => { dispatched++; });
+    assert.deepEqual(f.published, [{ id: 82, jsonrpc: '2.0', result: 'approved' }]);
+    assert.equal(dispatched, 1);
+    assert.equal(await f.transport.pending(wire.session.binding, 82, () => {}), null);
+    await assert.rejects(f.transport.respond(wire.session.binding, 82, { result: 'repeat' }, () => {}, () => { dispatched++; }));
+    assert.equal(dispatched, 1); assert.equal(f.published.length, 1);
+  } finally { await f.transport.close(); }
+});
+
+for (const [operation, boundary] of [['pending', 'final-storage'], ['pending', 'history-lookup'], ['respond', 'history-lookup']] as const)
+test(`actual SDK terminalization during ${boundary} cannot authorize ${operation}`, async () => {
+  const f = await encryptedRequests(), entered = deferred(), held = deferred();
+  try {
+    await f.receive(83);
+    const event = f.events.find(value => value.type === 'request' && value.request.id === 83);
+    assert(event?.type === 'request'); const wire = event.request;
+    if (boundary === 'final-storage') {
+      const getKeys = f.options.repository.transport.getKeys;
+      let reads = 0;
+      f.options.repository.transport.getKeys = async () => {
+        if (++reads === 2) { entered.resolve(); await held.promise; }
+        return getKeys();
+      };
+    } else {
+      const get = f.core.history.get;
+      let reads = 0;
+      f.core.history.get = async (topic, id) => {
+        const value = await get(topic, id);
+        if (++reads === 1) { entered.resolve(); await held.promise; }
+        return value;
+      };
+    }
+    let dispatched = false;
+    const result = operation === 'pending'
+      ? f.transport.pending(wire.session.binding, 83, () => {})
+      : assert.rejects(f.transport.respond(wire.session.binding, 83, { result: 'must not escape' }, () => {}, () => { dispatched = true; }));
+    await entered.promise;
+    await f.receive(83, 'eip155:999');
+    held.resolve();
+    if (operation === 'pending') assert.equal(await result, null);
+    else await result;
+    assert.equal(dispatched, false);
+    assert.equal(f.published.length, 1);
+  } finally { held.resolve(); await f.transport.close(); }
+});
+
+for (const operation of ['pending', 'respond'] as const) test(`actual SDK replaced history object cannot authorize ${operation} from an older lookup`, async () => {
+  const f = await encryptedRequests(), entered = deferred(), held = deferred();
+  try {
+    await f.receive(84);
+    const event = f.events.find(value => value.type === 'request' && value.request.id === 84);
+    assert(event?.type === 'request'); const wire = event.request;
+    const original = await f.core.history.get(f.topic, 84), get = f.core.history.get;
+    let reads = 0, dispatched = false;
+    f.core.history.get = async (topic, id) => {
+      const value = await get(topic, id);
+      if (++reads === 1) { entered.resolve(); await held.promise; }
+      return value;
+    };
+    const result = operation === 'pending'
+      ? f.transport.pending(wire.session.binding, 84, () => {})
+      : assert.rejects(f.transport.respond(wire.session.binding, 84, { result: 'must not escape' }, () => {}, () => { dispatched = true; }));
+    await entered.promise;
+    await f.core.history.delete(f.topic, 84);
+    await f.core.history.set(f.topic, { id: 84, jsonrpc: '2.0', method: original.request.method, params: original.request.params });
+    assert.notEqual(f.core.history.records.get(84), original);
+    if (operation === 'pending') { held.resolve(); assert.equal(await result, null); }
+    else { held.resolve(); await result; }
+    assert.equal(dispatched, false); assert.deepEqual(f.published, []);
+    assert.equal(f.client!.pendingRequest.get(84).id, 84);
+  } finally { held.resolve(); await f.transport.close(); }
 });

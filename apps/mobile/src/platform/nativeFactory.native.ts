@@ -249,13 +249,16 @@ export function createNativeWalletControllers() {
     preparePlatform: prepareWalletConnectRuntime,
     async openHost() {
       if (!runtime) throw new CustodyOperationError('NOT_READY');
-      return Object.freeze({ ...await runtime.openConnectionHost(), controls, reads, syscoin, sentry: sentryRequests,
-        psbt: { prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void) => {
-          const captured = runtime;
-          if (!captured) throw new CustodyOperationError('NOT_READY');
+      const captured = runtime, connection = await captured.openConnectionHost();
+      if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+      return Object.freeze({ ...connection, controls, reads, syscoin, sentry: sentryRequests,
+        psbt: { cancelHandoff: (job: object) => {
+          return captured.cancelConnectionPsbtHandoff(job);
+        }, prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void, handoff: import('../connections/psbtRequests.ts').NativePsbtHandoff) => {
+          if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return captured.prepareConnectionPsbt(request, signal, () => {
             check(); if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
-          });
+          }, handoff);
         } } });
     },
     openExternalUrl: (url) => Linking.openURL(url),
