@@ -52,6 +52,69 @@ test('decryption preview is cleared when the displayed wallet account changes', 
         await wallet!.ensureOnHome();
       }
     );
+    const selection = () =>
+      wallet!.page.evaluate(async () => {
+        const state = await chrome.runtime.sendMessage({
+          type: 'getCurrentState',
+        });
+        const ref = state.vault.activeAccount;
+        const project = (account: any) => ({
+          id: account.id,
+          label: account.label,
+          address: account.address,
+        });
+        return {
+          active: {
+            ...project(state.vault.accounts[ref.type][ref.id]),
+            type: ref.type,
+          },
+          first: project(state.vault.accounts.HDAccount[0]),
+          second: project(state.vault.accounts.HDAccount[1]),
+          switching: state.vaultGlobal.isSwitchingAccount,
+        };
+      });
+    await wallet.step(
+      'create the second account before opening an approval',
+      async () => {
+        await wallet!.gotoRoute('#/settings/account/new');
+        await wallet!.page
+          .locator('#account-name-input')
+          .fill('Second encryption account');
+        await wallet!.page.locator('#create-btn').click();
+        await wallet!.page.locator('#account-created-ok-btn').click();
+        await wallet!.ensureOnHome();
+        await expect.poll(selection).toMatchObject({
+          active: {
+            id: 1,
+            type: 'HDAccount',
+            label: 'Second encryption account',
+          },
+          switching: false,
+        });
+      }
+    );
+    const accounts = await selection();
+    expect(accounts.second.address).not.toBe(accounts.first.address);
+    await wallet.step(
+      'select the first account through the normal wallet menu',
+      async () => {
+        await wallet!.page
+          .locator('#general-settings-button')
+          .locator('..')
+          .click();
+        await wallet!.page
+          .getByRole('menuitem', {
+            name: `${accounts.first.label} (${accounts.first.address})`,
+            exact: true,
+          })
+          .click();
+        await wallet!.ensureOnHome();
+        await expect.poll(selection).toMatchObject({
+          active: { id: 0, type: 'HDAccount', address: accounts.first.address },
+          switching: false,
+        });
+      }
+    );
     // The public deterministic fixture is never used with real funds. Use the
     // real keyring to decrypt locally; do not replace a controller or its state.
     const fixtureKey = Wallet.fromPhrase(UTXO_FIXTURE_SEED).privateKey.slice(2);
@@ -98,18 +161,42 @@ test('decryption preview is cleared when the displayed wallet account changes', 
       }
     );
     await wallet.step(
-      'create and select another account through the wallet UI',
+      'change the account through the real controller while the main UI is blocked',
       async () => {
-        await wallet!.gotoRoute('#/settings/account/new');
-        await wallet!.page
-          .locator('#account-name-input')
-          .fill('Second encryption account');
-        await wallet!.page.locator('#create-btn').click();
-        await wallet!.page
-          .getByRole('button', { name: /^ok$/i })
-          .first()
-          .click();
-        await wallet!.ensureOnHome();
+        await wallet!.page.reload();
+        await wallet!.waitAppReady();
+        await expect(
+          wallet!.page.getByRole('heading', {
+            name: en.app.externalActiveTitle,
+            exact: true,
+          })
+        ).toBeVisible();
+        expect(review.isClosed()).toBe(false);
+        await expect(
+          review.getByText(plaintext, { exact: true })
+        ).toBeVisible();
+        // The normal wallet intentionally blocks while an approval is open.
+        // Exercise the header's exact controller operation as a controlled
+        // context-change stimulus; do not replace controller state or results.
+        await wallet!.page.evaluate(async (id) => {
+          const response = await chrome.runtime.sendMessage({
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['wallet', 'setAccount'],
+              params: [id, 'HDAccount'],
+            },
+          });
+          if (response?.error || response?.success === false)
+            throw new Error('Controlled account change failed');
+        }, accounts.second.id);
+        await expect.poll(selection).toMatchObject({
+          active: {
+            id: accounts.second.id,
+            type: 'HDAccount',
+            address: accounts.second.address,
+          },
+          switching: false,
+        });
       }
     );
     await wallet.step(
@@ -137,6 +224,11 @@ test('decryption preview is cleared when the displayed wallet account changes', 
           boundProviderRequest: true,
           realKeyringDecryption: true,
           controllerStateReplaced: false,
+          controlledRealControllerAccountChange: true,
+          mainWalletBlockedDuringApproval: true,
+          mainDocumentReloadedForLiveAdmission: true,
+          accountChangeMethod: 'wallet.setAccount',
+          selectedAccount: accounts.second,
           deniedWrites: routes.deniedWrites,
         },
         null,
