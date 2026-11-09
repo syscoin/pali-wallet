@@ -7,6 +7,7 @@ import WebKit
 fileprivate enum ProofFailure: String {
   case readinessTimeout = "ERR_PALI_NATIVE_READINESS_TIMEOUT"
   case jobTimeout = "ERR_PALI_NATIVE_JOB_TIMEOUT"
+  case sdkJobTimeout = "ERR_PALI_NATIVE_SDK_JOB_TIMEOUT"
   case disposalTimeout = "ERR_PALI_NATIVE_DISPOSAL_TIMEOUT"
 }
 
@@ -287,6 +288,7 @@ final class PaliProofHost: SharedObject {
   private var pending: Promise?
   private var disposals: [Promise] = []
   private var submitted = false
+  private var sdkStarted = false
   private var sentry = false
   private var workerRetired = false
   private var retirementRequested = false
@@ -328,7 +330,7 @@ final class PaliProofHost: SharedObject {
         try document.load()
         let timeout = DispatchWorkItem { [weak self] in
           guard let self else { return }
-          self.fail(self.submitted ? .jobTimeout : .readinessTimeout)
+          self.fail(self.submitted ? (self.sdkStarted ? .sdkJobTimeout : .jobTimeout) : .readinessTimeout)
         }
         self.deadline = timeout
         DispatchQueue.main.asyncAfter(deadline: .now() + 120, execute: timeout)
@@ -368,6 +370,8 @@ final class PaliProofHost: SharedObject {
     if type == "ready" && keys == ["version", "id", "type"], !submitted, let input {
       submitted = true; self.input = nil
       document?.invoke(sentry ? "startSentry" : "start", arguments: ["id": id, "input": input])
+    } else if sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted {
+      sdkStarted = true
     } else if !sentry && type == "progress" && keys == ["version", "id", "type", "progress"] && submitted {
       emit(event: "progress", payload: json)
     } else if submitted && domain && ((type == "success" && keys == basic.union(["result"])) ||

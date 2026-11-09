@@ -2,6 +2,7 @@
 export const NATIVE_EXECUTION_CODES = Object.freeze([
   'readiness-timeout',
   'job-timeout',
+  'sdk-job-timeout',
   'disposal-timeout',
 ] as const);
 export type NativeExecutionCode = (typeof NATIVE_EXECUTION_CODES)[number];
@@ -52,6 +53,8 @@ export function nativeBridgeExecutionError(
       ? 'readiness-timeout'
       : code === 'ERR_PALI_NATIVE_JOB_TIMEOUT'
       ? 'job-timeout'
+      : code === 'ERR_PALI_NATIVE_SDK_JOB_TIMEOUT'
+      ? 'sdk-job-timeout'
       : code === 'ERR_PALI_NATIVE_DISPOSAL_TIMEOUT'
       ? 'disposal-timeout'
       : undefined;

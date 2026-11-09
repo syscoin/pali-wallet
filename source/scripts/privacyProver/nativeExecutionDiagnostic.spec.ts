@@ -27,6 +27,7 @@ it.each(NATIVE_EXECUTION_CODES)(
 it.each([
   ['ERR_PALI_NATIVE_READINESS_TIMEOUT', 'readiness-timeout'],
   ['ERR_PALI_NATIVE_JOB_TIMEOUT', 'job-timeout'],
+  ['ERR_PALI_NATIVE_SDK_JOB_TIMEOUT', 'sdk-job-timeout'],
   ['ERR_PALI_NATIVE_DISPOSAL_TIMEOUT', 'disposal-timeout'],
 ])(
   'maps the exact native bridge sentinel %s without its private error',

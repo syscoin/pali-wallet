@@ -118,6 +118,78 @@ it('uses one fixed SDK worker and retires it before returning a domain-bound res
   expect(host.workers).toHaveLength(1);
 });
 
+it('forwards one exact SDK-entry observation without terminating the job or accepting it as a result', () => {
+  const host = setup();
+  host.page.startSentry(id, sentryInput());
+  const entry = { version: 1, kind: 'sentry', id, type: 'sdk-start' };
+  host.workers[0].onmessage({ data: entry });
+  expect(host.send).toHaveBeenCalledWith(JSON.stringify(entry));
+  expect(host.workers[0].terminate).not.toHaveBeenCalled();
+  host.workers[0].onmessage({
+    data: {
+      version: 1,
+      kind: 'sentry',
+      id,
+      type: 'success',
+      result: sentryResult(),
+    },
+  });
+  expect(host.workers[0].terminate).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(host.send.mock.calls[1][0]).type).toBe('success');
+  host.workers[0].onmessage({ data: entry });
+  expect(host.send).toHaveBeenCalledTimes(2);
+});
+
+it.each(['duplicate', 'wrong-id', 'wrong-domain', 'extra-field'])(
+  'refuses %s SDK-entry observations and retains the fixed error boundary',
+  (fault) => {
+    const host = setup();
+    host.page.startSentry(id, sentryInput());
+    const entry = { version: 1, kind: 'sentry', id, type: 'sdk-start' };
+    if (fault === 'duplicate') host.workers[0].onmessage({ data: entry });
+    const invalid =
+      fault === 'wrong-id'
+        ? { ...entry, id: 'private' }
+        : fault === 'wrong-domain'
+        ? { ...entry, kind: 'proof' }
+        : fault === 'extra-field'
+        ? { ...entry, secret: 'private' }
+        : entry;
+    host.workers[0].onmessage({ data: invalid });
+    expect(JSON.parse(host.send.mock.calls.at(-1)![0])).toEqual({
+      version: 1,
+      kind: 'sentry',
+      id,
+      type: 'error',
+    });
+    expect(host.workers[0].terminate).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(host.send.mock.calls)).not.toContain('private');
+  }
+);
+
+it('SDK-entry evidence does not renew the existing execution deadline', () => {
+  jest.useFakeTimers();
+  try {
+    const host = setup();
+    host.page.startSentry(id, sentryInput());
+    jest.advanceTimersByTime(119000);
+    host.workers[0].onmessage({
+      data: { version: 1, kind: 'sentry', id, type: 'sdk-start' },
+    });
+    expect(host.workers[0].terminate).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1000);
+    expect(host.workers[0].terminate).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(host.send.mock.calls.at(-1)![0])).toEqual({
+      version: 1,
+      kind: 'sentry',
+      id,
+      type: 'error',
+    });
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 it.each([
   'wrong-domain',
   'private-error',

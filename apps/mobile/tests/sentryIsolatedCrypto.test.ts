@@ -26,6 +26,7 @@ async function execute<T extends SentryCryptoResult>(
   );
   try {
     assert.deepEqual((await once(worker, 'message'))[0], { type: 'ready' });
+    let sdkStarted = false;
     const result = new Promise<T>((resolve, reject) => {
       worker.on('error', reject);
       worker.on('message', (message) => {
@@ -36,8 +37,14 @@ async function execute<T extends SentryCryptoResult>(
             ID,
             job
           );
+          if (value.type === 'sdk-start') {
+            assert.equal(sdkStarted, false);
+            sdkStarted = true;
+            return;
+          }
           if (value.type !== 'success')
             throw new Error('SENTRY_EXECUTION_FAILED');
+          assert.equal(sdkStarted, true);
           resolve(value.result as T);
         } catch (error) {
           reject(error);

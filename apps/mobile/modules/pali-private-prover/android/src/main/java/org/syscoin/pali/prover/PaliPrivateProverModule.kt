@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 private enum class ProofFailure(val wireCode: String) {
   READINESS_TIMEOUT("ERR_PALI_NATIVE_READINESS_TIMEOUT"),
   JOB_TIMEOUT("ERR_PALI_NATIVE_JOB_TIMEOUT"),
+  SDK_JOB_TIMEOUT("ERR_PALI_NATIVE_SDK_JOB_TIMEOUT"),
   DISPOSAL_TIMEOUT("ERR_PALI_NATIVE_DISPOSAL_TIMEOUT")
 }
 private class ProofException(failure: ProofFailure? = null) :
@@ -102,7 +103,7 @@ private class ProofResources(private val context: Context, private val origin: S
       val workers = if (name == "index.html") "'self'" else "'none'"
       val csp = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; worker-src $workers; connect-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
       WebResourceResponse(pin.getString("mime"), null, 200, "OK", mapOf(
-        "Content-Security-Policy" to csp, "Content-Length" to bytes.size.toString(),
+        "Content-Security-Policy" to csp,
         "Cache-Control" to "no-store", "X-Content-Type-Options" to "nosniff"
       ), ByteArrayInputStream(bytes))
     } catch (_: Exception) {
@@ -150,6 +151,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
   private var pending: Promise? = null
   private val disposals = mutableListOf<Promise>()
   private var submitted = false
+  private var sdkStarted = false
   private var sentry = false
   private var workerRetired = false
   private var retirementRequested = false
@@ -185,7 +187,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
       id = job; origin = "https://$id.pali-private-prover.invalid"; input = json; this.sentry = sentry; pending = promise
       try {
         openDocument()
-        deadline = Runnable { fail(if (submitted) ProofFailure.JOB_TIMEOUT else ProofFailure.READINESS_TIMEOUT) }.also { main.postDelayed(it, 120000) }
+        deadline = Runnable { fail(if (submitted) { if (sdkStarted) ProofFailure.SDK_JOB_TIMEOUT else ProofFailure.JOB_TIMEOUT } else ProofFailure.READINESS_TIMEOUT) }.also { main.postDelayed(it, 120000) }
       } catch (_: Exception) { fail() }
     }
   }
@@ -288,6 +290,7 @@ class PaliProofHost internal constructor(private val context: ReactContext) : Sh
           input = null
           checkNotNull(nativePort).postMessage(WebMessage(request.toString()))
         }
+        sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted -> sdkStarted = true
         !sentry && type == "progress" && keys == basic + "progress" && submitted -> emit("progress", json)
         submitted && domain && ((type == "success" && keys == basic + "result") || (type == "error" && keys == basic)) -> {
           workerRetired = true; deadline?.let { main.removeCallbacks(it) }

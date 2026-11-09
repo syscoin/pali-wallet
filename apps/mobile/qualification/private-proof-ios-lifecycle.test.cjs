@@ -67,3 +67,25 @@ test('attachment preserves the isolated origin, pins, deadlines and poisoning bo
   assert.match(source, /poisoned = poisoned \|\| !clean/);
   assert.match(source, /message\.frameInfo\.isMainFrame/);
 });
+
+test('native SDK timeout evidence requires one exact observed entry and leaves both deadlines unchanged', () => {
+  const android = readFileSync(path.join(__dirname,
+    '../modules/pali-private-prover/android/src/main/java/org/syscoin/pali/prover/PaliPrivateProverModule.kt'), 'utf8');
+  for (const native of [source, android]) {
+    assert.match(native, /ERR_PALI_NATIVE_SDK_JOB_TIMEOUT/);
+    assert.match(native, /sentry && submitted && domain && type == "sdk-start" && keys == basic && !sdkStarted/);
+    assert.match(native, /sdkStarted = true/);
+  }
+  const run = section('private func runJob(', 'func close()');
+  assert.match(run, /self\.submitted \? \(self\.sdkStarted \? \.sdkJobTimeout : \.jobTimeout\) : \.readinessTimeout/);
+  assert.match(run, /\.now\(\) \+ 120/);
+  const receive = section('fileprivate func receive(', 'fileprivate func fail(');
+  const entry = receive.indexOf('type == "sdk-start"');
+  assert(receive.indexOf('guard !isRevoked') < entry);
+  assert(receive.indexOf('document?.ownsForegroundWindow == true') < entry);
+  const branch = receive.slice(entry, receive.indexOf('} else if', entry));
+  assert.doesNotMatch(branch, /resolve|deadline|cancel|invoke/);
+  assert.match(android, /if \(submitted\) \{ if \(sdkStarted\) ProofFailure\.SDK_JOB_TIMEOUT else ProofFailure\.JOB_TIMEOUT \} else ProofFailure\.READINESS_TIMEOUT/);
+  assert.match(android, /main\.postDelayed\(it, 120000\)/);
+  assert.match(android, /main\.postDelayed\(it, 3000\)/);
+});

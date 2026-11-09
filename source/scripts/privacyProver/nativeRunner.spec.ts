@@ -381,6 +381,7 @@ it('refuses a proof-domain result for a Sentry job and drains retirement', async
 it.each([
   ['ERR_PALI_NATIVE_READINESS_TIMEOUT', 'readiness-timeout'],
   ['ERR_PALI_NATIVE_JOB_TIMEOUT', 'job-timeout'],
+  ['ERR_PALI_NATIVE_SDK_JOB_TIMEOUT', 'sdk-job-timeout'],
 ])(
   'retains %s through a failed native execution and acknowledged disposal',
   async (code, expected) => {
