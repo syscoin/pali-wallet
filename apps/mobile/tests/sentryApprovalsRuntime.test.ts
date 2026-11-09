@@ -1,4 +1,3 @@
-const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -25,6 +24,7 @@ import { metadata } from './publicWatchFixtures.ts';
 import { resolveUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Public Sentry runtime password 1!';

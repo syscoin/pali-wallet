@@ -1,4 +1,3 @@
-const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 import { signingFixtureHost } from './unsupportedDappPorts.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import test from 'node:test';
@@ -29,6 +28,7 @@ import { createDappSigningApproval } from '../../../source/wallet/dappSigningApp
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import { recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
+const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
 const ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';

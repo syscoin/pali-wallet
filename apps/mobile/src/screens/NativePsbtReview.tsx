@@ -44,7 +44,7 @@ export function NativePsbtReview({ review, controller, ledgerConnection }: { rev
       if (AppState.currentState !== 'active') controller.backgroundPsbt();
       else void controller.rejectPsbt(review.id).catch(() => undefined);
     };
-  }, [controller, review.id, review.expiresAt, reject]);
+  }, [controller, review.id, review.expiresAt, reject, identity]);
   const unavailable = !details || !!review.error || retired === identity;
   const blocked = unavailable || ledger.blocked || review.busy || review.attempted || submitting === identity;
   const approve = async () => {
