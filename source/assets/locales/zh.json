@@ -2021,7 +2021,20 @@
       "block": "Block {{blockNumber}}",
       "connectTo": "Connect to {{name}}",
       "network": "{{network}} · Chain ID {{chainId}}",
-      "disconnect": "Disconnect {{name}}"
+      "disconnect": "Disconnect {{name}}",
+      "psbt": {
+        "signTitle": "仅签名",
+        "sendTitle": "签名并发送",
+        "partialBody": "签名后的交易将返回已连接的应用。应用可以补充剩余签名并提交交易。",
+        "checking": "正在检查交易…",
+        "transactionType": "交易类型",
+        "unavailableTitle": "PSBT 不可用",
+        "unavailableBody": "无法验证或签名此 PSBT。请让应用发起新的请求。",
+        "deliveryTitle": "结果送达情况不确定",
+        "deliveryBody": "钱包已完成请求，但无法确认结果是否已送达应用。",
+        "submissionTitle": "提交状态未确认",
+        "submissionBody": "已保存签名交易。再次发送前请先检查其状态。"
+      }
     },
     "security": {
       "revealFailed": "The private key could not be shown. Confirm your password and try again.",

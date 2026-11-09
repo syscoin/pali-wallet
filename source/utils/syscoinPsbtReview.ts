@@ -1,8 +1,9 @@
-import { formatSyscoinValue } from './formatSyscoinValue';
-import type { SentryFeeReview } from './sentry/feeAuthorization';
-import { normalizeSyscoinTransactionType } from './syscoinTransactionUtils';
+import { normalizeSyscoinTransactionType } from '../shared/utxoNativeAmounts.ts';
 
-interface IAssetMetadata {
+import { formatSyscoinValue } from './formatSyscoinValue.ts';
+import type { SentryFeeReview } from '../wallet/sentryFeeAuthorizations.ts';
+
+export interface IAssetMetadata {
   assetGuid?: string;
   assetType?: 'SYSX' | 'ERC20' | 'ERC721' | 'ERC1155';
   contract?: string;
@@ -46,7 +47,7 @@ export interface IAssetReviewRow {
   symbol: string;
 }
 
-const getCanonicalOutputRecipient = (
+export const getCanonicalOutputRecipient = (
   output: NonNullable<IDecodedReviewTransaction['vout']>[number] | undefined
 ): string | undefined =>
   [
@@ -198,12 +199,13 @@ export const getSyscoinPsbtReviewError = (
         return `Asset ${asset.assetGuid} references a missing output`;
       }
 
+      const assetInfo = assetInfoMap[asset.assetGuid];
       if (
         normalizedType === 'assetallocationburntoethereum' &&
         output.scriptPubKey?.type === 'nulldata' &&
-        assetInfoMap[asset.assetGuid]?.assetType === 'ERC20'
+        assetInfo?.assetType === 'ERC20'
       ) {
-        const originDecimals = assetInfoMap[asset.assetGuid].originDecimals!;
+        const originDecimals = assetInfo.originDecimals!;
         if (originDecimals < 8) {
           const factor = BigInt(`1${'0'.repeat(8 - originDecimals)}`);
           if (BigInt(rawAmount) % factor !== BigInt(0)) {

@@ -37,6 +37,8 @@ async function fixture() {
     canManageGuardianPolicy: () => false,
     async inspectGuardianRemoval() { throw new Error('Removal is outside this fixture'); },
     async openConnectionHost() { throw new Error('Connections are outside this fixture'); },
+    async openConnectionSentryApprovals() { throw new Error('Sentry is outside this fixture'); },
+    async prepareConnectionPsbt() { throw new Error('PSBT requests are outside this fixture'); },
     async resetActivity() { throw new Error('Activity is outside this fixture'); },
     async withUtxoActivityRead() { throw new Error('Activity is outside this fixture'); },
     session: {

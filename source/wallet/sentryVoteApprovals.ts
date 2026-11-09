@@ -8,6 +8,7 @@ import type { SentryApprovalHost } from './sentryApprovalHost.ts';
 import type {
   SentryVoteApproval,
   SentryRequestScope,
+  SentryRequestLifetime,
 } from './sentryApprovalTypes.ts';
 import type {
   SentryAuthorityKey,
@@ -20,6 +21,7 @@ import type {
 interface IPendingSentryVote {
   context: SentryGovernanceVoteContext;
   expiresAt: number;
+  lifetime: SentryRequestLifetime;
   publicApproval: SentryVoteApproval;
   scope: SentryRequestScope;
   signing: boolean;
@@ -31,14 +33,24 @@ export class SharedSentryVoteApprovals {
   private readonly host: SentryApprovalHost;
 
   constructor(host: SentryApprovalHost) {
-    if (typeof host.captureApprovalScope !== 'function')
-      throw new Error('Sentry request-authority port is required');
     this.host = host;
   }
 
-  private assertCurrent(scope: SentryRequestScope) {
+  private assertCurrent(
+    scope: SentryRequestScope,
+    lifetime: SentryRequestLifetime
+  ) {
     assertSynchronousEvmFeeGuard(() => this.host.assertCurrent(scope));
     assertSynchronousEvmFeeGuard(scope.assertRequestCurrent);
+    if (
+      !lifetime ||
+      typeof lifetime.assertCurrent !== 'function' ||
+      typeof lifetime.signal?.aborted !== 'boolean'
+    )
+      throw new Error('Sentry request lifetime is required');
+    assertSynchronousEvmFeeGuard(lifetime.assertCurrent);
+    if (lifetime.signal.aborted)
+      throw new Error('Sentry request was cancelled');
   }
 
   public clear() {
@@ -47,10 +59,12 @@ export class SharedSentryVoteApprovals {
 
   private async context(
     scope: SentryRequestScope,
-    request: SentryGovernanceVoteRequest
+    request: SentryGovernanceVoteRequest,
+    lifetime: SentryRequestLifetime
   ) {
+    this.assertCurrent(scope, lifetime);
     const settings = await this.host.getSettings(scope);
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     if (!settings.serviceUrl)
       throw new Error('Set a trusted Sentry service in wallet settings.');
     if (
@@ -67,9 +81,10 @@ export class SharedSentryVoteApprovals {
       `${settings.serviceUrl}/api/sentry/v1/voting-context?${query}`,
       65536,
       scope,
-      () => this.assertCurrent(scope)
+      () => this.assertCurrent(scope, lifetime),
+      lifetime.signal
     )) as SentryGovernanceVoteContext;
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     if (
       context?.chain?.genesisHash !==
       SENTRY_NETWORKS[settings.network].genesisHash
@@ -86,17 +101,21 @@ export class SharedSentryVoteApprovals {
     };
   }
 
-  public async prepare(raw: unknown, origin: string) {
-    const scope = this.host.captureApprovalScope(origin);
-    this.assertCurrent(scope);
+  public async prepare(
+    raw: unknown,
+    origin: string,
+    scope: SentryRequestScope,
+    lifetime: SentryRequestLifetime
+  ) {
+    this.assertCurrent(scope, lifetime);
     const request = await this.host.runCrypto<SentryGovernanceVoteRequest>(
       { type: 'validateVote', request: raw },
-      () => this.assertCurrent(scope)
+      () => this.assertCurrent(scope, lifetime)
     );
-    const { settings, context } = await this.context(scope, request);
+    const { settings, context } = await this.context(scope, request, lifetime);
     await this.host.runCrypto<SentryGovernanceVoteReview>(
       { type: 'reviewVote', request, context },
-      () => this.assertCurrent(scope)
+      () => this.assertCurrent(scope, lifetime)
     );
     const votingKeys = settings.keys.filter(
       (key) => key.role === 'voting' && key.scheme === 'secp256k1'
@@ -109,10 +128,10 @@ export class SharedSentryVoteApprovals {
             type: 'votingIdentities',
             publicKeys: votingKeys.map((key) => key.publicKey),
           },
-          () => this.assertCurrent(scope)
+          () => this.assertCurrent(scope, lifetime)
         )
       : [];
-    this.assertCurrent(scope);
+    this.assertCurrent(scope, lifetime);
     const nodes: SentryVoteApproval['nodes'] = [];
     const missingNodes: string[] = [];
     for (const requested of request.nodes) {
@@ -157,7 +176,7 @@ export class SharedSentryVoteApprovals {
           publicKey: '',
         });
       }
-      this.assertCurrent(scope);
+      this.assertCurrent(scope, lifetime);
     }
     // Key availability stays inside the approval; it is not a provider oracle.
     for (const [id, approval] of this.approvals)
@@ -172,6 +191,7 @@ export class SharedSentryVoteApprovals {
     this.approvals.set(id, {
       context,
       scope,
+      lifetime,
       signing: false,
       expiresAt: Date.now() + 10 * 60 * 1000,
       publicApproval: {
@@ -194,7 +214,7 @@ export class SharedSentryVoteApprovals {
       this.approvals.delete(id);
       throw new Error('Vote approval expired. Start again from the dapp.');
     }
-    this.assertCurrent(pending.scope);
+    this.assertCurrent(pending.scope, pending.lifetime);
     return pending;
   }
 
@@ -219,7 +239,7 @@ export class SharedSentryVoteApprovals {
       return await this.host.runExclusive(async () => {
         if (this.pending(params.id) !== pending)
           throw new Error('Vote approval was cancelled');
-        const { scope, publicApproval: approval } = pending;
+        const { scope, publicApproval: approval, lifetime } = pending;
         if (approval.missingVotingKeys.length)
           throw new Error(
             'SENTRY_VOTING_KEY_MISSING: Import matching voting keys in Pali and start again.'
@@ -230,7 +250,7 @@ export class SharedSentryVoteApprovals {
           assertPending
         );
         assertPending();
-        const fresh = await this.context(scope, approval.request);
+        const fresh = await this.context(scope, approval.request, lifetime);
         await this.host.runCrypto<SentryGovernanceVoteReview>(
           {
             type: 'reviewVote',

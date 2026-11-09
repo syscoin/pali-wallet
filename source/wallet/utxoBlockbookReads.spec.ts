@@ -16,6 +16,45 @@ const reply = (source: string, body: string, status = 200) => {
   return response;
 };
 
+it('binds asset metadata to one canonical GUID and a 64 KiB response', async () => {
+  const { signal } = new AbortController();
+  const endpoint = `${url}/api/v2/asset/123456?details=basic`;
+  const fetch = jest.fn(async (source: string) => reply(source, '{}'));
+  const read = createOwnedUtxoBlockbookRead(
+    { kind: 'asset', assetGuid: '123456', url },
+    signal,
+    () => undefined,
+    fetch
+  );
+  for (const wrong of [
+    funding,
+    raw('a'),
+    `${url}/api/v2/estimatefee/1`,
+    endpoint.replace('123456', '123457'),
+    endpoint.replace('basic', 'tokens'),
+  ]) {
+    await expect(read.fetch(wrong, { method: 'GET', signal })).rejects.toThrow(
+      'route'
+    );
+  }
+  expect(fetch).not.toHaveBeenCalled();
+  await expect(
+    read.fetch(endpoint, { method: 'GET', signal })
+  ).resolves.toBeDefined();
+  fetch.mockResolvedValueOnce(reply(endpoint, 'x'.repeat(64 * 1024 + 1)));
+  await expect(
+    read.fetch(endpoint, { method: 'GET', signal })
+  ).rejects.toMatchObject({ name: 'ResponseSizeLimitError' });
+  expect(() =>
+    createOwnedUtxoBlockbookRead(
+      { kind: 'asset', assetGuid: '0123456', url },
+      signal,
+      () => undefined,
+      fetch
+    )
+  ).toThrow('Invalid owned Blockbook asset');
+});
+
 it('admits only a captured GET with its exact account and signal', async () => {
   const { signal } = new AbortController();
   const fetch = jest.fn(async (request: string) => reply(request, '[]'));

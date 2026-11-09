@@ -53,6 +53,7 @@ import type { NativeNoteImportRuntime } from '../custody/noteImport.ts';
 import type { NativeUtxoSend } from '../custody/utxoSend.ts';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement.ts';
 import type { NativeSentryNodeManagement } from '../custody/sentryNodeManagement.ts';
+import type { NativePsbtRequest } from '../connections/psbtRequests.ts';
 
 async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
@@ -224,7 +225,13 @@ export function createNativeWalletControllers() {
     }),
   });
   const sentryRequests = createNativeDappSentryHost({
-    openApprovals: (...args) => sentry.openApprovals(...args),
+    async openApprovals() {
+      const captured = runtime;
+      if (!captured || authority.getSnapshot().phase !== 'ready') throw new CustodyOperationError('NOT_READY');
+      const manager = await captured.openConnectionSentryApprovals();
+      if (runtime !== captured || authority.getSnapshot().phase !== 'ready') throw new CustodyOperationError('CANCELLED');
+      return manager;
+    },
     openNodes: (...args) => sentry.openNodes(...args),
   });
   const syscoin = createNativeDappSyscoinHost({ source: authority, fetch: walletFetch,
@@ -238,7 +245,14 @@ export function createNativeWalletControllers() {
     preparePlatform: prepareWalletConnectRuntime,
     async openHost() {
       if (!runtime) throw new CustodyOperationError('NOT_READY');
-      return Object.freeze({ ...await runtime.openConnectionHost(), controls, reads, syscoin, sentry: sentryRequests });
+      return Object.freeze({ ...await runtime.openConnectionHost(), controls, reads, syscoin, sentry: sentryRequests,
+        psbt: { prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void) => {
+          const captured = runtime;
+          if (!captured) throw new CustodyOperationError('NOT_READY');
+          return captured.prepareConnectionPsbt(request, signal, () => {
+            check(); if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
+          });
+        } } });
     },
     openExternalUrl: (url) => Linking.openURL(url),
     projectId: process.env.EXPO_PUBLIC_WALLETCONNECT_PROJECT_ID ?? '2385bd7fee9c23847638bb997c6f8409',

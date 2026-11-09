@@ -1,6 +1,13 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import {
+  abortable,
+  boundedResponseText,
+  cancelResponseBody,
+  ResponseSizeLimitError,
+} from '../../../shared/boundedHttp';
+import { assertSynchronousEvmFeeGuard } from '../../../shared/evmFeeGuard';
+import {
   normalizeSentryServiceSettings,
   readSentryServiceSettings,
   sentrySettingsStorageKey,
@@ -33,6 +40,7 @@ import type {
   SentrySettings,
   SentryApprovalScope,
   SentryRequestScope,
+  SentryRequestLifetime,
 } from '../../../wallet/sentryApprovalTypes';
 import type { SentryFeeReview } from '../../../wallet/sentryFeeAuthorizations';
 import type {
@@ -64,44 +72,59 @@ type Host = {
     scope: SentryWalletScope
   ) => Promise<{ scheme: 'ecdsa'; secretKey: string } | undefined>;
 };
-const readJson = async (url: string, limit = 2 * 1024 * 1024): Promise<any> => {
+const readJson = async (
+  url: string,
+  limit: number,
+  check: () => void,
+  signal: AbortSignal
+): Promise<any> => {
+  if (typeof check !== 'function' || typeof signal?.aborted !== 'boolean')
+    throw new Error('Sentry request lifetime is required');
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), 15000);
+  const cancel = () => abort.abort();
+  const current = () => {
+    assertSynchronousEvmFeeGuard(check);
+    if (signal.aborted || abort.signal.aborted)
+      throw new Error('Sentry request was cancelled');
+  };
+  signal.addEventListener('abort', cancel, { once: true });
+  const timer = setTimeout(cancel, 15000);
   try {
-    const response = await fetch(url, {
+    current();
+    const pending = fetch(url, {
       credentials: 'omit',
       redirect: 'error',
       signal: abort.signal,
       headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) throw new Error('Sentry data service is unavailable');
-    const declaredSize = Number(response.headers.get('content-length') || 0);
-    if (declaredSize > limit) {
-      abort.abort();
-      throw new Error('Sentry service response is too large');
-    }
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('Sentry service returned an empty response');
-    const decoder = new TextDecoder('utf-8', { fatal: true });
-    let bytes = 0;
-    let text = '';
-    try {
-      while (true) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        bytes += chunk.value.byteLength;
-        if (bytes > limit) {
-          void reader.cancel().catch(() => undefined);
-          throw new Error('Sentry service response is too large');
-        }
-        text += decoder.decode(chunk.value, { stream: true });
+    }).then((response) => {
+      try {
+        current();
+        return response;
+      } catch (error) {
+        cancelResponseBody(response);
+        throw error;
       }
-      return JSON.parse(text + decoder.decode());
-    } finally {
-      reader.releaseLock();
+    });
+    void pending.catch(() => undefined);
+    const response = await abortable(pending, abort.signal);
+    current();
+    if (!response.ok) {
+      cancelResponseBody(response);
+      throw new Error('Sentry data service is unavailable');
     }
+    if (!response.body?.getReader)
+      throw new Error('Sentry service returned an empty response');
+    const text = await boundedResponseText(response, abort.signal, limit);
+    current();
+    return JSON.parse(text);
+  } catch (error) {
+    if (error instanceof ResponseSizeLimitError)
+      throw new Error('Sentry service response is too large');
+    throw error;
   } finally {
     clearTimeout(timer);
+    signal.removeEventListener('abort', cancel);
+    abort.abort();
   }
 };
 
@@ -137,11 +160,11 @@ export class SentryController {
     });
     this.operations = new SharedSentryOperationApprovals({
       captureScope: host.captureScope,
-      captureApprovalScope: host.captureApprovalScope,
       assertCurrent: (scope) => this.assertCurrent(scope),
       getSeed: (password) => host.getSeed(password),
       getSettings: (scope) => this.settings(scope),
-      readJson: (url, limit) => readJson(url, limit),
+      readJson: (url, limit, scope, check, signal) =>
+        readJson(url, limit, check, signal),
       runCrypto: runSentryCrypto,
       runExclusive: (operation) => this.mutex.runExclusive(operation),
       hasWalletAuthority: (address, scope) =>
@@ -372,14 +395,26 @@ export class SentryController {
     return this.nodeManagement.releaseCollateral(params);
   }
 
-  public prepare(raw: unknown, origin: string) {
-    return this.operations.prepare(raw, origin);
+  public prepare(
+    raw: unknown,
+    origin: string,
+    lifetime: SentryRequestLifetime
+  ) {
+    return this.operations.prepare(
+      raw,
+      origin,
+      this.host.captureApprovalScope(origin),
+      lifetime
+    );
   }
   public getApproval(id: string): SentryApproval {
     return this.operations.getApproval(id);
   }
   public cancel(id: string) {
     this.operations.cancel(id);
+  }
+  public publishFeeAuthorization(id: string) {
+    this.operations.publishFeeAuthorization(id);
   }
   public prepareFeePsbt(transactionHex: string, origin: string) {
     return this.operations.prepareFeePsbt(transactionHex, origin);
@@ -389,9 +424,10 @@ export class SentryController {
   }
   public reviewFeePsbt(
     id: string,
-    transactionHex: string
+    transactionHex: string,
+    lifetime: SentryRequestLifetime
   ): Promise<SentryFeeReview> {
-    return this.operations.reviewFeePsbt(id, transactionHex);
+    return this.operations.reviewFeePsbt(id, transactionHex, lifetime);
   }
   public sign(params: {
     authorizationId?: SentryRequiredAuthorization['id'];

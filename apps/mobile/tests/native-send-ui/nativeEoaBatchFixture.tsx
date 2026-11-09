@@ -141,7 +141,7 @@ export function NativeEoaBatchFixture() {
       network: null,
       proposals: [],
       sessions: [],
-      controlReview: null, sentryReview: null, signingReview: review,
+      controlReview: null, sentryReview: null, psbtReview: null, signingReview: review,
       callsStatus: null,
       error: null,
     }),

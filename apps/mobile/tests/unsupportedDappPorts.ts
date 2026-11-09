@@ -8,9 +8,10 @@ const unusedAsync = async (): Promise<never> => unused();
 export function signingFixtureHost(host: NativeConnectionSigningHost): NativeConnectionHost {
   return { ...host, controls: { context: () => null, prepare: unusedAsync },
     reads: { read: unusedAsync }, syscoin: { registration: unused, anchor: unused, read: unusedAsync },
-    sentry: { prepare: unusedAsync } };
+    sentry: { prepare: unusedAsync, revalidate() {} }, psbt: { prepare: unusedAsync } };
 }
 export const unsupportedDappViews: Pick<NativeConnectionsView,
-  'approveControl' | 'rejectControl' | 'approveSentry' | 'rejectSentry' | 'returnToDapp'> = {
+  'approveControl' | 'rejectControl' | 'approveSentry' | 'rejectSentry' | 'returnToDapp' | 'approvePsbt' | 'rejectPsbt'> = {
   approveControl: unusedAsync, rejectControl: unusedAsync, approveSentry: unusedAsync, rejectSentry: unusedAsync, returnToDapp: unusedAsync,
+  approvePsbt: unusedAsync, rejectPsbt: unusedAsync,
 };

@@ -8,6 +8,7 @@ import type { CallsBundleStatus } from '../../../../source/wallet/dappCallsBundl
 import type { NativeDappControlReview } from './controlRequests.ts';
 import type { NativeDappReturnTarget } from './pairingReturn.ts';
 import type { NativeSentryReview, NativeSentryAssent } from './sentryRequests.ts';
+import type { NativePsbtReview } from './psbtRequests.ts';
 
 export type NativeConnectionError =
   | 'INVALID_LINK'
@@ -112,6 +113,7 @@ export type NativeSigningReview =
   | NativeSmartTransactionReview;
 
 export type NativeConnectionsSnapshot = Readonly<{
+  psbtReview: NativePsbtReview | null;
   sentryReview: NativeSentryReview | null;
   controlReview: NativeDappControlReview | null;
   callsStatus: Readonly<{
@@ -146,6 +148,8 @@ export type NativeConnectionsSnapshot = Readonly<{
 
 /** Public view commands carry identifiers only, never transport or keyring handles. */
 export type NativeConnectionsView = Readonly<{
+  approvePsbt(id: string, revision: number): Promise<void>;
+  rejectPsbt(id: string): Promise<void>;
   approveSentry(id: string, revision: number, assent: NativeSentryAssent): Promise<void>;
   rejectSentry(id: string): Promise<void>;
   approveControl(id: string, revision: number): Promise<void>;

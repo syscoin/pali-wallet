@@ -30,7 +30,7 @@ function fixture(wait = Promise.resolve()) {
 }
 test('Sentry linking retains exact untrusted origin, typed request and the original reviewed object through consent', async () => {
   const f = fixture();
-  const prepared = await f.host.prepare({ method: 'sys_linkSentryNode', raw, origin }, new AbortController().signal, f.check);
+  const prepared = await f.host.prepare({ method: 'sys_linkSentryNode', raw, origin }, new AbortController().signal, f.check, f.check);
   assert.deepEqual(f.prepared, [{ request: raw, origin }]);
   assert.equal(prepared.details.kind, 'link'); assert.equal(prepared.details.approval, review);
   await assert.rejects(prepared.approve({ kind: 'vote', password: 'unused' }, f.check));
@@ -41,12 +41,12 @@ test('Sentry linking retains exact untrusted origin, typed request and the origi
 });
 test('a late Sentry manager open is disposed before it can prepare after request cancellation', async () => {
   const held = Promise.withResolvers<void>(), f = fixture(held.promise), lifetime = new AbortController();
-  const opening = f.host.prepare({ method: 'sys_linkSentryNode', raw, origin }, lifetime.signal, f.check);
+  const opening = f.host.prepare({ method: 'sys_linkSentryNode', raw, origin }, lifetime.signal, f.check, f.check);
   lifetime.abort(); held.resolve(); await assert.rejects(opening);
   assert.deepEqual(f.prepared, []); assert.equal(f.disposed(), 1); assert.equal(f.commits(), 0);
 });
 test('a retired request cannot approve its retained link capability', async () => {
-  const f = fixture(), prepared = await f.host.prepare({ method: 'sys_linkSentryNode', raw, origin }, new AbortController().signal, f.check);
+  const f = fixture(), prepared = await f.host.prepare({ method: 'sys_linkSentryNode', raw, origin }, new AbortController().signal, f.check, f.check);
   f.retire(); await assert.rejects(prepared.approve({ kind: 'link' }, f.check));
   prepared.dispose(); assert.equal(f.commits(), 0); assert.equal(f.disposed(), 1);
 });

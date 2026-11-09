@@ -1,6 +1,9 @@
 import { dappCaipChain, DAPP_MODE_METHODS } from '../../../source/shared/dappChainScope.ts';
 import { DAPP_SYSCOIN_READ_METHODS } from '../../../source/shared/dappSyscoinReads.ts';
 import { SENTRY_DAPP_METHODS, type NativeSentryDetails, type NativeSentryAssent } from '../src/connections/sentryRequests.ts';
+import { PSBT_DAPP_METHODS } from '../src/connections/psbtRequests.ts';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { UTXO_ADDRESSES, XPUB } from './publicWatchFixtures.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
@@ -31,6 +34,10 @@ import { snapshotPreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/tr
 import { Interface } from 'ethers/abi';
 import { summarizeApproval, type ApprovalContractMetadata } from '../../../source/shared/approval.ts';
 const ROTATED_SYSCOIN_ADDRESS = parseUtxoPublicIdentifier(XPUB, 'syscoin').address;
+const externalPsbt = new syscoinUtils.bitcoinjs.Psbt();
+externalPsbt.addInput({ hash: 'ab'.repeat(32), index: 0 });
+externalPsbt.addOutput({ script: Buffer.from('51', 'hex'), value: BigInt(900) });
+const EXTERNAL_PSBT = PsbtUtils.toPali(externalPsbt);
 
 const messageText = (review: NativeSigningReview | null) => {
   assert.ok(review?.kind === 'message');
@@ -88,6 +95,8 @@ function fixture(
   let sentryWait: Promise<void> = Promise.resolve();
   let receivingAddress: string = UTXO_ADDRESSES.syscoin;
   const sentryRequests: unknown[] = [], sentryAssents: NativeSentryAssent[] = [];
+  const psbtRequests: unknown[] = [], psbtApprovals: unknown[] = [];
+  let psbtWait = Promise.resolve(), psbtSignWait = Promise.resolve(), psbtDisposals = 0;
   let readWait: Promise<void> = Promise.resolve();
   let readError: Error | undefined;
   const readRequests: unknown[] = [];
@@ -193,12 +202,23 @@ function fixture(
       anchor: () => UTXO_ADDRESSES.syscoin,
       async read(request, owner, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('CANCELLED'); return request.method === 'sys_getPublicKey' ? owner.xpub : request.method === 'sys_requestAccounts' ? [owner.address] : 'syscoin-read'; },
     },
-    sentry: { async prepare(request, signal, check) {
+    sentry: { revalidate() {}, async prepare(request, signal, check, assertGrant) {
+      assertGrant();
       check(); sentryRequests.push(request); await sentryWait; check();
       const node = { proTxHash: 'ab'.repeat(32), service: 'sentry.example:8369', nevmAddress: '', collateralOutpoint: { txid: 'cd'.repeat(32), vout: 0 } };
       const approval = { id: 'private-sentry-approval', network: 'mainnet', origin: request.origin, serviceUrl: 'https://sentry.example', node };
       const details = (request.method === 'sys_linkSentryNode' ? { kind: 'link', approval } : request.method === 'sys_signSentryVote' ? { kind: 'vote', approval: { ...approval, nodes: [], missingVotingKeys: [] } } : { kind: 'operation', approval: { ...approval, keys: [] } }) as NativeSentryDetails;
-      return { details, assertCurrent: () => { check(); if (signal.aborted) throw new Error('CANCELLED'); }, async approve(assent, guard) { check(); guard(); sentryAssents.push(assent); return { method: request.method }; }, dispose() {} };
+      return { details, disclose: check, assertCurrent: () => { check(); if (signal.aborted) throw new Error('CANCELLED'); }, async approve(assent, guard) { check(); guard(); sentryAssents.push(assent); return { method: request.method }; }, dispose() {} };
+    } },
+    psbt: { async prepare(request, signal, check) {
+      psbtRequests.push(request); await psbtWait;
+      let disposed = false;
+      const current = () => { check(); if (disposed || signal.aborted) throw Error('CANCELLED'); };
+      return { review: { method: request.method, origin: request.origin, feeSatoshis: '100', unsignedHash: 'ab'.repeat(32),
+        transactionType: 'bitcoin', transactionOptions: { rbf: false }, complete: false, inputs: [], outputs: [], sentry: null },
+        assertCurrent: current, disposition: () => ({ transactionNotBroadcast: true }),
+        async approve() { current(); psbtApprovals.push(request); await psbtSignWait; current(); return request.method === 'sys_sign' ? request.psbt : { txid: 'ef'.repeat(32) }; },
+        dispose() { disposed = true; psbtDisposals++; } };
     } },
     reads: { async read(request, signal, check) { readRequests.push(request); await readWait; check(); if (signal.aborted) throw new Error('ABORTED'); if (readError) throw readError; return '0x42'; } },
     controls: {
@@ -405,7 +425,7 @@ function fixture(
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS,
+          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -435,7 +455,7 @@ function fixture(
           'wallet_addEthereumChain',
           'wallet_watchAsset',
           'wallet_getPermissions', 'wallet_requestPermissions', 'wallet_revokePermissions',
-          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS,
+          ...DAPP_RPC_READ_METHODS, ...DAPP_MODE_METHODS, ...DAPP_SYSCOIN_READ_METHODS, ...SENTRY_DAPP_METHODS, ...PSBT_DAPP_METHODS,
           'eth_accounts',
           'eth_chainId',
           'eth_sendTransaction',
@@ -593,7 +613,10 @@ function fixture(
   });
   return {
     controller,
-    controlCommits, externalUrls, readRequests, sentryRequests, sentryAssents,
+    controlCommits, externalUrls, readRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
+    setPsbtWait(value: Promise<void>) { psbtWait = value; },
+    setPsbtSignWait(value: Promise<void>) { psbtSignWait = value; },
+    psbtDisposals: () => psbtDisposals,
     setSentryWait(value: Promise<void>) { sentryWait = value; },
     rotateReceiving(value: string) { receivingAddress = value; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
     setReadWait(value: Promise<void>) { readWait = value; },
@@ -1604,6 +1627,71 @@ async function syscoinRequest(f: ReturnType<typeof fixture>, method: string, par
   f.event({ type: 'request', request: { id, session: f.session, method, params, chainId: dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }), expiresAt: Date.now() + 300000, verification: UNKNOWN } });
   await settle();
 }
+for (const method of PSBT_DAPP_METHODS) test(`${method} is negotiated only in bip122 and signs the original structured request after explicit consent`, async () => {
+  const f = await connectedFixture({ utxo: true });
+  try {
+    assert(f.session.namespaces.bip122!.methods.includes(method));
+    await syscoinRequest(f, method, [EXTERNAL_PSBT]);
+    const review = f.view.getSnapshot().psbtReview; assert(review?.details);
+    assert.equal(review.origin, ORIGIN); assert.equal(review.method, method); assert.equal(review.details.complete, false);
+    assert.equal(f.psbtApprovals.length, 0); assert.equal(f.responses.length, 0);
+    assert.deepEqual(f.psbtRequests, [{ method, origin: ORIGIN, psbt: EXTERNAL_PSBT }]);
+    assert(!JSON.stringify(f.view.getSnapshot()).includes(EXTERNAL_PSBT.psbt));
+    await f.view.approvePsbt(review.id, review.revision);
+    assert.equal(f.psbtApprovals.length, 1); assert.equal(f.psbtDisposals(), 1);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: method === 'sys_sign' ? EXTERNAL_PSBT : { txid: 'ef'.repeat(32) } } });
+    assert.equal(f.view.getSnapshot().psbtReview, null);
+  } finally { await f.controller.dispose(); }
+});
+test('EVM namespaces and malformed/tagged external PSBT payloads cannot reach custody', async () => {
+  const evm = await connectedFixture(), utxo = await connectedFixture({ utxo: true });
+  try {
+    assert(!evm.session.namespaces.eip155!.methods.some(method => (PSBT_DAPP_METHODS as readonly string[]).includes(method)));
+    await messageRequest(evm, 'sys_sign', [EXTERNAL_PSBT]); assert.equal(evm.psbtRequests.length, 0);
+    for (const [index, params] of [EXTERNAL_PSBT, [EXTERNAL_PSBT, EXTERNAL_PSBT], [{ ...EXTERNAL_PSBT, sentryFeeAuthorization: 'untrusted' }]].entries())
+      await syscoinRequest(utxo, 'sys_sign', params, 20 + index);
+    assert.equal(utxo.psbtRequests.length, 0); assert.equal(utxo.psbtApprovals.length, 0);
+    assert.equal(utxo.view.getSnapshot().psbtReview, null);
+  } finally { await evm.controller.dispose(); await utxo.controller.dispose(); }
+});
+test('external PSBT requests preserve FIFO with Sentry approvals and reject stale consent revisions', async () => {
+  const f = await connectedFixture({ utxo: true });
+  try {
+    await syscoinRequest(f, 'sys_linkSentryNode', [{ version: 1 }], 10);
+    await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT], 11);
+    assert.equal(f.psbtRequests.length, 0); assert.equal(f.view.getSnapshot().psbtReview, null);
+    await f.view.rejectSentry(f.view.getSnapshot().sentryReview!.id); await settle();
+    const review = f.view.getSnapshot().psbtReview; assert(review?.details);
+    await syscoinRequest(f, 'sys_signAndSend', [EXTERNAL_PSBT], 12);
+    await assert.rejects(f.view.approvePsbt(review.id, review.revision));
+    await f.view.rejectPsbt(review.id); await settle();
+    const next = f.view.getSnapshot().psbtReview; assert(next?.details); assert.equal(next.method, 'sys_signAndSend');
+    assert.equal(f.psbtApprovals.length, 0); assert.equal(f.psbtRequests.length, 2);
+  } finally { await f.controller.dispose(); }
+});
+for (const change of ['lock', 'network', 'session', 'revoke', 'expiry', 'dispose'] as const) test(`external PSBT preparation cannot outlive its original ${change} owner`, async () => {
+  const f = await connectedFixture({ utxo: true }), held = Promise.withResolvers<void>(), readNow = Date.now;
+  let now = readNow(); Date.now = () => now; let disposing: Promise<void> | undefined;
+  try {
+    f.setPsbtWait(held.promise); await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT]); assert.equal(f.psbtRequests.length, 1);
+    if (change === 'lock') f.lock(); else if (change === 'network') f.selectChain(5700);
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'revoke') await syscoinRequest(f, 'wallet_revokePermissions', [{ eth_accounts: {} }], 11);
+    else if (change === 'expiry') now += 300001; else disposing = f.controller.dispose();
+    held.resolve(); await settle(); await disposing;
+    assert.equal(f.view.getSnapshot().psbtReview, null); assert.equal(f.psbtApprovals.length, 0); assert.equal(f.psbtDisposals(), 1);
+    assert.equal(f.responses.some(value => (value as { id: number }).id === 10), false);
+  } finally { Date.now = readNow; held.resolve(); await f.controller.dispose(); }
+});
+test('a retired PSBT signing request cannot deliver its late structured result', async () => {
+  const f = await connectedFixture({ utxo: true }), held = Promise.withResolvers<void>();
+  try {
+    await syscoinRequest(f, 'sys_sign', [EXTERNAL_PSBT]); const review = f.view.getSnapshot().psbtReview; assert(review?.details);
+    f.setPsbtSignWait(held.promise); const signing = f.view.approvePsbt(review.id, review.revision); await settle();
+    f.lock(); held.resolve(); await assert.rejects(signing); await settle();
+    assert.equal(f.responses.length, 0); assert.equal(f.view.getSnapshot().psbtReview, null);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
 for (const hardware of ['Ledger', 'Trezor'] as const) test(`${hardware} proposal exposes only its wired EVM message methods and retains the existing calls exclusion`, async () => {
   const f = await connectedFixture({ hardware, batch: true, accountId: `${hardware.toLowerCase()}:60:0` });
   try {

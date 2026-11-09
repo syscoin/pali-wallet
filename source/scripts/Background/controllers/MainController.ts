@@ -123,6 +123,11 @@ import {
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
 import { authorizePrivateNoteReplay } from '../../../wallet/privateNoteReplay.ts';
+import {
+  signVerifiedPsbt,
+  verifyPsbtEnvelope,
+  type PsbtSigningPorts,
+} from '../../../wallet/psbtApprovals';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
 import {
   createOwnedUtxoBlockbookRead,
@@ -142,6 +147,7 @@ import {
 } from '../../../wallet/utxoSignedRecords';
 import {
   observeRetainedUtxo,
+  createUtxoSubmissionDisposition,
   submitRetainedUtxo,
   submitReviewedUtxo,
 } from '../../../wallet/utxoSubmission';
@@ -358,7 +364,6 @@ import { chromeStorage } from 'utils/storageAPI';
 import {
   assertUtxoBuilderFee,
   assertUtxoFeeReview,
-  getVerifiedSyscoinPsbtValueSummary,
   type UtxoFeeReview,
 } from 'utils/syscoinPsbtValues';
 import { getKnownTokenLogo } from 'utils/tokens';
@@ -494,6 +499,7 @@ import type { GuardianRecoveryIntent } from '../../../utils/smartAccount/guardia
 import type { GuardianRecoveryTransactionRecords } from '../../../utils/smartAccount/guardianRecoveryLifecycle';
 import type { EoaCallsStopped } from '../../../wallet/evmCallsSequence.ts';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
+import type { SentryRequestLifetime } from '../../../wallet/sentryApprovalTypes';
 import type {
   EvmReplacementFeeApproval,
   EvmSubmissionContext,
@@ -2823,11 +2829,27 @@ class MainController {
   }) {
     return (await this.getSentryController()).releaseCollateral(params);
   }
-  public async prepareSentryOperation(request: unknown, origin: string) {
-    return (await this.getSentryController()).prepare(request, origin);
+  public async prepareSentryOperation(
+    request: unknown,
+    origin: string,
+    lifetime: SentryRequestLifetime
+  ) {
+    return (await this.getSentryController()).prepare(
+      request,
+      origin,
+      lifetime
+    );
   }
-  public async prepareSentryVote(request: unknown, origin: string) {
-    return (await this.getSentryController()).votes.prepare(request, origin);
+  public async prepareSentryVote(
+    request: unknown,
+    origin: string,
+    lifetime: SentryRequestLifetime
+  ) {
+    return (await this.getSentryController()).votes.prepare(
+      request,
+      origin,
+      lifetime
+    );
   }
   public async getSentryVoteApproval(id: string) {
     return (await this.getSentryController()).votes.getApproval(id);
@@ -2855,6 +2877,13 @@ class MainController {
   }
   public async getSentryApproval(id: string) {
     return (await this.getSentryController()).getApproval(id);
+  }
+  public async captureSentryFeeDisclosure(id: string) {
+    const controller = await this.getSentryController();
+    return Object.freeze({
+      disclose: () => controller.publishFeeAuthorization(id),
+      retire: () => controller.cancel(id),
+    });
   }
   public async cancelSentryApproval(id: string) {
     return (await this.getSentryController()).cancel(id);
@@ -8811,7 +8840,7 @@ class MainController {
     ),
     dappAuthority?: UtxoDappSigningAuthority
   ): Promise<any> {
-    let senderInvoked = false;
+    const submission = createUtxoSubmissionDisposition();
     try {
       this.assertWalletReadyForSigning();
       const { isBitcoinBased, activeNetwork } = store.getState().vault;
@@ -8925,11 +8954,10 @@ class MainController {
                 assertCurrent,
               },
               records: this.getRetainedUtxoRecords(),
-              fetch: (input, init) => {
+              fetch: submission.trackPost(record, (input, init) => {
                 markInvoked();
-                senderInvoked = true;
                 return globalThis.fetch(input, init);
-              },
+              }),
             })
           );
         };
@@ -8982,7 +9010,7 @@ class MainController {
             : 'Failed to submit transaction.'
         ),
         error && typeof error === 'object' ? error : {},
-        { transactionNotBroadcast: !senderInvoked }
+        submission.read()
       );
     }
   }
@@ -12549,13 +12577,12 @@ class MainController {
   ) => {
     read.assertCurrent();
     const activeNetwork = store.getState().vault.activeNetwork;
-    const psbt = PsbtUtils.fromPali(psbtData, activeNetwork);
-    const summary = await getVerifiedSyscoinPsbtValueSummary(psbt, (txid) =>
-      syscoinjs.utils.fetchBackendRawTx(activeNetwork.url, txid, read)
+    return verifyPsbtEnvelope(
+      activeNetwork,
+      psbtData,
+      read,
+      read.assertCurrent
     );
-    read.assertCurrent();
-
-    return { psbt, summary };
   };
 
   public async prepareSentryFeePsbt(
@@ -12581,7 +12608,11 @@ class MainController {
     );
   }
 
-  private async verifySentryFeePsbt(psbt: any, authorizationId?: string) {
+  private async verifySentryFeePsbt(
+    psbt: any,
+    authorizationId: string | undefined,
+    lifetime: SentryRequestLifetime
+  ) {
     if (!isSentryTransactionVersion(psbt.version)) return undefined;
     if (!authorizationId)
       throw new Error(
@@ -12592,7 +12623,8 @@ class MainController {
     ).toString('hex');
     return (await this.getSentryController()).reviewFeePsbt(
       authorizationId,
-      transactionHex
+      transactionHex,
+      lifetime
     );
   }
 
@@ -13081,68 +13113,67 @@ class MainController {
     >,
     signing: ReturnType<MainController['captureUtxoSigningContext']>
   ) {
-    const { utxoFeeReview, ...signingParams } = params;
     const assertCurrent = signing.assertWalletReviewCurrent;
+    const network = Object.freeze({ ...store.getState().vault.activeNetwork });
+    const sentryScope = this.getSentryCollateralScope();
+    let sentryController: Awaited<
+      ReturnType<MainController['getSentryController']>
+    >;
+    const host: PsbtSigningPorts = {
+      network,
+      sdk: signing.transactions,
+      assertCurrent,
+      assertSoftwareSpend: signing.assertSoftwareSpend,
+      assertUnprotected: async (resolve, check) => {
+        check();
+        await this.assertNoSentryCollateralInputs(resolve);
+        check();
+      },
+      withSignatureRelease: (operation) =>
+        sentryScope
+          ? withSentryCollateralSignatureRelease(sentryScope, operation)
+          : operation(() => undefined),
+      fee: {
+        verify: async (psbt, capability, check, signal) => {
+          check();
+          const fee = await this.verifySentryFeePsbt(
+            psbt,
+            capability as string,
+            { assertCurrent: check, signal }
+          );
+          check();
+          if (fee) {
+            sentryController = await this.getSentryController();
+            check();
+          }
+          return fee ?? null;
+        },
+        acquire: (psbt, capability, check) => {
+          check();
+          if (!sentryController)
+            throw new Error('SENTRY_FEE_AUTHORIZATION_REQUIRED');
+          return sentryController.beginFeeSigning(
+            capability as string,
+            Buffer.from(psbt.data.globalMap.unsignedTx.toBuffer()).toString(
+              'hex'
+            )
+          );
+        },
+      },
+    };
     signing.assertSoftwareSpend([]);
     return signing.withRead(async (read) => {
       const verified = await this.verifySyscoinPsbt(params.psbt, read);
       assertCurrent();
-      if (utxoFeeReview)
-        assertUtxoFeeReview(
-          verified.psbt,
-          verified.summary.feeSatoshis,
-          utxoFeeReview
-        );
-      const feeAuthorization = params.psbt?.sentryFeeAuthorization;
-      const sentryFee = await this.verifySentryFeePsbt(
-        verified.psbt,
-        feeAuthorization
-      );
-      assertCurrent();
-      await this.assertNoSentryCollateralInputs(verified.psbt);
-      assertCurrent();
-      const finishFee = sentryFee
-        ? (await this.getSentryController()).beginFeeSigning(
-            feeAuthorization,
-            Buffer.from(
-              verified.psbt.data.globalMap.unsignedTx.toBuffer()
-            ).toString('hex')
-          )
-        : undefined;
-      try {
-        signing.assertSoftwareSpend(
-          verified.summary.inputScripts,
-          verified.psbt.txOutputs
-        );
-        const signed = await signing.transactions.signPSBT(
-          {
-            ...signingParams,
-            psbt: PsbtUtils.toPali(verified.psbt),
-          },
-          read
-        );
-        assertCurrent();
-        const sentryScope = this.getSentryCollateralScope();
-        const release = async (markDisclosed: () => void) => {
-          await this.assertNoSentryCollateralInputs(() =>
-            PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
-          );
-          if (sentryFee)
-            await this.verifySentryFeePsbt(
-              PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork),
-              feeAuthorization
-            );
-          assertCurrent();
-          finishFee?.(true);
-          markDisclosed();
-          return signed;
-        };
-        return await (sentryScope
-          ? withSentryCollateralSignatureRelease(sentryScope, release)
-          : release(() => undefined));
-      } finally {
-        finishFee?.();
-      }
+      return signVerifiedPsbt(host, {
+        psbt: PsbtUtils.toPali(verified.psbt),
+        verified,
+        review: params.utxoFeeReview ?? null,
+        feeAuthorization: params.psbt?.sentryFeeAuthorization ?? null,
+        read,
+        signal: read.signal,
+        assertCurrent,
+      });
     });
   }
 
@@ -13159,9 +13190,15 @@ class MainController {
       const signing = this.captureUtxoSigningContext();
       const decoded = signing.transactions.decodeRawTransaction(psbtOrHex);
 
-      const { psbt, summary } = await signing.withRead((read) =>
-        this.verifySyscoinPsbt(psbtOrHex, read)
-      );
+      const { summary, sentry } = await signing.withRead(async (read) => {
+        const verified = await this.verifySyscoinPsbt(psbtOrHex, read);
+        const feeReview = await this.verifySentryFeePsbt(
+          verified.psbt,
+          psbtOrHex?.sentryFeeAuthorization,
+          { assertCurrent: read.assertCurrent, signal: read.signal }
+        );
+        return { ...verified, sentry: feeReview };
+      });
       if (
         !Array.isArray(decoded.vout) ||
         decoded.vout.length !== summary.outputValuesSatoshis.length
@@ -13169,10 +13206,6 @@ class MainController {
         throw new Error('Decoded outputs do not match the PSBT');
       }
       decoded.feeSatoshis = summary.feeSatoshis;
-      const sentry = await this.verifySentryFeePsbt(
-        psbt,
-        psbtOrHex?.sentryFeeAuthorization
-      );
       signing.assertCurrent();
       if (sentry) decoded.sentry = sentry;
       decoded.vout.forEach((output: any, index: number) => {

@@ -2021,7 +2021,20 @@
       "block": "Block {{blockNumber}}",
       "connectTo": "Connect to {{name}}",
       "network": "{{network}} · Chain ID {{chainId}}",
-      "disconnect": "Disconnect {{name}}"
+      "disconnect": "Disconnect {{name}}",
+      "psbt": {
+        "signTitle": "Apenas assinar",
+        "sendTitle": "Assinar e enviar",
+        "partialBody": "A transação assinada será devolvida ao aplicativo conectado. O aplicativo pode adicionar as assinaturas restantes e enviá-la.",
+        "checking": "Verificando transação…",
+        "transactionType": "Tipo de transação",
+        "unavailableTitle": "PSBT indisponível",
+        "unavailableBody": "Não foi possível verificar ou assinar esta PSBT. Peça uma nova solicitação ao aplicativo.",
+        "deliveryTitle": "Entrega do resultado incerta",
+        "deliveryBody": "A carteira concluiu a solicitação, mas não conseguiu confirmar a entrega ao aplicativo.",
+        "submissionTitle": "Envio não verificado",
+        "submissionBody": "A transação assinada está salva. Verifique seu estado antes de enviá-la novamente."
+      }
     },
     "security": {
       "revealFailed": "The private key could not be shown. Confirm your password and try again.",

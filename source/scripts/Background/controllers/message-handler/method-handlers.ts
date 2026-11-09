@@ -782,6 +782,7 @@ export class SysMethodHandler implements IMethodHandler {
     ) {
       // For sys methods, params are usually in array form already
       let popupData = params?.[0] || params;
+      let sentryResponseRetained = false;
       let sentryApprovalId: string | undefined;
       let utxoLifetime:
         | ReturnType<typeof createDappApprovalLifetime>
@@ -839,8 +840,12 @@ export class SysMethodHandler implements IMethodHandler {
             methodName === 'linkSentryNode'
               ? await wallet.prepareSentryLink(params[0], host)
               : methodName === 'signSentryVote'
-              ? await wallet.prepareSentryVote(params[0], host)
-              : await wallet.prepareSentryOperation(params[0], host);
+              ? await wallet.prepareSentryVote(params[0], host, sentryLifetime)
+              : await wallet.prepareSentryOperation(
+                  params[0],
+                  host,
+                  sentryLifetime
+                );
           sentryLifetime.assertCurrent();
           // The site never controls the popup's request, origin, key list or review.
           popupData = { sentryApprovalId };
@@ -910,12 +915,24 @@ export class SysMethodHandler implements IMethodHandler {
             }),
           methodConfig.popupRoute!
         );
-        sentryLifetime?.retainResponse(result);
+        if (sentryLifetime) {
+          const publication =
+            methodName === 'signSentryOperation'
+              ? await getController().wallet.captureSentryFeeDisclosure(
+                  sentryApprovalId!
+                )
+              : {
+                  disclose: sentryLifetime.assertCurrent,
+                  retire: () => undefined,
+                };
+          sentryLifetime.retainResponse(result, publication);
+          sentryResponseRetained = methodName === 'signSentryOperation';
+        }
         return result;
       } finally {
         unsubscribeUtxo?.();
         utxoLifetime?.dispose();
-        if (sentryApprovalId) {
+        if (sentryApprovalId && !sentryResponseRetained) {
           const wallet = getController().wallet;
           await (methodName === 'linkSentryNode'
             ? wallet.cancelSentryLink(sentryApprovalId)

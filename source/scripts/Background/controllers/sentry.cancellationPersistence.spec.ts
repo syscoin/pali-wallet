@@ -222,7 +222,10 @@ afterAll(() => {
 });
 
 it('persists approved registration protection before signing and exposes it after controller recreation', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   await expect(sign(id)).resolves.toEqual(signedResponse);
   expect(signingCalls()).toHaveLength(1);
   expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
@@ -242,7 +245,10 @@ it('persists approved registration protection before signing and exposes it afte
 });
 
 it('does not reserve or sign when cancellation wins while the password read is pending', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const held = holdSeed();
   const signing = sign(id);
   await held.started;
@@ -257,7 +263,10 @@ it('does not reserve or sign when cancellation wins while the password read is p
 });
 
 it('stops before reservation and signing if cancelled during the fresh context read', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const started = deferred<void>();
   const held = deferred<Response>();
   const ordinaryFetch = (global.fetch as jest.Mock).getMockImplementation()!;
@@ -279,7 +288,10 @@ it('stops before reservation and signing if cancelled during the fresh context r
 });
 
 it('stops before reservation and signing if cancelled during the key read', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const started = deferred<void>();
   const held = deferred<unknown>();
   (loadSentryKey as jest.Mock).mockImplementationOnce(() => {
@@ -299,7 +311,10 @@ it('stops before reservation and signing if cancelled during the key read', asyn
 });
 
 it('does not admit a new native write after cancellation while waiting for the shared persistence lock', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const lockEntered = deferred<void>();
   const lockHeld = deferred<void>();
   const locked = walletPersistenceMutex.runExclusive(() => {
@@ -339,7 +354,10 @@ it('does not admit a new native write after cancellation while waiting for the s
 });
 
 it('refuses a pre-cancelled approval without reading the password or writing', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   controller.cancel(id);
   await expect(sign(id)).rejects.toThrow(/expired/);
   expect(getSeed).not.toHaveBeenCalled();
@@ -348,7 +366,10 @@ it('refuses a pre-cancelled approval without reading the password or writing', a
 });
 
 it('rejects a changed wallet scope before reserving or signing', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const held = holdSeed();
   const signing = sign(id);
   await held.started;
@@ -360,9 +381,15 @@ it('rejects a changed wallet scope before reserving or signing', async () => {
 });
 
 it('allows a fresh approved attempt to reuse existing protection without a duplicate write', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   await sign(id);
-  const again = await controller.prepare(request, 'https://dapp.test');
+  const again = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   await expect(sign(again)).resolves.toEqual(signedResponse);
   expect(signingCalls()).toHaveLength(2);
   expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
@@ -372,7 +399,10 @@ it('allows a fresh approved attempt to reuse existing protection without a dupli
 });
 
 it('retains a native write already admitted before cancellation and starts no later signing job', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const entered = deferred<void>();
   const held = deferred<void>();
   const ordinarySet = (
@@ -397,7 +427,10 @@ it('retains a native write already admitted before cancellation and starts no la
 });
 
 it('retains already committed protection if cancellation occurs after crypto starts, without exposing a response', async () => {
-  const id = await controller.prepare(request, 'https://dapp.test');
+  const id = await controller.prepare(request, 'https://dapp.test', {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  });
   const started = deferred<void>();
   const held = deferred<typeof signedResponse>();
   const ordinaryCrypto = (

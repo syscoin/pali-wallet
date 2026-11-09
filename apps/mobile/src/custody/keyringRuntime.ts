@@ -271,6 +271,8 @@ export interface KeyringRuntime extends CustodyRuntime {
   readonly ledger: NativeLedgerRuntime;
   readonly trezor: NativeTrezorView;
   openConnectionHost(): Promise<NativeConnectionSigningHost>;
+  prepareConnectionPsbt(request: import('../connections/psbtRequests.ts').NativePsbtRequest,
+    signal: AbortSignal, assertCurrent: () => void): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
   readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
     owner: Readonly<{ accountId: string; xpub: string }>, isChangeAddress: boolean,
     signal: AbortSignal, assertCurrent: () => void): Promise<string>;
@@ -310,6 +312,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   openSentryKeyManagement?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryKeyManagement>;
   openSentryNodeManagement?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryNodeManagement>;
   openSentryApprovals?(lifetime: AbortSignal, assertCurrent: () => void): Promise<NativeSentryApprovals>;
+  openConnectionSentryApprovals(): Promise<NativeSentryApprovals>;
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
@@ -1332,7 +1335,8 @@ export function createKeyringRuntimeFactory(
             const owned = storage.sentryKeys.bind(bound.scope, check);
             const walletAuthority = createNativeSentryWalletAuthority({
               account: {address: account.address, xpub: account.xpub}, accountId: selected.index,
-              assertCurrent: check, imported: selected.type === 'Imported', network, readJson,
+              assertCurrent: check, imported: selected.type === 'Imported', network,
+              readJson: (url, limit, requestCheck) => readJson(url, limit, requestCheck, lifetime),
               hasPrivateMaterial: ['HDAccount', 'Imported'].includes(selected.type) && typeof account.xprv === 'string' && !!account.xprv,
               async readPrivateAccount(password, assertRequest) {
                 const guard = () => {check(); checkGuard(assertRequest); check();};
@@ -4740,6 +4744,59 @@ export function createKeyringRuntimeFactory(
               controller.abort();
             }
           } } : {}),
+          async openConnectionSentryApprovals() {
+            const captured = generation; current(captured);
+            if (sentryApprovals) {
+              try { sentryApprovals.assertCurrent(); return sentryApprovals; } catch { retireSentryKeys(); }
+            }
+            const lifetime = (contextReadLifetime ??= new AbortController()).signal;
+            return openSentryApprovals(lifetime, () => current(captured));
+          },
+          async prepareConnectionPsbt(request, signal, assertOwner) {
+            const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
+            const selected = selectedAccount(), network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
+            if (!dependencies.utxoFetch || !utxoRecords || !network ||
+                (selected.type !== 'HDAccount' && selected.type !== 'Imported') || !supportsUtxoSoftwareCustody(network))
+              throw new KeyringRuntimeError('NOT_READY');
+            const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
+            const { xpub } = account;
+            if (selected.type === 'Imported') checkedUtxoImport(account, network);
+            const guard = () => {
+              current(captured); checkGuard(assertOwner); current(captured);
+              const actual = state.activeNetwork, live = state.accounts[selected.type][selected.index];
+              if (signal.aborted || ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
+                  live !== account || live.xpub !== xpub || live.address !== selected.address ||
+                  state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type ||
+                  actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId ||
+                  actual.slip44 !== sdkNetwork.slip44 || actual.currency !== sdkNetwork.currency ||
+                  actual.utxoBackendChain !== sdkNetwork.utxoBackendChain || actual.url !== sdkNetwork.url)
+                throw new KeyringRuntimeError('CANCELLED');
+              if (active || reserved) throw new KeyringRuntimeError('BUSY');
+            };
+            guard(); await dataBinding(captured, guard); guard();
+            const profileId = await ring.getPrivateRecordProfileId(); guard();
+            const collateral = getSentryKeyNetwork()
+              ? createNativeSentryCollateral(await bindSentryNodes(captured, guard)) : null;
+            guard();
+            const { prepareNativeDappPsbt } = await import('./dappPsbt.ts'); guard();
+            const approval = await prepareNativeDappPsbt(request, signal, {
+              network, scope: { profileId,
+                account: { address: selected.address, id: selected.index, type: selected.type, xpub },
+                network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
+                  genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url } },
+              session: { keyring: ring, assertCurrent: guard }, sdk: ring.syscoinTransaction,
+              records: utxoRecords, fetch: dependencies.utxoFetch, collateral, sentry: sentryApprovals?.operations ?? null,
+            });
+            try { guard(); approval.assertCurrent(); } catch (cause) { approval.dispose(); throw cause; }
+            return Object.freeze({ ...approval, async approve() {
+              const pending = approval.approve(); pendingSubmissions.add(pending);
+              try { return await pending; }
+              finally {
+                pendingSubmissions.delete(pending);
+                if (utxoRecords.requiresReopen) void lock().catch(() => undefined);
+              }
+            } });
+          },
           ...(dependencies.utxoFetch && utxoRecords ? { async openUtxoSend(assertOwner: () => void) {
             const captured = generation, snapshot = catalogueSnapshot;
             const admittedTrezorEpoch = trezorEpoch;

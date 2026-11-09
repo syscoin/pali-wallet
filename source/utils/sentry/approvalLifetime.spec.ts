@@ -26,7 +26,10 @@ it.each(methods)(
     const approval = createSentryDappApprovalLifetime(method, () => undefined);
     const result = { version: 1, transactionHex: '0102' };
     const before = JSON.stringify(result);
-    approval.retainResponse(result);
+    approval.retainResponse(result, {
+      disclose: () => undefined,
+      retire: () => undefined,
+    });
     approval.release();
     expect(mockSubscribe.mock.results[0].value).not.toHaveBeenCalled();
     expect(() =>
@@ -47,7 +50,10 @@ it.each(methods)(
       if (!connected) throw new Error('Revoked');
     });
     const result = { version: 1, linked: true };
-    approval.retainResponse(result);
+    approval.retainResponse(result, {
+      disclose: () => undefined,
+      retire: () => undefined,
+    });
     approval.release();
     connected = false;
     mockSubscribe.mock.calls[0][0]();
@@ -84,7 +90,10 @@ it('rejects missing bindings and method substitution but allows ordinary provide
     () => undefined
   );
   const result = { version: 1 };
-  approval.retainResponse(result);
+  approval.retainResponse(result, {
+    disclose: () => undefined,
+    retire: () => undefined,
+  });
   expect(() => assertSentryDappResponseCurrent(methods[1], result)).toThrow();
   expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
 });
@@ -98,7 +107,10 @@ it('cleans abandoned, failed and page-aborted lifetimes without reviving their r
     original.signal
   );
   const result = { version: 1 };
-  approval.retainResponse(result);
+  approval.retainResponse(result, {
+    disclose: () => undefined,
+    retire: () => undefined,
+  });
   original.abort();
   expect(() => assertSentryDappResponseCurrent(methods[0], result)).toThrow();
   expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
@@ -107,7 +119,10 @@ it('cleans abandoned, failed and page-aborted lifetimes without reviving their r
     () => undefined
   );
   const late = { version: 1 };
-  abandoned.retainResponse(late);
+  abandoned.retainResponse(late, {
+    disclose: () => undefined,
+    retire: () => undefined,
+  });
   abandoned.release();
   jest.advanceTimersByTime(600000);
   expect(() => assertSentryDappResponseCurrent(methods[0], late)).toThrow();
@@ -116,4 +131,33 @@ it('cleans abandoned, failed and page-aborted lifetimes without reviving their r
   failed.release();
   failed.release();
   expect(mockSubscribe.mock.results[2].value).toHaveBeenCalledTimes(1);
+});
+
+it('publishes only at the final guarded handoff and retires unpublished work on cancellation', () => {
+  const disclose = jest.fn(),
+    retire = jest.fn(),
+    parent = new AbortController();
+  const approval = createSentryDappApprovalLifetime(
+    methods[0],
+    () => undefined,
+    parent.signal
+  );
+  const result = { version: 1, transactionHex: '0102' };
+  approval.retainResponse(result, { disclose, retire });
+  approval.release();
+  expect(disclose).not.toHaveBeenCalled();
+  parent.abort();
+  expect(retire).toHaveBeenCalledTimes(1);
+  expect(() => assertSentryDappResponseCurrent(methods[0], result)).toThrow();
+  expect(disclose).not.toHaveBeenCalled();
+  const delivered = createSentryDappApprovalLifetime(
+    methods[0],
+    () => undefined
+  );
+  const next = { version: 1, transactionHex: '0102' };
+  delivered.retainResponse(next, { disclose, retire });
+  delivered.release();
+  assertSentryDappResponseCurrent(methods[0], next);
+  expect(disclose).toHaveBeenCalledTimes(1);
+  expect(retire).toHaveBeenCalledTimes(2);
 });

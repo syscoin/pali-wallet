@@ -124,14 +124,14 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
 
   useEffect(() => {
     if (!incomingPairing || !onPairingHandled || handledEntry.current === incomingPairing.id ||
-        scanning || snapshot.status !== 'ready' || !snapshot.network || proposal || snapshot.signingReview) return;
+        scanning || snapshot.status !== 'ready' || !snapshot.network || proposal || snapshot.signingReview || snapshot.psbtReview) return;
     const current = lifetime.current;
     const revision = ++current.revision;
     let active = true;
     queueMicrotask(() => {
       const latest = controller.getSnapshot();
       if (!active || !current.active || current.revision !== revision || latest.status !== 'ready' ||
-          !latest.network || latest.proposals.length || latest.signingReview) return;
+          !latest.network || latest.proposals.length || latest.signingReview || latest.psbtReview) return;
       handledEntry.current = incomingPairing.id;
       onPairingHandled(incomingPairing.id);
       const expired = incomingPairing.expiresAt <= Date.now();
@@ -139,7 +139,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
       if (!expired) void controller.pair(incomingPairing.uri).catch(() => undefined);
     });
     return () => { active = false; };
-  }, [controller, incomingPairing, onPairingHandled, proposal, scanning, snapshot.signingReview, snapshot.network, snapshot.status]);
+  }, [controller, incomingPairing, onPairingHandled, proposal, scanning, snapshot.signingReview, snapshot.psbtReview, snapshot.network, snapshot.status]);
 
   const close = () => { lifetime.current.revision++; onScanFinished?.(); controller.cancel(); onBack(); };
   const finishScan = () => { setScanning(false); onScanFinished?.(); };

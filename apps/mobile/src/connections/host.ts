@@ -12,6 +12,7 @@ import type { NativeDappControlHost } from './controlRequests.ts';
 import type { NativeConnectionReadHost } from '../custody/dappRpcReads.ts';
 import type { NativeConnectionSentryHost } from './sentryRequests.ts';
 import type { NativeConnectionUtxoHost } from '../custody/dappSyscoin.ts';
+import type { NativeConnectionPsbtHost } from './psbtRequests.ts';
 
 export type NativeConnectionMessageSigning = Readonly<{
   accountId: string;
@@ -99,6 +100,7 @@ export type NativeConnectionSigningHost = Readonly<{
 /** The platform composes wallet controls with the runtime's crypto/session host. */
 export type NativeConnectionHost = NativeConnectionSigningHost & Readonly<{
   syscoin: NativeConnectionUtxoHost;
+  psbt: NativeConnectionPsbtHost;
   sentry: NativeConnectionSentryHost;
   controls: NativeDappControlHost;
   reads: NativeConnectionReadHost;

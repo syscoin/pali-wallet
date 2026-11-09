@@ -9,6 +9,7 @@ import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache
 export type UtxoBlockbookReadScope =
   | Readonly<{ kind: 'fee'; url: string }>
   | Readonly<{ kind: 'detail'; txid: string; url: string }>
+  | Readonly<{ assetGuid: string; kind: 'asset'; url: string }>
   | Readonly<{
       address: string;
       kind: 'wallet';
@@ -39,7 +40,14 @@ export function createOwnedUtxoBlockbookRead(
     throw new Error('Invalid owned Blockbook endpoint');
   const base = endpoint.href.replace(/\/$/, '');
   const allowed = new Set<string>();
-  if (scope.kind === 'detail') {
+  if (scope.kind === 'asset') {
+    if (
+      !/^[1-9][0-9]{0,19}$/.test(scope.assetGuid) ||
+      BigInt(scope.assetGuid) > BigInt('18446744073709551615')
+    )
+      throw new Error('Invalid owned Blockbook asset');
+    allowed.add(`/api/v2/asset/${scope.assetGuid}?details=basic`);
+  } else if (scope.kind === 'detail') {
     if (!/^[a-f0-9]{64}$/.test(scope.txid))
       throw new Error('Invalid owned Blockbook transaction');
     allowed.add(`/api/v2/tx/${scope.txid}`);
@@ -104,7 +112,11 @@ export function createOwnedUtxoBlockbookRead(
       const body = await boundedResponseText(
         response,
         controller.signal,
-        scope.kind === 'detail' ? UTXO_DETAIL_RESPONSE_BYTES : RESPONSE_BYTES,
+        scope.kind === 'detail'
+          ? UTXO_DETAIL_RESPONSE_BYTES
+          : scope.kind === 'asset'
+          ? 64 * 1024
+          : RESPONSE_BYTES,
         (bytes) => {
           consumed += bytes;
           if (consumed > OPERATION_BYTES) throw new ResponseSizeLimitError();

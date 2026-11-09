@@ -306,7 +306,7 @@ test('real encrypted voting key signs the reviewed proposal; public facade and r
   const f = await fixture(),
     manager = f.adapter();
   try {
-    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test');
+    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const approval = manager.votes.getApproval(id);
     assert.equal(approval.origin, 'https://dapp.test');
     assert.equal(approval.missingVotingKeys.length, 0);
@@ -342,7 +342,7 @@ test('real BLS service authorization and secp management use the same SDK review
   const f = await fixture(),
     manager = f.adapter();
   try {
-    const id = await manager.operations.prepare(f.request, 'https://dapp.test');
+    const id = await manager.operations.prepare(f.request, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const approval = manager.operations.getApproval(id);
     assert.equal(approval.keys[0]!.scheme, 'bls-basic');
     const result = await manager.operations.sign({
@@ -350,6 +350,7 @@ test('real BLS service authorization and secp management use the same SDK review
       keyId: approval.keys[0]!.id,
       password: PASSWORD,
     });
+manager.operations.publishFeeAuthorization(id);
     assert(
       await verifySentryOperation(
         { ...f.request, transactionHex: result.transactionHex },
@@ -360,7 +361,7 @@ test('real BLS service authorization and secp management use the same SDK review
       result.transactionHex,
       'https://dapp.test'
     );
-    await manager.operations.reviewFeePsbt(feeId, result.transactionHex);
+    await manager.operations.reviewFeePsbt(feeId, result.transactionHex, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.throws(() =>
       manager.operations.prepareFeePsbt(
         result.transactionHex,
@@ -376,7 +377,7 @@ test('real BLS service authorization and secp management use the same SDK review
     });
     const managementId = await manager.operations.prepare(
       request,
-      'https://dapp.test'
+      'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal }
     );
     const key = manager.operations
       .getApproval(managementId)
@@ -387,6 +388,7 @@ test('real BLS service authorization and secp management use the same SDK review
       authorizationId: key.authorizationId,
       password: PASSWORD,
     });
+manager.operations.publishFeeAuthorization(managementId);
     assert(
       await verifySentryManagementOperation(
         { ...request, transactionHex: signed.transactionHex },
@@ -413,7 +415,7 @@ test('fresh proposal, node, service or selected owner changes cannot release an 
     try {
       const id = await manager.votes.prepare(
         f.voteRequest,
-        'https://dapp.test'
+        'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal }
       );
       if (change === 'proposal')
         f.setVoteContext({
@@ -445,7 +447,7 @@ test('cancellation drains a started real SDK signature and withholds its late re
   const f = await fixture(),
     manager = f.adapter();
   try {
-    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test');
+    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
     const entered = Promise.withResolvers<void>(),
       finish = Promise.withResolvers<void>();
     f.setExecutor(async (job, check) => {
@@ -485,7 +487,7 @@ test('governance authorization preserves the existing collateral admission seman
       await f.collateral.registry.captureSentryCollateralAdmission(
         f.collateral.scope
       );
-    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test');
+    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
     await manager.votes.sign({ id, password: PASSWORD });
     await f.collateral.registry.reserveSentryCollateral({
       ...f.collateral.scope,
@@ -549,7 +551,7 @@ test('selected imported software WIF votes through the shared authority matcher,
   f.setAuthority(authority);
   const manager = f.adapter();
   try {
-    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test');
+    const id = await manager.votes.prepare(f.voteRequest, 'https://dapp.test', () => undefined, { assertCurrent: () => undefined, signal: new AbortController().signal });
     assert.equal(
       manager.votes.getApproval(id).nodes[0]!.keyId,
       'wallet-voting'
@@ -696,8 +698,38 @@ test('native JSON reads refuse redirects, overflow, late scope and caller cancel
       read(
         'https://trusted.test/api/context',
         failure === 'oversize' ? 16 : 1000,
-        current
+        current, lifetime.signal
       )
     );
   }
+});
+
+
+test('fresh child cancellation aborts a held Sentry context read independently of the retained wallet lifetime', async () => {
+  const wallet = new AbortController(), child = new AbortController();
+  let observed: AbortSignal | undefined;
+  const entered = Promise.withResolvers<void>();
+  const read = createNativeSentryJsonReader({ assertCurrent: current, lifetime: wallet.signal,
+    fetch: async (_url, init) => { observed = init!.signal!; entered.resolve(); return new Promise(() => {}); } });
+  const pending = read('https://trusted.test/api/context', 65536, current, child.signal);
+  await entered.promise; child.abort(); await assert.rejects(pending);
+  assert(observed!.aborted); assert.equal(wallet.signal.aborted, false);
+});
+
+
+test('native published fee authority outlives only its parent wire and refuses an original-grant successor', async () => {
+  const f = await fixture(), manager = f.adapter(), parent = new AbortController();
+  let grant: object = {}; const captured = grant;
+  const assertGrant = () => { if (grant !== captured) throw new Error('GRANT_CHANGED'); };
+  try {
+    const id = await manager.operations.prepare(f.request, 'https://dapp.test', assertGrant, { assertCurrent: current, signal: parent.signal });
+    const response = await manager.operations.sign({ id, keyId: manager.operations.getApproval(id).keys[0]!.id, password: PASSWORD });
+    assert.throws(() => manager.operations.prepareFeePsbt(response.transactionHex, 'https://dapp.test'));
+    manager.operations.publishFeeAuthorization(id);
+    parent.abort(); manager.operations.cancel(id);
+    const token = manager.operations.prepareFeePsbt(response.transactionHex, 'https://dapp.test');
+    await manager.operations.reviewFeePsbt(token, response.transactionHex, { assertCurrent: current, signal: new AbortController().signal });
+    grant = {}; manager.operations.revalidate();
+    assert.throws(() => manager.operations.prepareFeePsbt(response.transactionHex, 'https://dapp.test'));
+  } finally { manager.dispose(); }
 });

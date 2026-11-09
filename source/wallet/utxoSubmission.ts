@@ -38,6 +38,37 @@ type SubmissionAuthority = Parameters<
 >[1];
 type SubmissionResult = ReturnType<ISyscoinTransactions['sendTransaction']>;
 
+export type UtxoSubmissionDisposition =
+  | Readonly<{ transactionNotBroadcast: true }>
+  | Readonly<{ transactionNotBroadcast: false; txid: string }>;
+
+/** Request retirement cannot turn an actual POST back into a safe cancellation. */
+export function createUtxoSubmissionDisposition() {
+  let disposition: UtxoSubmissionDisposition = Object.freeze({
+    transactionNotBroadcast: true,
+  });
+  return Object.freeze({
+    read: () => disposition,
+    trackPost(
+      candidate: UtxoDurableSubmission,
+      transport: typeof globalThis.fetch
+    ): typeof globalThis.fetch {
+      const { url, rawTransaction, txid } = snapshotUtxoSubmission(candidate);
+      return (input, init) => {
+        if (
+          !disposition.transactionNotBroadcast ||
+          input !== url ||
+          init?.method !== 'POST' ||
+          init.body !== rawTransaction
+        )
+          throw new Error('Invalid owned UTXO POST');
+        disposition = Object.freeze({ transactionNotBroadcast: false, txid });
+        return transport(input, init);
+      };
+    },
+  });
+}
+
 function submissionError(
   code: string,
   message: string,

@@ -86,7 +86,17 @@ function fixture() {
     network: { chainId: 57, kind: 'syscoin', url: 'https://blockbook.example' },
   };
   let serviceUrl = 'https://trusted.example';
-  let requestCurrent = true;
+  let grant: object | undefined = {};
+  const captureScope = () => {
+    const captured = grant;
+    return {
+      ...scope,
+      assertRequestCurrent() {
+        if (!captured || captured !== grant)
+          throw new Error('Site approval retired');
+      },
+    };
+  };
   const check = (owner: typeof scope) => {
     if (owner.identity !== scope.identity)
       throw new Error('Wallet context changed');
@@ -128,12 +138,6 @@ function fixture() {
   let tail = Promise.resolve();
   const host: SentryOperationHost = {
     captureScope: () => scope,
-    captureApprovalScope: () => ({
-      ...scope,
-      assertRequestCurrent() {
-        if (!requestCurrent) throw new Error('Site approval retired');
-      },
-    }),
     assertCurrent: check,
     getSettings: async () => ({
       network: 'mainnet',
@@ -201,13 +205,17 @@ function fixture() {
   };
   return {
     host,
+    scope: captureScope,
+    regrant: () => {
+      grant = {};
+    },
     runCrypto,
     loadKey,
     getSeed,
     operations: new SharedSentryOperationApprovals(host),
     votes: new SharedSentryVoteApprovals(host),
     revokeRequest: () => {
-      requestCurrent = false;
+      grant = undefined;
     },
     changeScope: () => {
       scope = { ...scope, identity: 'locked' };
@@ -231,7 +239,9 @@ it.each(['operation', 'vote'] as const)(
     const controller = kind === 'operation' ? f.operations : f.votes;
     const id = await controller.prepare(
       kind === 'operation' ? operationRequest : voteRequest,
-      'https://dapp.example'
+      'https://dapp.example',
+      f.scope(),
+      { assertCurrent: () => undefined, signal: new AbortController().signal }
     );
     f.revokeRequest();
     await expect(
@@ -247,16 +257,24 @@ it('retires completed operation fee consent with its original site grant', async
   const f = fixture();
   const id = await f.operations.prepare(
     operationRequest,
-    'https://dapp.example'
+    'https://dapp.example',
+    f.scope(),
+    { assertCurrent: () => undefined, signal: new AbortController().signal }
   );
   await f.operations.sign({ id, keyId: 'operator', password: 'password' });
+  f.operations.publishFeeAuthorization(id);
   const token = f.operations.prepareFeePsbt('0102', 'https://dapp.example');
   f.revokeRequest();
   expect(() =>
     f.operations.prepareFeePsbt('0102', 'https://dapp.example')
   ).toThrow();
   expect(() => f.operations.beginFeeSigning(token, '0102')).toThrow();
-  await expect(f.operations.reviewFeePsbt(token, '0102')).rejects.toThrow();
+  await expect(
+    f.operations.reviewFeePsbt(token, '0102', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
+  ).rejects.toThrow();
 });
 
 it.each(['operation', 'vote'] as const)(
@@ -266,7 +284,9 @@ it.each(['operation', 'vote'] as const)(
     const controller = kind === 'operation' ? f.operations : f.votes;
     const id = await controller.prepare(
       kind === 'operation' ? operationRequest : voteRequest,
-      'https://dapp.example'
+      'https://dapp.example',
+      f.scope(),
+      { assertCurrent: () => undefined, signal: new AbortController().signal }
     );
     const worker = deferred();
     const started = deferred();
@@ -296,7 +316,9 @@ it('shares public operation review and remembers only the exact completed transa
   const f = fixture();
   const id = await f.operations.prepare(
     operationRequest,
-    'https://dapp.example'
+    'https://dapp.example',
+    f.scope(),
+    { assertCurrent: () => undefined, signal: new AbortController().signal }
   );
   expect(f.operations.getApproval(id).keys.map((key) => key.id)).toEqual([
     'operator',
@@ -307,13 +329,17 @@ it('shares public operation review and remembers only the exact completed transa
     keyId: 'operator',
     password: 'password',
   });
+  f.operations.publishFeeAuthorization(id);
   expect(JSON.stringify(response)).not.toMatch(/private-/);
   const fee = f.operations.prepareFeePsbt(
     response.transactionHex,
     'https://dapp.example'
   );
   await expect(
-    f.operations.reviewFeePsbt(fee, response.transactionHex)
+    f.operations.reviewFeePsbt(fee, response.transactionHex, {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).resolves.toMatchObject({ feeSatoshis: '1000' });
   expect(() =>
     f.operations.prepareFeePsbt(
@@ -324,7 +350,10 @@ it('shares public operation review and remembers only the exact completed transa
   const finish = f.operations.beginFeeSigning(fee, response.transactionHex);
   finish(true);
   await expect(
-    f.operations.reviewFeePsbt(fee, response.transactionHex)
+    f.operations.reviewFeePsbt(fee, response.transactionHex, {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
   ).rejects.toThrow('AUTHORIZATION_REQUIRED');
 });
 
@@ -335,7 +364,9 @@ it.each(['operations', 'votes'] as const)(
     const controller = f[kind];
     const id = await controller.prepare(
       kind === 'votes' ? voteRequest : operationRequest,
-      'https://dapp.example'
+      'https://dapp.example',
+      f.scope(),
+      { assertCurrent: () => undefined, signal: new AbortController().signal }
     );
     f.changeService();
     await expect(
@@ -359,7 +390,9 @@ it.each(['operations', 'votes'] as const)(
     const controller = f[kind];
     const id = await controller.prepare(
       kind === 'votes' ? voteRequest : operationRequest,
-      'https://dapp.example'
+      'https://dapp.example',
+      f.scope(),
+      { assertCurrent: () => undefined, signal: new AbortController().signal }
     );
     const entered = deferred(),
       finish = deferred();
@@ -387,7 +420,12 @@ it.each(['operations', 'votes'] as const)(
 
 it('rechecks the captured owner after queued work and never exposes key inventory as a signing result', async () => {
   const f = fixture();
-  const id = await f.votes.prepare(voteRequest, 'https://dapp.example');
+  const id = await f.votes.prepare(
+    voteRequest,
+    'https://dapp.example',
+    f.scope(),
+    { assertCurrent: () => undefined, signal: new AbortController().signal }
+  );
   const entered = deferred(),
     finish = deferred();
   const before = f.host.runExclusive(async () => {
@@ -402,4 +440,95 @@ it('rechecks the captured owner after queued work and never exposes key inventor
   await expect(signing).rejects.toThrow('context changed');
   expect(f.getSeed).not.toHaveBeenCalled();
   expect(f.loadKey).not.toHaveBeenCalled();
+});
+
+it('publishes fee descendants only at guarded disclosure and cancellation removes unpublished work', async () => {
+  const f = fixture(),
+    wire = new AbortController();
+  const id = await f.operations.prepare(
+    operationRequest,
+    'https://dapp.example',
+    f.scope(),
+    { assertCurrent: () => undefined, signal: wire.signal }
+  );
+  await f.operations.sign({ id, keyId: 'operator', password: 'password' });
+  expect(() =>
+    f.operations.prepareFeePsbt('0102', 'https://dapp.example')
+  ).toThrow('AUTHORIZATION_REQUIRED');
+  f.operations.cancel(id);
+  f.operations.publishFeeAuthorization(id);
+  expect(() =>
+    f.operations.prepareFeePsbt('0102', 'https://dapp.example')
+  ).toThrow('AUTHORIZATION_REQUIRED');
+});
+
+it('keeps a published fee capability after the parent wire expires, but never across revoke/regrant ABA', async () => {
+  const f = fixture(),
+    wire = new AbortController();
+  const id = await f.operations.prepare(
+    operationRequest,
+    'https://dapp.example',
+    f.scope(),
+    { assertCurrent: () => undefined, signal: wire.signal }
+  );
+  await f.operations.sign({ id, keyId: 'operator', password: 'password' });
+  f.operations.publishFeeAuthorization(id);
+  wire.abort();
+  f.operations.cancel(id);
+  const token = f.operations.prepareFeePsbt('0102', 'https://dapp.example');
+  await expect(
+    f.operations.reviewFeePsbt(token, '0102', {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    })
+  ).resolves.toMatchObject({ feeSatoshis: '1000' });
+  f.revokeRequest();
+  f.regrant();
+  f.operations.revalidate();
+  expect(() =>
+    f.operations.prepareFeePsbt('0102', 'https://dapp.example')
+  ).toThrow('AUTHORIZATION_REQUIRED');
+});
+
+it('passes the fresh child signal to every owned fee read and aborts a held review', async () => {
+  const f = fixture(),
+    parent = {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+    };
+  const id = await f.operations.prepare(
+    operationRequest,
+    'https://dapp.example',
+    f.scope(),
+    parent
+  );
+  await f.operations.sign({ id, keyId: 'operator', password: 'password' });
+  f.operations.publishFeeAuthorization(id);
+  const token = f.operations.prepareFeePsbt('0102', 'https://dapp.example');
+  const child = new AbortController(),
+    entered = deferred();
+  jest
+    .spyOn(f.host, 'readJson')
+    .mockImplementation(async (_url, _limit, _scope, check, signal) => {
+      check();
+      expect(signal).toBe(child.signal);
+      entered.resolve();
+      return new Promise((_resolve, reject) =>
+        signal.addEventListener(
+          'abort',
+          () => reject(new Error('Child cancelled')),
+          { once: true }
+        )
+      );
+    });
+  const reviewing = f.operations.reviewFeePsbt(token, '0102', {
+    assertCurrent: () => undefined,
+    signal: child.signal,
+  });
+  await entered.promise;
+  child.abort();
+  await expect(reviewing).rejects.toThrow('Child cancelled');
+  expect(f.operations.prepareFeePsbt('0102', 'https://dapp.example')).toBe(
+    token
+  );
 });

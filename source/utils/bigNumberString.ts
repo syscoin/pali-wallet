@@ -20,9 +20,9 @@ export const numberToIntegerString = (num: number): string => {
       : s;
   }
 
-  const mantInt = match[1];
+  const mantInt = match[1]!;
   const mantFrac = match[2] || '';
-  const exp = parseInt(match[3], 10);
+  const exp = parseInt(match[3]!, 10);
   const digits = mantInt + mantFrac;
   const integerLength = 1 + exp;
   if (integerLength <= 0) return '0';
@@ -46,9 +46,9 @@ export const scientificToIntegerString = (value: string): string => {
     throw new Error(`Invalid scientific notation: ${value}`);
   }
   const sign = match[1] === '-' ? '-' : '';
-  const intPart = match[2];
+  const intPart = match[2]!;
   const fracPart = match[3] || '';
-  const exp = parseInt(match[4], 10);
+  const exp = parseInt(match[4]!, 10);
   const digits = intPart + fracPart;
   const integerLength = intPart.length + exp;
   if (integerLength <= 0) return '0';

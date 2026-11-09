@@ -10,10 +10,14 @@ const sentryMethods = [
 ];
 type Approval = {
   assertCurrent(): void;
+  disclose(): void;
   dispose(): void;
   method: string;
   release(): void;
-  retainResponse(result: unknown): void;
+  retainResponse(
+    result: unknown,
+    publication: Readonly<{ disclose(): void; retire(): void }>
+  ): void;
   signal: AbortSignal;
 };
 const responses = new WeakMap<object, Approval>();
@@ -35,11 +39,13 @@ export function createSentryDappApprovalLifetime(
   }, parentSignal);
   const unsubscribe = store.subscribe(lifetime.isCurrent);
   let retained = false;
+  let publication: Readonly<{ disclose(): void; retire(): void }> | undefined;
   let disposed = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const dispose = () => {
     if (disposed) return;
     disposed = true;
+    publication?.retire();
     unsubscribe();
     if (timeout) clearTimeout(timeout);
     lifetime.signal.removeEventListener('abort', dispose);
@@ -54,10 +60,22 @@ export function createSentryDappApprovalLifetime(
     assertCurrent,
     dispose,
     signal: lifetime.signal,
-    retainResponse(result: unknown) {
+    disclose() {
+      assertCurrent();
+      if (!publication) throw dappSigningApprovalExpired();
+      assertSynchronousEvmFeeGuard(publication.disclose);
+    },
+    retainResponse(result: unknown, retainedPublication) {
       assertCurrent();
       if (!result || typeof result !== 'object') return;
       if (retained) throw dappSigningApprovalExpired();
+      if (
+        !retainedPublication ||
+        typeof retainedPublication.disclose !== 'function' ||
+        typeof retainedPublication.retire !== 'function'
+      )
+        throw dappSigningApprovalExpired();
+      publication = retainedPublication;
       retained = true;
       responses.set(result, approval);
       // Abandoned internal callers cannot retain a store subscription forever.
@@ -112,6 +130,7 @@ export function assertSentryDappResponseCurrent(
   try {
     if (approval.method !== method) throw dappSigningApprovalExpired();
     approval.assertCurrent();
+    approval.disclose();
   } finally {
     responses.delete(result);
     approval.dispose();

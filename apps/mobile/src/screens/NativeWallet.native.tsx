@@ -1,5 +1,6 @@
 import { NativeSentryHub } from './NativeSentryHub';
 import { NativeSentryReview } from './NativeSentryReview';
+import { NativePsbtReview } from './NativePsbtReview';
 import { NativeSmartAccountSend } from './NativeSmartAccountSend';
 import { NativeSmartTransactionReviewScreen } from './NativeSmartTransactionReview';
 import { NativeSmartAccountOperationRoute } from './NativeSmartAccountOperation';
@@ -385,7 +386,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     if (AppState.currentState !== 'active' || !protectedScreen || busy ||
         snapshot.phase !== 'ready' || stage !== 'choose' || shell.immersive ||
         !connectionView || connectionSnapshot?.status !== 'ready' ||
-        connectionSnapshot.proposals.length || connectionSnapshot.controlReview || connectionSnapshot.sentryReview || signingReview) return;
+        connectionSnapshot.proposals.length || connectionSnapshot.controlReview || connectionSnapshot.sentryReview || connectionSnapshot.psbtReview || signingReview) return;
     const current = readyContext();
     if (!current) return;
     const capturedEpoch = epoch.current;
@@ -396,7 +397,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       const scanCurrent = scanIntentExpiresAt !== null && scanIntentExpiresAt > Date.now();
       if ((!linkCurrent && !scanCurrent) || !active || !mounted.current || rootOrigin.current || epoch.current !== capturedEpoch ||
           AppState.currentState !== 'active' || readyContext()?.context !== current.context ||
-          connections.status !== 'ready' || connections.proposals.length || connections.controlReview || connections.sentryReview || connections.signingReview) return;
+          connections.status !== 'ready' || connections.proposals.length || connections.controlReview || connections.sentryReview || connections.psbtReview || connections.signingReview) return;
       rootOrigin.current = { tab: shell.tab, stage: 'connections', ...current, epoch: capturedEpoch };
       setStage('connections');
     });
@@ -424,7 +425,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         return true;
       }
       // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview)) return false;
+      if (snapshot.phase === 'ready' && (stage === 'choose' || stage === 'connections') && (signingReview || connectionSnapshot?.controlReview || connectionSnapshot?.sentryReview || connectionSnapshot?.psbtReview)) return false;
       if ((stage === 'private-notes' || stage === 'connections') && snapshot.phase === 'ready') {
         if (stage === 'connections') {
           scanFinished();
@@ -833,6 +834,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     revoke();
     bridge.current?.onSelectWatch(selection);
   };
+  if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.psbtReview && connectionView)
+    return <NativePsbtReview key={connectionSnapshot.psbtReview.id} review={connectionSnapshot.psbtReview} controller={connectionView} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.sentryReview && connectionView)
     return <NativeSentryReview key={connectionSnapshot.sentryReview.id} review={connectionSnapshot.sentryReview} controller={connectionView} />;
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && connectionSnapshot?.controlReview && connectionView)

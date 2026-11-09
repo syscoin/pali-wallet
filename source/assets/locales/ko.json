@@ -2021,7 +2021,20 @@
       "block": "Block {{blockNumber}}",
       "connectTo": "Connect to {{name}}",
       "network": "{{network}} · Chain ID {{chainId}}",
-      "disconnect": "Disconnect {{name}}"
+      "disconnect": "Disconnect {{name}}",
+      "psbt": {
+        "signTitle": "서명만 하기",
+        "sendTitle": "서명 및 전송",
+        "partialBody": "서명된 거래를 연결된 앱으로 반환합니다. 앱에서 나머지 서명을 추가하고 거래를 제출할 수 있습니다.",
+        "checking": "거래 확인 중…",
+        "transactionType": "거래 유형",
+        "unavailableTitle": "PSBT를 사용할 수 없음",
+        "unavailableBody": "이 PSBT를 검증하거나 서명할 수 없습니다. 앱에 새 요청을 보내도록 하세요.",
+        "deliveryTitle": "결과 전달 여부 불확실",
+        "deliveryBody": "지갑이 요청을 완료했지만 앱에 결과가 전달되었는지 확인할 수 없습니다.",
+        "submissionTitle": "제출 여부 확인 안 됨",
+        "submissionBody": "서명된 거래가 저장되었습니다. 다시 전송하기 전에 상태를 확인하세요."
+      }
     },
     "security": {
       "revealFailed": "The private key could not be shown. Confirm your password and try again.",

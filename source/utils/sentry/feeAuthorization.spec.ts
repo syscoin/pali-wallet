@@ -14,6 +14,7 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 const entry = () => ({
+  parentId: 'parent',
   scope: {
     identity: 'account/network/session',
     rootPublicIdentity: 'root',
@@ -34,6 +35,7 @@ const entry = () => ({
 it('binds exact transaction bytes, origin and complete wallet scope without consuming reads', () => {
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
+  registry.publish('parent');
   const id = registry.find('010203', entry().origin, entry().scope.identity);
   expect(
     registry.get(id, '010203', entry().scope.identity).request.transactionHex
@@ -56,6 +58,7 @@ it('binds exact transaction bytes, origin and complete wallet scope without cons
 it('allows failure retry but prevents concurrent and second disclosed signatures', () => {
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
+  registry.publish('parent');
   const id = registry.find('010203', entry().origin, entry().scope.identity);
   const failed = registry.acquire(id, '010203', entry().scope.identity);
   expect(() => registry.acquire(id, '010203', entry().scope.identity)).toThrow(
@@ -73,8 +76,10 @@ it('allows failure retry but prevents concurrent and second disclosed signatures
 it('replaces prior consent for identical bytes when the user authorizes again', () => {
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
+  registry.publish('parent');
   const prior = registry.find('010203', entry().origin, entry().scope.identity);
   registry.remember({ ...entry(), context: { fresh: true } as any });
+  registry.publish('parent');
   const current = registry.find(
     '010203',
     entry().origin,
@@ -93,12 +98,14 @@ it('expires after ten minutes and bounds retained public approvals', () => {
   jest.useFakeTimers();
   const registry = new SentryFeeAuthorizations();
   registry.remember(entry());
+  registry.publish('parent');
   const id = registry.find('010203', entry().origin, entry().scope.identity);
   jest.advanceTimersByTime(600000);
   expect(() => registry.get(id, '010203', entry().scope.identity)).toThrow(
     /expired/
   );
   registry.remember(entry());
+  registry.publish('parent');
   const evicted = registry.find(
     '010203',
     entry().origin,
@@ -120,5 +127,36 @@ it('recognizes only the explicit Sentry transaction versions', () => {
   );
   [1, 2, 3, 84, 85, 87, undefined, NaN].forEach((version) =>
     expect(isSentryTransactionVersion(version as number)).toBe(false)
+  );
+});
+
+it('does not publish on remember and retires only the cancelled parent before handoff', () => {
+  const registry = new SentryFeeAuthorizations();
+  registry.remember(entry());
+  expect(() =>
+    registry.find('010203', entry().origin, entry().scope.identity)
+  ).toThrow();
+  registry.cancelUnpublished('parent');
+  registry.publish('parent');
+  expect(() =>
+    registry.find('010203', entry().origin, entry().scope.identity)
+  ).toThrow();
+  registry.remember(entry());
+  registry.publish('parent');
+  const token = registry.find('010203', entry().origin, entry().scope.identity);
+  registry.cancelUnpublished('parent');
+  expect(registry.find('010203', entry().origin, entry().scope.identity)).toBe(
+    token
+  );
+  for (let index = 0; index < 12; index++) {
+    registry.remember({
+      ...entry(),
+      parentId: `cancelled-${index}`,
+      request: { ...entry().request, transactionHex: `other-${index}` },
+    });
+    registry.cancelUnpublished(`cancelled-${index}`);
+  }
+  expect(registry.find('010203', entry().origin, entry().scope.identity)).toBe(
+    token
   );
 });
