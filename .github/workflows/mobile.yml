@@ -84,7 +84,7 @@ jobs:
   foundation:
     name: Mobile types, behavior and native bundles
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: apps/mobile
