@@ -74,15 +74,17 @@ test('immediate authentication failure without a busy render still permits retry
   assert.equal(f.confirmed.length, 2); f.close();
 });
 
-test('reviewed send invokes biometrics directly once and never reopens after rejection', () => {
+test('biometric cancellation permits explicit retry or PIN without automatically opening a prompt', () => {
   const f = fixture();
-  f.render({ autoBiometric: true }); assert.equal(f.confirmed.length, 1);
+  const initial = f.render(); assert.equal(f.confirmed.length, 0);
+  biometric(initial).props.onPress(); assert.equal(f.confirmed.length, 1);
   const first = f.render({ busy: true });
-  assert(!screenElements(first).some(node => node.type === 'Button'));
+  assert.equal(biometric(first).props.disabled, true);
   f.render({ busy: false, error: 'Biometric confirmation cancelled' }); f.render();
   assert.equal(f.confirmed.length, 1);
   entry(f.render()).props.onComplete('123456'); assert.equal(f.confirmed.length, 2);
-  f.render({ identity: 'fresh-review', error: '' }); assert.equal(f.confirmed.length, 3);
+  const next = f.render({ identity: 'fresh-review', error: '' }); assert.equal(f.confirmed.length, 2);
+  biometric(next).props.onPress(); assert.equal(f.confirmed.length, 3);
   f.close();
 });
 

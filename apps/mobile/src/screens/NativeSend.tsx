@@ -1091,7 +1091,9 @@ export function NativeSend({
         authentication.account.network === account.network && authentication.account.revision === account.revision &&
         authentication.registrationHash === context.registrationHash && <TransactionAuthentication
           identity={`${authentication.registrationHash}:${authentication.review.id}:${authentication.account.revision}`}
-          method={authentication.method} autoBiometric busy={authenticationBusy} error={error || undefined}
+          method={authentication.method} busy={authenticationBusy} error={error || undefined}
+          description={reviewedCollectible ? `Confirm this collectible transfer on ${capturedContext.name}.`
+            : `Confirm ${amountText} ${reviewedToken?.symbol ?? capturedContext.symbol} on ${capturedContext.name}.`}
           onConfirm={credential => { void confirmAuthentication(authentication, credential); }}
           onCancel={() => {
             if (!authenticationCurrent(authentication)) return;
