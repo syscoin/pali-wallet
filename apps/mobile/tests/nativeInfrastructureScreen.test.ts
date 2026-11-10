@@ -47,13 +47,14 @@ function button(elements: ReturnType<typeof screenElements>, key: string) {
   return element;
 }
 const text = (elements: ReturnType<typeof screenElements>) => elements.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
-function runtime(signal: AbortSignal, assertCurrent: () => void) {
+function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing') {
   const transaction = Object.freeze({ chainId: '1', from: payer, to: '0x4e59b44847b379578588920cA78FbF26c0B4956C', nonce: '0', value: '0', data: '0xab', gasLimit: '21000', type: 2 as const, maxFeePerGas: '2', maxPriorityFeePerGas: '1', accessList: [] });
   let signatures = 0, wires = 0, submissions = 0, disposed = 0;
   let refuseSubmission = false;
   let quoteWait: Promise<void> = Promise.resolve(), sendWait: Promise<void> = Promise.resolve();
   let broadcastWait: Promise<void> = Promise.resolve();
-  const prepared = Object.freeze({
+  const prepared: NativePreparedConnectionTransaction = Object.freeze({
+    feeComparison: { recommendationOnly: false },
     transaction, maximumFeeUnits: '42000', coveredFeeUnits: '0', maximumTotalUnits: '42000', approval: null,
     expiresAtMonotonicMilliseconds: 60000,
     async submit(guard: () => void, broadcast: (hash: string) => void) {
@@ -63,13 +64,13 @@ function runtime(signal: AbortSignal, assertCurrent: () => void) {
       await broadcastWait; guard(); broadcast(hash); wires++;
       return hash;
     },
-  }) as unknown as NativePreparedConnectionTransaction;
-  const observation = projectSmartAccountInfrastructureObservation(1, ['0x01', ...PALI_INFRASTRUCTURE_METADATA.map(() => '0x')])!;
+  });
+  const observation = projectSmartAccountInfrastructureObservation(1, ['0x01', ...PALI_INFRASTRUCTURE_METADATA.map(entry => mode === 'all-present' || mode !== 'missing' && !entry.optional ? '0x01' : '0x')])!;
   const controller = new NativeInfrastructureController({
     networkLabel: 'Ethereum', currencySymbol: 'ETH', payerLabel: 'Fee wallet', payerAddress: payer,
     assertCurrent,
     dispose() { disposed++; },
-    async observe() { assertCurrent(); return { observation, pending: null }; },
+    async observe() { assertCurrent(); return { observation, pending: mode === 'pending-optional' ? { contractId: 'multicall3' as const, transactionHash: hash } : null }; },
     async prepare() { await quoteWait; assertCurrent(); return prepared; },
     submissionFailure(error: unknown) {
       return error && typeof error === 'object' && 'transactionNotBroadcast' in error ? { transactionNotBroadcast: true } : undefined;
@@ -215,6 +216,46 @@ test('status and result actions stay in a two-button footer and failure text pre
     assert(alert >= 0 && inventory > alert);
   } finally { screen.close(); }
 });
+
+test('optional-only status remains visibly ready and offers a labelled optional fee review', async () => {
+  const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+  const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, 'optional-only'); return value.controller; }, onBack() {} };
+  const fixed = (tree: ReturnType<typeof screenElements>) => screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
+  try {
+    screen.render(props); await tick();
+    let tree = screen.render(props);
+    assert.equal(value.controller.getSnapshot().phase, 'complete');
+    assert(text(tree).includes(title('settings.smartAccountInfrastructureReady')));
+    assert(text(tree).includes(title('settings.optional')));
+    assert.equal(fixed(tree).filter(node => node.type === 'Button').length, 2);
+    button(fixed(tree), 'mobile.infrastructure.reviewOptional');
+    assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title('mobile.infrastructure.reviewNext')), false);
+    button(tree, 'mobile.infrastructure.reviewOptional').props.onPress(); await tick();
+    tree = screen.render(props);
+    assert.equal(value.controller.getSnapshot().feeReview!.contract.optional, true);
+    assert(text(tree).includes('Multicall3 read aggregator'));
+    assert(text(tree).includes(title('settings.optional')));
+    assert.equal(value.counts.submissions, 0);
+    button(fixed(tree), 'buttons.confirm').props.onPress(); await tick();
+    assert.equal(value.counts.submissions, 1);
+  } finally { screen.close(); }
+});
+
+for (const mode of ['missing', 'all-present', 'pending-optional'] as const)
+  test(`${mode} keeps the appropriate status and two-button footer`, async () => {
+    const screen = nativeScreen(); let value!: ReturnType<typeof runtime>;
+    const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, mode); return value.controller; }, onBack() {} };
+    try {
+      screen.render(props); await tick();
+      const tree = screen.render(props), fixed = screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
+      assert.equal(fixed.filter(node => node.type === 'Button').length, 2);
+      button(fixed, mode === 'missing' ? 'mobile.infrastructure.reviewNext' : 'mobile.infrastructure.refresh');
+      assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title('mobile.infrastructure.reviewOptional')), false);
+      assert.equal(text(tree).includes(title('settings.smartAccountInfrastructureReady')), mode === 'all-present');
+      assert.equal(value.counts.submissions, 0);
+      assert.equal(value.controller.getSnapshot().phase, mode === 'all-present' ? 'complete' : mode === 'pending-optional' ? 'pending' : 'ready');
+    } finally { screen.close(); }
+  });
 
 for (const stage of ['quote', 'signing', 'broadcast'] as const)
   test(`background while awaiting ${stage} prevents the next signing or publication boundary`, async () => {

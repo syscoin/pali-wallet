@@ -2261,7 +2261,7 @@
       "reviewExpired": "A revisão expirou. Reveja a taxa atual.",
       "unavailable": "A configuração não está disponível. Atualize o estado antes de tentar novamente.",
       "cancelled": "A carteira mudou ou foi bloqueada. Reabra a configuração.",
-      "complete": "A configuração da conta inteligente está implantada."
+      "reviewOptional": "Rever implantação opcional"
     }
   }
 }

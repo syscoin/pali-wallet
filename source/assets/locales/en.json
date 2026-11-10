@@ -2261,7 +2261,7 @@
       "reviewExpired": "Review expired. Review the current fee again.",
       "unavailable": "Setup is unavailable. Refresh its status before trying again.",
       "cancelled": "The wallet changed or locked. Reopen setup.",
-      "complete": "Smart account setup is deployed."
+      "reviewOptional": "Review optional deployment"
     }
   }
 }

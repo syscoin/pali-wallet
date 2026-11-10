@@ -2261,7 +2261,7 @@
       "reviewExpired": "Die Prüfung ist abgelaufen. Prüfen Sie die aktuellen Gebühren erneut.",
       "unavailable": "Die Einrichtung ist nicht verfügbar. Aktualisieren Sie den Status, bevor Sie es erneut versuchen.",
       "cancelled": "Das Wallet wurde geändert oder gesperrt. Öffnen Sie die Einrichtung erneut.",
-      "complete": "Die Einrichtung des Smart Accounts ist bereitgestellt."
+      "reviewOptional": "Optionale Bereitstellung prüfen"
     }
   }
 }

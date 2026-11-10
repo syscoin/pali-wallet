@@ -76,14 +76,15 @@ export function NativeInfrastructure({ open, onBack }: Props) {
   const busy = ['loading', 'preparing', 'submitting'].includes(state.phase);
   const review = state.feeReview;
   const pending = state.status?.pending;
-  const canReview = !!controller && !busy && !pending && !['review', 'unknown', 'complete'].includes(state.phase) &&
+  const canReview = !!controller && !busy && !pending && !['review', 'unknown'].includes(state.phase) &&
     !!state.status?.observation.create2Deployer.deployed && !!state.status.observation.missing.length;
-  const readyToReview = state.phase === 'ready' && canReview;
+  const readyToReview = (state.phase === 'ready' || state.phase === 'complete') && canReview;
+  const reviewLabel = state.status?.observation.ready ? 'mobile.infrastructure.reviewOptional' : 'mobile.infrastructure.reviewNext';
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><Screen key={review && state.phase === 'review' ? `review:${review.id}` : 'status'} footer={<>
     {review && state.phase === 'review'
       ? <Button title={t('buttons.confirm')} disabled={busy} onPress={() => act(() => controller!.confirm(review.id))} />
       : readyToReview
-      ? <Button title={t('mobile.infrastructure.reviewNext')} onPress={() => act(() => controller!.reviewNext(state.revision))} />
+      ? <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
       : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
     <Button title={t('buttons.close')} variant="quiet" onPress={close} />
   </>}>
@@ -99,6 +100,7 @@ export function NativeInfrastructure({ open, onBack }: Props) {
     {review && state.phase === 'review' && <>
       <Card style={s.card}>
         <Text accessibilityRole="header">{review.contract.displayName}</Text>
+        {review.contract.optional && <Text style={s.label}>{t('settings.optional')}</Text>}
         <Text selectable style={s.address}>{review.contract.address}</Text>
         <Text style={s.label}>{t('transactions.replay.maximumFee')}</Text>
         <Text selectable style={s.amount}>{formatBaseUnits(review.maximumFeeUnits, 18)} {controller?.currencySymbol}</Text>
@@ -115,7 +117,7 @@ export function NativeInfrastructure({ open, onBack }: Props) {
       <Text>{state.status?.observation.contracts.find(contract => contract.id === pending.contractId)?.displayName}</Text>
       {pending.transactionHash && <><Text style={s.label}>{t('transactions.replay.hash')}</Text><Text selectable style={s.address}>{pending.transactionHash}</Text></>}
     </Card>}
-    {state.phase === 'complete' && <Text accessibilityLiveRegion="polite">{t('mobile.infrastructure.complete')}</Text>}
+    {state.phase === 'complete' && <Text accessibilityLiveRegion="polite">{t('settings.smartAccountInfrastructureReady')}</Text>}
     {(openingError === scope || state.error) && <Text accessibilityRole="alert" style={s.error}>{t(openingError === scope ? 'mobile.infrastructure.unavailable' : state.error!)}</Text>}
     {state.status && state.phase !== 'review' && <Card style={s.card}>
       <Text style={s.label}>{t('mobile.infrastructure.create2Deployer')}</Text>
@@ -123,6 +125,7 @@ export function NativeInfrastructure({ open, onBack }: Props) {
       <Text>{t(state.status.observation.create2Deployer.deployed ? 'mobile.infrastructure.codePresent' : 'mobile.infrastructure.codeMissing')}</Text>
       {state.status.observation.contracts.map(contract => <Card key={contract.id} style={s.contract}>
         <Text>{contract.displayName}</Text>
+        {contract.optional && <Text style={s.label}>{t('settings.optional')}</Text>}
         <Text selectable style={s.address}>{contract.address}</Text>
         <Text>{t(contract.deployed ? 'mobile.infrastructure.codePresent' : 'mobile.infrastructure.codeMissing')}</Text>
       </Card>)}

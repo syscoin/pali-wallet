@@ -2261,7 +2261,7 @@
       "reviewExpired": "审核已过期。请重新审核当前手续费。",
       "unavailable": "设置暂不可用。请刷新状态后重试。",
       "cancelled": "钱包已更改或锁定。请重新打开设置。",
-      "complete": "智能账户设置已部署。"
+      "reviewOptional": "审核可选部署"
     }
   }
 }

@@ -18,6 +18,8 @@ function status(deployed: readonly PaliInfrastructureContractId[] = [], pending:
   assert(observation);
   return { observation, pending };
 }
+const requiredContracts = PALI_INFRASTRUCTURE_METADATA.filter(entry => !entry.optional).map(entry => entry.id);
+const allContracts = PALI_INFRASTRUCTURE_METADATA.map(entry => entry.id);
 function fixture() {
   const lifetime = new AbortController();
   const transaction = Object.freeze({ chainId: '1', from: payer, to: '0x4e59b44847b379578588920cA78FbF26c0B4956C', nonce: '0', value: '0', data: '0xab', gasLimit: '21000', type: 2 as const, maxFeePerGas: '2', maxPriorityFeePerGas: '1', accessList: [] });
@@ -29,8 +31,8 @@ function fixture() {
   let send = async (guard: () => void, broadcast: (hash: string) => void) => { guard(); broadcast(hash); return hash; };
   let observe = async () => observed;
   let quote = async () => {
-    const prepared = Object.freeze({
-      feeComparison: { requested: null, suggested: null, raised: false },
+    const prepared: NativePreparedConnectionTransaction = Object.freeze({
+      feeComparison: { recommendationOnly: false },
       transaction, maximumFeeUnits: '42000', coveredFeeUnits: '0', maximumTotalUnits: '42000', approval: null,
       expiresAtMonotonicMilliseconds: now + 60000,
       async submit(guard: () => void, broadcast: (hash: string) => void, submission: unknown) {
@@ -38,7 +40,7 @@ function fixture() {
         submissions++;
         return send(guard, broadcast);
       },
-    }) as unknown as NativePreparedConnectionTransaction;
+    });
     preparedObjects.push(prepared);
     return prepared;
   };
@@ -118,6 +120,7 @@ test('an expired original quote is cleared and an old Confirm cannot approve the
     assert.equal(f.counts.submissions, 0);
     assert.equal(f.controller.getSnapshot().feeReview, null);
     assert.equal(f.controller.getSnapshot().error, 'mobile.infrastructure.reviewExpired');
+    assert.equal(f.controller.getSnapshot().phase, 'ready');
     await f.review();
     assert.notEqual(f.controller.getSnapshot().feeReview!.id, old.id);
     await f.controller.confirm(old.id);
@@ -246,5 +249,110 @@ test('missing required host ports and asynchronous authority have no fallback', 
       assert.equal(f.counts.observations, 0);
       assert.equal(asyncGuard.getSnapshot().phase, 'failed');
     } finally { asyncGuard.dispose(); }
+  } finally { f.controller.dispose(); }
+});
+
+for (const [name, deployed, phase] of [
+  ['optional-only missing', requiredContracts, 'complete'],
+  ['required missing', requiredContracts.filter(id => id !== 'entryPoint'), 'ready'],
+  ['all present', allContracts, 'complete'],
+] as const) test(`normal status consumes shared readiness when ${name}`, async () => {
+  const f = fixture();
+  try {
+    f.setStatus(status(deployed)); await f.refresh();
+    assert.equal(f.controller.getSnapshot().phase, phase);
+    assert.equal(f.controller.getSnapshot().status!.observation.ready, phase === 'complete');
+    assert.equal(f.counts.submissions, 0); assert.equal(f.contracts.length, 0);
+  } finally { f.controller.dispose(); }
+});
+
+test('optional-only readiness preserves a separate deployment review with canonical optional metadata', async () => {
+  const f = fixture();
+  try {
+    f.setStatus(status(requiredContracts)); await f.refresh();
+    assert.equal(f.controller.getSnapshot().phase, 'complete');
+    assert.deepEqual(f.controller.getSnapshot().status!.observation.missing, ['multicall3']);
+    await f.review();
+    assert.deepEqual(f.contracts, ['multicall3']);
+    assert.equal(f.controller.getSnapshot().feeReview!.contract.optional, true);
+    assert.equal(f.counts.submissions, 0);
+    await f.confirm(); assert.equal(f.counts.submissions, 1);
+    assert.equal(f.controller.getSnapshot().phase, 'pending');
+  } finally { f.controller.dispose(); }
+});
+
+test('an explicit optional review stays preparing while its quote is held; all-present review returns complete', async () => {
+  const f = fixture(), held = deferred<NativePreparedConnectionTransaction>();
+  try {
+    f.setStatus(status(requiredContracts)); f.setQuote(() => held.promise);
+    const reviewing = f.review(); await tick();
+    assert.equal(f.controller.getSnapshot().phase, 'preparing');
+    assert.equal(f.controller.getSnapshot().feeReview, null);
+    held.resolve({
+      feeComparison: { recommendationOnly: false },
+      transaction: f.transaction, maximumFeeUnits: '42000', coveredFeeUnits: '0', maximumTotalUnits: '42000',
+      approval: null, expiresAtMonotonicMilliseconds: 60100,
+      async submit() { assert.fail('A held quote must not submit'); },
+    });
+    await reviewing; assert.equal(f.controller.getSnapshot().phase, 'review');
+    f.setStatus(status(allContracts)); await f.refresh(); await f.review();
+    assert.equal(f.controller.getSnapshot().phase, 'complete');
+    assert.equal(f.controller.getSnapshot().feeReview, null);
+    assert.deepEqual(f.contracts, ['multicall3']);
+  } finally { f.controller.dispose(); }
+});
+
+for (const optionalOnly of [true, false]) test(`review timer expiry restores ${optionalOnly ? 'shared ready' : 'required-missing'} status`, async context => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  const f = fixture();
+  try {
+    if (optionalOnly) f.setStatus(status(requiredContracts));
+    await f.review();
+    assert.equal(f.controller.getSnapshot().feeReview!.contract.optional, optionalOnly);
+    f.setNow(60100); context.mock.timers.tick(60000);
+    assert.equal(f.controller.getSnapshot().phase, optionalOnly ? 'complete' : 'ready');
+    assert.equal(f.controller.getSnapshot().feeReview, null);
+    assert.equal(f.controller.getSnapshot().error, 'mobile.infrastructure.reviewExpired');
+    assert.equal(f.counts.submissions, 0);
+  } finally { f.controller.dispose(); }
+});
+
+test('a pending optional deployment takes priority over shared readiness', async () => {
+  const f = fixture();
+  try {
+    f.setStatus(status(requiredContracts, { contractId: 'multicall3', transactionHash: hash }));
+    await f.refresh(); await f.review();
+    assert.equal(f.controller.getSnapshot().phase, 'pending');
+    assert.equal(f.controller.getSnapshot().status!.observation.ready, true);
+    assert.equal(f.contracts.length, 0); assert.equal(f.counts.submissions, 0);
+  } finally { f.controller.dispose(); }
+});
+
+test('optional Confirm expiry before its timer fires restores shared ready without signing', async () => {
+  const f = fixture(); let signatures = 0;
+  f.setSend(async () => { signatures++; throw new Error('Unexpected signing'); });
+  try {
+    f.setStatus(status(requiredContracts)); await f.review();
+    const review = f.controller.getSnapshot().feeReview!;
+    // Advance only the quote's injected monotonic clock; do not fire its timer.
+    f.setNow(review.expiresAtMonotonicMilliseconds);
+    await f.controller.confirm(review.id);
+    assert.equal(f.controller.getSnapshot().phase, 'complete');
+    assert.equal(f.controller.getSnapshot().feeReview, null);
+    assert.equal(f.controller.getSnapshot().error, 'mobile.infrastructure.reviewExpired');
+    assert.equal(f.counts.submissions, 0); assert.equal(signatures, 0);
+  } finally { f.controller.dispose(); }
+});
+
+test('an expired Confirm still checks live wallet authority before restoring status', async () => {
+  const f = fixture();
+  try {
+    f.setStatus(status(requiredContracts)); await f.review();
+    const review = f.controller.getSnapshot().feeReview!;
+    f.setNow(review.expiresAtMonotonicMilliseconds); f.setCurrent(false);
+    await f.controller.confirm(review.id);
+    assert.equal(f.controller.getSnapshot().phase, 'failed');
+    assert.equal(f.controller.getSnapshot().error, 'mobile.infrastructure.cancelled');
+    assert.equal(f.counts.submissions, 0);
   } finally { f.controller.dispose(); }
 });

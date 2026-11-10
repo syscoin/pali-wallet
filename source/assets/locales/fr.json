@@ -2261,7 +2261,7 @@
       "reviewExpired": "La vérification a expiré. Vérifiez à nouveau les frais actuels.",
       "unavailable": "La configuration est indisponible. Actualisez son état avant de réessayer.",
       "cancelled": "Le portefeuille a changé ou a été verrouillé. Rouvrez la configuration.",
-      "complete": "La configuration du compte intelligent est déployée."
+      "reviewOptional": "Examiner le déploiement facultatif"
     }
   }
 }

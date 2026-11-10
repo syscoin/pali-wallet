@@ -18,7 +18,7 @@ export type NativeInfrastructureFeeReview = Readonly<
   Pick<NativePreparedConnectionTransaction,
     'transaction' | 'maximumFeeUnits' | 'maximumTotalUnits' | 'expiresAtMonotonicMilliseconds'> & {
     id: number;
-    contract: Readonly<{ id: PaliInfrastructureContractId; address: string; displayName: string }>;
+    contract: Readonly<{ id: PaliInfrastructureContractId; address: string; displayName: string; optional: boolean }>;
   }
 >;
 
@@ -144,7 +144,7 @@ export class NativeInfrastructureController {
     const captured = Object.freeze({ observation, pending: status.pending ? Object.freeze({ ...status.pending }) : null });
     this.publish({
       status: captured, error: null,
-      phase: captured.pending ? 'pending' : observation.missing.length === 0 ? 'complete' : preparing ? 'preparing' : 'ready',
+      phase: captured.pending ? 'pending' : preparing && observation.missing.length > 0 ? 'preparing' : observation.ready ? 'complete' : 'ready',
     });
     this.check(operation);
     return captured;
@@ -187,13 +187,13 @@ export class NativeInfrastructureController {
         const remaining = prepared.expiresAtMonotonicMilliseconds - this.now();
         if (remaining > 0) { this.timer = setTimeout(expire, Math.min(remaining, 2147483647)); return; }
         this.clearReview();
-        this.publish({ phase: 'ready', feeReview: null, error: 'mobile.infrastructure.reviewExpired' });
+        this.publish({ phase: status.observation.ready ? 'complete' : 'ready', feeReview: null, error: 'mobile.infrastructure.reviewExpired' });
       };
       this.publish({
         phase: 'review', error: null,
         feeReview: Object.freeze({
           id,
-          contract: Object.freeze({ id: contract.id, address: contract.address, displayName: contract.displayName }),
+          contract: Object.freeze({ id: contract.id, address: contract.address, displayName: contract.displayName, optional: Boolean(contract.optional) }),
           transaction: prepared.transaction,
           maximumFeeUnits: prepared.maximumFeeUnits,
           maximumTotalUnits: prepared.maximumTotalUnits,
@@ -216,7 +216,10 @@ export class NativeInfrastructureController {
     let broadcast = false;
     try {
       this.check(operation);
-      if (prepared.expiresAtMonotonicMilliseconds <= this.now()) throw new Error('Review expired');
+      if (prepared.expiresAtMonotonicMilliseconds <= this.now()) {
+        this.publish({ phase: this.snapshot.status?.observation.ready ? 'complete' : 'ready', feeReview: null, error: 'mobile.infrastructure.reviewExpired' });
+        return;
+      }
       this.submitted.add(prepared);
       this.publish({ phase: 'submitting', feeReview: null, error: null });
       this.check(operation);

@@ -2261,7 +2261,7 @@
       "reviewExpired": "La revisión ha caducado. Revisa de nuevo la comisión actual.",
       "unavailable": "La configuración no está disponible. Actualiza su estado antes de intentarlo de nuevo.",
       "cancelled": "La cartera ha cambiado o se ha bloqueado. Abre de nuevo la configuración.",
-      "complete": "La configuración de la cuenta inteligente está desplegada."
+      "reviewOptional": "Revisar despliegue opcional"
     }
   }
 }
