@@ -1,8 +1,9 @@
+import { NativeSigningHandoffs, type NativeSigningHandoff, type SigningResumeScope } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { utils } from 'syscoinjs-lib';
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
-import { NativePsbtRequests, type NativePsbtHandoff, type PsbtResumeScope } from '../src/connections/psbtRequests.ts';
+import { NativePsbtRequests } from '../src/connections/psbtRequests.ts';
 import type { WalletConnectRequest } from '../src/connections/walletConnect.ts';
 
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
@@ -11,13 +12,13 @@ psbt.addInput({ hash: 'aa'.repeat(32), index: 0 }); psbt.addOutput({ script: Buf
 const envelope = PsbtUtils.toPali(psbt);
 function fixture() {
   let generation = 1, live = true, dispatched = false, fail = false, prepares = 0, signs = 0;
-  let handoff!: NativePsbtHandoff;
+  let handoff!: NativeSigningHandoff;
   let signWait = Promise.withResolvers<void>(), respondWait = Promise.resolve(), cancelWait = Promise.resolve();
   const entered = Promise.withResolvers<void>(), responses: unknown[] = [], canceled: object[] = [];
   const wire: WalletConnectRequest = { freshness: 'fresh', id: 1, expiresAt: Date.now() + 120000, method: 'sys_sign', chainId: 'bip122:' + 'ab'.repeat(16), params: [envelope], verification: { validation: 'VALID', isScam: false },
     session: { binding: { topic: 'aa'.repeat(32), peerPublicKey: 'bb'.repeat(32), origin: 'https://exact.example' }, metadata: { name: 'App', description: '', url: 'https://exact.example', icons: [] }, expiry: Math.floor(Date.now() / 1000) + 300,
       namespaces: { bip122: { accounts: [], methods: ['sys_sign'], events: [] } } } };
-  const scope = (): PsbtResumeScope => ({ adapter: 1, wallet: 'wallet', unlockGeneration: generation, accountId: 'trezor:0:0', address: 'address', type: 'Trezor', xpub: 'xpub', registration: 'full-registration', grant: 'grant' });
+  const scope = (): SigningResumeScope => ({ adapter: 1, wallet: 'wallet', unlockGeneration: generation, accountId: 'trezor:0:0', address: 'address', type: 'Trezor', xpub: 'xpub', registration: 'full-registration', grant: 'grant' });
   const owner = () => ({ order: 1, accountLabel: 'Trezor', address: 'address', networkLabel: 'Bitcoin', chainId: wire.chainId, symbol: 'BTC', decimals: 8, resumeScope: scope(),
     assertCurrent() { if (!live) throw Error('CONTEXT_CHANGED'); }, assertSessionCurrent() {} });
   const manager = new NativePsbtRequests({ foreground: () => true, changed() {}, checkSite: async () => ({ isBlacklisted: false }),
@@ -32,7 +33,7 @@ function fixture() {
     async respond(_wire, response, check, onDispatch) { check(); onDispatch(); responses.push(response); await respondWait; },
   });
   return { manager, wire, owner, responses, canceled, entered: entered.promise,
-    enqueue: (resumeId?: string, overrides?: Partial<PsbtResumeScope>) => manager.enqueue(wire, { ...owner(), resumeScope: { ...scope(), ...overrides } }, resumeId),
+    enqueue: (resumeId?: string, overrides?: Partial<SigningResumeScope>) => manager.enqueue(wire, { ...owner(), resumeScope: { ...scope(), ...overrides } }, resumeId),
     control: () => handoff, signDone: () => signWait.resolve(), newSign: () => { signWait = Promise.withResolvers<void>(); },
     lock() { live = false; manager.revalidate(); }, unlock() { live = true; generation++; },
     markBroadcast() { dispatched = true; }, fail() { fail = true; },
@@ -160,4 +161,32 @@ test('response/signature handoff is terminal even while its acknowledgement is u
     assert.equal(f.responses.length, 1); f.manager.background(); assert.equal(f.manager.descriptor(review.id), null);
     acknowledgement.resolve(); await signing; assert.equal(f.responses.length, 1);
   } finally { acknowledgement.resolve(); f.signDone(); await f.manager.dispose(); }
+});
+
+
+for (const freshness of ['unproven', undefined, 'caller-claimed'] as const) test(`common Suite handoff capture refuses original ${freshness} freshness without relying on a queue adapter`, async () => {
+  const f = fixture(), canceled: object[] = [], handoffs = new NativeSigningHandoffs({ async cancel(job) { canceled.push(job); }, changed() {} });
+  let retired = 0;
+  try {
+    const wire = { ...f.wire, freshness } as WalletConnectRequest;
+    const capture = () => handoffs.capture({ id: 'original-unproven', wire, scope: f.owner().resumeScope, expiresAt: wire.expiresAt, order: 1,
+      assertCurrent() {}, eligible: () => true, drain: async () => undefined, retire() { retired++; } });
+    assert.throws(capture, /REQUEST_EXPIRED/); assert.equal(handoffs.size, 0);
+    f.unlock(); assert.throws(capture, /REQUEST_EXPIRED/); assert.equal(handoffs.descriptor('original-unproven'), null);
+    await assert.rejects(handoffs.drain('original-unproven'), /REQUEST_EXPIRED/);
+    assert.equal(retired, 0); assert.deepEqual(canceled, []); assert.equal(f.prepares(), 0); assert.equal(f.signs(), 0);
+  } finally { handoffs.cancel(); await f.manager.dispose(); }
+});
+
+
+test('changing a caller-owned wire or account object cannot promote an originally non-Suite capture into fresh Trezor authority', async () => {
+  const f = fixture(), handoffs = new NativeSigningHandoffs({ async cancel() {}, changed() {} });
+  try {
+    const wire = { ...f.wire, freshness: 'unproven' as 'fresh' | 'unproven' }, scope = { ...f.owner().resumeScope, type: 'Ledger' };
+    const handoff = handoffs.capture({ id: 'original-non-suite', wire, scope, expiresAt: wire.expiresAt, order: 1,
+      assertCurrent() {}, eligible: () => true, drain: async () => undefined, retire() { throw Error('Must not retire'); } });
+    wire.freshness = 'fresh'; scope.type = 'Trezor'; f.unlock();
+    assert.throws(() => handoff.beforeSuiteOpen(Date.now() + 60000, {}), /REQUEST_EXPIRED/);
+    assert.equal(handoffs.background(handoff), false); assert.equal(handoffs.descriptor(handoff.id), null);
+  } finally { handoffs.cancel(); await f.manager.dispose(); }
 });

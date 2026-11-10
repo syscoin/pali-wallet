@@ -50,10 +50,10 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let recoveryOpens = 0;
   const lifecycleEvents: string[] = [];
   const psbtLifecycle = {
-    backgroundPsbt() { lifecycleEvents.push('psbt-background'); },
-    async cancelPsbtHandoff() { lifecycleEvents.push('psbt-cancel'); },
-    async resumePsbt() { throw Error('PSBT resume is outside this fixture'); },
-  } satisfies Pick<NativeConnectionsView, 'backgroundPsbt' | 'cancelPsbtHandoff' | 'resumePsbt'>;
+    backgroundSigning() { lifecycleEvents.push('psbt-background'); },
+    async cancelSigningHandoff() { lifecycleEvents.push('psbt-cancel'); },
+    async resumeSigning() { throw Error('PSBT resume is outside this fixture'); },
+  } satisfies Pick<NativeConnectionsView, 'backgroundSigning' | 'cancelSigningHandoff' | 'resumeSigning'>;
   const authenticatorGuards: (() => void)[] = [];
   let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null

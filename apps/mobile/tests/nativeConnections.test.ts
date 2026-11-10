@@ -1,7 +1,9 @@
+import type { NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
+import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { dappCaipChain, DAPP_MODE_METHODS } from '../../../source/shared/dappChainScope.ts';
 import { DAPP_SYSCOIN_READ_METHODS } from '../../../source/shared/dappSyscoinReads.ts';
 import { SENTRY_DAPP_METHODS, type NativeSentryDetails, type NativeSentryAssent } from '../src/connections/sentryRequests.ts';
-import { PSBT_DAPP_METHODS, type NativePsbtHandoff } from '../src/connections/psbtRequests.ts';
+import { PSBT_DAPP_METHODS } from '../src/connections/psbtRequests.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
@@ -99,8 +101,10 @@ function fixture(
   let receivingAddress: string = UTXO_ADDRESSES.syscoin;
   const sentryRequests: unknown[] = [], sentryAssents: NativeSentryAssent[] = [];
   const psbtRequests: unknown[] = [], psbtApprovals: unknown[] = [];
+  let signingHandoff: NativeSigningHandoff | undefined;
+  let registrationSuffix = '';
   let psbtWait = Promise.resolve(), psbtSignWait = Promise.resolve(), psbtDisposals = 0;
-  let psbtHandoff: NativePsbtHandoff | undefined, pendingOverride: 'missing' | 'method' | null = null, pendingReads = 0;
+  let psbtHandoff: NativeSigningHandoff | undefined, pendingOverride: 'missing' | 'method' | 'fresh' | null = null, pendingReads = 0;
   const wireAdmissions = new Map<number, WalletConnectRequest>(), canceledPsbtJobs: object[] = [];
   let readWait: Promise<void> = Promise.resolve();
   let readError: Error | undefined;
@@ -202,6 +206,8 @@ function fixture(
     },
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
+    registration: () => createNativeNetwork({ id: 'ethereum', name: network.label + registrationSuffix, kind: 'evm', chainId: String(selectedChainId), slip44: 60, rpcUrl: network.url, symbol: network.currency, decimals: 18, testnet: false }),
+    async cancelSigningHandoff(job) { canceledPsbtJobs.push(job); },
     syscoin: {
       registration: () => { if (!selectedUtxo || snapshot.phase !== 'ready') throw new Error('CONTEXT_CHANGED'); return getUtxoNetwork('syscoin'); },
       anchor: () => UTXO_ADDRESSES.syscoin,
@@ -316,16 +322,19 @@ function fixture(
       };
     },
     async signMessage(input) {
+      signingHandoff = input.handoff;
       input.approval.assertCurrent();
       assert.equal(input.accountId, selectedAccountId);
       signatures.push(input.request);
       await signWait;
       input.approval.assertCurrent();
+      if (options.hardware) input.handoff.beforeSignature();
       return options.smart ? '0x' + '33'.repeat(20) + '12'.repeat(65) : '0x' + '12'.repeat(65);
     },
     async recordStoppedEoaCalls() {},
     async recoverStoppedEoaCalls(origin, id, assertStopped) { assertStopped(); callsRecoveries.push({ origin, id }); },
     async prepareTransaction(input, check) {
+      signingHandoff = input.handoff;
       check();
       await preparationWait;
       check();
@@ -376,6 +385,7 @@ function fixture(
         approval: transaction.to ? summarizeApproval(transaction.data, transaction.to, approvalMetadata) : null,
         async submit(guard, onBroadcast, submission) {
           assert.equal(submission.kind, options.batch ? 'eoa-calls' : 'transaction');
+          if (options.hardware) { await signWait; guard(); input.handoff.beforeSignature(); }
           guard();
           input.approval.assertCurrent();
           transactions.push(fee.transaction);
@@ -623,7 +633,7 @@ function fixture(
           const wire = wireAdmissions.get(id);
           if (!wire || pendingOverride === 'missing' || JSON.stringify(wire.session.binding) !== JSON.stringify(binding) || wire.expiresAt <= Date.now() ||
               handedOff.some(value => (value as { id: number }).id === id)) return null;
-          return pendingOverride === 'method' ? { ...wire, method: 'sys_signAndSend' } : wire;
+          return pendingOverride === 'method' ? { ...wire, method: 'sys_signAndSend' } : pendingOverride === 'fresh' ? { ...wire, freshness: 'fresh' } : wire;
         },
         sessions: async () => {
           if (inventoryFailures-- > 0) throw new Error('Inventory unavailable');
@@ -643,6 +653,8 @@ function fixture(
     setPsbtWait(value: Promise<void>) { psbtWait = value; },
     setPsbtSignWait(value: Promise<void>) { psbtSignWait = value; },
     psbtDisposals: () => psbtDisposals,
+    signingHandoff: () => signingHandoff!,
+    changeRegistration() { registrationSuffix = ' changed'; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
     psbtHandoff: () => psbtHandoff!, canceledPsbtJobs, pendingReads: () => pendingReads,
     setPendingOverride(value: typeof pendingOverride) { pendingOverride = value; },
     setSentryWait(value: Promise<void>) { sentryWait = value; },
@@ -4458,17 +4470,17 @@ test('Trezor external PSBT resumes only the authoritative original pending wire,
     const first = f.view.getSnapshot().psbtReview; assert(first?.details);
     const original = f.view.approvePsbt(first.id, first.revision), retired = assert.rejects(original); await settle();
     const selector = f.psbtHandoff().id; f.psbtHandoff().beforeSuiteOpen(Date.now() + 60000, {})(true);
-    f.view.backgroundPsbt(); f.lock(); held.resolve(); await retired; await settle();
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await retired; await settle();
     assert.equal(f.view.getSnapshot().psbtReview, null); assert.equal(f.responses.length, 0);
-    await assert.rejects(f.view.resumePsbt(selector));
-    f.unlock(); await settle(); await f.view.resumePsbt(selector); await settle();
+    await assert.rejects(f.view.resumeSigning(selector));
+    f.unlock(); await settle(); await f.view.resumeSigning(selector); await settle();
     const fresh = f.view.getSnapshot().psbtReview; assert(fresh?.details); assert.notEqual(fresh.id, first.id);
     assert(fresh.expiresAt <= first.expiresAt); assert.equal(f.pendingReads(), 1);
     assert.equal(f.psbtRequests.length, 2); assert.equal(f.psbtApprovals.length, 1); assert.equal(f.responses.length, 0);
     await assert.rejects(f.view.approvePsbt(first.id, first.revision));
     await f.view.approvePsbt(fresh.id, fresh.revision);
     assert.deepEqual(f.responses, [{ id: 10, result: { result: EXTERNAL_PSBT } }]);
-    await assert.rejects(f.view.resumePsbt(selector)); assert.equal(f.psbtApprovals.length, 2);
+    await assert.rejects(f.view.resumeSigning(selector)); assert.equal(f.psbtApprovals.length, 2);
   } finally { held.resolve(); await f.controller.dispose(); }
 });
 
@@ -4479,10 +4491,10 @@ for (const pending of ['missing', 'method'] as const) test(`Trezor resume with $
     const first = f.view.getSnapshot().psbtReview; assert(first?.details);
     const signing = f.view.approvePsbt(first.id, first.revision), rejected = assert.rejects(signing); await settle();
     const selector = f.psbtHandoff().id; f.psbtHandoff().beforeSuiteOpen(Date.now() + 60000, job);
-    f.view.backgroundPsbt(); f.lock(); held.resolve(); await rejected; f.unlock(); await settle();
-    f.setPendingOverride(pending); await assert.rejects(f.view.resumePsbt(selector)); await settle();
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; f.unlock(); await settle();
+    f.setPendingOverride(pending); await assert.rejects(f.view.resumeSigning(selector)); await settle();
     assert.equal(f.psbtRequests.length, 1); assert.equal(f.responses.length, 0); assert.deepEqual(f.canceledPsbtJobs, [job]);
-    await assert.rejects(f.view.resumePsbt(selector));
+    await assert.rejects(f.view.resumeSigning(selector));
   } finally { held.resolve(); await f.controller.dispose(); }
 });
 
@@ -4493,10 +4505,10 @@ test('explicit Trezor handoff cancel uses still-pending SDK data for one rejecti
     const first = f.view.getSnapshot().psbtReview; assert(first?.details);
     const signing = f.view.approvePsbt(first.id, first.revision), rejected = assert.rejects(signing); await settle();
     const selector = f.psbtHandoff().id; f.psbtHandoff().beforeSuiteOpen(Date.now() + 60000, job);
-    f.view.backgroundPsbt(); f.lock(); held.resolve(); await rejected;
-    await f.view.cancelPsbtHandoff(); await settle();
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected;
+    await f.view.cancelSigningHandoff(); await settle();
     assert.deepEqual(f.responses, [{ id: 10, result: { error: { code: 4001, message: 'User rejected' } } }]);
-    assert.deepEqual(f.canceledPsbtJobs, [job]); f.unlock(); await settle(); await assert.rejects(f.view.resumePsbt(selector));
+    assert.deepEqual(f.canceledPsbtJobs, [job]); f.unlock(); await settle(); await assert.rejects(f.view.resumeSigning(selector));
   } finally { held.resolve(); await f.controller.dispose(); }
 });
 
@@ -4513,3 +4525,133 @@ for (const freshness of ['unproven', undefined, 'caller-claimed'] as const) test
     assert.equal(f.psbtRequests.length, 0); assert.equal(f.psbtApprovals.length, 0);
   } finally { await f.controller.dispose(); }
 });
+
+
+for (const kind of ['personal_sign', 'eth_signTypedData_v4', 'eth_sendTransaction'] as const) test(`Trezor ${kind} Suite return rebuilds the original request under a new unlock and requires a separate Confirm`, async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' }), held = Promise.withResolvers<void>(), now = Date.now;
+  try {
+    const params = kind === 'eth_sendTransaction' ? [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x0' }] : kind === 'personal_sign' ? ['Hello Pali', ADDRESS] : [ADDRESS, { types: { EIP712Domain: [], Message: [{ name: 'text', type: 'string' }] }, primaryType: 'Message', domain: {}, message: { text: 'Hello Pali' } }];
+    const first = await messageRequest(f, kind, params); assert(first); f.setSignWait(held.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), rejected = assert.rejects(old); await settle();
+    const handoff = f.signingHandoff(), selector = handoff.id;
+    const absoluteDeadline = Date.now() + 60000;
+    handoff.beforeSuiteOpen(absoluteDeadline, {})(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; await settle();
+    assert.equal(f.view.getSnapshot().signingReview, null); assert.equal(f.responses.length, 0); assert.equal(f.transactions.length, 0);
+    await assert.rejects(f.view.resumeSigning(selector));
+    f.unlock(); Date.now = () => absoluteDeadline - 15000;
+    await settle(); await f.view.resumeSigning(selector); await settle();
+    const fresh = f.view.getSnapshot().signingReview; assert(fresh); assert.notEqual(fresh.id, first.id);
+    // A newly consented fee quote can outlive the old quote, but neither it
+    // nor message review may extend the original absolute Suite deadline.
+    assert(fresh.expiresAt <= absoluteDeadline);
+    assert.equal(f.responses.length, 0); assert.equal(f.transactions.length, 0); assert.equal(f.pendingReads(), 1);
+    await assert.rejects(f.view.approveRequest(first.id, first.revision, true));
+    await f.view.approveRequest(fresh.id, fresh.revision, true);
+    assert.equal(f.responses.length, 1); assert.equal(f.transactions.length, kind === 'eth_sendTransaction' ? 1 : 0);
+    await assert.rejects(f.view.resumeSigning(selector));
+  } finally { Date.now = now; held.resolve(); await f.controller.dispose(); }
+});
+
+for (const change of ['missing-wire', 'changed-wire', 'registration', 'session', 'revocation', 'back', 'expiry'] as const) test(`Trezor EVM Suite continuation refuses ${change} without returning a signature`, async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' }), held = Promise.withResolvers<void>(), now = Date.now;
+  let clock = now(); Date.now = () => clock;
+  const connectionId = f.view.getSnapshot().sessions[0]!.id;
+  try {
+    const first = await messageRequest(f); assert(first); f.setSignWait(held.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), rejected = assert.rejects(old); await settle();
+    const selector = f.signingHandoff().id, job = {}; f.signingHandoff().beforeSuiteOpen(clock + 60000, job);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; await settle();
+    if (change === 'missing-wire') f.setPendingOverride('missing');
+    else if (change === 'changed-wire') f.setPendingOverride('method');
+    else if (change === 'registration') f.changeRegistration();
+    else if (change === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else if (change === 'revocation') await f.view.disconnect(connectionId);
+    else if (change === 'back') await f.view.cancelSigningHandoff();
+    else clock += 60001;
+    f.unlock(); await settle(); await assert.rejects(f.view.resumeSigning(selector)); await settle();
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    assert(!f.responses.some(value => 'result' in (value as { result: object }).result));
+    assert.deepEqual(f.canceledPsbtJobs, [job]);
+  } finally { Date.now = now; held.resolve(); await f.controller.dispose(); }
+});
+
+for (const stop of ['signature', 'response', 'ordinary-background'] as const) test(`Trezor EVM ${stop} cannot create a Suite resume capability`, async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' }), held = Promise.withResolvers<void>(), delivered = Promise.withResolvers<void>();
+  try {
+    const first = await messageRequest(f); assert(first); f.setSignWait(held.promise); f.setDispatchWait(delivered.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), result = old.catch(() => undefined); await settle();
+    const selector = f.signingHandoff().id;
+    if (stop !== 'ordinary-background') f.signingHandoff().beforeSuiteOpen(Date.now() + 60000, {});
+    if (stop === 'signature') f.signingHandoff().beforeSignature();
+    if (stop === 'response') { held.resolve(); await settle(); assert.equal(f.handedOff.length, 1); }
+    f.view.backgroundSigning(); f.lock(); held.resolve(); delivered.resolve(); await result; f.unlock(); await settle();
+    await assert.rejects(f.view.resumeSigning(selector));
+  } finally { held.resolve(); delivered.resolve(); await f.controller.dispose(); }
+});
+
+
+test('Trezor EVM resumption drains the old signer before pending lookup and preserves FIFO ahead of later messages', async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' }), held = Promise.withResolvers<void>();
+  try {
+    const first = await messageRequest(f); assert(first); f.setSignWait(held.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), rejected = assert.rejects(old); await settle();
+    const selector = f.signingHandoff().id; f.signingHandoff().beforeSuiteOpen(Date.now() + 60000, {});
+    f.view.backgroundSigning(); f.lock(); f.unlock(); await settle();
+    await messageRequest(f, 'personal_sign', ['Later request', ADDRESS], 11);
+    assert.equal(f.view.getSnapshot().signingReview, null);
+    const returning = f.view.resumeSigning(selector); await settle();
+    assert.equal(f.pendingReads(), 0); assert.equal(f.signatures.length, 1);
+    held.resolve(); await rejected; await returning; await settle();
+    const review = f.view.getSnapshot().signingReview; assert(review?.kind === 'message'); assert.equal(review.message, 'Hello Pali');
+    assert.equal(f.signatures.length, 1); assert.equal(f.responses.length, 0);
+    await f.view.approveRequest(review.id, review.revision, true);
+    await settle(); const next = f.view.getSnapshot().signingReview;
+    assert(next?.kind === 'message'); assert.equal(next.message, 'Later request');
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('a failed EVM Suite launch after background cancels only its exact public job', async () => {
+  const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' }), held = Promise.withResolvers<void>(), job = {};
+  try {
+    const first = await messageRequest(f); assert(first); f.setSignWait(held.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), rejected = assert.rejects(old); await settle();
+    const selector = f.signingHandoff().id, launched = f.signingHandoff().beforeSuiteOpen(Date.now() + 60000, job);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected;
+    launched(false); await settle(); f.unlock(); await settle();
+    await assert.rejects(f.view.resumeSigning(selector));
+    assert.deepEqual(f.canceledPsbtJobs, [job]); assert.equal(f.responses.length, 0);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+
+for (const method of ['personal_sign', 'eth_signTypedData_v4', 'eth_sendTransaction'] as const)
+  for (const freshness of ['unproven', undefined] as const)
+    test(`Trezor ${method} refuses ${freshness} transport freshness before queue or custody and cannot upgrade on unlock`, async () => {
+      const f = await connectedFixture({ hardware: 'Trezor', accountId: 'trezor:60:0' });
+      try {
+        const params = method === 'personal_sign' ? ['Hello Pali', ADDRESS] : method === 'eth_sendTransaction' ? [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x0' }] : [ADDRESS, { types: { EIP712Domain: [], Message: [{ name: 'text', type: 'string' }] }, primaryType: 'Message', domain: {}, message: { text: 'Hello Pali' } }];
+        const wire = { id: 10, session: f.session, method, params, freshness, chainId: 'eip155:1', expiresAt: Date.now() + 300000, verification: UNKNOWN } as WalletConnectRequest;
+        f.event({ type: 'request', request: wire }); await settle();
+        assert.equal(f.view.getSnapshot().signingReview, null); assert.equal(f.signatures.length, 0); assert.equal(f.preparedTransactions.length, 0); assert.equal(f.signingHandoff(), undefined);
+        assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4200);
+        f.lock(); f.unlock(); await settle();
+        // Even a later trusted pending read claiming freshness cannot create the
+        // descriptor that the original unproven admission was denied.
+        f.setPendingOverride('fresh'); await assert.rejects(f.view.resumeSigning('request-1'));
+        assert.equal(f.pendingReads(), 0); assert.equal(f.signatures.length, 0); assert.equal(f.preparedTransactions.length, 0);
+        f.refresh(); f.event({ type: 'request', request: wire }); await settle();
+        assert.equal(f.view.getSnapshot().signingReview, null); assert.equal(f.signatures.length, 0); assert.equal(f.preparedTransactions.length, 0);
+      } finally { await f.controller.dispose(); }
+    });
+
+for (const hardware of [undefined, 'Ledger'] as const)
+  for (const freshness of ['unproven', undefined] as const)
+    test(`${hardware ?? 'software'} message policy still accepts ${freshness} non-Suite requests with explicit approval`, async () => {
+      const f = await connectedFixture({ hardware, accountId: hardware ? 'ledger:60:0' : 'hd:60:0' });
+      try {
+        f.event({ type: 'request', request: { id: 10, session: f.session, method: 'personal_sign', params: ['Hello Pali', ADDRESS], freshness, chainId: 'eip155:1', expiresAt: Date.now() + 300000, verification: UNKNOWN } as WalletConnectRequest });
+        await settle(); const review = f.view.getSnapshot().signingReview; assert(review?.kind === 'message'); assert.equal(f.signatures.length, 0);
+        await f.view.approveRequest(review.id, review.revision, true); assert.equal(f.signatures.length, 1); assert.equal(f.responses.length, 1);
+      } finally { await f.controller.dispose(); }
+    });

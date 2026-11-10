@@ -258,8 +258,8 @@ export function createNativeWalletControllers() {
         } });
       return Object.freeze({ ...connection, controls, reads, syscoin, sentry: sentryRequests,
         psbt: { cancelHandoff: (job: object) => {
-          return captured.cancelConnectionPsbtHandoff(job);
-        }, prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void, handoff: import('../connections/psbtRequests.ts').NativePsbtHandoff) => {
+          return connection.cancelSigningHandoff(job);
+        }, prepare: (request: NativePsbtRequest, signal: AbortSignal, check: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff) => {
           if (runtime !== captured) throw new CustodyOperationError('CANCELLED');
           return captured.prepareConnectionPsbt(request, signal, () => {
             check(); if (runtime !== captured) throw new CustodyOperationError('CANCELLED');

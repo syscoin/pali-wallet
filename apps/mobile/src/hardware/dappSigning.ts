@@ -44,6 +44,7 @@ type Ports = Readonly<{
   network: NativeNetworkRegistration;
   signal: AbortSignal;
   assertCurrent(): void;
+  beforeSignature(): void;
   /** Own admission, exact SDK ring and acknowledged device/session retirement. */
   withSession<T>(
     account: NativeHardwareDappAccount,
@@ -137,6 +138,7 @@ export function createNativeHardwareDappSigning(ports: Ports) {
         check();
         if (recovered.toLowerCase() !== account.address.toLowerCase())
           throw new Error('OPERATION_FAILED');
+        ports.beforeSignature(); check();
         return signature;
       });
     },
@@ -160,8 +162,8 @@ export function createNativeHardwareDappSigning(ports: Ports) {
       const transaction = Transaction.from(unsignedTransaction);
       if (transaction.chainId !== BigInt(network.chainId))
         throw new Error('INVALID_INPUT');
-      return withSession(guard, (session) =>
-        session.kind === 'Ledger'
+      return withSession(guard, async (session) => {
+        const signed = await (session.kind === 'Ledger'
           ? signLedgerEvmTransaction(
               session.signer,
               {
@@ -182,7 +184,10 @@ export function createNativeHardwareDappSigning(ports: Ports) {
               },
               { signal: owner.signal, assertCurrent: guard }
             )
-      );
+        );
+        guard(); ports.beforeSignature(); guard();
+        return signed;
+      });
     },
   });
 }

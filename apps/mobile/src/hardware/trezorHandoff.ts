@@ -27,6 +27,9 @@ export const NATIVE_TREZOR_HANDOFF_METHODS = [
   'ethereumGetPublicKey',
   'ethereumSignTransaction',
   'signTransaction',
+  'ethereumSignMessage',
+  'ethereumSignTypedData',
+  'signMessage',
 ] as const;
 export type NativeTrezorHandoffMethod =
   (typeof NATIVE_TREZOR_HANDOFF_METHODS)[number];
@@ -212,7 +215,13 @@ function checkGeneration(value: number) {
     throw failure('TREZOR_HANDOFF_INVALID');
 }
 function signing(method: NativeTrezorHandoffMethod) {
-  return method === 'ethereumSignTransaction' || method === 'signTransaction';
+  return (
+    method === 'ethereumSignTransaction' ||
+    method === 'signTransaction' ||
+    method === 'ethereumSignMessage' ||
+    method === 'ethereumSignTypedData' ||
+    method === 'signMessage'
+  );
 }
 
 /**

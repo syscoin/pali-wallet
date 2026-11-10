@@ -1,3 +1,4 @@
+import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { signingFixtureHost } from './unsupportedDappPorts.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import test from 'node:test';
@@ -736,7 +737,7 @@ function approveRuntimeMessage(
     },
     subscribe: (changed) => f.authority.subscribe(changed),
   });
-  return { accountId, networkId: host.context().networkId, request, approval };
+  return { handoff: nonSuiteSigningHandoff, accountId, networkId: host.context().networkId, request, approval };
 }
 
 test('connection encryption captures the actual software SDK and preserves plaintext without an owner fallback', async () => {
@@ -805,7 +806,7 @@ test('connection message signing uses the published SDK for personal and typed V
         assert(request);
         const input = approveRuntimeMessage(f, host, request);
         try {
-          const signature = await host.signMessage(input);
+          const signature = await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff });
           const recovered =
             request.method === 'personal_sign'
               ? recoverPersonalSignature({ data: request.message, signature })
@@ -893,10 +894,10 @@ test('a message signature completing after lock is discarded and shares the priv
       ADDRESS
     )!;
     const input = approveRuntimeMessage(f, host, request);
-    const signing = host.signMessage(input);
+    const signing = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff });
     const rejected = assert.rejects(signing, /CANCELLED/);
     await entered.promise;
-    await assert.rejects(host.signMessage(input), /BUSY/);
+    await assert.rejects(host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), /BUSY/);
     f.authority.lock();
     release.resolve();
     await rejected;
@@ -3014,7 +3015,7 @@ test('Trezor dapp host adopts only its owned SDK transfer and preserves signed b
     for (const method of ['personal_sign', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const) {
       const request = readDappMessageRequest(method, method === 'personal_sign' ? ['0x6162', account.address] : [account.address, typed], account.address)!;
       const input = approveHardwareDappRequest(owner, host, request);
-      try { assert.match(await host.signMessage(input), /^0x[0-9a-f]{130}$/i); }
+      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), /^0x[0-9a-f]{130}$/i); }
       finally { input.approval.dispose(); }
       assert.equal(fixture.sessions.getSnapshot(), null, 'successful request finishes its exact device job');
       assert.equal(runtime.trezor.getSnapshot().phase, 'idle');
@@ -3023,7 +3024,7 @@ test('Trezor dapp host adopts only its owned SDK transfer and preserves signed b
     const request = readDappMessageRequest('personal_sign', ['0x6162', account.address], account.address)!;
     const input = approveHardwareDappRequest(owner, host, request);
     try {
-      const review = await host.prepareTransaction({ ...input, transaction: { from: account.address,
+      const review = await host.prepareTransaction({ handoff: nonSuiteSigningHandoff, ...input, transaction: { from: account.address,
         to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined);
       assert(!('operation' in review));
       assert.equal(fixture.signatures(), 3, 'review creates no device signature');
@@ -3063,7 +3064,7 @@ test('retired Trezor dapp request drains its exact job without offering ordinary
     fixture.holdSignature(async () => { entered.resolve(); await release.promise; });
     fixture.holdCancellation(async () => { cancelEntered.resolve(); await cancelRelease.promise; });
     let settled = false;
-    const work = host.signMessage(input).finally(() => { settled = true; });
+    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }).finally(() => { settled = true; });
     const rejected = assert.rejects(work);
     await entered.promise;
     input.approval.retire();

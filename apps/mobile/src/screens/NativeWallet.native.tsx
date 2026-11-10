@@ -220,8 +220,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const revoke = useCallback((background = false) => {
     // The AppState owner records exact Suite suspension before authority.lock
     // synchronously revalidates and removes the old request consent.
-    if (background === true) controllers.current?.connections.backgroundPsbt();
-    else void controllers.current?.connections.cancelPsbtHandoff().catch(() => undefined);
+    if (background === true) controllers.current?.connections.backgroundSigning();
+    else void controllers.current?.connections.cancelSigningHandoff().catch(() => undefined);
     custodyIdle.stop(screenToken.current);
     epoch.current++;
     recoveryRef.current?.cancel();
@@ -903,7 +903,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'trezor' && trezorView && snapshot.phase === 'ready')
     return <NativeTrezor controller={trezorView} onBack={() => {
-      void controllers.current?.connections.cancelPsbtHandoff().catch(() => undefined);
+      void controllers.current?.connections.cancelSigningHandoff().catch(() => undefined);
       if (rootOrigin.current?.stage === 'trezor') closeStage(); else setStage('manage-hd');
     }} onImported={() => { rootOrigin.current = null; setStage('choose'); }} onResumeSend={async (intent: NativeTrezorResumeIntent) => {
       const local = controllers.current;
@@ -912,10 +912,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       if (!current || !captured || AppState.currentState !== 'active' ||
           captured.active.accountId !== intent.accountId || captured.active.networkId !== intent.networkId)
         throw new Error('CANCELLED');
-      if (intent.kind === 'external-psbt') {
+      if (intent.kind === 'external-psbt' || intent.kind === 'external-signing') {
         if (!local) throw Error('CANCELLED');
         const resumeEpoch = epoch.current;
-        await local.connections.resumePsbt(intent.id);
+        await local.connections.resumeSigning(intent.id);
         if (controllers.current === local && epoch.current === resumeEpoch && AppState.currentState === 'active') setStage('choose');
         return;
       }

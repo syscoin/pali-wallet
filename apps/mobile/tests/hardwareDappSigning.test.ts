@@ -20,7 +20,8 @@ const typed = {types:{EIP712Domain:[{name:'chainId',type:'uint256'}],Message:[{n
   primaryType:'Message',domain:{chainId:1},message:{text:'Public hardware fixture'}};
 
 function fixture() {
-  let live = true, calls = 0;
+  let live = true, calls = 0, fences = 0;
+  const events: string[] = [];
   const signal = new AbortController();
   const check = () => {if(!live || signal.signal.aborted)throw new Error('CANCELLED');};
   let wait: (() => Promise<void>) | undefined;
@@ -41,9 +42,9 @@ function fixture() {
     ()=>({accounts:{HDAccount:{},Imported:{},Ledger:{0:{id:0,address:wallet.address}},Trezor:{}},activeAccountId:0,
       activeAccountType:KeyringAccountType.Ledger,activeNetwork:sdkNetwork}) as never, ledger, undefined,()=>check,null);
   let sessionWait: (()=>Promise<void>)|undefined;
-  const adapter = createNativeHardwareDappSigning({account:{id:'ledger:60:0',type:'Ledger',index:0,address:wallet.address},network,signal:signal.signal,
-    assertCurrent:check,async withSession(_account,guard,operation){await sessionWait?.();guard();return operation({kind:'Ledger',signer:ledger,transactions});}});
-  return {adapter,signal,check,retire:()=>{live=false;},calls:()=>calls,hold:(hook:typeof wait)=>{wait=hook;},holdSession:(hook:typeof sessionWait)=>{sessionWait=hook;}};
+  const adapter = createNativeHardwareDappSigning({ beforeSignature() { check(); fences++; events.push('signature'); },account:{id:'ledger:60:0',type:'Ledger',index:0,address:wallet.address},network,signal:signal.signal,
+    assertCurrent:check,async withSession(_account,guard,operation){await sessionWait?.();guard();const result=await operation({kind:'Ledger',signer:ledger,transactions});events.push('retire-session');return result;}});
+  return {adapter,signal,check,events,fences:()=>fences,retire:()=>{live=false;},calls:()=>calls,hold:(hook:typeof wait)=>{wait=hook;},holdSession:(hook:typeof sessionWait)=>{sessionWait=hook;}};
 }
 
 test('actual SDK Ledger personal and V3/V4 messages verify against the captured account', async () => {
@@ -54,6 +55,8 @@ test('actual SDK Ledger personal and V3/V4 messages verify against the captured 
     assert.match(signature,/^0x[0-9a-f]{130}$/i);
   }
   assert.equal(f.calls(),3);
+  assert.equal(f.fences(),3);
+  assert.deepEqual(f.events,['signature','retire-session','signature','retire-session','signature','retire-session']);
   const legacy=readDappMessageRequest('eth_signTypedData',[wallet.address,[{name:'text',type:'string',value:'legacy'}]],wallet.address)!;
   await assert.rejects(f.adapter.signMessage(legacy),/INVALID_INPUT/);
   assert.equal(f.calls(),3);
@@ -70,6 +73,8 @@ test('actual SDK hardware transaction signs only reviewed canonical bytes and re
   const foreign=Transaction.from({chainId:10,type:0,nonce:7,to:'0x'+'22'.repeat(20),value:3,gasLimit:21000,gasPrice:100}).unsignedSerialized;
   await assert.rejects(f.adapter.signTransaction(foreign,{signal:f.signal.signal,assertCurrent:f.check}),/INVALID_INPUT/);
   assert.equal(f.calls(),1);
+  assert.equal(f.fences(),1);
+  assert.deepEqual(f.events,['signature','retire-session']);
 });
 
 test('retirement after a held session prevents device work and after a held signature withholds disclosure', async () => {
@@ -82,6 +87,7 @@ test('retirement after a held session prevents device work and after a held sign
     const rejected=assert.rejects(result, phase==='session' ? /CANCELLED/ : {code:'HARDWARE_REQUEST_CANCELLED'});
     await entered.promise;f.retire();finish.resolve();await rejected;
     assert.equal(f.calls(),phase==='session'?0:1);
+    assert.equal(f.fences(),0);
   }
 });
 

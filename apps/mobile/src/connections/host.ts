@@ -1,3 +1,5 @@
+import type { NativeSigningHandoff } from './signingHandoff.ts';
+import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { DappEncryptionSdk } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation.ts';
 import type { ApprovalSummary } from '../../../../source/shared/approval.ts';
@@ -20,6 +22,7 @@ export type NativeConnectionMessageSigning = Readonly<{
   networkId: string;
   request: DappMessageRequest;
   approval: ReturnType<typeof createDappSigningApproval>;
+  handoff: NativeSigningHandoff;
 }>;
 
 export type NativeConnectionTransactionSigning = Readonly<{
@@ -27,6 +30,7 @@ export type NativeConnectionTransactionSigning = Readonly<{
   networkId: string;
   transaction: unknown;
   approval: ReturnType<typeof createDappSigningApproval>;
+  handoff: NativeSigningHandoff;
 }>;
 
 export type NativePreparedSmartConnectionTransaction = Readonly<{
@@ -52,6 +56,8 @@ export type NativeConnectionSigningHost = Readonly<{
   /** Stable wallet/runtime lifetime, deliberately independent of lock state. */
   assertOwner(): void;
   sessionGeneration(): number;
+  registration(): NativeNetworkRegistration;
+  cancelSigningHandoff(job: object): Promise<void>;
   verifyPersonalMessage(message: string, signature: string): string;
   supportsAtomicCalls(accountId: string): boolean;
   supportsSmartAccountMessages(accountId: string): boolean;
@@ -78,6 +84,7 @@ export type NativeConnectionSigningHost = Readonly<{
       bundleId: string;
       reservationId: string;
       approval: ReturnType<typeof createDappSigningApproval>;
+  handoff: NativeSigningHandoff;
     }>,
     assertCurrent: () => void
   ): Promise<NativePreparedSmartConnectionTransaction>;
