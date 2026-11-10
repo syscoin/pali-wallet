@@ -7,12 +7,18 @@ import {
   type SmartAccountOwnerSigningIntent,
   type SmartAccountTypedData,
 } from './ownerSigningIntent.ts';
-import type { SignTypedDataVersion } from '@metamask/eth-sig-util';
+import type { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import type { EvmSigningIdentity } from '@sidhujag/sysweb3-keyring/cjs/transactions/prepared-evm';
 
 // The SDK's enum is a wire string. Keep the shared software/native module free
 // of the device SDK's runtime dependency; V4 is the only canonical device intent.
-const TYPED_DATA_V4 = 'V4' as SignTypedDataVersion.V4;
+type OwnerTypedVersion = Extract<
+  Parameters<
+    KeyringManager['ledgerSigner']['evm']['signTypedData']
+  >[0]['version'],
+  'V4'
+>;
+const TYPED_DATA_V4 = 'V4' as OwnerTypedVersion;
 
 export type SmartAccountOwnerIdentity = Readonly<{
   address: string;
@@ -32,7 +38,7 @@ export type SmartAccountOwnerSigningSdk = Readonly<{
         accountIndex: number;
         data: SmartAccountTypedData;
         expectedAddress: string;
-        version: SignTypedDataVersion.V4;
+        version: OwnerTypedVersion;
       },
       authority: SmartAccountOwnerAuthority
     ): Promise<string>;
@@ -52,7 +58,7 @@ export type SmartAccountOwnerSigningSdk = Readonly<{
         address: string;
         data: SmartAccountTypedData;
         index: number;
-        version: SignTypedDataVersion.V4;
+        version: OwnerTypedVersion;
       },
       authority: SmartAccountOwnerAuthority
     ): Promise<string>;
