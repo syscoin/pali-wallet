@@ -461,7 +461,7 @@ test('real native token controller imports, persists, shows exact units, receive
     fullPage: true,
   });
   await page
-    .getByRole('button', { name: 'Receive token', exact: true })
+    .getByRole('button', { name: 'Receive', exact: true })
     .click();
   await expect(page.getByTestId('native-receive-address')).toHaveText(
     '0x52908400098527886E0F7030069857D2E4169EE7'
@@ -514,7 +514,7 @@ test('zero and unavailable stay distinct, and the list is scoped to the selected
     page.getByText('No custom tokens added', { exact: true })
   ).toBeVisible();
   await expect(
-    page.getByText('Custom tokens for this account on Base.', { exact: true })
+    page.getByText('Account 1 · Base', { exact: true })
   ).toBeVisible();
   await page.evaluate(() => {
     window.__nativeTokenPortfolio.failBalances(false);

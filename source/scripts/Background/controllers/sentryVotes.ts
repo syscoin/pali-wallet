@@ -1,3 +1,4 @@
+import { withPasswordSentrySigningMaterial } from '../../../wallet/sentryApprovalHost.ts';
 import { SharedSentryVoteApprovals } from '../../../wallet/sentryVoteApprovals';
 import { getSentryVaultId, loadSentryKey } from 'utils/sentry/keyStore';
 import { runSentryCrypto } from 'utils/sentry/workerClient';
@@ -47,14 +48,23 @@ export class SentryVoteController {
         if (host.captureScope().identity !== scope.identity)
           throw new Error('Wallet context changed. Start the vote again.');
       },
-      getSeed: (password) => host.getSeed(password),
+      withSigningMaterial: (request, work) =>
+        withPasswordSentrySigningMaterial(request, work, {
+          getSeed: (password) => host.getSeed(password),
+          resolveWalletAuthority: (authority, password) => {
+            if (authority.purpose !== 'voting')
+              throw new Error('Unexpected Sentry authority');
+            return host.resolveWalletAuthority(
+              { address: authority.address, password },
+              request.scope
+            );
+          },
+        }),
       getSettings: host.getSettings,
       hasWalletAuthority: (address, scope) =>
         host.hasWalletAuthority(address, scope),
       readJson: (url, limit, scope, check, signal) =>
         host.readJson(url, limit, check, signal),
-      resolveWalletAuthority: (params, scope) =>
-        host.resolveWalletAuthority(params, scope),
       async loadKey({ scope, network, id, seed, assertCurrent }) {
         const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
         assertCurrent();

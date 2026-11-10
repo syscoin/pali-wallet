@@ -5,7 +5,6 @@ import type { IPrivateNoteView } from '../../../../source/utils/privacy/privateV
 import type { NativeNoteMaintenanceRuntime } from '../custody/noteBackupRuntime';
 import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
-import { PinField } from './PinEntry';
 import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
 import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
@@ -25,14 +24,13 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
   const [busy, setBusy] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ removed: number; unresolved: number } | null>(null);
   const [progress, setProgress] = useState<{ checked: number; total: number } | null>(null);
   const close = useCallback(() => {
     const current = owner.current;
     if (!current.live) return;
-    current.live = false; current.authentication.retire(); current.abort.abort(); setPassword(''); Keyboard.dismiss(); onBack();
+    current.live = false; current.authentication.retire(); current.abort.abort(); Keyboard.dismiss(); onBack();
   }, [onBack]);
   useEffect(() => {
     const current: Owner = { live: true, abort: new AbortController(), busy: true, authentication: createNativePrivateAuthenticationScope() };
@@ -60,17 +58,17 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
     const current = owner.current;
     const note = notes.find(value => value.id === selected);
     if (!activeRuntime || !ready || !current.live || current.busy ||
-        (kind === 'clear' ? !confirmClear : !note?.withdrawal?.canCheckRecovery || !password)) return;
+        (kind === 'clear' ? !confirmClear : !note?.withdrawal?.canCheckRecovery)) return;
     current.busy = true; setBusy(true); setError(null); setResult(null);
     const request = {}; current.request = request;
     const check = () => {
       if (owner.current !== current || !current.live || current.abort.signal.aborted || current.request !== request ||
           (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))) throw Error('CANCELLED');
     };
-    const entered = password; setPassword(''); Keyboard.dismiss();
+    Keyboard.dismiss();
     try {
       if (kind === 'recover') {
-        await activeRuntime.recoverFailedWithdrawal(note!.id, entered, check); check();
+        await activeRuntime.recoverFailedWithdrawal(note!.id, check); check();
         if (AppState.currentState !== 'active') throw Error('CANCELLED');
         setSelected(null);
       } else {
@@ -108,7 +106,7 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
           {notes.some(note => note.withdrawal?.canCheckRecovery) && <Card>
             {notes.filter(note => note.withdrawal?.canCheckRecovery).map(note => <Row key={note.id}
               title={`${note.amount} ETH`} subtitle={t('privacy.recovery.action')}
-              onPress={busy ? undefined : () => { setSelected(note.id); setPassword(''); setError(null); setConfirmClear(false); }} />)}
+              onPress={busy ? undefined : () => { setSelected(note.id); setError(null); setConfirmClear(false); }} />)}
           </Card>}
           {notes.length > 0 && (!confirmClear ? <Button title={t('privacy.capacity.clear')} variant="secondary" disabled={busy}
             onPress={() => { setConfirmClear(true); setError(null); }} /> : <>
@@ -119,9 +117,8 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
         </>}
         {recovering && <>
           <Text style={styles.muted}>{t('privacy.recovery.help')}</Text><Text style={styles.muted}>{t('privacy.recovery.disclosure')}</Text>
-          <PinField label="Wallet PIN" value={password} onChange={setPassword} busy={busy} />
-          <Button title={t('privacy.recovery.confirm')} disabled={busy || !password} onPress={() => { void act('recover'); }} />
-          <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={() => { setSelected(null); setPassword(''); setError(null); }} />
+          <Button title={t('privacy.recovery.confirm')} disabled={busy} onPress={() => { void act('recover'); }} />
+          <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={() => { setSelected(null); setError(null); }} />
         </>}
         {progress && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('privacy.capacity.clearProgress', progress)}</Text>}
         {result && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('privacy.capacity.clearResult', result)}</Text>}

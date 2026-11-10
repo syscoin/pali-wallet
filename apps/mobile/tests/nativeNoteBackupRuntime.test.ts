@@ -1,5 +1,7 @@
 import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { readTestNoteInventory, testInventoryAuthentication } from './fixtures/privateAuthentication.ts';
+import { OperationAuthentication as NativeOperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -42,6 +44,22 @@ function pause() {
   const entered = new Promise<void>((resolve) => { enter = resolve; });
   return { entered, release, async wait() { enter(); await held; } };
 }
+async function until(predicate: () => boolean) {
+  const deadline = Date.now() + 10000;
+  while (!predicate() && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 5));
+  assert(predicate(), 'expected asynchronous authentication state');
+}
+function scriptedPin(pin: string): NonNullable<KeyringRuntimeDependencies['requestOperationCredential']> {
+  return async (request, signal, check, verify) => {
+    const broker = new NativeOperationAuthentication();
+    const detach = broker.attach(prompt => {
+      if (!prompt || prompt.busy) return;
+      queueMicrotask(() => prompt.error ? prompt.cancel() : prompt.confirm({ method: 'pin', pin }));
+    });
+    try { await broker.request(request, signal, check, verify); }
+    finally { detach(); }
+  };
+}
 
 async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacyPool']) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-note-backup-runtime-'));
@@ -54,6 +72,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
   let beforeUnlock: ReturnType<typeof pause> | undefined, afterUnlock: ReturnType<typeof pause> | undefined;
   let afterPinRead: ReturnType<typeof pause> | undefined;
   let beforeCredential: ((signal: AbortSignal) => Promise<void>) | undefined;
+  let requester: KeyringRuntimeDependencies['requestOperationCredential'] = null;
   let beforeNoteInsert: ReturnType<typeof pause> | undefined;
   let afterNoteRead: ReturnType<typeof pause> | undefined;
   let noteCommits = 0;
@@ -87,7 +106,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
     if (gate) await gate.wait();
     return value;
   } };
-  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, signal, check, verify) => { check(); if (beforeCredential) await beforeCredential(signal); check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, signal, check, verify) => { check(); if (beforeCredential) await beforeCredential(signal); check(); if (requester) return requester(_request, signal, check, verify); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     openPrivacyPool,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -141,12 +160,13 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
     return auth ? JSON.parse(auth.value).failures : 0;
   };
   return {
+    setRequester(value: KeyringRuntimeDependencies['requestOperationCredential']) { requester = value; },
     get rawRuntime() { return runtime; },
     get runtime() {
       const binding = () => bindNativePrivateAuthentication(createNativePrivateAuthenticationScope(), { assertCurrent: current, isPromptActive: () => false });
       return { ...runtime,
         openNoteBackup: (guard: () => void) => runtime.openNoteBackup!(guard, binding()),
-        readNoteInventory: (guard: () => void) => runtime.readNoteInventory!(guard, binding()),
+        readNoteInventory: (guard: () => void) => readTestNoteInventory(runtime, guard),
         openNoteCapacity: (guard: () => void) => runtime.openNoteCapacity!(guard, binding()),
         openNoteImport: (guard: () => void) => runtime.openNoteImport!(guard, binding()),
       };
@@ -193,7 +213,7 @@ test('lock releases an inventory yield even if the native timer never fires', as
     })));
     const view = await f.runtime.openNoteBackup!(current), id = view.begin();
     await view.prepareImport(id, file, BACKUP_PASSWORD);
-    await view.commitImport(id, PASSWORD);
+    await view.commitImport(id);
     await f.reopen();
     let entered!: () => void;
     const started = new Promise<void>((resolve) => { entered = resolve; });
@@ -240,16 +260,18 @@ test('actual native owner imports and verifies an exact encrypted backup, with e
     assert.deepEqual({ ...(await preview), expiresAt: undefined }, { id, added: 1, duplicates: 0, guarded: 1, expiresAt: undefined });
     await f.runtime.session.readSelectedAddress(); // Metadata refresh leaves this exact owner live.
     assert.deepEqual(await f.storage.notes.read(), []);
-    await assert.rejects(view.commitImport(id, WRONG_PIN), { code: 'BACKUP_AUTHENTICATION_FAILED' });
+    f.setRequester(scriptedPin(WRONG_PIN));
+    await assert.rejects(view.commitImport(id), { code: 'BACKUP_AUTHENTICATION_FAILED' });
     assert.equal(await f.failures(), 1);
     assert.equal(f.unlocked, true);
-    await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_STALE' });
-    assert.equal(f.unlockCalls, unlocks + 1);
+    await assert.rejects(view.commitImport(id), { code: 'BACKUP_STALE' });
+    assert.equal(f.unlockCalls, unlocks, 'a refused PIN never opens the SDK spending-key lease');
     assert.equal(f.noteWrites, 0);
 
+    f.setRequester(null);
     id = view.begin();
     await view.prepareImport(id, file, BACKUP_PASSWORD);
-    const receipt = await view.commitImport(id, PASSWORD);
+    const receipt = await view.commitImport(id);
     assert.deepEqual(receipt, { id, confirmed: true, added: 1, duplicates: 0, guarded: 1 });
     assert.deepEqual(await view.readCommitReceipt(id), receipt);
     assert.equal(await f.failures(), 0);
@@ -257,8 +279,10 @@ test('actual native owner imports and verifies an exact encrypted backup, with e
     assert.ok(!(await f.storage.notes.read())[0]!.value.includes(NOTE.note));
 
     id = view.begin();
-    const backup = await view.exportEncrypted(id, PASSWORD, BACKUP_PASSWORD);
+    const exportUnlocks = f.unlockCalls;
+    const backup = await view.exportEncrypted(id, BACKUP_PASSWORD);
     assert.equal(backup.noteCount, 1);
+    assert.equal(f.unlockCalls, exportUnlocks + 1, 'one export authorizes once across its profile and record reads');
     assert.equal((await codec().decrypt(backup.bytes, BACKUP_PASSWORD)).notes[0]!.note, NOTE.note);
     assert.deepEqual(await view.verifyExport(id, new Uint8Array(backup.bytes), BACKUP_PASSWORD), {
       id, verified: true, noteCount: 1, createdAt: backup.createdAt,
@@ -271,7 +295,7 @@ test('actual native owner imports and verifies an exact encrypted backup, with e
     const catalogue = f.runtime.catalogue.getSnapshot()!;
     const selection = f.runtime.accounts!.reserve({ kind: 'select', id: catalogue.active.accountId }, catalogue.revision);
     selection.cancel();
-    await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_CANCELLED' });
+    await assert.rejects(view.commitImport(id), { code: 'BACKUP_CANCELLED' });
     assert.equal(f.unlockCalls, beforeRetirement, 'retired preview cannot request another credential');
     assert.equal(f.noteWrites, 1);
   } finally { await f.dispose(); }
@@ -283,14 +307,14 @@ test('restore preview retires its codec and commit captures fresh authorized cod
     const view = await f.runtime.openNoteBackup!(current);
     let id = view.begin();
     await view.prepareImport(id, await encrypted(), BACKUP_PASSWORD);
-    await view.commitImport(id, PASSWORD);
+    await view.commitImport(id);
     id = view.begin();
     const next = { note: `tornado-eth-1-1-0x${'02'.repeat(62)}`, createdAt: 11 };
     await view.prepareImport(id, await encrypted([NOTE, next]), BACKUP_PASSWORD);
     const previewCodec = f.latestPrivateAccess;
     assert(previewCodec);
     await assert.rejects(previewCodec.getPrivateRecordProfileId());
-    const receipt = await view.commitImport(id, PASSWORD);
+    const receipt = await view.commitImport(id);
     assert.equal(receipt.added, 1);
     assert.notEqual(f.latestPrivateAccess, previewCodec);
     assert.equal(f.noteWrites, 2);
@@ -310,7 +334,7 @@ test('saved inventory projects only local metadata from a restored encrypted SQL
     const backup = await f.runtime.openNoteBackup!(current);
     const id = backup.begin();
     await backup.prepareImport(id, file, BACKUP_PASSWORD);
-    const receipt = await backup.commitImport(id, PASSWORD);
+    const receipt = await backup.commitImport(id);
     assert.equal(receipt.added, 2);
     await f.reopen();
 
@@ -363,13 +387,16 @@ test('saved inventory discards held reads after a route owner changes or the wal
 
 test('individual reveal requires fresh credentials and resolves only the exact saved row', async () => {
   const f = await fixture();
+  const broker = new NativeOperationAuthentication();
+  let prompt: OperationAuthenticationPrompt | null = null;
+  const detach = broker.attach(value => { prompt = value; });
   try {
     const twin = { ...NOTE, note: `tornado-eth-1-1-0x${'02'.repeat(62)}` };
     const file = await encrypted([NOTE, twin]);
     const backup = await f.runtime.openNoteBackup!(current);
     const id = backup.begin();
     await backup.prepareImport(id, file, BACKUP_PASSWORD);
-    await backup.commitImport(id, PASSWORD);
+    await backup.commitImport(id);
     await f.reopen();
 
     const stored = await f.storage.notes.read();
@@ -380,19 +407,27 @@ test('individual reveal requires fresh credentials and resolves only the exact s
     assert.deepEqual(first, second);
     const other = await f.runtime.readNoteInventory!(current);
     const unlocks = f.unlockCalls;
-    await assert.rejects(inventory.revealNote({ ...first }, PASSWORD, current), /privacy_note_missing/);
-    await assert.rejects(inventory.revealNote(other.notes[0]!, PASSWORD, current), /privacy_note_missing/);
-    await assert.rejects(inventory.revealNote(first, PASSWORD, async () => undefined));
+    await assert.rejects(inventory.revealNote({ ...first }, current, testInventoryAuthentication(inventory)), /privacy_note_missing/);
+    await assert.rejects(inventory.revealNote(other.notes[0]!, current, testInventoryAuthentication(inventory)), /privacy_note_missing/);
+    await assert.rejects(inventory.revealNote(first, async () => undefined, testInventoryAuthentication(inventory)));
     assert.equal(f.unlockCalls, unlocks);
-    assert.equal(await inventory.revealNote(first, PASSWORD, current), NOTE.note);
-    assert.equal(await inventory.revealNote(second, PASSWORD, current), twin.note);
+    assert.equal(await inventory.revealNote(first, current, testInventoryAuthentication(inventory)), NOTE.note);
+    assert.equal(await inventory.revealNote(second, current, testInventoryAuthentication(inventory)), twin.note);
     assert.equal(f.unlockCalls, unlocks + 2);
-    await assert.rejects(inventory.revealNote(second, WRONG_PIN, current));
-    assert.equal(f.unlockCalls, unlocks + 3);
+    f.setRequester(broker.request);
+    const pending = inventory.revealNote(second, current, testInventoryAuthentication(inventory));
+    await until(() => !!prompt && !prompt.busy);
+    prompt!.confirm({ method: 'pin', pin: WRONG_PIN });
+    await until(() => !!prompt?.error && !prompt.busy);
+    assert.equal(f.unlockCalls, unlocks + 2, 'a rejected PIN cannot open an SDK secret operation');
     assert.equal(await f.failures(), 1);
+    prompt!.confirm({ method: 'pin', pin: PASSWORD });
+    assert.equal(await pending, twin.note);
+    assert.equal(f.unlockCalls, unlocks + 3);
+    assert.equal(await f.failures(), 0);
     assert.equal(f.noteWrites, 1);
     assert.deepEqual(await f.storage.notes.read(), stored);
-  } finally { await f.dispose(); }
+  } finally { detach(); await f.dispose(); }
 });
 
 test('individual reveal drops held authentication and vault reads after attempt, route or wallet revocation', async () => {
@@ -403,7 +438,7 @@ test('individual reveal drops held authentication and vault reads after attempt,
     const backup = await f.runtime.openNoteBackup!(current);
     const id = backup.begin();
     await backup.prepareImport(id, file, BACKUP_PASSWORD);
-    await backup.commitImport(id, PASSWORD);
+    await backup.commitImport(id);
 
     let route = 1, attempt = 1;
     const inventory = await f.runtime.readNoteInventory!(() => {
@@ -412,12 +447,12 @@ test('individual reveal drops held authentication and vault reads after attempt,
     const note = inventory.notes[0]!;
     const first = f.holdUnlock('after');
     release = first.release;
-    const staleAttempt = assert.rejects(inventory.revealNote(note, PASSWORD, () => {
+    const staleAttempt = assert.rejects(inventory.revealNote(note, () => {
       if (attempt !== 1) throw new Error('CANCELLED');
-    }));
+    }, testInventoryAuthentication(inventory)));
     await first.entered;
     const unlocks = f.unlockCalls;
-    await assert.rejects(inventory.revealNote(note, PASSWORD, current), { code: 'BUSY' });
+    await assert.rejects(inventory.revealNote(note, current, testInventoryAuthentication(inventory)), { code: 'BUSY' });
     assert.equal(f.unlockCalls, unlocks);
     attempt++;
     release();
@@ -426,18 +461,18 @@ test('individual reveal drops held authentication and vault reads after attempt,
 
     const second = f.holdNoteRead();
     release = second.release;
-    const staleRoute = assert.rejects(inventory.revealNote(note, PASSWORD, current));
+    const staleRoute = assert.rejects(inventory.revealNote(note, current, testInventoryAuthentication(inventory)));
     await second.entered;
     route++;
     release();
     release = undefined;
     await staleRoute;
-    await assert.rejects(inventory.revealNote(note, PASSWORD, current));
+    await assert.rejects(inventory.revealNote(note, current, testInventoryAuthentication(inventory)));
 
     const replacement = await f.runtime.readNoteInventory!(current);
     const locking = f.holdUnlock('before');
     release = locking.release;
-    const staleWallet = assert.rejects(replacement.revealNote(replacement.notes[0]!, PASSWORD, current));
+    const staleWallet = assert.rejects(replacement.revealNote(replacement.notes[0]!, current, testInventoryAuthentication(replacement)));
     await locking.entered;
     await f.runtime.session.lock();
     release();
@@ -445,9 +480,9 @@ test('individual reveal drops held authentication and vault reads after attempt,
     await staleWallet;
     assert.equal(f.unlocked, false);
     assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
-    await assert.rejects(replacement.revealNote(replacement.notes[0]!, PASSWORD, current));
+    await assert.rejects(replacement.revealNote(replacement.notes[0]!, current, testInventoryAuthentication(replacement)));
     const reopened = await f.runtime.readNoteInventory!(current);
-    assert.equal(await reopened.revealNote(reopened.notes[0]!, PASSWORD, current), NOTE.note);
+    assert.equal(await reopened.revealNote(reopened.notes[0]!, current, testInventoryAuthentication(reopened)), NOTE.note);
     assert.equal(f.noteWrites, 1);
   } finally { release?.(); await f.dispose(); }
 });
@@ -460,7 +495,8 @@ test('revocation accounts a definitive wallet credential failure and retires a l
     let id = view.begin();
     await view.prepareImport(id, file, BACKUP_PASSWORD);
     const wrong = f.holdPinRead();
-    const wrongCommit = view.commitImport(id, WRONG_PIN);
+    f.setRequester(scriptedPin(WRONG_PIN));
+    const wrongCommit = view.commitImport(id);
     try {
       await wrong.entered;
       assert.throws(() => view.begin(), { code: 'BUSY' });
@@ -471,14 +507,15 @@ test('revocation accounts a definitive wallet credential failure and retires a l
     assert.equal(await f.failures(), 1);
     assert.equal(f.unlocked, false);
     assert.equal(f.noteWrites, 0);
-    await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_CANCELLED' });
+    await assert.rejects(view.commitImport(id), { code: 'BACKUP_CANCELLED' });
 
     assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
+    f.setRequester(null);
     view = await f.runtime.openNoteBackup!(current);
     id = view.begin();
     await view.prepareImport(id, file, BACKUP_PASSWORD);
     const late = f.holdUnlock('before');
-    const lateCommit = view.commitImport(id, PASSWORD);
+    const lateCommit = view.commitImport(id);
     try {
       await late.entered;
       await f.runtime.session.lock();
@@ -499,7 +536,7 @@ test('lost note commit acknowledgement quarantines and cold reopen sees the dura
     const id = view.begin();
     await view.prepareImport(id, file, BACKUP_PASSWORD);
     f.loseAck();
-    await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_COMMIT_UNCONFIRMED' });
+    await assert.rejects(view.commitImport(id), { code: 'BACKUP_COMMIT_UNCONFIRMED' });
     assert.equal(f.unlocked, false);
     assert.equal(f.noteWrites, 1);
     await assert.rejects(f.storage.notes.read(), { code: 'STORAGE_REOPEN_REQUIRED' });
@@ -507,7 +544,7 @@ test('lost note commit acknowledgement quarantines and cold reopen sees the dura
     await f.reopen();
     await assert.rejects(view.readCommitReceipt(id), { code: 'BACKUP_CANCELLED' });
     const reopened = await f.runtime.openNoteBackup!(current);
-    await assert.rejects(reopened.commitImport(id, PASSWORD), { code: 'BACKUP_STALE' });
+    await assert.rejects(reopened.commitImport(id), { code: 'BACKUP_STALE' });
     const preview = await reopened.prepareImport(reopened.begin(), file, BACKUP_PASSWORD);
     assert.equal(preview.added, 0);
     assert.equal(preview.duplicates, 1);
@@ -534,8 +571,9 @@ test('the wallet throttle rejects before SDK work and route loss revokes pending
     await next.prepareImport(id, file, BACKUP_PASSWORD);
     for (let attempt = 0; attempt < 5; attempt++) await f.storage.authGuard.recordFailure();
     const unlocks = f.unlockCalls;
-    await assert.rejects(next.commitImport(id, PASSWORD), { code: 'BACKUP_AUTHENTICATION_FAILED' });
-    await assert.rejects(next.commitImport(id, PASSWORD), { code: 'BACKUP_STALE' });
+    f.setRequester(scriptedPin(PASSWORD));
+    await assert.rejects(next.commitImport(id), { code: 'BACKUP_AUTHENTICATION_FAILED' });
+    await assert.rejects(next.commitImport(id), { code: 'BACKUP_STALE' });
     assert.equal(await f.failures(), 5);
     assert.equal(f.unlockCalls, unlocks);
     assert.equal(f.unlocked, true);
@@ -571,8 +609,8 @@ test('monotonic preview expiry refuses a queued credential attempt', async () =>
     assert.equal(preview.expiresAt, tick + NOTE_BACKUP_PREVIEW_TTL_MS);
     const unlocks = f.unlockCalls;
     tick = preview.expiresAt;
-    await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_CANCELLED' });
-    await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_STALE' });
+    await assert.rejects(view.commitImport(id), { code: 'BACKUP_CANCELLED' });
+    await assert.rejects(view.commitImport(id), { code: 'BACKUP_STALE' });
     assert.equal(f.unlockCalls, unlocks);
     assert.equal(f.noteWrites, 0);
     assert.equal(f.unlocked, true);
@@ -595,10 +633,11 @@ for (const valid of [true, false]) {
       await view.prepareImport(id, file, BACKUP_PASSWORD);
       const unlocks = f.unlockCalls;
       const works = f.secretWorks;
+      f.setRequester(scriptedPin(valid ? PASSWORD : WRONG_PIN));
       f.loseAuthAck();
-      await assert.rejects(view.commitImport(id, valid ? PASSWORD : WRONG_PIN), { code: 'BACKUP_COMMIT_UNCONFIRMED' });
+      await assert.rejects(view.commitImport(id), { code: 'BACKUP_COMMIT_UNCONFIRMED' });
       assert.equal(f.lostAuthAcks, 1);
-      assert.equal(f.unlockCalls, unlocks + 1);
+      assert.equal(f.unlockCalls, unlocks, 'failed durable admission occurs before any SDK spending-key lease');
       assert.equal(f.secretWorks, works, 'failed durable attempt admission precedes SDK secret release');
       assert.equal(f.unlocked, false, 'the SDK owner must already be retired');
       assert.equal(f.noteWrites, 0);
@@ -609,7 +648,7 @@ for (const valid of [true, false]) {
       assert.deepEqual(await f.storage.notes.read(), []);
       assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
       const reopened = await f.runtime.openNoteBackup!(current);
-      await assert.rejects(reopened.commitImport(id, PASSWORD), { code: 'BACKUP_STALE' });
+      await assert.rejects(reopened.commitImport(id), { code: 'BACKUP_STALE' });
       const fresh = await reopened.prepareImport(reopened.begin(), file, BACKUP_PASSWORD);
       assert.equal(fresh.added, 1);
       assert.equal(fresh.duplicates, 0);
@@ -673,7 +712,7 @@ test('native note capacity cannot lower the limit below 129 encrypted notes', as
     const file = await encrypted(notes);
     try {
       assert.equal((await view.prepareImport(id, file, BACKUP_PASSWORD)).added, 129);
-      assert.equal((await view.commitImport(id, PASSWORD)).confirmed, true);
+      assert.equal((await view.commitImport(id)).confirmed, true);
     } finally { file.fill(0); }
 
     const unlocks = f.unlockCalls;
@@ -779,7 +818,7 @@ test('raw import uses shared encrypted retention, deduplicates and survives reop
     await f.reopen();
     const inventory = await f.runtime.readNoteInventory!(current);
     assert.equal(inventory.notes.length, 1);
-    assert.equal(await inventory.revealNote(inventory.notes[0]!, PASSWORD, current), NOTE.note);
+    assert.equal(await inventory.revealNote(inventory.notes[0]!, current, testInventoryAuthentication(inventory)), NOTE.note);
     assert.equal(checks, 2, 'local inventory and reveal do not download a pool');
   } finally { await f.dispose(); }
 });
@@ -839,7 +878,7 @@ test('real inventory credential acquisition belongs only to its current private 
   try {
     const backup = await f.runtime.openNoteBackup!(current), id = backup.begin();
     await backup.prepareImport(id, await encrypted(), BACKUP_PASSWORD);
-    await backup.commitImport(id, PASSWORD);
+    await backup.commitImport(id);
     await f.reopen();
     await assert.rejects(f.rawRuntime.readNoteInventory!(current, {} as never));
     let state = 'active', osPrompt = false;

@@ -1,5 +1,6 @@
 import { enterPin, pinField, fillPinField } from '../ui/operationAuthentication';
 import { expect, test, type Page } from '@playwright/test';
+import { nativeAccountName } from '../accountControlNames';
 
 const PASSWORD = '123456';
 const NATIVE_HINT = { kind: 'hd', id: 'hd:60:1' };
@@ -212,7 +213,7 @@ for (const nextId of ['hd:60:0', 'hd:60:1'] as const) {
   test(`verified removal clears stale in-memory native hint before unlocking a fixture wallet at ${nextId}`, async ({ page }) => {
     await openWallet(page);
     await button(page, 'Accounts').click();
-    await button(page, 'Select Account 2 (wallet)').click();
+    await button(page, nativeAccountName('Account 2', 'Recovery phrase account', '0x1111111111111111111111111111111111111111')).click();
     await expect.poll(() => selection(page)).toEqual(NATIVE_HINT);
     await openRemoval(page);
     await verifiedRemoval(page);

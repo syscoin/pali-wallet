@@ -5,9 +5,11 @@ import { NativeTransactionReviewScreen } from '../../src/screens/NativeTransacti
 import { Text } from '../../src/ui';
 import { Interface } from 'ethers/abi';
 import { getEffectiveApprovalData, summarizeApproval, type ApprovalContractMetadata } from '../../../../source/shared/approval';
+import { decodeAssetTransfer } from '../../../../source/shared/assetTransfer';
 
 const query = new URLSearchParams(window.location.search);
 const approvalKind = query.get('approval');
+const transferKind = query.get('transfer-kind');
 const tokenContract = '0x3333333333333333333333333333333333333333';
 const spender = '0x4444444444444444444444444444444444444444';
 const approvalAbi = new Interface(['function approve(address spender,uint256 amount)', 'function setApprovalForAll(address operator,bool approved)']);
@@ -17,6 +19,16 @@ const metadata: ApprovalContractMetadata | undefined = approvalKind === 'erc20'
   ? { standard: 'ERC-20', token: { contractAddress: tokenContract, name: 'Example token', symbol: 'TOK', decimals: 6 } }
   : approvalKind === 'nft' ? { standard: 'ERC-721' }
   : approvalKind === 'operator' ? { standard: 'ERC-1155' } : undefined;
+const transferAbi = new Interface(['function transfer(address to,uint256 amount)',
+  'function safeTransferFrom(address from,address to,uint256 tokenId)',
+  'function safeBatchTransferFrom(address from,address to,uint256[] ids,uint256[] amounts,bytes data)']);
+const transferMetadata: ApprovalContractMetadata | undefined = transferKind === 'erc20'
+  ? { standard: 'ERC-20', token: { contractAddress: tokenContract, name: 'Example token', symbol: 'TOK', decimals: 6 } }
+  : transferKind === 'erc721' ? { standard: 'ERC-721' } : transferKind === 'erc1155' ? { standard: 'ERC-1155' } : undefined;
+const transferData = transferKind === 'erc20' ? transferAbi.encodeFunctionData('transfer', [spender, '123456789'])
+  : transferKind === 'erc721' ? transferAbi.encodeFunctionData('safeTransferFrom', ['0x2222222222222222222222222222222222222222', spender, '42'])
+  : transferKind === 'erc1155' ? transferAbi.encodeFunctionData('safeBatchTransferFrom', ['0x2222222222222222222222222222222222222222', spender, ['7', '42'], ['2', '3'], '0x']) : '0xabcdef';
+const transferValue = transferKind === 'unknown' ? '1234567890000000' : transferKind ? '0' : '1234567890123456789012345';
 const initialReview: NativeTransactionReview = {
   feeComparison: query.has('fees')
     ? {
@@ -35,13 +47,14 @@ const initialReview: NativeTransactionReview = {
   transaction: query.has('preparing') ? null : {
     type: 2, from: '0x2222222222222222222222222222222222222222',
     to: query.has('deployment') ? null : '0x3333333333333333333333333333333333333333',
-    chainId: '743211', value: '1234567890123456789012345', gasLimit: '25200',
+    chainId: '743211', value: transferValue, gasLimit: '25200',
     maxFeePerGas: '10', maxPriorityFeePerGas: '1', nonce: '3',
-    data: approvalKind ? approvalData : query.has('large-data') ? '0x' + 'ab'.repeat(8192) + 'cd' : '0xabcdef',
+    data: transferKind ? transferData : approvalKind ? approvalData : query.has('large-data') ? '0x' + 'ab'.repeat(8192) + 'cd' : '0xabcdef',
     accessList: [{ address: '0x4444444444444444444444444444444444444444', storageKeys: ['0x' + '5'.repeat(64)] }],
   },
   maximumFeeUnits: query.has('preparing') ? null : '252000',
-  maximumTotalUnits: query.has('preparing') ? null : '1234567890123456789264345',
+  maximumTotalUnits: query.has('preparing') ? null : (BigInt(transferValue) + 252000n).toString(),
+  ...(transferKind ? { assetTransfer: decodeAssetTransfer(transferData, tokenContract, transferMetadata) } : {}),
   error: query.has('invalid-origin') ? 'SITE_MISMATCH' : query.has('uncertain') ? 'DELIVERY_UNCERTAIN' : null,
   verification: { validation: query.has('invalid-origin') ? 'INVALID' : 'VALID', isScam: false },
   busy: query.has('preparing') || query.has('broadcasting'), needsAccountSwitch: query.has('switch'),

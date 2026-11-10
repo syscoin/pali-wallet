@@ -105,7 +105,7 @@ beforeEach(() => {
   };
   readJson = jest.fn(async () => structuredClone(context));
   getSeed = jest.fn(async () => 'private-synthetic-seed');
-  mockLoadKey.mockResolvedValue(key);
+  mockLoadKey.mockImplementation(async () => ({ ...key }));
   mockCrypto.mockImplementation(async (job, assertCurrent) => {
     assertCurrent();
     if (job.type === 'validateVote') {
@@ -178,6 +178,12 @@ it('requires explicit wallet-authority ports even for stored-key-only hosts', ()
 });
 
 it('signs only the reviewed batch and never returns key material', async () => {
+  const signingKeys: (typeof key)[] = [];
+  const execute = mockCrypto.getMockImplementation()!;
+  mockCrypto.mockImplementation((job, guard) => {
+    if (job.type === 'signVote') signingKeys.push({ ...job.key });
+    return execute(job, guard);
+  });
   const id = await controller.prepare(request, 'https://dapp.test', {
     assertCurrent: () => undefined,
     signal: new AbortController().signal,
@@ -191,9 +197,13 @@ it('signs only the reviewed batch and never returns key material', async () => {
   expect(result.votes.map((vote) => vote.proTxHash)).toEqual(
     request.nodes.map((node: any) => node.proTxHash)
   );
-  expect(
-    mockCrypto.mock.calls.filter(([job]) => job.type === 'signVote')
-  ).toHaveLength(2);
+  const signedCalls = mockCrypto.mock.calls.filter(
+    ([job]) => job.type === 'signVote'
+  );
+  expect(signedCalls).toHaveLength(2);
+  expect(signingKeys).toEqual([key, key]);
+  for (const [job] of signedCalls) expect(job.key.secretKey).toBe('');
+  expect(getSeed).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(result)).not.toContain(key.secretKey);
   expect(JSON.stringify(result)).not.toContain('private-synthetic-seed');
   expect(() => controller.getApproval(id)).toThrow('expired');

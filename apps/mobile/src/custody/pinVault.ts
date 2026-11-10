@@ -1,3 +1,4 @@
+import type { RecoveryStorageSnapshot } from '../storage/types.ts';
 /** Native local authorization. PINs never become SDK vault encryption passwords. */
 export type NativePinRecord = Readonly<{
   version: 1; installationId: string; walletBindingId: string; pairFingerprint: string;
@@ -16,6 +17,16 @@ export type NativePinStorage = Readonly<{
   completeAttempt(attempt: object, check: () => void): Promise<void>;
   replace(expected: NativePinRecord, next: NativePinRecord, check: () => void): Promise<void>;
 }>;
+/** Runs before a normal wallet is admitted, including after a process restart. */
+export async function settleNativePinRemoval(
+  storage: Pick<import('../storage/types.ts').OpenWalletStorage, 'removal'>,
+  credentials: NativePinCredentialPort | null
+): Promise<void> {
+  if (storage.removal) await storage.removal.settlePinCredential(async record => {
+    if (!credentials) throw unavailable();
+    await credentials.remove(record);
+  });
+}
 const unavailable = () => new Error('PIN_UNAVAILABLE');
 const hex = (bytes: Uint8Array) => Array.from(bytes, value => value.toString(16).padStart(2, '0')).join('');
 export const isNativePin = (value: unknown): value is string => typeof value === 'string' && /^\d{6}$/.test(value);
@@ -83,7 +94,14 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
       try {
         const base = captureNativePinRecord({ version: 1, installationId: storage.installationId, ...scope, enrollmentId: hex(id), salt: hex(salt), verifier: '0'.repeat(128) });
         const record = captureNativePinRecord({ ...base, verifier: await verifier(pin, base, pepper, check) });
-        credential({ secret, pepper }); await port.stage(record, { secret, pepper }, check); guard(check); return record;
+        credential({ secret, pepper });
+        try { await port.stage(record, { secret, pepper }, check); guard(check); return record; }
+        catch (error) {
+          // This unique alias has not been returned to a caller or committed.
+          // A lost write acknowledgement must not leave an orphaned credential.
+          await port.remove(record);
+          throw error;
+        }
       } finally { pepper.fill(0); salt.fill(0); id.fill(0); }
     },
     async authenticate(pin: string, check: () => void, prove: (secret: string) => Promise<boolean>): Promise<boolean> {
@@ -112,4 +130,9 @@ export function createNativePinVault(storage: NativePinStorage, port: NativePinC
       });
     },
   });
+}
+
+/** Public comparison only, after the exact pending OS credential cleanup was acknowledged. */
+export function snapshotAfterNativePinCredentialCleanup(snapshot: RecoveryStorageSnapshot): RecoveryStorageSnapshot {
+  return Object.freeze({ ...snapshot, metadata: Object.freeze(snapshot.metadata.filter(row => row.key !== 'removed-pin-credential')) });
 }

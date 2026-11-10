@@ -1,4 +1,5 @@
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -79,8 +80,8 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
   const submit = async (privateKey: string, utxoAddressType?: 'p2wpkh') => {
     const input = { privateKey, ...(utxoAddressType && { utxoAddressType }) };
     const expectedAddress = await authority.previewUtxoImport(input, authority.getSnapshot().revision, authority.getCatalogue()!.revision, () => undefined);
-    await authority.importAccount({ ...input, expectedAddress, label: 'Public fixture' }, PASSWORD,
-      authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+    await authority.importAccount({ ...input, expectedAddress, label: 'Public fixture' },
+      authority.getSnapshot().revision, authority.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(() => undefined));
     return expectedAddress;
   };
   const settle = async () => {

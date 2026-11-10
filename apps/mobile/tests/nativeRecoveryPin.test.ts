@@ -12,17 +12,18 @@ const inventory: RecoveryInventory = { status: 'needs-matching-phrase-verificati
 const tick = () => new Promise<void>(resolve => setImmediate(resolve));
 
 function owner() {
-  const prepared: { phrase: string; pin: string }[] = [], outcomes: RecoveryOutcome[] = [];
+  const prepared: { phrase: string }[] = [], pins: string[] = [], outcomes: RecoveryOutcome[] = [];
   let commits = 0;
   const flow = new NativeRecoveryFlow({
     async readInventory() { return inventory; }, isCurrent: () => true, now: () => 100,
     createCoordinator() { return {
-      async prepare(phrase, pin, check) { check(); prepared.push({ phrase, pin }); return Object.freeze({}) as RecoveryProof; },
+      async prepare(phrase, check) { check(); prepared.push({ phrase }); return Object.freeze({}) as RecoveryProof; },
+      async setPin(_proof, pin) { pins.push(pin); },
       async commit() { commits++; return 'committed-locked'; }, cancel() {},
     }; },
     async finish(result) { outcomes.push(result); },
   });
-  return { flow, prepared, outcomes, get commits() { return commits; } };
+  return { flow, prepared, pins, outcomes, get commits() { return commits; } };
 }
 function fixture() {
   let state = 'active';
@@ -79,19 +80,18 @@ test('recovery opens on the compact reference intro with data details collapsed'
   assert.equal(f.prepared.length, 0); f.close();
 });
 
-test('numbered phrase entry precedes PIN confirmation and a separate commit review', async () => {
+test('phrase verification and wallet review precede PIN setup and commit', async () => {
   const f = fixture(); await words(f);
-  assert.equal(f.render().filter(element => element.type === 'Input').length, 12);
-  f.press('Continue');
+  f.press('Continue'); await tick();
+  assert.deepEqual(f.prepared, [{ phrase }]); assert.equal(f.pins.length, 0);
+  assert.equal(f.flow.getSnapshot().phase, 'review');
+  f.press('Create new PIN');
   const pin = pinSetup(f.render());
-  assert.equal(pin.props.offerBiometrics, false); assert.equal(f.prepared.length, 0);
+  assert.equal(pin.props.offerBiometrics, false);
   assert(!f.render().some(element => element.type === 'Input'));
   pin.props.onComplete('123456', false); pin.props.onComplete('123456', false); await tick();
-  assert.deepEqual(f.prepared, [{ phrase, pin: '123456' }]);
-  assert.equal(f.flow.getSnapshot().phase, 'review'); assert.equal(f.commits, 0);
-  const current = f.render(); assert(!JSON.stringify(current).includes(phrase)); assert(!JSON.stringify(current).includes('123456'));
-  f.press('Change PIN'); await tick(); assert.equal(f.commits, 1);
-  assert.equal(f.outcomes[0]?.kind, 'success'); assert.match(f.outcomes[0]!.message, /PIN changed/); f.close();
+  assert.deepEqual(f.pins, ['123456']); assert.equal(f.commits, 1);
+  assert.equal(f.outcomes[0]?.kind, 'success'); f.close();
 });
 
 test('24-word paste selects the numbered grid without invoking recovery authority', async () => {
@@ -102,26 +102,22 @@ test('24-word paste selects the numbered grid without invoking recovery authorit
   assert.equal(button(grid, 'Continue').props.disabled, false); assert.equal(f.prepared.length, 0); f.close();
 });
 
-test('Back restores phrase editing and an old PIN callback cannot submit the new attempt', async () => {
-  const f = fixture(); await words(f); f.press('Continue');
-  const old = pinSetup(f.render()); old.props.onBack();
-  assert.equal(firstWord(f.render()).props.value, 'publicfixture');
-  f.press('Continue'); pinSetup(f.render()); old.props.onComplete('654321', false);
-  assert.equal(f.prepared.length, 0);
-  pinSetup(f.render()).props.onComplete('123456', false); await tick(); assert.equal(f.prepared.length, 1); f.close();
+test('Back after wallet verification retires the old PIN callback', async () => {
+  const f = fixture(); await words(f); f.press('Continue'); await tick(); f.press('Create new PIN');
+  const old = pinSetup(f.render()); old.props.onBack(); old.props.onComplete('654321', false); await tick();
+  assert.equal(f.pins.length, 0); assert.equal(f.commits, 0); assert.equal(f.outcomes[0]?.kind, 'cancelled'); f.close();
 });
 
-test('background cancellation clears the local phrase and invalidates the PIN callback', async () => {
-  const f = fixture(); await words(f); f.press('Continue'); const old = pinSetup(f.render());
+test('background cancels the verified proof before a PIN callback can commit', async () => {
+  const f = fixture(); await words(f); f.press('Continue'); await tick(); f.press('Create new PIN'); const old = pinSetup(f.render());
   f.background(); old.props.onComplete('123456', false); await tick();
-  assert.equal(f.prepared.length, 0); assert.equal(f.outcomes[0]?.kind, 'cancelled');
+  assert.equal(f.pins.length, 0); assert.equal(f.outcomes[0]?.kind, 'cancelled');
   assert(!JSON.stringify(f.render()).includes(phrase)); f.close();
 });
 
-test('a replacement recovery owner never inherits inputs or the previous PIN callback', async () => {
-  const f = fixture(); await words(f); f.press('Continue'); const old = pinSetup(f.render());
+test('a replacement recovery owner never inherits the previous PIN callback', async () => {
+  const f = fixture(); await words(f); f.press('Continue'); await tick(); f.press('Create new PIN'); const old = pinSetup(f.render());
   const next = owner(); f.replace(next.flow); f.render(); await tick(); f.render(); old.props.onComplete('123456', false);
-  assert.equal(f.prepared.length, 0); assert.equal(next.prepared.length, 0);
-  f.press('Restore Wallet'); assert.equal(firstWord(f.render()).props.value, '');
-  f.close();
+  assert.equal(f.pins.length, 0); assert.equal(next.pins.length, 0);
+  f.press('Restore Wallet'); assert.equal(firstWord(f.render()).props.value, ''); f.close();
 });

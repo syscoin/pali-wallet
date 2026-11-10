@@ -3,7 +3,6 @@ import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleS
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 import { NoteBackupPasswordField } from './NoteBackupPasswordField';
-import { PinField } from './PinEntry';
 
 export type NativeNoteExportStep =
   | { phase: 'select' }
@@ -16,7 +15,7 @@ type Props = {
   busy: boolean;
   error: string;
   onChoose(): void;
-  onSave(walletPassword: string, backupPassword: string): void;
+  onSave(backupPassword: string): void;
   onShowVerify(): void;
   onVerify(backupPassword: string): void;
   onBack(): void;
@@ -51,7 +50,7 @@ export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVe
     case 'passwords':
     case 'verify':
       content = <BackupForm key={step.phase} verify={step.phase === 'verify'} busy={busy} header={header} feedback={feedback}
-        submit={step.phase === 'verify' ? (_wallet, backup) => onVerify(backup) : onSave} />;
+        submit={step.phase === 'verify' ? onVerify : onSave} />;
       break;
     case 'saved':
     case 'verified': {
@@ -80,10 +79,10 @@ export function NativeNoteExport({ step, busy, error, onChoose, onSave, onShowVe
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>{content}</SafeAreaView>;
 }
 
-const empty = () => ({ wallet: '', backup: '', repeat: '' });
+const empty = () => ({ backup: '', repeat: '' });
 function BackupForm({ verify, busy, header, feedback, submit }: {
   verify: boolean; busy: boolean; header: React.ReactNode; feedback: React.ReactNode;
-  submit(wallet: string, backup: string): void;
+  submit(backup: string): void;
 }) {
   const [values, setValues] = useState(empty);
   const entered = useRef(values);
@@ -94,11 +93,10 @@ function BackupForm({ verify, busy, header, feedback, submit }: {
     return () => { entered.current = empty(); change.remove(); blur?.remove(); };
   }, []);
   const valid = (value: typeof values) => value.backup &&
-    (verify || (value.wallet && value.backup !== value.wallet && value.backup === value.repeat));
+    (verify || value.backup === value.repeat);
   const disabled = busy || !valid(values);
   const field = (name: keyof typeof values, label: string) => {
-    const Field = name === 'wallet' ? PinField : NoteBackupPasswordField;
-    return <Field label={label} value={values[name]} onChange={value => {
+    return <NoteBackupPasswordField label={label} value={values[name]} onChange={value => {
       entered.current = { ...entered.current, [name]: value };
       setValues(entered.current);
     }} busy={busy} />;
@@ -109,15 +107,12 @@ function BackupForm({ verify, busy, header, feedback, submit }: {
         const value = entered.current;
         if (busy || !valid(value) || AppState.currentState !== 'active') return;
         reset();
-        submit(value.wallet, value.backup);
+        submit(value.backup);
       }} />}>
       {header}
       <Text style={styles.muted}>{verify ? 'Enter the password for this file to verify it can be opened.' : 'Use a separate backup password with at least 12 characters. Pali cannot recover it for you.'}</Text>
-      {!verify && field('wallet', 'Wallet PIN')}
       {field('backup', 'Backup password')}
       {!verify && field('repeat', 'Confirm backup password')}
-      {!verify && !!values.wallet && values.wallet === values.backup &&
-        <Text accessibilityLiveRegion="polite" style={s.error}>Use a different password for the backup.</Text>}
       {!verify && !!values.repeat && values.backup !== values.repeat &&
         <Text accessibilityLiveRegion="polite" style={s.error}>The backup passwords do not match.</Text>}
       {feedback}

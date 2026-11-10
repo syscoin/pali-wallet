@@ -4,9 +4,11 @@ import { getSLHDSAKeyId } from '../../../../source/utils/slhDsa/constants.ts';
 import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
 import { decodeStorageValue } from '../storage/json.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
-import { createNativePinVault, isNativePin, type NativePinCredentialPort } from './pinVault.ts';
+import { createNativePinVault, isNativePin, settleNativePinRemoval, snapshotAfterNativePinCredentialCleanup, type NativePinCredentialPort, type NativePinRecord } from './pinVault.ts';
+import { createNativePublicSessionRecord, type NativePublicSessionRecord } from './publicSession.ts';
+import { readNativeSlhPublicStates } from '../smartAccount/slhDsaRuntime.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
-import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type RecoveryWritePlan } from '../storage/types.ts';
+import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type RecoveryWritePlan, type RecoveryRoot } from '../storage/types.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { readSentrySlot, sentrySlotNetwork } from '../storage/sentryKeyDomain.ts';
 import { inspectRecoveryInventory } from './recoveryInventory.ts';
@@ -15,7 +17,7 @@ import { recoveryVerificationRecords,
   sentryRootPublicIdentity,
   WALLET_CATALOGUE_KEY,
   type NativeAccountRecord } from './walletCatalogue.ts';
-import { stageAccountRecovery } from '../../../../source/wallet/accountRecovery.ts';
+import { stageAccountRecovery, type StagedAccountRecovery } from '../../../../source/wallet/accountRecovery.ts';
 import { createPrivateVaultSession } from '../../../../source/wallet/privateVaultInspection.ts';
 import { createSentryKeyVault, sentryKeyVaultStorageKey } from '../../../../source/wallet/sentryKeyVault.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
@@ -28,7 +30,7 @@ export class RecoveryError extends Error {
 }
 declare const proofBrand: unique symbol;
 export type RecoveryProof = Readonly<{ [proofBrand]: true }>;
-type Ready = { proof: RecoveryProof; storage: OpenWalletStorage; plan: RecoveryWritePlan; before: RecoveryStorageSnapshot; after: RecoveryStorageSnapshot; generation: number; deadline: number; guard: () => void };
+type Ready = { proof: RecoveryProof; storage: OpenWalletStorage; plan: RecoveryWritePlan | null; before: RecoveryStorageSnapshot; after: RecoveryStorageSnapshot | null; generation: number; deadline: number; guard: () => void; secret: string; stagedPin: NativePinRecord | null; candidate: (StagedAccountRecovery['pair'] & { accountRecords: NativeAccountRecord; publicSession: NativePublicSessionRecord }) | null; root: RecoveryRoot; fingerprint: string };
 type Dependencies = Readonly<{
   pinCredential: NativePinCredentialPort | null;
   owner: Pick<NativeCustodyAuthority, 'getSnapshot' | 'retireForRecovery'>;
@@ -133,7 +135,7 @@ export class NativeRecoveryCoordinator {
   }
   private clearTimer() { if (this.timer) clearTimeout(this.timer); this.timer = null; }
 
-  prepare(phrase: string, password: string, assertCurrent: () => void): Promise<RecoveryProof> {
+  prepare(phrase: string, assertCurrent: () => void): Promise<RecoveryProof> {
     if (this.admitting || this.pending || this.ready || this.closing) return Promise.reject(new RecoveryError('BUSY'));
     this.admitting = true;
     const reject = (code: RecoveryErrorCode) => { this.admitting = false; return Promise.reject(new RecoveryError(code)); };
@@ -143,7 +145,7 @@ export class NativeRecoveryCoordinator {
       if (this.disposed || this.completed || this.unavailable || (this.retired && this.ownedPair === null) || (!this.retired && owner.phase !== 'locked')) return reject('NOT_READY');
     } catch { return reject('UNAVAILABLE'); }
     if (typeof phrase !== 'string' || !phrase.isWellFormed() || phrase.length > 4096 ||
-        !isNativePin(password) || typeof assertCurrent !== 'function')
+        typeof assertCurrent !== 'function')
       return reject('INVALID_INPUT');
     const normalized = phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ');
     const generation = ++this.generation;
@@ -168,6 +170,7 @@ export class NativeRecoveryCoordinator {
         }
         check(); await this.dependencies.ensureCryptoReady(); check();
         storage ??= await this.dependencies.openStorage(); check();
+        await settleNativePinRemoval(storage, this.dependencies.pinCredential); check();
         const port = storage.recovery;
         if (!port?.prepareReplacement || !port.plannedSnapshot || !port.commitReplacement || !port.recordFailureForPair || !port.fingerprintPair || !this.dependencies.pinCredential) return fail('UNAVAILABLE');
         const pinVault = createNativePinVault(storage.pin, this.dependencies.pinCredential);
@@ -181,6 +184,7 @@ export class NativeRecoveryCoordinator {
         const records = recoveryVerificationRecords(decodeAccountRecord(catalogueValue), before.identity.walletBindingId);
         const expectedRoot = records.groups.find((group) => group.activeNetwork.slip44 === 60
         )!.accounts.HDAccount[0]!;
+        let publicSession: NativePublicSessionRecord | undefined;
         const staged = await stageAccountRecovery(
           {
             groups: records.groups,
@@ -190,6 +194,7 @@ export class NativeRecoveryCoordinator {
           },
           {
             assertCurrent: check,
+            fingerprintPair: pair => port.fingerprintPair!(pair),
             loadSdk: async () => sdk,
             captureSession: (keyring) => {
               this.stage = keyring;
@@ -206,7 +211,7 @@ export class NativeRecoveryCoordinator {
         }
               if (before.identity!.root && JSON.stringify(before.identity!.root) !== JSON.stringify(actual)) return fail('INVALID_SAVED_DATA');
           },
-            validateRetained: async ({ keyring, profileId }) => {
+            validateRetained: async ({ keyring, profileId, staged }) => {
               try { await authenticateSentryBuckets(before.records, records, normalized, check); }
               catch { check(); return fail('INVALID_SAVED_DATA'); }
               for (const row of before.records) {
@@ -252,6 +257,14 @@ export class NativeRecoveryCoordinator {
             catch { check(); return fail('INVALID_SAVED_DATA'); }
           }
         }
+              const nextRecords = replaceRecoveredAccountRecords(decodeAccountRecord(catalogueValue), before.identity!.walletBindingId, staged.groups);
+              const pairFingerprint = await port.fingerprintPair!(staged.pair); check();
+              const publicStates = await readNativeSlhPublicStates(before.records.filter(row => parseSLHDSAStateStorageKey(row.key) !== null)
+                .map(row => ({ key: row.key, value: decodeStorageValue(row.value) })), keyring, check);
+              publicSession = await createNativePublicSessionRecord(keyring, nextRecords, {
+                ...before.identity!, pairFingerprint, root: { address: expectedRoot.address, publicKey: expectedRoot.xpub.toLowerCase(), profileId },
+              }, publicStates, check);
+              check();
             },
           }
         );
@@ -267,12 +280,10 @@ export class NativeRecoveryCoordinator {
           staged.groups
         );
         const fingerprint = await port.fingerprintPair(staged.pair); check();
-        const pin = await pinVault.stage(password, { walletBindingId: before.identity.walletBindingId, pairFingerprint: fingerprint }, secret, check);
-        const plan = await port.prepareReplacement(before,
-          { ...staged.pair, accountRecords, pin }, root); check();
-        const after = port.plannedSnapshot(plan);
+        if (!publicSession) return fail('INVALID_SAVED_DATA');
         const proof = Object.freeze({}) as RecoveryProof;
-        const ready: Ready = { proof, storage, plan, before, after, generation, deadline, guard: assertCurrent };
+        const ready: Ready = { proof, storage, plan: null, before, after: null, generation, deadline, guard: assertCurrent,
+          secret, stagedPin: null, candidate: { ...staged.pair, accountRecords, publicSession }, root, fingerprint };
         const remaining = Math.max(1, deadline - this.now());
         this.ready = ready; this.proofs.set(proof, ready); storage = undefined;
         this.timer = setTimeout(() => { if (this.ready?.generation === generation) this.cancel(); }, remaining);
@@ -307,9 +318,36 @@ export class NativeRecoveryCoordinator {
     return task;
   }
 
+  /** The phrase and retained wallet are verified before any replacement PIN is requested. */
+  setPin(proof: unknown, pin: string): Promise<void> {
+    const ready = proof && typeof proof === 'object' ? this.proofs.get(proof as RecoveryProof) : undefined;
+    if (!ready || this.ready !== ready || this.pending || ready.plan || !ready.candidate || !ready.secret)
+      return Promise.reject(new RecoveryError('STATE_CHANGED'));
+    if (!isNativePin(pin)) return Promise.reject(new RecoveryError('INVALID_INPUT'));
+    const check = () => this.check(ready.generation, ready.deadline, ready.guard);
+    const task = Promise.resolve().then(async () => {
+      check();
+      const pinVault = createNativePinVault(ready.storage.pin, this.dependencies.pinCredential!);
+      const record = await pinVault.stage(pin, { walletBindingId: ready.before.identity!.walletBindingId,
+        pairFingerprint: ready.fingerprint }, ready.secret, check);
+      ready.stagedPin = record;
+      check();
+      const plan = await ready.storage.recovery!.prepareReplacement!(ready.before,
+        { ...ready.candidate!, pin: record }, ready.root);
+      check();
+      ready.after = ready.storage.recovery!.plannedSnapshot!(plan);
+      ready.plan = plan;
+      ready.secret = '';
+      ready.candidate = null;
+    });
+    this.pending = task;
+    void task.finally(() => { if (this.pending === task) this.pending = null; }).catch(() => undefined);
+    return task;
+  }
+
   commit(proof: unknown): Promise<'committed-locked'> {
     const ready = proof && typeof proof === 'object' ? this.proofs.get(proof as RecoveryProof) : undefined;
-    if (!ready || this.ready !== ready || this.pending) return Promise.reject(new RecoveryError('STATE_CHANGED'));
+    if (!ready || this.ready !== ready || this.pending || !ready.plan || !ready.after) return Promise.reject(new RecoveryError('STATE_CHANGED'));
     this.proofs.delete(ready.proof); this.ready = null; this.clearTimer();
     const check = () => this.check(ready.generation, ready.deadline, ready.guard);
     const task = Promise.resolve().then(async () => {
@@ -318,11 +356,13 @@ export class NativeRecoveryCoordinator {
         try { check(); await ready.storage.recovery!.commitReplacement!(ready.plan, check); } catch (cause) { error = cause; }
         await this.close(ready.storage);
         reopened = await this.dependencies.openStorage();
+        await settleNativePinRemoval(reopened, this.dependencies.pinCredential);
         const actual = await reopened.recovery!.readSnapshot();
-        const committed = sameRecoverySnapshot(actual, ready.after), unchanged = sameRecoverySnapshot(actual, ready.before);
+        const committed = sameRecoverySnapshot(actual, snapshotAfterNativePinCredentialCleanup(ready.after!)), unchanged = sameRecoverySnapshot(actual, ready.before);
         await this.close(reopened); reopened = undefined;
         reconciled = true;
         if (committed) this.completed = true;
+        if (unchanged && ready.stagedPin) await this.dependencies.pinCredential!.remove(ready.stagedPin);
         check();
         if (committed) return 'committed-locked' as const;
         if (unchanged) throw error ?? new RecoveryError('UNAVAILABLE');
@@ -339,9 +379,13 @@ export class NativeRecoveryCoordinator {
     void this.stage?.lockWallet().catch(() => { this.unavailable = true; });
     const ready = this.ready; this.ready = null;
     const storage = ready?.storage ?? this.retryStorage; this.retryStorage = null;
-    if (ready) this.proofs.delete(ready.proof);
+    if (ready) { this.proofs.delete(ready.proof); ready.secret = ''; ready.candidate = null; }
     if (storage) {
-      const closing = this.close(storage); this.closing = closing;
+      const closing = Promise.resolve(this.pending).catch(() => undefined).then(async () => {
+        try { if (ready?.stagedPin) await this.dependencies.pinCredential!.remove(ready.stagedPin); }
+        finally { await this.close(storage); }
+      }).catch(() => { this.unavailable = true; return fail('REOPEN_REQUIRED'); });
+      this.closing = closing;
       void closing.finally(() => { if (this.closing === closing) this.closing = null; }).catch(() => undefined);
     }
   }

@@ -1,4 +1,5 @@
 import { decodeApprovalData } from '../shared/approval';
+import { decodeAssetTransfer } from '../shared/assetTransfer';
 import { IDecodedTx, ITransactionParams } from 'types/transactions';
 import { defaultAbiCoder, Interface } from 'utils/ethersV6Compat';
 import { retryableFetch } from 'utils/retryableFetch';
@@ -324,6 +325,9 @@ export const decodeTransactionData = async (
           standardVerified: approvalInfo.standardVerified,
         };
       }
+
+      const transfer = decodeAssetTransfer(validatedData, params.to);
+      if (transfer) return transfer.decoded;
 
       // Continue with existing decoding logic
       const decoder = await erc20DataDecoder(controller);

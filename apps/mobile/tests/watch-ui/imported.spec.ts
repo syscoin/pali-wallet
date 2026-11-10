@@ -1,5 +1,6 @@
 import { enterPin, pinField, fillPinField } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
+import { nativeAccountName, watchAccountName } from '../accountControlNames';
 import { BITCOIN_BIP84_ADDRESS, BITCOIN_BIP84_KEY, BITCOIN_WIF_ADDRESS, BITCOIN_WIF_KEY } from '../native-watch-ui/utxoImportVectors';
 
 const KEY = `0x${'1'.padStart(64, '0')}`;
@@ -271,7 +272,7 @@ for (const departure of ['back', 'background', 'inactive', 'blur', 'new-unlock']
 test('imported removal requires its own backup warning and reimport reuses the SDK slot', async ({ page }) => {
   await openWallet(page); await openImport(page); await preview(page); await submit(page); await imported(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: 'Select Account 1 (wallet)', exact: true }).click();
+  await page.getByRole('button', { name: nativeAccountName('Account 1', 'Recovery phrase account', HD_ADDRESS) }).click();
   await manage(page);
   const card = page.locator('div').filter({ has: page.getByRole('button', { name: `Select ${NAME}`, exact: true }) }).filter({ has: page.getByRole('button', { name: 'Remove', exact: true }) }).last();
   await card.getByRole('button', { name: 'Remove', exact: true }).click();
@@ -300,8 +301,8 @@ test('a shared-address watch remains public and separate from its imported key a
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Security|private key|recovery phrase/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Select Imported address watch (watch-only)', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: `Select ${NAME} (wallet)`, exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: watchAccountName('Select', 'Imported address watch', 'Ethereum', ADDRESS) })).toBeVisible();
+  await expect(page.getByRole('button', { name: nativeAccountName(NAME, 'Imported key', ADDRESS) })).toHaveCount(0);
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click(); await unlock(page);
   await expect(page.getByText(`${NAME} · Ethereum`, { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.accounts().some((account) => account.name === 'Imported address watch'))).toBe(true);

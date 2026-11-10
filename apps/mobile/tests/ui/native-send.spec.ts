@@ -177,7 +177,7 @@ test('cancellation shows the original and maximum fee before one explicit approv
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
   await page.getByRole('button', { name: 'Submit cancellation' }).click();
   await authenticateNativeOperation(page);
-  await expect(page.getByText('Transaction submitted', { exact: true })).toBeVisible();
+  await expect(page.getByText('Cancellation submitted', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
 });
 
@@ -202,7 +202,7 @@ test('Speed Up shows the original and reviewed fee before one explicit approval'
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
   await page.getByRole('button', { name: 'Submit Speed Up' }).click();
   await authenticateNativeOperation(page);
-  await expect(page.getByText('Transaction submitted', { exact: true })).toBeVisible();
+  await expect(page.getByText('Replacement submitted', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
 });
 

@@ -30,6 +30,8 @@ export function createExtensionSentryNodeManagement<
   return createSentryNodeManagement({
     assertCurrent: (scope: Scope) => host.assertCurrent(scope),
     authenticate: async (_scope, password, check) => {
+      if (typeof password !== 'string')
+        throw new Error('Password authentication is required');
       check();
       await host.authenticate(password);
       check();

@@ -258,6 +258,7 @@ export async function qualifyNativeErc20Transfer(
     return saved;
   };
   const wrapped: NativeTransferRuntime = {
+    isAuthenticationRefusal: (error) => transfer.isAuthenticationRefusal(error),
     authenticateOperation: (...args) => transfer.authenticateOperation(...args),
     authorizeOperation: (...args) => transfer.authorizeOperation(...args),
     releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),

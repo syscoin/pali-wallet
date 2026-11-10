@@ -1,13 +1,77 @@
 import { webcrypto } from 'crypto';
 
 import { SENTRY_NETWORKS } from '../shared/sentryNetworks';
+import { HOST_WALLET_AUTHENTICATION } from '../shared/walletAuthentication';
 
-import type { SentryOperationHost } from './sentryApprovalHost';
+import {
+  consumeSentrySigningMaterial,
+  sentryAuthorityRequestId,
+  withPasswordSentrySigningMaterial,
+  type SentryOperationHost,
+  type SentrySigningMaterial,
+} from './sentryApprovalHost';
 import type { SentryApprovalScope } from './sentryApprovalTypes';
 import type { RunSentryCrypto } from './sentryCryptoJobs';
 import { SharedSentryOperationApprovals } from './sentryOperationApprovals';
 import { SharedSentryVoteApprovals } from './sentryVoteApprovals';
 
+it('scoped signing material rejects unrequested resolution and clears retained secret references', async () => {
+  const authority = {
+    address: 'registered-authority',
+    purpose: 'management' as const,
+  };
+  const secret = { scheme: 'ecdsa' as const, secretKey: 'private-fixture-key' };
+  let retained: SentrySigningMaterial | undefined;
+  let live = true;
+  const request = {
+    authentication: HOST_WALLET_AUTHENTICATION,
+    scope: {
+      identity: 'fixture',
+      rootPublicIdentity: 'fixture',
+      network: { chainId: 57, url: 'https://fixture.invalid' },
+    },
+    walletAuthorities: [authority],
+    signal: new AbortController().signal,
+    assertCurrent() {
+      if (!live) throw Error('retired');
+    },
+  };
+  await consumeSentrySigningMaterial(
+    request,
+    'fixture-seed',
+    new Map([[sentryAuthorityRequestId(authority), secret]]),
+    async (material) => {
+      retained = material;
+      expect(material.seed).toBe('fixture-seed');
+      expect(material.resolveWalletAuthority(authority)).toBe(secret);
+      expect(() =>
+        material.resolveWalletAuthority({ ...authority, address: 'other' })
+      ).toThrow('Unrequested');
+    }
+  );
+  expect(secret.secretKey).toBe('');
+  expect(() => retained!.seed).toThrow('cancelled');
+  expect(() => retained!.resolveWalletAuthority(authority)).toThrow(
+    'cancelled'
+  );
+  const read = jest.fn();
+  await expect(
+    withPasswordSentrySigningMaterial(request, async () => undefined, {
+      getSeed: read,
+      resolveWalletAuthority: read,
+    })
+  ).rejects.toThrow('Password authentication');
+  expect(read).not.toHaveBeenCalled();
+  live = false;
+  await expect(
+    consumeSentrySigningMaterial(
+      request,
+      'fixture-seed',
+      new Map(),
+      async () => undefined
+    )
+  ).rejects.toThrow('retired');
+});
 jest.mock('syscoinjs-lib', () => ({
   utils: {
     bitcoinjs: {
@@ -127,7 +191,7 @@ function fixture() {
   });
   const loadKey = jest.fn(async ({ id, assertCurrent }) => {
     assertCurrent();
-    return id === 'voting' ? votingKey : operatorKey;
+    return { ...(id === 'voting' ? votingKey : operatorKey) };
   });
   const getSeed = jest.fn(async (password, owner, guard) => {
     expect(password).toBe('password');
@@ -180,10 +244,14 @@ function fixture() {
         proposal: { name: 'Verified proposal' },
       });
     },
-    getSeed,
+    withSigningMaterial: (request, work) =>
+      withPasswordSentrySigningMaterial(request, work, {
+        getSeed: (password) =>
+          getSeed(password, request.scope, request.assertCurrent),
+        resolveWalletAuthority: async () => undefined,
+      }),
     loadKey,
     hasWalletAuthority: async () => false,
-    resolveWalletAuthority: async () => undefined,
     runCrypto: runCrypto as RunSentryCrypto,
     runExclusive<T>(operation: () => Promise<T>) {
       const result = tail.then(operation);

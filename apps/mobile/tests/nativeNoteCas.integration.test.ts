@@ -137,6 +137,7 @@ test('real SDK note restore revokes a locked write, consumes an uncertain commit
         {
           captureSession,
           async authenticate(password, session, operation) {
+            assert(typeof password === 'string');
             session.assertCurrent();
             assert.equal(session.keyring, currentRing);
             await currentStorage.authGuard.checkAllowed();

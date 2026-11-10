@@ -6,6 +6,8 @@ import type { NativePrivateAuthenticationScope } from '../../src/custody/private
 import { NativeNoteInventory } from '../../src/screens/NativeNoteInventory';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import { Text } from '../../src/ui';
+import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 
 // Public presentation only. No note secret, proof worker, network or signer.
 type Snapshot = ReturnType<View['getSnapshot']>;
@@ -238,14 +240,16 @@ export function NativePrivateWithdrawalFixture() {
                 },
               });
             },
-            async reviewRestored(password) {
+            async reviewRestored() {
+              check();
+              await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'private-reconciliation', biometricsEnabled: false },
+                signal, check, async (credential, guard) => {
+                  guard();
+                  return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
+                });
               check();
               events.push('restore:review');
-              publish(
-                password === '123456'
-                  ? { restored: false, error: null }
-                  : { error: 'restored' }
-              );
+              publish({ restored: false, error: null });
             },
             async dispose() {
               if (!disposed) {
@@ -273,10 +277,10 @@ export function NativePrivateWithdrawalFixture() {
   );
   if (closed) return <Text>Private notes</Text>;
   return (
-    <NativeNoteInventory
+    <><NativeNoteInventory
       readInventory={readInventory}
       onBack={() => setClosed(true)}
       onLock={() => setClosed(true)}
-    />
+    /><NativeOperationAuthentication isProtectedPromptActive={() => false} /></>
   );
 }

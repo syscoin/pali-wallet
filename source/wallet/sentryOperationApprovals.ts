@@ -16,6 +16,7 @@ import {
   SentryFeeAuthorizations,
   type SentryFeeReview,
 } from './sentryFeeAuthorizations.ts';
+import type { WalletAuthentication } from '../shared/walletAuthentication.ts';
 import type {
   SentryOperationRequest,
   SentryManagementRequest,
@@ -383,7 +384,7 @@ export class SharedSentryOperationApprovals {
     authorizationId?: SentryRequiredAuthorization['id'];
     id: string;
     keyId: string;
-    password: string;
+    password: WalletAuthentication;
   }) {
     const pending = this.pending(params.id);
     if (pending.signing)
@@ -397,12 +398,6 @@ export class SharedSentryOperationApprovals {
       return await this.host.runExclusive(async () => {
         assertPending();
         const { scope, publicApproval, lifetime } = pending;
-        const seed = await this.host.getSeed(
-          params.password,
-          scope,
-          assertPending
-        );
-        assertPending();
         const fresh = await this.context(
           scope,
           publicApproval.request,
@@ -424,117 +419,158 @@ export class SharedSentryOperationApprovals {
           )
         )
           throw new Error('Select the registered operator key');
-        let key: SentryAuthorityKey;
-        if (
+        const selectedAuthority =
           params.keyId.startsWith('wallet-') &&
           'authorizations' in publicApproval.review
-        ) {
-          const auth = publicApproval.review.authorizations.find(
-            (candidate) =>
-              candidate.id === params.authorizationId &&
-              candidate.scheme === 'secp256k1'
-          );
-          if (!auth) throw new Error('Invalid wallet authority selection');
-          const address = syscoinUtils.bitcoinjs.address.toBase58Check(
-            Buffer.from(auth.keyIdentity, 'hex'),
-            SENTRY_NETWORKS[publicApproval.network].encoding.pubKeyHash
-          );
-          const secret = await this.host.resolveWalletAuthority(
-            { address, password: params.password },
-            scope
-          );
-          if (!secret)
-            throw new Error(
-              'Selected wallet has no private Sentry authority key'
-            );
-          key = await this.host.runCrypto<SentryAuthorityKey>(
-            {
-              type: 'import',
-              role: auth.role,
-              scheme: 'secp256k1',
-              secretKey: secret.secretKey,
-            },
-            assertPending
-          );
-        } else
-          key = await this.host.loadKey({
-            scope,
-            network: publicApproval.network,
-            id: params.keyId,
-            seed,
-            assertCurrent: assertPending,
-          });
-        assertPending();
-        if (publicApproval.request.operation === 'register') {
-          const sdk = await loadSdk();
-          const registration = sdk.inspectSentryManagementOperation(
-            publicApproval.request
-          ).collateral;
-          if (!registration)
-            throw new Error('Missing verified registration collateral');
-          await this.host.reserveCollateral(
-            scope,
-            {
-              admission: pending.admission,
-              reservation: { ...registration, pendingRegistration: true },
-            },
-            assertPending
-          );
-        }
+            ? publicApproval.review.authorizations.find(
+                (candidate) =>
+                  candidate.id === params.authorizationId &&
+                  candidate.scheme === 'secp256k1'
+              )
+            : undefined;
+        const walletAuthorities = selectedAuthority
+          ? [
+              {
+                address: syscoinUtils.bitcoinjs.address.toBase58Check(
+                  Buffer.from(selectedAuthority.keyIdentity, 'hex'),
+                  SENTRY_NETWORKS[publicApproval.network].encoding.pubKeyHash
+                ),
+                purpose: 'management' as const,
+              },
+            ]
+          : [];
         const collateral = pending.context.node?.collateralOutpoint;
-        // Importing an operator key does not import or prove ownership of collateral.
-        // A separate account may own it; authorization must not depend on this check.
-        if (collateral && (await this.host.ownsCollateral(collateral, scope))) {
-          assertPending();
-          await this.host.reserveCollateral(
+        const ownsCollateral =
+          !!collateral && (await this.host.ownsCollateral(collateral, scope));
+        assertPending();
+        const signed = await this.host.withSigningMaterial(
+          {
+            authentication: params.password,
             scope,
-            {
-              admission: pending.admission,
-              reservation: {
-                ...collateral,
-                proTxHash: publicApproval.review.proTxHash!,
-              },
-            },
-            assertPending
-          );
-        }
-        const response = await this.host.runCrypto<
-          SentryOperationResponse | SentryManagementResponse
-        >(
-          publicApproval.request.operation === 'updateService'
-            ? {
-                type: 'sign',
-                request: publicApproval.request,
-                context: pending.context as SentryReviewContext,
-                key,
+            walletAuthorities,
+            signal: lifetime.signal,
+            assertCurrent: assertPending,
+          },
+          async (material) => {
+            let key: SentryAuthorityKey | undefined;
+            try {
+              if (
+                params.keyId.startsWith('wallet-') &&
+                'authorizations' in publicApproval.review
+              ) {
+                const auth = publicApproval.review.authorizations.find(
+                  (candidate) =>
+                    candidate.id === params.authorizationId &&
+                    candidate.scheme === 'secp256k1'
+                );
+                if (!auth)
+                  throw new Error('Invalid wallet authority selection');
+                const address = syscoinUtils.bitcoinjs.address.toBase58Check(
+                  Buffer.from(auth.keyIdentity, 'hex'),
+                  SENTRY_NETWORKS[publicApproval.network].encoding.pubKeyHash
+                );
+                const secret = material.resolveWalletAuthority({
+                  address,
+                  purpose: 'management',
+                });
+                if (!secret)
+                  throw new Error(
+                    'Selected wallet has no private Sentry authority key'
+                  );
+                key = await this.host.runCrypto<SentryAuthorityKey>(
+                  {
+                    type: 'import',
+                    role: auth.role,
+                    scheme: 'secp256k1',
+                    secretKey: secret.secretKey,
+                  },
+                  assertPending
+                );
+              } else
+                key = await this.host.loadKey({
+                  scope,
+                  network: publicApproval.network,
+                  id: params.keyId,
+                  seed: material.seed,
+                  assertCurrent: assertPending,
+                });
+              assertPending();
+              if (publicApproval.request.operation === 'register') {
+                const sdk = await loadSdk();
+                const registration = sdk.inspectSentryManagementOperation(
+                  publicApproval.request
+                ).collateral;
+                if (!registration)
+                  throw new Error('Missing verified registration collateral');
+                await this.host.reserveCollateral(
+                  scope,
+                  {
+                    admission: pending.admission,
+                    reservation: { ...registration, pendingRegistration: true },
+                  },
+                  assertPending
+                );
               }
-            : {
-                type: 'signManagement',
-                request: publicApproval.request,
-                context: pending.context,
-                key,
-                authorizationId: params.authorizationId!,
-              },
-          assertPending
+              // Importing an operator key does not import or prove ownership of collateral.
+              // A separate account may own it; authorization must not depend on this check.
+              if (collateral && ownsCollateral) {
+                assertPending();
+                await this.host.reserveCollateral(
+                  scope,
+                  {
+                    admission: pending.admission,
+                    reservation: {
+                      ...collateral,
+                      proTxHash: publicApproval.review.proTxHash!,
+                    },
+                  },
+                  assertPending
+                );
+              }
+              const response = await this.host.runCrypto<
+                SentryOperationResponse | SentryManagementResponse
+              >(
+                publicApproval.request.operation === 'updateService'
+                  ? {
+                      type: 'sign',
+                      request: publicApproval.request,
+                      context: pending.context as SentryReviewContext,
+                      key,
+                    }
+                  : {
+                      type: 'signManagement',
+                      request: publicApproval.request,
+                      context: pending.context,
+                      key,
+                      authorizationId: params.authorizationId!,
+                    },
+                assertPending
+              );
+              assertPending();
+              if (
+                response.operation === 'updateService' ||
+                ('complete' in response && response.complete)
+              )
+                this.feeAuthorizations.remember({
+                  parentId: params.id,
+                  context: pending.context,
+                  origin: publicApproval.origin,
+                  request: {
+                    ...publicApproval.request,
+                    transactionHex: response.transactionHex,
+                  },
+                  scope,
+                  serviceUrl: publicApproval.serviceUrl,
+                });
+              return response;
+            } finally {
+              if (key) key.secretKey = '';
+            }
+          }
         );
         assertPending();
-        if (
-          response.operation === 'updateService' ||
-          ('complete' in response && response.complete)
-        )
-          this.feeAuthorizations.remember({
-            parentId: params.id,
-            context: pending.context,
-            origin: publicApproval.origin,
-            request: {
-              ...publicApproval.request,
-              transactionHex: response.transactionHex,
-            },
-            scope,
-            serviceUrl: publicApproval.serviceUrl,
-          });
         this.approvals.delete(params.id);
-        return response;
+        return signed;
       });
     } finally {
       pending.signing = false;

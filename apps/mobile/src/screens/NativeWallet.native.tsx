@@ -1079,15 +1079,26 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       <Button title="Forgot PIN?" variant="secondary" disabled={busy} onPress={openRecovery} />
     </>} />;
   if (stage === 'change-pin' && snapshot.phase === 'ready') return <PinEntryScreen title="Enter your current PIN"
-    onBack={closeStage} onComplete={entered => { setPin(entered); setStage('change-pin-new'); }} />;
+    busy={busy} error={error} resetKey={error} onBack={closeStage}
+    onComplete={entered => { setError(''); setPin(entered); setStage('change-pin-new'); }} />;
   if (stage === 'change-pin-new' && snapshot.phase === 'ready') return <PinSetup biometrics={biometrics} title="Create a new PIN" offerBiometrics={false}
     busy={busy} error={error} onBack={() => { setPin(''); setStage('change-pin'); }} onComplete={next => {
       const currentPin = pin;
       void perform(async local => {
         const captured = epoch.current;
-        await local.authority.changePin(currentPin, next, () => {
-          if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
-        }); clearSecrets(); setStage('security');
+        try {
+          await local.authority.changePin(currentPin, next, () => {
+            if (!mounted.current || controllersRef.current !== local || epoch.current !== captured || AppState.currentState !== 'active') throw new Error('CANCELLED');
+          });
+        } catch (cause) {
+          if (mounted.current && controllersRef.current === local && epoch.current === captured && AppState.currentState === 'active' &&
+              local.authority.getSnapshot().phase === 'ready' && cause instanceof Error &&
+              (cause.message === 'INVALID_CREDENTIAL' || cause.message === 'AUTH_THROTTLED')) {
+            setPin(''); setStage('change-pin');
+          }
+          throw cause;
+        }
+        clearSecrets(); setStage('security');
       });
     }} />;
   if (snapshot.phase === 'empty' && (stage === 'import' || stage === 'import-security' && !phrase))

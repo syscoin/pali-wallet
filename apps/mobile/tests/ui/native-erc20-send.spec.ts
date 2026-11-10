@@ -107,6 +107,7 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
   await page.goto('/?erc20-send');
   await prepare(page);
   await expect(page.getByTestId('native-send-amount')).toHaveText('2.5');
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
@@ -140,6 +141,7 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
     window.__erc20SendFixture.acceptBroadcasts();
   });
   await expect(page.getByTestId('native-send-amount')).toHaveText('2.5');
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
@@ -204,7 +206,7 @@ test('a fresh token send reserves the pending debit and queues an affordable tra
   const firstHash = await hash.textContent();
   expect(firstHash).toBeTruthy();
   const firstJournal = await page.evaluate(() => window.__erc20SendFixture.journal());
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to wallet', exact: true }).click();
   const callsBefore = await page.evaluate(() => {
     window.__erc20SendFixture.acceptPendingNonce();
     return window.__erc20SendFixture.rpcMethods();
@@ -365,12 +367,13 @@ test('narrow ERC20 review retains full identities, exact amount and reachable co
   await expect(page.getByTestId('native-send-amount')).toHaveText(
     '90071992547409.93'
   );
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
   await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   const reviewOrder = await page.evaluate(() =>
-    ['recipient', 'fee', 'token-contract', 'confirm'].map((field) =>
+    ['recipient', 'fee', 'token-contract'].map((field) =>
       document.querySelector(`[data-testid="native-send-${field}"]`)!.getBoundingClientRect().top
     )
   );

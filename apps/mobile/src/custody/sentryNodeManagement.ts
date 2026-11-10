@@ -1,4 +1,5 @@
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
+import { HOST_WALLET_AUTHENTICATION, isHostWalletAuthentication } from '../../../../source/shared/walletAuthentication.ts';
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { readSentryServiceSettings } from '../../../../source/shared/sentrySettings.ts';
 import {
@@ -102,7 +103,8 @@ export function createNativeSentryCollateral(ports: CollateralPorts) {
 
 type NodePorts = CollateralPorts &
   Readonly<{
-    authenticate(password: string, check: () => void): Promise<void>;
+    authenticate(check: () => void): Promise<void>;
+    isAuthenticating(): boolean;
     fetch: typeof globalThis.fetch;
     lifetime: AbortSignal;
     readSettings(): Promise<unknown>;
@@ -163,8 +165,10 @@ export function createNativeSentryNodeManagement(ports: NodePorts) {
         reservation: { ...node.collateralOutpoint, proTxHash: node.proTxHash },
         linkedNode: node,
       }),
-    authenticate: (_scope, password, assertCurrent) =>
-      ports.authenticate(password, assertCurrent),
+    authenticate: (_scope, password, assertCurrent) => {
+      if (!isHostWalletAuthentication(password)) throw new Error('Native authentication is required');
+      return ports.authenticate(assertCurrent);
+    },
     releaseCollateral: (_scope, _network, reservation, assertCurrent) =>
       collateral.registry.releaseSentryCollateral({
         ...collateral.scope,
@@ -182,6 +186,7 @@ export function createNativeSentryNodeManagement(ports: NodePorts) {
   };
   ports.lifetime.addEventListener('abort', dispose, { once: true });
   return Object.freeze({
+    isAuthenticating: ports.isAuthenticating,
     list: () => ports.run(() => manager.list()),
     prepareLink: (request: unknown, origin: string) =>
       ports.run(() => manager.prepareLink(request, origin)),
@@ -190,10 +195,9 @@ export function createNativeSentryNodeManagement(ports: NodePorts) {
     releaseCollateral: (
       params: Readonly<{
         reservation: SentryCollateralReservation;
-        password: string;
         acknowledgeNodeStops: true;
       }>
-    ) => manager.releaseCollateral(params),
+    ) => manager.releaseCollateral({ ...params, password: HOST_WALLET_AUTHENTICATION }),
     dispose,
   });
 }

@@ -4,11 +4,11 @@ import type { NativeRecoveryCoordinator, RecoveryProof } from './recovery.ts';
 
 export type RecoveryOutcome = Readonly<{ kind: 'success' | 'cancelled' | 'expired' | 'failed' | 'uncertain'; operationPhase: 'inventory' | 'prepare' | 'review' | 'commit'; code: string; message: string; cleanupFailed?: boolean }>;
 export type RecoveryFlowSnapshot = Readonly<{
-  phase: 'reading' | 'scope' | 'entry' | 'verifying' | 'review' | 'committing' | 'reopening' | 'closed' | 'blocked';
+  phase: 'reading' | 'scope' | 'entry' | 'verifying' | 'review' | 'pin' | 'committing' | 'reopening' | 'closed' | 'blocked';
   inventory: RecoveryInventory | null; error: string;
   fieldErrors: Readonly<{ phrase?: string; pin?: string }>;
 }>;
-type Coordinator = Pick<NativeRecoveryCoordinator, 'prepare' | 'commit' | 'cancel'>;
+type Coordinator = Pick<NativeRecoveryCoordinator, 'prepare' | 'setPin' | 'commit' | 'cancel'>;
 const SAVED = 'Your saved wallet could not be verified for this recovery. Nothing has been reset.';
 const UNCERTAIN = 'We could not confirm the PIN change. It may have completed. Unlock with your new PIN first; if it does not work, try your previous unlock method.';
 const UNAVAILABLE = 'Recovery could not be completed. Your saved wallet was not reset. Close and reopen Pali before trying again.';
@@ -63,12 +63,11 @@ export class NativeRecoveryFlow {
     if (!this.ended && !this.working && this.state.phase === 'entry' && !this.coordinator) this.publish({ phase: 'scope', error: '', fieldErrors: Object.freeze({}) });
     else this.cancel();
   }
-  submit(input: { phrase: string; pin: string }): boolean {
+  submit(input: { phrase: string }): boolean {
     if (this.ended || this.working || this.state.phase !== 'entry') return false;
     const fieldErrors: { phrase?: string; pin?: string } = {};
     const phrase = typeof input.phrase === 'string' && input.phrase.isWellFormed() ? input.phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ') : '';
     if (!phrase || input.phrase.length > 4096 || ![12, 24].includes(phrase.split(' ').length)) fieldErrors.phrase = 'Enter your 12 or 24 recovery words in order.';
-    if (!isNativePin(input.pin)) fieldErrors.pin = 'Enter a 6-digit PIN.';
     if (Object.keys(fieldErrors).length) { this.publish({ fieldErrors: Object.freeze(fieldErrors), error: '' }); return false; }
     this.working = true; const request = ++this.request;
     try {
@@ -80,14 +79,14 @@ export class NativeRecoveryFlow {
     this.publish({ phase: 'verifying', error: '', fieldErrors: Object.freeze({}) });
     void (async () => {
       try {
-        this.check(request); const proof = await this.coordinator!.prepare(phrase, input.pin, () => this.check(request)); this.check(request);
+        this.check(request); const proof = await this.coordinator!.prepare(phrase, () => this.check(request)); this.check(request);
         this.proof = proof; this.publish({ phase: 'review' });
       } catch (cause) {
         if (this.ended || request !== this.request) return;
         const code = safeCode(cause);
         if (['WRONG_PHRASE', 'AUTH_THROTTLED', 'INVALID_INPUT'].includes(code)) {
           this.clearTimer(); this.deadline = null;
-          this.publish({ phase: 'entry', error: code === 'WRONG_PHRASE' ? 'This recovery phrase does not match this wallet.' : code === 'AUTH_THROTTLED' ? 'Too many unsuccessful attempts. Wait a few minutes before trying again.' : 'Check the recovery phrase and new PIN.' });
+          this.publish({ phase: 'entry', error: code === 'WRONG_PHRASE' ? 'This recovery phrase does not match this wallet.' : code === 'AUTH_THROTTLED' ? 'Too many unsuccessful attempts. Wait a few minutes before trying again.' : 'Check your recovery phrase.' });
         } else if (code === 'CANCELLED' || code === 'EXPIRED') this.cancel(code === 'EXPIRED' ? 'expired' : 'cancelled');
         else this.finish({ kind: 'failed', operationPhase: 'prepare', code, message: ['STATE_CHANGED', 'INVALID_SAVED_DATA'].includes(code) ? SAVED : UNAVAILABLE });
       } finally { this.working = false; }
@@ -97,22 +96,37 @@ export class NativeRecoveryFlow {
   commit(): void {
     if (this.ended || this.working || this.state.phase !== 'review' || !this.proof || !this.coordinator) return;
     try { this.check(this.request); } catch { this.cancel('expired'); return; }
-    this.working = true; const proof = this.proof; this.proof = null;
-    this.publish({ phase: 'committing', error: '' });
+    this.publish({ phase: 'pin', error: '', fieldErrors: Object.freeze({}) });
+  }
+  submitPin(pin: string): boolean {
+    if (this.ended || this.working || this.state.phase !== 'pin' || !this.proof || !this.coordinator) return false;
+    if (!isNativePin(pin)) {
+      this.publish({ fieldErrors: Object.freeze({ pin: 'Enter a 6-digit PIN.' }) });
+      return false;
+    }
+    try { this.check(this.request); } catch { this.cancel('expired'); return false; }
+    this.working = true; const proof = this.proof;
+    this.publish({ phase: 'committing', error: '', fieldErrors: Object.freeze({}) });
+    let dispatched = false;
     void (async () => {
       try {
+        await this.coordinator!.setPin(proof, pin);
+        this.check(this.request);
+        dispatched = true;
         await this.coordinator!.commit(proof);
         this.finish({ kind: 'success', operationPhase: 'commit', code: 'committed-locked', message: 'PIN changed. Unlock with your new PIN.' });
       } catch (cause) {
-        this.finish({ kind: 'uncertain', operationPhase: 'commit', code: safeCode(cause), message: UNCERTAIN });
+        this.finish({ kind: dispatched ? 'uncertain' : 'failed', operationPhase: dispatched ? 'commit' : 'prepare',
+          code: safeCode(cause), message: dispatched ? UNCERTAIN : UNAVAILABLE });
       } finally { this.working = false; }
     })();
+    return true;
   }
   private clearTimer() { if (this.timer) clearTimeout(this.timer); this.timer = null; }
   cancel(reason: 'cancelled' | 'expired' = 'cancelled'): void {
     if (this.ended) return;
     const committing = this.state.phase === 'committing';
-    this.finish({ kind: committing ? 'uncertain' : reason, operationPhase: committing ? 'commit' : this.state.phase === 'review' ? 'review' : this.coordinator ? 'prepare' : 'inventory', code: reason,
+    this.finish({ kind: committing ? 'uncertain' : reason, operationPhase: committing ? 'commit' : ['review', 'pin'].includes(this.state.phase) ? 'review' : this.coordinator ? 'prepare' : 'inventory', code: reason,
       message: committing ? UNCERTAIN : reason === 'expired' ? 'Recovery expired. Start again to verify your wallet.' : 'Recovery was cancelled.' });
   }
   private finish(outcome: RecoveryOutcome) {

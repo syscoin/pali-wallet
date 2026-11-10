@@ -1,7 +1,8 @@
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
-import { PinField } from './PinEntry';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,7 +42,6 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
   const [privateKey, setPrivateKey] = useState('');
   const [utxoAddressType, setUtxoAddressType] = useState<UtxoImportAddressType>('p2wpkh');
   const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
   const [address, setAddress] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -49,11 +49,12 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
   const extended = utxo && isUtxoAccountPrivateKey(privateKey.trim());
   const wifOptions = utxo && !extended ? { utxoAddressType } : {};
   const scope = useRef(Object.freeze({ contextRevision, catalogueRevision }));
-  const lifetime = useRef({ mounted: false, request: 0, working: false });
+  const lifetime = useRef<{ mounted: boolean; request: number; working: boolean; abort: AbortController | null; authentication: NativePrivateAuthenticationScope | null }>({ mounted: false, request: 0, working: false, abort: null, authentication: null });
   const latestBack = useRef(onBack);
   const clear = useCallback(() => {
     lifetime.current.request++;
-    setPrivateKey(''); setPassword(''); setAddress(null); setAcknowledged(false); setError('');
+    lifetime.current.authentication?.retire(); lifetime.current.abort?.abort();
+    setPrivateKey(''); setAddress(null); setAcknowledged(false); setError('');
     Keyboard.dismiss();
   }, []);
   const back = useCallback(() => {
@@ -66,10 +67,14 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
     // The containing wallet revokes authority. Clear these local fields in the
     // same lifecycle event, before React's later unmount can retain a view.
-    const change = AppState.addEventListener('change', (value) => { if (value !== 'active') clear(); });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', clear) : null;
+    const interrupt = (value: string) => {
+      if (value !== 'active' && !(state.authentication && allowsPrivateAuthenticationInterruption(state.authentication, value))) clear();
+    };
+    const change = AppState.addEventListener('change', interrupt);
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => interrupt('blur')) : null;
     return () => {
       state.mounted = false; state.request++;
+      state.authentication?.retire(); state.abort?.abort();
       imports.cancel(); hardware.remove(); change.remove(); blur?.remove();
     };
   }, [back, clear, imports]);
@@ -95,7 +100,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         ? await imports.previewUtxo(draft, scope.current.contextRevision, scope.current.catalogueRevision, check)
         : importedKeyIdentity(key, 0).address;
       check();
-      setPrivateKey(key); setAddress(reviewed); setAcknowledged(false); setPassword('');
+      setPrivateKey(key); setAddress(reviewed); setAcknowledged(false);
       Keyboard.dismiss();
     } catch (cause) {
       if (state.mounted && state.request === request)
@@ -108,16 +113,17 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
   };
   const submit = async () => {
     const state = lifetime.current;
-    if (!state.mounted || state.working || !privateKey || !address || !password || !acknowledged || AppState.currentState !== 'active') return;
+    if (!state.mounted || state.working || !privateKey || !address || !acknowledged || AppState.currentState !== 'active') return;
     state.working = true; setBusy(true); setError('');
     const request = ++state.request;
     const input = { privateKey, label: name.trim(), expectedAddress: address, ...wifOptions };
-    const entered = password;
-    setPrivateKey(''); setPassword(''); Keyboard.dismiss();
+    const authentication = createNativePrivateAuthenticationScope(), abort = new AbortController();
+    state.authentication = authentication; state.abort = abort;
+    setPrivateKey(''); Keyboard.dismiss();
     try {
       onSubmitStart();
-      await imports.submit(input, entered, scope.current.contextRevision, scope.current.catalogueRevision);
-      if (state.mounted && state.request === request) onImported();
+      await imports.submit(input, scope.current.contextRevision, scope.current.catalogueRevision, abort.signal, authentication);
+      if (state.mounted && state.request === request && AppState.currentState === 'active') onImported();
     } catch (cause) {
       if (state.mounted && state.request === request) {
         setAddress(null); setAcknowledged(false); setError(failure(cause, t));
@@ -125,6 +131,9 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
       // Authenticated mutation failures publish the authority's typed feedback
       // themselves; an unmounted form must not replace a newer request's error.
     } finally {
+      authentication.retire(); abort.abort();
+      if (state.authentication === authentication) state.authentication = null;
+      if (state.abort === abort) state.abort = null;
       state.working = false;
       onSubmitEnd();
       if (state.mounted) setBusy(false);
@@ -133,7 +142,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
 
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen gap={16} footer={address ? <Button title={t('mobile.importAccount.import')} disabled={busy || !password || !acknowledged} onPress={submit} /> :
+      <Screen gap={16} footer={address ? <Button title={t('mobile.importAccount.import')} disabled={busy || !acknowledged} onPress={submit} /> :
         <Button title={t('mobile.importAccount.review')} disabled={busy || !privateKey || !name.trim()} onPress={() => void review()} />}>
         <Header title={address ? t('mobile.importAccount.reviewTitle') : t('mobile.accounts.importKey')} subtitle={utxo ? networkLabel : t('mobile.importAccount.evmAccount', { network: networkLabel })} onBack={back} />
         {!utxo && <Notice title={t('mobile.importAccount.separateTitle')} body={t('mobile.importAccount.separateBody')} tone="amber" />}
@@ -148,8 +157,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
             <View style={[s.checkbox, acknowledged && s.checked]}><Text style={s.checkmark}>{acknowledged ? '✓' : ''}</Text></View>
             <Text style={s.checkLabel}>{t('mobile.importAccount.backupAcknowledgementBody')}</Text>
           </IdlePressable>
-          <PinField label={t('mobile.accounts.confirmPassword')} value={password} onChange={setPassword} busy={busy} />
-          {!busy && <Button title={t('mobile.importAccount.editKey')} variant="secondary" onPress={() => { setAddress(null); setPassword(''); setAcknowledged(false); setError(''); }} />}
+          {!busy && <Button title={t('mobile.importAccount.editKey')} variant="secondary" onPress={() => { setAddress(null); setAcknowledged(false); setError(''); }} />}
         </> : <>
           <View style={s.field}><Text style={s.label}>{t('mobile.accounts.accountName')}</Text><IdleTextInput accessibilityLabel={t('mobile.accounts.accountName')} value={name} onChangeText={setName}
             editable={!busy} maxLength={64} autoCorrect={false} autoComplete="off" style={s.input} /></View>

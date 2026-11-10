@@ -102,6 +102,6 @@ test('Bluetooth failure provides a retry action', async ({ page }) => {
     'Bluetooth is unavailable'
   );
   await expect(
-    page.getByRole('button', { name: 'Find Ledger', exact: true })
+    page.getByRole('button', { name: 'Try again', exact: true })
   ).toBeEnabled();
 });

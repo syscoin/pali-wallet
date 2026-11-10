@@ -416,13 +416,14 @@ export async function qualifyNativeSlhFull(
     createNativeSlhDsaRuntime({
       namespace,
       publicStates,
-      async authorize(_purpose, accountIndex, signal, guard) {
+      async authorize(_purpose, accountIndex, signal, guard, work) {
         let access: Awaited<ReturnType<Keyring['createPrivateRecordAccess']>> | undefined;
         try {
           return await withSecret(signal, guard, async () => {
             access = await ports.keyring.createPrivateRecordAccess([SLH_DSA_PROFILE_STATE_DOMAIN], { transferable: false });
             const setup = accountIndex === null ? null : await derive({ accountIndex });
-            return Object.freeze({ setup, crypto: access, dispose() { access?.dispose(); access = undefined; } });
+            try { return await work(Object.freeze({ setup, crypto: access, dispose() { access?.dispose(); access = undefined; } })); }
+            finally { access?.dispose(); access = undefined; }
           });
         } catch (error) { access?.dispose(); throw error; }
       },

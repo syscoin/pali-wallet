@@ -12,6 +12,7 @@ import {
   readSentryServiceSettings,
   sentrySettingsStorageKey,
 } from '../../../shared/sentrySettings';
+import { withPasswordSentrySigningMaterial } from '../../../wallet/sentryApprovalHost.ts';
 import { SharedSentryOperationApprovals } from '../../../wallet/sentryOperationApprovals';
 import { AsyncMutex } from 'utils/asyncMutex';
 import {
@@ -161,7 +162,17 @@ export class SentryController {
     this.operations = new SharedSentryOperationApprovals({
       captureScope: host.captureScope,
       assertCurrent: (scope) => this.assertCurrent(scope),
-      getSeed: (password) => host.getSeed(password),
+      withSigningMaterial: (request, work) =>
+        withPasswordSentrySigningMaterial(request, work, {
+          getSeed: (password) => host.getSeed(password),
+          resolveWalletAuthority: (authority, password) =>
+            (authority.purpose === 'management'
+              ? host.resolveWalletAuthority
+              : host.resolveVotingAuthority)(
+              { address: authority.address, password },
+              request.scope
+            ),
+        }),
       getSettings: (scope) => this.settings(scope),
       readJson: (url, limit, scope, check, signal) =>
         readJson(url, limit, check, signal),
@@ -169,8 +180,6 @@ export class SentryController {
       runExclusive: (operation) => this.mutex.runExclusive(operation),
       hasWalletAuthority: (address, scope) =>
         host.hasWalletAuthority(address, scope),
-      resolveWalletAuthority: (params, scope) =>
-        host.resolveWalletAuthority(params, scope),
       async loadKey({ scope, network, id, seed, assertCurrent }) {
         const vaultId = await getSentryVaultId(scope.rootPublicIdentity);
         assertCurrent();

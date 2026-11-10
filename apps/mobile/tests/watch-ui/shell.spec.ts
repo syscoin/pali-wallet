@@ -1,6 +1,7 @@
 import { enterPin, pinField, fillPinField, revealBackupPhrase } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { expectReceiveFooter, receiveViewports, scaleReceiveText } from '../receiveLayout';
+import { watchAccountName } from '../accountControlNames';
 
 const TABS = ['Wallet', 'Activity', 'Tools', 'Settings'] as const;
 const PUBLIC_KEY = `0x${'1'.repeat(64)}`;
@@ -263,7 +264,7 @@ test('same-address native to watch switch revokes native owner before public tab
   await openNative(page); await unlock(page);
   await chooseTab(page, 'Tools');
   await page.getByRole('button', { name: 'Accounts', exact: false }).click();
-  await page.getByRole('button', { name: 'Select Shared address watch (watch-only)', exact: true }).click();
+  await page.getByRole('button', { name: watchAccountName('Select', 'Shared address watch', 'Ethereum', '0x52908400098527886E0F7030069857D2E4169EE7') }).click();
   await tabs(page);
   await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');

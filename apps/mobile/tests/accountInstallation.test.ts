@@ -1,3 +1,5 @@
+import { storageOnlyPublicSession } from './fixtures/publicSessionRecord.ts';
+import { PUBLIC_SESSION_RECORD_KEY, PUBLIC_SESSION_RECORD_LIMITS } from '../src/storage/publicSessionRecordKey.ts';
 import { createTestPinRecord } from './fixtures/pinRecord.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -39,7 +41,9 @@ async function fixture() {
   let store = await open(true);
   const candidate = async () => {
     const pair = validPair();
+    const binding = await store.recovery.fingerprintPair!({ vault: pair.vault, keys: pair['vault-keys'] });
     return {
+      publicSession: storageOnlyPublicSession(binding),
       vault: pair.vault,
       keys: pair['vault-keys'],
       pin: await createTestPinRecord(store, { vault: pair.vault, keys: pair['vault-keys'] }, await store.recovery.fingerprintPair!({ vault: pair.vault, keys: pair['vault-keys'] })),
@@ -112,7 +116,7 @@ test('first installation atomically writes the pair, complete account value and 
   }
 });
 
-for (const fault of ['account', 'identity', 'auth', 'commit'] as const)
+for (const fault of ['account', 'checkpoint', 'identity', 'auth', 'commit'] as const)
   test(`initial installation ${fault} failure rolls back every domain`, async () => {
     const f = await fixture();
     try {
@@ -122,6 +126,7 @@ for (const fault of ['account', 'identity', 'auth', 'commit'] as const)
         await f.candidate(),
         root
       );
+      if (fault === 'checkpoint') assert.equal(f.store.recovery.plannedSnapshot!(plan).records[0]!.key, PUBLIC_SESSION_RECORD_KEY);
       let records = 0,
         metadata = 0,
         injected = false;
@@ -133,6 +138,7 @@ for (const fault of ['account', 'identity', 'auth', 'commit'] as const)
         if (
           !injected &&
           ((fault === 'account' && records === 2) ||
+            (fault === 'checkpoint' && records === 1) ||
             (fault === 'auth' && metadata === 1) ||
             (fault === 'identity' && metadata === 2) ||
             (fault === 'commit' && sql === 'COMMIT'))
@@ -234,5 +240,21 @@ test('the account-only four MiB bound survives cold load and refuses overflow be
     assert(sameRecoverySnapshot(await f.store.recovery.readSnapshot(), saved));
     assert.equal(await f.store.keyringStorage.compareAndSet(ACCOUNT_RECORD_KEY, large, { ...large, payload: 'smaller' }), true);
     assert.equal((await f.store.keyringStorage.get(ACCOUNT_RECORD_KEY) as any).payload, 'smaller');
+  } finally { await f.close(); }
+});
+
+
+test('missing, mismatched and oversized public checkpoints fail before initial wallet writes', async () => {
+  const f = await fixture();
+  try {
+    for (const fault of ['missing', 'binding', 'capacity'] as const) {
+      const before = await f.store.recovery.readSnapshot();
+      const value = await f.candidate();
+      if (fault === 'missing') Reflect.deleteProperty(value, 'publicSession');
+      if (fault === 'binding') value.publicSession.checkpoint.recordId = 'cd'.repeat(32);
+      if (fault === 'capacity') value.publicSession.checkpoint.ciphertext = 'x'.repeat(PUBLIC_SESSION_RECORD_LIMITS.valueBytes);
+      await assert.rejects(async () => f.store.recovery.prepareCreation!(before, value, root));
+      assert(sameRecoverySnapshot(await f.store.recovery.readSnapshot(), before));
+    }
   } finally { await f.close(); }
 });

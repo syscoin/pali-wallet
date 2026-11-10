@@ -1,3 +1,4 @@
+import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
 import { signTestTransfer } from './fixtures/operationAuthorization.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
@@ -400,11 +401,7 @@ test('the shared SDK imports a public Ledger record, preserves it on unlock and 
     });
     try {
       f.owner.lock();
-      const proof = await recovery.prepare(
-        phrase,
-        '654321',
-        () => undefined
-      );
+      const proof = await prepareRecoveryPin(recovery, phrase, '654321', () => undefined);
       assert.equal(await recovery.commit(proof), 'committed-locked');
     } finally {
       await recovery.dispose();

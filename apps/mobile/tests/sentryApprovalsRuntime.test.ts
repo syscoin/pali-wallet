@@ -1,4 +1,6 @@
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -33,6 +35,18 @@ const PHRASE =
 const PASSWORD = '123456';
 
 test('actual native runtime binds encrypted Sentry approvals to topic lifetime, selected account, chain and lock session', async (t) => {
+  const stages: string[] = [];
+  const sdk = await loadNativeKeyringSdk();
+  const keyrings: InstanceType<typeof sdk.HostKeyring>[] = [];
+  let requirePublicReads = false;
+  class ObservedKeyring extends sdk.HostKeyring {
+    constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
+      super(...args);
+      keyrings.push(this);
+      const read = this.getSeed;
+      this.getSeed = async password => { stages.push('seed-before'); const result = await read(password); stages.push('seed-after'); return result; };
+    }
+  }
   t.mock.method(globalThis, 'fetch', () => {
     throw new Error('Ambient transport forbidden');
   });
@@ -75,7 +89,8 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
   };
   let signatures = 0,
     posts = 0;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { stages.push('auth-before'); check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); stages.push('auth-after'); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null,
+    loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: () =>
@@ -85,12 +100,14 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     ),
     runSentryCrypto: createSentryCryptoExecutor(
       async () => async (job, check) => {
+        stages.push(job.type);
         if (job.type === 'signVote') signatures++;
         return executeSentryCryptoJob(job, check);
       },
       null
     ),
     utxoFetch: async (url, init) => {
+      if (requirePublicReads) assert(keyrings.every(ring => !ring.isUnlocked()), 'Sentry public reads must run before the spending-key lease');
       if (init?.method !== 'GET') posts++;
       const network = String(url).startsWith(
         resolveUtxoNetwork('utxo:5700').endpoint
@@ -147,10 +164,16 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     await keys.confirmImport(review);
     let manager = await runtime.openSentryApprovals!(
       lifetime.signal,
-      checkTopic
+      checkTopic,
+      createTestPrivateAuthentication(checkTopic)
     );
+    requirePublicReads = true;
     let id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
-    const result = await manager.votes.sign({ id, password: PASSWORD });
+    const beforeSigning = stages.length;
+    const result = await manager.votes.sign({ id });
+    assert.deepEqual(stages.slice(beforeSigning).filter(stage => stage.startsWith('auth-') || stage.startsWith('seed-')),
+      ['auth-before', 'auth-after', 'seed-before', 'seed-after']);
+    assert(keyrings.every(ring => !ring.isUnlocked()));
     assert(
       await verifySentryGovernanceVote(request, context, result.votes[0]!)
     );
@@ -158,17 +181,17 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
     topicCurrent = false;
     await assert.rejects(async () =>
-      manager.votes.sign({ id, password: PASSWORD })
+      manager.votes.sign({ id })
     );
     topicCurrent = true;
-    manager = await runtime.openSentryApprovals!(lifetime.signal, checkTopic);
+    manager = await runtime.openSentryApprovals!(lifetime.signal, checkTopic, createTestPrivateAuthentication(checkTopic));
     id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
     await select('utxo:5700');
     await assert.rejects(async () =>
-      manager.votes.sign({ id, password: PASSWORD })
+      manager.votes.sign({ id })
     );
     await select('syscoin');
-    manager = await runtime.openSentryApprovals!(lifetime.signal, checkTopic);
+    manager = await runtime.openSentryApprovals!(lifetime.signal, checkTopic, createTestPrivateAuthentication(checkTopic));
     id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
     await authority.manageAccounts(
       { kind: 'create', label: 'Second public fixture',},
@@ -176,13 +199,13 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
       authority.getCatalogue()!.revision
     );
     await assert.rejects(async () =>
-      manager.votes.sign({ id, password: PASSWORD })
+      manager.votes.sign({ id })
     );
-    manager = await runtime.openSentryApprovals!(lifetime.signal, checkTopic);
+    manager = await runtime.openSentryApprovals!(lifetime.signal, checkTopic, createTestPrivateAuthentication(checkTopic));
     id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
     await authority.lock();
     await assert.rejects(async () =>
-      manager.votes.sign({ id, password: PASSWORD })
+      manager.votes.sign({ id })
     );
     assert.equal(signatures, 1);
     assert.equal(posts, 0);
@@ -254,7 +277,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
     const authorize = async () => {
       const parent = new AbortController();
       const id = await manager.operations.prepare(request, origin, checkGrant, { assertCurrent: checkGrant, signal: parent.signal });
-      const result = await manager.operations.sign({ id, keyId: manager.operations.getApproval(id).keys[0]!.id, password: PASSWORD });
+      const result = await manager.operations.sign({ id, keyId: manager.operations.getApproval(id).keys[0]!.id });
       manager.operations.publishFeeAuthorization(id); parent.abort(); manager.operations.cancel(id);
       const raw = bitcoin.Transaction.fromHex(result.transactionHex), psbt = new bitcoin.Psbt({ network: network.addressNetwork });
       psbt.setVersion(raw.version); psbt.setLocktime(raw.locktime);

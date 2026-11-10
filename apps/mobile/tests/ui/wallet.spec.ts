@@ -139,7 +139,8 @@ test('watch-only validates before RPC, preserves zero and cannot sign', async ({
   await expect(
     page.getByRole('button', { name: 'Send', exact: true })
   ).toHaveCount(0);
-  await expect(page.getByText('0.0', { exact: true }).first()).toBeVisible();
+  // Home keeps a compact display while its accessible label retains exact units.
+  await expect(page.getByLabel('Ethereum balance 0.0 ETH', { exact: true })).toHaveText('0');
   expect(calls).toEqual(['eth_chainId', 'eth_getBalance']);
   expect(
     await page.evaluate(() => ({

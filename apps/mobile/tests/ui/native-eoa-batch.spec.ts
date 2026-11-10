@@ -23,7 +23,7 @@ test('two-call review requires each fee confirmation and keeps the acknowledged 
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto('/?eoa-batch');
   await expect(
-    page.getByText('https://batch.example.invalid', { exact: true })
+    page.getByText(/ · https:\/\/batch\.example\.invalid$/)
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Call 1 of 2', exact: true })

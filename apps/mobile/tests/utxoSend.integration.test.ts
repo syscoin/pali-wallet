@@ -1,3 +1,7 @@
+import { prepareRecoveryPin } from './fixtures/recoveryPin.ts';
+import { testHdKeyExportRuntime } from './fixtures/hdKeyExport.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
+import { OperationAuthentication } from '../src/core/operationAuthentication.ts';
 import { createTestOperationAuthorizer } from './fixtures/operationAuthorization.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { createSentryCollateralCoordinator, createSentryCollateralRegistry, type SentryCollateralReservation } from '../../../source/wallet/sentryCollateral.ts';
@@ -812,7 +816,17 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   let interceptExport: ((key: string) => Promise<string>) | undefined;
   let exports = 0;
   let currentPin = password;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const authentication = new OperationAuthentication();
+  let refusedPinAttempts = 0;
+  const detachAuthentication = authentication.attach(prompt => {
+    if (!prompt || prompt.busy) return;
+    queueMicrotask(() => {
+      if (prompt.error) { refusedPinAttempts++; prompt.cancel(); }
+      else prompt.confirm({ method: 'pin', pin: currentPin });
+    });
+  });
+  t.after(detachAuthentication);
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: authentication.request, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage,
     loadSdk: async () => ({ ...sdk, HostKeyring: class extends sdk.HostKeyring {
@@ -844,7 +858,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   );
   const submit = (privateKey: string, utxoAddressType: UtxoImportAddressType | undefined, expectedAddress: string) => owner.importAccount(
     { privateKey, ...(utxoAddressType && { utxoAddressType }), expectedAddress, label: `Imported ${utxoAddressType ?? 'BIP84'}` },
-    password, owner.getSnapshot().revision, owner.getCatalogue()!.revision
+    owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal, createTestPrivateAuthentication(current)
   );
   try {
     await owner.initialize();
@@ -1049,7 +1063,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           await owner.selectNetwork('ethereum', oldContext, oldCatalogue, () => {});
           await assert.rejects(owner.importAccount(
             { privateKey: wif, utxoAddressType: script, expectedAddress: address, label: 'Revoked review' },
-            password, oldContext, oldCatalogue
+            oldContext, oldCatalogue, new AbortController().signal, createTestPrivateAuthentication(current)
           ), { code: 'CANCELLED' });
           await selectNetwork();
         }
@@ -1089,10 +1103,10 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         assert.equal(saved.recovery.find((entry) => entry.identity.address === address)?.identity.slip44, network.slip44);
         assert.equal(JSON.stringify(saved).includes(secret), false);
         assert.equal(JSON.stringify(owner.getCatalogue()).includes('xprv'), false);
-        const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport);
+        const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport && testHdKeyExportRuntime(runtime.keyExport));
         try {
           const callsBeforeReveal = calls.length;
-          const shown = await keyFlow.begin(password);
+          const shown = await keyFlow.begin();
           assert.equal(shown.privateKey, secret);
           assert.equal(shown.address, address);
           assert.equal(shown.accountId, accountId);
@@ -1108,10 +1122,13 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             const scope = { authorityRevision: owner.getSnapshot().revision, catalogueRevision: catalogue.revision,
               accountId, index, address, networkId: network.id,
               registrationHash: keyExportRegistrationHash(network.id, catalogue) };
-            await assert.rejects(runtime.keyExport!.readSelected({ ...scope, registrationHash: `0x${'f'.repeat(64)}` }, password, current), /CANCELLED/);
+            await assert.rejects(runtime.keyExport!.readSelected({ ...scope, registrationHash: `0x${'f'.repeat(64)}` }, new AbortController().signal, current, createTestPrivateAuthentication(current)), /CANCELLED/);
             assert.equal(exports, beforeExport);
             owner.lock(); await owner.unlock(password);
-            await assert.rejects(keyFlow.begin('000000'), /INVALID_CREDENTIAL/);
+            currentPin = '000000';
+            await assert.rejects(keyFlow.begin(), /CANCELLED/);
+            currentPin = password;
+            assert.equal(refusedPinAttempts, 1);
             assert.equal(exports, beforeExport);
             assert.equal(owner.getSnapshot().phase, 'ready');
 
@@ -1122,12 +1139,12 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
               bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 13), { network: anotherNetwork.addressNetwork }).toWIF(),
             ]) {
               interceptExport = async () => forged;
-              await assert.rejects(keyFlow.begin(password), { message: 'KEY_EXPORT_UNAVAILABLE' });
+              await assert.rejects(keyFlow.begin(), { message: 'KEY_EXPORT_UNAVAILABLE' });
               await owner.unlock(password);
             }
             const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
             interceptExport = async (raw) => { entered.resolve(); await release.promise; return raw; };
-            const pending = keyFlow.begin(password);
+            const pending = keyFlow.begin();
             const rejection = assert.rejects(pending, { message: 'CANCELLED' });
             await entered.promise;
             owner.lock(); release.resolve();
@@ -1136,7 +1153,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             await owner.unlock(password);
             await selectAccount(`hd:${network.slip44}:0`);
             const beforeHd = exports;
-            const extended = await keyFlow.begin(password);
+            const extended = await keyFlow.begin();
             assert.equal(extended.accountId, `hd:${network.slip44}:0`);
             assert(extended.privateKey.startsWith(network.testnet ? 'vprv' : 'zprv'));
             assert.equal(exports, beforeHd + 1);
@@ -1318,7 +1335,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       owner, async retireControllers() {}, ensureCryptoReady: async () => undefined, openStorage,
     });
     try {
-      const proof = await recovery.prepare(phrase, nextPassword, current);
+      const proof = await prepareRecoveryPin(recovery, phrase, nextPassword, current);
       assert.equal(await recovery.commit(proof), 'committed-locked');
     } finally {
       await recovery.dispose();
@@ -1340,9 +1357,9 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     }
     const restoredId = `imported:${network.slip44}:${UTXO_IMPORT_TYPES.length}`;
     await selectAccount(restoredId);
-    const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport);
+    const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport && testHdKeyExportRuntime(runtime.keyExport));
     try {
-      const shown = await keyFlow.begin(nextPassword);
+      const shown = await keyFlow.begin();
       assert.equal(shown.privateKey, lastExtendedKey);
       assert.equal(shown.accountId, restoredId);
     } finally { keyFlow.dispose(); }

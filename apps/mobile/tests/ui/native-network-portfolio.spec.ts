@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { expectReceiveFooter, receiveViewports, scaleReceiveText } from '../receiveLayout';
+import { expectReceiveAddressVisible, expectReceiveFooter, receiveViewports, scaleReceiveText } from '../receiveLayout';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
 
@@ -13,7 +13,8 @@ for (const viewport of receiveViewports) {
       if (scale !== 1) await scaleReceiveText(page, scale);
       const address = page.getByTestId('native-receive-address');
       await expect(address).toHaveText('0x52908400098527886E0F7030069857D2E4169EE7');
-      await expect(address).toBeInViewport({ ratio: 1 });
+      await address.scrollIntoViewIfNeeded();
+      await expectReceiveAddressVisible(address);
       if (scale === 1 && viewport.height >= 568) {
         await expect(page.getByTestId('native-receive-qr')).toBeInViewport({ ratio: 1 });
         await expect(page.getByTestId('native-receive-copy')).toBeInViewport({ ratio: 1 });
@@ -59,7 +60,8 @@ test('actual network view switches portfolio and Receive with generic Send avail
   await page.goto('/?network-portfolio');
   await expect(page.getByTestId('native-portfolio-balance')).toHaveText('1.234');
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  await page.getByText('Network', { exact: true }).click();
+  await page.getByTestId('native-portfolio-receive').click();
+  await page.getByRole('button', { name: 'Change', exact: true }).click();
   await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
   await expect(page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true })).toBeChecked();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -109,7 +111,8 @@ test('Bitcoin selection renders the scoped Receive address, exact balance and Se
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?network-portfolio');
-  await page.getByText('Network', { exact: true }).click();
+  await page.getByTestId('native-portfolio-receive').click();
+  await page.getByRole('button', { name: 'Change', exact: true }).click();
   const bitcoin = page.getByRole('radio', { name: 'Bitcoin, BTC', exact: true });
   await bitcoin.click();
   await expect(bitcoin).toBeChecked();
@@ -175,12 +178,12 @@ test('a quote arriving during a press keeps the selected Receive button in place
         .toBe('matrix(0.99, 0, 0, 0.99, 0, 0)');
       const before = await receive.boundingBox();
       quoteReady.resolve();
-      await expect(quote).toHaveText('≈ 2.468 USD');
+      await expect(quote).toHaveText('≈ 2.47 USD');
       const after = await receive.boundingBox();
       expect(before).not.toBeNull();
       expect(after).not.toBeNull();
       expect(after!.y).toBeCloseTo(before!.y, 1);
-      await expect(quote).toHaveAttribute('aria-label', '≈ 2.468 USD');
+      await expect(quote).toHaveAttribute('aria-label', '≈ 2.47 USD');
       expect(await quote.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       await page.screenshot({ path: testInfo.outputPath('portfolio-quote-320-large-type.png') });
@@ -196,10 +199,10 @@ test('a quote arriving during a press keeps the selected Receive button in place
 
 
 // Exercise the actual NativePortfolio with synthetic public account data.
-test('scrolled native wallet opens Receive at its header', async ({ page }, info) => {
+test('scrolled compact native wallet opens Receive at its header', async ({ page }, info) => {
   await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:4179'
     ? route.continue() : route.abort('blockedbyclient'));
-  await page.setViewportSize({ width: 320, height: 600 });
+  await page.setViewportSize({ width: 320, height: 360 });
   await page.goto('/?network-portfolio&font-scale=1.6');
   const receive = page.getByTestId('native-portfolio-receive');
   await expect(receive).toBeVisible();

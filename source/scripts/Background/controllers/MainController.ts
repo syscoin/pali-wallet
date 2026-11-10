@@ -3383,8 +3383,11 @@ class MainController {
               this.privateVaultNoteReader
                 ? this.privateVaultNoteReader(identity)
                 : Promise.resolve({ phase: 'waiting' }),
-            authenticate: (password, session, reveal) =>
-              this.authenticatePrivateVault(password, session, reveal),
+            authenticate: (password, session, reveal) => {
+              if (typeof password !== 'string')
+                return Promise.reject(new Error('privacy_vault_unavailable'));
+              return this.authenticatePrivateVault(password, session, reveal);
+            },
           })
         )
         .catch(() => {

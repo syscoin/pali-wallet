@@ -2326,7 +2326,7 @@ for (const method of SENTRY_DAPP_METHODS) test(`${method} retains its exact orig
     assert(review?.details); assert.equal(review.origin, ORIGIN);
     assert.deepEqual(f.sentryRequests, [{ method, raw, origin: ORIGIN }]);
     assert.equal(f.responses.length, 0); assert.equal(f.sentryAssents.length, 0);
-    const assent: NativeSentryAssent = review.details.kind === 'link' ? { kind: 'link' } : review.details.kind === 'vote' ? { kind: 'vote', password: 'Transient fixture password' } : { kind: 'operation', password: 'Transient fixture password', keyId: 'displayed-role-key' };
+    const assent: NativeSentryAssent = review.details.kind === 'link' ? { kind: 'link' } : review.details.kind === 'vote' ? { kind: 'vote' } : { kind: 'operation', keyId: 'displayed-role-key' };
     await f.view.approveSentry(review.id, review.revision, assent);
     assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { method } } });
     assert.equal(f.view.getSnapshot().sentryReview, null);
@@ -2344,8 +2344,8 @@ test('Sentry FIFO prepares the next request after rejection and a second approva
     await f.view.rejectSentry(first.id); await settle();
     const next = f.view.getSnapshot().sentryReview; assert(next?.details?.kind === 'vote');
     assert.equal(f.sentryRequests.length, 2);
-    const signing = f.view.approveSentry(next.id, next.revision, { kind: 'vote', password: 'Transient fixture' });
-    await assert.rejects(f.view.approveSentry(next.id, next.revision, { kind: 'vote', password: 'Transient fixture' }));
+    const signing = f.view.approveSentry(next.id, next.revision, { kind: 'vote' });
+    await assert.rejects(f.view.approveSentry(next.id, next.revision, { kind: 'vote' }));
     await signing;
     assert.equal(f.sentryAssents.length, 1);
     assert.deepEqual(f.responses.map(value => (value as { id: number }).id), [10, 11]);

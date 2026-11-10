@@ -33,7 +33,7 @@ const failure = (cause: unknown) => {
   if (code === 'BACKUP_OPEN_FAILED') return 'Could not open this backup. Check the password and file.';
   if (code === 'FILE_INVALID' || code === 'BACKUP_INVALID_FORMAT') return 'Choose a valid encrypted Pali backup.';
   if (code === 'FILE_BUSY' || code === 'BACKUP_BUSY') return 'Wait for the current file operation to finish.';
-  if (code === 'BACKUP_AUTHENTICATION_FAILED') return 'Could not confirm your wallet password. Choose the backup to try again.';
+  if (code === 'BACKUP_AUTHENTICATION_FAILED') return 'Could not authorize this restore. Choose the backup to try again.';
   if (code === 'BACKUP_NOTE_LIMIT') return 'This backup exceeds the wallet’s private note capacity.';
   if (code === 'BACKUP_CANCELLED' || code === 'BACKUP_STALE') return 'This restore expired. Choose the backup again.';
   return 'Could not open or restore this backup.';
@@ -182,13 +182,13 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       }
     } finally { finish(owned); }
   };
-  const restore = async (id: string, password: string) => {
+  const restore = async (id: string) => {
     const owned = route.current;
     const flow = owned?.flow;
     if (!owned || !flow || !foreground(owned) || owned.busy) return;
     owned.busy = true; setBusy(true); setError('');
     try {
-      const receipt = await flow.restore(id, password);
+      const receipt = await flow.restore(id);
       if (foreground(owned)) setStep({ phase: 'restored', receipt });
     } catch (cause) {
       if (foreground(owned)) {
@@ -223,23 +223,23 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       }
     } finally { owned.saving = false; finish(owned); }
   };
-  const prepareExport = async (owned: Route, walletPassword: string, backupPassword: string) => {
+  const prepareExport = async (owned: Route, backupPassword: string) => {
     const assertWallet = walletGuard(owned);
     await owned.checkPair!();
     assertWallet();
-    return owned.exporter!.prepare(walletPassword, backupPassword, assertWallet);
+    return owned.exporter!.prepare(backupPassword, assertWallet);
   };
-  const saveExport = (walletPassword: string, backupPassword: string) => {
+  const saveExport = (backupPassword: string) => {
     const owned = route.current;
     if (!owned?.exporter || !owned.destination || !owned.checkPair || !foreground(owned) || owned.busy) return;
     owned.busy = true; setBusy(true); setError('');
     // The provider task receives only the prepared ciphertext and public count.
-    void prepareExport(owned, walletPassword, backupPassword).then(
+    void prepareExport(owned, backupPassword).then(
       ({ noteCount }) => persistExport(owned, noteCount),
       cause => {
         if (foreground(owned)) {
           const code = cause instanceof Error ? cause.message : '';
-          if (code === 'BACKUP_AUTHENTICATION_FAILED') setError('Could not confirm your wallet password.');
+          if (code === 'BACKUP_AUTHENTICATION_FAILED') setError('Could not authorize this backup.');
           else if (code === 'BACKUP_INVALID_PASSWORD') setError('Use a separate backup password with at least 12 characters.');
           else {
             owned.destination = false;

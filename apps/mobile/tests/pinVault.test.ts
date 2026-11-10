@@ -161,3 +161,31 @@ test('saved transaction consent verifies PIN without opening an SDK secret lease
     assert(f.keyrings.every(ring => !ring.isUnlocked()));
   } finally { await runtime.storage.close().catch(() => {}); await f.cleanup(); }
 });
+
+for (const mode of ['cancel-after-write', 'lost-write-ack'] as const) test(`fresh PIN alias is retired on ${mode}`, async () => {
+  const f = await fixture(), reached = Promise.withResolvers<void>(), released = Promise.withResolvers<void>();
+  let current = true, stored: Parameters<NativePinCredentialPort['stage']>[0] | null = null;
+  const removed: Parameters<NativePinCredentialPort['remove']>[0][] = [];
+  const guard = () => { if (!current) throw Error('CANCELLED'); };
+  const credentials: NativePinCredentialPort = {
+    async read() { return null; },
+    async stage(record, _value, check) {
+      reached.resolve(); await released.promise;
+      stored = record;
+      if (mode === 'lost-write-ack') throw Error('OS write acknowledgement lost');
+      check();
+    },
+    async remove(record) { assert.strictEqual(record, stored); removed.push(record); stored = null; },
+  };
+  const storage = await f.open();
+  try {
+    const pin = createNativePinVault(storage.pin, credentials);
+    const pending = pin.stage('123456', { walletBindingId: '1'.repeat(64), pairFingerprint: '2'.repeat(64) }, pin.createSecret(), guard);
+    await reached.promise;
+    if (mode === 'cancel-after-write') current = false;
+    released.resolve();
+    await assert.rejects(pending);
+    assert.equal(stored, null); assert.equal(removed.length, 1);
+    assert.equal(await storage.pin.read(), null);
+  } finally { released.resolve(); await f.cleanup(); }
+});

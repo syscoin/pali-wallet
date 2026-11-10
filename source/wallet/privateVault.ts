@@ -69,6 +69,7 @@ import type {
   IShardReference,
   IVaultBundle,
 } from './privateVaultInspection.ts';
+import type { WalletAuthentication } from '../shared/walletAuthentication.ts';
 import type {
   generateClassicNote,
   identifyClassicNote,
@@ -206,11 +207,11 @@ export interface IPrivateVaultRestoreController {
   commitRestore: (
     plan: IPrivateVaultRestorePlan,
     entries: readonly IPrivateNoteRestoreEntry[],
-    password: string,
+    password: WalletAuthentication,
     session: IPrivateVaultSession
   ) => Promise<IPrivateNoteRestoreReceipt>;
   exportBackupSnapshot: (
-    password: string,
+    password: WalletAuthentication,
     session: IPrivateVaultSession
   ) => Promise<{
     createdAt: number;
@@ -229,7 +230,7 @@ export interface IPrivateVaultRestoreController {
 
 export interface IPrivateVaultHost {
   authenticate: (
-    password: string,
+    password: WalletAuthentication,
     session: IPrivateVaultSession,
     reveal: () => Promise<string>
   ) => Promise<string>;

@@ -20,6 +20,8 @@ async function fixture() {
   let confirmed = false;
   let fingerprint = 'wallet-one';
   let confirms = 0;
+  const refusals = new WeakSet<object>();
+  const refuse = (code: KeyringRuntimeError['code']) => { const error = new KeyringRuntimeError(code); refusals.add(error); return error; };
   const runtime: KeyringRuntime = {
     async resumeSmartAccountOperation() { throw Error('Smart resume is outside this fixture'); },
     trezor: { background() {}, getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null }),
@@ -63,9 +65,10 @@ async function fixture() {
       async close() {},
     },
     backup: {
+      isAuthenticationRefusal: error => !!error && typeof error === 'object' && refusals.has(error),
       async readPhrase(password) {
         assert.ok(unlocked);
-        if (password !== PASSWORD) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+        if (password !== PASSWORD) throw refuse('INVALID_CREDENTIAL');
         return PHRASE.split(' ');
       },
       async fingerprint() { return fingerprint; },
@@ -87,7 +90,7 @@ async function fixture() {
   const flow = new SeedBackupFlow(authority, () => runtime.backup);
   await authority.initialize();
   await authority.unlock(PASSWORD);
-  return { authority, flow, runtime, get confirms() { return confirms; },
+  return { authority, flow, runtime, refuse, get confirms() { return confirms; },
     replaceWallet() { fingerprint = 'wallet-two'; },
     expire() { now += 300_000; },
     async close() { idle.stop(); flow.dispose(); await authority.dispose(); } };
@@ -142,7 +145,7 @@ test('ordinary rejected authentication preserves public state and never returns 
   try {
     const before = f.authority.getSnapshot();
     for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVAILABLE'] as const) {
-      f.runtime.backup.readPhrase = async () => { throw new KeyringRuntimeError(code); };
+      f.runtime.backup.readPhrase = async () => { throw f.refuse(code); };
       await assert.rejects(f.flow.begin('000000'), new RegExp(`^Error: ${code}$`));
       assert.equal(f.authority.getSnapshot(), before);
     }
@@ -150,6 +153,30 @@ test('ordinary rejected authentication preserves public state and never returns 
     f.runtime.backup.readPhrase = async () => { throw new Error('unknown storage outcome'); };
     await assert.rejects(f.flow.begin(PASSWORD), /BACKUP_UNAVAILABLE/);
     assert.equal(f.authority.getSnapshot().phase, 'locked');
+  } finally { await f.close(); }
+});
+
+for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED', 'DEVICE_UNLOCK_UNAVAILABLE'] as const)
+  test(`an unverified ${code} error cannot preserve phrase authority`, async () => {
+    const f = await fixture();
+    try {
+      f.runtime.backup.readPhrase = async () => { throw new KeyringRuntimeError(code); };
+      await assert.rejects(f.flow.begin(PASSWORD), /BACKUP_UNAVAILABLE/);
+      assert.equal(f.authority.getSnapshot().phase, 'locked');
+      assert.equal(f.confirms, 0);
+    } finally { await f.close(); }
+  });
+
+test('a late obsolete phrase failure cannot lock a newly unlocked session', async () => {
+  const f = await fixture(), entered = deferred(), held = Promise.withResolvers<readonly string[]>();
+  f.runtime.backup.readPhrase = () => { entered.resolve(); return held.promise; };
+  try {
+    const pending = f.flow.begin(PASSWORD); void pending.catch(() => undefined); await entered.promise;
+    f.authority.lock(); await f.authority.unlock(PASSWORD);
+    const replacement = f.authority.getSnapshot();
+    held.reject(new KeyringRuntimeError('DEVICE_UNLOCK_UNAVAILABLE'));
+    await assert.rejects(pending, /BACKUP_UNAVAILABLE/);
+    assert.equal(f.authority.getSnapshot(), replacement);
   } finally { await f.close(); }
 });
 

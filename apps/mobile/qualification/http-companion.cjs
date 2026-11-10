@@ -176,11 +176,14 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork,
       const scope = active;
       if (!scope) return undefined;
       let failedGetCase = failedCase;
+      let getFailureDetail = null;
       let failedPostCase = 'unavailable', failureDetail = null;
       try {
         const text = read(`pali-native-http-${scope.token}.json`);
-        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192)
-          failedGetCase = httpDiagnosticCase(JSON.parse(text), scope) ?? failedGetCase;
+        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192) {
+          const value = JSON.parse(text), validCase = httpDiagnosticCase(value, scope);
+          if (validCase) { failedGetCase = validCase; getFailureDetail = value.failureDetail && { ...value.failureDetail }; }
+        }
       } catch { /* Missing or malformed native evidence remains unavailable. */ }
       try {
         const text = read(`pali-native-post-${scope.token}.json`);
@@ -207,7 +210,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork,
       const diagnostic = { version: 1, status: 'failed', diagnosticOnly: true, ...scope };
       return {
         http: { ...diagnostic, kind: 'native-http-diagnostic', failedCase: failedGetCase,
-          serverStatus: get ? 'available' : unavailable, server: get },
+          failureDetail: getFailureDetail, serverStatus: get ? 'available' : unavailable, server: get },
         post: { ...diagnostic, kind: 'native-post-diagnostic', failedCase: failedPostCase, failureDetail,
           serverStatus: post ? 'available' : unavailable, server: post },
       };

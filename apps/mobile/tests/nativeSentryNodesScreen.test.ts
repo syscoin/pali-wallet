@@ -8,6 +8,8 @@ import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { NativeSentryNodeManagement, SentryNodeLinkReview } from '../src/custody/sentryNodeManagement.ts';
 import { createIdleComponentFixture } from './idleComponentFixture.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void };
@@ -74,7 +76,8 @@ function renderer() {
   const idle = createIdleComponentFixture(hook, native);
   const common = { '../../../../source/shared/sentryNetworks': { SENTRY_NETWORKS }, react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
   const load = (name: string, additional: Record<string, unknown> = {}) => evaluate(readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8'), { ...common, ...additional });
-  const nodes = load('NativeSentryNodes', { './PinEntry': { PinField: 'PinField' } }).NativeSentryNodes as Component;
+  const nodes = load('NativeSentryNodes', { '../custody/privateAuthentication': privateAuthentication,
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption } }).NativeSentryNodes as Component;
   const hub = load('NativeSentryHub', { './NativeSentryKeys': { NativeSentryKeys: 'NativeSentryKeys' }, './NativeSentryNodes': { NativeSentryNodes: 'NativeSentryNodes' } }).NativeSentryHub as Component;
   const expand = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(expand);
@@ -103,25 +106,34 @@ function find(tree: Element, type: string, property?: string, value?: string) {
   assert.ok(result, `Missing ${type} ${value ?? ''}`); return result;
 }
 const button = (tree: Element, title: string) => find(tree, 'Button', 'title', title);
-const field = (tree: Element, label: string) => label === 'Wallet PIN' ? find(tree, 'PinField', 'label', label) : find(tree, 'TextInput', 'accessibilityLabel', label);
+const field = (tree: Element, label: string) => find(tree, 'TextInput', 'accessibilityLabel', label);
 const press = (element: Element) => element.props.onPress({ nativeEvent: {} });
 const goBack = (tree: Element) => find(tree, 'Header').props.onBack();
 
-function fixture(options: { initial?: Snapshot; opening?: Promise<void>; preparing?: Promise<void>; confirming?: Promise<void>; releasing?: Promise<void>; openingFailure?: boolean; listFailureAt?: number } = {}) {
+function fixture(options: { initial?: Snapshot; opening?: Promise<void>; preparing?: Promise<void>; confirming?: Promise<void>; releasing?: Promise<void>; proofActive?: boolean; openingFailure?: boolean; listFailureAt?: number } = {}) {
   const r = renderer();
   let snapshot: Snapshot = options.initial ?? empty, backs = 0, opened = 0;
-  const calls = { list: 0, prepare: [] as { request: unknown; origin: string }[], confirm: [] as SentryNodeLinkReview[], cancel: [] as string[], release: [] as { reservation: unknown; password: string; acknowledgeNodeStops: boolean }[], dispose: 0, writes: 0 };
+  const calls = { list: 0, prepare: [] as { request: unknown; origin: string }[], confirm: [] as SentryNodeLinkReview[], cancel: [] as string[], release: [] as { reservation: unknown; acknowledgeNodeStops: boolean }[], dispose: 0, writes: 0 };
   const signals: AbortSignal[] = [], managers: NativeSentryNodeManagement[] = [];
-  const open = async (signal: AbortSignal, check: () => void): Promise<NativeSentryNodeManagement> => {
+  const open = async (signal: AbortSignal, check: () => void, authentication: privateAuthentication.NativePrivateAuthenticationScope): Promise<NativeSentryNodeManagement> => {
     opened++; signals.push(signal);
     let disposed = false;
+    const proofGuard = () => { if (disposed || signal.aborted) throw Error('CANCELLED'); };
+    const binding = privateAuthentication.bindNativePrivateAuthentication(authentication, {
+      assertCurrent: proofGuard, isPromptActive: () => options.proofActive === true,
+    });
     const current = () => { check(); if (disposed) throw new Error('Manager disposed'); };
     const manager: NativeSentryNodeManagement = {
+      isAuthenticating: () => authentication.isAuthenticating(),
       async list() { calls.list++; current(); if (calls.list === options.listFailureAt) throw new Error('Private refresh error'); return snapshot; },
       async prepareLink(request, origin) { calls.prepare.push({ request, origin }); current(); await options.preparing; current(); return review; },
       async confirmLink(value) { calls.confirm.push(value); current(); await options.confirming; current(); calls.writes++; snapshot = { ...empty, linkedNodes: [node], collateral: [reservation] }; return { version: 1, linked: true, proTxHash: node.proTxHash, genesisHash: '01'.repeat(32) }; },
       cancelLink(id) { calls.cancel.push(id); },
-      async releaseCollateral(value) { calls.release.push(value); current(); await options.releasing; current(); calls.writes++; snapshot = { ...empty, linkedNodes: [node], collateral: [] }; return value.reservation; },
+      async releaseCollateral(value) {
+        calls.release.push(value); current();
+        const finish = async () => { await options.releasing; current(); calls.writes++; snapshot = { ...empty, linkedNodes: [node], collateral: [] }; return value.reservation; };
+        return options.proofActive ? privateAuthentication.withNativePrivateAuthentication(binding, signal, proofGuard, finish) : finish();
+      },
       dispose() { disposed = true; calls.dispose++; },
     };
     managers.push(manager);
@@ -141,7 +153,7 @@ async function reviewNode(f: ReturnType<typeof fixture>) {
 async function releaseForm(f: ReturnType<typeof fixture>) {
   let tree = await ready(f); press(button(tree, 'Release collateral')); tree = f.render();
   find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.onValueChange(true);
-  field(tree, 'Wallet PIN').props.onChange('123456'); return f.render();
+  return f.render();
 }
 
 test('hub routes node/key ports separately and keeps pane-close callback stable for leaf ownership', () => {
@@ -173,14 +185,14 @@ test('node link displays exact reviewed fields, confirms that same object and re
   assert.equal(f.calls.list, 3); f.dispose();
 });
 
-test('release clears its PIN and acknowledgement before awaiting authentication; double tap admits once', async () => {
+test('release requests shared authorization without an inline PIN and clears acknowledgement; double tap admits once', async () => {
   const pending = deferred<void>(); const f = fixture({ initial: { ...empty, collateral: [reservation] }, releasing: pending.promise });
-  let tree = await releaseForm(f); const password = field(tree, 'Wallet PIN');
-  assert.equal(password.type, 'PinField'); assert.equal(password.props.busy, false);
+  let tree = await releaseForm(f);
+  assert.equal(all(tree).filter(element => element.type === 'PinField').length, 0);
   const submit = button(tree, 'Release collateral'); assert.equal(submit.props.disabled, false); press(submit); press(submit);
-  tree = f.render(); assert.equal(field(tree, 'Wallet PIN').props.value, '');
+  tree = f.render();
   assert.equal(find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.value, false);
-  assert.equal(f.calls.release.length, 1); assert.equal(f.calls.release[0]!.password, '123456');
+  assert.equal(f.calls.release.length, 1); assert.equal(Object.hasOwn(f.calls.release[0]!, 'password'), false);
   assert.equal(f.calls.release[0]!.reservation, reservation); assert.equal(f.calls.release[0]!.acknowledgeNodeStops, true);
   assert.equal(button(tree, 'Releasing…').props.disabled, true); assert.equal(f.calls.list, 1); assert.ok(f.dismisses());
   pending.resolve(); await settle(); tree = f.render(); assert.equal(f.calls.list, 2); assert.match(text(tree), /Collateral protection released\./); f.dispose();
@@ -204,10 +216,10 @@ test('Back from a reviewed node retires its manager and rejects the prior confir
   f.hardware(); assert.equal(f.backs(), 1); assert.equal(f.defaults(), 0); f.dispose(); assert.equal(f.listeners(), 0);
 });
 
-test('Back clears a release password and rejects its prior submit under the replacement owner', async () => {
+test('Back clears release consent and rejects its prior submit under the replacement owner', async () => {
   const f = fixture({ initial: { ...empty, collateral: [reservation] } }); let tree = await releaseForm(f); const stale = button(tree, 'Release collateral');
   goBack(tree); await settle(); tree = f.render(); press(stale); await settle(); assert.equal(f.calls.release.length, 0);
-  press(button(tree, 'Release collateral')); tree = f.render(); assert.equal(field(tree, 'Wallet PIN').props.value, '');
+  press(button(tree, 'Release collateral')); tree = f.render();
   assert.equal(find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.value, false); f.dispose();
 });
 
@@ -217,6 +229,33 @@ for (const event of ['background', 'inactive', 'blur'] as const) test(`${event} 
   tree = f.render(); assert.ok(all(tree).filter(element => element.type === 'TextInput').every(element => element.props.value !== '123456')); assert.equal(f.calls.dispose, 1); assert.equal(f.backs(), 1);
   f.emit('change', 'active'); press(stale); await settle(); assert.equal(f.calls.release.length, 0); assert.equal(f.calls.writes, 0);
   f.dispose(); assert.equal(f.listeners(), 0);
+});
+
+for (const event of ['inactive', 'blur', 'background'] as const) test(`collateral release preserves only its own pending OS proof across ${event}`, async () => {
+  const proof = deferred<void>();
+  const f = fixture({ initial: { ...empty, collateral: [reservation] }, releasing: proof.promise, proofActive: true });
+  try {
+    const tree = await releaseForm(f); press(button(tree, 'Release collateral'));
+    if (event === 'blur') f.emit('blur'); else f.emit('change', event);
+    assert.equal(f.backs(), event === 'background' ? 1 : 0);
+    assert.equal(f.calls.dispose, event === 'background' ? 1 : 0);
+    f.emit('change', 'active'); proof.resolve(); await settle();
+    assert.equal(f.calls.writes, event === 'background' ? 0 : 1);
+  } finally { proof.resolve(); f.dispose(); }
+});
+
+test('an authorization refusal completed while inactive retires the release attempt before another review', async () => {
+  const proof = deferred<void>();
+  const f = fixture({ initial: { ...empty, collateral: [reservation] }, releasing: proof.promise, proofActive: true });
+  try {
+    const tree = await releaseForm(f); press(button(tree, 'Release collateral'));
+    f.emit('change', 'inactive'); proof.reject(Error('Synthetic OS refusal')); await settle();
+    f.emit('change', 'active');
+    const retry = button(f.render(), 'Release collateral');
+    assert.equal(retry.props.disabled, false); assert.equal(f.calls.writes, 0);
+    press(retry);
+    assert.equal(find(f.render(), 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.value, false);
+  } finally { f.dispose(); }
 });
 
 for (const end of ['Back', 'background', 'unmount'] as const) test(`${end} disposes a manager that opens late without reading it`, async () => {
@@ -258,12 +297,12 @@ test('a failed refresh after a confirmed link never retries the commit or report
   press(button(tree, 'Refresh')); await settle(); tree = f.render(); assert.match(text(tree), /Collateral protected/); assert.equal(f.calls.writes, 1); f.dispose();
 });
 
-test('a refused release clears credentials and a new release form requires password and acknowledgement again', async () => {
+test('a refused release retires its callback and a new release form requires acknowledgement again', async () => {
   const pending = deferred<void>(); const f = fixture({ initial: { ...empty, collateral: [reservation] }, releasing: pending.promise });
   let tree = await releaseForm(f); const stale = button(tree, 'Release collateral'); press(stale);
   pending.reject(new Error('Private password error')); await settle(); tree = f.render();
   assert.match(text(tree), /Could not complete the action/); assert.doesNotMatch(text(tree), /Private password error|Collateral protection released\./);
   press(stale); await settle(); assert.equal(f.calls.release.length, 1); assert.equal(f.calls.writes, 0);
-  press(button(tree, 'Release collateral')); tree = f.render(); assert.equal(field(tree, 'Wallet PIN').props.value, '');
+  press(button(tree, 'Release collateral')); tree = f.render();
   assert.equal(find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.value, false); assert.equal(button(tree, 'Release collateral').props.disabled, true); f.dispose();
 });

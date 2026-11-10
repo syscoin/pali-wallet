@@ -2,6 +2,7 @@ import { computeAddress } from 'ethers/transaction';
 import { SigningKey } from 'ethers/crypto';
 import { nativeAccountId } from './accountIdentity.ts';
 import { UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses.ts';
+import type { NativePrivateAuthentication, NativePrivateAuthenticationScope } from './privateAuthentication.ts';
 
 export type ImportedKeyIdentity = Readonly<{ id: string; index: number; address: string; publicKey: string }>;
 export type NativeUtxoImportDraft = Readonly<{ privateKey: string; utxoAddressType?: UtxoImportAddressType }>;
@@ -10,14 +11,14 @@ export type NativeUtxoImportDraft = Readonly<{ privateKey: string; utxoAddressTy
 export type NativeImportRequest = Readonly<{ privateKey: string; label: string; expectedAddress: string; utxoAddressType?: UtxoImportAddressType }>;
 export interface NativeImportRuntime {
   previewUtxo(input: NativeUtxoImportDraft, catalogueRevision: number, assertCurrent: () => void): Promise<string>;
-  reserve(input: NativeImportRequest, password: string, catalogueRevision: number): {
+  reserve(input: NativeImportRequest, catalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthentication): {
     execute(assertCurrent: () => void): Promise<void>;
     cancel(): void;
   };
 }
 export interface NativeImportView {
   previewUtxo(input: NativeUtxoImportDraft, contextRevision: number, catalogueRevision: number, assertCurrent: () => void): Promise<string>;
-  submit(input: NativeImportRequest, password: string, contextRevision: number, catalogueRevision: number): Promise<void>;
+  submit(input: NativeImportRequest, contextRevision: number, catalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthenticationScope): Promise<void>;
   cancel(): void;
 }
 const invalid = (): never => { throw new Error('IMPORTED_KEY_INVALID'); };

@@ -1,9 +1,8 @@
 import { reloadBalancePrivacy, saveBalancePrivacy, useBalancePrivacy } from '../platform/balancePrivacy';
 import { useNativeTranslation } from '../platform/localization';
-import { PinField } from './PinEntry';
 import { useBiometricPresentation } from '../platform/useBiometricPresentation';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HdKeyExportFlow, HdKeyExportPresentation } from '../custody/hdKeyExport';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -33,7 +32,6 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const privacy = useBalancePrivacy();
   const biometrics = useBiometricPresentation();
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
-  const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -41,16 +39,22 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   const latestBack = useRef<() => void>(() => undefined);
   const clear = useCallback(() => {
     lifecycle.current.operation++;
-    setPassword(''); setPresentation(null); setError('');
+    setPresentation(null); setError('');
     Keyboard.dismiss();
   }, []);
   useLayoutEffect(() => {
     const state = lifecycle.current;
     state.mounted = true;
     const unsubscribe = keyExport.onClear(clear);
+    const interrupted = (next: string) => {
+      if (next === 'active' || (next === 'inactive' || next === 'blur') && keyExport.isAuthenticating()) return;
+      keyExport.cancel(); clear();
+    };
+    const app = AppState.addEventListener('change', interrupted);
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => interrupted('blur')) : null;
     return () => {
       state.mounted = false; state.operation++;
-      unsubscribe(); keyExport.cancel();
+      unsubscribe(); app.remove(); blur?.remove(); keyExport.cancel();
     };
   }, [keyExport, clear]);
   const hide = () => { lifecycle.current.request++; keyExport.cancel(); clear(); };
@@ -66,17 +70,17 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
 
   const reveal = async () => {
     const state = lifecycle.current;
-    if (!keyFormat || !state.mounted || state.busy || !password) return;
+    if (!keyFormat || !state.mounted || state.busy || AppState.currentState !== 'active') return;
     state.busy = true; setBusy(true); setError('');
-    const entered = password; setPassword(''); Keyboard.dismiss();
+    Keyboard.dismiss();
     const request = ++state.request;
     const reportFailure = captureFailureHandler();
     // begin synchronously clears any previous presentation before its first await.
-    const pending = keyExport.begin(entered);
+    const pending = keyExport.begin();
     const operation = state.operation;
     try {
       const shown = await pending;
-      if (state.mounted && state.operation === operation && keyExport.isCurrent(shown.id) &&
+      if (state.mounted && state.operation === operation && AppState.currentState === 'active' && keyExport.isCurrent(shown.id) &&
           shown.accountId === accountId && shown.address === address) setPresentation(shown);
     } catch (cause) {
       if (state.mounted && state.operation === operation) {
@@ -100,7 +104,7 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen gap={16} footer={mode === 'key' ? <Button title={shown ? t('mobile.security.hide') : t('mobile.security.reveal')} disabled={!shown && (busy || !password)} onPress={shown ? hide : reveal} /> : mode === 'hub' ? <Button title={t('mobile.settings.lock')} variant="secondary" size="compact" icon="lock" onPress={() => { hide(); onLock(); }} /> : undefined}><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} onBack={back} />
+      <Screen gap={16} footer={mode === 'key' ? <Button title={shown ? t('mobile.security.hide') : t('mobile.security.reveal')} disabled={!shown && busy} onPress={shown ? hide : reveal} /> : mode === 'hub' ? <Button title={t('mobile.settings.lock')} variant="secondary" size="compact" icon="lock" onPress={() => { hide(); onLock(); }} /> : undefined}><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} onBack={back} />
         {mode === 'hub' ? <>
           <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={backupStatus} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title={t('mobile.security.revealAccountKey')} subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
@@ -136,7 +140,6 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             <View style={s.secret}><Text style={s.key}>{shown.privateKey}</Text></View>
             <Text style={styles.muted}>{t('mobile.security.sessionOnly')}</Text>
           </> : <>
-            <PinField label={t('mobile.security.confirmPassword')} value={password} onChange={setPassword} busy={busy} />
             {busy && <ActivityIndicator accessibilityLabel={t('mobile.security.confirming')} color={colors.pink} />}
           </>}
           {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}

@@ -8,11 +8,10 @@ import { Button, Card, colors, Icon, Notice, Screen, SegmentedControl, styles, T
 import { PinSetup } from './PinEntry';
 
 type Snapshot = ReturnType<NativeRecoveryFlow['getSnapshot']>;
-type PinOwner = { flow: NativeRecoveryFlow; sequence: number };
 const blankWords = (count: number) => Array<string>(count).fill('');
 const titles: Record<Snapshot['phase'], string> = {
   reading: 'Recover access', scope: 'Recover access', entry: 'Recovery phrase',
-  verifying: 'Verifying your wallet', review: 'Wallet verified', committing: 'Changing your PIN',
+  verifying: 'Verifying your wallet', review: 'Wallet verified', pin: 'Create PIN', committing: 'Changing your PIN',
   reopening: 'Reopening your wallet', closed: 'Recovery closed', blocked: 'Recovery unavailable',
 };
 
@@ -25,29 +24,19 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   const [details, setDetails] = useState(false);
   const [entryError, setEntryError] = useState('');
   const [entrySequence, setEntrySequence] = useState(0);
-  const [pinOwner, setPinOwner] = useState<PinOwner | null>(null);
-  const entered = useRef(blankWords(12)), wordCount = useRef<12 | 24>(12), phrase = useRef('');
-  const sequence = useRef(0), pinScope = useRef<PinOwner | null>(null);
+  const entered = useRef(blankWords(12)), wordCount = useRef<12 | 24>(12);
+  const sequence = useRef(0);
   const alive = useRef(false), cancelled = useRef(false), activeFlow = useRef(flow);
   const latestBack = useRef<() => void>(() => undefined);
   const heading = useRef<React.ElementRef<typeof NativeText>>(null);
   const error = useRef<React.ElementRef<typeof NativeText>>(null);
   const clear = useCallback((render = true) => {
-    sequence.current++; pinScope.current = null; phrase.current = ''; entered.current = blankWords(wordCount.current);
-    if (render && alive.current) { setWords(entered.current); setEntrySequence(sequence.current); setPinOwner(null); setEntryError(''); }
+    sequence.current++; entered.current = blankWords(wordCount.current);
+    if (render && alive.current) { setWords(entered.current); setEntrySequence(sequence.current); setEntryError(''); }
     Keyboard.dismiss();
   }, []);
   const back = useCallback(() => {
     if (!alive.current || activeFlow.current !== flow) return;
-    if (flow.getSnapshot().phase === 'entry' && pinScope.current) {
-      const restored = phrase.current.split(' ');
-      clear();
-      if (restored.length === 12 || restored.length === 24) {
-        wordCount.current = restored.length; setCount(restored.length);
-        entered.current = restored; setWords(restored);
-      }
-      return;
-    }
     clear(); flow.back();
   }, [clear, flow]);
   useLayoutEffect(() => { latestBack.current = back; }, [back]);
@@ -78,7 +67,7 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
   }, [snapshot.phase, snapshot.error]);
   const current = () => alive.current && !cancelled.current && activeFlow.current === flow && AppState.currentState === 'active';
   const editWord = (index: number, value: string) => {
-    if (!current() || sequence.current !== entrySequence || pinScope.current || flow.getSnapshot().phase !== 'entry') return;
+    if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
     const normalized = value.normalize('NFKD').trim().toLowerCase();
     const pasted = index === 0 ? normalized.split(/\s+/u) : [];
     if (pasted.length === 12 || pasted.length === 24) {
@@ -86,23 +75,21 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     } else entered.current = entered.current.map((word, position) => position === index ? normalized : word);
     setWords([...entered.current]); setEntryError('');
   };
-  const choosePin = () => {
+  const verifyPhrase = () => {
     if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
     if (entered.current.length !== wordCount.current || entered.current.some(word => !word || /\s/u.test(word))) {
       setEntryError('Enter each recovery word in order.'); return;
     }
-    phrase.current = entered.current.join(' ');
-    entered.current = blankWords(wordCount.current); setWords(entered.current);
-    const next = { flow, sequence: ++sequence.current }; pinScope.current = next; setPinOwner(next); setEntryError('');
-    Keyboard.dismiss();
+    const phrase = entered.current.join(' ');
+    if (flow.submit({ phrase })) clear();
   };
-  if (snapshot.phase === 'entry' && pinOwner?.flow === flow) return <PinSetup
-    key={pinOwner.sequence} title="Create a new 6-digit PIN" offerBiometrics={false}
+  if (snapshot.phase === 'pin') return <PinSetup
+    key={`recovery-pin-${entrySequence}`} title="Create a new 6-digit PIN" offerBiometrics={false}
     error={snapshot.fieldErrors.pin || snapshot.error}
-    onBack={() => { if (pinScope.current === pinOwner) back(); }}
+    onBack={back}
     onComplete={pin => {
-      if (!current() || pinScope.current !== pinOwner || sequence.current !== pinOwner.sequence || flow.getSnapshot().phase !== 'entry') return;
-      if (flow.submit({ phrase: phrase.current, pin })) clear();
+      if (!current() || flow.getSnapshot().phase !== 'pin') return;
+      if (flow.submitPin(pin)) clear();
     }} />;
 
   const progress = snapshot.phase === 'reading' ? ['Checking saved wallet data…', 'Checking saved data']
@@ -116,10 +103,10 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
     <Button title="Restore Wallet" disabled={!inventory} onPress={() => { if (current() && flow.getSnapshot().phase === 'scope') { clear(); flow.enter(); } }} />
     <Button title="Cancel" variant="secondary" onPress={back} />
   </> : snapshot.phase === 'entry' ? <>
-    <Button title="Continue" disabled={!complete} onPress={choosePin} />
+    <Button title="Continue" disabled={!complete} onPress={verifyPhrase} />
     <Button title="Cancel" variant="secondary" onPress={back} />
   </> : snapshot.phase === 'review' ? <>
-    <Button title="Change PIN" onPress={() => { if (current() && flow.getSnapshot().phase === 'review') { clear(); flow.commit(); } }} />
+    <Button title="Create new PIN" onPress={() => { if (current() && flow.getSnapshot().phase === 'review') { clear(); flow.commit(); } }} />
     <Button title="Cancel recovery" variant="secondary" onPress={back} />
   </> : <Button title={snapshot.phase === 'committing' || snapshot.phase === 'reopening' ? 'Leave recovery'
     : snapshot.phase === 'blocked' || snapshot.phase === 'closed' ? 'Back to unlock' : 'Cancel recovery'} variant="secondary" onPress={back} />;
@@ -148,10 +135,10 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
         {showInventory && !inventory && <Notice title="Saved data unavailable" body="Your saved wallet could not be verified for this recovery. Nothing has been reset." tone="amber" />}
         {snapshot.phase === 'entry' && <>
           <Text accessibilityRole="header" style={s.heroTitle}>Enter your recovery phrase</Text>
-          <Text style={s.body}>Enter each word in its original order. Your new PIN comes next.</Text>
+          <Text style={s.body}>Enter each word in its original order. Pali will check that the phrase matches this wallet.</Text>
           <SegmentedControl label="Recovery phrase length" value={String(count)} options={[{ value: '12', label: '12 words' }, { value: '24', label: '24 words' }]}
             onChange={value => {
-              if (!current() || sequence.current !== entrySequence || pinScope.current || flow.getSnapshot().phase !== 'entry') return;
+              if (!current() || sequence.current !== entrySequence || flow.getSnapshot().phase !== 'entry') return;
               wordCount.current = value === '24' ? 24 : 12; setCount(wordCount.current); clear();
             }} />
           <View style={s.grid}>{words.map((word, index) => <View key={index} style={s.word}>

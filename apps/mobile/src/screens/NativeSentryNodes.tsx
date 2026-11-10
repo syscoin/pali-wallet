@@ -18,7 +18,8 @@ import type {
 import type { SentryCollateralReservation } from '../../../../source/wallet/sentryCollateral';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
-import { PinField } from './PinEntry';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Snapshot = Awaited<ReturnType<NativeSentryNodeManagement['list']>>;
 type Step =
@@ -31,12 +32,14 @@ type Owner = {
   busy: boolean;
   step: Step;
   manager?: NativeSentryNodeManagement;
+  authentication: NativePrivateAuthenticationScope;
 };
 type Props = {
   networkLabel: string;
   open(
     signal: AbortSignal,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    authentication: NativePrivateAuthenticationScope
   ): Promise<NativeSentryNodeManagement>;
   onBack(): void;
 };
@@ -49,24 +52,23 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
   const [step, setStep] = useState<Step>({ kind: 'list' });
   const [busy, setBusy] = useState(false);
   const [registration, setRegistration] = useState('');
-  const [password, setPassword] = useState('');
   const [acknowledged, setAcknowledged] = useState(false);
   const [notice, setNotice] = useState<string>();
   const current = useCallback(
     (owner: Owner) =>
       ownerRef.current === owner &&
       !owner.lifetime.signal.aborted &&
-      AppState.currentState === 'active',
+      (AppState.currentState === 'active' || allowsPrivateAuthenticationInterruption(owner.authentication, AppState.currentState)),
     []
   );
   const clear = useCallback(() => {
-    setPassword('');
     setAcknowledged(false);
     Keyboard.dismiss();
   }, []);
   const retire = useCallback((owner: Owner) => {
     if (ownerRef.current !== owner) return;
     ownerRef.current = null;
+    owner.authentication.retire();
     owner.lifetime.abort();
     owner.manager?.dispose();
   }, []);
@@ -81,7 +83,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
       expected: Step
     ) => {
       const owner = ownerRef.current;
-      if (!owner || owner.busy || owner.step !== expected || !current(owner))
+      if (!owner || owner.busy || owner.step !== expected || !current(owner) || AppState.currentState !== 'active')
         return;
       owner.busy = true;
       setBusy(true);
@@ -93,7 +95,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
       try {
         await action(owner, check);
       } catch {
-        if (current(owner) && owner.step === expected) {
+        if (ownerRef.current === owner && !owner.lifetime.signal.aborted && owner.step === expected) {
           if (expected.kind === 'link')
             owner.manager?.cancelLink(expected.review.id);
           clear();
@@ -104,7 +106,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
         }
       } finally {
         owner.busy = false;
-        if (current(owner)) setBusy(false);
+        if (ownerRef.current === owner && !owner.lifetime.signal.aborted) setBusy(false);
       }
     },
     [clear, current, navigate]
@@ -115,7 +117,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
         if (!owner.manager) {
           const manager = await open(owner.lifetime.signal, () => {
             if (!current(owner)) throw new Error('CANCELLED');
-          });
+          }, owner.authentication);
           if (!current(owner)) {
             manager.dispose();
             check();
@@ -124,6 +126,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
         }
         const next = await owner.manager.list();
         check();
+        if (AppState.currentState !== 'active') throw new Error('CANCELLED');
         setSnapshot(next);
       })();
     },
@@ -132,6 +135,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
   useLayoutEffect(() => {
     const owner: Owner = {
       lifetime: new AbortController(),
+      authentication: createNativePrivateAuthenticationScope(),
       busy: false,
       step: { kind: 'list' },
     };
@@ -151,11 +155,15 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
       onBack();
     };
     const state = AppState.addEventListener('change', (value) => {
-      if (value !== 'active') suspend();
+      const active = ownerRef.current;
+      if (value !== 'active' && (!active || !allowsPrivateAuthenticationInterruption(active.authentication, value))) suspend();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', suspend)
+        ? AppState.addEventListener('blur', () => {
+          const active = ownerRef.current;
+          if (!active || !allowsPrivateAuthenticationInterruption(active.authentication, 'blur')) suspend();
+        })
         : undefined;
     return () => {
       state.remove();
@@ -172,6 +180,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
       if (owner) retire(owner);
       const next: Owner = {
         lifetime: new AbortController(),
+        authentication: createNativePrivateAuthenticationScope(),
         busy: false,
         step: { kind: 'list' },
       };
@@ -434,24 +443,16 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                   disabled={busy}
                 />
               </View>
-              <PinField
-                label="Wallet PIN"
-                value={password}
-                onChange={setPassword}
-                busy={busy}
-              />
               <Button
                 title={busy ? 'Releasing…' : 'Release collateral'}
                 variant="danger"
-                disabled={busy || !acknowledged || !password}
+                disabled={busy || !acknowledged}
                 onPress={() => {
-                  const entered = password;
                   const reservation = step.reservation;
                   clear();
                   void run(async (owner, check) => {
                     await owner.manager!.releaseCollateral({
                       reservation,
-                      password: entered,
                       acknowledgeNodeStops: true,
                     });
                     check();

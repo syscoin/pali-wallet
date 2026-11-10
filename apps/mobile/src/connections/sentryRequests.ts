@@ -13,8 +13,8 @@ export type NativeSentryDetails = Readonly<
 >;
 export type NativeSentryAssent = Readonly<
   | { kind: 'link' }
-  | { kind: 'operation'; password: string; keyId: string; authorizationId?: SentryRequiredAuthorization['id'] }
-  | { kind: 'vote'; password: string }
+  | { kind: 'operation'; keyId: string; authorizationId?: SentryRequiredAuthorization['id'] }
+  | { kind: 'vote' }
 >;
 export type NativeSentryReview = Readonly<{
   id: string; revision: number; appName: string; origin: string; verification: WalletConnectVerification;

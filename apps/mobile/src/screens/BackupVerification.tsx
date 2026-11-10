@@ -41,7 +41,8 @@ export function BackupVerification({ presentation, onBack, onConfirm, busy, erro
       <Text accessibilityRole="header" style={s.title}>Select your words in order</Text>
       <Text style={s.description}>This confirms that your written copy is complete.</Text>
       <Card style={s.slots}>{presentation.words.map((_, index) => <IdlePressable key={index} accessibilityRole="button"
-        accessibilityLabel={`Word ${index + 1}${answer[index] ? ', selected. Remove this and later words.' : ', empty'}`}
+        accessibilityLabel={`Word ${index + 1}${answer[index] ? `, ${answer[index]}, selected` : ', empty'}`}
+        accessibilityHint={answer[index] ? 'Remove this and later words.' : undefined}
         disabled={busy || index >= selected.length} onPress={() => select(values => values.slice(0, index))} style={s.slot}>
         <Text style={s.number}>{index + 1}</Text><Text style={s.word}>{answer[index] ?? '—'}</Text>
       </IdlePressable>)}</Card>

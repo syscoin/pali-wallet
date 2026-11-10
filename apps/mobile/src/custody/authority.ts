@@ -3,6 +3,7 @@ import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGu
 import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
 import type { NativeAccountRequest, NativeNetworkSelectionProof, NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { NativeImportRequest, NativeUtxoImportDraft } from './importedAccounts.ts';
+import type { NativePrivateAuthentication } from './privateAuthentication.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { NativeSmartCreationAllocation, NativeSmartCreationRequest } from '../smartAccount/preparation.ts';
 import type { NativeConnectionSigningHost } from '../connections/host.ts';
@@ -216,11 +217,11 @@ export class NativeCustodyAuthority {
   }
 
   /** Private protected-form path; imported key material never enters account projections. */
-  importAccount(input: NativeImportRequest, password: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+  importAccount(input: NativeImportRequest, expectedRevision: number, expectedCatalogueRevision: number, signal: AbortSignal, authentication: NativePrivateAuthentication): Promise<void> {
     return this.manageContext((runtime) => {
       if (!runtime.imports) throw new CustodyRuntimeError('NOT_READY');
-      return runtime.imports.reserve(input, password, expectedCatalogueRevision);
-    }, expectedRevision);
+      return runtime.imports.reserve(input, expectedCatalogueRevision, signal, authentication);
+    }, expectedRevision, true);
   }
 
   /** Selection revokes outstanding reviews before changing the saved EVM context. */

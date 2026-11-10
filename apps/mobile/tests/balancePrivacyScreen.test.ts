@@ -15,11 +15,12 @@ async function fixture(failSave = false, changePinAvailable = false) {
     '../platform/localization': nativeTranslationFixture,
     './PinEntry': { PinField: 'PinField' },
     'react-native': { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Switch', 'View'].map(name => [name, name])),
+      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
   });
-  const props = { keyExport: { onClear: () => () => {}, cancel() { cancelled++; }, isCurrent: () => false }, keyFormat: null,
+  const props = { keyExport: { onClear: () => () => {}, cancel() { cancelled++; }, isCurrent: () => false, isAuthenticating: () => false }, keyFormat: null,
     accountId: 'hd:60:0', accountType: 'HDAccount', accountLabel: 'Account 1', address: '0x1111111111111111111111111111111111111111',
     onViewRecovery() { recovery++; }, onAutoLock() { autoLock++; }, ...(changePinAvailable ? { onChangePin() { changePin++; } } : {}), onLock() {}, onBack() {}, captureFailureHandler: () => () => {} };
   return { preference, render(backupConfirmed = true) { return screenElements(f.render({ ...props, backupConfirmed })); }, close: f.close,

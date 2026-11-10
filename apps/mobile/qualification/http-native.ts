@@ -3,15 +3,78 @@ import { createNativeCoinQuoteReader } from '../src/portfolio/nativeCoinQuote.ts
 import { BLOCKBOOK_TICKER_PATH } from '../../../source/shared/nativeCoinQuotes.ts';
 import { abortable } from '../../../source/shared/boundedHttp.ts';
 import type { OwnedPrivacyPullTransport } from '../src/privacy/nativePrivacyPoolSync.ts';
-import { HTTP_CASES, QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE, PUBLIC_SNAPSHOT_FIXTURE_BODY,
-  type HttpBuild, type HttpCase, type HttpLaunch, type HttpReport } from './http-contract.ts';
+import { HTTP_CASES, HTTP_SNAPSHOT_REJECTIONS, QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE, PUBLIC_SNAPSHOT_FIXTURE_BODY,
+  type HttpBuild, type HttpCase, type HttpLaunch, type HttpReport, type HttpSnapshotFailureDetail } from './http-contract.ts';
 
 type FetchPort = (url: string, init: RequestInit) => Promise<Response>;
 function assert(condition: unknown): asserts condition { if (!condition) throw Error('HTTP_QUALIFICATION_FAILED'); }
 const TIMEOUT = 8_000;
 export class HttpQualificationError extends Error {
   readonly failedCase: HttpCase;
-  constructor(failedCase: HttpCase) { super('HTTP_QUALIFICATION_FAILED'); this.failedCase = failedCase; }
+  readonly failureDetail: HttpSnapshotFailureDetail | null;
+  constructor(failedCase: HttpCase, detail: HttpSnapshotFailureDetail | null) {
+    super('HTTP_QUALIFICATION_FAILED'); this.failedCase = failedCase;
+    this.failureDetail = detail && Object.freeze({ ...detail });
+  }
+}
+
+type SnapshotObservation = Omit<HttpSnapshotFailureDetail, 'rejection'>;
+function snapshotRejection(error: unknown): HttpSnapshotFailureDetail['rejection'] {
+  const code = error && typeof error === 'object' ? Object.getOwnPropertyDescriptor(error, 'code')?.value : undefined;
+  if (HTTP_SNAPSHOT_REJECTIONS.includes(code)) return code;
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') return 'abort';
+    if (error.message === 'HTTP_QUALIFICATION_TIMEOUT') return 'timeout';
+    if (error.message === 'HTTP_QUALIFICATION_FAILED') return 'assertion';
+  }
+  return 'other';
+}
+
+/** Exact existing bridge checks; observations contain no body, URL or raw error. */
+export async function qualifyNativeSnapshotBridge(
+  transport: Pick<OwnedPrivacyPullTransport, 'prepareSnapshot'>, origin: string, signal: AbortSignal,
+  observe: (detail: SnapshotObservation) => void
+): Promise<void> {
+  let detail: SnapshotObservation = { stage: 'prepare', status: null, byteCount: null,
+    chunkKind: 'unobserved', chunkBytes: null, mismatchIndex: null };
+  const update = (next: Partial<SnapshotObservation>) => { detail = { ...detail, ...next }; observe(Object.freeze(detail)); };
+  const bounded = (value: unknown, maximum: number): number | null => typeof value === 'number' &&
+    Number.isInteger(value) && value >= 0 && value <= maximum ? value : null;
+  update({});
+  try {
+    const handle = transport.prepareSnapshot('eth-1', origin, signal);
+    const check = () => assert(!signal.aborted);
+    const expected = new TextEncoder().encode(PUBLIC_SNAPSHOT_FIXTURE_BODY);
+    const chunkDetail = (chunk: unknown, offset: number): Pick<SnapshotObservation, 'chunkKind' | 'chunkBytes' | 'mismatchIndex'> => {
+      const mismatch = chunk instanceof Uint8Array ? chunk.findIndex((byte, index) => byte !== expected[offset + index]) : -1;
+      return { chunkKind: chunk === null ? 'null' : chunk === undefined ? 'undefined' : chunk instanceof Uint8Array ? 'uint8array' : chunk instanceof ArrayBuffer ? 'arraybuffer' : 'other',
+        chunkBytes: bounded(chunk instanceof Uint8Array || chunk instanceof ArrayBuffer ? chunk.byteLength : null, 16 * 1024 * 1024),
+        mismatchIndex: mismatch < 0 ? null : bounded(offset + mismatch, 16 * 1024 * 1024) };
+    };
+    let offset = 0;
+    try {
+      update({ stage: 'start' });
+      const info = await abortable(handle.start(check), signal);
+      update({ stage: 'metadata', status: bounded(info?.status, 599), byteCount: bounded(info?.byteCount, 16 * 1024 * 1024) });
+      assert(info.status === 200 && info.byteCount === expected.byteLength);
+      for (const size of [64 * 1024, expected.byteLength - 64 * 1024]) {
+        update({ stage: offset === 0 ? 'first-pull' : 'last-pull', chunkKind: 'unobserved', chunkBytes: null, mismatchIndex: null });
+        const chunk = await abortable(handle.pull(check), signal);
+        update(chunkDetail(chunk, offset));
+        assert(chunk instanceof Uint8Array && chunk.byteLength === size && chunk.every((byte, index) => byte === expected[offset + index]));
+        offset += size;
+      }
+      update({ stage: 'eof', chunkKind: 'unobserved', chunkBytes: null, mismatchIndex: null });
+      const end = await abortable(handle.pull(check), signal);
+      update(chunkDetail(end, offset));
+      assert(end === null);
+    } finally {
+      const previous = detail;
+      update({ stage: 'release' });
+      await handle.release();
+      detail = previous; observe(Object.freeze(detail));
+    }
+  } catch (error) { throw new HttpQualificationError('public-snapshot-bridge', { ...detail, rejection: snapshotRejection(error) }); }
 }
 
 /** Native streaming boundaries are arbitrary; consume exactly the public prefix. */
@@ -51,6 +114,7 @@ export async function qualifyNativeHttp(options: Readonly<{
     assert(text === '{"ok":true}');
   });
   let currentCase: HttpCase = 'exact-get-url';
+  const snapshotObservation: { current: SnapshotObservation | null } = { current: null };
   try {
   await query('exact');
   currentCase = 'client-identification';
@@ -141,28 +205,17 @@ export async function qualifyNativeHttp(options: Readonly<{
     await query(`${STALLED_QUOTE_ROUTE}-closed`);
   }, 11_000);
   currentCase = 'public-snapshot-bridge';
-  await owned(async (signal) => {
-    const handle = options.snapshotTransport.prepareSnapshot('eth-1', `http://127.0.0.1:${launch.port}`, signal);
-    const check = () => assert(!signal.aborted);
-    const expected = new TextEncoder().encode(PUBLIC_SNAPSHOT_FIXTURE_BODY);
-    let offset = 0;
-    try {
-      const info = await abortable(handle.start(check), signal);
-      assert(info.status === 200 && info.byteCount === expected.byteLength);
-      for (const size of [64 * 1024, expected.byteLength - 64 * 1024]) {
-        const chunk = await abortable(handle.pull(check), signal);
-        assert(chunk instanceof Uint8Array && chunk.byteLength === size &&
-          chunk.every((byte, index) => byte === expected[offset + index]));
-        offset += size;
-      }
-      assert(await abortable(handle.pull(check), signal) === null);
-    } finally { await handle.release(); }
-  });
+  await owned(signal => qualifyNativeSnapshotBridge(options.snapshotTransport, `http://127.0.0.1:${launch.port}`, signal,
+    detail => { snapshotObservation.current = detail; }));
   currentCase = 'healthy-after-cancel';
   await query('healthy');
   assert(options.networkCalls() === 0);
   return Object.freeze({ ...options.build, kind: 'native-http', status: 'passed', nativeHttpQualified: true,
     token: launch.token, phase: options.phase, scenario: options.scenario,
     platform: options.platform, sessionId: options.sessionId, networkCalls: 0, cases: [...HTTP_CASES] });
-  } catch { throw new HttpQualificationError(currentCase); }
+  } catch (error) {
+    if (error instanceof HttpQualificationError) throw error;
+    throw new HttpQualificationError(currentCase, currentCase === 'public-snapshot-bridge' && snapshotObservation.current
+      ? { ...snapshotObservation.current, rejection: snapshotRejection(error) } : null);
+  }
 }

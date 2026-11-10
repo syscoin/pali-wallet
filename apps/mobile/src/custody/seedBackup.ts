@@ -76,12 +76,19 @@ export class SeedBackupFlow {
       this.presentation = { id, fingerprint, revision: state.revision, runtime, words: presentation.words, attempts: 0 };
       return presentation;
     } catch (error) {
+      const wasCurrent = !this.disposed && operation === this.operation;
       this.cancel();
-      const refusal = error instanceof KeyringRuntimeError &&
-        (error.code === 'INVALID_CREDENTIAL' || error.code === 'AUTH_THROTTLED' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE');
-      if (!refusal) this.authority.lock();
+      const now = this.authority.getSnapshot();
+      let sameOwner = false, refusal = false;
+      try {
+        sameOwner = wasCurrent && !this.disposed && this.runtime() === runtime && now.revision === state.revision &&
+          ['ready', 'backup-required'].includes(now.phase) && now.account?.address === state.account?.address &&
+          now.account?.network === state.account?.network;
+        refusal = sameOwner && error instanceof KeyringRuntimeError && runtime.isAuthenticationRefusal(error) === true;
+      } catch { /* An unavailable or replaced runtime cannot preserve authority. */ }
+      if (!refusal && sameOwner) this.authority.lock();
       if (error instanceof Error && error.message === 'CANCELLED') throw new Error('CANCELLED');
-      if (refusal)
+      if (refusal && error instanceof KeyringRuntimeError)
         throw new Error(error.code);
       throw new Error('BACKUP_UNAVAILABLE');
     } finally { this.busy = false; }

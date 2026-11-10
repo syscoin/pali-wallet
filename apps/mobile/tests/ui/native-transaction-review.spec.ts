@@ -6,10 +6,10 @@ test.use({ hasTouch: true });
 test('shows exact amounts and inspectable transaction details on a narrow screen', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto(`${fixture}&font-scale=1.6`);
-  await expect(page.getByText('1234567.890123456789012345 COIN', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('1234567.890123456789012345 COIN', { exact: true })).toBeVisible();
   await expect(page.getByText('0.000000000000252 COIN', { exact: true })).toBeVisible();
   await expect(page.getByText('1234567.890123456789264345 COIN', { exact: true })).toBeVisible();
-  await expect(page.getByText('Custom network · Chain ID 743211')).toBeVisible();
+  await expect(page.getByText('Custom network · Chain 743211', { exact: true })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('transaction-review-320-top.png'), fullPage: true });
   await page.getByRole('button', { name: 'View transaction details', exact: true }).click();
   await expect(page.getByText(/"storageKeys"/)).toBeVisible();

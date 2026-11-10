@@ -51,7 +51,7 @@ type Host = Readonly<{
     onProgress: (progress: IPrivacyProofProgress) => void
   ): IPrivacyWithdrawalsController;
   readNoteStatus(): Promise<IPrivateNoteStatus>;
-  reviewRestored(password: string): Promise<void>;
+  reviewRestored(): Promise<void>;
   close(): Promise<void>;
 }>;
 
@@ -287,7 +287,7 @@ export class NativePrivateWithdrawal {
     }
   }
 
-  async reviewRestored(password: string): Promise<void> {
+  async reviewRestored(): Promise<void> {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
@@ -295,7 +295,7 @@ export class NativePrivateWithdrawal {
     this.publish({ checking: true, error: null });
     try {
       this.check();
-      await this.host.reviewRestored(password);
+      await this.host.reviewRestored();
       this.check();
       this.publish({ restored: false });
     } catch (error) {

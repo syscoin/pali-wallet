@@ -34,6 +34,19 @@ test('a new phrase cannot inherit selected words or callbacks from the old phras
   let next = f.render({ presentation: { id: 'second', words: ['new', 'phrase', 'words'] } });
   oldWord.props.onPress(); next = f.render();
   assert.equal(action(next, 'Confirm backup').props.disabled, true);
-  assert(!next.some(value => value.type === 'Slot' && value.props.accessibilityLabel.includes(', selected.')));
+  assert(!next.some(value => value.type === 'Slot' && value.props.accessibilityLabel.endsWith(', selected')));
   f.close(); oldWord.props.onPress(); assert.equal(f.confirmed.length, 0);
+});
+
+test('selected slot labels expose the chosen word and position while removal is a separate hint', () => {
+  const f = fixture(); let tree = f.render();
+  action(tree, 'two', 1).props.onPress(); tree = f.render();
+  action(tree, 'one', 2).props.onPress(); tree = f.render();
+  const slots = tree.filter(value => value.type === 'Slot');
+  assert.equal(slots[0]!.props.accessibilityLabel, 'Word 1, two, selected');
+  assert.equal(slots[1]!.props.accessibilityLabel, 'Word 2, one, selected');
+  assert.equal(slots[0]!.props.accessibilityHint, 'Remove this and later words.');
+  slots[0]!.props.onPress(); tree = f.render();
+  assert.deepEqual(tree.filter(value => value.type === 'Slot').map(value => value.props.accessibilityLabel), ['Word 1, empty', 'Word 2, empty', 'Word 3, empty']);
+  f.close();
 });

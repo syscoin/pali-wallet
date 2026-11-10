@@ -4,6 +4,8 @@ import { createInstance } from 'i18next';
 import { PALI_LANGUAGE_OPTIONS } from '../../../source/shared/languagePolicy.ts';
 import { languageMessages } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
+import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 const names = ['NativeConnections', 'NativeSecurity', 'NativeAccounts', 'NativeImport', 'NativeNetworks', 'RealTools'] as const;
 type Name = typeof names[number];
@@ -27,7 +29,7 @@ async function fixture(language = 'en') {
     async returnToDapp(...args: unknown[]) { returned.push(args); }, async disconnect() {} };
   const props: Record<Name, Record<string, unknown>> = {
     NativeConnections: { controller: connections, onBack() {} },
-    NativeSecurity: { keyExport: { onClear: () => () => {}, cancel() {}, isCurrent: () => false }, keyFormat: 'evm',
+    NativeSecurity: { keyExport: { onClear: () => () => {}, cancel() {}, isCurrent: () => false, isAuthenticating: () => false }, keyFormat: 'evm',
       accountId: account.id, accountType: 'HDAccount', accountLabel: account.label, address: account.address,
       onViewRecovery() {}, onLock() {}, onBack() {}, captureFailureHandler: () => () => {} },
     NativeAccounts: { controller: { getSnapshot: () => catalogue, subscribe: () => () => {}, getContextRevision: () => 9,
@@ -50,6 +52,8 @@ async function fixture(language = 'en') {
     'expo-clipboard': {}, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' }, './ConnectionQrScanner': { ConnectionQrScanner: 'ConnectionQrScanner' },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
     './PinEntry': { PinField: 'PinField' },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
     '../custody/importedAccounts': { isUtxoAccountPrivateKey: () => false },
     '../platform/balancePrivacy': { useBalancePrivacy: () => ({ status: 'ready', hidden: false }),
       async reloadBalancePrivacy() {}, async saveBalancePrivacy() {} },
