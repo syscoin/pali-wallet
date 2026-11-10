@@ -2,6 +2,8 @@ import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smart
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
+import { NativeSigningHandoffs, retireNativeSigningHandoff, type NativeSigningHandoff, type SigningHandoffDescriptor, type SigningResumeScope } from '../src/connections/signingHandoff.ts';
+import type { WalletConnectRequest } from '../src/connections/walletConnect.ts';
 import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
 import { nativeSmartLedgerDevice } from './nativeSmartLedgerDevice.ts';
 import type { NativeSlhKey, NativeSlhTree } from '../src/crypto/slhDsaNativeExecution.ts';
@@ -2329,6 +2331,32 @@ async function smartMessageApproval(f: Awaited<ReturnType<typeof fixture>>) {
   return { host, selected, approval, revoke() { grant = undefined; } };
 }
 
+/** Actual continuation ownership for SDK-port tests; relay/UI qualification is separate. */
+function ownedSmartSdkHandoff(connection: Awaited<ReturnType<typeof smartMessageApproval>>, id: string, expiresAt: number, method: string) {
+  const wire: WalletConnectRequest = {id:1,method,params:[],chainId:'eip155:1',freshness:'fresh',expiresAt,
+    verification:{validation:'VALID',isScam:false},session:{binding:{topic:'aa'.repeat(32),peerPublicKey:'bb'.repeat(32),origin:'https://fixture.example'},
+      metadata:{name:'SDK fixture',description:'',url:'https://fixture.example',icons:[]},expiry:Math.ceil(expiresAt/1000),namespaces:{eip155:{accounts:[`eip155:1:${connection.selected.address}`],methods:[method],events:[]}}}};
+  const canceled: object[] = [];
+  const manager = new NativeSigningHandoffs({async cancel(job){canceled.push(job);await connection.host.cancelSigningHandoff(job);},changed(){}});
+  let current: NativeSigningHandoff;
+  const capture = (admitted: typeof connection, saved: SigningHandoffDescriptor | null) => {
+    const context=admitted.host.context(),signing=admitted.host.signingContext(admitted.selected.id);
+    const scope:SigningResumeScope={adapter:1,wallet:'disposable-sdk-fixture',unlockGeneration:admitted.host.sessionGeneration(),accountId:admitted.selected.id,
+      address:admitted.selected.address,type:admitted.selected.type,xpub:admitted.selected.xpub,registration:JSON.stringify(context.network),grant:'fixture-origin-grant',signing:signing.binding,trezor:signing.trezor};
+    let live=true,owned!:NativeSigningHandoff;
+    const entry={id,wire,scope,expiresAt:saved?.expiresAt??expiresAt,order:1,assertCurrent(){if(!live)throw Error('CANCELLED');admitted.approval.assertCurrent();},
+      eligible:()=>true,drain:async()=>undefined,retire(){live=false;retireNativeSigningHandoff(owned);}};
+    owned=saved?manager.resume(entry,saved):manager.capture(entry);
+    current=owned;
+    if(saved)manager.discard(saved,false);
+    return owned;
+  };
+  capture(connection,null);
+  return {get handoff(){return current;},suspend(){assert(manager.background(current));},resume(next:typeof connection){const saved=manager.descriptor(id);assert(saved);return capture(next,saved);},
+    terminal(){assert.throws(()=>current.beforeSuiteOpen(expiresAt,{}),/REQUEST_EXPIRED/);},
+    retired:()=>manager.retired(),async dispose(){manager.cancelDapp();retireNativeSigningHandoff(current);await manager.retired();},canceled};
+}
+
 for (const deployed of [false, true]) test(`real SDK Smart personal and V4 messages share exact ERC-7739 envelopes (deployed ${deployed})`, async () => {
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
@@ -3325,17 +3353,90 @@ for (const mutation of ['Ledger public key', 'Smart policy'] as const) test(`Led
 });
 
 
-async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null) {
+async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null, count: 1 | 2 = 1) {
   const device = nativeSmartTrezorDevice(), f = await fixture({}, true, slhFactory, undefined, device.sessions);
   try {
-    await f.runtime.trezor.startImport('Trezor owner');
-    await f.change({kind:'import-trezor',label:'Trezor owner'});
+    for(let index=0;index<count;index++){
+      await f.runtime.trezor.startImport(`Trezor owner ${index+1}`);
+      await f.change({kind:'import-trezor',label:`Trezor owner ${index+1}`});
+    }
     await f.change({kind:'create-smart',label:'Trezor Smart account',password:PASSWORD});
-    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners([device.wallets[0]!.address],1);
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners(device.wallets.slice(0,count).map(wallet=>wallet.address).reverse(),count);
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal,()=>undefined);
     return {f,device,async close(){await f.close();await device.dispose();}};
   } catch(error) {await f.close();await device.dispose();throw error;}
 }
+
+test('multiple native Trezor owners sign in the exact shared threshold order through separate terminal jobs',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(null,2);
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'two-smart-owners',Date.now()+120000,'personal_sign');
+    const selected=f.owner.getCatalogue()!.active.accountId;
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Both reviewed Trezor owners'};
+    const prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
+    const result=await connection.host.signMessage({handoff:continuation.handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
+    assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
+    for(const entry of device.signatures)assert.equal(recoverAddress(prepared.actionHash,entry.signature).toLowerCase(),device.wallets[entry.index]!.address.toLowerCase());
+    assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'ecdsa'),signature:coder.encode(['bytes[]'],[device.signatures.map(entry=>entry.signature)])}));
+    continuation.terminal();assert.equal(device.sessions.getSnapshot(),null);
+    assert.equal(f.owner.getCatalogue()!.active.accountId,selected);assert.equal(f.submitted.length,0);
+    assert(device.counts().disposals>=2);
+  }finally{await continuation?.dispose();connection?.approval.dispose();await close();}
+});
+
+test('two native Trezor owner proofs complete before the existing local UserOperation payer review',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(null,2);let operation:NativeSmartAccountOperation|undefined;
+  try{
+    const selected=f.owner.getCatalogue()!.active.accountId;
+    operation=await f.runtime.openSmartAccountSend('0x'+'55'.repeat(20),{kind:'exact',amount:'0.000001'},()=>undefined);
+    await operation.prepare();assert.equal(operation.getSnapshot().phase,'authorize');
+    assert.equal(device.signatures.length,0);assert.equal(operation.getSnapshot().payerReview,null);
+    const signing=operation.authorize(operation.getSnapshot().revision);
+    for(let attempt=0;attempt<3000&&!operation.getSnapshot().payerReview&&!['failed','complete'].includes(operation.getSnapshot().phase);attempt++)await new Promise(resolve=>setTimeout(resolve,5));
+    const review=operation.getSnapshot().payerReview;assert(review,JSON.stringify(operation.getSnapshot()));
+    assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
+    for(const entry of device.signatures)assert.equal(recoverAddress(operation.getSnapshot().userOperationHash!,entry.signature).toLowerCase(),device.wallets[entry.index]!.address.toLowerCase());
+    assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+    operation.confirmPayer(review.id);await signing;
+    assert.equal(operation.getSnapshot().phase,'complete',JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length,1);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
+  }finally{await operation?.dispose();await close();}
+});
+
+for(const change of ['none','message','policy'] as const)test(`partial native Trezor owner proofs resume only their exact approved operation (${change})`,async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(null,2),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'partial-two-owners',Date.now()+120000,'personal_sign');
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'&&device.signatures.length===2){entered.resolve();await release.promise;}});
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Approved by each device'};
+    const signing=connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval});
+    const rejected=assert.rejects(signing);
+    await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected the second owner callback');})]);
+    assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
+    const signer=f.runtime.trezor.getSnapshot().signer;
+    assert(signer);assert.equal(signer.step,2);assert.equal(signer.total,2);assert.equal(signer.address,device.wallets[0]!.address);
+    continuation.suspend();f.owner.lock();await rejected;
+    release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
+    const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');
+    const handoff=continuation.resume(connection),opened=device.urls.length;
+    if(change==='policy')f.observedEcdsaOwners(device.wallets.map(wallet=>wallet.address),2);
+    const work=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',approval:connection.approval,
+      request:change==='message'?{...request,message:'Different unapproved operation'}:request});
+    if(change==='none'){
+      const result=await work,prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
+      assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'ecdsa'),signature:coder.encode(['bytes[]'],[device.signatures.map(value=>value.signature)])}));
+      continuation.terminal();
+    }else{await assert.rejects(work);await continuation.retired();assert(continuation.canceled.length>0);}
+    assert.equal(device.signatures.length,2,'completed proofs and the retained callback cannot cause another device signature');
+    assert.equal(device.urls.length,opened);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+    assert.equal(f.runtime.trezor.getSnapshot().signer,null);
+  }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
+});
 
 
 for (const ownerKind of ['software', 'external'] as const)
@@ -3372,48 +3473,53 @@ for (const ownerKind of ['software', 'external'] as const)
 test('native Smart Trezor dapp typed signing preserves selected Smart and the original journal capability', async () => {
   const {f,device,close} = await readyTrezorSmartOwner();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  let continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
   try {
     connection = await smartMessageApproval(f);
     const selected = f.owner.getCatalogue()!.active.accountId, journal = await f.captureOriginalJournal();
     const host = connection.host, signing = host.signingContext(selected);
     assert.equal(signing.trezor,true); assert.equal(host.supportsSmartAccountMessages(selected),true);
-    let fences=0;
-    const handoff = {id:'fresh-smart-dapp',expiresAt:Date.now()+60000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    continuation=ownedSmartSdkHandoff(connection,'fresh-smart-dapp',Date.now()+60000,'personal_sign');
+    const handoff=continuation.handoff;
     const request = readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
     const signature=await host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
-    assert.match(signature,/^0x[0-9a-f]+$/i); assert.equal(fences,1); assert.equal(device.signatures.length,1);
+    assert.match(signature,/^0x[0-9a-f]+$/i); continuation.terminal(); assert.equal(device.signatures.length,1);
     assert.equal(f.owner.getCatalogue()!.active.accountId,selected); assert.equal(host.context().activeAccountId,selected);
     assert.deepEqual(await journal.read(true),[]); assert.equal(f.submitted.length,0);
     assert.equal(device.sessions.getSnapshot(),null); assert(device.counts().disposals>0);
-  } finally {connection?.approval.dispose();await close();}
+  } finally {await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 test('native Smart Trezor UserOperation keeps original expiry and requires payer consent after verified proof', async () => {
   const {f,device,close} = await readyTrezorSmartOwner();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, operation: NativeSmartAccountOperation | undefined;
+  let continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
   try {
     connection=await smartMessageApproval(f); const selected=f.owner.getCatalogue()!.active.accountId, journal=await f.captureOriginalJournal();
-    let fences=0; const deadline=Date.now()+60000;
-    const handoff={id:'fresh-smart-uo',expiresAt:deadline,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    const deadline=Date.now()+60000;
+    continuation=ownedSmartSdkHandoff(connection,'fresh-smart-uo',deadline,'eth_sendTransaction');
+    const handoff=continuation.handoff;
     const result=await connection.host.prepareTransaction({handoff,accountId:selected,networkId:'ethereum',transaction:{from:connection.selected.address,to:'0x'+'55'.repeat(20),value:'0x1',data:'0x'},approval:connection.approval},connection.approval.assertCurrent);
     assert('operation' in result); operation=result.operation;
     await operation.prepare(); assert.equal(operation.getSnapshot().phase,'authorize'); assert(operation.authorizationExpiresAt<=deadline);
     const signing=operation.authorize(operation.getSnapshot().revision);
     for(let i=0;i<1000&&operation.getSnapshot().phase!=='review-fee'&&!['failed','complete'].includes(operation.getSnapshot().phase);i++)await new Promise(resolve=>setTimeout(resolve,5));
-    assert.equal(operation.getSnapshot().phase,'review-fee'); assert.equal(fences,1); assert.equal(device.signatures.length,1); assert.equal(f.submitted.length,0);
+    assert.equal(operation.getSnapshot().phase,'review-fee'); continuation.terminal(); assert.equal(device.signatures.length,1); assert.equal(f.submitted.length,0);
     assert.equal(f.owner.getCatalogue()!.active.accountId,selected); assert.deepEqual(await journal.read(true),[]);
     operation.confirmPayer(operation.getSnapshot().payerReview!.id); await signing;
     assert.equal(operation.getSnapshot().phase,'complete'); assert.equal(f.submitted.length,1); assert((await journal.read(true)).length>0);
     assert.equal(device.sessions.getSnapshot(),null);
-  } finally {await operation?.dispose();connection?.approval.dispose();await close();}
+  } finally {await operation?.dispose();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 for(const failure of ['wrong key','changed policy','cancelled raw callback'] as const) test(`native Smart Trezor ${failure} cannot release a proof or prefund`,async()=>{
   const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),released=Promise.withResolvers<void>();
   let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined;
+  let continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
   try{
-    connection=await smartMessageApproval(f);let fences=0;
-    const handoff={id:'fresh-refusal',expiresAt:Date.now()+60000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'fresh-refusal',Date.now()+60000,'personal_sign');
+    const handoff=continuation.handoff;
     if(failure==='wrong key')device.wrongKey(0);
     if(failure==='changed policy')device.onBeforeCallback(request=>{
       if(request.method==='ethereumGetPublicKey')f.mutateSelectedSmart(account=>{account.smartAccount!.auth={...account.smartAccount!.auth!,data:encodeEcdsaValidatorInitData([device.wallets[1]!.address],1)};});
@@ -3425,49 +3531,51 @@ for(const failure of ['wrong key','changed policy','cancelled raw callback'] as 
     const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
     if(failure==='cancelled raw callback'){
       await entered.promise;f.owner.lock();await new Promise(resolve=>setImmediate(resolve));
-      assert.equal(fences,0);released.resolve();
+      released.resolve();
     }
     await rejected;
-    assert.equal(fences,0);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+    assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
     assert(device.counts().disposals>0);
-  }finally{released.resolve();connection?.approval.dispose();await close();}
+  }finally{released.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 test('native Smart Trezor return creates a fresh private message approval after unlock and replays only after separate Confirm',async()=>{
   const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
-  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,suspended=false,fences=0;
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined;
+  let continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
   const deadline=Date.now()+120000;
-  const handoff={id:'original-smart-message',expiresAt:deadline,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>suspended};
   try{
     connection=await smartMessageApproval(f);const selected=connection.selected.id;
+    continuation=ownedSmartSdkHandoff(connection,'original-smart-message',deadline,'personal_sign');let handoff=continuation.handoff;
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
     const signing=connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
-    await entered.promise;suspended=true;f.owner.lock();await rejected;
-    release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');assert.equal(fences,0);
+    await entered.promise;continuation.suspend();f.owner.lock();await rejected;
+    release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');
     connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
     const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');assert.equal(resume.accountId,selected);assert.equal(resume.id,handoff.id);
-    assert.equal(fences,0);const opened=device.urls.length;suspended=false;
+    const opened=device.urls.length;handoff=continuation.resume(connection);
     const result=await connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
-    assert.match(result,/^0x[0-9a-f]+$/i);assert.equal(fences,1);assert.equal(device.urls.length,opened);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
+    assert.match(result,/^0x[0-9a-f]+$/i);continuation.terminal();assert.equal(device.urls.length,opened);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
     assert.equal(device.sessions.getSnapshot(),null);assert.equal(f.submitted.length,0);
-  }finally{release.resolve();connection?.approval.dispose();await close();}
+  }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 
 test('native Smart Trezor return after network change discards the old public transcript',async()=>{
   const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
-  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,suspended=false,fences=0;
-  const handoff={id:'network-bound-smart-message',expiresAt:Date.now()+120000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>suspended};
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined;
+  let continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
   try{
     connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'network-bound-smart-message',Date.now()+120000,'personal_sign');const handoff=continuation.handoff;
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
     const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
-    await entered.promise;suspended=true;f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    await entered.promise;continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
     connection.approval.dispose();await f.owner.unlock(PASSWORD);await f.selectNetwork('base');
-    await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(fences,0);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
-  }finally{release.resolve();connection?.approval.dispose();await close();}
+    await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+  }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 test('local Smart Trezor wallet send resumes through a fresh operation and separate signing/payer reviews',async()=>{
@@ -3657,14 +3765,13 @@ test('dapp Trezor module installation preserves private approval through signed 
   const { f, device, close } = await readyTrezorSmartOwner();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   let operation: NativeSmartAccountOperation | undefined;
+  let continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
   try {
     f.customValidator(CUSTOM_MODULE);
     connection = await smartMessageApproval(f);
-    let signaturesAccepted = 0;
     const deadline = Date.now() + 60000;
-    const handoff = { id: 'module-trezor', expiresAt: deadline,
-      beforeSuiteOpen() { return () => undefined; },
-      beforeSignature() { signaturesAccepted++; }, isSuspended: () => false };
+    continuation=ownedSmartSdkHandoff(connection,'module-trezor',deadline,'wallet_requestSmartAccountModuleInstall');
+    const handoff=continuation.handoff;
     const prepared = await connection.host.prepareModuleChange({ accountId: connection.selected.id, networkId: 'ethereum',
       request: normalizeSmartAccountModuleRequest('wallet_requestSmartAccountModuleInstall', [{ address: CUSTOM_MODULE, name: 'Trezor module', initData: '0x1234' }]),
       approval: connection.approval, handoff }, connection.approval.assertCurrent);
@@ -3677,7 +3784,7 @@ test('dapp Trezor module installation preserves private approval through signed 
     for (let attempt = 0; attempt < 1000 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
       await new Promise(resolve => setTimeout(resolve, 5));
     assert.equal(operation.getSnapshot().phase, 'review-fee', JSON.stringify(operation.getSnapshot()));
-    assert.equal(signaturesAccepted, 1); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
+    continuation.terminal(); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
     connection.approval.assertCurrent();
     operation.confirmPayer(operation.getSnapshot().payerReview!.id); await signing;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
@@ -3685,7 +3792,7 @@ test('dapp Trezor module installation preserves private approval through signed 
     assert.equal(f.submitted.length, 1); assert.equal(device.signatures.length, 1);
     assert.equal(f.owner.getCatalogue()!.active.accountId, connection.selected.id);
     connection.approval.assertCurrent();
-  } finally { await operation?.dispose(); connection?.approval.dispose(); await close(); }
+  } finally { await operation?.dispose(); await continuation?.dispose(); connection?.approval.dispose(); await close(); }
 });
 
 for (const delayed of [false, true]) test(`module management custom install survives restart and metadata-only retry (delayed=${delayed})`, async () => {

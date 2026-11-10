@@ -11,7 +11,7 @@ export async function signNativeSmartTrezorOwner(ports: Readonly<{
   request: Parameters<TrezorKeyring['signTypedData']>[0];
   actionHash: string;
   authority: SmartAccountOwnerAuthority;
-  beforeSignature(): void;
+  beforeSignature(signature: string): void;
 }>): Promise<string> {
   const expected = Object.freeze({ ...ports.expected });
   const check = () => {
@@ -29,8 +29,8 @@ export async function signNativeSmartTrezorOwner(ports: Readonly<{
     throw new Error('Smart account Trezor public key changed');
   const signature = await ports.worker.signTypedData(ports.request, ports.authority); check();
   assertEcdsaOwnerSignature(ports.actionHash, expected.address, signature); check();
-  // The raw Suite callback is not a usable signature until the SDK and shared
-  // proof check accept it. Retire continuation before releasing those bytes.
-  ports.beforeSignature(); check();
+  // The owning continuation records this verified occurrence, and retires its
+  // final device step, before any signature bytes leave the private adapter.
+  ports.beforeSignature(signature); check();
   return signature;
 }

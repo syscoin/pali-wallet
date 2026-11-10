@@ -3,7 +3,7 @@ import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequ
 import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
 import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, isSmartAccountModuleRequestMethod, normalizeSmartAccountModuleRequest, SmartAccountModuleRequestError, type SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
-import { NativeSigningHandoffs, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
+import { NativeSigningHandoffs, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
 import { isDappEncryptionMethod, readDappEncryptionRequest, supportsDappEncryptionAccount, type DappEncryptionRequest } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { prepareDappEncryptionApproval } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import { dappCaipChain, dappNamespace, DAPP_MODE_METHODS, normalizeDappModeRequest, type DappChainScope } from '../../../../source/shared/dappChainScope.ts';
@@ -1997,12 +1997,14 @@ export class NativeConnectionsController {
       throw error;
     }
   }
-  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope): NativeSigningHandoff {
-    return this.handoffs.capture({ id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
+  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope, resume: SigningHandoffDescriptor | null): NativeSigningHandoff {
+    if (message.handoff) retireNativeSigningHandoff(message.handoff);
+    const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
       assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
       eligible: () => message.busy && !message.dispatched && !message.resultReady && !message.broadcastHash && !message.eoa,
       drain: () => message.work ?? Promise.resolve(), retire: () => { void this.retireRequest(message, false); },
-    });
+    };
+    return resume ? this.handoffs.resume(entry, resume) : this.handoffs.capture(entry);
   }
   private revalidateSigningRequests() {
     for (const message of [...this.requests.values()]) {
@@ -2022,6 +2024,7 @@ export class NativeConnectionsController {
   ): Promise<void> {
     if (this.requests.get(message.id) !== message) return this.requestRetirement;
     this.requests.delete(message.id);
+    retireNativeSigningHandoff(message.handoff);
     const reservation = message.request.method === 'wallet_sendCalls'
       ? this.host?.calls
         .releaseSendCallsBundleReservation(
@@ -2338,14 +2341,17 @@ export class NativeConnectionsController {
         void this.retireRequest(message);
       }, Math.max(0, expiresAt - Date.now())),
     };
-    message.handoff = this.captureSigningHandoff(message, scope);
-    if (saved) {
-      const waiting = [...this.requests]; this.requests.clear(); this.requests.set(id, message);
-      for (const [key, value] of waiting) this.requests.set(key, value);
-      this.handoffs.discard(saved, false);
-    } else this.requests.set(id, message);
+    let handoffAdopted = false;
     try {
+      message.handoff = this.captureSigningHandoff(message, scope, saved ?? null);
+      if (saved) {
+        const waiting = [...this.requests]; this.requests.clear(); this.requests.set(id, message);
+        for (const [key, value] of waiting) this.requests.set(key, value);
+      } else this.requests.set(id, message);
       message.approval = this.captureSigningApproval(message);
+      if (saved) this.handoffs.discard(saved, false);
+      message.approval.assertCurrent();
+      handoffAdopted = true;
       this.publish();
       const site = await this.options.checkSite(origin);
       message.approval.assertCurrent();
@@ -2412,7 +2418,7 @@ export class NativeConnectionsController {
       this.publish();
     } catch {
       if (
-        isOperationRequest(message.request) &&
+        handoffAdopted && isOperationRequest(message.request) &&
         this.requestConnectionCurrent(message)
       ) {
         message.prepared = undefined;
@@ -2426,7 +2432,13 @@ export class NativeConnectionsController {
         this.publish();
         return;
       }
-      await this.retireRequest(message);
+      if (message.handoff) retireNativeSigningHandoff(message.handoff);
+      try { if (saved) this.handoffs.discard(saved); }
+      finally {
+        clearTimeout(message.timer);
+        message.approval?.dispose();
+        await this.retireRequest(message);
+      }
     }
   }
   private async prepareForegroundRequest(): Promise<void> {
@@ -3152,7 +3164,7 @@ export class NativeConnectionsController {
       if (message.smart || message.prepared || message.eoa || message.dispatched || message.broadcastHash || message.resultReady || message.handoff.isSuspended()) return failure('REQUEST_EXPIRED');
       const scope = this.signingResumeScope(message.wire.session.binding, 'selected');
       if (!scope) return failure('REQUEST_EXPIRED');
-      message.handoff = this.captureSigningHandoff(message, scope);
+      message.handoff = this.captureSigningHandoff(message, scope, null);
       if (isOperationRequest(message.request))
         await this.prepareTransactionReview(message);
       message.busy = false;

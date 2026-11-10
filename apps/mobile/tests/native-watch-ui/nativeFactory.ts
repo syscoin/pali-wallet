@@ -29,7 +29,7 @@ import { sysxSendFixture } from './sysxSendFixture';
 import { BITCOIN_BIP84_ADDRESS, BITCOIN_BIP84_KEY, BITCOIN_WIF_ADDRESS, BITCOIN_WIF_KEY } from './utxoImportVectors';
 
 const idleTrezorSnapshot = Object.freeze({
-  phase: 'idle' as const, operation: null, networkLabel: '', accountLabel: '', address: null, error: null,
+  phase: 'idle' as const, operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null,
 });
 
 const noteFixtureEnabled = new URLSearchParams(window.location.search).has('private-note-fixture');

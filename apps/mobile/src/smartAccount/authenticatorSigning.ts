@@ -119,15 +119,17 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
 }
 
 function supportsNativeTrezorPlan(plan: ReturnType<typeof getSmartAccountSigningPlan>) {
-  const trezor = plan?.authenticators.flatMap(entry => entry.owners.filter(owner => owner.type === 'Trezor')) ?? [];
-  return trezor.length <= 1;
+  if (!plan?.authenticators.some(entry => entry.owners.some(owner => owner.type === 'Trezor'))) return true;
+  // Suite continuation checkpoints ECDSA owner proofs. Other selected drivers
+  // need their own reviewed resume contract before crossing a device departure.
+  return plan.authenticators.every(entry => entry.validator.id === 'ecdsa');
 }
 export function getNativeSmartAccountSigningPlan(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ slhDsa: boolean }>) {
   if (typeof available?.slhDsa !== 'boolean') throw new Error('Explicit native signing availability is required');
   const captured = captureNativeSmartAccountSigningContext(metadata, localOwners);
   const plan = getSmartAccountSigningPlan(captured.metadata, {ecdsa: captured.owners, p256WebAuthn: false, slhDsa: available.slhDsa});
-  // A Suite transcript admits one terminal signature. Multiple physical-owner
-  // handoffs need their own reviewed consent flow before being advertised.
+  // One terminal signature per Suite job; ordered owner jobs share only the
+  // process-owned, exact-intent proof continuation implemented by the host.
   return supportsNativeTrezorPlan(plan) ? plan : null;
 }
 export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ slhDsa: boolean }>): boolean {

@@ -295,7 +295,7 @@ export function createNativeWalletControllers() {
   const ledger = new NativeLedgerAccounts(authority, () => runtime?.ledger, 'import');
   const ledgerConnection = new NativeLedgerAccounts(authority, () => runtime?.ledger, 'connect');
   const emptyTrezor: NativeTrezorSnapshot = Object.freeze({
-    phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null,
+    phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null,
   });
   const requireTrezor = () => {
     if (!runtime) throw new CustodyOperationError('NOT_READY');

@@ -8,8 +8,9 @@ import { createNativePrivacyControls, type NativePrivacyControls, type NativePri
 import { createNativePrivacyLifecycle } from '../privacy/privacyLifecycle.ts';
 import { createNativeNoteMaintenanceProofs } from './noteMaintenance.ts';
 import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
-import { NativeSigningHandoffs, sameSigningResumeOwner, type NativeSigningHandoff, type LocalSigningResumeScope, type LocalSigningHandoffDescriptor, requireNativeSigningHandoff } from '../connections/signingHandoff.ts';
+import { NativeSigningHandoffs, captureNativeSigningContinuation, completeNativeSigningOwnerStep, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type LocalSigningResumeScope, type LocalSigningHandoffDescriptor, requireNativeSigningHandoff } from '../connections/signingHandoff.ts';
 import { signNativeSmartTrezorOwner } from '../hardware/smartOwnerSigning.ts';
+import { NativeOwnerProofReceipts, type NativeOwnerProofIdentity } from '../smartAccount/ownerProofReceipts.ts';
 import { snapshotNativeSmartLocalAction } from '../smartAccount/localAction.ts';
 import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '../../../../source/utils/smartAccount/ownerSigning.ts';
 import { createSmartAccountRawSigningIntent } from '../../../../source/utils/smartAccount/ownerSigningIntent.ts';
@@ -500,7 +501,7 @@ export function createKeyringRuntimeFactory(
         let trezorSequence = 0;
         let trezorEpoch = 0;
         let preparedTrezor: { account: IKeyringAccountState; generation: number; snapshot: NativeWalletCatalogueSnapshot } | undefined;
-        type SmartTrezorTarget = Readonly<{ smartId: string; smartAddress: string; ownerId: string; ownerIndex: number; ownerAddress: string; publicKey: string; cataloguePolicy: string; signingPolicy: string }>;
+        type SmartTrezorTarget = Readonly<{ smartId: string; smartAddress: string; ownerId: string; ownerIndex: number; ownerAddress: string; ownerLabel: string; ownerStep: number; ownerSteps: number; publicKey: string; cataloguePolicy: string; signingPolicy: string }>;
         let pendingTrezor: {
           owner: NativeTrezorHandoffOwner;
           job: NativeTrezorSession['job'];
@@ -515,15 +516,18 @@ export function createKeyringRuntimeFactory(
         let trezorError: string | null = null;
         const trezorListeners = new Set<() => void>();
         let trezorSnapshot: NativeTrezorSnapshot = Object.freeze({ phase: 'idle', operation: null,
-          networkLabel: '', accountLabel: '', address: null, error: null });
+          networkLabel: '', accountLabel: '', address: null, signer: null, error: null });
         const publishTrezor = () => {
           const pending = pendingTrezor, transport = dependencies.trezorSessions?.getSnapshot();
+          const target = pending?.target;
+          const candidate = target && transport ? Object.freeze({label:target.ownerLabel,address:target.ownerAddress,step:target.ownerStep,total:target.ownerSteps}) : null;
+          const signer = candidate && trezorSnapshot.signer && Object.keys(candidate).every(key => candidate[key as keyof typeof candidate] === trezorSnapshot.signer![key as keyof typeof candidate]) ? trezorSnapshot.signer : candidate;
           const next: NativeTrezorSnapshot = {
             phase: trezorError ? 'error' : !pending || !transport ? 'idle'
               : transport.phase === 'response-ready' ? 'resume'
                 : transport.phase === 'awaiting-response' || transport.phase === 'locked' ? 'waiting' : pending.operation === 'import' ? 'importing' : 'opening',
             operation: pending?.operation ?? null, networkLabel: pending?.networkLabel ?? '',
-            accountLabel: pending?.accountLabel ?? '', address: pending?.owner.accountAddress ?? null, error: trezorError,
+            accountLabel: pending?.accountLabel ?? '', address: pending?.owner.accountAddress ?? null, signer, error: trezorError,
           };
           if ((Object.keys(next) as (keyof NativeTrezorSnapshot)[]).every(key => next[key] === trezorSnapshot[key])) return;
           trezorSnapshot = Object.freeze(next);
@@ -569,7 +573,7 @@ export function createKeyringRuntimeFactory(
           if (invalidate) trezorEpoch++;
           const pending = pendingTrezor, local=localSmartContext;
           localSmartContext=undefined; localSmartHandoffs.cancelLocal();
-          if(local){local.operation.cancel();void local.disposeOriginal().catch(()=>undefined);}
+          if(local){retireNativeSigningHandoff(local.handoff);local.operation.cancel();void local.disposeOriginal().catch(()=>undefined);}
           pendingTrezor = undefined; trezorError = null;
           preparedTrezor = undefined;
           const retirement = retireTrezor();
@@ -1214,7 +1218,7 @@ export function createKeyringRuntimeFactory(
             const saved = owner?.type === 'Trezor' ? state.accounts.Trezor[owner.index] : undefined;
             if (!selected || selected.id !== target.smartId || selected.address !== target.smartAddress || !smart?.smartAccount ||
                 JSON.stringify(smart.smartAccount) !== target.cataloguePolicy || !owner || owner.type !== 'Trezor' || owner.slip44 !== 60 ||
-                owner.index !== target.ownerIndex || owner.address !== target.ownerAddress || !saved || saved.address !== target.ownerAddress || saved.xpub !== target.publicKey)
+                owner.index !== target.ownerIndex || owner.address !== target.ownerAddress || owner.label !== target.ownerLabel || !saved || saved.address !== target.ownerAddress || saved.xpub !== target.publicKey)
               throw new KeyringRuntimeError('CANCELLED');
           } else if (selected && selected.type !== 'Trezor') throw new KeyringRuntimeError('NOT_READY');
           const utxo = findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
@@ -1245,6 +1249,8 @@ export function createKeyringRuntimeFactory(
           beforeSuiteOpen: ((expiresAt: number, job: object) => (opened: boolean) => void) | undefined) => {
           const sessions = dependencies.trezorSessions;
           if (!sessions || !trezorSessionGeneration || trezorSession) throw new KeyringRuntimeError('NOT_READY');
+          await localSmartHandoffs.retired();
+          check();
           await trezorCleanup;
           check();
           const owner = await trezorOwner(captured, check, operation === 'import', target); check();
@@ -3266,23 +3272,91 @@ export function createKeyringRuntimeFactory(
           } : null,
           trezor,
         });
+        const smartOwnerProofSequence = (handoff: NativeSigningHandoff | null) => {
+          let ordinal = 0;
+          return async (owner: NativeSmartAccountSigningOwner, metadata: ISmartAccountMetadata,
+            intent: Parameters<typeof signSmartAccountOwnerIntent>[0]['intent'], inventory: ReturnType<typeof captureSmartSigningOwners>,
+            check: () => void, sign: (acceptTrezorProof: (signature: string) => void, position: Readonly<{step:number;total:number}> | null) => Promise<string>) => {
+            check();
+            const plan = getNativeSmartAccountSigningPlan(metadata, inventory.localOwners, { slhDsa: slhCapability !== null });
+            if (!plan) throw new KeyringRuntimeError('NOT_READY');
+            if (!plan.authenticators.some(entry => entry.owners.some(candidate => candidate.type === 'Trezor')))
+              return sign(() => { throw new KeyringRuntimeError('INVALID_INPUT'); }, null);
+            requireNativeSigningHandoff(handoff);
+            const ownedHandoff = handoff;
+            try {
+              const continuation = captureNativeSigningContinuation(ownedHandoff, expiresAt => {
+                const receipts = new NativeOwnerProofReceipts({ now: Date.now });
+                let captured: ReturnType<NativeOwnerProofReceipts['capture']> | undefined;
+                let retired = false;
+                return {
+                  receipts, expiresAt,
+                  get captured() { if (retired) throw new KeyringRuntimeError('CANCELLED'); return captured; },
+                  capture(input: Parameters<NativeOwnerProofReceipts['capture']>[0], guard: () => void) {
+                    if (retired || captured) throw new KeyringRuntimeError('CANCELLED');
+                    captured = receipts.capture(input, guard); return captured;
+                  },
+                  retire() { retired = true; if (captured) receipts.retire(captured.handle); captured = undefined; },
+                };
+              });
+              const selected = selectedAccount(), snapshot = catalogueSnapshot;
+              const smart = state.accounts.SmartAccount[selected.index];
+              if (!snapshot || selected.type !== 'SmartAccount' || !smart?.smartAccount) throw new KeyringRuntimeError('CANCELLED');
+              const identities = new Map<string, NativeOwnerProofIdentity>();
+              for (const entry of plan.authenticators) for (const required of entry.owners) {
+                if (!['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(required.type)) throw new KeyringRuntimeError('INVALID_INPUT');
+                const saved = inventory.ownerRecords.get(`${required.type}:${required.id}`);
+                if (!saved || saved.address.toLowerCase() !== required.address.toLowerCase()) throw new KeyringRuntimeError('CANCELLED');
+                identities.set(`${required.type}:${required.id}`, { type: required.type as NativeOwnerProofIdentity['type'], id: required.id, address: saved.address, publicKey: saved.xpub });
+              }
+              const binding = JSON.stringify({ id: ownedHandoff.id,
+                account: { id: selected.id, address: smart.address, publicKey: smart.xpub },
+                network: getNativeNetwork(snapshot.active.networkId, snapshot.networks), metadata, plan, owners: [...identities.values()] });
+              const captured = continuation.captured ?? continuation.capture({ binding, intent, plan, owners: [...identities.values()], expiresAt: continuation.expiresAt }, check);
+              const step = captured.steps[ordinal++];
+              if (!step || step.owner.type !== owner.type || step.owner.id !== owner.id || step.owner.address.toLowerCase() !== owner.address.toLowerCase())
+                throw new KeyringRuntimeError('CANCELLED');
+              const request = { binding, intent, step };
+              const previous = continuation.receipts.read(captured.handle, request, check);
+              if (previous !== null) { check(); return previous; }
+              const deviceSteps = captured.steps.filter(candidate => candidate.owner.type === 'Trezor');
+              const position = owner.type === 'Trezor' ? {step:deviceSteps.findIndex(candidate => candidate.ordinal === step.ordinal)+1,total:deviceSteps.length} : null;
+              let accepted = false;
+              const signature = await sign(verified => {
+                check();
+                if (owner.type !== 'Trezor' || accepted) throw new KeyringRuntimeError('CANCELLED');
+                continuation.receipts.record(captured.handle, request, verified, check); accepted = true;
+                const lastTrezor = deviceSteps.at(-1);
+                completeNativeSigningOwnerStep(ownedHandoff, lastTrezor?.ordinal === step.ordinal);
+                check();
+              }, position);
+              check();
+              if (owner.type === 'Trezor') {
+                if (!accepted || continuation.receipts.read(captured.handle, request, check)?.toLowerCase() !== signature.toLowerCase())
+                  throw new KeyringRuntimeError('CANCELLED');
+              } else continuation.receipts.record(captured.handle, request, signature, check);
+              check(); return signature;
+            } catch (error) { retireNativeSigningHandoff(ownedHandoff); throw error; }
+          };
+        };
         const smartTrezorSigningPort = (owner: NativeSmartAccountSigningOwner, metadata: ISmartAccountMetadata,
           intent: Parameters<typeof signSmartAccountOwnerIntent>[0]['intent'], signal: AbortSignal, assertCurrent: () => void,
-          handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff): NonNullable<SmartAccountOwnerSigningSdk['trezor']> => ({
+          handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff, acceptProof: (signature: string) => void, position: Readonly<{step:number;total:number}>): NonNullable<SmartAccountOwnerSigningSdk['trezor']> => ({
           async signTypedData(request, authority) {
             const captured = generation, snapshot = catalogueSnapshot, smart = selectedAccount(), originalRing = keyring, admittedEpoch = trezorEpoch;
             const record = snapshot?.accounts.find(candidate => candidate.type === 'Trezor' && candidate.index === owner.id);
             const saved = state.accounts.Trezor[owner.id], smartRecord = state.accounts.SmartAccount[smart.index];
             const plan = getNativeSmartAccountSigningPlan(metadata, captureSmartSigningOwners().localOwners, {slhDsa: slhCapability !== null});
             const needed = plan?.authenticators.flatMap(entry => entry.owners.filter(candidate => candidate.type === 'Trezor')) ?? [];
-            const planned = needed[0];
+            const planned = needed[position.step-1];
             if (!snapshot || smart.type !== 'SmartAccount' || !smartRecord?.smartAccount || !record || record.slip44 !== 60 || !saved ||
-                needed.length !== 1 || !planned || planned.id !== owner.id || planned.address.toLowerCase() !== owner.address.toLowerCase() ||
+                !Number.isSafeInteger(position.step) || position.step < 1 || position.total !== needed.length || !planned || planned.id !== owner.id || planned.address.toLowerCase() !== owner.address.toLowerCase() ||
                 record.address.toLowerCase() !== owner.address.toLowerCase() || saved.address !== record.address ||
                 request.index !== owner.id || request.address.toLowerCase() !== owner.address.toLowerCase() || authority.signal !== signal)
               throw new KeyringRuntimeError('NOT_READY');
             const target: SmartTrezorTarget = Object.freeze({smartId: smart.id, smartAddress: smart.address, ownerId: record.id,
               ownerIndex: owner.id, ownerAddress: record.address, publicKey: saved.xpub,
+              ownerLabel:record.label, ownerStep:position.step, ownerSteps:position.total,
               cataloguePolicy: JSON.stringify(smartRecord.smartAccount), signingPolicy: JSON.stringify({metadata, plan})});
             const check = () => {
               current(captured); checkGuard(assertCurrent); checkGuard(authority.assertCurrent);
@@ -3306,7 +3380,7 @@ export function createKeyringRuntimeFactory(
             try {
               const signature = await signNativeSmartTrezorOwner({ worker,
                 expected: {index:owner.id,address:owner.address,publicKey:target.publicKey}, request,
-                actionHash:intent.actionHash, authority:{signal,assertCurrent:check}, beforeSignature:handoff.beforeSignature });
+                actionHash:intent.actionHash, authority:{signal,assertCurrent:check}, beforeSignature:acceptProof });
               check();
               await finishTrezor(session, check); check();
               return signature;
@@ -4064,11 +4138,15 @@ export function createKeyringRuntimeFactory(
             let operation!:NativeSmartAccountOperation;
             let disposeOriginal:()=>Promise<void>;
             const id=saved?.id??`local-smart-${++trezorSequence}`;
-            const handoff=origin.kind==='dapp'?origin.handoff:localTrezor?localSmartHandoffs.captureLocal({id,scope:scope!,action:origin.kind==='local-new'?origin.action:origin.descriptor.action,
+            const localEntry: Parameters<NativeSigningHandoffs['captureLocal']>[0] | null = origin.kind!=='dapp'&&localTrezor?{id,scope:scope!,action:origin.kind==='local-new'?origin.action:origin.descriptor.action,
               expiresAt:deadline,order:0,assertCurrent:check,
               eligible:()=>operation?.getSnapshot().phase==='preparing-fee'&&!operation.getSnapshot().transactionHash&&!operation.getSnapshot().userOperationSubmissionStarted,
               drain:()=>disposeOriginal(),retire:()=>{if(localSmartContext?.handoff===handoff)localSmartContext=undefined;void disposeOriginal().catch(()=>undefined);},
-            },snapshotNativeSmartLocalAction):null;
+            }:null;
+            const handoff: NativeSigningHandoff | null = origin.kind==='dapp'?origin.handoff:localEntry?
+              saved?localSmartHandoffs.resumeLocal(localEntry,snapshotNativeSmartLocalAction,saved):localSmartHandoffs.captureLocal(localEntry,snapshotNativeSmartLocalAction):null;
+            const signOwnerProof = smartOwnerProofSequence(handoff);
+            try {
             operation=createNativeSmartOperation({
               intent, pendingRecords, authorizationExpiresAt: Math.min(deadline, Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS),
               // Dapp departure belongs to the connection queue; wallet actions use this local owner.
@@ -4091,15 +4169,19 @@ export function createKeyringRuntimeFactory(
                   if ((owner.type !== 'HDAccount' && owner.type !== 'Imported' && owner.type !== 'Ledger' && owner.type !== 'Trezor') || !target ||
                       target.address.toLowerCase() !== address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
                   if (intent.actionHash !== digest) throw new KeyringRuntimeError('INVALID_INPUT');
-                  let trezorPort: NonNullable<SmartAccountOwnerSigningSdk['trezor']> | null = null;
-                  if (owner.type === 'Trezor') {
-                    requireNativeSigningHandoff(handoff);
-                    trezorPort = smartTrezorSigningPort({id:owner.id,type:'Trezor',address}, metadata, intent, signal, guard, handoff);
-                  }
-                  const signature = await signSmartAccountOwnerIntent({
-                    intent, selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
-                    owner: { ...owner, address }, authority: { assertCurrent: guard, signal },
-                    sdk: smartOwnerSigningPorts({ id: owner.id, type: owner.type, address }, signal, guard, ring, trezorPort),
+                  const signingOwner: NativeSmartAccountSigningOwner = {id:owner.id,type:owner.type as NativeSmartAccountSigningOwner['type'],address};
+                  const signature = await signOwnerProof(signingOwner, metadata, intent, ownerInventory, guard, async (accept, position) => {
+                    let trezorPort: NonNullable<SmartAccountOwnerSigningSdk['trezor']> | null = null;
+                    if (owner.type === 'Trezor') {
+                      requireNativeSigningHandoff(handoff);
+                      if (!position) throw new KeyringRuntimeError('INVALID_INPUT');
+                      trezorPort = smartTrezorSigningPort({id:owner.id,type:'Trezor',address}, metadata, intent, signal, guard, handoff, accept, position);
+                    }
+                    return signSmartAccountOwnerIntent({
+                      intent, selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                      owner: { ...owner, address }, authority: { assertCurrent: guard, signal },
+                      sdk: smartOwnerSigningPorts(signingOwner, signal, guard, ring, trezorPort),
+                    });
                   });
                   guard();
                   return signature;
@@ -4206,12 +4288,20 @@ export function createKeyringRuntimeFactory(
               localSmartContext=owned;
               operation.dispose=async()=>{
                 const suspended=handoff.isSuspended();if(localSmartContext===owned)localSmartContext=undefined;
+                retireNativeSigningHandoff(handoff);
                 await disposeOriginal();
                 if(!suspended&&pendingTrezor?.operation==='smart-operation'&&pendingTrezor.resume?.id===handoff.id)await cancelTrezor();
               };
               if(saved)localSmartHandoffs.discard(saved,false);
             }
+            check();
             return operation;
+            } catch (error) {
+              if (handoff) retireNativeSigningHandoff(handoff);
+              if (localSmartContext?.handoff === handoff) localSmartContext = undefined;
+              try { if (saved) localSmartHandoffs.discard(saved); } finally { await operation?.dispose(); }
+              throw error;
+            }
         };
         const openGuardianPolicy = async (draft: NativeGuardianPolicyDraft, signal: AbortSignal, assertOwner: () => void, origin: SmartOperationOrigin): Promise<NativeSmartAccountOperation> => {
             const action = draft && Object.getOwnPropertyDescriptor(draft, 'action')?.value;
@@ -5188,7 +5278,8 @@ export function createKeyringRuntimeFactory(
                       assertCurrent: guard,
                     });
                     guard();
-                    const { localOwners, ownerRecords } = captureLocalSmartOwners();
+                    const inventory = captureLocalSmartOwners(), { localOwners, ownerRecords } = inventory;
+                    const signOwnerProof = smartOwnerProofSequence(input.handoff);
                     const boundOwners = new Set<string>();
                     const signature = await signNativeSmartAccountActionHash({
                       metadata, actionHash: prepared.actionHash, localOwners, assertCurrent: guard,
@@ -5209,11 +5300,18 @@ export function createKeyringRuntimeFactory(
                         }
                         ownerGuard();
                         if (prepared.ownerSigningIntent.actionHash !== digest) throw new KeyringRuntimeError('INVALID_INPUT');
-                        const result = await signSmartAccountOwnerIntent({
-                          intent: prepared.ownerSigningIntent,
-                          selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
-                          owner: { ...owner, address }, authority: { assertCurrent: ownerGuard, signal: approval.signal },
-                          sdk: smartOwnerSigningPorts({ ...owner, address }, approval.signal, ownerGuard, ring, owner.type === 'Trezor' ? smartTrezorSigningPort({...owner,address}, metadata, prepared.ownerSigningIntent, approval.signal, ownerGuard, input.handoff) : null),
+                        const result = await signOwnerProof({...owner,address}, metadata, prepared.ownerSigningIntent, inventory, ownerGuard, (accept, position) => {
+                          let trezorPort: NonNullable<SmartAccountOwnerSigningSdk['trezor']> | null = null;
+                          if (owner.type === 'Trezor') {
+                            if (!position) throw new KeyringRuntimeError('INVALID_INPUT');
+                            trezorPort = smartTrezorSigningPort({...owner,address}, metadata, prepared.ownerSigningIntent, approval.signal, ownerGuard, input.handoff, accept, position);
+                          }
+                          return signSmartAccountOwnerIntent({
+                            intent: prepared.ownerSigningIntent,
+                            selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                            owner: { ...owner, address }, authority: { assertCurrent: ownerGuard, signal: approval.signal },
+                            sdk: smartOwnerSigningPorts({ ...owner, address }, approval.signal, ownerGuard, ring, trezorPort),
+                          });
                         });
                         ownerGuard(); return result;
                       },
