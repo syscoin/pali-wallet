@@ -48,7 +48,7 @@ All 32 PDF reference states are compared below with screenshots of the **actual 
 <details>
 <summary>01. Welcome — implemented</summary>
 
-Welcome glow, dot falloff, logo placement and title weight were measured against the reference. The direct Create/Import/Watch actions remain unchanged.
+Equal-width comparison. The welcome halo, dot falloff, logo placement and title weight were measured against the reference. Create/Import/Watch actions are retained.
 
 ![Welcome: reference and implemented screen](01-welcome.png)
 

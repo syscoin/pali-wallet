@@ -9,12 +9,12 @@
       "component": "Onboarding.Welcome",
       "status": "implemented",
       "actual_label": "Welcome",
-      "note": "Welcome glow, dot falloff, logo placement and title weight were measured against the reference. The direct Create/Import/Watch actions remain unchanged.",
+      "note": "Equal-width comparison. The welcome halo, dot falloff, logo placement and title weight were measured against the reference. Create/Import/Watch actions are retained.",
       "title": "Welcome",
       "comparison": "01-welcome.png",
       "comparison_size": [
-        822,
-        1136
+        852,
+        1159
       ],
       "actual": "actual/actual-01.png",
       "actual_size": [
@@ -25,7 +25,7 @@
       "reference": "Embedded PDF reference in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-01-320.png",
-      "comparison_sha256": "2415899aa9dfc31e9f04462cb671ed988d796a0488a390c511eb0aba1858ccb2",
+      "comparison_sha256": "12aa474d66a78ffb8219f0216aac33123459325769f805310537b3c2fe9ecd26",
       "source_commit": "812e76dd6faf0bf035814c6da8fe4f6d079efda4",
       "narrow_actual_sha256": "6c242fe98cd164bfd62c439c6da7f8b9099774fc7ca1f0893a76f5cc85b8e3f5"
     },
