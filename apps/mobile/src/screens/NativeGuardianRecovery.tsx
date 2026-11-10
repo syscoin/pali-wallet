@@ -164,7 +164,7 @@ export function NativeGuardianRecovery({
         if (current.live) setBusy(false);
       }
     },
-    [port, lifetime, policySupported, observation]
+    [port, lifetime, policySupported, observation, setBusy, setController, setError]
   );
   useEffect(() => {
     if (port.hasIntent) void open({ kind: 'resume' });
