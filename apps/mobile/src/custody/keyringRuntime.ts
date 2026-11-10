@@ -1,3 +1,4 @@
+import { getSmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
 import { buildNativeSmartModuleCommand, snapshotNativeSmartModuleDraft, assertNativeSmartModuleCommandApplied, type NativeSmartModuleDraft } from '../smartAccount/modules.ts';
 import { preflightCustomValidatorInstall, type CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom.ts';
 import { createNativePrivacyControls, type NativePrivacyControls, type NativePrivacyServiceSettingsPort } from '../privacy/privacyControls.ts';
@@ -4554,6 +4555,22 @@ export function createKeyringRuntimeFactory(
               calls: repository.calls,
               supportsAtomicCalls: supportsLocalSmartAccount,
               supportsSmartAccountMessages: supportsLocalSmartAccount,
+              readSmartAccountModules(accountId, networkId, assertRequestCurrent) {
+                assertOwner(); checkGuard(assertRequestCurrent);
+                const snapshot = catalogueSnapshot;
+                if (!snapshot || !keyring.isUnlocked() || snapshot.active.networkId !== networkId)
+                  throw new KeyringRuntimeError('CANCELLED');
+                const selected = snapshot.accounts.find(account => account.id === accountId && account.slip44 === 60);
+                if (!selected) throw new KeyringRuntimeError('INVALID_INPUT');
+                const account = state.accounts[selected.type]?.[selected.index];
+                const network = getNativeNetwork(networkId, snapshot.networks);
+                if (!account) throw new KeyringRuntimeError('INVALID_INPUT');
+                const result = getSmartAccountModulesProjection(account, Number(network.chainId));
+                requireSmartAccountAddressIdentity(account, Number(network.chainId));
+                assertOwner(); checkGuard(assertRequestCurrent);
+                if (snapshot !== catalogueSnapshot || !keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
+                return result;
+              },
               async readCallsStatus(origin, id, assertRequestCurrent) {
                 const snapshot = catalogueSnapshot;
                 const guard = () => {

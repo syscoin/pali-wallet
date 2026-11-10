@@ -1,6 +1,12 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { createInstance, i18n } from 'i18next';
 import React from 'react';
 import { I18nextProvider, initReactI18next } from 'react-i18next';
@@ -197,6 +203,11 @@ describe('EditAccount label-validation localization through the real Ant Form', 
   it.each(locales)(
     'keeps a genuine changed label and its localized success healthy in %s',
     async (locale) => {
+      let acknowledgeSave!: () => void;
+      const saved = new Promise<void>((resolve) => {
+        acknowledgeSave = resolve;
+      });
+      mockEmitter.mockReturnValueOnce(saved);
       await showEditor(locale);
       submitLabel(locale, '  Updated everyday  ');
       await waitFor(() =>
@@ -214,6 +225,11 @@ describe('EditAccount label-validation localization through the real Ant Form', 
         )
       );
       expect(mockEmitter).toHaveBeenCalledTimes(1);
+      // Flush the acknowledged save and Router transition in the same React boundary.
+      await act(async () => {
+        acknowledgeSave();
+        await saved;
+      });
       expect(
         await screen.findByRole('heading', { name: 'Accounts' })
       ).toBeVisible();

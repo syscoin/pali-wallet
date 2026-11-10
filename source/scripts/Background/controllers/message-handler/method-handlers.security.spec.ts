@@ -190,6 +190,85 @@ describe('Ethereum RPC result preservation', () => {
   );
 });
 
+describe('wallet_getSmartAccountModules projection', () => {
+  const getAccount = jest.fn();
+  const hydrateSmartAccount = jest.fn();
+  const inventoryContext = (params?: any[]) => {
+    const context = makeContext(
+      'wallet_getSmartAccountModules',
+      'https://modules.example',
+      MethodHandlerType.Wallet
+    );
+    context.methodConfig = getMethodConfig('wallet_getSmartAccountModules')!;
+    context.originalRequest.params = params;
+    return context;
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    getAccount.mockReturnValue({
+      ...connectedAccount,
+      isSmartAccount: true,
+      smartAccount: {
+        chainId: 5700,
+        isDeployed: false,
+        descriptor: { private: 'not public' },
+      },
+    });
+    getControllerMock.mockReturnValue({
+      dapp: { getAccount },
+      wallet: { hydrateSmartAccount },
+    });
+    getStateMock.mockReturnValue({
+      vault: { activeNetwork: { chainId: 5700 }, isBitcoinBased: false },
+      vaultGlobal: { networks: { ethereum: {} } },
+    });
+  });
+
+  it.each<[any[] | undefined]>([
+    [undefined],
+    [[]],
+    [[{ address: ACTIVE_ADDRESS, arbitrary: 'ignored' }, 'extra']],
+  ])(
+    'keeps existing ignored params and the connected account: %p',
+    async (params) => {
+      await expect(
+        new WalletMethodHandler().handle(inventoryContext(params))
+      ).resolves.toEqual({
+        address: CONNECTED_ADDRESS,
+        chainId: '0x1644',
+        deployed: false,
+        installed: [],
+        activeValidator: null,
+      });
+      expect(hydrateSmartAccount).not.toHaveBeenCalled();
+      expect(EthProvider).not.toHaveBeenCalled();
+      expect(popupPromise).not.toHaveBeenCalled();
+    }
+  );
+
+  it('preserves the EOA RPC error code and message', async () => {
+    getAccount.mockReturnValue(connectedAccount);
+    await expect(
+      new WalletMethodHandler().handle(inventoryContext())
+    ).rejects.toMatchObject({
+      code: -32600,
+      message: 'The connected account is not a smart account',
+    });
+  });
+
+  it('preserves the wrong-chain RPC error code and message', async () => {
+    getStateMock().vault.activeNetwork.chainId = 1;
+    await expect(
+      new WalletMethodHandler().handle(inventoryContext())
+    ).rejects.toMatchObject({
+      code: -32600,
+      message:
+        'Smart account modules are only available on chain 5700. Switch back from chain 1 to inspect this account.',
+    });
+  });
+});
+
 describe('standard wallet_getCapabilities', () => {
   const getAccount = jest.fn();
   const capabilityContext = (params?: any[]) => {

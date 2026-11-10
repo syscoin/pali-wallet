@@ -3229,6 +3229,28 @@ for(const action of ['guardian-policy','wallet-authenticator','slh-installation'
 
 const CUSTOM_MODULE = '0x7777777777777777777777777777777777777777';
 const customModuleDraft = () => ({ kind: 'install-custom' as const, address: CUSTOM_MODULE, name: 'Custom fixture', initData: '0x1234', riskAcknowledged: true as const });
+
+test('dapp module inventory reads only the requested cached Smart account without network or signing work', async () => {
+  const f = await fixture({}, true);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    const selected = f.owner.getCatalogue()!.active.accountId;
+    const host = await f.runtime.openConnectionHost();
+    const calls = f.calls.length;
+    const inventory = host.readSmartAccountModules(selected, 'ethereum', () => undefined);
+    assert.equal(inventory.address, f.owner.getSnapshot().account!.address);
+    assert.equal(inventory.chainId, '0x1'); assert.equal(inventory.deployed, false);
+    assert.deepEqual(Object.keys(inventory).sort(), ['activeValidator', 'address', 'chainId', 'deployed', 'installed']);
+    assert(!JSON.stringify(inventory).includes('deploymentSalt')); assert(!JSON.stringify(inventory).includes('owners'));
+    assert.equal(f.calls.length, calls); assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.throws(() => host.readSmartAccountModules('hd:60:0', 'ethereum', () => undefined), /not a smart account/);
+    assert.throws(() => host.readSmartAccountModules(selected, 'ethereum', () => { throw Error('CANCELLED'); }), /CANCELLED/);
+    assert.throws(() => host.readSmartAccountModules(selected, 'not-the-captured-network', () => undefined), /CANCELLED/);
+    f.owner.lock();
+    assert.throws(() => host.readSmartAccountModules(selected, 'ethereum', () => undefined), /CANCELLED/);
+  } finally { await f.close(); }
+});
+
 async function confirmModuleOperation(operation: NativeSmartAccountOperation) {
   await operation.prepare();
   assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
