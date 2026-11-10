@@ -31,7 +31,7 @@ test('Suite opens only on explicit action and parent renders do not duplicate it
 test('resuming a send only returns to a fresh review', async ({ page }) => {
   await page.goto('/?trezor=1&resume=send');
   await expect(
-    page.getByText('Review your transaction again before continuing.', {
+    page.getByText('Review the request again before continuing.', {
       exact: true,
     })
   ).toBeVisible();
