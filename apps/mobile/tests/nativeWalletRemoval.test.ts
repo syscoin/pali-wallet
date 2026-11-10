@@ -98,7 +98,7 @@ async function fixture(withSlhCache = false) {
       return attempt;
     },
   }) });
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: withSlhCache ? {
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: withSlhCache ? {
     open() { throw Error('No signing context belongs to this removal fixture'); },
     async purgePublicCache(namespace, guard) {
       guard(); assert.equal(owner.getSnapshot().phase, 'disposed'); assert.equal(rings.some(ring => ring.isUnlocked()), false);
@@ -265,7 +265,7 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
         assert.equal(created, 2);
         const authority = new NativeCustodyAuthority({ async open() {
           nextStorage = await openWalletStorage(f.ports);
-          nextRuntime = await createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+          nextRuntime = await createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
             ensureCryptoReady: async () => undefined, openStorage: async () => nextStorage!,
           }).open() as KeyringRuntime;
           return nextRuntime;

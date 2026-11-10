@@ -319,8 +319,14 @@ export function createNativeWalletControllers() {
             guard();
             if (request.kind === 'create' || request.kind === 'remove' || request.kind === 'create-smart') {
               try {
-                const credential = await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: !!authentication && visualDeviceUnlockEnabled }, cancellation.signal, guard);
-                await authenticateOperation(credential, guard);
+                await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: !!authentication && visualDeviceUnlockEnabled }, cancellation.signal, guard, async (credential, assertAttemptCurrent) => {
+                  try { await authenticateOperation(credential, assertAttemptCurrent); return { accepted: true }; }
+                  catch (error) {
+                    assertAttemptCurrent();
+                    if (error instanceof Error && (error.message === 'INVALID_CREDENTIAL' || error.message === 'DEVICE_UNLOCK_UNAVAILABLE')) return { accepted: false, reason: error.message };
+                    throw error;
+                  }
+                });
               } catch (error) {
                 guard();
                 if (isOperationAuthenticationCancellation(error)) throw refused('CANCELLED');

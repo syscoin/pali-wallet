@@ -1,4 +1,4 @@
-import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Modal } from 'react-native';
 import type { NativeOperationCredential } from '../custody/types';
 import { Button } from '../ui';
@@ -25,6 +25,7 @@ export function TransactionAuthentication({ identity, method, biometrics, busy, 
   const presentation = biometrics ?? detectedBiometrics;
   const binding = useMemo(() => ({ identity, method }), [identity, method]);
   const owner = useRef({ binding, active: true, submitted: false, wasBusy: false, error });
+  const automaticBiometric = useRef<typeof binding | null>(null);
   const latest = useRef({ onConfirm, onCancel, busy });
   const [attempt, setAttempt] = useState(0);
   useLayoutEffect(() => { latest.current = { onConfirm, onCancel, busy }; }, [onConfirm, onCancel, busy]);
@@ -49,6 +50,12 @@ export function TransactionAuthentication({ identity, method, biometrics, busy, 
     current.submitted = true;
     latest.current.onConfirm(credential);
   }, [binding]);
+  useEffect(() => {
+    if (method !== 'biometric' || busy || automaticBiometric.current === binding ||
+        owner.current.binding !== binding || !owner.current.active) return;
+    automaticBiometric.current = binding;
+    confirm({ method: 'biometric' });
+  }, [binding, busy, confirm, method]);
   const cancel = () => {
     const current = owner.current;
     if (current.binding !== binding || !current.active) return;

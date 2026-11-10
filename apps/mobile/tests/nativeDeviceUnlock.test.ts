@@ -9,6 +9,7 @@ import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDe
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
+import { deviceUnlockUserRefusal } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = '123456';
@@ -22,6 +23,7 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
   const protectedItems = new Map<string, string>();
   let initialized = false, nextId = 1;
   let afterRead: () => Promise<void> = async () => undefined;
+  let failEnrollmentRead = false;
   let store!: SqliteWalletStorage, runtime!: KeyringRuntime;
   const credentials = createDeviceUnlockCredentialStore({
     async available() { return true; },
@@ -29,11 +31,16 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
     async write(name, value) { protectedItems.set(name, value); },
     async remove(name) { protectedItems.delete(name); },
   });
-  const factory = createKeyringRuntimeFactory({ pinCredential: createTestPinCredentialPort(), requestOperationCredential: async () => ({ method: 'pin', pin: PASSWORD }), privacyServiceSettings: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential: createTestPinCredentialPort(), requestOperationCredential: async (_request, _signal, check, verify) => {
+    const result = await verify({ method: 'pin', pin: PASSWORD }, check);
+    if (!result.accepted) throw Error(result.reason);
+  }, privacyServiceSettings: null, slhExecution: null,
     ensureCryptoReady: async () => undefined, readEvmRetirement: null,
     trezorSessions,
     async openStorage() {
-      store = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
+      store = await SqliteWalletStorage.open(nodeConnection(file, { before(_kind, sql) {
+        if (failEnrollmentRead && sql.includes('device-unlock-enrollment')) throw Error('Synthetic enrollment read failure');
+      } }).connection, digest, INSTALLATION, !initialized);
       initialized = true;
       return store;
     },
@@ -49,6 +56,7 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
   return {
     get owner() { return owner; }, get runtime() { return runtime; }, get store() { return store; }, protectedItems,
     afterRead(operation: () => Promise<void>) { afterRead = operation; },
+    failEnrollmentRead() { failEnrollmentRead = true; },
     async reopen() { await owner.dispose(); owner = await open(); },
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
@@ -201,7 +209,7 @@ test('operation authentication reuses device enrollment without changing the liv
     assert.equal((await f.runtime.backup.readPhrase({ method: 'biometric' })).join(' '), PHRASE);
     assert.equal(f.owner.getSnapshot(), before);
     assert.equal(f.owner.getCatalogue(), catalogue);
-    f.afterRead(async () => { throw Error('cancelled OS prompt'); });
+    f.afterRead(async () => { throw deviceUnlockUserRefusal(); });
     await assert.rejects(auth({ method: 'biometric' }, () => undefined), /DEVICE_UNLOCK_UNAVAILABLE/);
     assert.equal(f.owner.getSnapshot(), before);
     f.afterRead(async () => undefined);
@@ -210,6 +218,24 @@ test('operation authentication reuses device enrollment without changing the liv
     await auth({ method: 'pin', pin: PASSWORD }, () => undefined);
     assert.equal(f.owner.getSnapshot(), before);
     assert.equal(f.owner.getCatalogue(), catalogue);
+  } finally { await f.close(); }
+});
+
+for (const failure of ['read', 'changed', 'missing', 'forged'] as const) test(`operation biometric ${failure} failure retires the public session instead of becoming a retryable refusal`, async () => {
+  const f = await fixture();
+  try {
+    await f.runtime.backup.confirm(await f.runtime.backup.fingerprint()); await f.owner.refreshAuthenticatedMetadata();
+    await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
+    const original = await f.store.deviceUnlockEnrollment.read(); assert(original);
+    if (failure === 'read') f.afterRead(async () => { f.failEnrollmentRead(); });
+    if (failure === 'changed') f.afterRead(async () => {
+      assert.equal(await f.store.deviceUnlockEnrollment.compareAndSet(original, 'ef'.repeat(16), () => undefined), true);
+    });
+    if (failure === 'missing') f.protectedItems.clear();
+    if (failure === 'forged') f.afterRead(async () => { throw Error('DEVICE_UNLOCK_UNAVAILABLE'); });
+    await assert.rejects(f.runtime.security!.authenticateOperation({ method: 'biometric' }, () => undefined));
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await f.close(); }
 });
 

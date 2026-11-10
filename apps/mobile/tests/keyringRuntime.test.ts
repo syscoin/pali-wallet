@@ -224,7 +224,10 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
     async confirmBackup(expected) { assert.equal(expected, fingerprint()); confirmation = expected; },
     async close() { closes++; if(signedUnavailable) throw Error('ambiguous storage'); },
   }); };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: requestCredential ?? (async () => ({ method: 'pin', pin: PASSWORD })), privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => {
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: requestCredential ?? (async (_request, _signal, check, verify) => {
+    const result = await verify({ method: 'pin', pin: PASSWORD }, check);
+    if (!result.accepted) throw Error(result.reason);
+  }), privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => {
     assert.ok(globalThis.crypto.subtle, 'Node supplies real WebCrypto for this control');
   }, openStorage: open, loadSdk, assertActive, connectionFetch, trezorSessions, utxoFetch, prepareSmartAccount });
   return {
@@ -819,23 +822,39 @@ async function readySmartCreationAuthority(beforeAddress: () => Promise<void> = 
     async close() { await authority.dispose(); disk.restoreNetwork(); } };
 }
 
-test('account broker refuses wrong PIN without locking and permits a fresh exact creation', async () => {
-  let pin = '000000', prompts = 0;
-  const f = await readyAccounts(undefined, undefined, async (request, _signal, check) => {
-    prompts++; assert.equal(request.purpose, 'account-change'); check(); return { method: 'pin', pin };
-  });
+test('account broker keeps one verified request through wrong PIN and successful creation', async () => {
+  const broker = new OperationAuthentication();
+  let prompt: OperationAuthenticationPrompt | null = null;
+  const currentPrompt = (): OperationAuthenticationPrompt | null => prompt;
+  const detach = broker.attach(value => { prompt = value; });
+  const f = await readyAccounts(undefined, undefined, broker.request);
+  const until = async (ready: () => boolean) => {
+    const deadline = Date.now() + 5000;
+    while (!ready()) {
+      if (Date.now() >= deadline) throw Error('Credential prompt did not settle');
+      await new Promise(resolve => setImmediate(resolve));
+    }
+  };
   try {
     const before = f.authority.getCatalogue();
-    await assert.rejects(f.execute({ kind: 'create', label: 'Savings' }), { code: 'INVALID_CREDENTIAL' });
-    assert.equal(f.authority.getSnapshot().phase, 'ready');
-    assert.equal(f.authority.getCatalogue(), before);
+    const creating = f.execute({ kind: 'create', label: 'Savings' });
+    await until(() => currentPrompt() !== null);
+    const first = currentPrompt(); assert(first);
+    assert.equal(first.request.purpose, 'account-change');
+    first.confirm({ method: 'pin', pin: '000000' });
+    await until(() => currentPrompt()?.busy === false);
+    const retry = currentPrompt(); assert(retry);
+    assert.equal(retry.request.id, first.request.id);
+    assert.match(retry.error ?? '', /PIN not accepted/);
+    const accounts = f.runtime.accounts; assert(accounts);
+    assert.equal(accounts.getSnapshot(), before);
     assert.equal(f.disk.failures, 1);
-    pin = PASSWORD;
-    await f.execute({ kind: 'create', label: 'Savings' });
+    retry.confirm({ method: 'pin', pin: PASSWORD });
+    await creating;
     assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert.equal(f.authority.getCatalogue()!.accounts.length, before!.accounts.length + 1);
-    assert.equal(prompts, 2);
-  } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+    assert.equal(prompt, null);
+  } finally { detach(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
 test('account broker Back cancels a held credential prompt without mutation or wallet lock', async () => {
@@ -861,8 +880,9 @@ test('account broker Back cancels a held credential prompt without mutation or w
 
 test('account broker rejects password-bearing legacy requests before credential acquisition', async () => {
   let prompts = 0;
-  const f = await readyAccounts(undefined, undefined, async (_request, _signal, check) => {
-    prompts++; check(); return { method: 'pin', pin: PASSWORD };
+  const f = await readyAccounts(undefined, undefined, async (_request, _signal, check, verify) => {
+    prompts++; check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check);
+    if (!result.accepted) throw Error(result.reason);
   });
   try {
     const before = f.authority.getCatalogue();

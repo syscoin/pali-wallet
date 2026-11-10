@@ -11,15 +11,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement';
 import { Button, colors, Header, Screen, styles, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
-import { PinField } from './PinEntry';
 
 type Props = {
-  manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings'>;
+  manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel' | 'isAuthenticating'>;
   assertCurrent(): void;
   networkLabel: string;
   onBack(): void;
 };
 type Owner = {
+  manager: Props['manager'];
   live: boolean;
   busy: boolean;
   request: number;
@@ -33,29 +33,27 @@ export function NativeSentrySettings({
   networkLabel,
   onBack,
 }: Props) {
-  const owner = useRef<Owner>({ live: false, busy: true, request: 0 });
+  const owner = useRef<Owner>({ manager, live: false, busy: true, request: 0 });
   const [serviceUrl, setServiceUrl] = useState('');
   const [maxFeeSatoshis, setMaxFeeSatoshis] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [closing, setClosing] = useState(false);
 
   useLayoutEffect(() => {
-    const current: Owner = { live: true, busy: true, request: 0 };
+    const current: Owner = { manager, live: true, busy: true, request: 0 };
     owner.current = current;
     queueMicrotask(() => {
       if (!current.live) return;
       setClosing(false);
       setLoaded(false);
       setBusy(true);
-      setPassword('');
       setNotice(undefined);
     });
     const check = () => {
       assertCurrent();
-      if (!current.live || AppState.currentState !== 'active')
+      if (!current.live || (AppState.currentState !== 'active' && !(AppState.currentState === 'inactive' && manager.isAuthenticating())))
         throw new Error('CANCELLED');
     };
     current.pending = Promise.resolve()
@@ -76,32 +74,30 @@ export function NativeSentrySettings({
         current.busy = false;
         if (current.live) setBusy(false);
       });
-    const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') setPassword('');
-    });
     return () => {
+      const cancelPending = current.live && current.busy;
       current.live = false;
+      if (cancelPending) manager.cancel();
       current.returning = false;
       current.request++;
-      change.remove();
     };
   }, [manager, assertCurrent]);
 
   const back = useCallback(() => {
     const current = owner.current;
-    if (!current.live) return;
+    if (!current.live || current.manager !== manager) return;
     current.live = false;
+    manager.cancel();
     current.request++;
     current.returning = true;
     setClosing(true);
-    setPassword('');
     Keyboard.dismiss();
     void Promise.resolve(current.pending)
       .catch(() => undefined)
       .then(() => {
         if (owner.current === current && current.returning) onBack();
       });
-  }, [onBack]);
+  }, [manager, onBack]);
   useLayoutEffect(() => {
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
       back();
@@ -114,8 +110,6 @@ export function NativeSentrySettings({
     if (!current.live || current.busy || !loaded) return;
     current.busy = true;
     const request = ++current.request;
-    const entered = password;
-    setPassword('');
     setBusy(true);
     setNotice(undefined);
     Keyboard.dismiss();
@@ -124,14 +118,13 @@ export function NativeSentrySettings({
       if (
         !current.live ||
         current.request !== request ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !(AppState.currentState === 'inactive' && manager.isAuthenticating()))
       )
         throw new Error('CANCELLED');
     };
     try {
       const pending = manager.saveSettings(
         { serviceUrl, maxFeeSatoshis },
-        entered,
         check
       );
       current.pending = pending;
@@ -143,7 +136,7 @@ export function NativeSentrySettings({
     } catch {
       if (current.live && current.request === request)
         setNotice(
-          'Could not save settings. Check the service origin, fee limit and wallet PIN.'
+          'Could not save settings. Check the service origin, fee limit and authorization.'
         );
     } finally {
       current.busy = false;
@@ -175,7 +168,7 @@ export function NativeSentrySettings({
                   busy ? (loaded ? 'Saving…' : 'Loading…') : 'Save settings'
                 }
                 disabled={
-                  busy || !loaded || !serviceUrl || !maxFeeSatoshis || !password
+                  busy || !loaded || !serviceUrl || !maxFeeSatoshis
                 }
                 onPress={() => {
                   void save();
@@ -220,12 +213,6 @@ export function NativeSentrySettings({
             keyboardType="number-pad"
             maxLength={8}
             style={s.input}
-          />
-          <PinField
-            label="Confirm wallet PIN"
-            value={password}
-            onChange={setPassword}
-            busy={busy || !loaded}
           />
           {notice && <Text accessibilityLiveRegion="polite">{notice}</Text>}
         </Screen>

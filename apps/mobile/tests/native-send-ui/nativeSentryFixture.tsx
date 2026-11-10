@@ -30,6 +30,7 @@ async function holdSettings(stage: string) {
   heldSettingsStage = undefined;
 }
 const manager: NativeSentryKeyManagement = {
+  isAuthenticating: () => false,
   async getSettings(guard) {
     pendingSettings++;
     try {
@@ -43,7 +44,7 @@ const manager: NativeSentryKeyManagement = {
       pendingSettings--;
     }
   },
-  async saveSettings(input, password, guard) {
+  async saveSettings(input, guard) {
     pendingSettings++;
     try {
       check();
@@ -51,8 +52,6 @@ const manager: NativeSentryKeyManagement = {
       await holdSettings('auth');
       check();
       guard();
-      if (password !== '123456')
-        throw new Error('Invalid fixture confirmation');
       await holdSettings('write');
       check();
       guard();
@@ -90,9 +89,9 @@ const manager: NativeSentryKeyManagement = {
       })),
     }));
   },
-  async confirmImport(current, password) {
+  async confirmImport(current) {
     check();
-    if (current !== review || password !== '123456')
+    if (current !== review)
       throw new Error('Invalid fixture confirmation');
     calls.push({ method: 'confirmImport', count: current.keys.length });
     saved = current.keys.map((key, index) => ({
@@ -108,9 +107,9 @@ const manager: NativeSentryKeyManagement = {
     if (!key) throw new Error('Missing fixture key');
     return { key, expiresAt: performance.now() + 90000 };
   },
-  async confirmRemoval(current, password, backedUp) {
+  async confirmRemoval(current, backedUp) {
     check();
-    if (password !== '123456' || !backedUp)
+    if (!backedUp)
       throw new Error('Invalid fixture confirmation');
     saved = saved.filter((key) => key.id !== current.key.id);
     return { removedKeyId: current.key.id };

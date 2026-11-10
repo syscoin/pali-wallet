@@ -2,7 +2,7 @@
   "expo": {
     "name": "Pali",
     "slug": "pali-mobile",
-    "version": "0.1.0",
+    "version": "5.0.0",
     "orientation": "default",
     "userInterfaceStyle": "dark",
     "scheme": "pali",

@@ -24,7 +24,8 @@ import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 import * as networkContext from '../src/custody/networkContext.ts';
 import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
-import type { NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
+import { createNativeSentryKeyManagement, type NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
+import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
 import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 
@@ -280,7 +281,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     './useRealShell': { useRealShell: () => ({ tab: 'wallet', navigation: {}, goBack() { exits++; }, restoreRoot() {} }) },
   });
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
-  const props = { onExit() { exits++; } };
+  const props = { controllerRef: { current: null }, onExit() { exits++; } };
   owner = 'parent'; root.renderOwner(Root, props);
   await new Promise((resolve) => setImmediate(resolve));
   let tree = root.renderOwner(Root, props); press(button(tree, 'Forgot PIN?'));
@@ -429,7 +430,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './useRealShell': { useRealShell: () => ({ tab: depositMode ? 'tools' : 'wallet', navigation: {}, goBack() {}, restoreRoot() {} }) },
   });
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
-  const props = { onExit() {} };
+  const props = { controllerRef: { current: null }, onExit() {} };
   const render = () => root.renderOwner(Root, props);
   render(); await new Promise((resolve) => setImmediate(resolve));
   const unlock = async (error: string | null) => {
@@ -601,7 +602,7 @@ test('actual native Sentry surface reviews once, copies only public data and ret
     '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey, parseSentryKeyBatch },
     'expo-clipboard': { async setStringAsync(value: string) { copied.push(value); return true; } },
   }).NativeSentryKeys as (props: object) => Element;
-  const secret = '13'.repeat(32), publicKey = '29'.repeat(48), password = 'fixture only passphrase';
+  const secret = '13'.repeat(32), publicKey = '29'.repeat(48);
   const storedKey = Object.freeze({
     id: 'public-id', network: 'mainnet', label: 'Node one', role: 'operator', scheme: 'bls-basic', publicKey,
   } as const) satisfies SentryKeySummary;
@@ -612,6 +613,7 @@ test('actual native Sentry surface reviews once, copies only public data and ret
   let removeReview: Awaited<ReturnType<NativeSentryKeyManagement['prepareRemoval']>>;
   let hold: Promise<void> | undefined, busyConfirmation: Promise<void> | undefined;
   const manager: NativeSentryKeyManagement = {
+    isAuthenticating: () => false,
     async getSettings() { return { serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }; },
     async saveSettings(settings) { return settings; },
     async list() { return keys; },
@@ -625,8 +627,8 @@ test('actual native Sentry surface reviews once, copies only public data and ret
         keys: Object.freeze([{ label: 'Node one', role, scheme, publicKey }]),
       });
     },
-    async confirmImport(review, entered) {
-      assert.equal(review, importReview); assert.equal(entered, password);
+    async confirmImport(review) {
+      assert.equal(review, importReview);
       if (busyConfirmation) {
         await busyConfirmation;
         throw Object.assign(new Error('BUSY'), { code: 'BUSY' });
@@ -638,9 +640,9 @@ test('actual native Sentry surface reviews once, copies only public data and ret
       assert.equal(id, storedKey.id);
       return removeReview = Object.freeze({ key: storedKey, expiresAt: performance.now() + 90_000 });
     },
-    async confirmRemoval(review, entered, backedUp) {
+    async confirmRemoval(review, backedUp) {
       removalCount++;
-      assert.equal(review, removeReview); assert.equal(entered, password); assert.equal(backedUp, true);
+      assert.equal(review, removeReview); assert.equal(backedUp, true);
       keys = [];
       return { removedKeyId: storedKey.id };
     },
@@ -693,11 +695,8 @@ test('actual native Sentry surface reviews once, copies only public data and ret
     let tree = render();
     assert.match(text(tree), new RegExp(publicKey));
     assert(!JSON.stringify(tree).includes(secret));
-    const confirmation = field(tree, 'Wallet PIN');
-    assert.equal(confirmation.props.value, '');
-    assert.equal(confirmation.props.secureTextEntry, true);
-    assert.equal(button(tree, 'Save key').props.disabled, true);
-    change(confirmation, password);
+    assert.equal(all(tree).some(node => node.props.accessibilityLabel === 'Wallet PIN'), false);
+    assert.equal(button(tree, 'Save key').props.disabled, false);
     const save = button(render(), 'Save key');
     const savePending = activate(save); activate(save);
     await savePending;
@@ -707,7 +706,6 @@ test('actual native Sentry surface reviews once, copies only public data and ret
     assert.deepEqual(copied, [publicKey]);
     await activate(button(render(), 'Remove key'));
     tree = render();
-    change(field(tree, 'Wallet PIN'), password);
     assert.equal(button(render(), 'Remove key').props.disabled, true);
     activate(button(render(), 'Remove key'));
     assert.equal(removalCount, 0);
@@ -718,18 +716,17 @@ test('actual native Sentry surface reviews once, copies only public data and ret
     assert.equal(keys.length, 0);
 
     await activate(draft());
-    change(field(render(), 'Wallet PIN'), password);
+    render();
     t.mock.timers.tick(90_000);
     assert.match(text(render()), /Review expired/);
     assert.equal(all(render()).filter((item) => item.type === 'TextInput').length, 0);
     assert.equal(confirmCount, 1);
 
     await activate(draft());
-    change(field(render(), 'Wallet PIN'), password);
     const admitted = Promise.withResolvers<void>();
     busyConfirmation = admitted.promise;
     const blocked = activate(button(render(), 'Save key'));
-    assert.equal(field(render(), 'Wallet PIN').props.value, '');
+    assert.equal(all(render()).some(node => node.props.accessibilityLabel === 'Wallet PIN'), false);
     const cancelsBeforeBusy = cancels;
     admitted.resolve();
     await blocked;
@@ -756,6 +753,72 @@ test('actual native Sentry surface reviews once, copies only public data and ret
   } finally { f.dispose(); }
 });
 
+for (const interruption of ['owned', 'background', 'unowned'] as const) test(`Sentry keys distinguish ${interruption} biometric interruption from background`, async () => {
+  const f = setup();
+  const load = (name: string) => readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8');
+  const common = {
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Row: 'Row' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  };
+  const view = evaluate(load('NativeSentryKeys'), {
+    ...common, './NativeSentrySettings': { NativeSentrySettings: () => null },
+    './NoteBackupPasswordField': evaluate(load('NoteBackupPasswordField'), common),
+    '../../../../source/wallet/sentryKeyVault': { isAllowedSentryKeyRoleScheme },
+    '../../../../source/utils/sentry/importBatch': { containsSentryPrivateKey }, 'expo-clipboard': {},
+  }).NativeSentryKeys as (props: object) => Element;
+  const nativePrompt = new DeviceUnlockPrompt({
+    state: () => f.native.AppState.currentState,
+    subscribe(listener) {
+      const changes = f.native.AppState.addEventListener('change', listener);
+      const blur = f.native.AppState.addEventListener('blur', () => listener('blur'));
+      const focus = f.native.AppState.addEventListener('focus', () => listener('focus'));
+      return () => { changes.remove(); blur.remove(); focus.remove(); };
+    },
+  });
+  const held = Promise.withResolvers<void>();
+  const key = { id: 'key', network: 'mainnet', role: 'operator', scheme: 'bls-basic', label: 'Node', publicKey: '39'.repeat(48) } as const;
+  let scope!: AbortSignal;
+  let check: () => void = () => undefined;
+  let proofOwned = false, writes = 0, retired = 0;
+  let keys: readonly SentryKeySummary[] = [];
+  const unused = async (): Promise<never> => { throw Error('Unexpected operation'); };
+  const manager: NativeSentryKeyManagement = {
+    isAuthenticating: () => proofOwned && nativePrompt.isActive(),
+    getSettings: unused, saveSettings: unused, list: async () => keys,
+    prepareImport: async () => ({ network: 'mainnet', expiresAt: performance.now() + 90000, keys: [key] }),
+    async confirmImport() {
+      proofOwned = interruption !== 'unowned';
+      try {
+        await nativePrompt.run(() => held.promise);
+        check(); writes++; return keys = [key];
+      } finally { proofOwned = false; }
+    },
+    prepareRemoval: unused, confirmRemoval: unused, cancel() {}, dispose() { retired++; },
+  };
+  const props = { networkLabel: 'Syscoin', onBack() {}, async open(signal: AbortSignal, guard: () => void) { scope = signal; check = guard; return manager; } };
+  const render = () => f.expand(f.renderOwner(view, props)) as Element;
+  const activate = (title: string) => (button(render(), title).props.onPress as () => unknown)();
+  try {
+    render(); await new Promise<void>(resolve => setImmediate(resolve));
+    activate('Import key');
+    (field(render(), 'Key label').props.onChangeText as (value: string) => void)('Node');
+    (field(render(), 'Private key').props.onChangeText as (value: string) => void)('13'.repeat(32));
+    await activate('Review key');
+    const saving = activate('Save key');
+    assert.equal(nativePrompt.isActive(), true);
+    f.emit('change', 'inactive'); f.emit('blur');
+    assert.equal(scope.aborted, interruption === 'unowned');
+    if (interruption === 'background') f.emit('change', 'background');
+    assert.equal(scope.aborted, interruption !== 'owned');
+    f.emit('change', 'active'); f.emit('focus');
+    held.resolve(); await saving;
+    assert.equal(writes, interruption === 'owned' ? 1 : 0);
+    assert.equal(retired, interruption === 'owned' ? 0 : 1);
+    if (interruption === 'owned') assert.match(text(render()), /Sentry key saved/);
+  } finally { held.resolve(); f.dispose(); }
+});
+
 test('Sentry batch paste reviews ordered public keys and rejects duplicates, oversize and stale clipboard results', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   const f = setup();
@@ -775,6 +838,7 @@ test('Sentry batch paste reviews ordered public keys and rejects duplicates, ove
     'expo-clipboard': { getStringAsync: () => pendingClipboard ?? Promise.resolve(clipboard), setStringAsync: async () => true },
   }).NativeSentryKeys as (props: object) => Element;
   const manager: NativeSentryKeyManagement = {
+    isAuthenticating: () => false,
     async getSettings() { return { serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }; },
     async saveSettings(settings) { return settings; },
     list: async () => [],
@@ -809,7 +873,6 @@ test('Sentry batch paste reviews ordered public keys and rejects duplicates, ove
     assert(text(tree).indexOf('One') < text(tree).indexOf('Two'));
     assert(!JSON.stringify(tree).includes('13'.repeat(32)));
     assert(!JSON.stringify(tree).includes('24'.repeat(32)));
-    (field(tree, 'Wallet PIN').props.onChangeText as (value: string) => void)('fixture password');
     await press('Save keys');
     assert.equal(confirmed, 1);
     await press('Import multiple keys');
@@ -856,6 +919,7 @@ for (const parentLast of [false, true]) test(`Sentry settings Android Back drain
   let readGuard!: () => void, cancelled = 0, closed = 0;
   const unused = async () => { throw Error('Unexpected key operation'); };
   const manager: NativeSentryKeyManagement = {
+    isAuthenticating: () => false,
     async getSettings(check) {
       readGuard = check;
       await held.promise;
@@ -885,13 +949,13 @@ for (const parentLast of [false, true]) test(`Sentry settings Android Back drain
     assert.match(text(renderChild()), /Closing service settings/);
     assert.equal(renderParent().type, 'SettingsChild');
     assert.throws(readGuard, /CANCELLED/);
-    assert.equal(cancelled, 0);
+    assert.equal(cancelled, 1);
     assert.equal(closed, 0);
     assert.equal(parent.defaults(), 0);
     if (parentLast) held.reject(Error('Held read failed'));
     else held.resolve();
     await tick();
-    assert.equal(cancelled, 1);
+    assert.equal(cancelled, 2);
     assert.equal(closed, 0);
     assert.ok(button(renderParent(), 'Import key'));
   } finally { held.resolve(); child.dispose(); parent.dispose(); }
@@ -911,7 +975,7 @@ test('Sentry settings Back cannot return a replacement owner after its old read 
   const held = Promise.withResolvers<{ serviceUrl: string; maxFeeSatoshis: string }>();
   let oldReturns = 0, newReturns = 0;
   const saveSettings = async () => { throw Error('Unexpected save'); };
-  let props = { manager: { getSettings: async () => held.promise, saveSettings }, assertCurrent() {},
+  let props = { manager: { getSettings: async () => held.promise, saveSettings, isAuthenticating: () => false, cancel() {} }, assertCurrent() {},
     networkLabel: 'Syscoin', onBack() { oldReturns++; } };
   const render = () => f.expand(f.renderOwner(view, props)) as Element;
   const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
@@ -919,7 +983,7 @@ test('Sentry settings Back cannot return a replacement owner after its old read 
     render(); await tick();
     press(button(render(), 'Cancel'));
     assert.match(text(render()), /Closing service settings/);
-    props = { ...props, manager: { getSettings: async () => ({ serviceUrl: 'https://new.example', maxFeeSatoshis: '200000' }), saveSettings },
+    props = { ...props, manager: { getSettings: async () => ({ serviceUrl: 'https://new.example', maxFeeSatoshis: '200000' }), saveSettings, isAuthenticating: () => false, cancel() {} },
       onBack() { newReturns++; } };
     render(); await tick();
     held.reject(Error('Old read failed'));
@@ -944,8 +1008,10 @@ test('Sentry settings repeated Save keeps Back joined to the original operation'
   const held = Promise.withResolvers<void>();
   let saves = 0, returned = 0, writes = 0;
   const props = { manager: {
+    isAuthenticating: () => false,
+    cancel() {},
     getSettings: async () => ({ serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }),
-    async saveSettings(settings: { serviceUrl: string; maxFeeSatoshis: string }, _password: string, check: () => void) {
+    async saveSettings(settings: { serviceUrl: string; maxFeeSatoshis: string }, check: () => void) {
       saves++;
       if (saves > 1) throw Error('BUSY');
       await held.promise;
@@ -958,7 +1024,7 @@ test('Sentry settings repeated Save keeps Back joined to the original operation'
   const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
   try {
     render(); await tick();
-    (field(render(), 'Confirm wallet PIN').props.onChangeText as (value: string) => void)('Fixture password 1!');
+    assert.equal(all(render()).some(node => node.props.accessibilityLabel === 'Confirm wallet PIN'), false);
     const tree = render(), save = button(tree, 'Save settings');
     press(save); press(save);
     press(button(tree, 'Cancel'));
@@ -970,6 +1036,61 @@ test('Sentry settings repeated Save keeps Back joined to the original operation'
     assert.equal(writes, 0);
     assert.equal(returned, 1);
   } finally { held.resolve(); f.dispose(); }
+});
+
+test('Sentry settings Back cancels the common authorization prompt before any write', async () => {
+  const f = setup();
+  const source = readFileSync(new NodeURL('../src/screens/NativeSentrySettings.tsx', import.meta.url), 'utf8');
+  const view = evaluate(source, {
+    react: f.hook, 'react-native': f.native, '../ui': { ...f.ui, Header: 'Header' },
+    './IdleActivityBoundary': f.idle.components,
+    'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+  }).NativeSentrySettings as (props: object) => Element;
+  const broker = new OperationAuthentication();
+  let prompt: OperationAuthenticationPrompt | null = null;
+  const detach = broker.attach(value => { prompt = value; });
+  const lifetime = new AbortController();
+  let writes = 0, returned = 0, requested = 0;
+  const unused = async (): Promise<never> => { throw Error('Unexpected private key access'); };
+  const manager = createNativeSentryKeyManagement({
+    assertCurrent() {}, lifetime: lifetime.signal, network: 'mainnet', vaultId: 'a'.repeat(64),
+    run: operation => operation(), derivePublicKey: unused, readSeed: unused,
+    vaultHost: { crypto: () => globalThis.crypto, read: unused, write: unused },
+    readSettings: async () => ({ serviceUrl: 'https://sysnode.info', maxFeeSatoshis: '100000' }),
+    async authenticate(check, signal) {
+      requested++;
+      await broker.request({ id: 'sentry-settings', purpose: 'account-change', biometricsEnabled: true }, signal, check, async (credential, assertAttemptCurrent) => {
+        assertAttemptCurrent();
+        return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
+      });
+      check();
+    },
+    async writeSettings(_settings, check) { check(); writes++; },
+  });
+  const props = { manager: { ...manager,
+    // The evaluated component runs in a separate VM realm; transport its DTO.
+    saveSettings(input: Parameters<typeof manager.saveSettings>[0], check: () => void) {
+      return manager.saveSettings(structuredClone(input), check);
+    },
+  }, assertCurrent() {}, networkLabel: 'Syscoin', onBack() { returned++; } };
+  const render = () => f.expand(f.renderOwner(view, props)) as Element;
+  const tick = () => new Promise<void>(resolve => setImmediate(resolve));
+  try {
+    render(); await tick();
+    press(button(render(), 'Save settings')); await tick();
+    assert.equal(requested, 1);
+    assert.equal(manager.isAuthenticating(), true);
+    const readPrompt = (): OperationAuthenticationPrompt | null => prompt;
+    const held = readPrompt();
+    assert.ok(held);
+    press(button(render(), 'Cancel')); await tick();
+    assert.equal(prompt, null);
+    assert.equal(manager.isAuthenticating(), false);
+    assert.equal(returned, 1);
+    assert.equal(writes, 0);
+    held.confirm({ method: 'pin', pin: '123456' }); await tick();
+    assert.equal(writes, 0);
+  } finally { manager.dispose(); detach(); f.dispose(); }
 });
 
 test('Sentry settings handles a synchronous stale-at-open failure without a read', async () => {
@@ -985,6 +1106,8 @@ test('Sentry settings handles a synchronous stale-at-open failure without a read
   }).NativeSentrySettings as (props: object) => Element;
   let writes = 0;
   const props = { manager: {
+    isAuthenticating: () => false,
+    cancel() {},
     getSettings(): Promise<never> { throw Error('CANCELLED'); },
     async saveSettings() { writes++; throw Error('Unexpected save'); },
   }, assertCurrent() {}, networkLabel: 'Syscoin', onBack() {} };

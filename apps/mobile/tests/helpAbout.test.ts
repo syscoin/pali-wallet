@@ -57,9 +57,16 @@ const text = (value: unknown) => all(value).flatMap((e) => e.children.flat(Infin
 function press(tree: Element, title: string) { const node = all(tree).find((e) => e.props.title === title); assert.ok(node, title); return node.props.onPress(); }
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 test('actual Help uses mobile metadata and starts no I/O', () => {
-  const f = setup(), tree = f.render(); assert.match(text(tree), /Version\s+0\.1\.0/); assert.doesNotMatch(text(tree), /Development build/);
+  const f = setup(), tree = f.render(); assert.match(text(tree), /Version\s+5\.0\.0/); assert.doesNotMatch(text(tree), /Development build/);
   assert.match(text(tree), /https:\/\/discord.com\/invite\/syscoin/); assert.equal(f.actions.length, 0);
   assert.ok(all(tree).find((e) => e.type === 'Screen')?.props.footer); press(tree, 'Done'); assert.equal(f.backs(), 1); f.dispose();
+});
+test('mobile package and lock metadata match the app version shown in Help', () => {
+  const app = JSON.parse(source('../app.json')), manifest = JSON.parse(source('../package.json')), lock = JSON.parse(source('../package-lock.json'));
+  assert.equal(app.expo.version, '5.0.0');
+  assert.equal(manifest.version, app.expo.version);
+  assert.equal(lock.version, app.expo.version);
+  assert.equal(lock.packages[''].version, app.expo.version);
 });
 for (const [title, kind, value] of [['Get support', 'open', PALI_INFORMATION.supportUrl], ['Pali documentation', 'open', PALI_INFORMATION.documentationUrl], ['Routescan', 'open', PALI_INFORMATION.dataProvider.url], ['Copy support link', 'copy', PALI_INFORMATION.supportUrl]]) {
   test(`actual ${title} uses only its exact public value`, async () => { const f = setup(); press(f.render(), title!); await tick(); assert.deepEqual(f.actions, [{ kind, value }]); assert.match(text(f.render()), kind === 'copy' ? /Support link copied\./ : /Link opened\./); f.dispose(); });

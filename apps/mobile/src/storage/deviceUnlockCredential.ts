@@ -1,4 +1,4 @@
-import type { DeviceUnlockCredentialScope } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
+import { isDeviceUnlockUserRefusal, type DeviceUnlockCredentialScope } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 
 type ProtectedItemPort = Readonly<{
   available(): Promise<boolean>;
@@ -28,7 +28,24 @@ function check(assertCurrent: () => void) {
 }
 
 async function native<T>(operation: () => Promise<T>): Promise<T> {
-  try { return await operation(); } catch { throw unavailable(); }
+  try { return await operation(); } catch (error) {
+    if (isDeviceUnlockUserRefusal(error)) throw error;
+    throw unavailable();
+  }
+}
+
+/** Match only Expo's explicit native user-cancel taxonomy, never a storage error. */
+export function isNativeDeviceUnlockRefusal(platform: string, error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const fields = Object.getOwnPropertyDescriptors(error);
+  const code = fields.code && 'value' in fields.code ? fields.code.value : null;
+  const message = fields.message && 'value' in fields.message ? fields.message.value : null;
+  if (platform === 'ios') return code === 'ERR_KEY_CHAIN' && (message === 'User canceled the operation.' ||
+    message === 'Authentication failed. Provided passphrase/PIN is incorrect or there is no user authentication method configured for this device.');
+  return platform === 'android' && code === 'ERR_AUTHENTICATION' && typeof message === 'string' && [
+    'User canceled the authentication', 'Hardware not present', 'Hardware unavailable',
+    'No biometrics enrolled', 'No device credential', 'Lockout', 'Lockout permanent', 'Timeout', 'Unable to process',
+  ].some(reason => message.startsWith(`Could not authenticate the user: ${reason}. `));
 }
 
 /** Trusted custody only. The caller owns the fresh enrollment ID and publishes its pointer separately. */

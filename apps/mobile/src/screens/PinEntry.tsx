@@ -62,7 +62,8 @@ export function PinEntryScreen({ title, description, onComplete, onBack, footer,
 }) {
   const { height, fontScale } = useWindowDimensions();
   const compact = height < 700;
-  const spacious = height >= 800 && fontScale <= 1.2;
+  // Reserve space for retry actions and multi-line errors before expanding the hero.
+  const spacious = height >= 800 && fontScale <= 1.2 && !footer && !error;
   useLayoutEffect(() => { const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack?.(); return true; }); return () => back.remove(); }, [onBack]);
   return <SafeAreaView style={s.root} edges={['top', 'bottom']}>
     <Screen footer={footer} gap={compact ? 12 : 20}>

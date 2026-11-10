@@ -148,6 +148,8 @@ const controller: NativeTransferView = {
     publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
   async confirm(id, credential) {
+    if (credential.method === 'biometric' && route.get('biometric-fallback') === '1')
+      throw Error('DEVICE_UNLOCK_UNAVAILABLE');
     if (!(credential.method === 'pin' && credential.pin === '123456') &&
         !(biometricAuth && credential.method === 'biometric')) throw Error('INVALID_CREDENTIAL');
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
@@ -319,9 +321,11 @@ const accountController: NativeAccountView = {
       accountAuthentication = abort;
       const check = () => { if (abort.signal.aborted || accountSnapshot !== captured || accountContext !== revision) throw Error('CANCELLED'); };
       try {
-        const credential = await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, abort.signal, check);
+        await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, abort.signal, check, async (credential, assertAttemptCurrent) => {
+          assertAttemptCurrent();
+          return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
+        });
         check();
-        if (credential.method !== 'pin' || credential.pin !== '123456') throw Error('INVALID_CREDENTIAL');
       } finally { if (accountAuthentication === abort) accountAuthentication = undefined; }
     }
     accountRequests.push(request);
@@ -493,7 +497,7 @@ function Fixture() {
           <><NativeAccounts
             controller={accountController}
             onBack={() => undefined}
-          /><NativeOperationAuthentication /></>
+          /><NativeOperationAuthentication isProtectedPromptActive={() => false} /></>
         )
       ) : (
         <NativeSend

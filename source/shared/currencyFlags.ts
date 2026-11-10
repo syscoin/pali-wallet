@@ -1,0 +1,63 @@
+/** Existing display symbols shared by the extension and native currency pickers. */
+const currencyFlags: Readonly<Record<string, string>> = Object.freeze({
+  usd: '🇺🇸',
+  eur: '🇪🇺',
+  gbp: '🇬🇧',
+  jpy: '🇯🇵',
+  cad: '🇨🇦',
+  aud: '🇦🇺',
+  chf: '🇨🇭',
+  cny: '🇨🇳',
+  sek: '🇸🇪',
+  nzd: '🇳🇿',
+  mxn: '🇲🇽',
+  sgd: '🇸🇬',
+  hkd: '🇭🇰',
+  nok: '🇳🇴',
+  dkk: '🇩🇰',
+  krw: '🇰🇷',
+  inr: '🇮🇳',
+  brl: '🇧🇷',
+  rub: '🇷🇺',
+  zar: '🇿🇦',
+  try: '🇹🇷',
+  pln: '🇵🇱',
+  ils: '🇮🇱',
+  czk: '🇨🇿',
+  twd: '🇹🇼',
+  thb: '🇹🇭',
+  php: '🇵🇭',
+  clp: '🇨🇱',
+  aed: '🇦🇪',
+  ars: '🇦🇷',
+  bdt: '🇧🇩',
+  bhd: '🇧🇭',
+  bmd: '🇧🇲',
+  gel: '🇬🇪',
+  huf: '🇭🇺',
+  idr: '🇮🇩',
+  kwd: '🇰🇼',
+  lkr: '🇱🇰',
+  mmk: '🇲🇲',
+  myr: '🇲🇾',
+  ngn: '🇳🇬',
+  pkr: '🇵🇰',
+  sar: '🇸🇦',
+  uah: '🇺🇦',
+  vef: '🇻🇪',
+  vnd: '🇻🇳',
+  btc: '₿',
+  ltc: 'Ł',
+  bits: '₿',
+  xag: '🥈',
+  xau: '🥇',
+  xdr: '🏦',
+});
+
+export function currencyFlag(code: string): string {
+  const key = code.toLowerCase();
+  const flag = Object.hasOwn(currencyFlags, key)
+    ? currencyFlags[key]
+    : undefined;
+  return flag ?? '💰';
+}

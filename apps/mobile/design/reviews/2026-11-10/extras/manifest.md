@@ -2,7 +2,7 @@
 
 65 feature states; 130 fresh captures at 390×844 and 320×568.
 
-UI source: a5a188be5e5114fc924b6596379142ea65c72a04. All frames use this source checkpoint; exact routes, timestamps and loaded asset URLs remain in manifest.json.
+UI source: 04466c2e9498dfd250ac575e393db72fceec0e1f. All frames use this source checkpoint; exact routes, timestamps and loaded asset URLs remain in manifest.json.
 
 All captures render actual RNWeb components with synthetic public fixture adapters. No physical hardware, device biometric/camera/keyboard, live funds, or live network signing is represented. All external network access was blocked. The healthy market chart uses locally fulfilled, explicitly synthetic test responses. Development-only copy may be visible because these are development fixture exports.
 
@@ -572,19 +572,19 @@ Actions: Accounts → Watch an account → Bitcoin network → Scroll to public 
 
 ![Watch UTXO address, public key or descriptor at 320px](47-watch-utxo-key-320.png)
 
-## 48-asset-details — Native coin details
+## 48-asset-details — Native coin details and market chart
 
-Component: NativePortfolio (native-asset view) / AssetMarketCard.
+Component: NativePortfolio / AssetMarketCard.
 
 Route: http://127.0.0.1:4291/?network-portfolio=1
 
-Actions: ETH Ethereum.
+Actions: ETH Ethereum → Wait for price and seven-day chart → Scroll market card into view.
 
-The existing fixture has no successful market-history provider; the actual unavailable state is shown. No chart data was invented.
+Healthy chart and market view using explicitly synthetic CoinGecko-shaped data. The production app requests live CoinGecko data.
 
-![Native coin details at 390px](48-asset-details-390.png)
+![Native coin details and market chart at 390px](48-asset-details-390.png)
 
-![Native coin details at 320px](48-asset-details-320.png)
+![Native coin details and market chart at 320px](48-asset-details-320.png)
 
 ## 49-backup-required-home — Wallet with backup still required
 
@@ -598,19 +598,19 @@ Actions: Unlock synthetic wallet with unconfirmed backup.
 
 ![Wallet with backup still required at 320px](49-backup-required-home-320.png)
 
-## 50-synthetic-market-chart — Healthy market chart — synthetic data
+## 50-market-unavailable — Market data unavailable — offline error state
 
 Component: NativePortfolio / AssetMarketCard.
 
 Route: http://127.0.0.1:4291/?network-portfolio=1
 
-Actions: Intercept only quote/market responses with synthetic test data → ETH Ethereum → Wait for real chart → Scroll market card into view.
+Actions: ETH Ethereum → Block market requests → Show unavailable state.
 
-Explicitly synthetic CoinGecko-shaped data from the tests/assetMarket.test.ts contract: 2,200 USD, -1.2%, 2,100/2,300 low/high, 250 billion USD cap, four seven-day samples. No remote market data was fetched.
+Deliberately blocked network response showing the error and retry state. This is not the normal ETH market screen.
 
-![Healthy market chart — synthetic data at 390px](50-synthetic-market-chart-390.png)
+![Market data unavailable — offline error state at 390px](50-market-unavailable-390.png)
 
-![Healthy market chart — synthetic data at 320px](50-synthetic-market-chart-320.png)
+![Market data unavailable — offline error state at 320px](50-market-unavailable-320.png)
 
 ## 51-smart-modules — Installed Smart account modules
 
@@ -702,9 +702,9 @@ Component: NativeSend.
 
 Route: http://127.0.0.1:4291/?biometric-auth=1
 
-Actions: Enter public recipient and 0.001 ETH → Review transfer → Show biometric-enabled Confirm and send plus Use PIN instead.
+Actions: Enter public recipient and 0.001 ETH → Review transfer → Show the normal Confirm and send action.
 
-Actual review configured for biometrics, with an explicit Use PIN instead alternative. No confirmation button is pressed: no OS prompt, biometric proof, signature or submission is performed.
+The normal review uses one Confirm and send action. With biometrics enabled, it automatically requests the native proof; the same authorization page retains PIN fallback. No confirmation is pressed in this capture.
 
 ![Biometric-enabled transaction review at 390px](58-biometric-transaction-auth-390.png)
 

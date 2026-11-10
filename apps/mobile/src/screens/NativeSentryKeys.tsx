@@ -25,7 +25,6 @@ import type {
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { NoteBackupPasswordField } from './NoteBackupPasswordField';
-import { PinField } from './PinEntry';
 
 type Role = SentryKeySummary['role'];
 type Key = Readonly<SentryKeySummary>;
@@ -33,7 +32,7 @@ type Step =
   | { kind: 'list' }
   | {
       kind: 'settings';
-      manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings'>;
+      manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel' | 'isAuthenticating'>;
       assertCurrent(): void;
     }
   | { kind: 'draft'; multiple: boolean }
@@ -159,7 +158,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   const [scheme, setScheme] = useState<SentryAuthorityScheme>('bls-basic');
   const [label, setLabel] = useState('');
   const [privateKey, setPrivateKey] = useState('');
-  const [password, setPassword] = useState('');
   const [backedUp, setBackedUp] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error?: boolean }>();
 
@@ -167,7 +165,8 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
     (owner: Owner) =>
       ownerRef.current === owner &&
       !owner.lifetime.signal.aborted &&
-      AppState.currentState === 'active',
+      (AppState.currentState === 'active' ||
+        (AppState.currentState === 'inactive' && owner.manager?.isAuthenticating() === true)),
     []
   );
   const navigate = useCallback((owner: Owner, next: Step) => {
@@ -177,7 +176,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   const clearFields = useCallback(() => {
     setLabel('');
     setPrivateKey('');
-    setPassword('');
     setBackedUp(false);
     Keyboard.dismiss();
   }, []);
@@ -255,11 +253,13 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       setStep({ kind: 'list' });
     };
     const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') hide();
+      if (state !== 'active' && !(state === 'inactive' && owner.manager?.isAuthenticating() === true)) hide();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', hide)
+        ? AppState.addEventListener('blur', () => {
+            if (owner.manager?.isAuthenticating() !== true) hide();
+          })
         : null;
     return () => {
       retire(owner);
@@ -302,7 +302,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
   const expireReview = useCallback(
     (owner: Owner) => {
       owner.manager?.cancel();
-      setPassword('');
       setBackedUp(false);
       Keyboard.dismiss();
       if (!owner.busy) {
@@ -396,7 +395,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
     const owner = editable();
     if (
       !owner ||
-      !password ||
       (step.kind !== 'import' && step.kind !== 'remove')
     )
       return;
@@ -405,21 +403,18 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       expireReview(owner);
       return;
     }
-    let entered = password;
     clearFields();
     const work = run(
       async (owner, check) => {
         if (step.kind === 'import') {
           const saved = await owner.manager!.confirmImport(
-            step.review,
-            entered
+            step.review
           );
           check();
           setKeys((before) => [...(before ?? []), ...saved]);
         } else {
           const removed = await owner.manager!.confirmRemoval(
             step.review,
-            entered,
             backedUp
           );
           check();
@@ -440,13 +435,10 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         owner.manager?.cancel();
         navigate(owner, { kind: 'list' });
         const code = errorCode(cause);
-        if (code === 'INVALID_INPUT')
-          return 'This PIN could not be used. Start a new review to try again.';
         if (code !== 'INVALID_CREDENTIAL' && code !== 'AUTH_THROTTLED')
           setKeys(null);
       }
     );
-    entered = '';
     return work;
   }, [
     backedUp,
@@ -454,7 +446,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
     editable,
     expireReview,
     navigate,
-    password,
     run,
     step,
   ]);
@@ -516,7 +507,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 }
                 variant={step.kind === 'remove' ? 'danger' : 'primary'}
                 disabled={
-                  busy || !password || (step.kind === 'remove' && !backedUp)
+                  busy || (step.kind === 'remove' && !backedUp)
                 }
                 onPress={confirm}
               />) : undefined}>
@@ -562,6 +553,8 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                           manager: {
                             getSettings: owner.manager.getSettings,
                             saveSettings: owner.manager.saveSettings,
+                            cancel: owner.manager.cancel,
+                            isAuthenticating: owner.manager.isAuthenticating,
                           },
                           assertCurrent() {
                             if (!current(owner) || owner.step !== next)
@@ -733,14 +726,6 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                   </Text>
                 </IdlePressable>
               )}
-              <PinField
-                label="Wallet PIN"
-                value={password}
-                onChange={(value) => {
-                  if (editable()) setPassword(value);
-                }}
-                busy={busy}
-              />
 
             </>
           )}

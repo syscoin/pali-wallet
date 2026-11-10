@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDeviceUnlockEnrollment } from '../../../source/wallet/deviceUnlockEnrollment.ts';
+import { createDeviceUnlockEnrollment, deviceUnlockUserRefusal, isDeviceUnlockUserRefusal } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
 import type { DeviceUnlockEnrollmentSnapshot } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 
@@ -19,6 +19,7 @@ function fixture() {
   let afterRead: () => void | Promise<void> = current, afterWrite = current as () => void;
   let afterDecode = current as () => void;
   let available = true;
+  let enrollmentError: Error | undefined;
   let reads = 0, mutations = 0, decoded: Uint8Array | null = null;
   const items = new Map<string, string>();
   const protectedItems = createDeviceUnlockCredentialStore({
@@ -28,7 +29,7 @@ function fixture() {
     async remove(alias) { items.delete(alias); },
   });
   const enrollment = {
-    async read() { return record; },
+    async read() { if (enrollmentError) throw enrollmentError; return record; },
     async compareAndSet(expected: DeviceUnlockEnrollmentSnapshot, enrollmentId: string | null, guard: () => void) {
       guard();
       if (expected !== record || failure === 'refused') return false;
@@ -53,6 +54,7 @@ function fixture() {
     replace(id: string) { record = Object.freeze({ ...scope, enrollmentId: id }); },
     replaceReference(change: Partial<DeviceUnlockEnrollmentSnapshot>) { record = Object.freeze({ ...record, ...change }); },
     availability(value: boolean) { available = value; },
+    failEnrollment(error: Error) { enrollmentError = error; },
     onDecode(operation: () => void) { afterDecode = operation; },
     onRead(operation: () => void | Promise<void>) { afterRead = operation; }, onWrite(operation: () => void) { afterWrite = operation; },
   };
@@ -196,10 +198,10 @@ test('revoked presence verification erases already-read bytes and rejects non-sy
   let live = true;
   const check = () => { if (!live) throw Error('CANCELLED'); };
   f.onDecode(() => { live = false; });
-  await assert.rejects(c.verifyPresence(check), unavailable);
+  await assert.rejects(c.verifyPresence(check), { message: 'CANCELLED' });
   assert.deepEqual(f.decoded, new Uint8Array(32));
   const before = f.reads;
-  await assert.rejects(c.verifyPresence(check), unavailable);
+  await assert.rejects(c.verifyPresence(check), { message: 'CANCELLED' });
   await assert.rejects(c.verifyPresence(async () => undefined), unavailable);
   assert.equal(f.reads, before);
 });
@@ -221,4 +223,21 @@ test('presence verification shares the single active operation with issue, resum
   assert.deepEqual(f.decoded, new Uint8Array(32));
   f.onRead(current);
   await c.verifyPresence(current);
+});
+
+test('presence keeps genuine user refusal distinct from enrollment and protected-record failures', async () => {
+  const f = fixture(); await f.coordinator.issue(f.prove, current);
+  f.onRead(() => { throw deviceUnlockUserRefusal(); });
+  await assert.rejects(f.coordinator.verifyPresence(current), error => isDeviceUnlockUserRefusal(error));
+  f.onRead(current);
+  const failure = Error('SQL read failed');
+  f.failEnrollment(failure);
+  await assert.rejects(f.coordinator.verifyPresence(current), error => error === failure && !isDeviceUnlockUserRefusal(error));
+  const stale = fixture(); await stale.coordinator.issue(stale.prove, current);
+  stale.onRead(() => stale.replace(second));
+  await assert.rejects(stale.coordinator.verifyPresence(current), error => !isDeviceUnlockUserRefusal(error));
+  assert.deepEqual(stale.decoded, new Uint8Array(32));
+  const corrupt = fixture(); await corrupt.coordinator.issue(corrupt.prove, current);
+  corrupt.items.set(name(first), 'corrupt');
+  await assert.rejects(corrupt.coordinator.verifyPresence(current), error => !isDeviceUnlockUserRefusal(error));
 });

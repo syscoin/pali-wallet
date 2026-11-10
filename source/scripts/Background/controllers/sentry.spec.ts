@@ -150,9 +150,12 @@ it.each(['mainnet', 'testnet'] as const)(
         extensionRecord = value;
       }
     );
-    const authenticate = jest.fn(async (password) => {
-      expect(password).toBe('test');
-    });
+    const authenticate = jest.fn(
+      async (guard: () => void, signal: AbortSignal) => {
+        guard();
+        expect(signal.aborted).toBe(false);
+      }
+    );
     const manager = createNativeSentryKeyManagement({
       assertCurrent() {
         // The public fixture keeps one active wallet scope.
@@ -190,7 +193,7 @@ it.each(['mainnet', 'testnet'] as const)(
       serviceUrl: 'https://sentry.example/',
       maxFeeSatoshis: '10000000',
     };
-    expect(await manager.saveSettings(next, 'test', () => undefined)).toEqual(
+    expect(await manager.saveSettings(next, () => undefined)).toEqual(
       await controller.saveSettings({ ...next, password: 'test' })
     );
     expect(nativeRecord).toEqual(extensionRecord);

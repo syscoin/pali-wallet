@@ -44,6 +44,7 @@ import { createSentryKeyVault } from '../../../source/wallet/sentryKeyVault.ts';
 import { SENTRY_SLOT_KEYS } from '../src/storage/sentryKeyDomain.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
 import { parseSentrySettingsStorageKey } from '../../../source/shared/sentrySettings.ts';
+import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 
 const pinCredential = createTestPinCredentialPort();
 
@@ -85,6 +86,14 @@ async function fixture(
   deriveSentryPublicKey?: DeriveSentryPublicKey
 ) {
   let currentPin = OLD;
+  let operationPin: string | undefined;
+  let operationRequests = 0;
+  const operationBroker = new OperationAuthentication();
+  let refusedOperation = Promise.withResolvers<OperationAuthenticationPrompt>();
+  const detachOperationBroker = operationBroker.attach(prompt => {
+    if (prompt?.error) refusedOperation.resolve(prompt);
+    else if (prompt && !prompt.busy) queueMicrotask(() => prompt.confirm({ method: 'pin', pin: operationPin! }));
+  });
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pali-preserving-recovery-')
   );
@@ -121,7 +130,11 @@ async function fixture(
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: currentPin }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (request, signal, check, verify) => {
+    operationRequests++; check();
+    if (operationPin !== undefined) return operationBroker.request(request, signal, check, verify);
+    const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason);
+  }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: open,
     readUtxoAccount,
@@ -171,6 +184,9 @@ async function fixture(
     try { db.prepare(`INSERT OR REPLACE INTO ${table} VALUES (?, ?)`).run(key, encodeStorageValue(value)); } finally { db.close(); }
   };
   return { notes(profile: string, value: unknown, binding: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO private_note_records VALUES (?, ?, ?)').run(profile, binding, JSON.stringify(value)); } finally { db.close(); } },
+    setOperationPin(pin?: string) { operationPin = pin; refusedOperation = Promise.withResolvers<OperationAuthenticationPrompt>(); },
+    waitOperationRefusal: () => refusedOperation.promise,
+    get operationRequests() { return operationRequests; },
     get owner() {
       return owner;
     },
@@ -241,7 +257,7 @@ async function fixture(
       owner = await newOwner();
       return owner;
     },
-    async close() { hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
+    async close() { detachOperationBroker(); hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
 }
 function retained(
@@ -1076,7 +1092,7 @@ test('failure to capture the original pair still closes its lease and returns no
     await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
     assert.deepEqual(f.read(), before);
     // A failed retirement remains failed; a fresh owner must qualify a new lease.
-    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: OLD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
+    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: OLD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
     try { await replacement.initialize(); await replacement.unlock(OLD); assert.equal(replacement.getSnapshot().phase, 'ready'); }
     finally { await replacement.dispose(); }
   } finally { await recovery.dispose(); await f.close(); }
@@ -1533,18 +1549,21 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     assert.notEqual(firstCall.signal, scope.signal);
     assert.equal(firstCall.signal.aborted, false);
     assert(firstCall.bytes.every((byte) => byte === 0));
-    await assert.rejects(manager.confirmImport(firstReview, NEXT), {
-      code: 'INVALID_CREDENTIAL',
-    });
+    f.setOperationPin(NEXT);
+    const rejectedImport = assert.rejects(manager.confirmImport(firstReview), { code: 'CANCELLED' });
+    const refusedImport = await f.waitOperationRefusal();
+    assert.match(refusedImport.error!, /PIN not accepted/);
+    assert.equal(mainRow(), undefined);
+    refusedImport.cancel(); await rejectedImport;
+    f.setOperationPin();
     assert.equal(firstCall.signal.aborted, true);
     assert.equal(mainRow(), undefined);
-    await assert.rejects(manager.confirmImport(firstReview, OLD), {
+    await assert.rejects(manager.confirmImport(firstReview), {
       code: 'CANCELLED',
     });
     const invalidReview = await manager.prepareImport(input, 'operator', 'bls-basic');
     const invalidCall = calls.at(-1)!;
-    const invalidPassword = 'é'.repeat(513);
-    assert(invalidPassword.length < 1024 && Buffer.byteLength(invalidPassword) > 1024);
+    const invalidPin = '000000';
     const erased: Uint8Array[] = [];
     const fill = Uint8Array.prototype.fill;
     const observeWipe = t.mock.method(Uint8Array.prototype, 'fill', function (
@@ -1556,15 +1575,17 @@ test('Sentry key management keeps approvals public and bound to the selected wal
       return fill.call(this, value, start, end);
     });
     try {
-      await assert.rejects(manager.confirmImport(invalidReview, invalidPassword), {
-        code: 'INVALID_INPUT',
-      });
-    } finally { observeWipe.mock.restore(); }
+      f.setOperationPin(invalidPin);
+      const rejected = assert.rejects(manager.confirmImport(invalidReview), { code: 'CANCELLED' });
+      const refused = await f.waitOperationRefusal();
+      assert.match(refused.error!, /PIN not accepted/);
+      refused.cancel(); await rejected;
+    } finally { f.setOperationPin(); observeWipe.mock.restore(); }
     assert.equal(invalidCall.signal.aborted, true);
     assert.equal(erased.length, 1);
     assert(erased[0]!.every((byte) => byte === 0));
     assert.equal(mainRow(), undefined);
-    await assert.rejects(manager.confirmImport(invalidReview, OLD), { code: 'CANCELLED' });
+    await assert.rejects(manager.confirmImport(invalidReview), { code: 'CANCELLED' });
 
     const preview = await manager.prepareImport(input, 'operator', 'bls-basic');
     assert.deepEqual(Object.keys(preview.keys[0]!).sort(), [
@@ -1575,17 +1596,21 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     ]);
     assert(!JSON.stringify(preview).includes(secret));
     assert.equal(mainRow(), undefined);
-    await assert.rejects(manager.confirmImport(structuredClone(preview), OLD), {
+    await assert.rejects(manager.confirmImport(structuredClone(preview)), {
       code: 'CANCELLED',
     });
-    const saved = await manager.confirmImport(preview, OLD);
+    const beforeImportProofs = f.operationRequests;
+    const saved = await manager.confirmImport(preview);
+    assert.equal(f.operationRequests, beforeImportProofs + 1);
     assert.equal(saved.length, 1);
     assert.deepEqual(await manager.list(), saved);
     assert(!JSON.stringify(saved).includes(secret));
     assert(!mainRow()!.value.includes(secret));
     const encryptedKeysBeforeSettings = mainRow()!.value;
     const settings = { serviceUrl: 'https://sentry.example', maxFeeSatoshis: '250000' };
-    assert.deepEqual(await manager.saveSettings(settings, OLD, guard), settings);
+    const beforeSettingsProofs = f.operationRequests;
+    assert.deepEqual(await manager.saveSettings(settings, guard), settings);
+    assert.equal(f.operationRequests, beforeSettingsProofs + 1);
     assert.deepEqual(await manager.getSettings(guard), settings);
     assert.equal(mainRow()!.value, encryptedKeysBeforeSettings);
     const { vaultId } = JSON.parse(mainRow()!.value);
@@ -1606,7 +1631,7 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     });
     assert.equal(recovered.secretKey, secret);
     assert.equal(recovered.publicKey, preview.keys[0]!.publicKey);
-    await assert.rejects(manager.confirmImport(preview, OLD), {
+    await assert.rejects(manager.confirmImport(preview), {
       code: 'CANCELLED',
     });
     await assert.rejects(
@@ -1615,15 +1640,15 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     );
 
     const remove = await manager.prepareRemoval(saved[0]!.id);
-    await assert.rejects(manager.confirmRemoval(remove, OLD, false), {
+    await assert.rejects(manager.confirmRemoval(remove, false), {
       code: 'BACKUP_REQUIRED',
     });
     assert.equal((await manager.list()).length, 1);
-    assert.deepEqual(await manager.confirmRemoval(remove, OLD, true), {
+    assert.deepEqual(await manager.confirmRemoval(remove, true), {
       removedKeyId: saved[0]!.id,
     });
     assert.deepEqual(await manager.list(), []);
-    await assert.rejects(manager.confirmRemoval(remove, OLD, true), {
+    await assert.rejects(manager.confirmRemoval(remove, true), {
       code: 'CANCELLED',
     });
 
@@ -1640,7 +1665,7 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     );
     assert(!JSON.stringify(wifPreview).includes(wif));
     await selectNetwork(f, 'utxo:5700');
-    await assert.rejects(manager.confirmImport(wifPreview, OLD), {
+    await assert.rejects(manager.confirmImport(wifPreview), {
       code: 'CANCELLED',
     });
     const next = await open();
@@ -1719,7 +1744,7 @@ test('Sentry approval retired before SQLite COMMIT leaves the vault unchanged', 
         await gate.gate;
       }
     });
-    const pending = manager.confirmImport(approval, OLD);
+    const pending = manager.confirmImport(approval);
     const refused = assert.rejects(pending, { code: 'CANCELLED' });
     await gate.reached;
     const afterInsert = f.dispatched.length;
@@ -1728,11 +1753,11 @@ test('Sentry approval retired before SQLite COMMIT leaves the vault unchanged', 
     await refused;
     assert(!f.dispatched.slice(afterInsert).includes('COMMIT'));
     assert(!f.read().records.some(({ key }) => key === SENTRY_SLOT_KEYS.mainnet));
-    await assert.rejects(manager.confirmImport(approval, OLD), { code: 'CANCELLED' });
+    await assert.rejects(manager.confirmImport(approval), { code: 'CANCELLED' });
 
     f.setAfter();
     const fresh = await manager.prepareImport(input, 'operator', 'bls-basic');
-    assert.equal((await manager.confirmImport(fresh, OLD)).length, 1);
+    assert.equal((await manager.confirmImport(fresh)).length, 1);
   } finally {
     scope.abort();
     gate.release();
@@ -1754,9 +1779,15 @@ test('Sentry public settings preserve each network through cold unlock and passw
       assert.deepEqual(await manager.getSettings(guard), {
         serviceUrl: network === 'syscoin' ? 'https://sysnode.info' : '', maxFeeSatoshis: '100000',
       });
-      await assert.rejects(manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, NEXT, guard), { code: 'INVALID_CREDENTIAL' });
+      f.setOperationPin(NEXT);
+      const rejected = assert.rejects(manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard), { code: 'CANCELLED' });
+      const refused = await f.waitOperationRefusal();
+      assert.match(refused.error!, /PIN not accepted/);
       assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, network === 'syscoin' ? 0 : 1);
-      await manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, OLD, guard);
+      refused.cancel(); await rejected;
+      f.setOperationPin();
+      assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, network === 'syscoin' ? 0 : 1);
+      await manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard);
       manager.dispose();
     }
     const saved = f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key));
@@ -1789,7 +1820,7 @@ test('Sentry service settings cancelled while SQL waits never commit', async () 
     f.setAfter(async (kind, sql) => {
       if (kind === 'run' && sql.startsWith('INSERT INTO keyring_records')) { gate.enter(); await gate.gate; }
     });
-    const saving = manager.saveSettings({ serviceUrl: 'https://sentry.example', maxFeeSatoshis: '200000' }, OLD, guard);
+    const saving = manager.saveSettings({ serviceUrl: 'https://sentry.example', maxFeeSatoshis: '200000' }, guard);
     const refused = assert.rejects(saving, { code: 'CANCELLED' });
     await gate.reached;
     const before = f.dispatched.length;

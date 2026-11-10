@@ -123,7 +123,7 @@ import {
 } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import { createNativeSmartAccountProvider } from '../smartAccount/provider.ts';
 import type { NativeConnectionSigningHost } from '../connections/host.ts';
-import { createDeviceUnlockEnrollment } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
+import { createDeviceUnlockEnrollment, isDeviceUnlockUserRefusal } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { DeviceUnlockControls } from '@sidhujag/sysweb3-keyring/cjs/keyring-core.js';
 import {
   prepareSmartAccountMessage,
@@ -711,9 +711,25 @@ export function createKeyringRuntimeFactory(
           if (!request) throw new KeyringRuntimeError('NOT_READY');
           const enrollment = await storage.deviceUnlockEnrollment?.read(); check();
           const available = !!dependencies.deviceUnlock && await dependencies.deviceUnlock.credentials.available(); check();
+          let accepted = false;
           try {
-            const credential = await request(Object.freeze({ id: crypto.randomUUID(), purpose, biometricsEnabled: available && !!enrollment?.enrollmentId }), signal, check);
-            check(); return credential;
+            await request(Object.freeze({ id: crypto.randomUUID(), purpose, biometricsEnabled: available && !!enrollment?.enrollmentId }), signal, check,
+              async (credential, assertAttemptCurrent) => {
+                const attemptCurrent = () => { check(); checkGuard(assertAttemptCurrent); check(); };
+                try {
+                  await verifyOperationCredential(credential, attemptCurrent);
+                  attemptCurrent(); accepted = true;
+                  return { accepted: true };
+                } catch (error) {
+                  attemptCurrent();
+                  if (error instanceof KeyringRuntimeError && secretAuthenticationRefusals.has(error) &&
+                      (error.code === 'INVALID_CREDENTIAL' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE' || error.code === 'AUTH_THROTTLED'))
+                    return { accepted: false, reason: error.code };
+                  throw error;
+                }
+              });
+            check();
+            if (!accepted) throw new KeyringRuntimeError('CANCELLED');
           } catch (error) {
             check();
             if (isOperationAuthenticationCancellation(error)) {
@@ -739,7 +755,7 @@ export function createKeyringRuntimeFactory(
             check();
             const code = error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED' ? 'AUTH_THROTTLED'
               : error instanceof Error && error.message === 'INVALID_CREDENTIAL' ? 'INVALID_CREDENTIAL'
-                : error instanceof Error && error.message === 'DEVICE_UNLOCK_UNAVAILABLE' ? 'DEVICE_UNLOCK_UNAVAILABLE' : null;
+                : isDeviceUnlockUserRefusal(error) ? 'DEVICE_UNLOCK_UNAVAILABLE' : null;
             if (code === null) throw error;
             const refusal = new KeyringRuntimeError(code); secretAuthenticationRefusals.add(refusal); throw refusal;
           }
@@ -769,7 +785,8 @@ export function createKeyringRuntimeFactory(
               consumeOperationAuthorization(authorization.receipt, check, authorization.target); authorized = true;
             }
             if (credential === null && !authorized) {
-              credential = await requestCredential(purpose, owned.signal, check);
+              await requestCredential(purpose, owned.signal, check);
+              authorized = true;
             }
             const entered = credential;
             return await ring.withSecretOperation({ async withSecret(sdkCheck, consume) {
@@ -778,7 +795,7 @@ export function createKeyringRuntimeFactory(
                 guard();
                 const code = error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED'
                   ? 'AUTH_THROTTLED' : error instanceof Error && error.message === 'INVALID_CREDENTIAL'
-                    ? 'INVALID_CREDENTIAL' : error instanceof Error && error.message === 'DEVICE_UNLOCK_UNAVAILABLE'
+                    ? 'INVALID_CREDENTIAL' : isDeviceUnlockUserRefusal(error)
                       ? 'DEVICE_UNLOCK_UNAVAILABLE' : null;
                 if (code === null) throw error;
                 const refusal = new KeyringRuntimeError(code);
@@ -1485,11 +1502,9 @@ export function createKeyringRuntimeFactory(
             check();
             return true;
             } catch (error) {
-              if (error instanceof KeyringRuntimeError && (error.code === 'INVALID_CREDENTIAL' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE')) {
+              if (error instanceof KeyringRuntimeError && secretAuthenticationRefusals.has(error) &&
+                  (error.code === 'INVALID_CREDENTIAL' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE' || error.code === 'AUTH_THROTTLED')) {
                 check(); failure = error.code; return false;
-              }
-              if (error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED') {
-                check(); failure = 'AUTH_THROTTLED'; return false;
               }
               throw error;
             }
@@ -2123,22 +2138,17 @@ export function createKeyringRuntimeFactory(
                 check();
                 if (!saved) throw new KeyringRuntimeError('CANCELLED');
               },
-              async authenticate(password, assertCurrent) {
-                const authenticated = await authenticateVerifiedOwner(password, {
-                  ...session,
-                  assertCurrent,
-                });
+              async authenticate(assertCurrent, signal) {
                 assertCurrent();
-                if (!authenticated) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                await requestCredential('account-change', signal, assertCurrent);
+                assertCurrent();
               },
               derivePublicKey,
               lifetime,
               network,
-              async readSeed(password, assertCurrent) {
+              async readSeed(assertCurrent, signal) {
                 assertCurrent();
-                if (!(await authenticateVerifiedOwner(password, { ...session, assertCurrent }))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
-                assertCurrent();
-                const phrase = await withSoftwareSecret('secret-read', lifetime, assertCurrent, secret => keyring.getSeed(secret), { method: 'pin', pin: password }, null);
+                const phrase = await withSoftwareSecret('secret-read', signal, assertCurrent, secret => keyring.getSeed(secret), null, null);
                 assertCurrent();
                 if (typeof phrase !== 'string' || !keyring.isSeedValid(phrase))
                   throw new KeyringRuntimeError('OPERATION_FAILED');
@@ -2913,7 +2923,8 @@ export function createKeyringRuntimeFactory(
               if (!created.isSmartAccount || created.isImported || created.isLedgerWallet || created.isTrezorWallet || created.xprv !== '')
                 throw new KeyringRuntimeError('OPERATION_FAILED');
               requireSmartAccountAddressIdentity({ address: created.address, xpub: created.xpub, smartAccount: created.smartAccount }, Number(network.chainId));
-              await verifyOperationCredential(credential ?? await requestCredential('account-change', signal.signal, check), check);
+              if (credential) await verifyOperationCredential(credential, check);
+              else await requestCredential('account-change', signal.signal, check);
               check();
               beforeCommit(); check();
               const next = await catalogue.mutate(expectedRevision, { kind: 'create-smart', account: created }, check);
@@ -3076,7 +3087,7 @@ export function createKeyringRuntimeFactory(
                   } : null;
                   guard();
                   if (mutation.kind === 'remove') {
-                    await verifyOperationCredential(await requestCredential('account-change', cancellation.signal, guard), guard);
+                    await requestCredential('account-change', cancellation.signal, guard);
                     guard();
                     const target = parseNativeAccountId(mutation.id);
                     const repository = await getConnectionRepository(captured);
@@ -6917,12 +6928,10 @@ export function createKeyringRuntimeFactory(
                           throw new KeyringRuntimeError('CANCELLED');
                       };
                       const guard = () => { check(); walletCurrent(); if (privateOwner !== owner || owner.hash !== entry.hash) throw new KeyringRuntimeError('CANCELLED'); };
-                      const credential = await requestCredential('private-reconciliation', owner.lifetime.signal, guard);
-                      guard();
                       const access = await run(async admitted => {
                         const checkAdmitted = () => { current(admitted); guard(); };
                         return withSoftwareSecret('private-reconciliation', owner.lifetime.signal, checkAdmitted,
-                          () => ring.createPrivateRecordAccess(privateNoteRecordDomains, { transferable: false }), credential, null);
+                          () => ring.createPrivateRecordAccess(privateNoteRecordDomains, { transferable: false }), null, null);
                       });
                       try {
                         guard();
