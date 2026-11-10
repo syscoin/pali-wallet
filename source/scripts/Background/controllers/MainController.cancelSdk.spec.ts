@@ -3,8 +3,6 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { sendLocalEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
 import { submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission';
 import { Transaction } from 'ethers/transaction';
-import { realpathSync } from 'node:fs';
-import { join, resolve as resolvePath } from 'node:path';
 
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
@@ -231,33 +229,9 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       '@sidhujag/sysweb3-keyring/package.json'
     );
     const manifest = jest.requireActual('../../../../package.json');
-    const spec = manifest.dependencies['@sidhujag/sysweb3-keyring'];
-    if (typeof spec === 'string' && spec.startsWith('file:')) {
-      const root = join(__dirname, '../../../..');
-      const { readQualificationSdkPin, verifyInstalledQualificationSdk } =
-        jest.requireActual(
-          '../../../../apps/mobile/scripts/qualification-sdk.cjs'
-        );
-      const pin = readQualificationSdkPin(root);
-      expect(resolvePath(root, spec.slice(5))).toBe(
-        join(root, 'apps/mobile/vendor', `sysweb3-keyring-${pin.version}.tgz`)
-      );
-      verifyInstalledQualificationSdk(root, pin);
-      expect(
-        realpathSync(
-          require.resolve('@sidhujag/sysweb3-keyring/cjs/transactions/ethereum')
-        )
-      ).toBe(
-        realpathSync(
-          join(
-            root,
-            'node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js'
-          )
-        )
-      );
-    } else {
-      expect(installed.version).toBe(spec);
-    }
+    expect(installed.version).toBe(
+      manifest.dependencies['@sidhujag/sysweb3-keyring']
+    );
     expect(jest.isMockFunction(sdk.cancelSentTransaction)).toBe(false);
   });
 
