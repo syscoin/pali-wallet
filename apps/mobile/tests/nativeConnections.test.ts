@@ -1,3 +1,4 @@
+import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import type { NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { dappCaipChain, DAPP_MODE_METHODS } from '../../../source/shared/dappChainScope.ts';
@@ -68,6 +69,7 @@ function fixture(
     smart?: boolean;
     imported?: boolean;
     smartMessages?: boolean;
+    smartTrezor?: boolean;
     secondAccount?: boolean;
     restoring?: boolean;
     openFailures?: number;
@@ -206,6 +208,7 @@ function fixture(
     },
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
+    signingContext: (accountId) => ({ trezor: options.hardware === 'Trezor' || options.smartTrezor === true, binding: accountId }),
     registration: () => createNativeNetwork({ id: 'ethereum', name: network.label + registrationSuffix, kind: 'evm', chainId: String(selectedChainId), slip44: 60, rpcUrl: network.url, symbol: network.currency, decimals: 18, testnet: false }),
     async cancelSigningHandoff(job) { canceledPsbtJobs.push(job); },
     syscoin: {
@@ -274,7 +277,7 @@ function fixture(
       const intent = { kind: 'dapp-batch' as const, calls: input.calls.calls };
       const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
         chainId: '1', value: '0', data: '0x1234', nonce: '0', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
-      const operation = new NativeSmartAccountOperation({
+      const operation = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: Math.min(input.handoff.expiresAt,freshSmartOperationDeadline()),
         account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
         assertCurrent: () => { check(); input.approval.assertCurrent(); },
         async prepare() { return { kind: 'authorization', intent, operation: { executions: createSmartAccountCallsExecutions(intent.calls), actionHash: '0x' + '66'.repeat(32),
@@ -328,7 +331,7 @@ function fixture(
       signatures.push(input.request);
       await signWait;
       input.approval.assertCurrent();
-      if (options.hardware) input.handoff.beforeSignature();
+      if (options.hardware || options.smartTrezor) input.handoff.beforeSignature();
       return options.smart ? '0x' + '33'.repeat(20) + '12'.repeat(65) : '0x' + '12'.repeat(65);
     },
     async recordStoppedEoaCalls() {},
@@ -347,7 +350,7 @@ function fixture(
         const intent = { kind: 'dapp-call' as const, recipient: String(value.to), amountUnits: BigInt(value.value as string ?? '0').toString(), data: String(value.data ?? '0x') };
         const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
           chainId: '1', value: '0', data: '0x1234', nonce: '0', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
-        const operation = new NativeSmartAccountOperation({
+        const operation = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: Math.min(input.handoff.expiresAt,freshSmartOperationDeadline()),
           account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
           assertCurrent: () => { check(); input.approval.assertCurrent(); },
           async prepare() { return { kind: 'authorization', intent, operation: {
@@ -1625,6 +1628,7 @@ async function connectedFixture(
     smart?: boolean;
     imported?: boolean;
     smartMessages?: boolean;
+    smartTrezor?: boolean;
     secondAccount?: boolean;
     accountId?: string;
     verification?: WalletConnectVerification;
@@ -4655,3 +4659,27 @@ for (const hardware of [undefined, 'Ledger'] as const)
         await f.view.approveRequest(review.id, review.revision, true); assert.equal(f.signatures.length, 1); assert.equal(f.responses.length, 1);
       } finally { await f.controller.dispose(); }
     });
+
+
+for(const freshness of ['unproven',undefined] as const) test(`Smart account with a Trezor owner refuses ${freshness} dapp wire before custody`,async()=>{
+  const f=await connectedFixture({smart:true,smartMessages:true,smartTrezor:true,accountId:'smart:60:0'});
+  try{
+    f.event({type:'request',request:{freshness,id:10,session:f.session,method:'personal_sign',params:['Hello Pali',ADDRESS],chainId:'eip155:1',expiresAt:Date.now()+300000,verification:UNKNOWN} as WalletConnectRequest});
+    await settle();assert.equal(f.view.getSnapshot().signingReview,null);assert.equal(f.signatures.length,0);assert.equal(f.preparedTransactions.length,0);
+    assert.equal((f.responses.at(-1) as {result:{error:{code:number}}}).result.error.code,4200);
+  }finally{await f.controller.dispose();}
+});
+
+test('fresh Smart Trezor message rebuilds consent after unlock without changing selected account or automatically signing',async()=>{
+  const f=await connectedFixture({smart:true,smartMessages:true,smartTrezor:true,accountId:'smart:60:0'}),held=Promise.withResolvers<void>();
+  try{
+    const first=await messageRequest(f);assert(first?.kind==='message');f.setSignWait(held.promise);
+    const signing=f.view.approveRequest(first.id,first.revision,true),rejected=assert.rejects(signing);await settle();
+    const handoff=f.signingHandoff(),deadline=Date.now()+60000;handoff.beforeSuiteOpen(deadline,{})(true);
+    f.view.backgroundSigning();f.lock();held.resolve();await rejected;f.unlock();await settle();
+    await f.view.resumeSigning(handoff.id);await settle();
+    const fresh=f.view.getSnapshot().signingReview;assert(fresh?.kind==='message');assert.equal(fresh.needsAccountSwitch,false);assert(fresh.expiresAt<=deadline);
+    assert.equal(f.signatures.length,1);assert.equal(f.responses.length,0);
+    await f.view.approveRequest(fresh.id,fresh.revision,true);assert.equal(f.signatures.length,2);assert.equal(f.responses.length,1);
+  }finally{held.resolve();await f.controller.dispose();}
+});

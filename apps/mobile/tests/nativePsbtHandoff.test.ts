@@ -1,4 +1,4 @@
-import { NativeSigningHandoffs, type NativeSigningHandoff, type SigningResumeScope } from '../src/connections/signingHandoff.ts';
+import { requireNativeSigningHandoff, NativeSigningHandoffs, type NativeSigningHandoff, type SigningResumeScope } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { utils } from 'syscoinjs-lib';
@@ -18,7 +18,7 @@ function fixture() {
   const wire: WalletConnectRequest = { freshness: 'fresh', id: 1, expiresAt: Date.now() + 120000, method: 'sys_sign', chainId: 'bip122:' + 'ab'.repeat(16), params: [envelope], verification: { validation: 'VALID', isScam: false },
     session: { binding: { topic: 'aa'.repeat(32), peerPublicKey: 'bb'.repeat(32), origin: 'https://exact.example' }, metadata: { name: 'App', description: '', url: 'https://exact.example', icons: [] }, expiry: Math.floor(Date.now() / 1000) + 300,
       namespaces: { bip122: { accounts: [], methods: ['sys_sign'], events: [] } } } };
-  const scope = (): SigningResumeScope => ({ adapter: 1, wallet: 'wallet', unlockGeneration: generation, accountId: 'trezor:0:0', address: 'address', type: 'Trezor', xpub: 'xpub', registration: 'full-registration', grant: 'grant' });
+  const scope = (): SigningResumeScope => ({ adapter: 1, wallet: 'wallet', unlockGeneration: generation, accountId: 'trezor:0:0', address: 'address', type: 'Trezor', trezor: true, signing: 'trezor-signing', xpub: 'xpub', registration: 'full-registration', grant: 'grant' });
   const owner = () => ({ order: 1, accountLabel: 'Trezor', address: 'address', networkLabel: 'Bitcoin', chainId: wire.chainId, symbol: 'BTC', decimals: 8, resumeScope: scope(),
     assertCurrent() { if (!live) throw Error('CONTEXT_CHANGED'); }, assertSessionCurrent() {} });
   const manager = new NativePsbtRequests({ foreground: () => true, changed() {}, checkSite: async () => ({ isBlacklisted: false }),
@@ -175,18 +175,26 @@ for (const freshness of ['unproven', undefined, 'caller-claimed'] as const) test
     f.unlock(); assert.throws(capture, /REQUEST_EXPIRED/); assert.equal(handoffs.descriptor('original-unproven'), null);
     await assert.rejects(handoffs.drain('original-unproven'), /REQUEST_EXPIRED/);
     assert.equal(retired, 0); assert.deepEqual(canceled, []); assert.equal(f.prepares(), 0); assert.equal(f.signs(), 0);
-  } finally { handoffs.cancel(); await f.manager.dispose(); }
+  } finally { handoffs.cancelDapp(); await f.manager.dispose(); }
 });
 
 
 test('changing a caller-owned wire or account object cannot promote an originally non-Suite capture into fresh Trezor authority', async () => {
   const f = fixture(), handoffs = new NativeSigningHandoffs({ async cancel() {}, changed() {} });
   try {
-    const wire = { ...f.wire, freshness: 'unproven' as 'fresh' | 'unproven' }, scope = { ...f.owner().resumeScope, type: 'Ledger' };
+    const wire = { ...f.wire, freshness: 'unproven' as 'fresh' | 'unproven' }, scope = { ...f.owner().resumeScope, type: 'Ledger', trezor: false };
     const handoff = handoffs.capture({ id: 'original-non-suite', wire, scope, expiresAt: wire.expiresAt, order: 1,
       assertCurrent() {}, eligible: () => true, drain: async () => undefined, retire() { throw Error('Must not retire'); } });
-    wire.freshness = 'fresh'; scope.type = 'Trezor'; f.unlock();
+    wire.freshness = 'fresh'; scope.type = 'Trezor'; scope.trezor = true; f.unlock();
     assert.throws(() => handoff.beforeSuiteOpen(Date.now() + 60000, {}), /REQUEST_EXPIRED/);
     assert.equal(handoffs.background(handoff), false); assert.equal(handoffs.descriptor(handoff.id), null);
-  } finally { handoffs.cancel(); await f.manager.dispose(); }
+  } finally { handoffs.cancelDapp(); await f.manager.dispose(); }
+});
+
+
+test('native signing requires explicit live continuation fields rather than an omission fallback',()=>{
+  const valid={id:'owned',expiresAt:Date.now()+60000,beforeSuiteOpen(){return()=>undefined;},beforeSignature(){},isSuspended:()=>false};
+  requireNativeSigningHandoff(valid);
+  for(const value of [undefined,null,{},...Object.keys(valid).map(key=>({...valid,[key]:undefined})),{...valid,expiresAt:Date.now()-1},{...valid,expiresAt:NaN}])
+    assert.throws(()=>requireNativeSigningHandoff(value),/continuation authority is required/);
 });

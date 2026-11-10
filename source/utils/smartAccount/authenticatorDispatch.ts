@@ -222,7 +222,7 @@ const localEcdsaOwners = (
 };
 
 /** Match the contract's exact 65-byte ECDSA proof; never normalize wire bytes. */
-function assertEcdsaOwnerSignature(
+export function assertEcdsaOwnerSignature(
   actionHash: string,
   owner: string,
   signature: string

@@ -34,7 +34,7 @@ export class NativePsbtRequests {
   private readonly handoffs: NativeSigningHandoffs;
   discardHandoff(descriptor: SigningHandoffDescriptor) { this.handoffs.discard(descriptor); }
   descriptor(id: string) { return this.handoffs.descriptor(id); }
-  cancelHandoff() { return this.handoffs.cancel(); }
+  cancelHandoff() { return this.handoffs.cancelDapp(); }
   drainSuspended(id: string) { return this.handoffs.drain(id); }
   revalidateSuspended(check: (descriptor: SigningHandoffDescriptor) => boolean) { this.handoffs.revalidate(check); }
   private eligible(entry: Pending) {
@@ -167,6 +167,6 @@ export class NativePsbtRequests {
     }
     void this.prepare();
   }
-  clear() { this.handoffs.cancel(); for (const entry of [...this.pending.values()]) this.retire(entry, false); }
+  clear() { this.handoffs.cancelDapp(); for (const entry of [...this.pending.values()]) this.retire(entry, false); }
   dispose() { return this.drain.close(() => { this.closed = true; this.clear(); }, [() => this.handoffs.retired()]); }
 }

@@ -1,3 +1,4 @@
+import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { NativeSmartAccountOperation, type NativeSmartAccountOperationHost, type PreparedSmartAccountOperation } from '../src/smartAccount/operation.ts';
@@ -16,7 +17,7 @@ const prepared = { actionHash: hash, executions: buildGuardianPolicyExecutions(c
 } } as PreparedSmartAccountOperation;
 function fixture() {
   let signed = 0, submitted = 0, refreshed = 0, live = true, failRefresh = true;
-  const host: NativeSmartAccountOperationHost = {
+  const host: NativeSmartAccountOperationHost = { background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
     intent, account: command.accountAddress, network: getNativeNetwork('ethereum'),
     assertCurrent() { assert(live, 'owner changed'); },
     async prepare() { return { kind: 'authorization', intent, operation: prepared }; },

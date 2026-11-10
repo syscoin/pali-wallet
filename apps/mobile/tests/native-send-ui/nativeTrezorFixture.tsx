@@ -71,6 +71,7 @@ const controller: NativeTrezorView = {
     calls.push('resume:send');
     return intent;
   },
+  background() {calls.push('background');},
   async cancel() {
     calls.push('cancel');
     if (route.has('hold-cancel'))

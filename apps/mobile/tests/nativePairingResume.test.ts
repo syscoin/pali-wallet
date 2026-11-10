@@ -49,6 +49,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let guardianOpens = 0;
   let recoveryOpens = 0;
   const lifecycleEvents: string[] = [];
+  const resumedSmart: {id: string; signal: AbortSignal; check: () => void}[] = [];
   const psbtLifecycle = {
     backgroundSigning() { lifecycleEvents.push('psbt-background'); },
     async cancelSigningHandoff() { lifecycleEvents.push('psbt-cancel'); },
@@ -216,12 +217,21 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       },
       cancel() {},
     },
+    trezor: {
+      getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+      subscribe: () => () => undefined,
+      background() {lifecycleEvents.push('trezor-background');},
+      async cancel() {lifecycleEvents.push('trezor-cancel');},
+    },
     keyExport: { cancel() {} },
     backup: { cancel() {}, onClear: () => () => {} },
     removal: { requiresControllerReopen: () => false },
     openSmartAccountSend() { throw new Error('Route mocked in parent navigation test'); },
     openSmartAccountDeployment() {
       throw new Error('Route mocked in parent navigation test');
+    },
+    async openResumedSmartAccountOperation(id: string, signal: AbortSignal, check: () => void) {
+      check(); resumedSmart.push({id, signal, check}); return {async dispose() {}};
     },
     canManageGuardianPolicy: () => smartAccount && canManage,
     canSignSmartAccount: () => smartAccount && (canManage || slh), canManageSlhDsa: () => smartAccount && slh,
@@ -343,6 +353,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './NativeSmartAccountOperation': {
       NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },
+    './NativeTrezor': {NativeTrezor: 'NativeTrezor', NativeTrezorResumeNotice: 'NativeTrezorResumeNotice'},
     './NativeConnections': { NativeConnections: 'NativeConnections' },
     './NativeEncryptionReview': { NativeEncryptionReviewScreen: 'NativeEncryptionReviewScreen' },
     './NativeMessageReview': {
@@ -393,6 +404,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   return {
     render,
     lifecycle: () => lifecycleEvents,
+    resumedSmart: () => resumedSmart,
     showTools() { shellTab = 'tools'; },
     showWallet() { shellTab = 'wallet'; },
     guardianReads: () => guardianReads,
@@ -524,7 +536,7 @@ for (const expired of [false, true])
         const lifecycleOffset = f.lifecycle().length;
         if (transition === 'background') f.background();
         else f.blur();
-        assert.deepEqual(f.lifecycle().slice(lifecycleOffset), ['psbt-background', 'lock']);
+        assert.deepEqual(f.lifecycle().slice(lifecycleOffset), ['trezor-background', 'psbt-background', 'lock']);
         tree = f.render();
         assert.notEqual(tree.type, 'NativeConnections');
         if (expired) f.expire();
@@ -827,4 +839,57 @@ test('SLH management is hidden behind the runtime qualification capability and r
     f.background(); assert.throws(f.authenticatorGuards()[0]!, /CANCELLED/);
     assert.notEqual(f.render().type, 'NativeSlhDsaManagementScreen');
   } finally { f.dispose(); }
+});
+
+test('Trezor Continue opens a fresh Smart review through a stable guarded opener and the route signal', async () => {
+  const f = await mounted(true, true);
+  try {
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    portfolio.props.hardwareRequest.props.onResume();
+    const trezor = f.render();
+    assert.equal(trezor.type, 'NativeTrezor');
+    await trezor.props.onResumeSend(Object.freeze({kind: 'smart-operation', id: 'public-smart-resume', accountId: 'smart:60:0', networkId: 'ethereum'}));
+    assert.deepEqual(f.resumedSmart(), [], 'Continue changes only the public route');
+    const route = f.render();
+    assert.equal(route.type, 'NativeSmartAccountOperationRoute');
+    assert.equal(f.hardwareBack(), false, 'the operation route owns cancellation and disposal');
+    const lifetime = new AbortController();
+    await route.props.open(() => undefined, lifetime.signal);
+    assert.equal(f.resumedSmart().length, 1);
+    assert.equal(f.resumedSmart()[0]!.id, 'public-smart-resume');
+    assert.equal(f.resumedSmart()[0]!.signal, lifetime.signal);
+    f.resumedSmart()[0]!.check();
+    f.readyAtRevision(2);
+    assert.equal(f.render().props.open, route.props.open);
+    route.props.onBack();
+    assert(find(f.render(), node => node.type === 'NativePortfolio'));
+    assert.throws(f.resumedSmart()[0]!.check, /CANCELLED/);
+    await assert.rejects(route.props.open(() => undefined, lifetime.signal), /CANCELLED/);
+    assert.equal(f.resumedSmart().length, 1);
+  } finally {f.dispose();}
+});
+
+test('wallet background records the local Trezor departure before locking a resumed Smart route', async () => {
+  const f = await mounted(true, true);
+  try {
+    find(f.render(), node => node.type === 'NativePortfolio')!.props.hardwareRequest.props.onResume();
+    await f.render().props.onResumeSend({kind: 'smart-operation', id: 'public-smart-resume', accountId: 'smart:60:0', networkId: 'ethereum'});
+    const route = f.render(), lifetime = new AbortController();
+    await route.props.open(() => undefined, lifetime.signal);
+    const offset = f.lifecycle().length;
+    f.background();
+    assert.deepEqual(f.lifecycle().slice(offset), ['trezor-background', 'psbt-background', 'lock']);
+    assert.throws(f.resumedSmart()[0]!.check, /CANCELLED/);
+    assert.notEqual(f.render().type, 'NativeSmartAccountOperationRoute');
+  } finally {f.dispose();}
+});
+
+test('manual wallet lock cancels local Trezor work before locking custody', async () => {
+  const f = await mounted(true, true);
+  try {
+    const portfolio = find(f.render(), node => node.type === 'NativePortfolio')!;
+    const offset = f.lifecycle().length;
+    portfolio.props.onLock();
+    assert.deepEqual(f.lifecycle().slice(offset), ['trezor-cancel', 'psbt-cancel', 'lock']);
+  } finally {f.dispose();}
 });

@@ -132,6 +132,8 @@ export type NativeSmartAccountOperationHost = Readonly<{
   intent: NativeSmartAccountIntent;
   network: NativeNetworkRegistration;
   assertCurrent(): void;
+  authorizationExpiresAt: number;
+  background(): void;
   refreshMetadata?(
     signal: AbortSignal,
     assertCurrent: () => void
@@ -161,7 +163,7 @@ export type NativeSmartAccountOperationHost = Readonly<{
 /** Presentation owns two explicit authorizations. The shared engine owns every transaction. */
 export class NativeSmartAccountOperation {
   /** Presentation deadline; signing retains the existing monotonic controller deadline. */
-  readonly authorizationExpiresAt = Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
+  readonly authorizationExpiresAt: number;
   private snapshot: NativeSmartAccountOperationSnapshot;
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
@@ -186,6 +188,7 @@ export class NativeSmartAccountOperation {
     now = () => performance.now()
   ) {
     this.host = host;
+    if(typeof host.background!=='function')throw new Error('Native operation background authority is required');
     if (
       (host.intent.kind === 'guardian-policy' ||
         host.intent.kind === 'authenticator') &&
@@ -193,7 +196,11 @@ export class NativeSmartAccountOperation {
     )
       throw new Error('Smart account metadata reconciliation is required');
     this.now = now;
-    this.deadline = now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
+    const wallNow = Date.now();
+    const remaining = Math.min(SMART_ACCOUNT_EXECUTION_LIFETIME_MS, host.authorizationExpiresAt - wallNow);
+    if (!Number.isSafeInteger(host.authorizationExpiresAt) || remaining <= 0) throw new Error('SMART_OPERATION_EXPIRED');
+    this.authorizationExpiresAt = wallNow + remaining;
+    this.deadline = now() + remaining;
     this.snapshot = Object.freeze({
       phase: 'preparing',
       revision: 0,
@@ -210,9 +217,10 @@ export class NativeSmartAccountOperation {
     });
     this.expiry = setTimeout(
       () => this.cancel(),
-      SMART_ACCOUNT_EXECUTION_LIFETIME_MS
+      remaining
     );
   }
+  background() { if(!this.disposed)this.host.background(); }
   getSnapshot = () => this.snapshot;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -224,7 +232,7 @@ export class NativeSmartAccountOperation {
     if (
       this.disposed ||
       this.lifetime.signal.aborted ||
-      this.now() >= this.deadline
+      this.now() >= this.deadline || Date.now() >= this.authorizationExpiresAt
     )
       throw new Error('SMART_OPERATION_EXPIRED');
     const result: unknown = this.host.assertCurrent();

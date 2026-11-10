@@ -324,7 +324,7 @@ export class NativeConnectionsController {
         if (message && !this.handoffs.background(message.handoff)) void this.retireRequest(message);
       },
       cancelSigningHandoff: async () => {
-        const descriptors = [this.psbt.cancelHandoff(), this.handoffs.cancel()];
+        const descriptors = [this.psbt.cancelHandoff(), this.handoffs.cancelDapp()];
         const transport = this.transport;
         for (const descriptor of descriptors) {
           if (!descriptor || !transport || descriptor.scope.adapter !== this.transportGeneration) continue;
@@ -500,7 +500,7 @@ export class NativeConnectionsController {
   private unavailable() {
     if (!this.disposed) {
       for (const read of this.reads.values()) read.lifetime.abort();
-      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.handoffs.cancel();
+      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.handoffs.cancelDapp();
       this.restored = false;
       this.actionEpoch++;
       this.action?.abort();
@@ -1343,7 +1343,8 @@ export class NativeConnectionsController {
     const grant = connection?.engine.get(binding.origin), account = context.accounts.find(value => value.index === grant?.accountId && value.type === grant?.accountType);
     if (!connection || !grant || !context.unlocked || !account || (selection === 'selected' && context.activeAccountId !== account.id) || !account.xpub) return null;
     try {
-      return Object.freeze({ adapter: this.transportGeneration, wallet: this.host.walletBindingId, unlockGeneration: this.host.sessionGeneration(),
+      const signing = grant.chain === 'syscoin' ? { trezor: account.type === 'Trezor', binding: account.xpub } : this.host.signingContext(account.id);
+      return Object.freeze({ trezor: signing.trezor, signing: signing.binding, adapter: this.transportGeneration, wallet: this.host.walletBindingId, unlockGeneration: this.host.sessionGeneration(),
         accountId: account.id, address: account.address, type: account.type, xpub: account.xpub,
         registration: JSON.stringify(grant.chain === 'syscoin' ? this.host.syscoin.registration() : this.host.registration()), grant: JSON.stringify(grant) });
     } catch { return null; }
@@ -1972,7 +1973,9 @@ export class NativeConnectionsController {
         )
     );
     if (!permitted) return reject(4100, 'Method or account is not authorized');
-    if (account.type === 'Trezor' && wire.freshness !== 'fresh')
+    let signing: ReturnType<NativeConnectionHost['signingContext']>;
+    try { signing = this.host!.signingContext(account.id); } catch { return reject(4200, 'Account signing is unavailable'); }
+    if (signing.trezor && wire.freshness !== 'fresh')
       return reject(4200, 'Reissue a fresh signing request with an explicit expiry');
     if (!this.supportedMethods(account.type, account.id).includes(wire.method))
       return reject(4200, 'Unsupported method');
@@ -2973,7 +2976,7 @@ export class NativeConnectionsController {
       this.dismissStatus();
       this.disposed = true;
       for (const read of this.reads.values()) read.lifetime.abort();
-      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.handoffs.cancel();
+      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.handoffs.cancelDapp();
       for (const message of [...this.requests.values()])
         void this.retireRequest(message, false);
       this.transportOwner = undefined;

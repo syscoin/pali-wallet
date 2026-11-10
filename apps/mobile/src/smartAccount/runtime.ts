@@ -73,6 +73,10 @@ export type NativeSmartOperationPorts = Readonly<{
   rpc: EvmTransferReadRpc;
   wallet: SmartAccountPayerWallet;
   assertCurrent(): void;
+  authorizationExpiresAt: number;
+  background(): void;
+  signingOwners: readonly NativeSmartAccountSigningOwner[];
+  assertOwnerCurrent(owner: NativeSmartAccountSigningOwner): void;
   slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   signOwner(
@@ -81,7 +85,8 @@ export type NativeSmartOperationPorts = Readonly<{
     owner: { id: number; type: SmartAccountGasPayer['type'] },
     guard: () => void,
     intent: SmartAccountOwnerSigningIntent,
-    signal: AbortSignal
+    signal: AbortSignal,
+    metadata: ISmartAccountMetadata
   ): Promise<string>;
   preparePayer(
     request: unknown,
@@ -138,20 +143,6 @@ export function createNativeSmartOperation(
   const contextId = 'native-smart-account-operation';
   let policySignal: AbortSignal;
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
-  const ownerFor = (address: string) => {
-    for (const type of ['HDAccount', 'Imported', 'Ledger'] as const) {
-      const owner = Object.values(ports.wallet.accounts[type]).find(
-        (candidate) =>
-          !candidate.isSmartAccount &&
-          (type === 'Ledger' || !candidate.isLedgerWallet) &&
-          !candidate.isTrezorWallet &&
-          candidate.address.toLowerCase() === address.toLowerCase()
-      );
-      if (owner)
-        return { id: owner.id, type };
-    }
-    return null;
-  };
   const assertValidatorSwitch = async (assertCurrent: () => void) => {
     if (intent.kind !== 'authenticator') return;
     const observed = await readSmartAccountValidatorMetadata({
@@ -163,7 +154,7 @@ export function createNativeSmartOperation(
     assertCurrent();
     assertSmartAccountValidatorSwitchCurrent(intent.command, observed);
   };
-  return new NativeSmartAccountOperation({
+  return new NativeSmartAccountOperation({ authorizationExpiresAt: ports.authorizationExpiresAt, background:ports.background,
     account: account.address,
     intent,
     network: ports.network,
@@ -403,35 +394,15 @@ export function createNativeSmartOperation(
         userOperation: prepared.userOperation,
         assertCurrent,
       });
-      const localOwners: NativeSmartAccountSigningOwner[] = [];
-      const ownerRecords = new Map<string, IKeyringAccountState>();
-      for (const type of ['HDAccount', 'Imported', 'Ledger'] as const)
-        for (const owner of Object.values(ports.wallet.accounts[type]))
-          if (
-            !owner.isSmartAccount &&
-            (type === 'Ledger' || !owner.isLedgerWallet) &&
-            !owner.isTrezorWallet
-          ) {
-            localOwners.push({ address: owner.address, id: owner.id, type });
-            ownerRecords.set(`${type}:${owner.id}`, owner);
-          }
       const signature = await signNativeSmartAccountActionHash({
         metadata,
         actionHash: prepared.actionHash,
         accountId: account.id,
         allowReservedSLHDSASignature: canUseReservedSLHDSASignature({ accountAddress: account.address, executions: prepared.executions, smartAccount: metadata }),
         slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, prepared.actionHash, assertCurrent),
-        localOwners,
+        localOwners: ports.signingOwners,
         assertCurrent,
-        assertOwnerCurrent(owner) {
-          const current = ownerFor(owner.address);
-          if (
-            !current || current.id !== owner.id || current.type !== owner.type ||
-            ports.wallet.accounts[owner.type][owner.id] !==
-              ownerRecords.get(`${owner.type}:${owner.id}`)
-          )
-            throw new Error('Native smart account owner identity changed');
-        },
+        assertOwnerCurrent: ports.assertOwnerCurrent,
         signOwner: (address, digest, owner, guard) =>
           ports.signOwner(
             address,
@@ -439,7 +410,7 @@ export function createNativeSmartOperation(
             { id: owner.id, type: owner.type as SmartAccountGasPayer['type'] },
             guard,
             buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId),
-            signal
+            signal, metadata
           ),
       });
       return signature.signature;

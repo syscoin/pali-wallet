@@ -371,6 +371,11 @@ export function createNativeWalletControllers() {
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, connections: connections.view, keyExport, imports,
+    trezor: {background() {}, async cancel() {}, subscribe: () => () => undefined,
+      getSnapshot: () => ({phase: 'idle' as const, operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+      async startImport() {throw Error('Trezor is outside this fixture');},
+      async resumeImport() {throw Error('Trezor is outside this fixture');},
+      async resumeSend(): Promise<never> {throw Error('Trezor is outside this fixture');}},
     canManageGuardianPolicy: () => false,
     canSignSmartAccount: () => false, canManageSlhDsa: () => false,
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },

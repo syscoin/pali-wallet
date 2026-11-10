@@ -1,3 +1,4 @@
+import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
 import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
@@ -216,7 +217,7 @@ async function fixture(smart = true) {
             accountGasLimits: encodeSmartAccountGasLimits({ callGasLimit: 1, verificationGasLimit: 1 }),
             gasFees: encodeSmartAccountGasFees({ maxFeePerGas: 2, maxPriorityFeePerGas: 1 }), preVerificationGas: '1', paymasterAndData: '0x' },
         } as PreparedSmartAccountOperation;
-        return new NativeSmartAccountOperation({ intent, account: GUARDIAN_FIXTURE_ACCOUNT, network, assertCurrent: guard,
+        return new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(), intent, account: GUARDIAN_FIXTURE_ACCOUNT, network, assertCurrent: guard,
           async prepare() { return { kind: 'authorization', intent, operation: prepared }; },
           async sign() { return '0xsigned'; },
           async submit(_operation, _signature, _lifetime, check, _review, acknowledge) { check(); acknowledge(prepared.actionHash, 'submit-operation'); return prepared.actionHash; },

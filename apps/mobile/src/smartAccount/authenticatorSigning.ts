@@ -19,7 +19,7 @@ import type {
 export type NativeSmartAccountSigningOwner = Readonly<{
   address: string;
   id: number;
-  type: 'HDAccount' | 'Imported' | 'Ledger';
+  type: 'HDAccount' | 'Imported' | 'Ledger' | 'Trezor';
 }>;
 
 /** The shared chain observer owns deployment addresses; retain its active module identity. */
@@ -57,7 +57,7 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
     if (
       !Number.isSafeInteger(owner.id) ||
       owner.id < 0 ||
-      !['HDAccount', 'Imported', 'Ledger'].includes(owner.type)
+      !['HDAccount', 'Imported', 'Ledger', 'Trezor'].includes(owner.type)
     )
       throw new Error('Native smart account owner is unavailable');
     return Object.freeze({
@@ -118,10 +118,17 @@ function captureNativeSmartAccountSigningContext(inputMetadata: ISmartAccountMet
   return { metadata, owners };
 }
 
+function supportsNativeTrezorPlan(plan: ReturnType<typeof getSmartAccountSigningPlan>) {
+  const trezor = plan?.authenticators.flatMap(entry => entry.owners.filter(owner => owner.type === 'Trezor')) ?? [];
+  return trezor.length <= 1;
+}
 export function getNativeSmartAccountSigningPlan(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ slhDsa: boolean }>) {
   if (typeof available?.slhDsa !== 'boolean') throw new Error('Explicit native signing availability is required');
   const captured = captureNativeSmartAccountSigningContext(metadata, localOwners);
-  return getSmartAccountSigningPlan(captured.metadata, {ecdsa: captured.owners, p256WebAuthn: false, slhDsa: available.slhDsa});
+  const plan = getSmartAccountSigningPlan(captured.metadata, {ecdsa: captured.owners, p256WebAuthn: false, slhDsa: available.slhDsa});
+  // A Suite transcript admits one terminal signature. Multiple physical-owner
+  // handoffs need their own reviewed consent flow before being advertised.
+  return supportsNativeTrezorPlan(plan) ? plan : null;
 }
 export function canSignNativeSmartAccountActionHash(metadata: ISmartAccountMetadata, localOwners: readonly NativeSmartAccountSigningOwner[], available: Readonly<{ slhDsa: boolean }>): boolean {
   try { return getNativeSmartAccountSigningPlan(metadata, localOwners, available) !== null; } catch { return false; }
@@ -161,6 +168,8 @@ export async function signNativeSmartAccountActionHash(
   )
     throw new Error('Native smart account signing ports are required');
   const { metadata, owners } = captureNativeSmartAccountSigningContext(params.metadata, params.localOwners);
+  const plan = getSmartAccountSigningPlan(metadata, {ecdsa:owners,p256WebAuthn:false,slhDsa:params.slhDsa !== null});
+  if (!supportsNativeTrezorPlan(plan)) throw new Error('Multiple Trezor Smart account approvals are unavailable');
   const slhDsa = params.slhDsa === null ? null : Object.freeze({ signActionHash: params.slhDsa.signActionHash!.bind(params.slhDsa), signMessageActionHash: null });
   const result = await signSmartAccountActionHash({
     accountId: params.accountId,

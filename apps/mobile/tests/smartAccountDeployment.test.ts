@@ -1,3 +1,4 @@
+import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { createSmartAccountCallsExecutions, normalizeDappCallsRequest } from '../../../source/shared/dappCalls.ts';
 import { buildSmartAccountErc20Transfer } from '../../../source/utils/smartAccount/erc20Transfer.ts';
 import assert from 'node:assert/strict';
@@ -46,7 +47,7 @@ const transaction: PreparedEvmTransaction = {
 const flush = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();
 };
-function fixture() {
+function fixture(authorizationExpiresAt = freshSmartOperationDeadline()) {
   let current = true,
     now = 0,
     signed = 0,
@@ -55,7 +56,7 @@ function fixture() {
     prepares = 0;
   let held: Promise<void> | undefined;
   const model = new NativeSmartAccountOperation(
-    {
+    { background() {}, authorizationExpiresAt,
       account: address,
       intent: { kind: 'deploy' },
       network: getNativeNetwork('ethereum'),
@@ -202,7 +203,7 @@ for (const event of ['cancel', 'expiry'] as const)
     let broadcast: ((value: string, purpose: 'submit-operation') => void) | undefined;
     let finish: (() => void) | undefined;
     const model = new NativeSmartAccountOperation(
-      {
+      { background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
         account: address,
       intent: { kind: 'deploy' },
         network: getNativeNetwork('ethereum'),
@@ -260,7 +261,7 @@ test('native MAX cannot authorize a self-consistent ERC20 operation returned by 
   const token = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 18, name: 'Token', symbol: 'TKN' };
   const execution = { ...buildSmartAccountErc20Transfer(token.contractAddress, recipient, '1'), nonce: '0' };
   let signed = 0;
-  const model = new NativeSmartAccountOperation({
+  const model = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
     account: address, network: getNativeNetwork('ethereum'), intent: { kind: 'native-max', recipient }, assertCurrent() {},
     async prepare() { return { kind: 'authorization', intent: { kind: 'erc20-transfer', token, recipient, amountUnits: '1' },
       operation: { ...prepared, execution, executions: [execution] } }; },
@@ -278,7 +279,7 @@ test('native MAX cannot authorize a self-consistent ERC20 operation returned by 
 for (const cancel of [false, true]) test(`pending Smart preparation remains cancellable (${cancel ? 'cancel' : 'resume'})`, async context => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
   let waiting = true, preparations = 0, signatures = 0;
-  const model = new NativeSmartAccountOperation({
+  const model = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
     account: address, intent: { kind: 'deploy' }, network: getNativeNetwork('ethereum'), assertCurrent() {},
     async prepare() {
       preparations++;
@@ -312,10 +313,22 @@ for (const change of ['order', 'value', 'data']) test(`Smart batch review refuse
   if (change === 'value') executions[0]!.value = '0x3';
   if (change === 'data') executions[0]!.data = '0xabcd';
   let signed = 0;
-  const model = new NativeSmartAccountOperation({ account: address, intent, network: getNativeNetwork('ethereum'), assertCurrent() {},
+  const model = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(), account: address, intent, network: getNativeNetwork('ethereum'), assertCurrent() {},
     async prepare() { return { kind: 'authorization', intent, operation: { ...prepared, executions } }; },
     async sign() { signed++; return '0x'; }, async submit() { throw new Error('No submit'); },
   });
   try { await model.prepare(); assert.equal(model.getSnapshot().phase, 'failed'); assert.equal(signed, 0); }
   finally { model.dispose(); }
+});
+
+
+test('a rebuilt Smart operation cannot renew its original absolute authorization deadline',async()=>{
+  const now=Date.now;let clock=now();Date.now=()=>clock;
+  const deadline=clock+60000;let f:ReturnType<typeof fixture>|undefined;
+  try{
+    f=fixture(deadline);assert.equal(f.model.authorizationExpiresAt,deadline);await f.model.dispose();
+    clock+=45000;f=fixture(deadline);assert.equal(f.model.authorizationExpiresAt,deadline);await f.model.prepare();
+    clock=deadline+1;await f.model.authorize(f.model.getSnapshot().revision);assert.equal(f.counts().signed,0);
+    assert.throws(()=>fixture(deadline),/SMART_OPERATION_EXPIRED/);
+  }finally{Date.now=now;await f?.model.dispose();}
 });

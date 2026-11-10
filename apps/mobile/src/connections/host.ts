@@ -57,6 +57,7 @@ export type NativeConnectionSigningHost = Readonly<{
   assertOwner(): void;
   sessionGeneration(): number;
   registration(): NativeNetworkRegistration;
+  signingContext(accountId: string): Readonly<{ trezor: boolean; binding: string }>;
   cancelSigningHandoff(job: object): Promise<void>;
   verifyPersonalMessage(message: string, signature: string): string;
   supportsAtomicCalls(accountId: string): boolean;
