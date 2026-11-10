@@ -1688,6 +1688,8 @@ Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
 
 
 <!-- selected-account-overview-updates:start -->
+Notification states were refreshed at `20e9ad763ffa74abb620dc8ee6da30b3242d671d`; see [coverage and Saved pending capture provenance](saved-pending-updates/manifest.json). Other earlier frames retain their recorded source revisions.
+
 
 ## Selected account, Send, Activity and alert updates
 
@@ -1876,3 +1878,83 @@ Search Ethereum → No permission request until enabling a row.
 </details>
 
 <!-- selected-account-overview-updates:end -->
+
+<!-- saved-pending-updates:start -->
+
+## Saved pending and notification coverage
+
+Source: `20e9ad763ffa74abb620dc8ee6da30b3242d671d`. [Per-frame provenance](saved-pending-updates/manifest.json). Saved pending pages the existing local journal for one selected-account network. A concrete Activity filter enters directly; All networks first chooses a visible network. Detail and inventory Back return to the prior aggregate scroll position.
+
+<details>
+<summary>Saved pending · choose a network — 390px</summary>
+
+![Saved pending · choose a network](saved-pending-updates/saved-network-picker-390.png)
+
+Activity options → Saved pending → Only the selected account and visible networks.
+
+</details>
+
+<details>
+<summary>Saved pending · Base inventory — 390px</summary>
+
+![Saved pending · Base inventory](saved-pending-updates/saved-inventory-390.png)
+
+Choose Base → Older local journal row outside recent history → Existing pagination and detail actions.
+
+</details>
+
+<details>
+<summary>Activity alerts · supported coverage — 390px</summary>
+
+![Activity alerts · supported coverage](saved-pending-updates/notifications-all-390.png)
+
+Explicit enrollment only → Unsupported transaction networks labelled and disabled.
+
+</details>
+
+<details>
+<summary>Activity alerts · filtered Ethereum — 390px</summary>
+
+![Activity alerts · filtered Ethereum](saved-pending-updates/notifications-filtered-390.png)
+
+Search Ethereum → Existing enrollment remains removable.
+
+</details>
+
+<details>
+<summary>Saved pending · choose a network — 320px</summary>
+
+![Saved pending · choose a network](saved-pending-updates/saved-network-picker-320.png)
+
+Activity options → Saved pending → Only the selected account and visible networks.
+
+</details>
+
+<details>
+<summary>Saved pending · Base inventory — 320px</summary>
+
+![Saved pending · Base inventory](saved-pending-updates/saved-inventory-320.png)
+
+Choose Base → Older local journal row outside recent history → Existing pagination and detail actions.
+
+</details>
+
+<details>
+<summary>Activity alerts · supported coverage — 320px</summary>
+
+![Activity alerts · supported coverage](saved-pending-updates/notifications-all-320.png)
+
+Explicit enrollment only → Unsupported transaction networks labelled and disabled.
+
+</details>
+
+<details>
+<summary>Activity alerts · filtered Ethereum — 320px</summary>
+
+![Activity alerts · filtered Ethereum](saved-pending-updates/notifications-filtered-320.png)
+
+Search Ethereum → Existing enrollment remains removable.
+
+</details>
+
+<!-- saved-pending-updates:end -->

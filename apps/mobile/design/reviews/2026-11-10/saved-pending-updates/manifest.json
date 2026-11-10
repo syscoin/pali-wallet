@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+  "method": "Actual React Native Web components and RealAppShell with synthetic public journal data. External network blocked; sandboxed Chromium. Native OS delivery and funded signing are not qualified by these captures.",
+  "source_files": {
+    "apps/mobile/src/screens/AllNetworksActivity.tsx": "768f6338e85ca22c5bf3a1885c571b37c3416db0d62e5985806c807e163d65d6",
+    "apps/mobile/src/screens/NativeActivity.tsx": "6c850af9591b7a269e98b6d5c1e4cd44087ae71b1f1a945040c1ce5dbce6a469",
+    "apps/mobile/src/screens/ActivityNotifications.tsx": "957b520bafb3e1b08b6a7bc937d29b0c480039937541f28cdf2e33357d638cdf",
+    "apps/mobile/src/notifications/capabilities.ts": "377ee24dc5c7d974649f1c4e21c56777c0c4cc50d30082a728e07ec5e0c59132",
+    "apps/mobile/src/activity/accountActivity.ts": "764f799403a6c4379a73e81f17f80814a617c10b3ef9181a65fca7521858e352",
+    "apps/mobile/src/activity/nativeActivity.ts": "d5379c28400c3d162174d592c56fb5316e6b96ccad4eb660b156ed9622263a2d",
+    "apps/mobile/src/activity/types.ts": "90a5907e43b0564f08c777914d6274c44b4b21cd3c6e421c12688ab8d63de6f4",
+    "apps/mobile/src/custody/keyringRuntime.ts": "e7958e50c8c6d795168eb0909958f8f3d9629fa0836306b8bb9b473d26510cb9",
+    "apps/mobile/src/screens/NativeWallet.native.tsx": "99a106107e3c9f8e5ccbb20ea221005a35d9a50c0f3bffbdcb5e126d05c3a05f",
+    "apps/mobile/src/screens/NativeAccountOverview.tsx": "4f30aa21f9ff0ac0b4786b493c241e9a93dbf450a1e19ff654a67b30c4136a31",
+    "apps/mobile/src/ui.tsx": "b67005113e5e8566bd695cfc217476d7e9a2d15cbdc0eed76beb0f956a6764e4",
+    "apps/mobile/tests/native-activity-ui/allNetworksFixture.tsx": "b0d354f2b1bed5acfb69404e19bdfb41a5c3ef3e066310da16939b814cab47ba"
+  },
+  "web_exports": {
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/de-2dff5248cf66c23adf1ebbe8e5e15416.js": "67d44f4ad69e697d6ee706b8a9f32df44b0ec7a08495aafb6689f2aed2894b99",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/entry-7de0cad1cd407bac543f8c36adcba535.js": "7985d4ec6478dd674e5dc7e0c1395c4f4f478672a2bf45b83c11b7ea22dfab95",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/es-6c0067935d3fe8387712bf2c6eee4a04.js": "39cb329551c87fd175f8ce53f51f0e0f305b981028151e33b206d831e503c182",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/fr-3d12efd4f8c863a936bcaf6f92619aeb.js": "6baf2b4a229fa1320e2d1a51b11d581016bf2bbbd31ecbbcd0df45e2f9a70358",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/ja-b62a0ac17b81c9e2515549f096e2d080.js": "6f9e7b51ca4fc441763a64fa29d3a6b1294081d406d9fb757552a61ab6607a8b",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/ko-50f6cf8b6f4b0485d520d0f095c4daf2.js": "17de5866077a16df4498a4ca80f50564581aabbdf0b7f95803d795508aa810cd",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/pt-7c71519fa362b531f609feea933c4da8.js": "d474dbcf6de2580b788fe3f36e26ccfd41c78f82ab7d51aab57c4a4ad73d91cf",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/ru-3fe0eb4ff580ee3fbe41957a0bc52639.js": "19393c002b0cdb3d74a52682b45335b349e8045d4f7642f20cc0ae8f5fd40b4f",
+    "/private/tmp/pali-final-savedpending-dist/_expo/static/js/web/zh-189b49edb2743a87cbf724b7a4860eae.js": "e600ffb667d366bf369cf38869915829d43f43b4da0a037c931e25cf68f7705a",
+    "/private/tmp/pali-final-savedpending-dist/assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/apps/mobile/assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8",
+    "/private/tmp/pali-final-savedpending-dist/assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0",
+    "/private/tmp/pali-final-savedpending-dist/index.html": "f7e4d1e3a2ef7b97f949d22b496aa0e7a3cbd15085f7d73a0e786206ed55d642",
+    "/private/tmp/pali-final-savedpending-dist/metadata.json": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/de-fc8f824ea1abdeeed9434720157352be.js": "836ca225f0a11627e482e81e45f74f2c4016ab4187b89a55c52d33cdc2ad3432",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/entry-903d9c7733be159298596a29e1ccbe03.js": "582905bd9ca391a5f94191127c1c9bff4faa934f696008e98edeb0e231764f8c",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/es-a4d756af7640c8bcb3a64a73d1f03f3f.js": "27f70d7fb9cddbd450b070df68f04a13f7ef242ac5cd291ff6eef79468cc85b7",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/fr-206dfc7be86b0ee005acdb6a5ae400ab.js": "3be842d3a6a520342ff89109eadf88dab7fd33f8b5a8e84b92405c9d19112a1c",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/ja-f13d564fae4ae2696dab5e48b933ca39.js": "5a2b6d1165e41044c5056cf832ac8e263610571f1a9f5dc555857e8e03edb801",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/ko-bbceb739c5319180881a677269562b9d.js": "27d2b0c2c32b4a625e56e26cf4aeb33a2b1c378f9071fa8c99df37f915a0d9b4",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/pt-f5187ac048693fc48e9576e203e9fa24.js": "8209eaaeb27293bcedc4f8ed13a6db461cfddc529e2b90d19f924d2c0880af85",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/ru-079102a50362d147bcda72a01233ff64.js": "3d5a6a9e17dc5e97537f95f55cbea13bd9bfd6b60569afaf87d902ca3583feec",
+    "/private/tmp/pali-final-alerts-dist/_expo/static/js/web/zh-ff01ae3850bd467972eca1d11b183014.js": "d809b05d50049da4e93b027093e984377fa6582256985e14c986b68e7bdaddc8",
+    "/private/tmp/pali-final-alerts-dist/assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/apps/mobile/assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8",
+    "/private/tmp/pali-final-alerts-dist/assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0",
+    "/private/tmp/pali-final-alerts-dist/index.html": "e41e9e003a14d0a9d42e05a7c2f6b83dfabf31b4841ad60986786840b1b3d435",
+    "/private/tmp/pali-final-alerts-dist/metadata.json": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991"
+  },
+  "fixture_sources": {
+    "notifications-entry.tsx.txt": "f382893dbb46821f521467b76381ad25f1a82cd8afb79ff444450c4e81199c13",
+    "notifications-service.ts.txt": "5407577937f4ba7499e9fb76e420224af87fae2c4e40f6b8851b51862df999a2"
+  },
+  "frames": [
+    {
+      "file": "saved-network-picker-390.png",
+      "id": "saved-network-picker",
+      "title": "Saved pending · choose a network",
+      "component": "AllNetworksActivity + NetworkSourceSheet",
+      "width": 390,
+      "height": 844,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Activity options",
+        "Saved pending",
+        "Only the selected account and visible networks"
+      ],
+      "capturedAt": "2026-11-10T23:19:15.420Z",
+      "sha256": "2f9844b535e83785e169cd9e85fbd77efbcb7fa88a1e28818a8e4fba641a8442"
+    },
+    {
+      "file": "saved-inventory-390.png",
+      "id": "saved-inventory",
+      "title": "Saved pending · Base inventory",
+      "component": "NativeActivityScreen",
+      "width": 390,
+      "height": 844,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Choose Base",
+        "Older local journal row outside recent history",
+        "Existing pagination and detail actions"
+      ],
+      "capturedAt": "2026-11-10T23:19:15.449Z",
+      "sha256": "39a17a9829f96b2eb9462d1479396b9b1ba6872ea492c1b0ccf056696e677e84"
+    },
+    {
+      "file": "notifications-all-390.png",
+      "id": "notifications-all",
+      "title": "Activity alerts · supported coverage",
+      "component": "ActivityNotifications",
+      "width": 390,
+      "height": 844,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Explicit enrollment only",
+        "Unsupported transaction networks labelled and disabled"
+      ],
+      "capturedAt": "2026-11-10T23:19:15.517Z",
+      "sha256": "78900774dc10a2e7e8ecbe0647f87d4c2e4b7af702595ba625586214f2ad0114"
+    },
+    {
+      "file": "notifications-filtered-390.png",
+      "id": "notifications-filtered",
+      "title": "Activity alerts · filtered Ethereum",
+      "component": "ActivityNotifications",
+      "width": 390,
+      "height": 844,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Search Ethereum",
+        "Existing enrollment remains removable"
+      ],
+      "capturedAt": "2026-11-10T23:19:15.532Z",
+      "sha256": "3bf84af117f917bde7d555ac54b6932dbe7743af8a5bf0a9a6b07bf828cec08e"
+    },
+    {
+      "file": "saved-network-picker-320.png",
+      "id": "saved-network-picker",
+      "title": "Saved pending · choose a network",
+      "component": "AllNetworksActivity + NetworkSourceSheet",
+      "width": 320,
+      "height": 740,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Activity options",
+        "Saved pending",
+        "Only the selected account and visible networks"
+      ],
+      "capturedAt": "2026-11-10T23:19:16.053Z",
+      "sha256": "ce9a1d191587bcbd9750ae1837f11c087fb8e8b8f9a4da1bea24aea12b385c87"
+    },
+    {
+      "file": "saved-inventory-320.png",
+      "id": "saved-inventory",
+      "title": "Saved pending · Base inventory",
+      "component": "NativeActivityScreen",
+      "width": 320,
+      "height": 740,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Choose Base",
+        "Older local journal row outside recent history",
+        "Existing pagination and detail actions"
+      ],
+      "capturedAt": "2026-11-10T23:19:16.082Z",
+      "sha256": "f668cd6fb8405009f95c6f645549f968109569d0ffd0bd8474893daeb2a335fd"
+    },
+    {
+      "file": "notifications-all-320.png",
+      "id": "notifications-all",
+      "title": "Activity alerts · supported coverage",
+      "component": "ActivityNotifications",
+      "width": 320,
+      "height": 740,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Explicit enrollment only",
+        "Unsupported transaction networks labelled and disabled"
+      ],
+      "capturedAt": "2026-11-10T23:19:16.150Z",
+      "sha256": "f34c4099dc8bcd9ea7cb821b0d0fb6ff4b08db7df5f37b83dd402c4b63450516"
+    },
+    {
+      "file": "notifications-filtered-320.png",
+      "id": "notifications-filtered",
+      "title": "Activity alerts · filtered Ethereum",
+      "component": "ActivityNotifications",
+      "width": 320,
+      "height": 740,
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Search Ethereum",
+        "Existing enrollment remains removable"
+      ],
+      "capturedAt": "2026-11-10T23:19:16.165Z",
+      "sha256": "06ebe8e594a7f44f4d64762b5f1363789f6facc1fb9e34980ee9e08f6eb876dc"
+    }
+  ]
+}

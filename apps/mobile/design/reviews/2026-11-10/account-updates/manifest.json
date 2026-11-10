@@ -90,7 +90,7 @@
     {
       "file": "overview-all-390.png",
       "id": "overview-all",
-      "title": "Account 1 \u00b7 All added EVM networks",
+      "title": "Account 1 · All added EVM networks",
       "component": "NativeAccountOverview",
       "width": 390,
       "height": 844,
@@ -120,7 +120,7 @@
     {
       "file": "overview-ethereum-390.png",
       "id": "overview-ethereum",
-      "title": "Account 1 \u00b7 Ethereum only",
+      "title": "Account 1 · Ethereum only",
       "component": "NativeAccountOverview",
       "width": 390,
       "height": 844,
@@ -134,7 +134,7 @@
     {
       "file": "overview-account15-390.png",
       "id": "overview-account15",
-      "title": "Account 15 \u00b7 same Ethereum filter",
+      "title": "Account 15 · same Ethereum filter",
       "component": "NativeAccountOverview",
       "width": 390,
       "height": 844,
@@ -210,37 +210,49 @@
     {
       "file": "notifications-all-390.png",
       "id": "notifications-all",
-      "title": "Explicit activity alert enrollment",
+      "title": "Activity alerts · supported coverage",
       "component": "ActivityNotifications",
       "width": 390,
       "height": 844,
       "url": "http://127.0.0.1:4180/",
       "steps": [
-        "Settings",
-        "Activity alerts"
+        "Explicit enrollment only",
+        "Unsupported transaction networks labelled and disabled"
       ],
-      "capturedAt": "2026-11-10T23:02:10.387Z",
-      "sha256": "03d226c0027ee4d561488214b13c7d81f71c7ce45b77c5d23354058ecd143c7f"
+      "capturedAt": "2026-11-10T23:19:15.517Z",
+      "sha256": "78900774dc10a2e7e8ecbe0647f87d4c2e4b7af702595ba625586214f2ad0114",
+      "previous_capture": {
+        "sha256": "03d226c0027ee4d561488214b13c7d81f71c7ce45b77c5d23354058ecd143c7f",
+        "source_revision": "b85f64614c047f7778345097b0c3d983479db1e3"
+      },
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "provenance_manifest": "../saved-pending-updates/manifest.json"
     },
     {
       "file": "notifications-filtered-390.png",
       "id": "notifications-filtered",
-      "title": "Search alert enrollment",
+      "title": "Activity alerts · filtered Ethereum",
       "component": "ActivityNotifications",
       "width": 390,
       "height": 844,
       "url": "http://127.0.0.1:4180/",
       "steps": [
         "Search Ethereum",
-        "No permission request until enabling a row"
+        "Existing enrollment remains removable"
       ],
-      "capturedAt": "2026-11-10T23:02:10.403Z",
-      "sha256": "3bf84af117f917bde7d555ac54b6932dbe7743af8a5bf0a9a6b07bf828cec08e"
+      "capturedAt": "2026-11-10T23:19:15.532Z",
+      "sha256": "3bf84af117f917bde7d555ac54b6932dbe7743af8a5bf0a9a6b07bf828cec08e",
+      "previous_capture": {
+        "sha256": "3bf84af117f917bde7d555ac54b6932dbe7743af8a5bf0a9a6b07bf828cec08e",
+        "source_revision": "b85f64614c047f7778345097b0c3d983479db1e3"
+      },
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "provenance_manifest": "../saved-pending-updates/manifest.json"
     },
     {
       "file": "overview-all-320.png",
       "id": "overview-all",
-      "title": "Account 1 \u00b7 All added EVM networks",
+      "title": "Account 1 · All added EVM networks",
       "component": "NativeAccountOverview",
       "width": 320,
       "height": 740,
@@ -270,7 +282,7 @@
     {
       "file": "overview-ethereum-320.png",
       "id": "overview-ethereum",
-      "title": "Account 1 \u00b7 Ethereum only",
+      "title": "Account 1 · Ethereum only",
       "component": "NativeAccountOverview",
       "width": 320,
       "height": 740,
@@ -284,7 +296,7 @@
     {
       "file": "overview-account15-320.png",
       "id": "overview-account15",
-      "title": "Account 15 \u00b7 same Ethereum filter",
+      "title": "Account 15 · same Ethereum filter",
       "component": "NativeAccountOverview",
       "width": 320,
       "height": 740,
@@ -360,32 +372,44 @@
     {
       "file": "notifications-all-320.png",
       "id": "notifications-all",
-      "title": "Explicit activity alert enrollment",
+      "title": "Activity alerts · supported coverage",
       "component": "ActivityNotifications",
       "width": 320,
       "height": 740,
       "url": "http://127.0.0.1:4180/",
       "steps": [
-        "Settings",
-        "Activity alerts"
+        "Explicit enrollment only",
+        "Unsupported transaction networks labelled and disabled"
       ],
-      "capturedAt": "2026-11-10T23:02:11.861Z",
-      "sha256": "5ad42b0d7432271a9f60ba5b94be6b7c69a9b3e7c8051168339e76b15c84ac5d"
+      "capturedAt": "2026-11-10T23:19:16.150Z",
+      "sha256": "f34c4099dc8bcd9ea7cb821b0d0fb6ff4b08db7df5f37b83dd402c4b63450516",
+      "previous_capture": {
+        "sha256": "5ad42b0d7432271a9f60ba5b94be6b7c69a9b3e7c8051168339e76b15c84ac5d",
+        "source_revision": "b85f64614c047f7778345097b0c3d983479db1e3"
+      },
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "provenance_manifest": "../saved-pending-updates/manifest.json"
     },
     {
       "file": "notifications-filtered-320.png",
       "id": "notifications-filtered",
-      "title": "Search alert enrollment",
+      "title": "Activity alerts · filtered Ethereum",
       "component": "ActivityNotifications",
       "width": 320,
       "height": 740,
       "url": "http://127.0.0.1:4180/",
       "steps": [
         "Search Ethereum",
-        "No permission request until enabling a row"
+        "Existing enrollment remains removable"
       ],
-      "capturedAt": "2026-11-10T23:02:11.876Z",
-      "sha256": "06ebe8e594a7f44f4d64762b5f1363789f6facc1fb9e34980ee9e08f6eb876dc"
+      "capturedAt": "2026-11-10T23:19:16.165Z",
+      "sha256": "06ebe8e594a7f44f4d64762b5f1363789f6facc1fb9e34980ee9e08f6eb876dc",
+      "previous_capture": {
+        "sha256": "06ebe8e594a7f44f4d64762b5f1363789f6facc1fb9e34980ee9e08f6eb876dc",
+        "source_revision": "b85f64614c047f7778345097b0c3d983479db1e3"
+      },
+      "source_revision": "20e9ad763ffa74abb620dc8ee6da30b3242d671d",
+      "provenance_manifest": "../saved-pending-updates/manifest.json"
     }
   ],
   "fixture_sources": {
