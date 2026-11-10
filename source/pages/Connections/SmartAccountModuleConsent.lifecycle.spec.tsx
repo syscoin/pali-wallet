@@ -9,6 +9,7 @@ import {
 import React from 'react';
 
 import { dispatchBackgroundEvent } from 'utils/browser';
+import { paliSmartAccountInterface } from 'utils/smartAccount/contracts';
 
 import { SmartAccountModuleConsent } from './SmartAccountModuleConsent';
 
@@ -52,9 +53,6 @@ jest.mock('components/ToastActionFooter', () => ({
   ToastActionFooter: ({ children }: any) => <footer>{children}</footer>,
 }));
 jest.mock('utils/smartAccount', () => ({
-  encodeInstallValidatorModuleCall: () => '0xinstall',
-  encodeRotateValidatorModuleCall: () => '0xrotate',
-  encodeUninstallValidatorModuleCall: () => '0xuninstall',
   getSmartAccountLocalOwnerContexts: () => ({}),
   signAndSubmitSmartAccountExecutions: (args: any) => mockSubmit(args),
 }));
@@ -69,8 +67,8 @@ const metadata = (id: string) => ({
   isDeployed: true,
   auth: { validator: address('2'), module: 'ecdsa' },
   installedModules: [
-    { address: address('2'), type: 'validator', id: 'ecdsa', data: '0xactive' },
-    { address: MODULE, type: 'validator', id: 'custom', data: '0xmodule' },
+    { address: address('2'), type: 'validator', id: 'ecdsa', data: '0x1234' },
+    { address: MODULE, type: 'validator', id: 'custom', data: '0x5678' },
   ],
 });
 const confirmation = () =>
@@ -224,10 +222,20 @@ it('submits the reviewed module and reports success without changing its public 
       slip44: 60,
     },
     executions: [
-      { data: '0xinstall', target: address('1'), value: '0x0' },
-      { data: '0xrotate', target: address('1'), value: '0x0' },
+      { target: address('1'), value: '0x0' },
+      { target: address('1'), value: '0x0' },
     ],
   });
+  const calls = mockSubmit.mock.calls[0][0].executions.map(
+    (call: { data: string }) =>
+      paliSmartAccountInterface.parseTransaction({ data: call.data })
+  );
+  expect(calls.map((call: { name: string }) => call.name)).toEqual([
+    'installModule',
+    'rotateValidator',
+  ]);
+  expect([...calls[0].args]).toEqual([BigInt(1), MODULE, '0x']);
+  expect([...calls[1].args]).toEqual([address('2'), '0x', '0x1234']);
 });
 
 it('does not resubmit an already confirmed installation when saving local metadata fails', async () => {

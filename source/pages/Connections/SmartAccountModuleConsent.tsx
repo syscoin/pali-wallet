@@ -24,13 +24,14 @@ import { isHexString } from 'utils/ethersV6Compat';
 import { getAddress, isAddress } from 'utils/ethersV6Compat';
 import { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import {
-  encodeInstallValidatorModuleCall,
-  encodeRotateValidatorModuleCall,
-  encodeUninstallValidatorModuleCall,
   getSmartAccountLocalOwnerContexts,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
 import type { CustomValidatorPreflightResult } from 'utils/smartAccount';
+import {
+  buildCustomValidatorInstallExecutions,
+  buildValidatorUninstallExecutions,
+} from 'utils/smartAccount/moduleCommands';
 import { getSmartAccountActionErrorMessage } from 'utils/smartAccountErrors';
 
 // ---------------------------------------------------------------------------
@@ -394,28 +395,19 @@ export const SmartAccountModuleConsent = () => {
         expectedContext,
         onBeforeSubmit: async () => assertCurrent(),
         onPrepared: assertCurrent,
-        executions: [
-          {
-            data:
-              action === 'install'
-                ? encodeInstallValidatorModuleCall(moduleAddress, initData)
-                : encodeUninstallValidatorModuleCall(moduleAddress),
-            target: account.address,
-            value: '0x0',
-          },
-          ...(action === 'install' && activeValidator?.data
-            ? [
-                {
-                  data: encodeRotateValidatorModuleCall(
-                    activeValidator.address,
-                    activeValidator.data
-                  ),
-                  target: account.address,
-                  value: '0x0',
-                },
-              ]
-            : []),
-        ],
+        executions:
+          action === 'install'
+            ? buildCustomValidatorInstallExecutions({
+                accountAddress: account.address,
+                activeValidatorAddress: activeValidator!.address,
+                activeValidatorData: activeValidator!.data!,
+                customInitData: initData,
+                customValidatorAddress: moduleAddress,
+              })
+            : buildValidatorUninstallExecutions({
+                accountAddress: account.address,
+                validatorAddress: moduleAddress,
+              }),
         skipRapidPolling: true,
         smartAccount: metadata,
         trackLocalSubmission: true,
