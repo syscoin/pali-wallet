@@ -6,6 +6,8 @@ Original design basis: November 2, 2026, extension source **`4470e54e8777cca2a4f
 
 **Target:** carry every supported extension user journey into mobile, preserving account/network restrictions, consent, errors and recovery semantics. The source implements only part of that target. A designed screen, an implemented controller and a native-qualified flow are three different statuses; none alone establishes a shipping release or complete feature equivalence.
 
+Shared Smart-owner signing now derives the canonical UserOperation/ERC-7739 typed intent once for both hosts. Extension Ledger/Trezor owners use owned SDK typed signing; native software owners use the same adapter. Renderers provide opaque private-context IDs rather than signing hashes. The three extension controller handoffs require a live browser-document Port, while acknowledged submissions retain their existing durable recovery behavior. This candidate temporarily pins reviewed Keyring 2.1.10 from Sysweb3 #106 pending official npm publication. Native hardware-owner connection, native passkey acquisition and physical-device qualification remain separate gates.
+
 ## Current implementation ledger
 
 The November 9 source batch is a review checkpoint. Focused SDK/controller and component tests passed; its complete hosted CI, bundled isolated-signing checks and composed QA remain pending. The earlier ledger is updated below for source scope, with device and release gates kept separate.

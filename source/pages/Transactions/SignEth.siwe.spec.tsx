@@ -145,8 +145,7 @@ it.each([
     ).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1));
-    const sdkParams = { ...originalRequest, 0: ADDRESS, 1: payload };
-    delete sdkParams.host;
+    const sdkParams = [ADDRESS, payload];
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'ethereumTransaction', 'signPersonalMessage'],

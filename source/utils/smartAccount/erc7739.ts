@@ -4,12 +4,19 @@ import {
   defaultAbiCoder,
   getAddress,
   hashMessage,
+  hexlify,
   hexConcat,
   isHexString,
   keccak256,
   toBeHex,
   toUtf8Bytes,
 } from '../ethersV6Compat.ts';
+
+import {
+  createSmartAccountRawSigningIntent,
+  createSmartAccountTypedSigningIntent,
+  type SmartAccountOwnerSigningIntent,
+} from './ownerSigningIntent.ts';
 
 export const PALI_ERC7739_DOMAIN_NAME = 'pali.smart-account.erc1271';
 export const PALI_ERC7739_DOMAIN_VERSION = '1';
@@ -32,6 +39,7 @@ export type PaliErc7739TypedDataRequest = {
   contentsDescription: string;
   contentsHash: string;
   originalHash: string;
+  ownerSigningIntent: SmartAccountOwnerSigningIntent;
 };
 
 const getTypedDataBaseType = (type: string) => type.replace(/\[.*\]$/, '');
@@ -85,6 +93,41 @@ export const getPaliErc7739DomainSeparator = (params: {
 /** Apply EIP-191 to the same decoded bytes used by the personal-sign review. */
 export const hashPersonalSignMessage = (message: string): string =>
   hashMessage(isHexString(message) ? arrayify(message) : message);
+
+/** Preserve the actual EIP-191 preimage; a hash used as bytes would sign a different digest. */
+export const buildPaliErc7739PersonalSigningIntent = (params: {
+  accountAddress: string;
+  chainId: number;
+  message: string;
+}): SmartAccountOwnerSigningIntent => {
+  const bytes = isHexString(params.message)
+    ? arrayify(params.message)
+    : toUtf8Bytes(params.message);
+  const prefixed = hexlify(
+    hexConcat([
+      toUtf8Bytes(`\x19Ethereum Signed Message:\n${bytes.length}`),
+      bytes,
+    ])
+  );
+  const domain = {
+    chainId: params.chainId,
+    name: PALI_ERC7739_DOMAIN_NAME,
+    verifyingContract: getAddress(params.accountAddress),
+    version: PALI_ERC7739_DOMAIN_VERSION,
+  };
+  return createSmartAccountTypedSigningIntent(
+    'erc7739-personal',
+    {
+      domain,
+      types: { PersonalSign: [{ name: 'prefixed', type: 'bytes' }] },
+      message: { prefixed },
+    },
+    getPaliErc7739PersonalSignHash({
+      ...params,
+      hash: hashPersonalSignMessage(params.message),
+    })
+  );
+};
 
 /** Hash signed by the active validator for personal_sign / eth_sign. */
 export const getPaliErc7739PersonalSignHash = (params: {
@@ -156,10 +199,55 @@ export const buildPaliErc7739TypedDataRequest = (params: {
     )
   );
 
+  const actionHash = keccak256(
+    hexConcat(['0x1901', appDomainSeparator, nestedStructHash])
+  );
+  // Do not rename dapp types or replace its domain to make a device payload fit.
+  // Existing raw software proofs remain valid for graphs the wrapper cannot represent.
+  let ownerSigningIntent = createSmartAccountRawSigningIntent(
+    'erc7739-typed-data',
+    actionHash,
+    'unrepresentable-types'
+  );
+  if (!Object.hasOwn(reachableTypes, 'TypedDataSign')) {
+    const nestedTypes = {
+      ...reachableTypes,
+      TypedDataSign: [
+        { name: 'contents', type: primaryType },
+        { name: 'name', type: 'string' },
+        { name: 'version', type: 'string' },
+        { name: 'chainId', type: 'uint256' },
+        { name: 'verifyingContract', type: 'address' },
+        { name: 'salt', type: 'bytes32' },
+      ],
+    };
+    // Solidity's contentsDescription ordering is authoritative, including unusual
+    // dependency names. Unsupported hardware graphs are not silently re-hashed.
+    if (
+      _TypedDataEncoder.from(nestedTypes).encodeType('TypedDataSign') ===
+      `TypedDataSign(${primaryType} contents,string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)${contentsDescription}`
+    ) {
+      ownerSigningIntent = createSmartAccountTypedSigningIntent(
+        'erc7739-typed-data',
+        {
+          domain,
+          types: nestedTypes,
+          message: {
+            contents: message,
+            name: PALI_ERC7739_DOMAIN_NAME,
+            version: PALI_ERC7739_DOMAIN_VERSION,
+            chainId: params.chainId,
+            verifyingContract: getAddress(params.accountAddress),
+            salt: ZERO_BYTES32,
+          },
+        },
+        actionHash
+      );
+    }
+  }
   return {
-    actionHash: keccak256(
-      hexConcat(['0x1901', appDomainSeparator, nestedStructHash])
-    ),
+    actionHash,
+    ownerSigningIntent,
     appDomainSeparator,
     contentsDescription,
     contentsHash,

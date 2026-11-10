@@ -548,6 +548,7 @@ describe('controller actions during wallet setup', () => {
   it('refuses raw wallet SDK submission paths before resolving their getters', () => {
     const routes = [
       ['wallet', 'getActiveKeyring'],
+      ['wallet', 'ethereumTransaction', 'ethSign'],
       ['wallet', 'syscoinTransaction', 'signPSBT'],
       ['wallet', 'ethereumTransaction', 'ethSendTransaction'],
       ['wallet', 'ethereumTransaction', 'sendSignedErc20Transaction'],
@@ -584,12 +585,12 @@ describe('controller actions during wallet setup', () => {
     }
   );
 
-  it('rechecks admission before invoking a previously resolved SDK signing method', async () => {
-    expect(invoke(['wallet', 'ethereumTransaction', 'ethSign'])).toBe(true);
+  it('rechecks setup admission before invoking a previously resolved SDK method', async () => {
+    expect(invoke(['wallet', 'ethereumTransaction', 'getBalance'])).toBe(true);
     expect(sdkGetter).toHaveBeenCalledTimes(1);
     status = 'busy';
     await settle();
-    expect(calls.ethSign).not.toHaveBeenCalled();
+    expect(calls.getBalance).not.toHaveBeenCalled();
     expect(sendResponse).toHaveBeenCalledWith({
       error: 'Wallet setup is in progress. Signing is unavailable.',
       success: false,

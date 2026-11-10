@@ -251,12 +251,12 @@ export const captureDappAccountApproval = ({
             getInstalledValidatorModuleByAddress(metadata, signer);
       if (!validator) return;
 
-      const getDigest = () =>
+      const getPreparedMessage = () =>
         prepareSmartAccountMessage({
           accountAddress: address,
           chainId,
           request,
-        }).actionHash;
+        });
       const hasMetadata = (next: typeof accounts) => {
         const account = next[type]?.[id];
         return account?.isSmartAccount && account.smartAccount === metadata;
@@ -264,7 +264,7 @@ export const captureDappAccountApproval = ({
       if (validator.id === 'slh-dsa') {
         const { keyId, parameterSet, pkRoot, pkSeed } = validator.config;
         if (selectedSigner !== keyId) return;
-        const actionHash = getDigest();
+        const actionHash = getPreparedMessage().actionHash;
         lifetime.bindSigner('slh-dsa', () =>
           hasMetadata(store.getState().vault.accounts)
         );
@@ -301,7 +301,8 @@ export const captureDappAccountApproval = ({
       )
         return;
 
-      const digest = getDigest();
+      const ownerXpub = currentOwner.xpub;
+      const preparedMessage = getPreparedMessage();
       // A change to this hydrated validator or owner retires the whole
       // approval, including composite siblings already in flight.
       lifetime.bindSigner(`${ownerType}:${ownerId}`, () => {
@@ -309,17 +310,16 @@ export const captureDappAccountApproval = ({
         const current = next[ownerType]?.[ownerId];
         return (
           hasMetadata(next) &&
-          current?.address === currentOwner.address &&
-          current.xpub === currentOwner.xpub
+          current?.address?.toLowerCase() === ownerAddress &&
+          current.xpub === ownerXpub
         );
       });
       return {
-        method: 'signSmartAccountActionDigestInternal' as const,
+        method: 'signSmartAccountMessageOwnerInternal' as const,
         args: [
-          [currentOwner.address, digest],
+          preparedMessage.ownerSigningIntent,
           { id: ownerId, type: ownerType },
-          undefined,
-        ],
+        ] as const,
       };
     },
     dispose() {
@@ -406,9 +406,20 @@ export const requireMessageSignApproval = (
       methods[2] === 'decryptMessage')
   )
     throw dappSigningApprovalExpired();
+  if (
+    methods.length === 2 &&
+    [
+      'signSmartAccountActionDigestInternal',
+      'signSmartAccountMessageOwnerInternal',
+      'signSmartAccountOwnerIntentInternal',
+      'signSmartAccountOperationOwnerInternal',
+      'signSmartAccountRecoveryOwnerInternal',
+    ].includes(methods[1])
+  )
+    throw dappSigningApprovalExpired();
   const rawDigest =
     (methods.length === 2 &&
-      ['signSmartAccountActionDigestInternal', 'signSLHDSAActionHash'].includes(
+      ['signSmartAccountPreparedOwner', 'signSLHDSAActionHash'].includes(
         methods[1]
       )) ||
     (methods.length === 3 &&
@@ -439,6 +450,7 @@ export const requireMessageSignApproval = (
   return {
     signer,
     assertCurrent: approval.assertCurrent,
+    signal: approval.signal,
     checkDocument: (recheckSite?: true) =>
       approval.checkDocument(approverIsLive, recheckSite),
   };

@@ -19,6 +19,7 @@ import https from 'https';
 import { getController } from '..';
 import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
+import { createSmartAccountRawSigningIntent } from '../../../utils/smartAccount/ownerSigningIntent';
 import {
   importedRecoveryStorageKey,
   readImportedRecoverySecret,
@@ -638,7 +639,7 @@ const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
   ).toBe(true);
 };
 
-it.each(['ethSign', 'signPersonalMessage', 'signTypedData'])(
+it.each(['signPersonalMessage', 'signTypedData'])(
   'does not send an in-flight %s signature to the popup after an actual uncertain import repair',
   async (method) => {
     const started = deferred<void>();
@@ -693,7 +694,7 @@ it('keeps healthy message signing and an already acknowledged transaction result
   expect(disk).toEqual(retained);
 });
 
-it('discards an in-flight internal smart-account message signature after uncertain repair', async () => {
+it('discards an in-flight private prepared recovery signature after uncertain repair', async () => {
   const started = deferred<void>();
   const result = deferred<string>();
   Object.assign(manager.ethereumTransaction, {
@@ -703,12 +704,25 @@ it('discards an in-flight internal smart-account message signature after uncerta
     }),
   });
   jest.mocked(getController).mockReturnValue({ wallet } as any);
-  const pending = wallet.signSmartAccountActionDigestInternal(
-    [
-      store.getState().vault.accounts.HDAccount[0].address,
-      `0x${'b'.repeat(64)}`,
-    ],
-    { id: 0, type: KeyringAccountType.HDAccount }
+  wallet.smartAccount = {
+    captureOwnerSigningIntent: jest.fn(() => ({
+      intent: createSmartAccountRawSigningIntent(
+        'recovery',
+        `0x${'b'.repeat(64)}`,
+        'recovery-digest'
+      ),
+      expiresAt: Date.now() + 300000,
+    })),
+    assertSmartAccountExecutionContext: jest.fn(),
+  };
+  const pending = wallet.signSmartAccountPreparedOwner(
+    'prepared-recovery-context',
+    { id: 0, type: KeyringAccountType.HDAccount },
+    {
+      kind: 'document',
+      signal: new AbortController().signal,
+      assertCurrent: () => wallet.assertWalletReadyForSigning(),
+    }
   );
   const rejected = expect(pending).rejects.toThrow('Wallet setup');
   await started.promise;

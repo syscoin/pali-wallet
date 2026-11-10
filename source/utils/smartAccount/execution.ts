@@ -394,20 +394,17 @@ export const getSmartAccountLocalOwnerContexts = ({
     ecdsa: {
       localOwners,
       signActionHash: ({
-        actionHash,
         executionContextId,
         owner,
         validator,
       }: Parameters<SmartAccountLocalEcdsaSigner>[0]) => {
         if (signMessageActionHash)
           return signMessageActionHash(owner, validator);
+        if (!executionContextId)
+          throw new Error('Prepared Smart account operation is required');
         return controllerEmitter(
-          ['wallet', 'signSmartAccountActionDigestInternal'],
-          [
-            [owner.address, actionHash],
-            { id: owner.id, type: owner.type },
-            ...(executionContextId ? [executionContextId] : []),
-          ],
+          ['wallet', 'signSmartAccountPreparedOwner'],
+          [executionContextId, { id: owner.id, type: owner.type }],
           owner.type === 'Ledger' || owner.type === 'Trezor' ? 300000 : 10000
         );
       },

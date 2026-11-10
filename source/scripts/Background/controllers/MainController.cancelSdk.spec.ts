@@ -4,7 +4,7 @@ import { sendLocalEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transacti
 import { submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission';
 import { Transaction } from 'ethers/transaction';
 import { realpathSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { join, resolve as resolvePath } from 'node:path';
 
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
@@ -238,11 +238,9 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
         jest.requireActual(
           '../../../../apps/mobile/scripts/qualification-sdk.cjs'
         );
-      const pin = readQualificationSdkPin(join(root, 'apps/mobile'));
-      if (!pin.archive)
-        throw new Error('Expected the locked mobile keyring archive');
-      expect(spec).toBe(
-        `file:${relative(root, pin.archive).split(sep).join('/')}`
+      const pin = readQualificationSdkPin(root);
+      expect(resolvePath(root, spec.slice(5))).toBe(
+        join(root, 'apps/mobile/vendor', `sysweb3-keyring-${pin.version}.tgz`)
       );
       verifyInstalledQualificationSdk(root, pin);
       expect(

@@ -270,7 +270,11 @@ describe('SmartAccountController smart account execution fees', () => {
   };
 
   // Unit fixtures supply the exact prepared operation context explicitly.
-  const submitReviewed = (controller: any, params: any, guard?: () => void) =>
+  const submitReviewed = (
+    controller: any,
+    params: any,
+    guard = captureSubmissionGuard(controller)
+  ) =>
     controller.submitSmartAccountExecution(
       {
         accountId: 9,
@@ -395,11 +399,14 @@ describe('SmartAccountController smart account execution fees', () => {
     const { controller, estimateGas, sendAndSaveEthTransaction } =
       buildController();
     await expect(
-      controller.submitSmartAccountExecution({
-        executions: [],
-        gasPayer,
-        signature: '0x1234',
-      })
+      controller.submitSmartAccountExecution(
+        {
+          executions: [],
+          gasPayer,
+          signature: '0x1234',
+        },
+        captureSubmissionGuard(controller)
+      )
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
     expect(estimateGas).not.toHaveBeenCalled();
     expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
@@ -478,15 +485,18 @@ describe('SmartAccountController smart account execution fees', () => {
       'ensureSmartAccountDeploymentPrefund'
     );
     await expect(
-      controller.submitSmartAccountExecution({
-        executions: [],
-        gasPayer,
-        signature: '0x1234',
-        userOperation: {
-          ...buildUserOperation(),
-          initCode: identity.deploymentInitCode,
+      controller.submitSmartAccountExecution(
+        {
+          executions: [],
+          gasPayer,
+          signature: '0x1234',
+          userOperation: {
+            ...buildUserOperation(),
+            initCode: identity.deploymentInitCode,
+          },
         },
-      })
+        captureSubmissionGuard(controller)
+      )
     ).rejects.toMatchObject({
       message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
       transactionNotBroadcast: true,
@@ -782,11 +792,11 @@ describe('SmartAccountController smart account execution fees', () => {
       );
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
       sendAndSaveEthTransaction.mockImplementation(
-        async (transaction, legacy, _payer, _metadata, options) => {
+        async (formattedTransaction, legacy, _payer, _metadata, options) => {
           // The production MainController invokes the independent popup guard
           // before signing, and only its wallet context after the wire ACK.
           const response = await sdk.sendFormattedTransaction(
-            transaction,
+            formattedTransaction,
             legacy,
             {
               assertCurrent() {
@@ -954,3 +964,9 @@ describe('SmartAccountController smart account execution fees', () => {
     }
   );
 });
+
+/** A fixture owner captured at admission, not a permissive omitted guard. */
+function captureSubmissionGuard(controller: any): () => void {
+  const context = controller.infrastructureContext();
+  return () => controller.assertInfrastructureContext(context);
+}

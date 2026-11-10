@@ -10,6 +10,10 @@ import {
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import {
+  SMART_ACCOUNT_CONTROLLER_PORT,
+  isOwnedSmartAccountControllerCall,
+} from '../../../shared/smartAccountControllerAuthority';
 import { getMethodConfig } from '../controllers/message-handler/method-registry';
 import { popupPromise } from '../controllers/message-handler/popup-promise';
 import {
@@ -189,6 +193,48 @@ describe('transaction approval submission lifetime', () => {
       : [{}]
   ) =>
     new Promise<any>((resolve) => {
+      if (isOwnedSmartAccountControllerCall(['wallet', method])) {
+        const messageListeners = new Set<(message: unknown) => void>();
+        const disconnectListeners = new Set<() => void>();
+        let completed = false;
+        const port = {
+          name: SMART_ACCOUNT_CONTROLLER_PORT,
+          sender: sourceSender,
+          onMessage: {
+            addListener: (listener: (message: unknown) => void) =>
+              messageListeners.add(listener),
+            removeListener: (listener: (message: unknown) => void) =>
+              messageListeners.delete(listener),
+          },
+          onDisconnect: {
+            addListener: (listener: () => void) =>
+              disconnectListeners.add(listener),
+            removeListener: (listener: () => void) =>
+              disconnectListeners.delete(listener),
+          },
+          postMessage: (response: unknown) => {
+            completed = true;
+            resolve(response);
+          },
+          disconnect: () => {
+            for (const listener of [...disconnectListeners]) listener();
+            if (!completed)
+              resolve({
+                success: false,
+                error: { transactionNotBroadcast: true },
+              });
+          },
+        };
+        (chrome.runtime.onConnect.addListener as jest.Mock).mock.calls.at(
+          -1
+        )[0](port);
+        for (const listener of messageListeners)
+          listener({
+            type: 'CONTROLLER_ACTION',
+            data: { methods: ['wallet', method], params },
+          });
+        return;
+      }
       controllerMessage(
         {
           type: 'CONTROLLER_ACTION',
@@ -685,10 +731,10 @@ describe('transaction approval submission lifetime', () => {
       const entered = new Promise<void>((resolve) => (enter = resolve));
       const held = new Promise<void>((resolve) => (release = resolve));
       const dispatch = jest.fn();
-      send.mockImplementation(async (_params, assertCurrent: () => void) => {
+      send.mockImplementation(async (_params, authority) => {
         enter();
         await held;
-        assertCurrent();
+        authority.assertCurrent();
         dispatch();
       });
       const submitted = submit(method, sender(), [
@@ -697,7 +743,9 @@ describe('transaction approval submission lifetime', () => {
       try {
         await entered;
         const [[params, guard]] = send.mock.calls;
-        expect(typeof guard).toBe('function');
+        expect(guard.kind).toBe('document');
+        expect(typeof guard.assertCurrent).toBe('function');
+        expect(guard.signal.aborted).toBe(false);
         if (request === 'wallet_sendCalls' || request === 'eth_sendTransaction')
           expect(params.expectedContext).toEqual(approvedContext);
         const onNavigation = (

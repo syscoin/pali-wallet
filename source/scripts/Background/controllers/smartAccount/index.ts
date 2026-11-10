@@ -2,6 +2,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { captureSmartAccountCallsIdentity } from '../../../../shared/dappCallsStatus.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../shared/evmFeeGuard';
+import { createSmartAccountRawSigningIntent } from '../../../../utils/smartAccount/ownerSigningIntent.ts';
+import { buildSmartAccountUserOpSigningIntent } from '../../../../utils/smartAccount/userOperationHash.ts';
 import {
   guardianPolicyObservationIdentity,
   inspectGuardianRemovals,
@@ -159,6 +161,7 @@ import {
   writeInfrastructureJournal,
   clearInfrastructureJournal,
 } from './infrastructureJournal';
+import type { SmartAccountControllerAuthority } from '../../../../shared/smartAccountControllerAuthority';
 import type { SmartAccountPendingRecords } from '../../../../wallet/evmSignedRecords';
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
@@ -220,11 +223,16 @@ export interface ISmartAccountControllerDependencies {
     pkRoot: string;
     pkSeed: string;
   }) => Promise<string>;
-  signSmartAccountActionDigestInternal: (
-    params: string[],
+  signSmartAccountOperationOwner: (
+    executionContextId: string,
     targetAccount: { id: number; type: PaliKeyringAccountType },
-    executionContextId?: string,
-    assertApprovalCurrent?: () => void
+    assertCurrent: () => void,
+    signal: AbortSignal
+  ) => Promise<string>;
+  signSmartAccountRecoveryOwner: (
+    executionContextId: string,
+    targetAccount: { id: number; type: PaliKeyringAccountType },
+    assertCurrent: () => void
   ) => Promise<string>;
 }
 
@@ -296,6 +304,7 @@ class SmartAccountController {
       expiresAt: number;
       gasPrice?: string;
       pending?: SmartAccountPendingState;
+      purpose: 'user-operation' | 'recovery-digest';
       snapshot: ReturnType<SmartAccountController['infrastructureContext']>;
       userOperation?: SmartAccountPackedUserOperation;
     }
@@ -381,6 +390,7 @@ class SmartAccountController {
     return {
       chainId: activeNetwork.chainId,
       url: activeNetwork.url,
+      network: JSON.stringify(activeNetwork),
       key: `${activeNetwork.chainId}:${activeNetwork.url}`,
       provider,
       transaction,
@@ -397,6 +407,7 @@ class SmartAccountController {
   ): boolean {
     return (
       current.key === context.key &&
+      current.network === context.network &&
       current.provider === context.provider &&
       current.transaction === context.transaction &&
       current.slip44 === context.slip44 &&
@@ -485,6 +496,29 @@ class SmartAccountController {
     }
   }
 
+  public captureOwnerSigningIntent(executionContextId: string) {
+    this.assertSmartAccountExecutionContext(executionContextId);
+    const context = this.executionContexts.get(executionContextId)!;
+    const intent =
+      context.purpose === 'user-operation' && context.userOperation
+        ? buildSmartAccountUserOpSigningIntent(
+            context.userOperation,
+            context.snapshot.chainId
+          )
+        : context.purpose === 'recovery-digest' &&
+          context.userOperation === undefined
+        ? createSmartAccountRawSigningIntent(
+            'recovery',
+            context.actionHash,
+            'recovery-digest'
+          )
+        : undefined;
+    if (!intent) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    if (intent.actionHash.toLowerCase() !== context.actionHash.toLowerCase())
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return Object.freeze({ intent, expiresAt: context.expiresAt });
+  }
+
   public getPreparedCallsIdentity(executionContextId: string) {
     this.assertSmartAccountExecutionContext(executionContextId);
     const context = this.executionContexts.get(executionContextId)!;
@@ -525,6 +559,7 @@ class SmartAccountController {
     this.executionContexts.set(id, {
       accountId: snapshot.account.id,
       actionHash,
+      purpose: 'recovery-digest',
       expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       snapshot,
     });
@@ -1172,14 +1207,20 @@ class SmartAccountController {
       accountId: number;
       expectedContext?: IEvmTransactionContext;
     },
-    assertApprovalCurrent?: () => void
+    sourceAuthority: SmartAccountControllerAuthority
   ) {
     let mayHaveSubmitted = false;
     try {
       const context = this.infrastructureContext();
       const assertCurrent = () => {
-        if (assertApprovalCurrent !== undefined)
-          assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+        if (
+          !sourceAuthority ||
+          !['document', 'worker'].includes(sourceAuthority.kind)
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        assertSynchronousEvmFeeGuard(sourceAuthority.assertCurrent);
+        if (sourceAuthority.signal.aborted)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         try {
           this.assertInfrastructureContext(context);
           if (params.expectedContext) {
@@ -1243,7 +1284,7 @@ class SmartAccountController {
             metadata,
             prepared.actionHash,
             prepared.executionContextId,
-            assertApprovalCurrent
+            sourceAuthority
           );
           assertCurrent();
           mayHaveSubmitted = true;
@@ -1260,7 +1301,7 @@ class SmartAccountController {
               userOperation: prepared.userOperation,
               waitForConfirmation: true,
             },
-            assertApprovalCurrent
+            sourceAuthority.assertCurrent
           );
         } finally {
           this.pendingDeploymentAddresses.delete(accountAddress);
@@ -1763,6 +1804,7 @@ class SmartAccountController {
     this.executionContexts.set(executionContextId, {
       accountId: active.account.id,
       actionHash,
+      purpose: 'user-operation',
       expiresAt: Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS,
       gasPrice: legacyGasPrice,
       snapshot,
@@ -1794,14 +1836,13 @@ class SmartAccountController {
 
   public async submitSmartAccountExecution(
     params: SmartAccountSubmitParams,
-    assertApprovalCurrent?: () => void
+    assertApprovalCurrent: () => void
   ) {
     const captured = this.infrastructureContext();
     const assertCurrent = () => {
       this.assertInfrastructureContext(captured);
       this.assertSmartAccountExecutionContext(params.executionContextId);
-      if (assertApprovalCurrent !== undefined)
-        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+      assertSynchronousEvmFeeGuard(assertApprovalCurrent);
     };
     assertCurrent();
     const pending = this.executionContexts.get(
@@ -2505,10 +2546,10 @@ class SmartAccountController {
     assertCurrent();
 
     if (localEoaGuardian) {
-      const signature = await this.deps.signSmartAccountActionDigestInternal(
-        [guardian, operation.hash],
+      const signature = await this.deps.signSmartAccountRecoveryOwner(
+        targetContextId,
         localEoaGuardian,
-        targetContextId
+        assertCurrent
       );
       assertCurrent();
       return {
@@ -2809,7 +2850,7 @@ class SmartAccountController {
   private async proveRecoveryTargetOwnership(
     target: PaliRecoveryTarget,
     operationHash: string,
-    executionContextId?: string
+    executionContextId: string
   ): Promise<void> {
     switch (target.auth.module) {
       case 'ecdsa':
@@ -2837,7 +2878,7 @@ class SmartAccountController {
   private async proveEcdsaRecoveryTargetOwnership(
     initData: string,
     operationHash: string,
-    executionContextId?: string
+    executionContextId: string
   ): Promise<void> {
     const [decodedOwners, decodedThreshold] = defaultAbiCoder.decode(
       ['address[]', 'uint64'],
@@ -2852,10 +2893,18 @@ class SmartAccountController {
     await Promise.all(
       owners.slice(0, threshold).map((owner) => {
         const ownerAccount = this.getLocalSigningAccount(owner);
-        return this.deps.signSmartAccountActionDigestInternal(
-          [owner, operationHash],
+        this.assertSmartAccountExecutionContext(
+          executionContextId,
+          operationHash
+        );
+        return this.deps.signSmartAccountRecoveryOwner(
+          executionContextId,
           ownerAccount,
-          executionContextId
+          () =>
+            this.assertSmartAccountExecutionContext(
+              executionContextId,
+              operationHash
+            )
         );
       })
     );
@@ -2897,14 +2946,15 @@ class SmartAccountController {
     metadata: ISmartAccountMetadata,
     actionHash: string,
     executionContextId: string,
-    assertApprovalCurrent?: () => void
+    sourceAuthority: SmartAccountControllerAuthority
   ): Promise<string> {
     const captured = this.infrastructureContext();
     const assertCurrent = () => {
       this.assertInfrastructureContext(captured);
       this.assertSmartAccountExecutionContext(executionContextId, actionHash);
-      if (assertApprovalCurrent !== undefined)
-        assertSynchronousEvmFeeGuard(assertApprovalCurrent);
+      assertSynchronousEvmFeeGuard(sourceAuthority.assertCurrent);
+      if (sourceAuthority.signal.aborted)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrent();
     await this.assertSmartAccountPreparedNonce(executionContextId);
@@ -2915,11 +2965,14 @@ class SmartAccountController {
       assertCurrent,
       findOwner: (address) => this.findLocalSigningAccount(address),
       signOwner: (address, hash, owner) =>
-        this.deps.signSmartAccountActionDigestInternal(
-          [address, hash],
-          owner,
+        this.deps.signSmartAccountOperationOwner(
           executionContextId,
-          assertCurrent
+          owner,
+          () => {
+            assertCurrent();
+            this.assertSmartAccountExecutionContext(executionContextId, hash);
+          },
+          sourceAuthority.signal
         ),
     });
   }

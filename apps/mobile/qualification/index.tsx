@@ -22,6 +22,7 @@ import { parsePrivateProofReport, privateProofReportName } from './private-proof
 import { createPrivateProofDiagnostic, PRIVATE_PROOF_CHECK } from './private-proof-diagnostics.ts';
 import { createSentryIsolatedDiagnostic } from './sentry-isolated-diagnostics.ts';
 import { SENTRY_ISOLATED_CHECK } from './native-sentry-isolated.ts';
+import { matchesQualificationSdkIdentity } from './sdk-identity.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -379,8 +380,8 @@ function QualificationApp() {
         await check(SENTRY_APPROVAL_CHECK, () => qualifyNativeSentryApprovals(qualificationLifetime.signal,
           createNativeSentryCryptoExecutor(null)));
         const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
-        expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0 &&
-          paliQualificationSdkIdentity === `${paliQualificationSdkVersion}.${paliQuickCryptoSentryIdentity}`);
+        expect(matchesQualificationSdkIdentity(paliQualificationSdkVersion,
+          paliQualificationSdkIdentity, paliQuickCryptoSentryIdentity));
         verifiedQuickCryptoIdentity = paliQuickCryptoSentryIdentity;
         if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
           stage = 'public pool configuration';

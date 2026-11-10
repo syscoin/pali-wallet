@@ -127,7 +127,7 @@ describe('guardian recovery originating wallet context', () => {
       getEthereumTransaction: () => transaction,
       getWalletSessionGeneration: () => generation,
       getWalletStateGeneration: () => generation,
-      signSmartAccountActionDigestInternal: sign,
+      signSmartAccountRecoveryOwner: sign,
       sendAndSaveEthTransaction: send,
     } as any);
     controller.buildGuardianStartRecoveryOperation = jest.fn(
@@ -232,7 +232,8 @@ describe('guardian recovery originating wallet context', () => {
       id: 2,
       type: KeyringAccountType.HDAccount,
     });
-    expect(sign.mock.calls[0][2]).toBe(prepared.executionContextId);
+    expect(sign.mock.calls[0][0]).toBe(prepared.executionContextId);
+    expect(sign.mock.calls[0][2]).toEqual(expect.any(Function));
     expect(() =>
       controller.assertSmartAccountExecutionContext(
         prepared.executionContextId,
@@ -281,11 +282,14 @@ describe('guardian recovery originating wallet context', () => {
   it('does not allow a recovery signing token to authorize an ordinary UserOperation', async () => {
     const prepared = await prepare();
     await expect(
-      controller.submitSmartAccountExecution({
-        executionContextId: prepared.executionContextId,
-        signature: '0x1234',
-        userOperation: {},
-      })
+      controller.submitSmartAccountExecution(
+        {
+          executionContextId: prepared.executionContextId,
+          signature: '0x1234',
+          userOperation: {},
+        },
+        captureSubmissionGuard(controller)
+      )
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
     expect(send).not.toHaveBeenCalled();
   });
@@ -321,3 +325,9 @@ describe('guardian recovery originating wallet context', () => {
     }
   );
 });
+
+/** A fixture owner captured at admission, not a permissive omitted guard. */
+function captureSubmissionGuard(controller: any): () => void {
+  const context = controller.infrastructureContext();
+  return () => controller.assertInfrastructureContext(context);
+}

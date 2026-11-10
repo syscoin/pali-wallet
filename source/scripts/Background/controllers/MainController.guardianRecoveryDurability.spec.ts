@@ -179,7 +179,7 @@ function fixture() {
       getEthereumTransaction: () => keyring.ethereumTransaction,
       getWalletSessionGeneration: () => wallet.walletSessionGeneration,
       getWalletStateGeneration: () => wallet.walletStateGeneration,
-      signSmartAccountActionDigestInternal: signature,
+      signSmartAccountRecoveryOwner: signature,
       sendAndSaveEthTransaction: dispatch,
     } as any);
     Object.assign(controller, {

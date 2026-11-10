@@ -41,6 +41,7 @@ export type DappUtxoReview = TransactionApprovalDocument &
   }>;
 
 export type DappSmartAccountMethod =
+  | 'signSmartAccountPreparedOwner'
   | 'registerSmartAccountOnChain'
   | 'submitSmartAccountExecution';
 
@@ -348,12 +349,17 @@ export const captureDappSmartAccountSubmission = (
     candidate.smart?.methods.includes(method)
   );
   if (!watch?.smart) return;
-  const { assertCurrent, checkDocument } = captureApprovalDocument(
+  const { assertCurrent, checkDocument, signal } = captureApprovalDocument(
     documentId,
     watch,
     watch.smart
   );
-  return { context: watch.evmSend?.context, assertCurrent, checkDocument };
+  return {
+    context: watch.evmSend?.context,
+    assertCurrent,
+    checkDocument,
+    signal,
+  };
 };
 
 /** Called only around the actual trusted controller invocation, never by a dapp. */

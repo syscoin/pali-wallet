@@ -77,7 +77,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
   }
 });
 
-test('qualification refuses local archives and requires a published exact SDK version', () => {
+test('qualification refuses unpinned archives and ranged SDK versions', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-qualification-pin-'));
   const name = '@sidhujag/sysweb3-keyring';
   try {
@@ -86,7 +86,7 @@ test('qualification refuses local archives and requires a published exact SDK ve
       'file:../keyring.tgz', '^3.9.7', 'latest',
     ]) {
       fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ dependencies: { [name]: version } }));
-      assert.throws(() => readQualificationSdkPin(root), /Expected an exact shared keyring pin/);
+      assert.throws(() => readQualificationSdkPin(root), version.startsWith('file:') ? /Expected a repository keyring candidate/ : /Expected an exact shared keyring pin/);
     }
     fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ dependencies: { [name]: '3.9.7' } }));
     assert.deepEqual(readQualificationSdkPin(root), { version: '3.9.7', identity: '3.9.7' });

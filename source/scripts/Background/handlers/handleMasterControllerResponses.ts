@@ -1,6 +1,17 @@
 import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 
+import {
+  SMART_ACCOUNT_CONTROLLER_PORT,
+  isOwnedSmartAccountControllerCall,
+  type SmartAccountControllerAuthority,
+} from '../../../shared/smartAccountControllerAuthority';
 import { walletTokenReviewError } from '../../../shared/walletTokenReview';
+import { createDappApprovalLifetime } from '../../../utils/dappApprovalLifetime';
+import {
+  assertJsonWorkBudget,
+  DAPP_REQUEST_LIMITS,
+} from '../../../utils/requestPayloadBudget';
+import { SMART_ACCOUNT_EXECUTION_LIFETIME_MS } from '../../../utils/smartAccount/prepareOperation';
 import {
   EVM_SIGNED_RECORD_NONCE_CONFLICT,
   consumeSignedEvmCapacityRefusal,
@@ -209,6 +220,8 @@ export const controllerErrorResponse = (
   };
 };
 
+let controllerPortListener: ((port: chrome.runtime.Port) => void) | undefined;
+const controllerPortRetirements = new Set<() => void>();
 let controllerMessageListener:
   | Parameters<typeof chrome.runtime.onMessage.addListener>[0]
   | undefined;
@@ -219,7 +232,15 @@ export const handleMasterControllerResponses = (
   if (controllerMessageListener) {
     chrome.runtime.onMessage.removeListener(controllerMessageListener);
   }
-  controllerMessageListener = (message: any, sender, sendResponse) => {
+  if (controllerPortListener)
+    chrome.runtime.onConnect.removeListener(controllerPortListener);
+  controllerPortRetirements.forEach((retire) => retire());
+  const invokeController = (
+    message: any,
+    sender: chrome.runtime.MessageSender,
+    sendResponse: (value: unknown) => void,
+    sourceAuthority: SmartAccountControllerAuthority | null
+  ) => {
     const { type, data } = message;
 
     try {
@@ -236,6 +257,12 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
+      if (
+        isOwnedSmartAccountControllerCall(methods) &&
+        sourceAuthority === null
+      )
+        throw transactionApprovalExpired();
+      sourceAuthority?.assertCurrent();
       if (
         Array.isArray(methods) &&
         methods[0] === 'wallet' &&
@@ -331,6 +358,7 @@ export const handleMasterControllerResponses = (
               release: () => Promise<void>;
             }
           | undefined;
+        let disposeControllerAuthority: (() => void) | undefined;
         Promise.resolve()
           .then(async () => {
             if (messageSignApproval) await messageSignApproval.checkDocument();
@@ -409,7 +437,8 @@ export const handleMasterControllerResponses = (
               throw transactionApprovalExpired();
             const smartMethod =
               walletMethod === 'submitSmartAccountExecution' ||
-              walletMethod === 'registerSmartAccountOnChain'
+              walletMethod === 'registerSmartAccountOnChain' ||
+              walletMethod === 'signSmartAccountPreparedOwner'
                 ? walletMethod
                 : undefined;
             const smartApproval = smartMethod
@@ -497,14 +526,53 @@ export const handleMasterControllerResponses = (
                   }),
                 },
               ];
-            } else if (smartMethod) {
-              // This capability belongs to the worker, not the renderer.
-              argumentsForCall = [
-                smartApproval?.context
-                  ? { ...params?.[0], expectedContext: smartApproval.context }
-                  : params?.[0],
-                smartApproval?.assertCurrent,
-              ];
+            } else if (
+              smartMethod === 'signSmartAccountPreparedOwner' ||
+              smartMethod === 'registerSmartAccountOnChain' ||
+              smartMethod === 'submitSmartAccountExecution'
+            ) {
+              if (!sourceAuthority) throw transactionApprovalExpired();
+              const owned = createDappApprovalLifetime(() => {
+                try {
+                  sourceAuthority.assertCurrent();
+                  smartApproval?.assertCurrent();
+                  return true;
+                } catch {
+                  return false;
+                }
+              }, sourceAuthority.signal);
+              smartApproval?.signal.addEventListener('abort', owned.retire, {
+                once: true,
+              });
+              if (smartApproval?.signal.aborted) owned.retire();
+              disposeControllerAuthority = () => {
+                smartApproval?.signal.removeEventListener(
+                  'abort',
+                  owned.retire
+                );
+                owned.dispose();
+              };
+              const controllerAuthority: SmartAccountControllerAuthority = {
+                kind: 'document',
+                signal: owned.signal,
+                assertCurrent() {
+                  sourceAuthority.assertCurrent();
+                  smartApproval?.assertCurrent();
+                  if (!owned.isCurrent()) throw transactionApprovalExpired();
+                },
+              };
+              argumentsForCall =
+                smartMethod === 'signSmartAccountPreparedOwner'
+                  ? [params?.[0], params?.[1], controllerAuthority]
+                  : [
+                      smartApproval?.context
+                        ? {
+                            ...params?.[0],
+                            expectedContext: smartApproval.context,
+                          }
+                        : params?.[0],
+                      controllerAuthority,
+                    ];
             } else if (utxoApproval) {
               argumentsForCall = [utxoApproval.input, utxoApproval.authority];
             } else if (utxoMethod) {
@@ -514,16 +582,34 @@ export const handleMasterControllerResponses = (
             dappApproval?.assertCurrent();
             smartApproval?.assertCurrent();
             utxoApproval?.authority.assertCurrent();
+            sourceAuthority?.assertCurrent();
             const response = await (targetMethod as any)(
               ...(signer
                 ? [
                     ...signer.args,
-                    signer.method === 'signSLHDSAActionHash'
+                    signer.method === 'signSLHDSAActionHash' ||
+                    signer.method === 'signSmartAccountMessageOwnerInternal'
                       ? messageSignApproval
                       : messageSignApproval.assertCurrent,
                   ]
+                : messageSignApproval &&
+                  methods.length === 3 &&
+                  methods[1] === 'ethereumTransaction' &&
+                  ['signPersonalMessage', 'signTypedData'].includes(methods[2])
+                ? [
+                    ...argumentsForCall,
+                    {
+                      assertCurrent: messageSignApproval.assertCurrent,
+                      signal: messageSignApproval.signal,
+                    },
+                  ]
                 : argumentsForCall)
             );
+            // A signed proof must never leave its retired document. Financial
+            // submissions retain their existing acknowledged/unknown result;
+            // document retirement cannot undo the durable handoff.
+            if (smartMethod === 'signSmartAccountPreparedOwner')
+              sourceAuthority?.assertCurrent();
             recordNonce?.(response);
             // Hardware message signing can remain pending while wallet storage
             // becomes unavailable. Do not release that signature after the
@@ -602,7 +688,8 @@ export const handleMasterControllerResponses = (
               );
             }
             return false;
-          });
+          })
+          .finally(() => disposeControllerAuthority?.());
 
         return true;
       } else {
@@ -627,5 +714,113 @@ export const handleMasterControllerResponses = (
       return false;
     }
   };
+  controllerMessageListener = (message, sender, reply) =>
+    invokeController(message, sender, reply, null);
+  controllerPortListener = (port) => {
+    if (port.name !== SMART_ACCOUNT_CONTROLLER_PORT) return;
+    const sender = port.sender;
+    let walletDocument = false;
+    try {
+      walletDocument = Boolean(
+        sender?.url &&
+          (new URL(sender.url).pathname === '/app.html' ||
+            isExternalWalletUrl(sender.url))
+      );
+    } catch {
+      /* Unrecognized source. */
+    }
+    if (
+      !isTrustedExtensionPageSender(sender) ||
+      !walletDocument ||
+      (sender?.documentId !== undefined && !sender.documentId) ||
+      (sender?.frameId !== undefined &&
+        (!Number.isSafeInteger(sender.frameId) || sender.frameId < 0)) ||
+      (sender?.tab?.id !== undefined &&
+        (!Number.isSafeInteger(sender.tab.id) || sender.tab.id < 0)) ||
+      controllerPortRetirements.size >= DAPP_REQUEST_LIMITS.pendingRequests
+    ) {
+      port.disconnect();
+      return;
+    }
+    const capturedSender = Object.freeze({
+      ...sender,
+      tab: sender.tab && Object.freeze({ ...sender.tab }),
+    });
+    const lifetime = new AbortController();
+    let used = false;
+    const retire = () => {
+      if (lifetime.signal.aborted) return;
+      lifetime.abort();
+      clearTimeout(deadline);
+      controllerPortRetirements.delete(retire);
+      port.onMessage.removeListener(receive);
+      port.onDisconnect.removeListener(retire);
+      try {
+        port.disconnect();
+      } catch {
+        /* The document is already gone. */
+      }
+    };
+    const authority: SmartAccountControllerAuthority = {
+      kind: 'document',
+      signal: lifetime.signal,
+      assertCurrent() {
+        if (lifetime.signal.aborted) throw transactionApprovalExpired();
+      },
+    };
+    const receive = (message: unknown) => {
+      try {
+        authority.assertCurrent();
+        assertJsonWorkBudget(message);
+        const request = message as {
+          data?: { methods?: unknown; params?: unknown };
+          type?: unknown;
+        };
+        if (
+          used ||
+          request.type !== 'CONTROLLER_ACTION' ||
+          !isOwnedSmartAccountControllerCall(request.data?.methods) ||
+          !Array.isArray(request.data?.params) ||
+          request.data.params.length !==
+            ((request.data.methods as string[])[1] ===
+            'signSmartAccountPreparedOwner'
+              ? 2
+              : 1)
+        )
+          throw transactionApprovalExpired();
+        used = true;
+        invokeController(
+          request,
+          capturedSender,
+          (response) => {
+            if (lifetime.signal.aborted) return;
+            try {
+              port.postMessage(response);
+            } finally {
+              retire();
+            }
+          },
+          authority
+        );
+      } catch (error) {
+        try {
+          port.postMessage({
+            success: false,
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Wallet operation failed',
+          });
+        } finally {
+          retire();
+        }
+      }
+    };
+    const deadline = setTimeout(retire, SMART_ACCOUNT_EXECUTION_LIFETIME_MS);
+    controllerPortRetirements.add(retire);
+    port.onDisconnect.addListener(retire);
+    port.onMessage.addListener(receive);
+  };
+  chrome.runtime.onConnect.addListener(controllerPortListener);
   chrome.runtime.onMessage.addListener(controllerMessageListener);
 };

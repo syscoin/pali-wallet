@@ -1,3 +1,5 @@
+import { buildSmartAccountUserOpSigningIntent } from '../../../../source/utils/smartAccount/userOperationHash.ts';
+import type { SmartAccountOwnerSigningIntent } from '../../../../source/utils/smartAccount/ownerSigningIntent.ts';
 import {
   createSmartAccountPendingState,
   type SmartAccountPendingState,
@@ -77,7 +79,9 @@ export type NativeSmartOperationPorts = Readonly<{
     address: string,
     digest: string,
     owner: { id: number; type: SmartAccountGasPayer['type'] },
-    guard: () => void
+    guard: () => void,
+    intent: SmartAccountOwnerSigningIntent,
+    signal: AbortSignal
   ): Promise<string>;
   preparePayer(
     request: unknown,
@@ -387,7 +391,7 @@ export function createNativeSmartOperation(
       }
       return { kind: 'authorization', operation: issued, intent };
     },
-    async sign(prepared, assertCurrent) {
+    async sign(prepared, assertCurrent, signal) {
       if (prepared !== issued) throw new Error('SMART_OPERATION_EXPIRED');
       await assertValidatorSwitch(assertCurrent);
       if (intent.kind === 'guardian-policy')
@@ -433,7 +437,9 @@ export function createNativeSmartOperation(
             address,
             digest,
             { id: owner.id, type: owner.type as SmartAccountGasPayer['type'] },
-            guard
+            guard,
+            buildSmartAccountUserOpSigningIntent(prepared.userOperation, chainId),
+            signal
           ),
       });
       return signature.signature;

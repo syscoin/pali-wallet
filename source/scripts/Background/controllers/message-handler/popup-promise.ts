@@ -214,11 +214,15 @@ const openApprovalPopup = async (
       : undefined;
   const smartMethods: readonly DappSmartAccountMethod[] | undefined =
     route === MethodRoute.SmartAccount
-      ? ['registerSmartAccountOnChain', 'submitSmartAccountExecution']
+      ? [
+          'registerSmartAccountOnChain',
+          'submitSmartAccountExecution',
+          'signSmartAccountPreparedOwner',
+        ]
       : route === MethodRoute.SendEthTx ||
         route === MethodRoute.SendCalls ||
         route === MethodRoute.SmartAccountModules
-      ? ['submitSmartAccountExecution']
+      ? ['submitSmartAccountExecution', 'signSmartAccountPreparedOwner']
       : undefined;
   const tracksTransactionDocument = Boolean(
     evmContext || utxoReview || smartMethods

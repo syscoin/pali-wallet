@@ -241,13 +241,7 @@ it.each([false, true])(
     expect(mockEmitter).toHaveBeenCalledTimes(1);
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
-      [
-        {
-          eventName: 'personal_sign',
-          0: ADDRESS,
-          1: 'Synthetic public signing fixture',
-        },
-      ],
+      [[ADDRESS, 'Synthetic public signing fixture']],
       ledger ? 300000 : 10000
     );
     view.unmount();

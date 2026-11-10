@@ -1,3 +1,4 @@
+import { signSmartAccountOwnerIntent } from '../../../../source/utils/smartAccount/ownerSigning.ts';
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
@@ -3523,7 +3524,7 @@ export function createKeyringRuntimeFactory(
                       type: owner.saved.type,
                       expectedAddress: owner.ref.address,
                     },
-                    assertCurrent: guard,
+                    assertCurrent: guard, signal,
                   }
                 );
                 guard();
@@ -3672,17 +3673,18 @@ export function createKeyringRuntimeFactory(
               wallet: state, network, rpc, assertCurrent: check,
               slhDsa: slhCapability === null ? null : (metadata, actionHash, assertCurrent) =>
                 slhDsaSigningPort(captured, metadata, accountId, actionHash, () => { check(); checkGuard(assertCurrent); }, null),
-              signOwner(address, digest, owner, assertCurrent) {
+              signOwner(address, digest, owner, assertCurrent, intent, signal) {
                 return run(async ownerGeneration => {
                   const guard = () => { current(ownerGeneration); check(); checkGuard(assertCurrent); };
                   guard();
                   const target = state.accounts[owner.type]?.[owner.id];
                   if ((owner.type !== 'HDAccount' && owner.type !== 'Imported') || !target ||
                       target.address.toLowerCase() !== address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
-                  const signature = await ring.ethereumTransaction.ethSign([address, digest], {
-                    selectedAccount: { id: selected.index, type: selected.type, expectedAddress: selected.address },
-                    targetAccount: { id: owner.id, type: owner.type, expectedAddress: address },
-                    assertCurrent: guard,
+                  if (intent.actionHash !== digest) throw new KeyringRuntimeError('INVALID_INPUT');
+                  const signature = await signSmartAccountOwnerIntent({
+                    intent, selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                    owner: { ...owner, address }, authority: { assertCurrent: guard, signal },
+                    sdk: { rawSign: (params, options) => ring.ethereumTransaction.ethSign(params, options), ledger: null, trezor: null },
                   });
                   guard();
                   return signature;
@@ -4537,10 +4539,12 @@ export function createKeyringRuntimeFactory(
                           boundOwners.add(key);
                         }
                         ownerGuard();
-                        const result = await ring.ethereumTransaction.ethSign([address, digest], {
-                          selectedAccount: { id: selected.index, type: selected.type, expectedAddress: selected.address },
-                          targetAccount: { id: owner.id, type: owner.type as SmartAccountLocalOwner['type'], expectedAddress: address },
-                          assertCurrent: ownerGuard,
+                        if (prepared.ownerSigningIntent.actionHash !== digest) throw new KeyringRuntimeError('INVALID_INPUT');
+                        const result = await signSmartAccountOwnerIntent({
+                          intent: prepared.ownerSigningIntent,
+                          selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                          owner: { ...owner, address }, authority: { assertCurrent: ownerGuard, signal: approval.signal },
+                          sdk: { rawSign: (params, options) => ring.ethereumTransaction.ethSign(params, options), ledger: null, trezor: null },
                         });
                         ownerGuard(); return result;
                       },
@@ -4560,7 +4564,7 @@ export function createKeyringRuntimeFactory(
                       ? await transactions.signPersonalMessage([
                           request.address,
                           request.message,
-                        ])
+                        ], { assertCurrent: guard, signal: approval.signal })
                       : await transactions.signTypedData(
                           request.address,
                           request.typedData as Parameters<
@@ -4568,7 +4572,8 @@ export function createKeyringRuntimeFactory(
                           >[1],
                           request.version as Parameters<
                             typeof transactions.signTypedData
-                          >[2]
+                          >[2],
+                          { assertCurrent: guard, signal: approval.signal }
                         );
                   guard();
                   if (

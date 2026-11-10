@@ -132,8 +132,8 @@ const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
   mockApproval.assertCurrent();
   const signer = mockApproval.bindSmartAccountSigner(args);
   const request =
-    signer?.method === 'signSmartAccountActionDigestInternal'
-      ? signer.args[0]
+    signer?.method === 'signSmartAccountMessageOwnerInternal'
+      ? [owner.address, signer.args[0].actionHash]
       : undefined;
   if (!Array.isArray(request))
     throw new Error('Expected a bound software signing request');
@@ -145,6 +145,7 @@ const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
     },
     targetAccount: { id: 0, type: 'HDAccount', expectedAddress: owner.address },
     assertCurrent: () => mockApproval.assertCurrent(),
+    signal: mockApproval.signal,
   });
   mockApproval.assertCurrent();
   return signature;

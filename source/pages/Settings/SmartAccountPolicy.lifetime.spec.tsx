@@ -357,8 +357,9 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           path[1] === 'assertSmartAccountPreparedNonce'
         )
           return;
-        if (path[1] === 'signSmartAccountActionDigestInternal')
-          return priorOwnerWallet.signingKey.sign(params[0][1]).serialized;
+        if (path[1] === 'signSmartAccountPreparedOwner')
+          return priorOwnerWallet.signingKey.sign(`0x${'77'.repeat(32)}`)
+            .serialized;
         if (path[1] === 'submitSmartAccountExecution') {
           expect(params[0].waitForConfirmation).toBe(false);
           submitted = true;
@@ -380,13 +381,13 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       expect(screen.getByText(hash)).toBeTruthy();
       const count = (method: string) =>
         mockEmitter.mock.calls.filter(([path]) => path[1] === method).length;
-      expect(count('signSmartAccountActionDigestInternal')).toBe(1);
+      expect(count('signSmartAccountPreparedOwner')).toBe(1);
       expect(count('submitSmartAccountExecution')).toBe(1);
       expect(mockAlert.success).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'header.refresh' }));
       await act(async () => undefined);
       expect(screen.getByText(hash)).toBeTruthy();
-      expect(count('signSmartAccountActionDigestInternal')).toBe(1);
+      expect(count('signSmartAccountPreparedOwner')).toBe(1);
       expect(count('submitSmartAccountExecution')).toBe(1);
       expect(waitForReceipt).not.toHaveBeenCalled();
       available = true;
@@ -397,7 +398,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
         )
       );
       expect(screen.queryByText('notifications.submitted')).toBeNull();
-      expect(count('signSmartAccountActionDigestInternal')).toBe(1);
+      expect(count('signSmartAccountPreparedOwner')).toBe(1);
       expect(count('submitSmartAccountExecution')).toBe(1);
       view.unmount();
     }
@@ -462,7 +463,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       );
       expect(
         mockEmitter.mock.calls.some(
-          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+          ([path]) => path[1] === 'signSmartAccountPreparedOwner'
         )
       ).toBe(false);
       expect(
@@ -1099,9 +1100,9 @@ describe('SmartAccountPolicy async UI lifetime', () => {
           return mockGeneration === 7
             ? Promise.resolve()
             : Promise.reject(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'));
-        if (path[1] === 'signSmartAccountActionDigestInternal')
+        if (path[1] === 'signSmartAccountPreparedOwner')
           return Promise.resolve(
-            mockOwnerWallet.signingKey.sign(params[0][1]).serialized
+            mockOwnerWallet.signingKey.sign(`0x${'77'.repeat(32)}`).serialized
           );
         if (path[1] === 'submitSmartAccountExecution')
           return Promise.resolve({ hash: `0x${'99'.repeat(32)}` });
@@ -1130,7 +1131,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       await waitFor(() =>
         expect(
           mockEmitter.mock.calls.some(
-            ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+            ([path]) => path[1] === 'signSmartAccountPreparedOwner'
           )
         ).toBe(true)
       );
@@ -1159,7 +1160,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       expect(createPasskeyCredential).not.toHaveBeenCalled();
       expect(
         mockEmitter.mock.calls.some(
-          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+          ([path]) => path[1] === 'signSmartAccountPreparedOwner'
         )
       ).toBe(false);
       expect(
@@ -1180,7 +1181,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       expect(createPasskeyCredential).not.toHaveBeenCalled();
       expect(
         mockEmitter.mock.calls.some(
-          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+          ([path]) => path[1] === 'signSmartAccountPreparedOwner'
         )
       ).toBe(false);
     });
@@ -1194,7 +1195,7 @@ describe('SmartAccountPolicy async UI lifetime', () => {
       await act(async () => pending.resolve(prepared(call[1][0])));
       expect(
         mockEmitter.mock.calls.some(
-          ([path]) => path[1] === 'signSmartAccountActionDigestInternal'
+          ([path]) => path[1] === 'signSmartAccountPreparedOwner'
         )
       ).toBe(false);
       expect(

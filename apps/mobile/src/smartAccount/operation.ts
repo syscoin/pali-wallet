@@ -142,7 +142,8 @@ export type NativeSmartAccountOperationHost = Readonly<{
   ): Promise<SmartAccountOperationPreparation>;
   sign(
     prepared: PreparedSmartAccountOperation,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    signal: AbortSignal
   ): Promise<string>;
   submit(
     prepared: PreparedSmartAccountOperation,
@@ -451,7 +452,7 @@ export class NativeSmartAccountOperation {
     try {
       this.check();
       this.publish({ phase: 'preparing-fee' });
-      const signature = await this.host.sign(prepared, this.check);
+      const signature = await this.host.sign(prepared, this.check, this.lifetime.signal);
       this.check();
       const hash = await this.host.submit(
         prepared,

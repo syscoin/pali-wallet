@@ -873,8 +873,8 @@ test('a message signature completing after lock is discarded and shares the priv
     constructor(...args: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...args);
       const sign = this.ethereumTransaction.signPersonalMessage;
-      this.ethereumTransaction.signPersonalMessage = async (params) => {
-        const signature = await sign(params);
+      this.ethereumTransaction.signPersonalMessage = async (params, authority) => {
+        const signature = await sign(params, authority);
         entered.resolve();
         await release.promise;
         return signature;

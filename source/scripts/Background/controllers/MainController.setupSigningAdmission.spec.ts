@@ -132,13 +132,19 @@ describe('wallet setup signing capability admission', () => {
       const submit = jest.fn();
       wallet.smartAccount = { submitSmartAccountExecution: submit };
       await expect(
-        wallet.submitSmartAccountExecution({}, guard)
+        wallet.submitSmartAccountExecution(
+          {},
+          {
+            kind: 'document',
+            signal: new AbortController().signal,
+            assertCurrent: guard,
+          }
+        )
       ).rejects.toThrow(/guard (must be synchronous|is not a function)/);
       await expect(
-        wallet.signSmartAccountActionDigestInternal(
-          [],
+        wallet.signSmartAccountOperationOwnerInternal(
+          'required-prepared-context',
           { id: 0, type: 'HDAccount' },
-          undefined,
           guard
         )
       ).rejects.toThrow(/guard (must be synchronous|is not a function)/);
@@ -297,8 +303,8 @@ describe('wallet setup signing capability admission', () => {
     ['sendAndSaveTokenTransaction', ['ERC20', {}]],
     ['signSendAndSaveTransaction', [{ psbt: 'fixture' }]],
     [
-      'signSmartAccountActionDigestInternal',
-      [[], { id: 0, type: 'HDAccount' }],
+      'signSmartAccountPreparedOwner',
+      ['required-prepared-context', { id: 0, type: 'HDAccount' }],
     ],
     ['startSLHDSASmartAccountValidatorSetup', [{ accountId: 0 }]],
     ['provisionSLHDSASmartAccountValidator', [{ accountId: 0 }]],

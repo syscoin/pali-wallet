@@ -203,8 +203,9 @@ describe('smart-account creation passkey ownership and retention', () => {
         ]);
         return undefined;
       }
-      if (method === 'signSmartAccountActionDigestInternal')
-        return mockOwnerWallet.signingKey.sign(params[0][1]).serialized;
+      if (method === 'signSmartAccountPreparedOwner')
+        return mockOwnerWallet.signingKey.sign(`0x${'77'.repeat(32)}`)
+          .serialized;
       if (method === 'submitSmartAccountExecution' && walletPasskeyFlow) {
         expect(
           getPasskeyAccountRecords(createdAccount).pending?.profile.credentialId
