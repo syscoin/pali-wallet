@@ -431,10 +431,12 @@ test('private saved-byte replay ignores stale cancel and confirm IDs', async () 
 });
 
 for (const retirement of ['cancel', 'account-change'] as const)
-  test(`private replay reconciliation rejects ${retirement} before releasing note or signing keys`, async () => {
+  test(retirement === 'cancel' ? 'private replay reconciliation rejects cancel before releasing note or signing keys'
+    : 'private replay reconciliation blocks account changes until its credential prompt retires', { timeout: 30000 }, async () => {
     const f = await fixture();
     f.loseResponse(true);
     const operation = await f.runtime.openPrivateDeposit!(new AbortController().signal, noop, createTestPrivateAuthentication(noop));
+    const release = deferred();
     try {
       await operation.prepare({ poolId: 'eth-1' });
       await operation.confirm(operation.getSnapshot().review!.intentId);
@@ -446,19 +448,29 @@ for (const retirement of ['cancel', 'account-change'] as const)
         observe: async () => ({ status: 'missing', latestNonce: '0' }),
         dispatch: async () => { throw Error('Cancelled reconciliation must not dispatch'); },
       }, { now: () => 1000, randomBytes: n => new Uint8Array(n).fill(5) });
-      const entered = deferred(), release = deferred();
+      const entered = deferred();
       const leases = f.secretLeases;
       f.beforeCredential(async () => { entered.release(); await release.promise; });
       const preparing = replay.prepare(hash, 'resend');
       const rejected = assert.rejects(preparing);
       await entered.promise;
-      if (retirement === 'cancel') replay.cancel();
-      else await f.select('hd:60:1');
+      if (retirement === 'account-change') {
+        await assert.rejects(f.select('hd:60:1'), /BUSY/);
+        assert.equal(f.runtime.accounts!.getSnapshot()!.active.accountId, 'hd:60:0');
+      }
+      replay.cancel();
       release.release(); await rejected;
       assert.equal(f.secretLeases, leases, 'stale consent never opens a secret operation');
       f.assertNoSigningKeys();
       assert.equal(f.posted.length, 1);
-    } finally { await operation.dispose(); await f.close(); }
+      if (retirement === 'account-change') {
+        f.beforeCredential(async () => {});
+        await f.runtime.session.unlock(PASSWORD);
+        f.assertNoSigningKeys();
+        await f.select('hd:60:1');
+        assert.equal(f.runtime.accounts!.getSnapshot()!.active.accountId, 'hd:60:1');
+      }
+    } finally { release.release(); f.beforeCredential(async () => {}); await operation.dispose(); await f.close(); }
   });
 
 for (const change of ['account', 'lock-unlock'] as const)

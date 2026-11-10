@@ -739,7 +739,7 @@ test('native infrastructure private SDK clears a durable unsent reservation when
     await controller.confirm(review.id);
     armed = false;
     assert.equal(controller.getSnapshot().phase, 'failed', 'successful private unsent cleanup must not publish phantom broadcast uncertainty');
-    assert.equal(journalWrites, 2, 'reserve and exact unsent clear must both commit through the catalogue');
+    assert.equal(journalWrites, 4, 'reserve and exact unsent clear each atomically write the catalogue and its unchanged public checkpoint');
     assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
     assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
     await controller.refresh(controller.getSnapshot().revision);
@@ -790,6 +790,38 @@ test('native infrastructure private SDK drains admitted unsigned cleanup after r
     release.resolve(); await confirmation?.catch(() => undefined); await closing?.catch(() => undefined);
     controller?.dispose(); await f.close();
   }
+});
+
+test('a failed main-catalogue adoption after detached cleanup quarantines custody until reopen', async () => {
+  let armed = false, writes = 0, committed = false, reads = 0, injected = false;
+  const f = await fixture({
+    after(kind, sql) {
+      if (armed && kind === 'run' && sql.startsWith('UPDATE keyring_records')) writes++;
+      if (armed && kind === 'exec' && sql === 'COMMIT' && writes === 4) committed = true;
+    },
+    before(kind, sql) {
+      if (committed && kind === 'get' && sql.includes('FROM keyring_records WHERE key = ?') && ++reads === 2) {
+        committed = false; injected = true; throw Error('Main catalogue adoption read failed');
+      }
+    },
+  }, true);
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.infrastructureCode('factory', false);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => {});
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    f.gasSponsored(); armed = true;
+    await controller.confirm(review.id); armed = false;
+    assert(injected, 'the fault must occur after the detached mutation readback, during main adoption');
+    assert.equal(controller.getSnapshot().phase, 'unknown');
+    await assert.rejects(f.runtime.session.readSelectedAddress(), /CLEANUP_FAILED|CANCELLED|NOT_READY/);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    controller.dispose(); controller = undefined;
+    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+  } finally { controller?.dispose(); await f.close(); }
 });
 
 test('creation allocation saves the canonical bootstrap before publication without a password or signing operation', async () => {

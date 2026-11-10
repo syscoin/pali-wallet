@@ -19,6 +19,7 @@ import { createActivityScope } from '../src/activity/types.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
 import { createNativeDappControlHost } from '../src/custody/dappControl.ts';
@@ -334,6 +335,7 @@ test('native factory explicitly wires one owned transport to all network consume
   const unexpectedFeature = () => assert.fail('unexpected feature operation in HTTP factory fixture');
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
+    '../custody/privateAuthentication.ts': privateAuthentication,
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
