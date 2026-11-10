@@ -5,7 +5,7 @@ import { screenElements, screenFixture } from './screenFixture.ts';
 function fixture(kind: 'control' | 'sentry') {
   let clock = 100, serial = 0, back: (() => boolean) | undefined, app: ((state: string) => void) | undefined;
   const timers = new Map<number, () => void>(), approvals: unknown[][] = [], rejections: string[] = [];
-  const native = { AppState: { currentState: 'active', addEventListener(_event: string, handler: (state: string) => void) { app = handler; return { remove() { app = undefined; } }; } },
+  const native = { Platform: { OS: 'ios' }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener(_event: string, handler: (state: string) => void) { app = handler; return { remove() { app = undefined; } }; } },
     BackHandler: { addEventListener(_event: string, handler: () => boolean) { back = handler; return { remove() { back = undefined; } }; } },
     Keyboard: { dismiss() {} }, StyleSheet: { create: (v: unknown) => v } };
   const review: any = { id: 'request-1', revision: 1, appName: 'Example', origin: 'https://example.test', accountLabel: 'Wallet', address: '0x123',

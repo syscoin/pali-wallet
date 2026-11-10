@@ -23,7 +23,7 @@ export function NativeDappControlReview({ review, controller }: { review: Review
   const reject = () => { void controller.rejectControl(review.id).catch(() => undefined); };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}><Screen key={review.id} footer={<>
     <Button title={review.busy ? 'Applying…' : title} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => undefined); }} />
-    <Button title="Reject" variant="quiet" size="compact" onPress={reject} />
+    <Button title="Reject" variant="secondary" onPress={reject} />
   </>}>
     <Header title={title} onBack={reject} />
     <Card style={s.card}>

@@ -70,7 +70,7 @@ export function NativePsbtReview({ review, controller, ledgerConnection }: { rev
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}><Screen footer={<>
     {ledger.showConnect && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" onPress={ledger.connect} />}
     <Button title={review.busy || submitting === identity ? t('send.signing') : action} disabled={blocked} onPress={approve} testID="native-psbt-approve" />
-    <Button title={review.attempted ? t('buttons.close') : t('buttons.reject')} variant="quiet" onPress={reject} />
+    <Button title={review.attempted ? t('buttons.close') : t('buttons.reject')} variant="secondary" onPress={reject} />
   </>}>
     <Header title={action} onBack={reject} />
     <Card style={s.card}>

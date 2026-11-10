@@ -19,14 +19,14 @@ type Props = {
   onDeviceUnlock?(): void;
   onAutoLock?(): void;
   deviceUnlockEnabled?: boolean;
-  backupConfirmed?: boolean;
+  backupConfirmed: boolean;
   onLock(): void;
   onBack(): void;
   captureFailureHandler(): (error: unknown) => void;
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, onAutoLock, deviceUnlockEnabled, backupConfirmed = true, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onDeviceUnlock, onAutoLock, deviceUnlockEnabled, backupConfirmed, onLock, onBack, captureFailureHandler }: Props) {
   const { t } = useNativeTranslation();
   const privacy = useBalancePrivacy();
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');

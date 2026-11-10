@@ -79,7 +79,7 @@ export function NativeEncryptionReviewScreen({ review, controller }: {
     </Card>}
     {(error || review.error) && <Notice title={t(decrypt ? 'send.decrypt' : 'send.encryptKey')} body={error ?? t(review.error === 'BLOCKED_SITE' ? 'mobile.connections.blocked' : review.error === 'SITE_MISMATCH' ? 'mobile.connections.mismatch' : review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.deliveryUncertain' : 'mobile.connections.unavailable')} />}
     {!review.dispatched && <Button title={review.needsAccountSwitch ? t('connections.switchAccount') : t('buttons.confirm')} disabled={review.busy || !!review.error} onPress={() => { void perform('approve'); }} />}
-    <Button title={t('buttons.cancel')} variant="quiet" onPress={reject} />
+    <Button title={t('buttons.cancel')} variant="secondary" onPress={reject} />
   </Screen></SafeAreaView>;
 }
 

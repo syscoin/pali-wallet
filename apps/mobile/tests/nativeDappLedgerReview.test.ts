@@ -143,3 +143,23 @@ test('Smart dapp review connects before approveRequest and keeps payer confirmat
     assert(!f.state().showConnect);
   } finally {f.close();}
 });
+
+
+test('long message keeps one bordered rejection and approval action in the fixed footer', () => {
+  const f = fixture('message');
+  try {
+    f.review.message = 'Long public signing message. '.repeat(500);
+    const rendered = f.render();
+    const screen = rendered.find(node => node.type === 'Screen'); assert(screen);
+    const footer = screenElements(screen.props.footer);
+    const reject = footer.find(node => node.type === 'Button' && node.props.title === 'Reject'); assert(reject);
+    assert.equal(reject.props.variant, 'secondary');
+    assert(footer.some(node => node.type === 'Button' && node.props.title === 'Sign message'));
+    assert.equal(rendered.filter(node => node.type === 'Button' && node.props.title === 'Reject').length, 1);
+    assert(!JSON.stringify(screen.props.footer).includes(f.review.message));
+    assert(rendered.some(node => node.type === 'Text' && node.children.includes(f.review.message)));
+    f.review.dispatched = true;
+    const complete = f.render().find(node => node.type === 'Screen'); assert(complete);
+    assert.equal(screenElements(complete.props.footer).find(node => node.type === 'Button' && node.props.title === 'Close')?.props.variant, 'secondary');
+  } finally { f.close(); }
+});

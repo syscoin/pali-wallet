@@ -27,6 +27,9 @@ import { NativeTrezorFixture } from './nativeTrezorFixture';
 import { NativeMessageReviewFixture } from './nativeMessageReviewFixture';
 import { NativeTransactionReviewFixture } from './nativeTransactionReviewFixture';
 import { NativeSmartAccountOperationFixture } from './nativeSmartAccountDeploymentFixture';
+import { NativeSmartManagementFixture } from './nativeSmartManagementFixture';
+import { NativeSmartPreparationFixture } from './nativeSmartPreparationFixture';
+import { NativeInfrastructureFixture } from './nativeInfrastructureFixture';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -52,6 +55,7 @@ import type {
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
+const biometricAuth = route.get('biometric-auth') === '1';
 const ledgerConnection = route.has('ledger-send') && !route.has('utxo-send') ? createLedgerConnectionFixture(sender) : undefined;
 const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
 const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
@@ -140,7 +144,8 @@ const controller: NativeTransferView = {
     publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
   async confirm(id, credential) {
-    if (credential.method !== 'password' || credential.password !== 'public-password') throw Error('INVALID_CREDENTIAL');
+    if (!(credential.method === 'password' && credential.password === 'public-password') &&
+        !(biometricAuth && credential.method === 'biometric')) throw Error('INVALID_CREDENTIAL');
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
     if (route.has('storage-full')) {
       clearTimeout(expiry);
@@ -391,7 +396,15 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('guardian-recovery') ? (
+      {route.has('smart-modules') ? (
+        <NativeSmartManagementFixture kind="modules" />
+      ) : route.has('smart-authenticator') ? (
+        <NativeSmartManagementFixture kind="authenticator" />
+      ) : route.has('smart-preparation') ? (
+        <NativeSmartPreparationFixture />
+      ) : route.has('smart-infrastructure') ? (
+        <NativeInfrastructureFixture />
+      ) : new URLSearchParams(window.location.search).has('guardian-recovery') ? (
         <NativeGuardianRecoveryFixture />
       ) : new URLSearchParams(window.location.search).has('guardian-policy') ? (
         <NativeGuardianPolicyFixture />
@@ -457,7 +470,7 @@ function Fixture() {
         )
       ) : (
         <NativeSend
-          authenticationMethod="password"
+          authenticationMethod={biometricAuth ? 'biometric' : 'password'}
           account={{ address: sender, network: sendContext.networkId, revision: 1 }}
           savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
