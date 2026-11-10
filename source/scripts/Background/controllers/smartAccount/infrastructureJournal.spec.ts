@@ -189,6 +189,48 @@ describe('durable infrastructure deployment journal', () => {
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
   });
 
+  it('keeps legacy precedence and discards a legacy RPC even when a scoped entry also exists', async () => {
+    persisted.set('pali.infrastructure.pending.v1.1', reservation);
+    persisted.set(infrastructureJournalStorageKey(network), newer);
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual({ ...reservation, rpcUrl: undefined });
+    await expect(writeInfrastructureJournal(network, newer)).rejects.toThrow(
+      'Another infrastructure deployment is pending'
+    );
+    await clearInfrastructureJournal(network, reservation, null);
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    expect(persisted.get(infrastructureJournalStorageKey(network))).toEqual(
+      newer
+    );
+  });
+
+  it('does not hide an unreadable legacy attempt behind an otherwise valid scoped entry', async () => {
+    persisted.set('pali.infrastructure.pending.v1.1', {
+      ...reservation,
+      attemptId: 'unreadable',
+    });
+    persisted.set(infrastructureJournalStorageKey(network), newer);
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).rejects.toThrow('Deployment journal is unreadable');
+    expect(chromeStorage.getItem).toHaveBeenCalledTimes(1);
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+  });
+
+  it('does not clear another contract sharing an attempt identity', async () => {
+    await writeInfrastructureJournal(network, reservation);
+    await clearInfrastructureJournal(
+      network,
+      { ...reservation, contractId: 'factory' },
+      null
+    );
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(reservation);
+    expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+  });
+
   it.each([undefined, null, ''])(
     'fails closed on a scoped journal without a valid owning RPC %s',
     async (rpcUrl) => {
