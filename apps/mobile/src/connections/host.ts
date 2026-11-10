@@ -1,3 +1,4 @@
+import type { SmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
 import type { NativeSigningHandoff } from './signingHandoff.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { DappEncryptionSdk } from '../../../../source/wallet/dappEncryptionApproval.ts';
@@ -61,6 +62,7 @@ export type NativeConnectionSigningHost = Readonly<{
   cancelSigningHandoff(job: object): Promise<void>;
   verifyPersonalMessage(message: string, signature: string): string;
   supportsAtomicCalls(accountId: string): boolean;
+  readSmartAccountModules(accountId: string, networkId: string, assertCurrent: () => void): SmartAccountModulesProjection;
   supportsSmartAccountMessages(accountId: string): boolean;
   /** Caller proves that the per-call consent sequence no longer exists. */
   recoverStoppedEoaCalls(origin: string, id: string, assertStopped: () => void): Promise<void>;

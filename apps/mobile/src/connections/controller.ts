@@ -1,3 +1,4 @@
+import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
 import { NativeSigningHandoffs, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
 import { isDappEncryptionMethod, readDappEncryptionRequest, supportsDappEncryptionAccount, type DappEncryptionRequest } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { prepareDappEncryptionApproval } from '../../../../source/wallet/dappEncryptionApproval.ts';
@@ -96,6 +97,7 @@ const METHODS = Object.freeze([
   ...SENTRY_DAPP_METHODS,
   ...PSBT_DAPP_METHODS,
   'wallet_getCapabilities',
+  'wallet_getSmartAccountModules',
   'eth_sendTransaction',
   'wallet_sendCalls',
   'wallet_getCallsStatus',
@@ -553,7 +555,7 @@ export class NativeConnectionsController {
     return METHODS.filter((method) => {
       const hardware = accountType === 'Ledger' || accountType === 'Trezor';
       if (isDappEncryptionMethod(method) && !supportsDappEncryptionAccount({ type: accountType })) return false;
-      if (hardware && method === 'eth_signTypedData') return false;
+      if (hardware && (method === 'eth_signTypedData' || method === 'wallet_getSmartAccountModules')) return false;
       if (scope?.kind === 'syscoin') {
         if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return !hardware && Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
         return isDappSyscoinRead(method) || (DAPP_MODE_METHODS as readonly string[]).includes(method) || isDappPermissionMethod(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method);
@@ -1562,9 +1564,13 @@ export class NativeConnectionsController {
     let result: unknown, error: { code: number; message: string } | undefined;
     if (!connected?.engine.isConnected(request.session.binding.origin))
       error = { code: 4100, message: 'Not connected' };
-    else if (request.method === 'wallet_getCapabilities') {
+    else if (request.method === 'wallet_getCapabilities' || request.method === 'wallet_getSmartAccountModules') {
       try {
-        const query = normalizeDappCapabilitiesRequest(request.params);
+        if (request.method === 'wallet_getSmartAccountModules') responseGuard = () => {
+          guard();
+          if (!Number.isSafeInteger(request.expiresAt) || request.expiresAt <= Date.now() || this.options.source.getSnapshot().phase !== 'ready' || !this.host!.context().unlocked) failure('REQUEST_EXPIRED');
+        };
+        const query = request.method === 'wallet_getCapabilities' ? normalizeDappCapabilitiesRequest(request.params) : null;
         const account = connected.engine.getAccount(
           request.session.binding.origin
         );
@@ -1597,7 +1603,8 @@ export class NativeConnectionsController {
             message: 'Method or account is not authorized',
           };
         } else {
-          result = projectDappCapabilities(query, {
+          responseGuard();
+          result = query === null ? this.host!.readSmartAccountModules(nativeAccount!.id, context.networkId, responseGuard) : projectDappCapabilities(query, {
             accountAddress: account.address,
             chain:
               context.network.kind === 'ethereum' &&
@@ -1615,8 +1622,9 @@ export class NativeConnectionsController {
           });
         }
       } catch (cause) {
-        if (!(cause instanceof EthereumRpcErrorHandler)) throw cause;
-        error = { code: cause.code, message: cause.message };
+        if (cause instanceof EthereumRpcErrorHandler) error = { code: cause.code, message: cause.message };
+        else if (request.method === 'wallet_getSmartAccountModules') error = { code: -32600, message: cause instanceof SmartAccountModulesProjectionError ? cause.message : 'Smart account modules are unavailable' };
+        else throw cause;
       }
     } else if (
       request.method === 'wallet_getCallsStatus' ||

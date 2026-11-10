@@ -9,6 +9,10 @@ import {
   projectDappCapabilities,
 } from '../../../../shared/dappCapabilities.ts';
 import { projectDappPermissions } from '../../../../shared/dappPermissions.ts';
+import {
+  getSmartAccountModulesProjection,
+  SmartAccountModulesProjectionError,
+} from '../../../../shared/smartAccountModules.ts';
 import { hasLiveEoaCallsSequence } from '../../handlers/approvalSubmission';
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
@@ -477,35 +481,18 @@ export class WalletMethodHandler implements IMethodHandler {
 
         case 'getSmartAccountModules': {
           // Read-only module inventory for the connected smart account.
-          if (!account?.isSmartAccount || !account.smartAccount) {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidRequest(
-                'The connected account is not a smart account'
-              )
+          try {
+            return getSmartAccountModulesProjection(
+              account,
+              activeNetwork.chainId
             );
+          } catch (error) {
+            if (error instanceof SmartAccountModulesProjectionError)
+              throw cleanErrorStack(
+                ethErrors.rpc.invalidRequest(error.message)
+              );
+            throw error;
           }
-          const smartAccountMetadata = account.smartAccount;
-          if (smartAccountMetadata.chainId !== activeNetwork.chainId) {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidRequest(
-                `Smart account modules are only available on chain ${smartAccountMetadata.chainId}. Switch back from chain ${activeNetwork.chainId} to inspect this account.`
-              )
-            );
-          }
-          return {
-            address: account.address,
-            chainId: `0x${activeNetwork.chainId.toString(16)}`,
-            deployed: Boolean(smartAccountMetadata.isDeployed),
-            installed: (smartAccountMetadata.installedModules || []).map(
-              (module: any) => ({
-                address: module.address,
-                id: module.id,
-                moduleType: module.type === 'validator' ? 1 : 2,
-                name: module.id === 'custom' ? module.config?.name : undefined,
-              })
-            ),
-            activeValidator: smartAccountMetadata.auth?.validator || null,
-          };
         }
 
         case 'getCallsStatus':

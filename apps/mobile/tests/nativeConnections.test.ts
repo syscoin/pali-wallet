@@ -1,3 +1,4 @@
+import { getSmartAccountModulesProjection } from '../../../source/shared/smartAccountModules.ts';
 import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import type { NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
@@ -63,6 +64,7 @@ function fixture(
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
+    moduleInventory?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -111,6 +113,7 @@ function fixture(
   let readWait: Promise<void> = Promise.resolve();
   let readError: Error | undefined;
   const readRequests: unknown[] = [];
+  const moduleInventoryReads: { accountId: string; networkId: string }[] = [];
   let signWait: Promise<void> = Promise.resolve();
   let storageWait: Promise<void> = Promise.resolve();
   let preparationError: Error | undefined;
@@ -271,6 +274,14 @@ function fixture(
     walletBindingId: 'd4'.repeat(32),
     supportsAtomicCalls: () => Boolean(options.smart && options.batch),
     supportsSmartAccountMessages: () => Boolean(options.smart && options.smartMessages),
+    readSmartAccountModules(accountId, networkId, check) {
+      check(); moduleInventoryReads.push({ accountId, networkId });
+      assert.equal(accountId, firstAccountId); assert.equal(networkId, 'ethereum');
+      return getSmartAccountModulesProjection({ address: ADDRESS, isSmartAccount: smart,
+        smartAccount: { chainId: 1, contractVersion: 'fixture', isDeployed: true, deploymentSalt: '0x00',
+          auth: { module: 'ecdsa', validator: '0x' + '33'.repeat(20), data: '0x1234' },
+          installedModules: [{ id: 'ecdsa', address: '0x' + '33'.repeat(20), type: 'validator', data: '0x1234', config: { owners: [ADDRESS], threshold: 1 } }] } }, selectedChainId);
+    },
     async prepareCalls(input, check) {
       check(); await preparationWait; check();
       assert(options.batch && options.smart);
@@ -448,6 +459,7 @@ function fixture(
         chains: [options.utxo ? dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }) : 'eip155:1'],
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
+          ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
@@ -480,6 +492,7 @@ function fixture(
         chains: [options.utxo ? dappCaipChain({ ...getUtxoNetwork('syscoin'), kind: 'syscoin' }) : 'eip155:1'],
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
+          ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
@@ -652,7 +665,7 @@ function fixture(
   });
   return {
     controller,
-    controlCommits, externalUrls, readRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
+    controlCommits, externalUrls, readRequests, moduleInventoryReads, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
     setPsbtWait(value: Promise<void>) { psbtWait = value; },
     setPsbtSignWait(value: Promise<void>) { psbtSignWait = value; },
     psbtDisposals: () => psbtDisposals,
@@ -1622,6 +1635,7 @@ async function connectedFixture(
     utxo?: boolean;
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
+    moduleInventory?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -4682,4 +4696,78 @@ test('fresh Smart Trezor message rebuilds consent after unlock without changing 
     assert.equal(f.signatures.length,1);assert.equal(f.responses.length,0);
     await f.view.approveRequest(fresh.id,fresh.revision,true);assert.equal(f.signatures.length,2);assert.equal(f.responses.length,1);
   }finally{held.resolve();await f.controller.dispose();}
+});
+
+test('connected Smart module inventory uses the shared public projection without RPC, signing or persistence', async () => {
+  const f = await connectedFixture({ smart: true, moduleInventory: true, accountId: 'smart:60:0' });
+  try {
+    assert(f.session.namespaces.eip155!.methods.includes('wallet_getSmartAccountModules'));
+    const persisted = JSON.stringify([...f.rows]);
+    await messageRequest(f, 'wallet_getSmartAccountModules', []);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: {
+      address: ADDRESS, chainId: '0x1', deployed: true,
+      installed: [{ address: '0x' + '33'.repeat(20), id: 'ecdsa', moduleType: 1, name: undefined }],
+      activeValidator: '0x' + '33'.repeat(20),
+    } } });
+    assert.deepEqual(f.moduleInventoryReads, [{ accountId: 'smart:60:0', networkId: 'ethereum' }]);
+    assert.equal(f.readRequests.length, 0); assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    assert.equal(f.view.getSnapshot().signingReview, null); assert.equal(JSON.stringify([...f.rows]), persisted);
+  } finally { await f.controller.dispose(); }
+});
+
+test('connected EOA module inventory preserves the extension invalid-request behavior', async () => {
+  const f = await connectedFixture({ moduleInventory: true });
+  try {
+    await messageRequest(f, 'wallet_getSmartAccountModules', []);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { error: { code: -32600, message: 'The connected account is not a smart account' } } });
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const change of ['method', 'account'] as const) test(`Smart module inventory refuses a changed ${change} grant namespace`, async () => {
+  const f = await connectedFixture({ smart: true, moduleInventory: true, accountId: 'smart:60:0' });
+  try {
+    if (change === 'method') Object.assign(f.session.namespaces.eip155!, { methods: f.session.namespaces.eip155!.methods.filter(method => method !== 'wallet_getSmartAccountModules') });
+    else Object.assign(f.session.namespaces.eip155!, { accounts: [`eip155:1:0x${'22'.repeat(20)}`] });
+    await messageRequest(f, 'wallet_getSmartAccountModules', []);
+    const response = f.responses.at(-1) as { result: { error: { code: number } } };
+    assert.equal(response.result.error.code, 4100); assert.equal(f.moduleInventoryReads.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const change of ['lock', 'network', 'session'] as const) test(`Smart module inventory cannot deliver after ${change} revocation`, async () => {
+  const f = await connectedFixture({ smart: true, moduleInventory: true, accountId: 'smart:60:0' });
+  let release!: () => void;
+  try {
+    f.setResponseWait(new Promise(resolve => { release = resolve; }));
+    await messageRequest(f, 'wallet_getSmartAccountModules', []);
+    assert.equal(f.moduleInventoryReads.length, 1);
+    if (change === 'lock') f.lock(); else if (change === 'network') f.selectChain(5700); else f.event({ type: 'session-ended', topic: TOPIC });
+    release(); await settle();
+    assert.equal(f.responses.length, 0); assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+for (const type of ['Ledger', 'Trezor', 'UTXO'] as const) test(`Smart module inventory is not negotiated for ${type} accounts`, async () => {
+  const f = await connectedFixture(type === 'UTXO' ? { moduleInventory: true, utxo: true }
+    : { moduleInventory: true, hardware: type, accountId: `${type.toLowerCase()}:60:0` });
+  try {
+    assert(!Object.values(f.session.namespaces).some(namespace => namespace.methods.includes('wallet_getSmartAccountModules')));
+    assert.equal(f.moduleInventoryReads.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart module inventory cannot disclose after its response deadline expires', async t => {
+  const f = await connectedFixture({ smart: true, moduleInventory: true, accountId: 'smart:60:0' });
+  let release!: () => void;
+  try {
+    f.setResponseWait(new Promise(resolve => { release = resolve; }));
+    const expiresAt = Date.now() + 1000;
+    f.event({ type: 'request', request: { freshness: 'fresh', id: 10, session: f.session, chainId: 'eip155:1',
+      method: 'wallet_getSmartAccountModules', params: [], expiresAt, verification: UNKNOWN } });
+    await settle(); assert.equal(f.moduleInventoryReads.length, 1);
+    t.mock.method(Date, 'now', () => expiresAt + 1);
+    release(); await settle(); assert.equal(f.responses.length, 0);
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+  } finally { release?.(); await f.controller.dispose(); }
 });
