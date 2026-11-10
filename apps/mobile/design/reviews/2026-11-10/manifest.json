@@ -21,11 +21,11 @@
         390,
         844
       ],
-      "actual_sha256": "2c99d7e74ce4e73ac33c968c824f01b04a581cf8790a8f2098df2dc947faf0a4",
+      "actual_sha256": "ff8a9e606da324157c2fbda20c252569a2c3d65c33457bb649ba251cb4c012d2",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-01-320.png",
-      "comparison_sha256": "1698d4e1519efd52648b61de9a37bd884ad8f7293bc96ff4426c1e41ac46391f"
+      "comparison_sha256": "d0aa4998d47b400b64c5c85ff0b8c6ef80adad0d7a87dc025bfe36dcb4e34695"
     },
     {
       "page": 2,
@@ -159,11 +159,11 @@
         390,
         844
       ],
-      "actual_sha256": "f4fd9e2d6f6e0cf7734275e944b93f405c423ce5646c3b60c0f82a52fb588759",
+      "actual_sha256": "9607553560ebe9897d32cc6a84f2560ce256363fa8aa50b47c2fc0f6d7b1b0d5",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-07-320.png",
-      "comparison_sha256": "53660710695358451403ce751f041dd12cc487e6d9e7aaf3bd13b953505611f4"
+      "comparison_sha256": "d0628573be00d08b711cee8120f7b6ea247127466c002a9c02b8265d153794b3"
     },
     {
       "page": 8,
@@ -209,11 +209,11 @@
         390,
         844
       ],
-      "actual_sha256": "3c8f17315e17e8d1b40354d8be823fd5ab000993e11b79fe4be5a618f7f8fbb6",
+      "actual_sha256": "b7419e59f9e84efd28322ad194ab616cdc9789854d6e4fbfb2cb0249aeb2a770",
       "reference": "PDF reference embedded in comparison image",
       "video_source": "video-0.png",
       "narrow_actual": "actual/actual-09-320.png",
-      "comparison_sha256": "083fa5540fee82fe6e417aa0e34e06e12d4ea2cc0866b0b45cb961d59f55ff15"
+      "comparison_sha256": "ec621c8386ab4f12a5ecb024d0da59f8c36344768c9ed0ba57bf126546585ca6"
     },
     {
       "page": 10,
@@ -293,7 +293,7 @@
       "component": "NativeSend",
       "status": "implemented",
       "actual_label": "Authorize send",
-      "note": "Explicit biometric action with PIN fallback. On device the label follows Face ID, Touch ID or fingerprint; the browser uses generic biometrics. The PIN-only state is also captured. No OS biometric prompt is simulated.",
+      "note": "When enabled, biometrics are requested automatically once. The same authorization page keeps PIN fallback and a biometric retry button. This capture shows the fallback after a simulated refusal; no real OS prompt is represented.",
       "title": "Authorize Send",
       "comparison": "13-authorize-send.png",
       "comparison_size": [
@@ -305,11 +305,11 @@
         390,
         844
       ],
-      "actual_sha256": "ec809fd971477325ae72985d407cac4c6488760c1f6f1ea8aa9f2374678abe42",
+      "actual_sha256": "617e312beed38354134d518bdbd43a3460a33873d3b6d86472e8356c19522f40",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-13-320.png",
-      "comparison_sha256": "6f480259b85b567603d636d1f5cf6ea006a97d11b9682fa7a1b36f0f69947514"
+      "comparison_sha256": "af7d959edef160baec630d78c8b48f235cf6e52412902b01e2aa228f25056766"
     },
     {
       "page": 14,
@@ -374,11 +374,11 @@
         390,
         844
       ],
-      "actual_sha256": "57959bbe72e72b20e91a3f9a896861621e8d8d40a52a3e96c32a372a9ce38314",
+      "actual_sha256": "aa7c552e8508e581cccdcbc885ba3c907e71abb6f25af6443d04afe37bbc984a",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-16-320.png",
-      "comparison_sha256": "5959d9e36c5c21215b0a9325e4ee8fdbb96bb853d63093bf662abbd7931d74be"
+      "comparison_sha256": "ae4dc697a9ccea06e37ec935a579e854a6532a4087a1c44a9511676b5d862674"
     },
     {
       "page": 17,
@@ -520,11 +520,11 @@
         390,
         844
       ],
-      "actual_sha256": "b3b08c03e39f08290f3de8d5c22d93afa8917fb9e6cc15c6a0c983b2a78d849b",
+      "actual_sha256": "2a11dc45fe15d23ebbdf56d07b372d8f3778ed7726658b7b60a4ab2d31405c7a",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-22-320.png",
-      "comparison_sha256": "479ff5a08b46e8523bcfa9cc631c830638e10aca4fb12856bd94d4af627263a2"
+      "comparison_sha256": "f979639d8907d629430fe4171a02ec312a6ca5516972e01dc2c7e5fedb5bbd8e"
     },
     {
       "page": 23,
@@ -681,11 +681,11 @@
         390,
         844
       ],
-      "actual_sha256": "1594eda137b46806837cec01d74b96b6cbdc2b2f2d011fff5f115d3602cfd437",
+      "actual_sha256": "ab51138356beb7c388d485ef5d76e6faa00694b4ac13fe55398b4c63d1a921a4",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-29-320.png",
-      "comparison_sha256": "b4841a7e201d68af1538ff3fd9fcdabc355fcea4d5481672d3c966bc469e936a"
+      "comparison_sha256": "d9bf8671a77b0fa38552dc09e6a1eb5894e63178c80e2ce76f0a43268fad75b2"
     },
     {
       "page": 30,
@@ -727,11 +727,11 @@
         390,
         844
       ],
-      "actual_sha256": "30f8646f31a721f8561ec5d19870b7b10213f44e8b482e41f817848e22e23665",
+      "actual_sha256": "04d3a8cbc58080ec7c8397c3de0ed62e255da090b8fc0797ff07cd67fb39871a",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-31-320.png",
-      "comparison_sha256": "cc885248442d62ea5dd457c9a1fbca7fe3a72ddcd2dfeabdf6fb391be94f2520"
+      "comparison_sha256": "7ac3d00197f22eadc3ac274302f4859c58695376abee04b1b643f5e355341b92"
     },
     {
       "page": 32,
@@ -757,6 +757,6 @@
       "comparison_sha256": "18da6ab8c6c5ca1e2ad140b2eed0d2541d4b98c6f56449b1109ebe0129496b9e"
     }
   ],
-  "source_commit": "a5a188be5e5114fc924b6596379142ea65c72a04",
+  "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
   "capture_method": "Actual React Native components with synthetic adapters at 390x844 and 320x568. No native-device qualification."
 }

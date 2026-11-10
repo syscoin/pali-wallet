@@ -2,7 +2,7 @@
 
 The 32 reference screens below compare the supplied PDF with **actual implemented React Native components**. Home, Send, Receive and Activity also include video stills. Each screen includes a narrow 320px capture.
 
-Source: `a5a188be5e5114fc924b6596379142ea65c72a04`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
+Source: `04466c2e9498dfd250ac575e393db72fceec0e1f`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
 
 The update implements six-digit PIN creation/confirmation, optional native biometric entry, locked and recovery flows, operation-bound send authorization, and ordered-word backup verification. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release are documented in `vendor/sysweb3-operation/REVIEWED-CANDIDATE.json`.
 
@@ -206,7 +206,7 @@ Component: `NativeSend`
 <details>
 <summary>13. Authorize Send</summary>
 
-Explicit biometric action with PIN fallback. On device the label follows Face ID, Touch ID or fingerprint; the browser uses generic biometrics. The PIN-only state is also captured. No OS biometric prompt is simulated.
+When enabled, biometrics are requested automatically once. The same authorization page keeps PIN fallback and a biometric retry button. This capture shows the fallback after a simulated refusal; no real OS prompt is represented.
 
 ![Authorize Send: reference and implementation](13-authorize-send.png)
 
@@ -987,15 +987,15 @@ Component: `Onboarding / AddWatchAccount`
 </details>
 
 <details>
-<summary>48-asset-details: Native coin details</summary>
+<summary>48-asset-details: Native coin details and market chart</summary>
 
-Component: `NativePortfolio (native-asset view) / AssetMarketCard`
+Component: `NativePortfolio / AssetMarketCard`
 
-The existing fixture has no successful market-history provider; the actual unavailable state is shown. No chart data was invented.
+Healthy chart and market view using explicitly synthetic CoinGecko-shaped data. The production app requests live CoinGecko data.
 
-![Native coin details at 390px](extras/48-asset-details-390.png)
+![Native coin details and market chart at 390px](extras/48-asset-details-390.png)
 
-![Native coin details at 320px](extras/48-asset-details-320.png)
+![Native coin details and market chart at 320px](extras/48-asset-details-320.png)
 
 </details>
 
@@ -1011,15 +1011,15 @@ Component: `NativePortfolio / WalletBackupBadge`
 </details>
 
 <details>
-<summary>50-synthetic-market-chart: Healthy market chart — synthetic data</summary>
+<summary>50-market-unavailable: Market data unavailable — offline error state</summary>
 
 Component: `NativePortfolio / AssetMarketCard`
 
-Explicitly synthetic CoinGecko-shaped data from the tests/assetMarket.test.ts contract: 2,200 USD, -1.2%, 2,100/2,300 low/high, 250 billion USD cap, four seven-day samples. No remote market data was fetched.
+Deliberately blocked network response showing the error and retry state. This is not the normal ETH market screen.
 
-![Healthy market chart — synthetic data at 390px](extras/50-synthetic-market-chart-390.png)
+![Market data unavailable — offline error state at 390px](extras/50-market-unavailable-390.png)
 
-![Healthy market chart — synthetic data at 320px](extras/50-synthetic-market-chart-320.png)
+![Market data unavailable — offline error state at 320px](extras/50-market-unavailable-320.png)
 
 </details>
 
@@ -1105,7 +1105,7 @@ Component: `NativeInfrastructure`
 
 Component: `NativeSend`
 
-Actual review configured for biometrics, with an explicit Use PIN instead alternative. No confirmation button is pressed: no OS prompt, biometric proof, signature or submission is performed.
+The normal review uses one Confirm and send action. With biometrics enabled, it automatically requests the native proof; the same authorization page retains PIN fallback. No confirmation is pressed in this capture.
 
 ![Biometric-enabled transaction review at 390px](extras/58-biometric-transaction-auth-390.png)
 
