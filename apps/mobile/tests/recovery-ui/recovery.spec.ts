@@ -16,7 +16,7 @@ async function entry(page: Page, query = '') {
 }
 async function fill(page: Page, phrase = PHRASE) {
   const words = phrase.split(' ');
-  if (words.length === 24) await page.getByRole('button', { name: '24 words', exact: true }).click();
+  if (words.length === 24) await page.getByRole('tab', { name: '24 words', exact: true }).click();
   for (const [index, word] of words.entries()) await page.getByRole('textbox', { name: `Recovery word ${index + 1}`, exact: true }).fill(word);
 }
 async function submitPin(page: Page, confirm = PIN) {
