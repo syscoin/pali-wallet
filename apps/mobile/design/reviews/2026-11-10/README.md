@@ -2,7 +2,7 @@
 
 The 32 reference screens below compare the supplied PDF with **actual implemented React Native components**. Home, Send, Receive and Activity also include video stills. Each screen includes a narrow 320px capture.
 
-Source: `afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
+Source: `a5a188be5e5114fc924b6596379142ea65c72a04`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
 
 The update implements six-digit PIN creation/confirmation, optional native biometric entry, locked and recovery flows, operation-bound send authorization, and ordered-word backup verification. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release are documented in `vendor/sysweb3-operation/REVIEWED-CANDIDATE.json`.
 
@@ -10,7 +10,7 @@ Remaining gaps are stated per screen. In particular, background activity notific
 
 [All-screen contact sheet](contact-sheet.png) · [Capture manifest](manifest.json) · [Additional implemented screens](extras/README.md)
 
-Conditional states: [Local transaction detail after View transaction](actual/actual-14-local-detail.png) · [Unbacked wallet and Settings](extras/README.md) · [Backed-up removal](actual/actual-26-backed-up.png) · [Populated connections](actual/actual-27-connected.png) · [Populated connections at 320px](actual/actual-27-connected-320.png)
+Conditional states: [PIN-only send authorization](actual/actual-13-pin.png) · [Local transaction detail after View transaction](actual/actual-14-local-detail.png) · [Unbacked wallet and Settings](extras/README.md) · [Backed-up removal](actual/actual-26-backed-up.png) · [Populated connections](actual/actual-27-connected.png) · [Populated connections at 320px](actual/actual-27-connected-320.png)
 
 | PDF page | Comparison | Narrow actual | Presentation status |
 | --- | --- | --- | --- |
@@ -206,7 +206,7 @@ Component: `NativeSend`
 <details>
 <summary>13. Authorize Send</summary>
 
-Real six-digit PIN fallback. With biometrics enabled, the reviewed Send action invokes the native prompt once; cancellation returns to review. This browser capture cannot qualify native biometrics.
+Explicit biometric action with PIN fallback. On device the label follows Face ID, Touch ID or fingerprint; the browser uses generic biometrics. The PIN-only state is also captured. No OS biometric prompt is simulated.
 
 ![Authorize Send: reference and implementation](13-authorize-send.png)
 
@@ -1178,6 +1178,17 @@ Actual PIN authentication UI only. No PIN is entered into this review, no signat
 ![PIN transaction confirmation at 390px](extras/64-pin-transaction-auth-390.png)
 
 ![PIN transaction confirmation at 320px](extras/64-pin-transaction-auth-320.png)
+
+</details>
+
+<details>
+<summary>65-smart-send-form: Smart account send form</summary>
+
+Component: `NativeSmartAccountSend / SendNetworkCard`
+
+![Smart account send form at 390px](extras/65-smart-send-form-390.png)
+
+![Smart account send form at 320px](extras/65-smart-send-form-320.png)
 
 </details>
 

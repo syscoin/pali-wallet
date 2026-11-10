@@ -1,6 +1,6 @@
 {
-  "started": "2026-11-10T19:48:02.227Z",
-  "updated": "2026-11-10T19:48:14.984Z",
+  "started": "2026-11-10T20:20:13.840Z",
+  "updated": "2026-11-10T20:20:27.959Z",
   "report": [
     {
       "id": "01-watch-wallet",
@@ -26,54 +26,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "02-account-manager",
-      "label": "Native account manager",
-      "component": "NativeAccounts",
-      "url": "http://127.0.0.1:4291/?accounts=1",
-      "steps": [],
-      "width": 390,
-      "height": 844,
-      "image": "02-account-manager-390.png",
-      "capturedAt": "2026-11-10T19:36:50.081Z",
-      "note": null,
-      "text": "Accounts\nEVM · Wallet accounts\nChoose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.\nAccount 1\nSelected\nRecovery phrase account\n0x00000000…000001\nAccount 2\nRecovery phrase account\n0x00000000…000002",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "03-create-account",
-      "label": "Create another software account",
-      "component": "NativeAccounts",
-      "url": "http://127.0.0.1:4291/?accounts=1",
-      "steps": [
-        "Add account",
-        "Create account"
-      ],
-      "width": 390,
-      "height": 844,
-      "image": "03-create-account-390.png",
-      "capturedAt": "2026-11-10T19:36:51.274Z",
-      "note": null,
-      "text": "Add an account\nEVM · Wallet accounts\nAccount name\nOne recovery phrase, another address\nThis account is derived from your existing recovery phrase. Keep that phrase backed up offline.\nConfirm wallet PIN\nEnter PIN\nCreate account",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "04-network-add",
@@ -97,7 +50,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "05-token-assets",
@@ -121,7 +74,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "06-import-token",
@@ -148,7 +101,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "07-token-review",
@@ -176,7 +129,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "08-collectible-discovery",
@@ -203,7 +156,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "09-collectible-ownership",
@@ -230,7 +183,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "12-erc20-send",
@@ -252,7 +205,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "13-erc1155-send",
@@ -274,7 +227,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "14-guardian-policy",
@@ -298,7 +251,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "15-guardian-policy-edit",
@@ -323,7 +276,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "16-smart-guardian-recovery",
@@ -345,7 +298,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "17-guardian-recovery-review",
@@ -371,7 +324,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "18-slh-keys",
@@ -395,7 +348,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "19-slh-installed",
@@ -419,7 +372,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "20-smart-transfer",
@@ -441,7 +394,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "21-smart-deployment",
@@ -463,7 +416,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "22-smart-batch",
@@ -485,7 +438,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "23-eoa-batch",
@@ -507,7 +460,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "24-private-deposit",
@@ -529,7 +482,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "25-private-deposit-review",
@@ -553,29 +506,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "26-private-notes",
-      "label": "Private note inventory",
-      "component": "NativeNoteInventory",
-      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
-      "steps": [],
-      "width": 390,
-      "height": 844,
-      "image": "26-private-notes-390.png",
-      "capturedAt": "2026-11-10T19:37:20.075Z",
-      "note": null,
-      "text": "Saved notes\nOpen a note to check its pool status or make a backup.\n1 ETH pool\nNote 1 · 11/1/2025\nLock wallet",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "27-private-withdrawal",
@@ -601,7 +532,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "28-import-note",
@@ -623,7 +554,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "29-sentry-keys",
@@ -645,7 +576,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "30-sentry-service",
@@ -669,7 +600,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "31-sentry-nodes",
@@ -691,7 +622,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "32-sentry-consent",
@@ -713,7 +644,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "33-ledger-connect",
@@ -737,7 +668,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "34-ledger-account",
@@ -762,7 +693,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "35-trezor-import",
@@ -784,7 +715,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "36-trezor-smart-resume",
@@ -806,7 +737,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "37-message-signature",
@@ -828,29 +759,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "38-dapp-network-request",
-      "label": "Dapp network-change approval",
-      "component": "NativeDappControlReview",
-      "url": "http://127.0.0.1:4291/?control-consent=1",
-      "steps": [],
-      "width": 390,
-      "height": 844,
-      "image": "38-dapp-network-request-390.png",
-      "capturedAt": "2026-11-10T19:37:33.971Z",
-      "note": null,
-      "text": "Add network\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nExample network\nChain ID 12345 · COIN\nRPC endpoint\nhttps://rpc.example.test\nAdd network\nReject",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "39-auto-lock",
@@ -879,7 +788,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "40-biometric-settings",
@@ -908,7 +817,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "41-import-private-key",
@@ -938,7 +847,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "42-display-currency",
@@ -966,7 +875,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "43-languages",
@@ -994,7 +903,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "44-help-about",
@@ -1022,7 +931,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "45-private-key-auth",
@@ -1051,7 +960,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "46-watch-address-form",
@@ -1078,7 +987,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "47-watch-utxo-key",
@@ -1107,7 +1016,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "48-asset-details",
@@ -1134,7 +1043,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "49-backup-required-home",
@@ -1160,7 +1069,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "50-synthetic-market-chart",
@@ -1190,29 +1099,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "51-smart-modules",
-      "label": "Installed Smart account modules",
-      "component": "NativeSmartAccountModules",
-      "url": "http://127.0.0.1:4291/?smart-modules=1",
-      "steps": [],
-      "width": 390,
-      "height": 844,
-      "image": "51-smart-modules-390.png",
-      "capturedAt": "2026-11-10T19:37:53.799Z",
-      "note": null,
-      "text": "Modules\nEthereum\n0x1111111111111111111111111111111111111111\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nActive\nIndependent approval service\n0x3333333333333333333333333333333333333333\nInstalled\nSpare validator\n0x4444444444444444444444444444444444444444\nInstalled\nUninstall\nCombined approvals\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nInstalled\nUninstall\nCustom validator\nCombined approvals\nCheck status\nClose",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "52-custom-validator-consent",
@@ -1240,7 +1127,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "53-composite-approvals",
@@ -1264,7 +1151,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "55-smart-creation-consent",
@@ -1288,7 +1175,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "58-biometric-transaction-auth",
@@ -1314,7 +1201,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "59-backup-required-settings",
@@ -1341,7 +1228,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "60-backup-required-security",
@@ -1369,7 +1256,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "01-watch-wallet",
@@ -1395,54 +1282,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "02-account-manager",
-      "label": "Native account manager",
-      "component": "NativeAccounts",
-      "url": "http://127.0.0.1:4291/?accounts=1",
-      "steps": [],
-      "width": 320,
-      "height": 568,
-      "image": "02-account-manager-320.png",
-      "capturedAt": "2026-11-10T19:38:49.366Z",
-      "note": null,
-      "text": "Accounts\nEVM · Wallet accounts\nChoose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.\nAccount 1\nSelected\nRecovery phrase account\n0x00000000…000001\nAccount 2\nRecovery phrase account\n0x00000000…000002",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "03-create-account",
-      "label": "Create another software account",
-      "component": "NativeAccounts",
-      "url": "http://127.0.0.1:4291/?accounts=1",
-      "steps": [
-        "Add account",
-        "Create account"
-      ],
-      "width": 320,
-      "height": 568,
-      "image": "03-create-account-320.png",
-      "capturedAt": "2026-11-10T19:38:50.560Z",
-      "note": null,
-      "text": "Add an account\nEVM · Wallet accounts\nAccount name\nOne recovery phrase, another address\nThis account is derived from your existing recovery phrase. Keep that phrase backed up offline.\nConfirm wallet PIN\nEnter PIN\nCreate account",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "04-network-add",
@@ -1466,7 +1306,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "05-token-assets",
@@ -1490,7 +1330,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "06-import-token",
@@ -1517,7 +1357,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "07-token-review",
@@ -1545,7 +1385,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "08-collectible-discovery",
@@ -1572,7 +1412,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "09-collectible-ownership",
@@ -1599,7 +1439,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "12-erc20-send",
@@ -1621,7 +1461,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "13-erc1155-send",
@@ -1643,7 +1483,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "14-guardian-policy",
@@ -1667,7 +1507,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "15-guardian-policy-edit",
@@ -1692,7 +1532,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "16-smart-guardian-recovery",
@@ -1714,7 +1554,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "17-guardian-recovery-review",
@@ -1740,7 +1580,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "18-slh-keys",
@@ -1764,7 +1604,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "19-slh-installed",
@@ -1788,7 +1628,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "20-smart-transfer",
@@ -1810,7 +1650,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "21-smart-deployment",
@@ -1832,7 +1672,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "22-smart-batch",
@@ -1854,7 +1694,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "23-eoa-batch",
@@ -1876,7 +1716,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "24-private-deposit",
@@ -1898,7 +1738,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "25-private-deposit-review",
@@ -1922,29 +1762,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "26-private-notes",
-      "label": "Private note inventory",
-      "component": "NativeNoteInventory",
-      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
-      "steps": [],
-      "width": 320,
-      "height": 568,
-      "image": "26-private-notes-320.png",
-      "capturedAt": "2026-11-10T19:39:19.602Z",
-      "note": null,
-      "text": "Saved notes\nOpen a note to check its pool status or make a backup.\n1 ETH pool\nNote 1 · 11/1/2025\nLock wallet",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "27-private-withdrawal",
@@ -1970,7 +1788,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "28-import-note",
@@ -1992,7 +1810,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "29-sentry-keys",
@@ -2014,7 +1832,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "30-sentry-service",
@@ -2038,7 +1856,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "31-sentry-nodes",
@@ -2060,7 +1878,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "32-sentry-consent",
@@ -2082,7 +1900,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "33-ledger-connect",
@@ -2106,7 +1924,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "34-ledger-account",
@@ -2131,7 +1949,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "35-trezor-import",
@@ -2153,7 +1971,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "36-trezor-smart-resume",
@@ -2175,7 +1993,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "37-message-signature",
@@ -2197,29 +2015,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "38-dapp-network-request",
-      "label": "Dapp network-change approval",
-      "component": "NativeDappControlReview",
-      "url": "http://127.0.0.1:4291/?control-consent=1",
-      "steps": [],
-      "width": 320,
-      "height": 568,
-      "image": "38-dapp-network-request-320.png",
-      "capturedAt": "2026-11-10T19:39:33.465Z",
-      "note": null,
-      "text": "Add network\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nExample network\nChain ID 12345 · COIN\nRPC endpoint\nhttps://rpc.example.test\nAdd network\nReject",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "39-auto-lock",
@@ -2248,7 +2044,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "40-biometric-settings",
@@ -2277,7 +2073,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "41-import-private-key",
@@ -2307,7 +2103,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "42-display-currency",
@@ -2335,7 +2131,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "43-languages",
@@ -2363,7 +2159,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "44-help-about",
@@ -2391,7 +2187,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "45-private-key-auth",
@@ -2420,7 +2216,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "46-watch-address-form",
@@ -2447,7 +2243,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "47-watch-utxo-key",
@@ -2476,7 +2272,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "48-asset-details",
@@ -2503,7 +2299,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "49-backup-required-home",
@@ -2529,7 +2325,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "50-synthetic-market-chart",
@@ -2559,29 +2355,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
-    },
-    {
-      "id": "51-smart-modules",
-      "label": "Installed Smart account modules",
-      "component": "NativeSmartAccountModules",
-      "url": "http://127.0.0.1:4291/?smart-modules=1",
-      "steps": [],
-      "width": 320,
-      "height": 568,
-      "image": "51-smart-modules-320.png",
-      "capturedAt": "2026-11-10T19:39:53.318Z",
-      "note": null,
-      "text": "Modules\nEthereum\n0x1111111111111111111111111111111111111111\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nActive\nIndependent approval service\n0x3333333333333333333333333333333333333333\nInstalled\nSpare validator\n0x4444444444444444444444444444444444444444\nInstalled\nUninstall\nCombined approvals\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nInstalled\nUninstall\nCustom validator\nCombined approvals\nCheck status\nClose",
-      "errors": [],
-      "blocked": [],
-      "mocked": [],
-      "assets": [
-        "http://127.0.0.1:4291/_expo/static/js/web/entry-00ac48edf0493a4f3dcaf594360f777a.js"
-      ],
-      "horizontalOverflow": false,
-      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "52-custom-validator-consent",
@@ -2609,7 +2383,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "53-composite-approvals",
@@ -2633,7 +2407,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "55-smart-creation-consent",
@@ -2657,7 +2431,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "58-biometric-transaction-auth",
@@ -2683,7 +2457,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "59-backup-required-settings",
@@ -2710,7 +2484,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "60-backup-required-security",
@@ -2738,7 +2512,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "10-evm-nonce",
@@ -2763,7 +2537,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "11-utxo-advanced",
@@ -2788,7 +2562,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "54-wallet-authenticator",
@@ -2810,7 +2584,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "56-infrastructure-status",
@@ -2832,7 +2606,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "57-infrastructure-fee",
@@ -2856,7 +2630,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "10-evm-nonce",
@@ -2881,7 +2655,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "11-utxo-advanced",
@@ -2906,7 +2680,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "54-wallet-authenticator",
@@ -2928,7 +2702,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "56-infrastructure-status",
@@ -2950,7 +2724,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "57-infrastructure-fee",
@@ -2974,7 +2748,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "61-change-pin-current",
@@ -3003,7 +2777,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "62-change-pin-create",
@@ -3033,7 +2807,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "63-change-pin-confirm",
@@ -3064,7 +2838,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "64-pin-transaction-auth",
@@ -3090,7 +2864,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "61-change-pin-current",
@@ -3119,7 +2893,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "62-change-pin-create",
@@ -3149,7 +2923,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "63-change-pin-confirm",
@@ -3180,7 +2954,7 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     },
     {
       "id": "64-pin-transaction-auth",
@@ -3206,10 +2980,280 @@
       ],
       "horizontalOverflow": false,
       "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
-      "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98"
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "65-smart-send-form",
+      "label": "Smart account send form",
+      "component": "NativeSmartAccountSend / SendNetworkCard",
+      "url": "http://127.0.0.1:4291/?smart-currency=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "65-smart-send-form-390.png",
+      "capturedAt": "2026-11-10T20:20:15.068Z",
+      "note": null,
+      "text": "Send ETH\nSmart account · Ethereum\nEthereum\nETH\nRecipient address\nAmount in ETH\nMAX\nAvailable 5.0 ETH\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "02-account-manager",
+      "label": "Native account manager",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "02-account-manager-390.png",
+      "capturedAt": "2026-11-10T20:20:16.226Z",
+      "note": null,
+      "text": "Accounts\nEVM · Wallet accounts\nChoose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.\nAccount 1\nSelected\nRecovery phrase account\n0x00000000…000001\nAccount 2\nRecovery phrase account\n0x00000000…000002",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "03-create-account",
+      "label": "Create another software account",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [
+        "Add account",
+        "Create account"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "03-create-account-390.png",
+      "capturedAt": "2026-11-10T20:20:17.440Z",
+      "note": null,
+      "text": "Add an account\nEVM · Wallet accounts\nAccount name\nOne recovery phrase, another address\nThis account is derived from your existing recovery phrase. Keep that phrase backed up offline.\nCreate account",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "26-private-notes",
+      "label": "Private note inventory",
+      "component": "NativeNoteInventory",
+      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "26-private-notes-390.png",
+      "capturedAt": "2026-11-10T20:20:18.602Z",
+      "note": null,
+      "text": "Saved notes\nOpen a note to check its pool status or make a backup.\n1 ETH pool\nNote 1 · 11/1/2025\nLock wallet",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "38-dapp-network-request",
+      "label": "Dapp network-change approval",
+      "component": "NativeDappControlReview",
+      "url": "http://127.0.0.1:4291/?control-consent=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "38-dapp-network-request-390.png",
+      "capturedAt": "2026-11-10T20:20:19.756Z",
+      "note": null,
+      "text": "Add network\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nExample network\nChain ID 12345 · COIN\nRPC endpoint\nhttps://rpc.example.test\nAdd network\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "51-smart-modules",
+      "label": "Installed Smart account modules",
+      "component": "NativeSmartAccountModules",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "51-smart-modules-390.png",
+      "capturedAt": "2026-11-10T20:20:20.905Z",
+      "note": null,
+      "text": "Modules\nEthereum\n0x1111111111111111111111111111111111111111\nPali wallet\nActive\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nIndependent approval service\nInstalled\n0x3333333333333333333333333333333333333333\nSpare validator\nInstalled\n0x4444444444444444444444444444444444444444\nUninstall\nCombined approvals\nInstalled\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nUninstall\nCustom validator\nCombined approvals\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "65-smart-send-form",
+      "label": "Smart account send form",
+      "component": "NativeSmartAccountSend / SendNetworkCard",
+      "url": "http://127.0.0.1:4291/?smart-currency=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "65-smart-send-form-320.png",
+      "capturedAt": "2026-11-10T20:20:22.066Z",
+      "note": null,
+      "text": "Send ETH\nSmart account · Ethereum\nEthereum\nETH\nRecipient address\nAmount in ETH\nMAX\nAvailable 5.0 ETH\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "02-account-manager",
+      "label": "Native account manager",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "02-account-manager-320.png",
+      "capturedAt": "2026-11-10T20:20:23.217Z",
+      "note": null,
+      "text": "Accounts\nEVM · Wallet accounts\nChoose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.\nAccount 1\nSelected\nRecovery phrase account\n0x00000000…000001\nAccount 2\nRecovery phrase account\n0x00000000…000002",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "03-create-account",
+      "label": "Create another software account",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [
+        "Add account",
+        "Create account"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "03-create-account-320.png",
+      "capturedAt": "2026-11-10T20:20:24.436Z",
+      "note": null,
+      "text": "Add an account\nEVM · Wallet accounts\nAccount name\nOne recovery phrase, another address\nThis account is derived from your existing recovery phrase. Keep that phrase backed up offline.\nCreate account",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "26-private-notes",
+      "label": "Private note inventory",
+      "component": "NativeNoteInventory",
+      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "26-private-notes-320.png",
+      "capturedAt": "2026-11-10T20:20:25.608Z",
+      "note": null,
+      "text": "Saved notes\nOpen a note to check its pool status or make a backup.\n1 ETH pool\nNote 1 · 11/1/2025\nLock wallet",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "38-dapp-network-request",
+      "label": "Dapp network-change approval",
+      "component": "NativeDappControlReview",
+      "url": "http://127.0.0.1:4291/?control-consent=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "38-dapp-network-request-320.png",
+      "capturedAt": "2026-11-10T20:20:26.777Z",
+      "note": null,
+      "text": "Add network\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nExample network\nChain ID 12345 · COIN\nRPC endpoint\nhttps://rpc.example.test\nAdd network\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
+    },
+    {
+      "id": "51-smart-modules",
+      "label": "Installed Smart account modules",
+      "component": "NativeSmartAccountModules",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "51-smart-modules-320.png",
+      "capturedAt": "2026-11-10T20:20:27.956Z",
+      "note": null,
+      "text": "Modules\nEthereum\n0x1111111111111111111111111111111111111111\nPali wallet\nActive\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nIndependent approval service\nInstalled\n0x3333333333333333333333333333333333333333\nSpare validator\nInstalled\n0x4444444444444444444444444444444444444444\nUninstall\nCombined approvals\nInstalled\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nUninstall\nCustom validator\nCombined approvals\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-ab289fe7e2e4cc7e5083fe11d933ddbc.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04"
     }
   ],
   "failures": [],
-  "sourceCheckpoint": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98",
+  "sourceCheckpoint": "a5a188be5e5114fc924b6596379142ea65c72a04",
   "sourceQualification": "All frames in this fresh batch render the same UI source checkpoint. Loaded asset URLs and capture timestamps are retained per frame. Synthetic public adapters do not qualify native devices, secrets or signing."
 }

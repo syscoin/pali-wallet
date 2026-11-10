@@ -293,7 +293,7 @@
       "component": "NativeSend",
       "status": "implemented",
       "actual_label": "Authorize send",
-      "note": "Real six-digit PIN fallback. With biometrics enabled, the reviewed Send action invokes the native prompt once; cancellation returns to review. This browser capture cannot qualify native biometrics.",
+      "note": "Explicit biometric action with PIN fallback. On device the label follows Face ID, Touch ID or fingerprint; the browser uses generic biometrics. The PIN-only state is also captured. No OS biometric prompt is simulated.",
       "title": "Authorize Send",
       "comparison": "13-authorize-send.png",
       "comparison_size": [
@@ -305,11 +305,11 @@
         390,
         844
       ],
-      "actual_sha256": "d48a298459e5a3b188867cecc56928ef1284bca85fbdbc8720b213fef0b05d3c",
+      "actual_sha256": "ec809fd971477325ae72985d407cac4c6488760c1f6f1ea8aa9f2374678abe42",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-13-320.png",
-      "comparison_sha256": "970f096badf1ae044a8b8221e628c28add0cf64dc7a0c8ccd8e8b27aa70e2fde"
+      "comparison_sha256": "6f480259b85b567603d636d1f5cf6ea006a97d11b9682fa7a1b36f0f69947514"
     },
     {
       "page": 14,
@@ -681,11 +681,11 @@
         390,
         844
       ],
-      "actual_sha256": "c3690c03801256ac8c9fc92ca73c2e7db927e5475af540f74b2bd9d959b93a11",
+      "actual_sha256": "1594eda137b46806837cec01d74b96b6cbdc2b2f2d011fff5f115d3602cfd437",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-29-320.png",
-      "comparison_sha256": "4fac9c9dbb0f6c47dd8d15da62b2dd6547337ab746866ddc6e6815874bf325e0"
+      "comparison_sha256": "b4841a7e201d68af1538ff3fd9fcdabc355fcea4d5481672d3c966bc469e936a"
     },
     {
       "page": 30,
@@ -727,11 +727,11 @@
         390,
         844
       ],
-      "actual_sha256": "9c667dcf2a64e9c5932b2502c855e16dac087004bf13cba993fff6a14ec0e40a",
+      "actual_sha256": "30f8646f31a721f8561ec5d19870b7b10213f44e8b482e41f817848e22e23665",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-31-320.png",
-      "comparison_sha256": "c4b714111bdd904d70a87a9533cfe88f1970b57dd78e310adffa834cf29b1a52"
+      "comparison_sha256": "cc885248442d62ea5dd457c9a1fbca7fe3a72ddcd2dfeabdf6fb391be94f2520"
     },
     {
       "page": 32,
@@ -757,6 +757,6 @@
       "comparison_sha256": "18da6ab8c6c5ca1e2ad140b2eed0d2541d4b98c6f56449b1109ebe0129496b9e"
     }
   ],
-  "source_commit": "afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98",
+  "source_commit": "a5a188be5e5114fc924b6596379142ea65c72a04",
   "capture_method": "Actual React Native components with synthetic adapters at 390x844 and 320x568. No native-device qualification."
 }

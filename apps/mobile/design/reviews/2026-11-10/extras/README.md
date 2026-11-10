@@ -1,8 +1,8 @@
 # Additional implemented screens
 
-64 feature states; 128 fresh captures at 390×844 and 320×568.
+65 feature states; 130 fresh captures at 390×844 and 320×568.
 
-UI source: afbd92d7fdf43ae8cedf946b4d2c7a88c1ea1c98. All frames use this source checkpoint; exact routes, timestamps and loaded asset URLs remain in manifest.json.
+UI source: a5a188be5e5114fc924b6596379142ea65c72a04. All frames use this source checkpoint; exact routes, timestamps and loaded asset URLs remain in manifest.json.
 
 All captures render actual RNWeb components with synthetic public fixture adapters. No physical hardware, device biometric/camera/keyboard, live funds, or live network signing is represented. All external network access was blocked. The healthy market chart uses locally fulfilled, explicitly synthetic test responses. Development-only copy may be visible because these are development fixture exports.
 
@@ -783,6 +783,18 @@ Actual PIN authentication UI only. No PIN is entered into this review, no signat
 ![PIN transaction confirmation at 390px](64-pin-transaction-auth-390.png)
 
 ![PIN transaction confirmation at 320px](64-pin-transaction-auth-320.png)
+
+## 65-smart-send-form — Smart account send form
+
+Component: NativeSmartAccountSend / SendNetworkCard.
+
+Route: http://127.0.0.1:4291/?smart-currency=1
+
+Actions: Initial state.
+
+![Smart account send form at 390px](65-smart-send-form-390.png)
+
+![Smart account send form at 320px](65-smart-send-form-320.png)
 
 ## Not represented
 
