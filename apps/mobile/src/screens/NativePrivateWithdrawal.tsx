@@ -22,10 +22,13 @@ import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { PinField } from './PinEntry';
+import { createNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
   note: NativeSavedNote;
-  open(signal: AbortSignal, assertCurrent: () => void): Promise<WithdrawalView>;
+  open(signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<WithdrawalView>;
+  authentication: NativePrivateAuthenticationScope;
   onBack(): void;
 };
 type Owner = {
@@ -35,6 +38,9 @@ type Owner = {
   controller?: WithdrawalView;
   opening?: Promise<void>;
   disposing?: Promise<void>;
+  authentication: NativePrivateAuthenticationScope;
+  parentAuthentication: NativePrivateAuthenticationScope;
+  source: Props['open'];
 };
 function disposeOwner(owner: Owner): Promise<void> {
   owner.disposing ??= Promise.resolve(owner.opening).then(async () => {
@@ -55,7 +61,7 @@ const recipientValid = (value: string) => {
 };
 const amount = (value: string) => `${formatBaseUnits(value, 18)} ETH`;
 
-export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
+export function NativePrivateWithdrawal({ note, open, onBack, authentication }: Props) {
   const owner = useRef<Owner | undefined>(undefined);
   const [opened, setOpened] = useState<{
     source: Props['open'];
@@ -65,8 +71,9 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
   }>();
   const back = useCallback(() => {
     const current = owner.current;
-    if (!current?.live) return;
+    if (!current?.live || current.source !== open || current.parentAuthentication !== authentication) return;
     current.live = false;
+    current.authentication.retire();
     current.returning = true;
     current.abort.abort();
     setOpened({ source: open, closing: true });
@@ -76,33 +83,35 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
       .then(() => {
         if (owner.current === current && current.returning) onBack();
       });
-  }, [onBack, open]);
+  }, [authentication, onBack, open]);
   useEffect(() => {
-    const current: Owner = { live: true, abort: new AbortController() };
+    const current: Owner = { live: true, abort: new AbortController(), source: open,
+      parentAuthentication: authentication, authentication: createNativePrivateAuthenticationChild(authentication) };
     owner.current = current;
     const check = () => {
       if (
-        !current.live ||
+        owner.current !== current || !current.live ||
         current.abort.signal.aborted ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, AppState.currentState))
       )
         throw new Error('privacy_cancelled');
     };
-    current.opening = open(current.abort.signal, check).then(
+    current.opening = Promise.resolve().then(() => { check(); return open(current.abort.signal, check, current.authentication); }).then(
       (controller) => {
         current.controller = controller;
-        if (current.live) setOpened({ source: open, controller });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, controller });
+        else { current.live = false; current.abort.abort(); void controller.dispose().catch(() => undefined); }
       },
       () => {
-        if (current.live) setOpened({ source: open, failed: true });
+        if (current.live && AppState.currentState === 'active') setOpened({ source: open, failed: true });
       }
     );
     const change = AppState.addEventListener('change', (next) => {
-      if (next !== 'active') back();
+      if (next !== 'active' && !allowsPrivateAuthenticationInterruption(current.authentication, next)) back();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', back)
+        ? AppState.addEventListener('blur', () => { if (!allowsPrivateAuthenticationInterruption(current.authentication, 'blur')) back(); })
         : undefined;
     const hardware = BackHandler.addEventListener('hardwareBackPress', () => {
       back();
@@ -110,6 +119,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
     });
     return () => {
       current.live = false;
+      current.authentication.retire();
       current.returning = false;
       current.abort.abort();
       void disposeOwner(current).catch(() => undefined);
@@ -117,7 +127,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
       blur?.remove();
       hardware.remove();
     };
-  }, [back, open]);
+  }, [authentication, back, open]);
   const current = opened?.source === open ? opened : undefined;
   if (current?.controller)
     return (

@@ -1,4 +1,5 @@
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { signingFixtureHost } from './unsupportedDappPorts.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -158,7 +159,7 @@ async function fixture(withSlhCache = false) {
         format: 'pali-private-notes', version: 1, createdAt: 20, notes: [NOTE],
       }, FILE_PASSWORD);
       try {
-        const service = await runtime.openNoteBackup!(current);
+        const service = await runtime.openNoteBackup!(current, createTestPrivateAuthentication(current));
         const id = service.begin();
         await service.prepareImport(id, bytes, FILE_PASSWORD);
         assert.equal((await service.commitImport(id, PASSWORD)).added, 1);

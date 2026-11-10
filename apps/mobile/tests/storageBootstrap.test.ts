@@ -1,3 +1,4 @@
+import { createTestPrivateAuthentication } from './fixtures/privateAuthentication.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -483,13 +484,13 @@ test('the native storage coordinator exposes note backup to the real keyring acr
     runtime = await factory.open() as KeyringRuntime;
     await runtime.session.importWallet(phrase, walletPassword);
     assert.ok(runtime.openNoteBackup, 'The coordinator must pass the note store to its keyring owner');
-    const restore = await runtime.openNoteBackup(current);
+    const restore = await runtime.openNoteBackup(current, createTestPrivateAuthentication(current));
     file = await codec.encrypt({ format: 'pali-private-notes', version: 1, createdAt: 20, notes: [note] }, backupPassword);
     const id = restore.begin();
     assert.equal((await restore.prepareImport(id, file, backupPassword)).added, 1);
     assert.equal((await restore.commitImport(id, walletPassword)).confirmed, true);
     assert.ok(runtime.openNoteCapacity);
-    const capacity = await runtime.openNoteCapacity(current);
+    const capacity = await runtime.openNoteCapacity(current, createTestPrivateAuthentication(current));
     const initial = await capacity.getCapacity();
     assert.equal(initial.capacity, 128);
     assert.equal(initial.noteCount, 1);
@@ -502,10 +503,10 @@ test('the native storage coordinator exposes note backup to the real keyring acr
     runtime = await factory.open() as KeyringRuntime;
     assert.deepEqual(await runtime.session.unlock(walletPassword), { authenticated: true });
     assert.ok(runtime.openNoteCapacity);
-    const reopened = await (await runtime.openNoteCapacity(current)).getCapacity();
+    const reopened = await (await runtime.openNoteCapacity(current, createTestPrivateAuthentication(current))).getCapacity();
     assert.deepEqual(reopened, updated);
     assert.ok(runtime.openNoteBackup);
-    const backup = await runtime.openNoteBackup(current);
+    const backup = await runtime.openNoteBackup(current, createTestPrivateAuthentication(current));
     const result = await backup.exportEncrypted(backup.begin(), walletPassword, backupPassword);
     exported = result.bytes;
     assert.deepEqual((await codec.decrypt(exported, backupPassword)).notes, [{ ...note, reconciliationRequired: true }]);

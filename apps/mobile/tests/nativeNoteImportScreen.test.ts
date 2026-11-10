@@ -4,6 +4,8 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
+import { createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
+import { allowsPrivateAuthenticationInterruption } from '../src/screens/privateAuthenticationLifecycle.ts';
 
 type Element = {
   type: unknown;
@@ -91,6 +93,8 @@ function fixture() {
       styles: {},
     },
     './IdleActivityBoundary': { IdleTextInput: 'Input' },
+    '../custody/privateAuthentication': { createNativePrivateAuthenticationScope },
+    './privateAuthenticationLifecycle': { allowsPrivateAuthenticationInterruption },
   };
   const module = { exports: {} as Record<string, any> };
   const source = readFileSync(

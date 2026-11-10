@@ -1,3 +1,4 @@
+import { bindNativePrivateAuthentication, bindNativePrivateAuthenticationChild, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication.ts';
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement.ts';
 import { createNativePrivacyServiceSettings } from './privacyServiceSettings.native';
 import type { NativePrivacyControls } from '../privacy/privacyControls';
@@ -403,7 +404,7 @@ export function createNativeWalletControllers() {
     if (initial.phase !== 'ready' || !selected)
       throw new CustodyOperationError('NOT_READY');
     const catalogue = selected.catalogue;
-    const assertCurrent = () => {
+    const assertBindingCurrent = () => {
       const current = authority.getSnapshot();
       if (selected !== runtime || current.phase !== 'ready' || current.revision !== initial.revision)
         throw new CustodyOperationError('CANCELLED');
@@ -411,8 +412,8 @@ export function createNativeWalletControllers() {
         authority.lock();
         throw new CustodyOperationError('CANCELLED');
       }
-      return assertOwner();
     };
+    const assertCurrent = () => { assertBindingCurrent(); return assertOwner(); };
     async function observeFailure<T>(action: () => Promise<T>): Promise<T> {
       try { return await action(); }
       catch (cause) {
@@ -420,7 +421,7 @@ export function createNativeWalletControllers() {
         throw cause;
       }
     }
-    return { selected, assertCurrent, observeFailure };
+    return { selected, assertCurrent, assertBindingCurrent, observeFailure };
   };
   const sentry = Object.freeze({
     available: () => authority.getSnapshot().phase === 'ready' && !!runtime?.getSentryKeyNetwork?.(),
@@ -513,11 +514,12 @@ export function createNativeWalletControllers() {
     await activity.refresh();
     assertCurrent();
   };
-  const openNoteBackup = async (assertOwner: () => void): Promise<NativeNoteBackupRuntime> => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openNoteBackup = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteBackupRuntime> => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     const open = selected.openNoteBackup;
     if (!open) throw new CustodyOperationError('NOT_READY');
-    const notes = await observeFailure(() => open(assertCurrent));
+    const notes = await observeFailure(() => open(assertCurrent, binding));
     return Object.freeze<NativeNoteBackupRuntime>({
       ...notes,
       prepareImport: (...args) => observeFailure(() => notes.prepareImport(...args)),
@@ -619,10 +621,11 @@ export function createNativeWalletControllers() {
     const send = await observeFailure(() => open(assertCurrent));
     return Object.freeze<NativeUtxoSend>({ ...send, confirm: (view, credential) => observeFailure(() => send.confirm(view, credential)) });
   };
-  const openNoteMaintenance = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeNoteMaintenanceRuntime> => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openNoteMaintenance = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteMaintenanceRuntime> => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     if (!selected.openNoteMaintenance) throw new CustodyOperationError('NOT_READY');
-    const value = await observeFailure(() => selected.openNoteMaintenance!(signal, assertCurrent));
+    const value = await observeFailure(() => selected.openNoteMaintenance!(signal, assertCurrent, binding));
     return Object.freeze({
       dispose: value.dispose,
       getNotes: guard => observeFailure(() => value.getNotes(guard)),
@@ -635,30 +638,33 @@ export function createNativeWalletControllers() {
     if (!selected.openPrivacyControls) throw new CustodyOperationError('NOT_READY');
     return observeFailure(() => selected.openPrivacyControls!(signal, assertCurrent));
   };
-  const openNoteCapacity = async (assertOwner: () => void): Promise<NativeNoteCapacityRuntime> => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openNoteCapacity = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteCapacityRuntime> => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     const open = selected.openNoteCapacity;
     if (!open) throw new CustodyOperationError('NOT_READY');
-    const capacity = await observeFailure(() => open(assertCurrent));
+    const capacity = await observeFailure(() => open(assertCurrent, binding));
     return Object.freeze<NativeNoteCapacityRuntime>({
       getCapacity: () => observeFailure(capacity.getCapacity),
       setCapacity: (limit) => observeFailure(() => capacity.setCapacity(limit)),
     });
   };
-  const readNoteInventory = async (assertOwner: () => void): Promise<NativeNoteInventory> => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const readNoteInventory = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteInventory> => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     const read = selected.readNoteInventory;
     if (!read) throw new CustodyOperationError('NOT_READY');
-    const inventory = await observeFailure(() => read(assertCurrent));
+    const inventory = await observeFailure(() => read(assertCurrent, binding));
     assertCurrent();
     return Object.freeze<NativeNoteInventory>({
       notes: inventory.notes,
       ...(inventory.checkNote ? { checkNote: (...args: Parameters<NonNullable<NativeNoteInventory['checkNote']>>) => observeFailure(() => inventory.checkNote!(...args)) } : {}),
       ...(inventory.openWithdrawal ? {
-        async openWithdrawal(...[note, signal, assertViewCurrent]: Parameters<NonNullable<NativeNoteInventory['openWithdrawal']>>) {
+        async openWithdrawal(...[note, signal, assertViewCurrent, scope]: Parameters<NonNullable<NativeNoteInventory['openWithdrawal']>>) {
+          bindNativePrivateAuthenticationChild(binding, scope);
           const check = () => { assertCurrent(); return assertViewCurrent(); };
           check();
-          const view = await observeFailure(() => inventory.openWithdrawal!(note, signal, check));
+          const view = await observeFailure(() => inventory.openWithdrawal!(note, signal, check, scope));
           try { check(); return view; }
           catch (error) { await view.dispose(); throw error; }
         },
@@ -671,15 +677,17 @@ export function createNativeWalletControllers() {
       },
     });
   };
-  const openPrivateDeposit = async (signal: AbortSignal, assertOwner: () => void) => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openPrivateDeposit = async (signal: AbortSignal, assertOwner: () => void, authentication: NativePrivateAuthenticationScope) => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     if (!selected.openPrivateDeposit) throw new CustodyOperationError('NOT_READY');
-    return observeFailure(() => selected.openPrivateDeposit!(signal, assertCurrent));
+    return observeFailure(() => selected.openPrivateDeposit!(signal, assertCurrent, binding));
   };
-  const openNoteImport = async (assertOwner: () => void): Promise<NativeNoteImportRuntime> => {
-    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+  const openNoteImport = async (assertOwner: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteImportRuntime> => {
+    const { selected, assertCurrent, assertBindingCurrent, observeFailure } = noteRoute(assertOwner);
+    const binding = bindNativePrivateAuthentication(authentication, { assertCurrent: assertBindingCurrent, isPromptActive: () => deviceUnlock.prompt.isActive() });
     if (!selected.openNoteImport) throw new CustodyOperationError('NOT_READY');
-    const importer = await observeFailure(() => selected.openNoteImport!(assertCurrent));
+    const importer = await observeFailure(() => selected.openNoteImport!(assertCurrent, binding));
     return Object.freeze({
       importNote: (note) => observeFailure(() => importer.importNote(note)),
       dispose: importer.dispose,

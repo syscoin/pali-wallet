@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import type { NativePrivateAuthenticationScope } from '../../src/custody/privateAuthentication';
 import { NativeNoteImport } from '../../src/screens/NativeNoteImport';
 import { Button, Screen, Text } from '../../src/ui';
 
@@ -6,7 +7,7 @@ const query = new URLSearchParams(window.location.search);
 // Public sample only. No real vault, public service or signer is available here.
 export function NativeNoteImportFixture() {
   const [closed, setClosed] = useState(false);
-  const open = useCallback(async (check: () => void) => {
+  const open = useCallback(async (check: () => void, _authentication: NativePrivateAuthenticationScope) => {
     check();
     return {
       async importNote() {

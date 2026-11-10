@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { KeyringAccountType } from '@sidhujag/sysweb3-keyring/cjs/types';
 import type { NativePrivateWithdrawalView as View } from '../../src/custody/privateWithdrawal';
 import type { NativeNoteInventory as Inventory } from '../../src/custody/noteBackupRuntime';
+import type { NativePrivateAuthenticationScope } from '../../src/custody/privateAuthentication';
 import { NativeNoteInventory } from '../../src/screens/NativeNoteInventory';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import { Text } from '../../src/ui';
@@ -27,7 +28,7 @@ window.__privateWithdrawalFixture = {
 export function NativePrivateWithdrawalFixture() {
   const [closed, setClosed] = useState(false);
   const readInventory = useCallback(
-    async (assertInventory: () => void): Promise<Inventory> => {
+    async (assertInventory: () => void, _authentication: NativePrivateAuthenticationScope): Promise<Inventory> => {
       assertInventory();
       events.push('inventory');
       const note = Object.freeze({
@@ -52,7 +53,7 @@ export function NativePrivateWithdrawalFixture() {
             blockNumber: 100,
           };
         },
-        async openWithdrawal(selected, signal, assertCurrent) {
+        async openWithdrawal(selected, signal, assertCurrent, _authentication) {
           if (selected !== note) throw new Error('Wrong fixture note');
           let disposed = false;
           let directoryReads = 0;

@@ -1,3 +1,4 @@
+import type { NativePrivateAuthenticationScope } from './privateAuthentication.ts';
 import { NativeOperationDrain } from './operationDrain.ts';
 import type { IPrivacyWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
 import type { IPrivacyDepositAttempt } from '../../../../source/utils/privacy/transactionTypes.ts';
@@ -37,7 +38,7 @@ export type NativeSavedNote = Readonly<{
 export type NativeNoteInventory = Readonly<{
   notes: readonly NativeSavedNote[];
   checkNote?(note: NativeSavedNote, assertCurrent: () => void): Promise<IPrivateNoteStatus>;
-  openWithdrawal?(note: NativeSavedNote, signal: AbortSignal, assertCurrent: () => void): Promise<NativePrivateWithdrawalView>;
+  openWithdrawal?(note: NativeSavedNote, signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativePrivateWithdrawalView>;
   revealNote(note: NativeSavedNote, password: string, assertCurrent: () => void): Promise<string>;
 }>;
 
@@ -206,7 +207,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       return ports.run(() => createVault(readNote, null).readNoteStatus(noteId, session));
     },
     async readInventory(session: IPrivateVaultSession, readStatus: ((id: string, poolId: PrivacyPoolId, guard: () => void) => Promise<IPrivateNoteStatus>) | null,
-      openWithdrawal: ((id: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void) => Promise<NativePrivateWithdrawalView>) | null): Promise<NativeNoteInventory> {
+      openWithdrawal: ((id: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void, authentication: NativePrivateAuthenticationScope) => Promise<NativePrivateWithdrawalView>) | null): Promise<NativeNoteInventory> {
       session.assertCurrent();
       const { notes } = await withSession(session, vault.getNotes);
       session.assertCurrent();
@@ -235,12 +236,12 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
           owner.assertCurrent();
           return Object.freeze({ ...status });
         } } : {}),
-        ...(openWithdrawal ? { async openWithdrawal(note: NativeSavedNote, signal: AbortSignal, assertCurrent: () => void) {
+        ...(openWithdrawal ? { async openWithdrawal(note: NativeSavedNote, signal: AbortSignal, assertCurrent: () => void, scope: NativePrivateAuthenticationScope) {
           const selected = selections.get(note);
           if (!selected) throw new Error('privacy_note_missing');
           const owner = ownedSession(session, assertCurrent);
           owner.assertCurrent();
-          return openWithdrawal(selected.id, selected.poolId, selected.restored, signal, owner.assertCurrent);
+          return openWithdrawal(selected.id, selected.poolId, selected.restored, signal, owner.assertCurrent, scope);
         } } : {}),
         async revealNote(note, password, assertCurrent) {
           const id = selections.get(note)?.id;

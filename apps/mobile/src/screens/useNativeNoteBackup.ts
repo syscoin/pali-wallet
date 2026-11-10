@@ -4,11 +4,13 @@ import type { NativeNoteBackupRuntime } from '../custody/noteBackupRuntime';
 import type { CustodySnapshot } from '../custody/types';
 import type { NativeNoteRestoreStep } from './NativeNoteRestore';
 import type { NativeNoteExportStep } from './NativeNoteExport';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Guard = () => void;
 type Owner = {
   authority: { getSnapshot(): CustodySnapshot; lock(): void };
-  openNoteBackup(assertOwner: Guard): Promise<NativeNoteBackupRuntime>;
+  openNoteBackup(assertOwner: Guard, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteBackupRuntime>;
   captureNoteFileOwner(assertOwner: Guard): Promise<() => Promise<void>>;
 };
 type Route = {
@@ -23,6 +25,7 @@ type Route = {
   saving: boolean;
   handoff: boolean;
   busy: boolean;
+  authentication: NativePrivateAuthenticationScope;
 };
 const invalidated = () => new Error('BACKUP_CANCELLED');
 const failure = (cause: unknown) => {
@@ -45,22 +48,26 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
   const cancel = useCallback(() => {
     const previous = route.current;
     route.current = null;
+    previous?.authentication.retire();
     previous?.flow?.cancel();
     previous?.exporter?.cancel();
     setStep({ phase: 'select' }); setExportStep({ phase: 'select' }); setBusy(false); setError('');
   }, []);
   const lock = useCallback(() => {
     // Only the picker ticket or its bounded ciphertext can outlive this lock.
+    route.current?.authentication.retire();
     if (!route.current?.handoff) cancel();
   }, [cancel]);
-  useLayoutEffect(() => () => { route.current?.flow?.cancel(); route.current?.exporter?.cancel(); route.current = null; }, []);
+  useLayoutEffect(() => () => { route.current?.authentication.retire(); route.current?.flow?.cancel(); route.current?.exporter?.cancel(); route.current = null; }, []);
   const current = (owned: Route) => route.current === owned && getOwner() === owned.owner;
   const foreground = (owned: Route) => current(owned) && AppState.currentState === 'active' &&
     owned.owner.authority.getSnapshot().phase === 'ready';
   const walletGuard = (owned: Route) => {
     const start = owned.owner.authority.getSnapshot();
     return () => {
-      if (!foreground(owned) || owned.owner.authority.getSnapshot() !== start) throw invalidated();
+      if (!current(owned) || owned.owner.authority.getSnapshot().phase !== 'ready' ||
+          (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(owned.authentication, AppState.currentState)) ||
+          owned.owner.authority.getSnapshot() !== start) throw invalidated();
     };
   };
   const finish = (owned: Route) => { owned.busy = false; if (current(owned)) setBusy(false); };
@@ -71,6 +78,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     // Unlock can finish while the native provider is still reading. Keep
     // the pending operation on its own screen so Back can retire it.
     if (owned.busy) { enter(owned.mode); return true; }
+    owned.authentication = createNativePrivateAuthenticationScope();
     owned.handoff = false;
     if (owned.pickerFeedback) {
       if (owned.mode === 'restore') setStep({ phase: 'select' });
@@ -88,7 +96,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     const owner = getOwner();
     if (!owner || owner.authority.getSnapshot().phase !== 'ready') return false;
     cancel();
-    route.current = { owner, mode, destination: false, saving: false, handoff: false, busy: false };
+    route.current = { owner, mode, destination: false, saving: false, handoff: false, busy: false, authentication: createNativePrivateAuthenticationScope() };
     return true;
   };
   const choose = async () => {
@@ -100,11 +108,11 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
       const files = await import('../platform/noteBackupPicker');
       if (owned.mode === 'restore' && !owned.flow) {
         const { createNativeNoteRestore } = await import('../custody/nativeNoteRestore');
-        owned.flow = createNativeNoteRestore(owned.owner.openNoteBackup);
+        owned.flow = createNativeNoteRestore(check => owned.owner.openNoteBackup(check, owned.authentication));
       }
       if (owned.mode === 'export' && !owned.exporter) {
         const { createNativeNoteExport } = await import('../custody/nativeNoteExport');
-        owned.exporter = createNativeNoteExport(owned.owner.openNoteBackup, { write: files.writeNoteBackupFile, revoke: files.revokeNoteBackupDestination });
+        owned.exporter = createNativeNoteExport(check => owned.owner.openNoteBackup(check, owned.authentication), { write: files.writeNoteBackupFile, revoke: files.revokeNoteBackupDestination });
       }
       assertOwner();
       owned.checkPair = await owned.owner.captureNoteFileOwner(assertOwner);

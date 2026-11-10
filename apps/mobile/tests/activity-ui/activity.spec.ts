@@ -1,9 +1,11 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+
+const showDetails = (page: Page) => page.getByRole('button', { name: 'Details', exact: true }).click();
 test('Saved pending pages exact hashes and opens the selected retry at 320px', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?saved-pending');
   await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
-  await expect(page.getByText('Submitted · waiting for confirmation', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Submitted · waiting for confirmation.*View transaction details/ })).toBeVisible();
   const older = page.getByRole('button', { name: /Submission unconfirmed.*View transaction details/ });
   await expect(older).toHaveCount(0);
   await page.getByRole('button', { name: 'Load more saved transfers' }).click();
@@ -38,6 +40,7 @@ test('retained collectible details show signed fields without a resend action at
   expect(labelBounds!.x + labelBounds!.width).toBeLessThanOrEqual(320);
   await page.screenshot({ path: testInfo.outputPath('retained-collectible-row-320.png') });
   await row.click();
+  await showDetails(page);
   await expect(page.getByText('SIGNED COLLECTIBLE TRANSFER', { exact: true })).toBeVisible();
   await expect(page.getByText('ERC-1155', { exact: true })).toBeVisible();
   await expect(page.getByText('0', { exact: true })).toBeVisible();
@@ -46,7 +49,7 @@ test('retained collectible details show signed fields without a resend action at
   await expect(quantity).toBeInViewport();
   const bounds = await quantity.boundingBox();
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
-  await expect(page.getByText(`0x${'22'.repeat(20)}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`0x${'22'.repeat(20)}`, { exact: true }).last()).toBeVisible();
   await expect(page.getByText(`0x${'33'.repeat(20)}`, { exact: true }).last()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('retained-collectible-320.png') });
@@ -58,14 +61,15 @@ test('a retained collectible copies the signed recipient even when indexed histo
   await page.goto('/?retained-collectible=indexed');
   await page.waitForFunction(() => window.__activityFixture?.rowState().some(row => row.indexedStatus !== undefined));
   await page.getByRole('button', { name: /Collectible transfer.*View transaction details/ }).click();
+  await showDetails(page);
   await expect(page.getByText('SIGNED RECIPIENT', { exact: true })).toBeVisible();
-  await expect(page.getByText(signedRecipient, { exact: true })).toBeVisible();
+  await expect(page.getByText(signedRecipient, { exact: true }).last()).toBeVisible();
   await expect(page.getByText(contract, { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Copy recipient address' }).click();
+  await page.getByRole('button', { name: `Copy recipient address: ${signedRecipient}`, exact: true }).click();
   await expect(page.getByText('Copy this address?', { exact: true })).toBeVisible();
-  const address = page.getByText(signedRecipient, { exact: true });
-  await expect(address).toHaveCount(2);
-  await expect(address.last()).toBeInViewport();
+  const confirmation = page.getByRole('dialog');
+  await expect(confirmation.getByText(signedRecipient, { exact: true })).toBeInViewport();
+  await expect(confirmation.getByText(contract, { exact: true })).toHaveCount(0);
   await expect(page.getByText(contract, { exact: true })).toHaveCount(1);
 });
 
@@ -97,6 +101,7 @@ for (const decimals of [0, 18, 19, 255]) {
     await expect(
       page.getByText('Transaction details', { exact: true })
     ).toBeVisible();
+    await showDetails(page);
     await expect(
       page.getByText(exactAmount, { exact: true }).last()
     ).toBeVisible();
@@ -148,7 +153,7 @@ test('confirmed address copy writes the complete address to the clipboard', asyn
     .first()
     .click();
   await page
-    .getByRole('button', { name: 'Copy sender address', exact: true })
+    .getByRole('button', { name: `Copy sender address: 0x${'11'.repeat(20)}`, exact: true })
     .click();
   await page
     .getByRole('button', { name: 'Copy full address', exact: true })
@@ -181,11 +186,12 @@ test('actual Activity uses indexed values without RPC, filters zero-value events
       exact: true,
     })
     .click();
-  await expect(page.getByText('0 ZERO', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /0 ZERO, Confirmed\..*View transaction details/ })).toBeVisible();
   await page.getByRole('button', { name: /0 ZERO, Confirmed/ }).click();
   await expect(
     page.getByText('Transaction details', { exact: true })
   ).toBeVisible();
+  await showDetails(page);
   await page
     .getByRole('button', { name: 'Copy event sender', exact: true })
     .click();
@@ -281,7 +287,7 @@ test('copy review actions remain reachable on a small screen with enlarged text'
     .first()
     .click();
   await page
-    .getByRole('button', { name: 'Copy sender address', exact: true })
+    .getByRole('button', { name: `Copy sender address: 0x${'11'.repeat(20)}`, exact: true })
     .click();
   await page.addStyleTag({
     content:
@@ -331,7 +337,7 @@ test('generic contract creation keeps activity readable without inventing a reci
     page.getByText('Contract creation', { exact: true })
   ).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Copy recipient address', exact: true })
+    page.getByRole('button', { name: /^Copy recipient address:/ })
   ).toHaveCount(0);
   expect(errors).toEqual([]);
 });
@@ -345,6 +351,7 @@ for (const mode of ['missing','invalid','malformed']) test(`custody ${mode} toke
   await expect(row).toContainText(amount);
   await expect(row).not.toContainText('1000000 UNKNOWN');
   await row.click();
+  await showDetails(page);
   await expect(page.getByText(amount,{exact:true}).last()).toBeVisible();
   await expect(page.getByText(mode==='malformed'?'Raw token units: Unavailable':'Raw token units: 1000000',{exact:true})).toBeVisible();
 });

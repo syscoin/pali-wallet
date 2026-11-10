@@ -12,6 +12,14 @@ const detailStatus = (page: Page, label: string) =>
   page.getByText(label, { exact: true }).filter({ visible: true });
 const rowState = (page: Page) =>
   page.evaluate(() => window.__activityFixture.rowState()[0]);
+const rowLabel = async (page: Page, amount: string, status: string) => {
+  const timestamp = await page.evaluate(() => {
+    const date = new Date(1700000000000);
+    return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+  });
+  return `${amount}, ${status}. ${timestamp}. View transaction details`;
+};
+const showDetails = (page: Page) => page.getByRole('button', { name: 'Details', exact: true }).click();
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/*', async (route) => {
@@ -71,9 +79,7 @@ for (const [indexed, observed, expected] of [
       await page.setViewportSize({ width: 320, height: 480 });
     await page.goto(`/?fresh-status=${indexed}-${observed}`);
     await expect(listRow(page)).toHaveAccessibleName(
-      `1 ETH, ${
-        indexed === 'pending' ? 'Pending' : 'Confirmed'
-      }. View transaction details`
+      await rowLabel(page, '1 ETH', indexed === 'pending' ? 'Pending' : 'Confirmed')
     );
     expect((await calls(page)).map((call) => call.method).sort()).toEqual([
       'tokentx',
@@ -86,6 +92,7 @@ for (const [indexed, observed, expected] of [
     await expect
       .soft(detailStatus(page, expected))
       .toBeVisible({ timeout: 1000 });
+    await showDetails(page);
     if (observed === 'pending') {
       await expect
         .soft(page.getByText('BLOCK', { exact: true }))
@@ -111,7 +118,7 @@ for (const [indexed, observed, expected] of [
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect
       .soft(listRow(page))
-      .toHaveAccessibleName(`1 ETH, ${expected}. View transaction details`, {
+      .toHaveAccessibleName(await rowLabel(page, '1 ETH', expected), {
         timeout: 1000,
       });
     await expect.soft(listRow(page)).toContainText(expected, { timeout: 1000 });
@@ -145,13 +152,14 @@ for (const observed of ['unknown', 'missing', 'error'] as const) {
     );
     expect(row?.unavailable).toBe(observed !== 'unknown');
     await expect(detailStatus(page, 'Confirmed')).toBeVisible();
+    await showDetails(page);
     await expect(page.getByText('42', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(listRow(page)).toHaveAccessibleName(
-      '1 ETH, Confirmed. View transaction details'
+      await rowLabel(page, '1 ETH', 'Confirmed')
     );
     if (observed !== 'unknown')
-      await expect(listRow(page)).toContainText('RPC details unavailable');
+      await expect(listRow(page)).toContainText('Details unavailable');
   });
 }
 
@@ -164,6 +172,7 @@ test('explicit recheck replaces its previous observation and refresh restores in
     .poll(async () => (await rowState(page))?.observation)
     .toBe('confirmed');
   await expect(detailStatus(page, 'Confirmed')).toBeVisible();
+  await showDetails(page);
   await page.evaluate(() =>
     window.__freshActivityFixture.observation('pending')
   );
@@ -188,14 +197,14 @@ test('explicit recheck replaces its previous observation and refresh restores in
   await expect(page.getByText('43', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(listRow(page)).toHaveAccessibleName(
-    '1 ETH, Reverted. View transaction details'
+    await rowLabel(page, '1 ETH', 'Reverted')
   );
   const reads = (await rpcCalls(page)).length;
   await page
     .getByRole('button', { name: 'Refresh activity', exact: true })
     .click();
   await expect(listRow(page)).toHaveAccessibleName(
-    '1 ETH, Pending. View transaction details'
+    await rowLabel(page, '1 ETH', 'Pending')
   );
   expect((await rowState(page))?.observation).toBeUndefined();
   expect((await rpcCalls(page)).length).toBe(reads);
@@ -248,7 +257,7 @@ test('a context change cancels the selected read and cannot revive its stale suc
   if (await page.getByText('Transaction details', { exact: true }).isVisible())
     await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(listRow(page)).toHaveAccessibleName(
-    '1 ETH, Confirmed. View transaction details'
+    await rowLabel(page, '1 ETH', 'Confirmed')
   );
   expect((await rpcCalls(page)).map((call) => call.method)).toEqual([
     'eth_chainId',
@@ -266,7 +275,7 @@ for (const [retained, observed, expected, previous] of [
   }) => {
     await page.goto(`/?fresh-status=retained-${retained}-${observed}`);
     await expect(listRow(page)).toHaveAccessibleName(
-      `1.0 ETH, ${previous}. View transaction details`
+      await rowLabel(page, '1.0 ETH', previous)
     );
     expect(await rpcCalls(page)).toEqual([]);
     await listRow(page).click();
@@ -274,17 +283,18 @@ for (const [retained, observed, expected, previous] of [
       .poll(async () => (await rowState(page))?.observation)
       .toBe(observed);
     await expect(detailStatus(page, expected)).toBeVisible();
+    await showDetails(page);
     await expect(page.getByText('43', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(listRow(page)).toHaveAccessibleName(
-      `1.0 ETH, ${expected}. View transaction details`
+      await rowLabel(page, '1.0 ETH', expected)
     );
     const reads = (await rpcCalls(page)).length;
     await page
       .getByRole('button', { name: 'Refresh activity', exact: true })
       .click();
     await expect(listRow(page)).toHaveAccessibleName(
-      `1.0 ETH, ${previous}. View transaction details`
+      await rowLabel(page, '1.0 ETH', previous)
     );
     expect((await rpcCalls(page)).length).toBe(reads);
   });

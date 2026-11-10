@@ -1,3 +1,4 @@
+import { bindNativePrivateAuthentication, createNativePrivateAuthenticationScope } from '../src/custody/privateAuthentication.ts';
 import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -52,6 +53,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
   let loseAuthCommit = false, authWrite = false, lostAuthAcks = 0;
   let beforeUnlock: ReturnType<typeof pause> | undefined, afterUnlock: ReturnType<typeof pause> | undefined;
   let afterPinRead: ReturnType<typeof pause> | undefined;
+  let beforeCredential: ((signal: AbortSignal) => Promise<void>) | undefined;
   let beforeNoteInsert: ReturnType<typeof pause> | undefined;
   let afterNoteRead: ReturnType<typeof pause> | undefined;
   let noteCommits = 0;
@@ -85,7 +87,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
     if (gate) await gate.wait();
     return value;
   } };
-  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, signal, check, verify) => { check(); if (beforeCredential) await beforeCredential(signal); check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     openPrivacyPool,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -139,7 +141,17 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
     return auth ? JSON.parse(auth.value).failures : 0;
   };
   return {
-    get runtime() { return runtime; }, get storage() { return storage; },
+    get rawRuntime() { return runtime; },
+    get runtime() {
+      const binding = () => bindNativePrivateAuthentication(createNativePrivateAuthenticationScope(), { assertCurrent: current, isPromptActive: () => false });
+      return { ...runtime,
+        openNoteBackup: (guard: () => void) => runtime.openNoteBackup!(guard, binding()),
+        readNoteInventory: (guard: () => void) => runtime.readNoteInventory!(guard, binding()),
+        openNoteCapacity: (guard: () => void) => runtime.openNoteCapacity!(guard, binding()),
+        openNoteImport: (guard: () => void) => runtime.openNoteImport!(guard, binding()),
+      };
+    }, get storage() { return storage; },
+    onCredential(action?: (signal: AbortSignal) => Promise<void>) { beforeCredential = action; },
     get unlocked() { return owners.some((owner) => owner.hasPublicSession()); },
     get unlockCalls() { return unlockCalls; }, get noteWrites() { return noteWrites; },
     get secretWorks() { return secretWorks; },
@@ -820,4 +832,45 @@ test('raw import preserves an acknowledged-uncertain write through cold reopen',
     assert.equal(f.noteCommits, 1, 'duplicate recovery does not repeat the write');
     await reopened.dispose();
   } finally { await f.dispose(); }
+});
+
+test('real inventory credential acquisition belongs only to its current private view scope', async () => {
+  const f = await fixture();
+  try {
+    const backup = await f.runtime.openNoteBackup!(current), id = backup.begin();
+    await backup.prepareImport(id, await encrypted(), BACKUP_PASSWORD);
+    await backup.commitImport(id, PASSWORD);
+    await f.reopen();
+    await assert.rejects(f.rawRuntime.readNoteInventory!(current, {} as never));
+    let state = 'active', osPrompt = false;
+    const scope = createNativePrivateAuthenticationScope();
+    const foreign = createNativePrivateAuthenticationScope();
+    const binding = bindNativePrivateAuthentication(scope, { assertCurrent: current, isPromptActive: () => osPrompt });
+    const check = () => { if (state !== 'active' && !(state === 'inactive' && scope.isAuthenticating())) throw Error('view retired'); };
+    let signal!: AbortSignal;
+    const gate = pause();
+    f.onCredential(async owned => { signal = owned; await gate.wait(); });
+    const read = f.rawRuntime.readNoteInventory!(check, binding);
+    await gate.entered;
+    assert.equal(scope.isAuthenticating(), false);
+    osPrompt = true; state = 'inactive'; check();
+    assert.equal(scope.isAuthenticating(), true);
+    assert.equal(foreign.isAuthenticating(), false);
+    state = 'active'; osPrompt = false; gate.release();
+    assert.equal((await read).notes.length, 1);
+    assert.equal(scope.isAuthenticating(), false);
+    assert.equal(signal.aborted, true);
+
+    const retired = createNativePrivateAuthenticationScope();
+    const retiredBinding = bindNativePrivateAuthentication(retired, { assertCurrent: current, isPromptActive: () => true });
+    const blocked = pause();
+    f.onCredential(async owned => { signal = owned; await blocked.wait(); });
+    const stale = f.rawRuntime.readNoteInventory!(current, retiredBinding);
+    const rejected = assert.rejects(stale);
+    await blocked.entered;
+    retired.retire();
+    assert.equal(retired.isAuthenticating(), false);
+    assert.equal(signal.aborted, true);
+    blocked.release(); await rejected;
+  } finally { f.onCredential(); await f.dispose(); }
 });

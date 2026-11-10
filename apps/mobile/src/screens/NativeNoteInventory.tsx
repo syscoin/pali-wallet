@@ -3,26 +3,28 @@ import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { IPrivateNoteStatus } from '../../../../source/utils/privacy/privateVaultTypes';
 import type { NativeNoteInventory as NoteInventory, NativeSavedNote } from '../custody/noteBackupRuntime';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 import { NativeNoteReveal } from './NativeNoteReveal';
 import { NativePrivateWithdrawal } from './NativePrivateWithdrawal';
 
 type Props = {
-  readInventory(assertCurrent: () => void): Promise<NoteInventory>;
+  readInventory(assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NoteInventory>;
   onBack(): void;
   onLock(): void;
 };
 type State = { phase: 'loading' } | ({ source: Props['readInventory'] } & (
   { phase: 'error' | 'retired' } |
-  { phase: 'ready'; inventory: NoteInventory; page: number; selected: number | null; revealing: boolean; withdrawing: boolean }
+  { phase: 'ready'; inventory: NoteInventory; authentication: NativePrivateAuthenticationScope; page: number; selected: number | null; revealing: boolean; withdrawing: boolean }
 ));
-type Owner = { live: boolean; request?: object };
+type Owner = { live: boolean; request?: object; work?: Promise<unknown>; authentication: NativePrivateAuthenticationScope; revealing: boolean };
 const LOADING = { phase: 'loading' } as const;
 const PAGE_SIZE = 20;
 const recordedDate = (createdAt: number) => new Date(createdAt).toLocaleDateString();
 
 export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
-  const life = useRef<Owner>({ live: false });
+  const life = useRef<Owner>({ live: false, authentication: createNativePrivateAuthenticationScope(), revealing: false });
   const [state, setState] = useState<State>(LOADING);
   const selectedNote = useRef<NativeSavedNote | undefined>(undefined);
   const [inspection, setInspection] = useState<{
@@ -34,53 +36,73 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     if (!owner.live || owner.request || AppState.currentState !== 'active') return;
     const request = {};
     owner.request = request;
-    const routeCurrent = () => owner.live && AppState.currentState === 'active';
+    const routeCurrent = () => life.current === owner && owner.live && (AppState.currentState === 'active' ||
+      !owner.revealing && allowsPrivateAuthenticationInterruption(owner.authentication, AppState.currentState));
     const isCurrent = () => routeCurrent() && owner.request === request;
     const assertCurrent = () => {
       if (!routeCurrent()) throw new Error('CANCELLED');
     };
     try {
-      const inventory = await readInventory(assertCurrent);
-      if (isCurrent()) setState({ phase: 'ready', source: readInventory, inventory, page: 0, selected: null, revealing: false, withdrawing: false });
+      const inventory = await readInventory(assertCurrent, owner.authentication);
+      if (isCurrent() && AppState.currentState === 'active') setState({ phase: 'ready', source: readInventory, inventory, authentication: owner.authentication, page: 0, selected: null, revealing: false, withdrawing: false });
     } catch {
-      if (isCurrent()) setState({ phase: 'error', source: readInventory });
+      if (isCurrent() && AppState.currentState === 'active') setState({ phase: 'error', source: readInventory });
     } finally {
       if (owner.request === request) owner.request = undefined;
     }
   }, [readInventory]);
 
   useLayoutEffect(() => {
-    const owner: Owner = { live: true };
+    const owner: Owner = { live: true, authentication: createNativePrivateAuthenticationScope(), revealing: false };
     life.current = owner;
     const hide = () => {
       if (!owner.live) return;
       owner.live = false;
+      owner.authentication.retire();
+      selectedNote.current = undefined;
+      setInspection(null);
       setState({ phase: 'retired', source: readInventory });
     };
     const change = AppState.addEventListener('change', (next) => {
-      if (next !== 'active') hide();
+      if (next !== 'active' && (owner.revealing || !allowsPrivateAuthenticationInterruption(owner.authentication, next))) hide();
     });
-    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', hide) : null;
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
+      if (owner.revealing || !allowsPrivateAuthenticationInterruption(owner.authentication, 'blur')) hide();
+    }) : null;
     void load();
-    return () => { owner.live = false; change.remove(); blur?.remove(); };
+    return () => { owner.live = false; owner.authentication.retire(); change.remove(); blur?.remove(); };
   }, [load, readInventory]);
 
   const view: State = 'source' in state && state.source === readInventory ? state : LOADING;
   const updateReady = useCallback((changes: { page: number } | { selected: number | null } | { revealing: boolean } | { withdrawing: boolean }) => {
     if (!life.current.live) return;
+    if ('revealing' in changes) life.current.revealing = changes.revealing;
     setState((current) => current === view && current.phase === 'ready' ? { ...current, ...changes } : current);
   }, [view]);
   const back = useCallback(() => {
     if (view.phase === 'ready' && view.selected !== null) {
-      life.current.request = undefined;
+      const owner = life.current, pending = owner.request && owner.work;
+      owner.request = undefined;
+      owner.work = undefined;
       selectedNote.current = undefined;
       setInspection(null);
+      if (pending) {
+        owner.authentication.retire();
+        const authentication = createNativePrivateAuthenticationScope();
+        owner.authentication = authentication;
+        setState(LOADING);
+        void pending.catch(() => undefined).then(() => {
+          if (life.current === owner && owner.live && owner.authentication === authentication) void load();
+        });
+        return;
+      }
       updateReady({ selected: null });
       return;
     }
     life.current.live = false;
+    life.current.authentication.retire();
     onBack();
-  }, [onBack, updateReady, view]);
+  }, [load, onBack, updateReady, view]);
   const revealing = view.phase === 'ready' && view.revealing;
   const withdrawing = view.phase === 'ready' && view.withdrawing;
   useLayoutEffect(() => {
@@ -93,19 +115,23 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   const inventory = view.phase === 'ready' ? view.inventory : undefined;
   const note = view.phase === 'ready' && view.selected !== null ? notes[view.selected] : undefined;
   useLayoutEffect(() => { selectedNote.current = note; }, [note]);
-  const openWithdrawal = useCallback(async (signal: AbortSignal, assertCurrent: () => void) => {
+  const openWithdrawal = useCallback(async (signal: AbortSignal, assertCurrent: () => void, authentication: NativePrivateAuthenticationScope) => {
     const owner = life.current;
     const check = () => {
-      if (!owner.live || selectedNote.current !== note || AppState.currentState !== 'active') throw new Error('CANCELLED');
+      if (life.current !== owner || !owner.live || selectedNote.current !== note ||
+          (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(owner.authentication, AppState.currentState))) throw new Error('CANCELLED');
       assertCurrent();
     };
     check();
     if (!note || !inventory?.openWithdrawal) throw new Error('UNAVAILABLE');
-    return inventory.openWithdrawal(note, signal, check);
+    return inventory.openWithdrawal(note, signal, check, authentication);
   }, [inventory, note]);
   const closeWithdrawal = useCallback(() => {
     if (!life.current.live || selectedNote.current !== note) return;
+    life.current.authentication.retire();
+    life.current.authentication = createNativePrivateAuthenticationScope();
     setInspection(null);
+    selectedNote.current = undefined;
     setState(LOADING);
     void load();
   }, [load, note]);
@@ -116,17 +142,21 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     const request = {};
     owner.request = request;
     const assertCurrent = () => {
-      if (!owner.live || owner.request !== request || selectedNote.current !== note || AppState.currentState !== 'active') throw new Error('CANCELLED');
+      if (life.current !== owner || !owner.live || owner.request !== request || selectedNote.current !== note ||
+          (AppState.currentState !== 'active' && !allowsPrivateAuthenticationInterruption(owner.authentication, AppState.currentState))) throw new Error('CANCELLED');
     };
     setInspection({ note, phase: 'checking' });
     try {
-      const status = await view.inventory.checkNote(note, assertCurrent);
+      const work = view.inventory.checkNote(note, assertCurrent);
+      owner.work = work;
+      const status = await work;
       assertCurrent();
+      if (AppState.currentState !== 'active') throw new Error('CANCELLED');
       setInspection({ note, phase: 'ready', status });
     } catch {
-      if (owner.live && owner.request === request && selectedNote.current === note) setInspection({ note, phase: 'failed' });
+      if (owner.live && owner.request === request && selectedNote.current === note && AppState.currentState === 'active') setInspection({ note, phase: 'failed' });
     } finally {
-      if (owner.request === request) owner.request = undefined;
+      if (owner.request === request) { owner.request = undefined; owner.work = undefined; }
     }
   };
   const statusTitle = checked?.status?.phase === 'verified' ? 'Verified in pool history'
@@ -140,6 +170,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   const next = start + rows.length < notes.length;
   const lock = () => {
     life.current.live = false;
+    life.current.authentication.retire();
     setState({ phase: 'retired', source: readInventory });
     onLock();
   };
@@ -147,7 +178,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   if (view.phase === 'ready' && revealing && note) return <NativeNoteReveal key={view.selected} inventory={view.inventory} note={note}
     onBack={() => updateReady({ revealing: false })} onLock={lock} />;
   if (view.phase === 'ready' && withdrawing && note && inventory?.openWithdrawal) return <NativePrivateWithdrawal
-    key={view.selected} note={note} open={openWithdrawal} onBack={closeWithdrawal} />;
+    key={view.selected} note={note} open={openWithdrawal} onBack={closeWithdrawal} authentication={view.authentication} />;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <Screen key={note ? 'detail' : 'list'} footer={<Button title="Lock wallet" icon="lock" variant="secondary" onPress={lock} />}>

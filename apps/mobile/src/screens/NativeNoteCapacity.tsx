@@ -20,14 +20,16 @@ import type { NativeNoteCapacityRuntime } from '../custody/noteBackupRuntime';
 import { recordIdleActivity } from '../platform/security';
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
+import { createNativePrivateAuthenticationScope, type NativePrivateAuthenticationScope } from '../custody/privateAuthentication';
+import { allowsPrivateAuthenticationInterruption } from './privateAuthenticationLifecycle';
 
 type Props = {
-  openCapacity(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
+  openCapacity(assertCurrent: () => void, authentication: NativePrivateAuthenticationScope): Promise<NativeNoteCapacityRuntime>;
   onBack(): void;
 };
 
 export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
-  const life = useRef({ open: false, revision: 0, pending: false });
+  const life = useRef({ open: false, revision: 0, pending: false, authentication: createNativePrivateAuthenticationScope() });
   const latestBack = useRef(onBack);
   const options = useRef(
     new Map<PrivateVaultCapacity, React.ComponentRef<typeof IdlePressable>>()
@@ -47,6 +49,7 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
   const invalidate = useCallback(() => {
     const owner = life.current;
     owner.open = false;
+    owner.authentication.retire();
     owner.revision++;
     owner.pending = false;
   }, []);
@@ -67,22 +70,23 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
       const isCurrent = () =>
         owner.open &&
         owner.revision === revision &&
-        AppState.currentState === 'active';
+        (AppState.currentState === 'active' || allowsPrivateAuthenticationInterruption(owner.authentication, AppState.currentState));
       const assertCurrent = () => {
         if (!isCurrent()) throw new Error('CANCELLED');
       };
       try {
-        const capacity = await openCapacity(assertCurrent);
+        const capacity = await openCapacity(assertCurrent, owner.authentication);
         assertCurrent();
         const result = await (limit === undefined
           ? capacity.getCapacity()
           : capacity.setCapacity(limit));
         assertCurrent();
+        if (AppState.currentState !== 'active') throw new Error('CANCELLED');
         setData(result);
         setChoice(result.capacity);
         if (limit !== undefined) setFeedback('saved');
       } catch (error) {
-        if (!isCurrent()) return;
+        if (!isCurrent() || AppState.currentState !== 'active') return;
         if (
           limit !== undefined &&
           error instanceof Error &&
@@ -106,6 +110,7 @@ export function NativeNoteCapacity({ openCapacity, onBack }: Props) {
   );
 
   useLayoutEffect(() => {
+    life.current.authentication = createNativePrivateAuthenticationScope();
     life.current.open = true;
     void readOrSave();
     const subscription = BackHandler.addEventListener(
