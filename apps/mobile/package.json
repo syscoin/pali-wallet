@@ -85,6 +85,7 @@
   "overrides": {
     "glob": "14.0.3",
     "minimatch": "11.0.4",
+    "node-forge": "1.4.3",
     "axios@<1.20.0": "1.21.0",
     "jws": "^4.0.1",
     "isomorphic-fetch@2.2.1": {

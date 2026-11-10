@@ -591,9 +591,6 @@ test('backup uses fresh SDK authentication and a wallet-bound storage receipt', 
 
 async function controlledSdk() {
   const sdk = await loadNativeKeyringSdk();
-  let entered = () => {};
-  let release = Promise.resolve();
-  let holding = false;
   let unlockCalls = 0;
   let hydrations = 0;
   class ControlledKeyring extends sdk.HostKeyring {
@@ -606,7 +603,6 @@ async function controlledSdk() {
       options: import('@sidhujag/sysweb3-keyring/cjs/software.js').SecretOperationOptions, work: (secret: string) => T | Promise<T>): Promise<T> {
       return super.withSecretOperation(credential, options, async secret => {
         unlockCalls++;
-        if (holding) { entered(); await release; }
         return work(secret);
       });
     }
@@ -615,13 +611,7 @@ async function controlledSdk() {
     loadSdk: async () => ({ ...sdk, HostKeyring: ControlledKeyring }),
     get hydrations() { return hydrations; },
     get unlockCalls() { return unlockCalls; },
-    hold() {
-      holding = true;
-      const started = new Promise<void>((resolve) => { entered = resolve; });
-      let finish!: () => void;
-      release = new Promise<void>((resolve) => { finish = resolve; });
-      return { started, finish: () => { holding = false; finish(); } };
-    },
+
   };
 }
 
@@ -652,7 +642,7 @@ test('lifecycle cancellation still records each explicit wrong-PIN failure and r
   } finally { await runtime.storage.close(); }
 });
 
-test('cancelled successful authentication neither clears failures nor hydrates an account', async () => {
+test('cancelled successful authentication neither clears failures nor hydrates an account', { timeout: 10000 }, async () => {
   const controlled = await controlledSdk();
   const disk = memoryDisk(controlled.loadSdk);
   const runtime = await disk.factory.open();
@@ -663,7 +653,9 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     assert.equal((await runtime.session.unlock('000000')).authenticated, false);
     assert.equal(disk.failures, 1);
     const hydrated = controlled.hydrations;
-    const hold = controlled.hold();
+    // Public unlock never enters an SDK secret operation. Interrupt the actual
+    // protected PIN read instead of waiting for a signing-root decryption.
+    const hold = disk.holdPinRead();
     const pending = runtime.session.unlock(PASSWORD);
     await hold.started;
     await runtime.session.lock();
@@ -673,6 +665,7 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     assert.equal(disk.failureWrites, before.failures + 2);
     assert.equal(disk.successWrites, before.successes);
     assert.equal(controlled.hydrations, hydrated);
+    assert.equal(controlled.unlockCalls, 0);
     await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); }
 });
