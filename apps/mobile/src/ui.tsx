@@ -12,7 +12,7 @@ import {
   ViewStyle,
   useWindowDimensions,
 } from 'react-native';
-import Svg, { Circle, Defs, G, Mask, Path, Pattern, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
+import Svg, { Circle, Defs, Ellipse, G, Mask, Path, Pattern, Polygon, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 export const colors = {
   bg: '#07152a',
@@ -33,22 +33,30 @@ export function WelcomeBackdrop() {
   return <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
     <Svg width="100%" height="100%" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice">
       <Defs>
-        <RadialGradient id="welcome-glow" cx="50%" cy="43%" rx="48%" ry="43%">
-          <Stop offset="0" stopColor={colors.blue} stopOpacity="0.13" />
-          <Stop offset="0.45" stopColor={colors.pink} stopOpacity="0.04" />
-          <Stop offset="1" stopColor={colors.bg} stopOpacity="0" />
+        <RadialGradient id="welcome-glow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0" stopColor="#8c5f9c" stopOpacity="0.25" />
+          <Stop offset="0.5" stopColor="#6b5f91" stopOpacity="0.18" />
+          <Stop offset="1" stopColor="#6b5f91" stopOpacity="0" />
         </RadialGradient>
-        <RadialGradient id="welcome-dot-fade" cx="50%" cy="42%" rx="40%" ry="31%">
-          <Stop offset="0" stopColor="white" stopOpacity="0.7" />
-          <Stop offset="0.55" stopColor="white" stopOpacity="0.38" />
+        <RadialGradient id="welcome-blue-glow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0" stopColor="#4f91bd" stopOpacity="0.09" />
+          <Stop offset="0.5" stopColor="#4f91bd" stopOpacity="0.045" />
+          <Stop offset="1" stopColor="#4f91bd" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="welcome-dot-fade" cx="50%" cy="50%" r="50%">
+          <Stop offset="0" stopColor="white" stopOpacity="0.55" />
+          <Stop offset="0.5" stopColor="white" stopOpacity="0.25" />
           <Stop offset="1" stopColor="white" stopOpacity="0" />
         </RadialGradient>
-        <Pattern id="welcome-dots" width="18" height="18" patternUnits="userSpaceOnUse">
-          <Circle cx="9" cy="9" r="0.9" fill={colors.blue} />
+        <Pattern id="welcome-dots" width="18.7" height="18.7" patternUnits="userSpaceOnUse">
+          <Circle cx="9.35" cy="9.35" r="0.9" fill={colors.blue} />
         </Pattern>
-        <Mask id="welcome-mask"><Rect width="390" height="844" fill="url(#welcome-dot-fade)" /></Mask>
+        <Mask id="welcome-mask" x="0" y="0" width="390" height="844" maskUnits="userSpaceOnUse">
+          <Ellipse cx="195" cy="336" rx="143" ry="205" fill="url(#welcome-dot-fade)" />
+        </Mask>
       </Defs>
-      <Rect width="390" height="844" fill="url(#welcome-glow)" />
+      <Ellipse cx="170" cy="300" rx="140" ry="260" fill="url(#welcome-glow)" />
+      <Ellipse cx="205" cy="295" rx="85" ry="230" fill="url(#welcome-blue-glow)" />
       <Rect width="390" height="844" fill="url(#welcome-dots)" mask="url(#welcome-mask)" />
     </Svg>
   </View>;

@@ -65,8 +65,8 @@ export function Welcome({
         contentContainerStyle={styles.welcomeContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.welcomeBrand}>
-          <PaliMark size={compact ? 96 : 120} />
+        <View style={[styles.welcomeBrand, { transform: [{ translateY: compact ? 8 : 52 }] }]}>
+          <PaliMark size={compact ? 96 : 128} />
           <Text accessibilityRole="header" style={styles.welcomeName}>Pali Wallet</Text>
         </View>
 
@@ -264,8 +264,8 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 20,
   },
-  welcomeBrand: { alignItems: 'center', gap: 18, paddingVertical: 28 },
-  welcomeName: { color: colors.text, fontSize: 34, lineHeight: 42, fontWeight: '600', letterSpacing: -1 },
+  welcomeBrand: { alignItems: 'center', gap: 16, paddingVertical: 28 },
+  welcomeName: { color: colors.text, fontSize: 34, lineHeight: 40, fontWeight: '400' },
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 11 },
   brandName: {
     color: colors.text,
