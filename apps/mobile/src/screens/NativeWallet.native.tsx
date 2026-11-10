@@ -18,6 +18,7 @@ import { findUtxoNetwork, supportsUtxoSoftwareCustody } from '../core/utxoNetwor
 import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
 import { walletFetch } from '../platform/http';
 import { custodyIdle, securityPreferences } from '../platform/security';
+import { useNativeTranslation } from '../platform/localization';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
 import { IdleTextInput } from './IdleActivityBoundary';
 import { isNativeNewPassword, NEW_PASSWORD_HELP } from '../custody/password';
@@ -39,7 +40,7 @@ import { useNativeNoteBackup } from './useNativeNoteBackup';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
-import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '../ui';
+import { Button, colors, Header, Icon, Notice, PaliMark, Screen, styles, Text } from '../ui';
 import { NativePortfolio } from './NativePortfolio';
 import { NativeSend, type NativeRecipientPicker } from './NativeSend';
 import { NativeUtxoSendScreen } from './NativeUtxoSend';
@@ -91,7 +92,7 @@ type SendTarget = Readonly<
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'note-maintenance' | 'privacy-settings' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'trezor' | 'smart-deploy' | 'smart-resume' | 'smart-authenticator' | 'slh-dsa' | 'smart-modules' | 'sentry-keys' | 'smart-infrastructure';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'backup-complete' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'note-maintenance' | 'privacy-settings' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'trezor' | 'smart-deploy' | 'smart-resume' | 'smart-authenticator' | 'slh-dsa' | 'smart-modules' | 'sentry-keys' | 'smart-infrastructure';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null) {
@@ -129,6 +130,7 @@ export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; 
 };
 
 export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled }: NativeWalletProps) {
+  const { t } = useNativeTranslation();
   const bridge = useRef(accounts);
   const selectedNative = useRef(onSelectedNative);
   useLayoutEffect(() => { bridge.current = accounts; selectedNative.current = onSelectedNative; }, [accounts, onSelectedNative]);
@@ -474,6 +476,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {
     latestBack.current = () => {
+      if (stage === 'backup-complete' && snapshot.phase === 'ready') {
+        closeStage();
+        return true;
+      }
       if (stage === 'device-unlock') {
         closeDeviceUnlock();
         return true;
@@ -918,7 +924,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const locked = snapshot.phase === 'locked';
   const unavailable = snapshot.phase === 'unavailable' || !!error && !protectedScreen;
   const title = locked ? 'Welcome back' : snapshot.phase === 'ready' && stage === 'choose' ? 'Your wallet' :
-    stage === 'words' ? 'Your recovery phrase' : stage === 'challenge' ? 'Check your backup' :
+    stage === 'words' ? 'Your recovery phrase' : stage === 'challenge' ? 'Check your backup' : stage === 'backup-complete' ? t('mobile.security.backupComplete') :
     stage === 'device-unlock' ? 'Biometric unlock' : stage === 'backup-auth' ? 'Back up your wallet' : stage === 'import' ? 'Restore your wallet' : stage === 'create' ? 'Protect your wallet' : 'Make it yours';
   const accountLabel = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId)?.label ?? 'Account 1';
   const selectWatch = (selection: import('../core/accountDirectory').AccountSelection) => {
@@ -1213,7 +1219,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     footer = <>
       <Button title="Confirm backup" disabled={busy || answers.some((answer) => !answer.trim())} onPress={() => {
       const id = presentation.id; const entered = [...answers];
-      void perform(async ({ authority, backup }) => { await backup.confirm(id, entered); if (authority.getSnapshot().phase === 'ready') { clearSecrets(); closeStage(); } });
+      void perform(async (local) => {
+        const captured = epoch.current;
+        await local.backup.confirm(id, entered);
+        if (mounted.current && controllers.current === local && epoch.current === captured &&
+            AppState.currentState === 'active' && local.authority.getSnapshot().phase === 'ready') {
+          clearSecrets(); setStage('backup-complete');
+        }
+      });
     }} />
     </>;
     body = <>
@@ -1221,6 +1234,16 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     {presentation.positions.map((position, index) => <SecretInput key={position} label={`Word ${position + 1}`} value={answers[index]!} disabled={busy} onChange={(value) => setAnswers((old) => old.map((answer, i) => i === index ? value : answer))} />)}
 
   </>;
+  }
+  else if (stage === 'backup-complete' && snapshot.phase === 'ready') {
+    footer = <Button title={t('privacy.deposit.done')} disabled={busy} onPress={closeStage} />;
+    body = <View style={s.backupComplete}>
+      <View style={s.backupCompleteIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+        <Icon name="check" size={32} color={colors.blue} />
+      </View>
+      <Text style={s.backupCompleteTitle}>{t('mobile.security.phraseBackedUp')}</Text>
+      <Text style={[styles.muted, s.backupCompleteBody]}>{t('mobile.security.phraseBackup')}</Text>
+    </View>;
   }
   else if (snapshot.phase === 'backup-required' || stage === 'backup-auth' || stage === 'words' || stage === 'challenge') {
     footer = <>
@@ -1342,7 +1365,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     error === message(new Error(snapshot.error));
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen footer={footer} gap={16}><Header title={title} onBack={stage === 'device-unlock' ? closeDeviceUnlock : exit} subtitle={typeof __DEV__ !== 'undefined' && __DEV__ ? 'Development build · Use a test wallet' : undefined} />
+      <Screen footer={footer} gap={16}><Header title={title} onBack={stage === 'device-unlock' ? closeDeviceUnlock : stage === 'backup-complete' ? closeStage : exit} subtitle={typeof __DEV__ !== 'undefined' && __DEV__ ? 'Development build · Use a test wallet' : undefined} />
         {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
         {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
         {snapshot.error && !duplicateAuthenticationError && <NativeCustodyFeedback error={snapshot.error} />}
@@ -1361,6 +1384,10 @@ const s = StyleSheet.create({
   phraseInput: { minHeight: 120, textAlignVertical: 'top', lineHeight: 26 }, center: { gap: 18, alignItems: 'center', paddingVertical: 50 },
   wordGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, word: { width: '47%', borderRadius: 14, backgroundColor: colors.surface, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   wordNumber: { color: colors.muted, fontSize: 12, minWidth: 18 }, wordText: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
+  backupComplete: { alignItems: 'center', paddingVertical: 32, gap: 16 },
+  backupCompleteIcon: { width: 64, height: 64, borderRadius: 32, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' },
+  backupCompleteTitle: { fontSize: 22, lineHeight: 30, fontWeight: '600', textAlign: 'center' },
+  backupCompleteBody: { textAlign: 'center' },
   address: { fontSize: 15, lineHeight: 24, marginTop: 12, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   error: { color: colors.red, fontSize: 14, lineHeight: 21 },
 });

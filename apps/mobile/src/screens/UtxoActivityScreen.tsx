@@ -9,7 +9,8 @@ import { UtxoActivity, type UtxoActivityContext, type UtxoActivityOwner, type Ut
 import type { UtxoNetwork } from '../core/utxoNetworks';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
-import { IdlePressable } from './IdleActivityBoundary';
+import { ActivityListRow, activityDate } from './ActivityListRow';
+import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 
 function signed(units: string, decimals: number, symbol: string): string {
   const negative = units.startsWith('-');
@@ -137,6 +138,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
     ? row.assetAmount?.direction ?? 'unknown'
     : row.nativeTransfer?.direction ?? (row.netUnits?.startsWith('-') ? 'sent' : row.netUnits && row.netUnits !== '0' ? 'received' : row.netUnits === '0' ? 'self' : 'unknown');
   const rows = state.rows.filter(row => filter === 'all' || rowDirection(row) === filter || rowDirection(row) === 'self' || rowDirection(row) === 'unknown');
+  const dateOf = (row: UtxoActivityRow) => row.block ? activityDate(row.block.timestamp === null ? null : row.block.timestamp * 1000) : { key: 'pending', label: 'Pending', time: '' };
   return <SafeAreaView edges={chosen ? ['top', 'bottom'] : ['top']} style={s.root}>
     <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Activity'} subtitle={network ? `${accountLabel} · ${network.name}` : undefined} onBack={back}
       right={!chosen && network ? <IconButton label="Refresh activity" icon="refresh" disabled={state.status === 'loading'} onPress={() => void refresh()} /> : undefined} /></View>
@@ -157,15 +159,20 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
             </View>
             {state.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading activity" color={colors.pink} />}
           </View>}
-          renderItem={({ item }) => <IdlePressable accessibilityRole="button"
-            accessibilityLabel={`${item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : net(item.netUnits)}, ${status(item)}. View transaction details`}
-            testID={`watch-activity-row-${item.txid}`} style={s.row} disabled={!!chosen || state.status === 'loading'}
-            onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }}>
-            <View style={s.rowHeading}><Text style={s.rowAmount}>{item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : net(item.netUnits)}</Text><Text style={s.direction}>{rowDirection(item)}</Text></View>
-            {item.hasAssetData && <Text style={s.caption}>Native account change: {net(item.netUnits)}</Text>}
-            <Text style={s.caption}>{status(item)}</Text>
-            <Text style={s.caption}>{item.txid.slice(0, 12)}…{item.txid.slice(-8)}</Text>
-          </IdlePressable>}
+          renderItem={({ item, index }) => {
+            const date = dateOf(item), flow = rowDirection(item);
+            const fullAmount = item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : net(item.netUnits);
+            const first = index === 0 || dateOf(rows[index - 1]!).key !== date.key;
+            const last = index === rows.length - 1 || dateOf(rows[index + 1]!).key !== date.key;
+            return <ActivityListRow testID={`watch-activity-row-${item.txid}`}
+              first={first} last={last} heading={first ? date.label : undefined} direction={flow}
+              title={flow === 'sent' ? 'Sent' : flow === 'received' ? 'Received' : flow === 'self' ? 'Self transfer' : item.hasAssetData ? 'Asset activity' : 'Activity'}
+              subtitle={`${network.name} · ${item.block && item.observedConfirmations > 0 ? 'Confirmed' : 'Pending'}`}
+              amount={compactActivityAmountLabel(fullAmount.replace(/^−/, '-'))} time={date.time}
+              label={`${fullAmount}, ${status(item)}. ${date.label} ${date.time}. View transaction details`}
+              disabled={!!chosen || state.status === 'loading'}
+              onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />;
+          }}
           ListEmptyComponent={state.status === 'ready' ? <Notice title={state.rows.length ? "No matching activity" : "No activity yet"} body={state.rows.length ? "Try another filter or load another page." : "There are no transactions to show for this account."} /> : undefined}
           ListFooterComponent={<View style={s.section}>
             {state.status === 'ready' && (state.hasNewer || state.hasMore) && <View style={s.pageActions}>
@@ -175,7 +182,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
             {state.rows.length > 0 && <Text style={styles.muted}>{state.rows.length} transactions shown{state.windowed ? ` · Pages ${state.firstPage}–${state.page}` : ''}</Text>}
           </View>} />
       </View>
-      {chosen && <ScrollView testID="watch-activity-detail" style={s.detailOverlay} contentContainerStyle={s.content}>
+      {chosen && <ScrollView testID="watch-activity-detail" style={s.detailOverlay} contentContainerStyle={[s.content, s.detailContent]}>
         <Text style={s.amount}>{detailAmount}</Text>
         <Text style={styles.muted}>{chosen.hasAssetData ? chosen.assetAmount ? chosen.assetAmount.scope === 'account' ? 'Account asset amount' : 'Asset operation amount' : 'Asset quantity unavailable' : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? 'Native self-transfer' : 'Native transfer' : 'Native account change'}</Text>
         {state.status === 'stale' && <Notice title="Previously loaded activity" body="Refresh the list to check this transaction again." tone="amber" />}
@@ -219,5 +226,5 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
 }
 
 const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, header: { paddingHorizontal: 16 }, body: { flex: 1, minHeight: 0 }, list: { flex: 1 }, obscured: { opacity: 0 }, detailOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.bg },
-  pageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pageButton: { flexGrow: 1 }, content: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 }, section: { gap: 8, paddingVertical: 8 }, row: { gap: 5, padding: 14, marginBottom: 8, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, rowHeading: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 }, rowAmount: { fontSize: 17, fontWeight: '600', flexShrink: 1 }, direction: { color: colors.muted, fontSize: 12, textTransform: 'capitalize' }, caption: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+  pageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pageButton: { flexGrow: 1 }, content: { paddingHorizontal: 16, paddingBottom: 24, gap: 0 }, detailContent: { gap: 12 }, section: { gap: 8, paddingVertical: 8 }, caption: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   confirmation: { marginTop: 10 }, hash: { color: colors.text, fontSize: 13, lineHeight: 21 }, amount: { color: colors.text, fontSize: 26, lineHeight: 36 }, detail: { padding: 18, gap: 14 }, label: { color: colors.muted, fontSize: 11, letterSpacing: 1 } });

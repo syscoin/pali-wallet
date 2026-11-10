@@ -13,11 +13,8 @@ const hash = (owner: string, index: number) =>
   `0x${owner.slice(2).toLowerCase().padEnd(60, '0')}${index
     .toString(16)
     .padStart(4, '0')}`;
-const hashLabel = (value: string) => `${value.slice(0, 12)}…${value.slice(-8)}`;
 const row = (page: Page, owner: string, index: number) =>
-  page
-    .getByText(hashLabel(hash(owner, index)), { exact: true })
-    .locator('xpath=ancestor::*[@role="button"][1]');
+  page.getByTestId(`activity-row-${hash(owner, index)}`);
 async function open(page: Page, mode = 'value', android = false, tokenMetadata?: string) {
   await page.goto(
     `/?evm-activity=1&evm-activity-mode=${mode}${android ? '&android=1' : ''}${tokenMetadata ? '&token-metadata='+tokenMetadata : ''}`
@@ -31,9 +28,9 @@ async function open(page: Page, mode = 'value', android = false, tokenMetadata?:
   ).toBeVisible();
 }
 async function loaded(page: Page, owner = OWNER) {
-  await expect(row(page, owner, 1)).toContainText('1.000000000000000001 ETH');
+  await expect(row(page, owner, 1)).toHaveAccessibleName(/^1\.000000000000000001 ETH, Confirmed\./);
   await expect(row(page, owner, 1)).toContainText('Confirmed');
-  await expect(row(page, owner, 3)).toContainText(`${LARGE} RAW`);
+  await expect(row(page, owner, 3)).toHaveAccessibleName(new RegExp(`^${LARGE} RAW,`));
 }
 async function noSigning(page: Page) {
   await expect(
@@ -57,16 +54,18 @@ async function network(page: Page, name: string) {
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
 }
 
-test('long exact activity amounts wrap inside a narrow transaction row', async ({ page }) => {
+test('compact activity amounts fit narrow rows while their accessible labels retain exact values', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await open(page);
-  const amount = page.getByText(`${LARGE} RAW`, { exact: true });
+  const item = row(page, OWNER, 3);
+  await expect(item).toHaveAccessibleName(new RegExp(`^${LARGE} RAW,`));
+  const amount = item.getByText('≈+1.23456e+35 RAW', { exact: true });
   await expect(amount).toBeVisible();
   expect(await amount.evaluate(element => {
     const row = element.closest('[role="button"]')!;
     const outer = row.getBoundingClientRect();
     const range = document.createRange(); range.selectNodeContents(element);
-    return [...range.getClientRects()].every(rect => rect.left >= outer.left - 1 && rect.right <= outer.right + 1);
+    return Array.from(range.getClientRects()).every(rect => rect.left >= outer.left - 1 && rect.right <= outer.right + 1);
   })).toBe(true);
 });
 
@@ -97,7 +96,7 @@ test('real watch Activity renders indexed native and ERC20 amounts without eager
   await expect(row(page, OWNER, 5)).toContainText('Pending');
   await expect(row(page, OWNER, 6)).toContainText('Reverted');
   await expect(
-    page.getByText(hashLabel(hash(OWNER, 4)), { exact: true })
+    row(page, OWNER, 4)
   ).toHaveCount(0);
   await expect(page.getByRole('tab', { name: 'All', exact: true })).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('button', { name: 'Activity options', exact: true }).click();
@@ -211,7 +210,7 @@ test('Base and Arbitrum report missing discovery without inventing a watch histo
       })
     ).toBeVisible();
     await expect(
-      page.getByText(hashLabel(hash(OWNER, 1)), { exact: true })
+      row(page, OWNER, 1)
     ).toHaveCount(0);
     await expect(page.getByText(/Saved transfers only/)).toHaveCount(0);
   }
@@ -256,7 +255,7 @@ test('late old-account requests cannot populate a newly added public account', a
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await loaded(page, SECOND);
   await expect(
-    page.getByText(hashLabel(hash(OWNER, 1)), { exact: true })
+    row(page, OWNER, 1)
   ).toHaveCount(0);
   expect(
     await page.evaluate(() => window.__watchFixture.evmActivity.cancelled())
@@ -278,7 +277,7 @@ test('background and Android blur revoke Activity without unlocking a signing wa
     page.getByRole('button', { name: 'View my accounts', exact: true })
   ).toBeVisible();
   await expect(
-    page.getByText(hashLabel(hash(OWNER, 1)), { exact: true })
+    row(page, OWNER, 1)
   ).toHaveCount(0);
   await page.evaluate(() => window.__watchFixture.evmActivity.release());
   const stopped = await page.evaluate(
@@ -351,13 +350,13 @@ test('shared filters survive tab navigation without mixing received and sent row
   await page.getByRole('tab', { name: 'Received', exact: true }).click();
   await expect(row(page, OWNER, 2)).toBeVisible();
   await expect(
-    page.getByText(hashLabel(hash(OWNER, 1)), { exact: true })
+    row(page, OWNER, 1)
   ).toHaveCount(0);
   await page.getByRole('tab', { name: 'Tools', exact: true }).click();
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await expect(row(page, OWNER, 2)).toBeVisible();
   await expect(
-    page.getByText(hashLabel(hash(OWNER, 1)), { exact: true })
+    row(page, OWNER, 1)
   ).toHaveCount(0);
   await noSigning(page);
 });
@@ -421,7 +420,7 @@ test('same-address network change closes old details and pending copy feedback',
       exact: true,
     })
   ).toHaveCount(0);
-  await expect(row(page, OWNER, 1)).toContainText('1.000000000000000001 SYS');
+  await expect(row(page, OWNER, 1)).toHaveAccessibleName(/^1\.000000000000000001 SYS, Confirmed\./);
   await expect(row(page, OWNER, 1)).toContainText('Confirmed');
   expect(await page.evaluate(() => window.__evmDelayedCopy.calls)).toEqual([
     OWNER,

@@ -10,6 +10,7 @@ import * as networks from '../src/custody/networkContext.ts';
 import * as utxoNetworks from '../src/core/utxoNetworks.ts';
 import type { NativePairingEntry } from '../src/connections/pairingLinks.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 
 type Element = {
   type: unknown;
@@ -314,6 +315,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     ])
   );
   Object.assign(dependencies, {
+    '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     react,

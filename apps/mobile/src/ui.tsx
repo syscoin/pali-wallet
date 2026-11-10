@@ -418,14 +418,17 @@ export function Header({
   onBack,
   right,
   subtitle,
+  brand = false,
 }: {
   title: string;
   onBack?: () => void;
   right?: React.ReactNode;
   subtitle?: string;
+  brand?: boolean;
 }) {
   return (
     <View style={styles.header}>
+      {brand && <PaliMark size={32} />}
       {onBack ? (
         <IdlePressable
           onPress={onBack}
@@ -444,8 +447,8 @@ export function Header({
         <Text
           accessibilityRole="header"
           style={{
-            fontSize: onBack ? 21 : 28,
-            lineHeight: onBack ? 28 : 34,
+            fontSize: onBack || brand ? 21 : 28,
+            lineHeight: onBack || brand ? 28 : 34,
             fontWeight: '700',
             letterSpacing: -0.7,
           }}

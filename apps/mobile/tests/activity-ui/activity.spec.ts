@@ -31,7 +31,7 @@ test('retained collectible details show signed fields without a resend action at
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?retained-collectible');
   const row = page.getByRole('button', { name: /View transaction details/ });
-  await expect(row).toHaveAccessibleName('Collectible transfer, Submission unconfirmed. View transaction details');
+  await expect(row).toHaveAccessibleName(/^Collectible transfer, Submission unconfirmed\..*View transaction details$/);
   const label = row.getByText('Collectible transfer', { exact: true });
   await expect(label).toBeInViewport();
   const labelBounds = await label.boundingBox();
@@ -92,7 +92,7 @@ for (const decimals of [0, 18, 19, 255]) {
     const row = page.getByRole('button', {
       name: new RegExp('PRECISE.*View transaction details'),
     });
-    await expect(row).toContainText(exactAmount);
+    await expect(row).toHaveAccessibleName(new RegExp(`^${exactAmount.replace('.', '\\.')}[,]`));
     await row.click();
     await expect(
       page.getByText('Transaction details', { exact: true })
@@ -256,9 +256,7 @@ test('older indexed rows need no RPC and return to the same list position after 
   });
   await older.click();
   await older.scrollIntoViewIfNeeded();
-  const row = page
-    .getByRole('button')
-    .filter({ hasText: '0x0000000000…00000028' });
+  const row = page.getByTestId(`activity-row-0x${'28'.padStart(64, '0')}`);
   await expect(row).toContainText('Confirmed');
   expect(
     await page.evaluate(() => window.__activityFixture.receiptReads())
@@ -328,10 +326,7 @@ test('generic contract creation keeps activity readable without inventing a reci
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/?contract-creation');
-  await page
-    .getByRole('button')
-    .filter({ hasText: '0x0000000000…00000001' })
-    .click();
+  await page.getByTestId(`activity-row-0x${'1'.padStart(64, '0')}`).click();
   await expect(
     page.getByText('Contract creation', { exact: true })
   ).toBeVisible();
@@ -360,7 +355,7 @@ for (const mode of ['token-placeholder', 'mixed-case']) test(`custody Activity p
   await page.goto(`/?history-identity=${mode}`);
   for (const index of [0xabc, 0xdef]) {
     const id = `0x${index.toString(16).padStart(64, '0')}`;
-    const row = page.getByText(`${id.slice(0, 12)}…${id.slice(-8)}`, { exact: true }).locator('xpath=ancestor::*[@role="button"][1]');
+    const row = page.getByTestId(`activity-row-${id}`);
     await expect(row).toBeVisible(); await expect(row).toContainText('Confirmed');
   }
   expect(await page.evaluate(() => window.__activityFixture.feedReads())).toBe(mode === 'mixed-case' ? 3 : 2);

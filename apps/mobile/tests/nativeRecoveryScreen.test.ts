@@ -10,6 +10,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture } from './idleComponentFixture.ts';
+import { nativeTranslationFixture } from './localizationFixture.ts';
 import { findUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
@@ -119,6 +120,7 @@ function setup(phase = 'entry') {
   };
 }
 function all(tree: unknown): Element[] {
+  if (Array.isArray(tree)) return tree.flatMap(all);
   if (!tree || typeof tree !== 'object' || !('children' in tree)) return [];
   const node = tree as Element; return [node, ...node.children.flatMap(all), ...all(node.props.footer)];
 }
@@ -234,6 +236,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
@@ -269,7 +272,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
-async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }) {
+async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>) {
   const root = setup();
   const address = `0x${'11'.repeat(20)}`;
   const catalogue = { revision: 1, active: { accountId: 'hd:60:0', networkId: 'ethereum' },
@@ -283,6 +286,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   let locks = 0;
   const lifecycle: string[] = [];
   const enrollments: { enabled: boolean; password: string }[] = [];
+  const backupConfirmations: { id: string; answers: readonly string[] }[] = [];
   const authentication = new DeviceUnlockPrompt({
     state: () => root.native.AppState.currentState,
     subscribe(listener) {
@@ -301,7 +305,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     canUseWalletAuthenticator: () => false,
     guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
     ...(deviceUnlock ? { authentication } : {}),
-    authority: { getSnapshot: () => state, getCatalogue: () => setting && state.phase === 'ready' ? catalogue : null, supportsAccountManagement: () => false,
+    authority: { getSnapshot: () => state, getCatalogue: () => (setting || backupCompletion) && state.phase === 'ready' ? catalogue : null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
       async getDeviceUnlockStatus() { return { available: true, enabled: setting?.enabled ?? !empty }; },
       async create() { publish({ phase: 'backup-required', presence: 'existing', backup: 'unconfirmed' }); },
@@ -325,13 +329,27 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
     trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
-    keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
+    keyExport: { cancel() {}, dispose() {} }, backup: {
+      cancel() {}, dispose() {}, onClear: () => () => {},
+      async begin(password: string) {
+        assert(backupCompletion, 'Backup is outside this fixture');
+        assert.equal(password, 'public test password');
+        return { id: 'public-backup-review', words: [...Array(11).fill('abandon'), 'about'], positions: [0, 5, 11] };
+      },
+      async confirm(id: string, answers: readonly string[]) {
+        assert(backupCompletion, 'Backup is outside this fixture');
+        backupConfirmations.push({ id, answers: [...answers] });
+        await backupCompletion;
+        publish({ phase: 'ready', backup: 'confirmed', account: { address, network: 'ethereum' } });
+      },
+    },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
   };
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
@@ -363,8 +381,43 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, dispose: root.dispose, emit: root.emit, releasePrompt: () => releasePrompt(), enrollments, lifecycle, get locks() { return locks; } };
+  return { render, unlock, publish, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupConfirmations, lifecycle, get locks() { return locks; } };
 }
+
+test('backup completion waits for successful confirmation, clears words, and Done or Back returns to the wallet', async () => {
+  for (const action of ['done', 'back'] as const) {
+    const completion = Promise.withResolvers<void>();
+    const f = await walletFeedbackFixture(false, false, undefined, completion.promise);
+    try {
+      let tree = await f.unlock(null);
+      const password = all(tree).find(node => node.props.label === 'Confirm your password'); assert(password);
+      (password.props.onChange as (value: string) => void)('public test password');
+      press(button(f.render(), 'Show recovery phrase'));
+      await new Promise(resolve => setImmediate(resolve));
+      tree = f.render(); assert.match(text(tree), /abandon/);
+      press(button(tree, "I've written them down"));
+      tree = f.render();
+      for (const [label, answer] of [['Word 1', 'abandon'], ['Word 6', 'abandon'], ['Word 12', 'about']] as const) {
+        const input = all(tree).find(node => node.props.label === label); assert(input);
+        (input.props.onChange as (value: string) => void)(answer);
+      }
+      press(button(f.render(), 'Confirm backup'));
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(all(f.render()).some(node => node.props.title === 'Done'), false);
+      assert.deepEqual(f.backupConfirmations, [{ id: 'public-backup-review', answers: ['abandon', 'abandon', 'about'] }]);
+      completion.resolve(); await new Promise(resolve => setImmediate(resolve));
+      tree = f.render();
+      assert(all(tree).some(node => node.type === 'Header' && node.props.title === 'Backup complete'));
+      assert.match(text(tree), /Recovery phrase backed up/);
+      assert(!JSON.stringify(tree).includes('abandon'));
+      assert.equal(all(tree).some(node => typeof node.props.label === 'string' && /^Word /.test(node.props.label)), false);
+      if (action === 'done') press(button(tree, 'Done'));
+      else f.hardware();
+      assert(all(f.render()).some(node => node.type === 'NativePortfolio'));
+      assert.equal(f.backupConfirmations.length, 1);
+    } finally { f.dispose(); }
+  }
+});
 
 test('password setup makes biometric enrollment an explicit optional choice', async () => {
   for (const enable of [false, true]) {
@@ -533,6 +586,7 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    '../platform/localization': nativeTranslationFixture,
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,

@@ -19,6 +19,7 @@ import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
 import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
+import { compactActivityAmountLabel } from '../src/activity/activityAmountLabel.ts';
 
 const require = createRequire(import.meta.url);
 // Use the declared Expo Babel preset's toolchain to strip the installed RN Flow
@@ -117,10 +118,13 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         useWindowDimensions: () => ({ width: 390, fontScale: 1 }),
         ...Object.fromEntries(['View', 'ActivityIndicator', 'FlatList', 'Modal', 'Pressable', 'ScrollView'].map((name) => [name, name])),
       };
-      const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Row', 'Screen', 'SegmentedControl', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
+      const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'SegmentedControl', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
       const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
       const idle = createIdleComponentFixture(render.api, native);
+      const activityListRow = evaluate(load('src/screens/ActivityListRow.tsx'), {
+        react: render.api, 'react-native': native, '../ui': ui, './IdleActivityBoundary': idle.components,
+      });
       const dependencies = { '../platform/localization': nativeTranslationFixture, '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoAddresses': { canUseUtxoCustodyAddress },
@@ -131,6 +135,8 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         './NativeTokens': { NativeTokens: 'NativeTokens' }, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
         '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' },
         '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
+        './ActivityListRow': activityListRow,
+        '../activity/activityAmountLabel': { compactActivityAmountLabel },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
         '../../../../source/shared/sptInventory': sptInventory,
@@ -195,7 +201,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         if (kind === 'activity') {
           render.render(parent, Root, {}); render.flush(parent); assert.equal(shell.tab, 'wallet'); render.dispose(child);
         } else {
-          tree = render.render(child, leaf, props()); render.flush(child); assert.ok(find(tree, (element) => element.props.title === 'Wallet'));
+          tree = render.render(child, leaf, props()); render.flush(child); assert.ok(find(tree, (element) => element.props.title === 'Receive'));
         }
         assert.equal(exits, 0);
         back.dispatch(); assert.equal(exits, 1); assert.equal(back.defaults(), 0);

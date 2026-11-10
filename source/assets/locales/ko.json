@@ -2057,6 +2057,7 @@
     "security": {
       "revealFailed": "The private key could not be shown. Confirm your password and try again.",
       "phraseBackedUp": "Recovery phrase backed up",
+      "backupComplete": "백업 완료",
       "phraseBackup": "Your written recovery phrase restores the accounts derived from this wallet. Keep it private and offline.",
       "importBackupTitle": "Imported key needs a separate backup",
       "importBackupBody": "Your recovery phrase cannot restore this account. Keep its original private key backed up separately.",

@@ -1,4 +1,3 @@
-import { IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
   useEffect,
@@ -23,6 +22,8 @@ import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, sty
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
 import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory';
+import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
+import { ActivityListRow, activityDate } from './ActivityListRow';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type {
   ActivityRow,
@@ -138,6 +139,12 @@ function amount(row: ActivityRow, symbol: string): string {
     }`;
   return `${formatBaseUnits(row.observation.valueUnits, 18)} ${symbol}`;
 }
+const rowMonetaryAmount = (row: ActivityRow) => {
+  if (row.local?.collectibleTransfer || row.local?.contractInteraction && row.local.amountUnits === '0') return false;
+  if (row.display) return !row.display.amountUnavailable && !row.display.hasUnknownDecimals;
+  return !row.indexed && (!!row.local || !!row.observation && row.observation.events.length === 0);
+};
+const rowDate = (row: ActivityRow) => activityDate(row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt);
 function fee(row: ActivityRow, symbol: string): string {
   try {
     if (
@@ -522,17 +529,23 @@ function NativeActivityContent({
               )}
             </View>
           }
-          renderItem={({ item }) => (
-            <IdlePressable
-              ref={(node) => {
+          renderItem={({ item, index }) => {
+            const date = rowDate(item), first = index === 0 || rowDate(rows[index - 1]!).key !== date.key;
+            const last = index === rows.length - 1 || rowDate(rows[index + 1]!).key !== date.key;
+            const flow = direction(item, owner), fullAmount = amount(item, snapshot.nativeSymbol ?? 'ETH');
+            const isNumeric = !!rowMonetaryAmount(item);
+            return <ActivityListRow
+              rowRef={(node) => {
                 if (node) rowViews.current.set(item.hash, node);
                 else rowViews.current.delete(item.hash);
               }}
-              accessibilityRole="button"
-              accessibilityLabel={`${amount(
-                item,
-                snapshot.nativeSymbol ?? 'ETH'
-              )}, ${displayStatus(item)}. View transaction details`}
+              testID={`activity-row-${item.hash}`} direction={flow}
+              first={first} last={last} heading={first ? date.label : undefined}
+              title={!isNumeric ? fullAmount : flow === 'sent' ? 'Sent' : flow === 'received' ? 'Received' : flow === 'self' ? 'Self transfer' : 'Activity'}
+              subtitle={`${snapshot.networkName ?? snapshot.nativeSymbol ?? 'Network'} · ${displayStatus(item)}${item.unavailable ? ' · Details unavailable' : ''}`}
+              amount={isNumeric ? compactActivityAmountLabel(`${/^[+−-]/.test(fullAmount) ? '' : flow === 'received' ? '+' : flow === 'sent' ? '-' : ''}${fullAmount}`.replace(/^−/, '-')) : ''}
+              time={date.time}
+              label={`${fullAmount}, ${displayStatus(item)}. ${date.label} ${date.time}. View transaction details`}
               onPress={() =>
                 afterPositionSaved(() => {
                   setFeedback('');
@@ -540,30 +553,11 @@ function NativeActivityContent({
                   controller.inspect(item.hash);
                 })
               }
-              style={s.item}
-            >
-              <View style={s.itemHeader}>
-                <Text style={s.amount}>
-                  {amount(item, snapshot.nativeSymbol ?? 'ETH')}
-                </Text>
-                <Text style={s.direction}>
-                  {direction(item, owner) === 'unknown'
-                    ? 'Activity'
-                    : direction(item, owner)}
-                </Text>
-              </View>
-              <Text style={styles.muted}>{displayStatus(item)}</Text>
-              <Text style={s.hash}>
-                {item.hash.slice(0, 12)}…{item.hash.slice(-8)}
-              </Text>
-              {item.unavailable && (
-                <Text style={styles.muted}>RPC details unavailable</Text>
-              )}
-            </IdlePressable>
-          )}
+            />;
+          }}
           ListEmptyComponent={
             savedPending ? savedPending.status === 'ready' ? <Notice title="No saved pending transfers" /> : undefined : snapshot.status !== 'loading' ? (
-              <Notice
+              snapshot.status === 'unavailable' || snapshot.error ? <Notice
                 title={
                   snapshot.status === 'unavailable'
                     ? 'Activity unavailable'
@@ -571,8 +565,8 @@ function NativeActivityContent({
                     ? 'Activity could not be loaded'
                     : 'No activity in the loaded history'
                 }
-                body="This list is not a balance or a complete account history. Refresh or load more to check for additional activity."
-              />
+                body="Refresh to try again."
+              /> : <View style={s.empty}><Text style={s.emptyTitle}>No activity to show</Text><Text style={s.caption}>Refresh or choose another filter.</Text></View>
             ) : undefined
           }
           ListFooterComponent={
@@ -580,7 +574,7 @@ function NativeActivityContent({
               {savedPending ? savedPending.hasMore && savedPending.status !== 'loading' && (
                 <Button title={savedPending.status === 'unavailable' ? 'Try again' : 'Load more saved transfers'}
                   variant="secondary" onPress={() => void controller.loadSavedPending()} />
-              ) : snapshot.hasMore && (
+              ) : snapshot.hasMore && (snapshot.loadingMore ? <View style={s.loadingMore}><ActivityIndicator color={colors.blue} /><Text style={s.caption}>Loading older activity…</Text></View> : (
                 <Button
                   title={
                     snapshot.loadingMore
@@ -588,17 +582,18 @@ function NativeActivityContent({
                       : 'Load older activity'
                   }
                   variant="secondary"
+                  size="compact"
                   disabled={snapshot.loadingMore}
                   onPress={() => controller.loadMore()}
                 />
-              )}
+              ))}
               {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.build}>Development build · Use a test wallet</Text>}
             </View>
           }
         />
       </View>
       {chosen && (
-        <ScrollView key={chosen.hash} contentContainerStyle={s.content}>
+        <ScrollView key={chosen.hash} contentContainerStyle={[s.content, s.detailContent]}>
           <Text style={s.detailAmount}>
             {amount(chosen, snapshot.nativeSymbol ?? 'ETH')}
           </Text>
@@ -829,28 +824,12 @@ const s = StyleSheet.create({
   caption: { color: colors.muted, fontSize: 12, lineHeight: 18, flex: 1 },
   list: { flex: 1 },
   hidden: { display: 'none' },
-  content: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 },
+  content: { paddingHorizontal: 16, paddingBottom: 24, gap: 0 },
+  detailContent: { gap: 12 },
   section: { gap: 8, paddingVertical: 8 },
-  item: {
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    marginBottom: 8,
-    gap: 5,
-    borderBottomWidth: 1,
-    borderColor: colors.border,
-    minHeight: 88,
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 8,
-  },
-  amount: { fontSize: 18, lineHeight: 25, fontWeight: '600', flexShrink: 1, minWidth: 0, maxWidth: '100%' },
-  direction: { color: colors.muted, fontSize: 13, textTransform: 'capitalize' },
-  hash: { color: colors.muted, fontSize: 12 },
+  empty: { alignItems: 'center', gap: 8, paddingVertical: 40 },
+  emptyTitle: { fontSize: 18, fontWeight: '600' },
+  loadingMore: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, paddingVertical: 16 },
   detail: { padding: 16, gap: 10 },
   detailAmount: { fontSize: 24, lineHeight: 32, fontWeight: '600', minWidth: 0, maxWidth: '100%' },
   full: { fontSize: 14, lineHeight: 23, color: colors.text },

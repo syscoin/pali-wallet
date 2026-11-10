@@ -163,10 +163,14 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
     <Button title="Copy address" icon="copy" style={actionStyle} size="compact" disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
     <Button title="Share address" icon="share" variant="secondary" style={actionStyle} size="compact" disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
   </View> : undefined;
+  const nativeCoinCard = account && <Card><Row title={symbol} subtitle={networkName} icon={<Coin id={network.networkId} size={32} />}
+    right={<Text style={s.assetBalance}>{amount ?? '—'} {symbol}</Text>}
+    onPress={() => { if (model.isCurrent(account)) setNativeDetailScope(scopeOf(account)); }} last />
+  </Card>;
 
   return <SafeAreaView edges={navigation && !receiving && !nativeDetail && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
     <Screen key={receiving ? 'receive' : 'portfolio'} scrollResetKey={nativeDetail ? 'native-asset' : tokenTitle ?? 'portfolio'} footer={actions} footerScrollable={receiving} gap={receiving ? 12 : 16}>
-      <Header title={receiving ? `Receive ${symbol}` : nativeDetail ? networkName : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle ? <View style={s.toolbar}>
+      <Header title={receiving ? `Receive ${symbol}` : nativeDetail ? networkName : tokenTitle ?? 'Pali Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={receiving || nativeDetail || !!tokenTitle ? back : undefined} brand={!receiving && !nativeDetail && !tokenTitle} right={!receiving && !tokenTitle ? <View style={s.toolbar}>
         {canSend && <IconButton label={loading ? 'Refreshing balance' : 'Refresh balance'} icon="refresh" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         {!nativeDetail && onManageAccounts && <IconButton label="Accounts" icon="wallet" onPress={onManageAccounts} />}
       </View> : undefined} />
@@ -211,12 +215,9 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
         {nativeDetail ? <>
           <AssetMarketCard asset={{ kind: 'native', networkId: account.network, registration }} />
           {canReceive && <Card style={s.assetAddress}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>}
-        </> : <View style={s.assetList}>
+        </> : (!tokenView || utxo) && <View style={s.assetList}>
           <Text accessibilityRole="header" style={s.assetHeading}>Assets</Text>
-          <Card><Row title={symbol} subtitle={networkName} icon={<Coin id={network.networkId} size={32} />}
-            right={<Text style={s.assetBalance}>{amount ?? '—'} {symbol}</Text>}
-            onPress={() => { if (model.isCurrent(account)) setNativeDetailScope(scopeOf(account)); }} last />
-          </Card>
+          {nativeCoinCard}
         </View>}
         {faucetCard}
         </>}
@@ -226,7 +227,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
           onReceive={canReceive ? () => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } } : undefined}
           onRefresh={() => { if (account && model.isCurrent(account)) void model.refresh(); }}
           onSend={account && onSendSpt ? asset => { if (model.isCurrent(account)) onSendSpt(asset); } : undefined} />}
-        {tokenView && !utxo && <NativeTokens registration={registration} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
+        {tokenView && !utxo && <NativeTokens registration={registration} nativeAsset={nativeCoinCard} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
           onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onSendCollectible={account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) onSendCollectible(collectible); } : undefined}
           onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}

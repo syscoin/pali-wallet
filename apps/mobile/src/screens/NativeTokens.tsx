@@ -32,6 +32,7 @@ import type { NativeNetworkRegistration } from '../custody/networkContext';
 
 type Props = {
   registration?: NativeNetworkRegistration | null;
+  nativeAsset?: React.ReactNode;
   controller: NativeTokenView;
   onReceive(): void;
   onSend?(token: Erc20Metadata): void;
@@ -76,6 +77,7 @@ function TokenContent({
   controller,
   snapshot,
   registration,
+  nativeAsset,
   onReceive,
   onSend,
   onSendCollectible,
@@ -100,6 +102,7 @@ function TokenContent({
         )
       : undefined;
   const busy = snapshot.busy || snapshot.previewStatus === 'loading';
+  const hasNativeAsset = nativeAsset != null;
   const canSendToken = !!onSend && !!snapshot.account;
   const title =
     route.kind === 'import'
@@ -112,7 +115,7 @@ function TokenContent({
       ? 'Token details'
       : route.kind === 'remove'
       ? 'Remove token'
-      : 'Tokens';
+      : hasNativeAsset ? 'Assets' : 'Tokens';
   useLayoutEffect(() => {
     onModeChange?.(route.kind === 'list' ? null : title);
     return () => onModeChange?.(null);
@@ -260,6 +263,14 @@ function TokenContent({
           <Text accessibilityRole="header" style={s.title}>
             {title}
           </Text>
+          {route.kind === 'list' && hasNativeAsset && (
+            <View style={s.actionRow}>
+              <Button title="Import token" icon="plus" size="compact" variant="quiet"
+                disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
+              <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
+                disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
+            </View>
+          )}
           {route.kind !== 'list' && (
             <Button
               title={route.kind === 'collectible' ? 'Back to collectibles' : 'Back to tokens'}
@@ -272,6 +283,7 @@ function TokenContent({
           )}
         </View>
       )}
+      {route.kind === 'list' && nativeAsset}
       {!snapshot.account || snapshot.status === 'unavailable' ? (
         <Notice
           title="Tokens unavailable"
@@ -325,12 +337,12 @@ function TokenContent({
                   </Card>
                 </IdlePressable>
               ))}
-              <View style={s.actionRow}>
+              {!hasNativeAsset && <View style={s.actionRow}>
                 <Button title="Import token" icon="plus" size="compact" variant="secondary"
                   style={s.action} disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
                 <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
                   disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
-              </View>
+              </View>}
               {(discovery || snapshot.canCheckCollectible || !!snapshot.collectibles?.length) && (
                 <Button
                   title="Collectibles"

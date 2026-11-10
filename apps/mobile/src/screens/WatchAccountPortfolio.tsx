@@ -91,8 +91,8 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
         <Button title="Copy address" icon="copy" size="compact" disabled={busy || !address} onPress={() => void publicAction('copy')} style={actionStyle} />
         <Button title="Share address" icon="share" size="compact" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={actionStyle} />
       </View> : undefined}>
-      <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : mode === 'asset' ? network.name : tokenTitle ?? 'Wallet'}
-        subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={back}
+      <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : mode === 'asset' ? network.name : tokenTitle ?? 'Pali Wallet'}
+        subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={mode !== 'home' || !!tokenTitle ? back : undefined} brand={mode === 'home' && !tokenTitle}
         right={(mode === 'home' || mode === 'asset') && !tokenTitle ? <View style={s.toolbar}>
           <IconButton label={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" disabled={loading} onPress={() => void authority.refresh()} />
           {mode === 'home' && <IconButton label="Accounts" icon="wallet" onPress={onAccounts} />}
