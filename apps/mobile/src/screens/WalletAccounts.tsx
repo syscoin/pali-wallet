@@ -60,6 +60,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
       const account = props.watch.accounts.find(value => value.id === entry.selection.id)!;
       const grouped = new Map<string, ReturnType<typeof getNetwork>[]>();
       for (const [id, address] of Object.entries(account.addresses)) {
+        if (address === undefined) continue;
         const networks = grouped.get(address) ?? [];
         networks.push(getNetwork(id as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks));
         grouped.set(address, networks);

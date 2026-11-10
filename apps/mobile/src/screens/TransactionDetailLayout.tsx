@@ -9,6 +9,7 @@ export type TransactionDetailRow = Readonly<{
   value: string;
   displayValue?: string;
   actionLabel?: string;
+  disabled?: boolean;
   onPress?(): void;
 }>;
 
@@ -41,7 +42,7 @@ export function TransactionDetailLayout({ amount, direction, status, tone, rows,
             {row.onPress && <Icon name="copy" size={14} color={colors.muted} />}</View>
         </>;
         const style = [s.row, index < rows.length - 1 && s.divider];
-        return row.onPress ? <IdlePressable key={row.label} accessibilityRole="button" accessibilityLabel={`${row.actionLabel ?? row.label}: ${row.value}`} onPress={row.onPress} style={style}>{content}</IdlePressable>
+        return row.onPress ? <IdlePressable key={row.label} accessibilityRole="button" accessibilityLabel={`${row.actionLabel ?? row.label}: ${row.value}`} accessibilityState={{ disabled: row.disabled === true }} disabled={row.disabled} onPress={row.onPress} style={style}>{content}</IdlePressable>
           : <View key={row.label} style={style}>{content}</View>;
       })}
     </Card>

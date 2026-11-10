@@ -17,7 +17,7 @@ test('compact transaction facts retain full accessible amounts and identifiers w
     rows: [
       { label: 'Network', value: 'Syscoin NEVM' }, { label: 'Date', value: 'Date unavailable' },
       { label: 'From', value: address, actionLabel: 'Copy sender address', onPress: () => { copies++; } },
-      { label: 'To', value: 'Contract creation' }, { label: 'Network fee', value: 'Actual fee not verified' },
+      { label: 'To', value: 'Contract creation', actionLabel: 'Copy recipient', disabled: true, onPress: () => { copies++; } }, { label: 'Network fee', value: 'Actual fee not verified' },
       { label: 'Transaction ID', value: hash },
     ], onExplorer: () => { explorers++; } }));
   const amount = nodes.find(node => node.type === 'Text' && node.props.accessibilityLabel === fullAmount); assert(amount);
@@ -28,7 +28,12 @@ test('compact transaction facts retain full accessible amounts and identifiers w
   assert(nodes.some(node => node.children.includes('Actual fee not verified')));
   const copy = nodes.find(node => node.type === 'Row'); assert(copy);
   assert.equal(copy.props.accessibilityLabel, `Copy sender address: ${address}`);
+  assert.equal(copy.props.disabled, undefined);
+  assert.equal(copy.props.accessibilityState.disabled, false);
   copy.props.onPress(); assert.equal(copies, 1);
+  const disabledCopy = nodes.find(node => node.type === 'Row' && node.props.accessibilityLabel === 'Copy recipient: Contract creation'); assert(disabledCopy);
+  assert.equal(disabledCopy.props.disabled, true);
+  assert.equal(disabledCopy.props.accessibilityState.disabled, true);
   const explorer = nodes.find(node => node.type === 'Button'); assert(explorer);
   assert.equal(explorer.props.title, 'View on explorer'); explorer.props.onPress(); assert.equal(explorers, 1);
   f.close();
