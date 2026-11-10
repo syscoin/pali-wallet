@@ -9,7 +9,7 @@
       "component": "Onboarding.Welcome",
       "status": "implemented",
       "actual_label": "Welcome",
-      "note": "Centered Pali identity, subtle native-vector glow and dot pattern, direct Create/Import actions, and quiet watch-account entry.",
+      "note": "Welcome glow, dot falloff, logo placement and title weight were measured against the reference. The direct Create/Import/Watch actions remain unchanged.",
       "title": "Welcome",
       "comparison": "01-welcome.png",
       "comparison_size": [
@@ -21,11 +21,13 @@
         390,
         844
       ],
-      "actual_sha256": "6226500adee772d8501817ae11a7fa9096b4af90ee16b57a490d86e7c6af2742",
+      "actual_sha256": "6a7d2a5aa666fba727023f0bf36fcd4d95d4f000a45a3c93c983a2ddf52536cb",
       "reference": "Embedded PDF reference in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-01-320.png",
-      "comparison_sha256": "fa46c4902d7a7b6d9457c5823e8f9569a44d3d21ef4900292673b1efe54c6496"
+      "comparison_sha256": "2415899aa9dfc31e9f04462cb671ed988d796a0488a390c511eb0aba1858ccb2",
+      "source_commit": "812e76dd6faf0bf035814c6da8fe4f6d079efda4",
+      "narrow_actual_sha256": "6c242fe98cd164bfd62c439c6da7f8b9099774fc7ca1f0893a76f5cc85b8e3f5"
     },
     {
       "page": 2,

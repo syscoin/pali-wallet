@@ -2,7 +2,7 @@
 
 All 32 PDF reference states are compared below with screenshots of the **actual implemented React Native components**. Home, Send, Receive and Activity also include frames from the supplied video. Each image opens at full size; each row has a 320-pixel capture for narrow-screen review.
 
-**Source:** `d7534eca79309277cf2a1df927f8b56d5f655fb6`. Captures use public synthetic wallet/network/connection adapters in a browser at 390×844 and 320×568. They are UI evidence, not native-device, biometric, camera or funded-transaction qualification. Recovery words shown are a publicly known test phrase. No real wallet data is included.
+**Core source:** `d7534eca79309277cf2a1df927f8b56d5f655fb6`. Welcome was refined against the reference at `812e76dd6faf0bf035814c6da8fe4f6d079efda4`; its fresh normal/narrow captures and hashes are included. Captures use public synthetic wallet/network/connection adapters in a browser at 390×844 and 320×568. They are UI evidence, not native-device, biometric, camera or funded-transaction qualification. Recovery words shown are a publicly known test phrase. No real wallet data is included.
 
 **Implemented authentication:** sends now require transaction-bound password or enabled device-biometric confirmation; the gallery shows the password fallback. Browser adapters cannot demonstrate the OS biometric prompt. **Remaining design difference:** the current vault still uses a password, so pages 2–4 and 7 retain password setup; the proposed PIN-only architecture is not implemented. Page 28 honestly shows the browser fallback for the native camera. Other adaptations are identified per screen.
 
@@ -48,7 +48,7 @@ All 32 PDF reference states are compared below with screenshots of the **actual 
 <details>
 <summary>01. Welcome — implemented</summary>
 
-Centered Pali identity, subtle native-vector glow and dot pattern, direct Create/Import actions, and quiet watch-account entry.
+Welcome glow, dot falloff, logo placement and title weight were measured against the reference. The direct Create/Import/Watch actions remain unchanged.
 
 ![Welcome: reference and implemented screen](01-welcome.png)
 
