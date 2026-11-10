@@ -141,6 +141,7 @@ import { EvmSignedReplay, observeRetainedEvmTransaction, projectSavedEvmTransact
 import { observeSmartAccountActivity } from '../../../../source/wallet/smartAccountActivity.ts';
 import { getObservedEvmTerminalPhase } from '../../../../source/shared/evmTransactionObservation.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
+import { captureInfrastructureCleanupStorage } from './infrastructureCleanup.ts';
 import { captureNativePublicSessionRecord, createNativePublicSessionRecord, nativePublicSessionManifest, nativePublicSessionRestoreRequest, nativePublicSessionSlhStates, NATIVE_PUBLIC_SESSION_KEY, type NativePublicSessionRecord } from './publicSession.ts';
 import { decodePublicSessionRecord } from '../storage/publicSessionRecordKey.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
@@ -4222,7 +4223,12 @@ export function createKeyringRuntimeFactory(
           const walletFingerprint = await dataBinding(captured, check);
           check();
           const recovery = storage.recovery, pairFingerprint = verifiedIdentity?.pairFingerprint;
-          if (!recovery || !pairFingerprint) throw new KeyringRuntimeError('NOT_READY');
+          if (!recovery || !pairFingerprint || !verifiedIdentity?.root || !currentPublicSessionRecord) throw new KeyringRuntimeError('NOT_READY');
+          const cleanupIdentity = { ...verifiedIdentity, root: { ...verifiedIdentity.root } };
+          const cleanupStorage = captureInfrastructureCleanupStorage(storage.keyringStorage, () => recovery.readIdentity(), {
+            identity: cleanupIdentity, checkpoint: currentPublicSessionRecord, records: catalogue.privateRecords,
+          });
+          const cleanupRoot = { walletFingerprint, address: cleanupIdentity.root.address, publicKey: cleanupIdentity.root.publicKey };
           let preparedAttemptId: string | undefined;
           let admission: { attemptId: string; pending: NativeInfrastructurePending | null } | null = null;
           const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
@@ -4247,6 +4253,7 @@ export function createKeyringRuntimeFactory(
               if (prior) await Promise.allSettled([prior]);
               if (active || reserved) throw new KeyringRuntimeError('BUSY');
               const token = {}; reserved = token;
+              let cleanupCatalogue: NativeWalletCatalogue | undefined, cleanupCommitted = false;
               const storageOwner = () => {
                 if (storageRetired || requiresReopen() || reserved !== token || active || admission !== admitted)
                   throw new KeyringRuntimeError('CLEANUP_FAILED');
@@ -4270,7 +4277,16 @@ export function createKeyringRuntimeFactory(
                 if (!admitted.pending || pending.entry.attemptId !== attemptId ||
                     encodeStorageValue(pending) !== encodeStorageValue(admitted.pending)) throw new KeyringRuntimeError('CANCELLED');
                 const before = catalogueSnapshot;
-                const next = await catalogue.mutate(record.revision, { kind: 'set-infrastructure-pending', chainId: network.chainId, expectedAttemptId: attemptId, pending: null }, () => { storageOwner(); });
+                const cleanupGuard = () => { storageOwner(); };
+                cleanupCatalogue = new NativeWalletCatalogue(cleanupStorage(record, pending, cleanupGuard));
+                await cleanupCatalogue.reconcile(cleanupRoot, cleanupGuard);
+                if (encodeStorageValue(cleanupCatalogue.privateRecords) !== encodeStorageValue(record)) throw new KeyringRuntimeError('CANCELLED');
+                await cleanupCatalogue.mutate(record.revision, { kind: 'set-infrastructure-pending', chainId: network.chainId, expectedAttemptId: attemptId, pending: null }, cleanupGuard);
+                cleanupCommitted = true;
+                const next = await catalogue.reconcile(cleanupRoot, cleanupGuard);
+                storageOwner();
+                if (encodeStorageValue(catalogue.privateRecords) !== encodeStorageValue(cleanupCatalogue.privateRecords))
+                  throw new KeyringRuntimeError('CANCELLED');
                 storageOwner();
                 if (before !== null && !closed && keyring.hasPublicSession()) {
                   if (catalogueSnapshot !== before || JSON.stringify({ ...next, revision: 0 }) !== JSON.stringify({ ...before, revision: 0 }))
@@ -4284,7 +4300,9 @@ export function createKeyringRuntimeFactory(
                   if (snapshot === before && generation === captured && keyring === ring && !signal.aborted) snapshot = adopted;
                 }
               } catch (error) {
-                if (requiresReopen()) { infrastructureSettlementFault = true; privateDomainStorageFault = 'reopen'; }
+                if (cleanupCommitted || cleanupCatalogue?.requiresReopen || requiresReopen()) {
+                  infrastructureSettlementFault = true; privateDomainStorageFault = 'reopen';
+                }
                 throw error;
               } finally { if (reserved === token) reserved = null; }
             },

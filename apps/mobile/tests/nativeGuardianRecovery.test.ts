@@ -9,6 +9,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { CustodyOperationError } from '../src/custody/authority.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
@@ -87,6 +88,7 @@ async function fixture(smart = true) {
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
+    '../custody/privateAuthentication.ts': privateAuthentication,
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
