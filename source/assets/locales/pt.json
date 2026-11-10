@@ -2306,7 +2306,9 @@
       "error": "Verifique as permissões de notificação nas configurações do dispositivo e tente novamente.",
       "checkNow": "Verificar agora",
       "disableAll": "Desativar todos os alertas",
-      "search": "Buscar contas ou redes"
+      "search": "Buscar contas ou redes",
+      "noTransactionProvider": "Alertas de transações indisponíveis",
+      "guardianOnly": "Apenas atualizações de guardiões"
     },
     "accountPortfolio": {
       "value": "Valor da carteira",

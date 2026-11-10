@@ -267,6 +267,13 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
       if (kind === 'native') {
         const originalBackup = backupRequired;
         backupRequired = true;
+        const unbackedReceive = render.instance();
+        let unbackedTree = render.render(unbackedReceive, leaf, { ...props(), openReceive: true }); render.flush(unbackedReceive);
+        unbackedTree = render.render(unbackedReceive, leaf, { ...props(), openReceive: true }); render.flush(unbackedReceive);
+        assert.equal(find(unbackedTree, element => element.type === 'QRCode'), undefined);
+        assert.equal(get(unbackedTree, element => element.type === 'Modal').props.transparent, true);
+        assert(get(unbackedTree, element => element.props.title === 'Receive Anyway'));
+        render.dispose(unbackedReceive);
         const continuation = { account: { address: account.addresses.ethereum, network: 'ethereum', revision: accountRevision }, backupAcknowledged: true };
         const resumed = render.instance(), captured: unknown[] = [];
         const resumedProps = { ...props(), initialReceive: continuation, onChangeReceiveNetwork(value: unknown) { captured.push(value); } };

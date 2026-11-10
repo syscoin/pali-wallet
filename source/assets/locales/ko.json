@@ -2306,7 +2306,9 @@
       "error": "기기 설정에서 알림 권한을 확인한 후 다시 시도하세요.",
       "checkNow": "지금 확인",
       "disableAll": "모든 알림 끄기",
-      "search": "계정 또는 네트워크 검색"
+      "search": "계정 또는 네트워크 검색",
+      "noTransactionProvider": "거래 알림을 사용할 수 없습니다",
+      "guardianOnly": "가디언 업데이트만"
     },
     "accountPortfolio": {
       "value": "포트폴리오 가치",

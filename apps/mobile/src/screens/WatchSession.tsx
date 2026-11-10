@@ -30,12 +30,13 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const notifications = useSyncExternalStore(nativeActivityNotifications.subscribe, nativeActivityNotifications.getSnapshot, nativeActivityNotifications.getSnapshot);
   const evmActivity = useMemo(() => createWatchEvmActivity(authority), [authority]);
-  const currentScope = () => {
+  const currentScope = useCallback(() => {
     const state = authority.getSnapshot();
     return state.status === 'ready' ? `${state.generation}:${state.selectedAccountId}:${state.selectedNetworkId}` : null;
-  };
+  }, [authority]);
   const identity = snapshot.status === 'ready' ? `${snapshot.selectedAccountId}:${snapshot.selectedNetworkId}` : null;
   const shell = useRealShell(identity, currentScope, onExit);
+  const restoreRoot = shell.restoreRoot;
   const latestBack = useRef(shell.goBack);
   useLayoutEffect(() => { latestBack.current = shell.goBack; });
   useEffect(() => {
@@ -51,7 +52,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   const lastNotificationAttempt = useRef('');
   const lifetime = useRef({ alive: true, authority, immersive: shell.immersive, autoLockScope });
   useLayoutEffect(() => { lifetime.current.authority = authority; lifetime.current.immersive = shell.immersive; lifetime.current.autoLockScope = autoLockScope; });
-  useLayoutEffect(() => { lifetime.current.alive = true; return () => { lifetime.current.alive = false; notificationTransition.current = null; }; }, []);
+  useLayoutEffect(() => { const owner = lifetime.current; owner.alive = true; return () => { owner.alive = false; notificationTransition.current = null; }; }, []);
   const notificationSettings = liveScope ? {
     scope: liveScope,
     assertCurrent() {
@@ -110,10 +111,10 @@ export function WatchSession({ authority, onAccounts, onExit }: {
           after.accounts.find(account => account.id === route.accountId)?.addresses[after.selectedNetworkId] !== choice.scope.accountAddress) return;
       if (route.kind.startsWith('transaction-')) {
         setNotificationActivity(route.transactionHash ? { scope, hash: route.transactionHash } : null);
-        shell.restoreRoot('activity', `${route.accountId}:${route.networkId}`);
+        restoreRoot('activity', `${route.accountId}:${route.networkId}`);
       } else {
         setNotificationGuardian(scope);
-        shell.restoreRoot('tools', `${route.accountId}:${route.networkId}`);
+        restoreRoot('tools', `${route.accountId}:${route.networkId}`);
       }
       void authority.refresh().catch(() => undefined);
     })().catch(() => undefined).finally(() => {
@@ -122,7 +123,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
       const pending = nativeActivityNotifications.getSnapshot().pendingEventId;
       if (lifetime.current.alive && pending && pending !== eventId) setNotificationWake(value => value + 1);
     });
-  }, [notifications.pendingEventId, notificationWake, liveScope, autoLockScope, shell.immersive, authority]);
+  }, [notifications.pendingEventId, notificationWake, liveScope, autoLockScope, shell.immersive, authority, currentScope, restoreRoot]);
   if (autoLockScope !== null && autoLockScope === liveScope) return <AutoLockSettings mode="watch" onBack={() => { if (currentScope() === autoLockScope) setAutoLockScope(null); }} save={(expected, minutes, _password, check) => {
     const captured = liveScope;
     return securityPreferences.save(expected, 'watch', minutes, () => { check(); watchIdle.assertCurrent(); if (captured !== currentScope()) throw Error('CANCELLED'); });

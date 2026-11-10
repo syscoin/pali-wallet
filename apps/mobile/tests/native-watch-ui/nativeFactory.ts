@@ -19,7 +19,9 @@ import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/t
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { createBalanceReader } from '../../src/platformRpc';
 import { importedKeyIdentity, normalizeImportedKey, type NativeImportView, type NativeUtxoImportDraft } from '../../src/custody/importedAccounts';
-import { NativeActivity } from '../../src/activity/nativeActivity';
+import { NativeActivity, type NativeActivityRuntime } from '../../src/activity/nativeActivity';
+import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../../src/activity/types';
+import type { NativeNotificationScope } from '../../src/notifications/types';
 import { NativeTokens } from '../../src/portfolio/nativeTokens';
 import type { NativeTokenRuntime } from '../../src/portfolio/nativeTokens';
 import { NativeTokenRegistry } from '../../src/portfolio/tokenRegistry';
@@ -499,6 +501,39 @@ export function createNativeWalletControllers() {
   };
   const tokens = new NativeTokens(authority, () => visualReviewEnabled ? visualTokenRuntime : undefined);
   const activity = new NativeActivity(authority, () => undefined);
+  const getNotificationChoices = () => {
+    const state = authority.getSnapshot();
+    if (!sessionUnlocked || !['ready', 'backup-required'].includes(state.phase)) throw Error('Inactive fixture activity owner');
+    return catalogue.accounts.filter(account => account.slip44 === 60).flatMap(account => catalogue.networks.map(network => ({
+      label: account.label, networkName: network.name, symbol: network.symbol,
+      scope: { id: `native:${account.id}:${network.id}`, accountId: account.id, accountType: account.type,
+        accountAddress: account.address, network, guardian: false },
+    })));
+  };
+  const getScopedActivityRuntime = (scope: NativeNotificationScope, assertOwner: () => void): NativeActivityRuntime => {
+    const before = authority.getSnapshot();
+    const check = () => {
+      assertOwner();
+      if (authority.getSnapshot() !== before || catalogue.active.accountId !== scope.accountId ||
+          !getNotificationChoices().some(choice => JSON.stringify(choice.scope) === JSON.stringify(scope)))
+        throw Error('Inactive fixture activity scope');
+    };
+    check();
+    if (!('kind' in scope.network) || scope.network.kind !== 'evm') throw Error('Unexpected fixture activity network');
+    const target = createActivityScope(fingerprint, scope.accountId, scope.accountAddress, scope.network);
+    return {
+      async load(guard) { check(); guard(); return { scope: target, locals: [], assets: [],
+        saved: { archived: [], candidates: [], truncated: false, view: DEFAULT_ACTIVITY_VIEW } }; },
+      async saveCache(_scope, _rows, guard) { check(); guard(); },
+      async saveView(_scope, _view, guard) { check(); guard(); },
+    };
+  };
+  const activityReaders = {
+    explorer: { async page(_scope: unknown, _feed: unknown, _page: number, signal: AbortSignal, guard: () => void) {
+      guard(); if (signal.aborted) throw Error('Inactive fixture activity read'); return [];
+    } },
+    receipts: { async read(): Promise<never> { throw Error('Fixture has no transaction receipts'); } },
+  };
   const activityRuntime: Pick<KeyringRuntime, 'withUtxoActivityRead'> = {
     async withUtxoActivityRead(expected, signal, check, assertView, read) {
       const current = () => {
@@ -568,7 +603,7 @@ export function createNativeWalletControllers() {
       bindNativePrivateAuthentication(scope, { assertCurrent: () => { if (signal.aborted) throw refused('CANCELLED'); },
         isPromptActive: () => authentication?.isActive() === true })),
     cancel: () => authority.cancelAccountOperation() };
-  return { authority, connections: connections.view, keyExport, imports,
+  return { authority, getNotificationChoices, getScopedActivityRuntime, activityReaders, connections: connections.view, keyExport, imports,
     ...(authentication ? { authentication } : {}),
     trezor: {background() {}, async cancel() {}, subscribe: () => () => undefined,
       getSnapshot: () => idleTrezorSnapshot,

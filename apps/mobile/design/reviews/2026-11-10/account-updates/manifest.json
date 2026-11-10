@@ -389,10 +389,10 @@
     }
   ],
   "fixture_sources": {
-    "account-updates/fixture-sources/notifications-entry.tsx": "f382893dbb46821f521467b76381ad25f1a82cd8afb79ff444450c4e81199c13",
-    "account-updates/fixture-sources/notifications-service.ts": "5407577937f4ba7499e9fb76e420224af87fae2c4e40f6b8851b51862df999a2",
-    "account-updates/fixture-sources/main-entry.js": "f0ad9b7c6cac6b62204522fff6c344bc526d51a76381cdba8de96712f17a51ef",
-    "account-updates/fixture-sources/activity-entry.tsx": "be5748ea4ba18671b5fe5d3f7cfdd8526773690e987d1a91419248f6adfa5c04"
+    "account-updates/fixture-sources/notifications-entry.tsx.txt": "f382893dbb46821f521467b76381ad25f1a82cd8afb79ff444450c4e81199c13",
+    "account-updates/fixture-sources/notifications-service.ts.txt": "5407577937f4ba7499e9fb76e420224af87fae2c4e40f6b8851b51862df999a2",
+    "account-updates/fixture-sources/main-entry.js.txt": "f0ad9b7c6cac6b62204522fff6c344bc526d51a76381cdba8de96712f17a51ef",
+    "account-updates/fixture-sources/activity-entry.tsx.txt": "be5748ea4ba18671b5fe5d3f7cfdd8526773690e987d1a91419248f6adfa5c04"
   },
   "fixture_note": "Notification service is a synthetic local adapter with a seeded checked row; it does not request or prove OS permission. Entrypoints import the exact committed production components. Overview and Activity include production RealAppShell and useRealShell; tab actions are inert in these public presentation fixtures."
 }

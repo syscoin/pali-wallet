@@ -2306,7 +2306,9 @@
       "error": "请检查设备设置中的通知权限，然后重试。",
       "checkNow": "立即检查",
       "disableAll": "关闭全部提醒",
-      "search": "搜索账户或网络"
+      "search": "搜索账户或网络",
+      "noTransactionProvider": "交易提醒不可用",
+      "guardianOnly": "仅守护者更新"
     },
     "accountPortfolio": {
       "value": "投资组合价值",

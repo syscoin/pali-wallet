@@ -5,14 +5,16 @@ import { nativeTranslationFixture } from './localizationFixture.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { NotificationChoice } from '../src/notifications/choices.ts';
 import type { NotificationSnapshot } from '../src/notifications/types.ts';
+import { notificationCapabilities } from '../src/notifications/capabilities.ts';
 
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const address = '0x' + '11'.repeat(20);
 const choice = (id = 'ethereum'): NotificationChoice => ({ label: 'Account 1', networkName: getNativeNetwork(id).name, symbol: getNativeNetwork(id).symbol,
   scope: { id: `native:hd:60:0:${id}`, accountId: 'hd:60:0', accountType: 'HDAccount', accountAddress: address, network: getNativeNetwork(id) } });
 
-function fixture(initiallyEnabled = false) {
-  let choices = [choice()];
+function fixture(initiallyEnabled = false, network = 'ethereum', guardian = false) {
+  const first = choice(network);
+  let choices: NotificationChoice[] = [{ ...first, scope: { ...first.scope, guardian } }];
   let live = true, closed = 0;
   let pending: Promise<void> | undefined;
   let state: NotificationSnapshot = { status: 'ready', enabledScopeIds: initiallyEnabled ? [choices[0]!.scope.id] : [],
@@ -33,6 +35,7 @@ function fixture(initiallyEnabled = false) {
   const screen = screenFixture(new URL('../src/screens/ActivityNotifications.tsx', import.meta.url), 'ActivityNotifications', {
     '../platform/localization': nativeTranslationFixture,
     '../notifications/service': { nativeActivityNotifications: service },
+    '../notifications/capabilities': { notificationCapabilities },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
     'react-native': { AppState: { currentState: 'active' }, View: 'View', StyleSheet: { hairlineWidth: 1, create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -97,5 +100,35 @@ test('Turn off all alerts is an explicit global action', async () => {
   try {
     f.render().find(node => node.props.title === 'Turn off all alerts')!.props.onPress(); await settle();
     assert.deepEqual(f.events, ['load', 'disable-all']); assert.deepEqual(f.state().enabledScopeIds, []);
+  } finally { f.screen.close(); }
+});
+
+test('a network without transaction observations is labelled and cannot be newly enabled', async () => {
+  const f = fixture(false, 'base');
+  try {
+    const row = f.render().find(node => node.props.accessibilityRole === 'checkbox')!;
+    assert.equal(row.props.disabled, true);
+    assert.match(row.props.accessibilityLabel, /Transaction alerts unavailable/);
+    row.props.onPress(); await settle();
+    assert.equal(f.events.includes('permission'), false);
+  } finally { f.screen.close(); }
+});
+
+test('an existing unsupported enrollment can still be turned off', async () => {
+  const f = fixture(true, 'base');
+  try {
+    const row = f.render().find(node => node.props.accessibilityRole === 'checkbox')!;
+    assert.equal(row.props.disabled, false);
+    row.props.onPress(); await settle();
+    assert.equal(f.events.at(-1), `disable:${choice('base').scope.id}`);
+  } finally { f.screen.close(); }
+});
+
+test('guardian-only coverage is explicitly labelled without promising transaction alerts', async () => {
+  const f = fixture(false, 'base', true);
+  try {
+    const row = f.render().find(node => node.props.accessibilityRole === 'checkbox')!;
+    assert.equal(row.props.disabled, false);
+    assert.match(row.props.accessibilityLabel, /Guardian updates only/);
   } finally { f.screen.close(); }
 });

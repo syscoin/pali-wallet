@@ -12,6 +12,7 @@ export type AccountActivityRow = Readonly<{
   row: ActivityRow;
   controller: NativeActivity;
 }>;
+export type AccountActivityNetwork = Pick<AccountActivityRow, 'choice' | 'controller'>;
 export type AccountActivitySnapshot = Readonly<{
   status: 'loading' | 'ready' | 'unavailable';
   accountId: string | null;
@@ -69,6 +70,8 @@ export class AccountActivityController {
     if (!this.connection) return this.state;
     let current: ReturnType<AccountActivityController['context']> = null;
     try { current = this.context(); } catch { /* A retired owner cannot expose old activity. */ }
+    if (!current && this.state.status === 'unavailable' && this.state.accountId === null && !this.state.choices.length && !this.state.rows.length)
+      return this.state;
     if (!current || current.id !== this.state.accountId || JSON.stringify(current.choices) !== JSON.stringify(this.state.choices)) {
       this.stopChildren();
       this.state = Object.freeze({ ...initial(), view: this.state.view, filter: this.state.filter,
@@ -77,6 +80,13 @@ export class AccountActivityController {
     return this.state;
   };
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
+  /** Only already-open networks for the current account and filter are exposed. */
+  getNetwork(networkId: string): AccountActivityNetwork | undefined {
+    this.getSnapshot();
+    if (!this.connection || this.pendingFilter !== null) return undefined;
+    const child = [...this.children.values()].find(value => value.choice.scope.network.id === networkId);
+    return child ? { choice: child.choice, controller: child.controller } : undefined;
+  }
   /** Notification targets are exact identities, independent of list filters. */
   findRow(networkId: string, hash: string): AccountActivityRow | undefined {
     this.getSnapshot();

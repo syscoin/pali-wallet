@@ -2306,7 +2306,9 @@
       "error": "Prüfen Sie die Mitteilungsrechte in den Geräteeinstellungen und versuchen Sie es erneut.",
       "checkNow": "Jetzt prüfen",
       "disableAll": "Alle Meldungen ausschalten",
-      "search": "Konten oder Netzwerke suchen"
+      "search": "Konten oder Netzwerke suchen",
+      "noTransactionProvider": "Transaktionshinweise nicht verfügbar",
+      "guardianOnly": "Nur Wächter-Updates"
     },
     "accountPortfolio": {
       "value": "Portfoliowert",

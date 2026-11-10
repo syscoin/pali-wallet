@@ -20,6 +20,7 @@ import { networkSelectionReceiptFixture } from './networkSelectionReceiptFixture
 import { sendDraftForNetwork, NETWORK_CHANGED_DRAFT_NOTICE } from '../src/screens/sendNetworkDraft.ts';
 import { UTXO_ADDRESSES } from './publicWatchFixtures.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
+import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 import * as networkContext from '../src/custody/networkContext.ts';
 import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../source/wallet/sentryKeyVault.ts';
@@ -310,7 +311,8 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
 });
 
-async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED' }, notificationPort: NotificationTestPort = quietActivityNotifications) {
+async function walletFeedbackFixture(deviceUnlock = false, empty = false, setting?: { enabled: boolean; wait: Promise<void> }, backupCompletion?: Promise<void>, depositMode = false, networkMode?: 'evm' | 'utxo', pinChange?: { calls: [string, string][]; refusal: 'INVALID_CREDENTIAL' | 'AUTH_THROTTLED' }, notificationPort: NotificationTestPort = quietActivityNotifications,
+  networkLifecycle?: { wait?: Promise<void>; onAuthenticating?(): void; tab?: 'wallet' | 'activity'; phases?: string[]; backup?: 'confirmed' | 'unconfirmed' }) {
   const root = setup();
   const networkId = networkMode === 'utxo' ? 'bitcoin' : 'ethereum';
   const address = `0x${'11'.repeat(20)}`;
@@ -408,6 +410,31 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
   };
+  let realAuthority: NativeCustodyAuthority | undefined, renderTransition: (() => void) | undefined;
+  if (networkLifecycle) {
+    const runtime = {
+      session: { async unlock() { return { authenticated: true }; }, async readSelectedAddress() { return address; }, async lock() { locks++; } },
+      storage: { async readState() { return { presence: 'existing', backup: networkLifecycle.backup ?? 'confirmed' }; }, async close() {} },
+      accounts: { getSnapshot: () => catalogue },
+      networks: { getSelectedId: () => catalogue.active.networkId,
+        reserve(id: string, revision: number) { return { cancel() {}, async execute(check: () => void) {
+          await networkLifecycle.wait; check();
+          const target = networkContext.getNativeNetwork(id);
+          catalogue = { ...catalogue, revision: revision + 1, active: { ...catalogue.active, networkId: id } };
+          return { sourceCatalogueRevision: revision, target, selection: { ...catalogue.active, address },
+            assertCurrent() { assert.equal(catalogue.revision, revision + 1); assert.equal(catalogue.active.networkId, id); } };
+        } }; },
+      },
+    };
+    realAuthority = new NativeCustodyAuthority({ open: async () => runtime as never });
+    Object.assign(realAuthority, { supportsAccountManagement: () => false, getAuthenticationStatus: controllers.authority.getAuthenticationStatus });
+    realAuthority.subscribe(value => {
+      state = value;
+      networkLifecycle.phases?.push(value.phase);
+      if (value.phase === 'authenticating') { networkLifecycle.onAuthenticating?.(); renderTransition?.(); }
+    });
+    controllers.authority = realAuthority as unknown as typeof controllers.authority;
+  }
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' }, exportStep: { phase: 'select' } as { phase: 'select' | 'saved'; noteCount?: number }, busy: false, error: '',
@@ -443,12 +470,14 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     './NativeRecovery': { NativeRecovery: 'NativeRecovery' }, './NativeNoteRestore': { NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' },
     '../custody/networkView': { createNativeNetworkView: networkMode ? createNativeNetworkView : () => ({}) },
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
-    './useRealShell': { useRealShell: () => ({ tab: depositMode ? 'tools' : 'wallet', navigation: {}, goBack() {}, restoreRoot(tab: string, identity: string) { notificationRoutes.push({ tab, identity }); } }) },
+    './useRealShell': { useRealShell: () => ({ tab: networkLifecycle?.tab ?? (depositMode ? 'tools' : 'wallet'), navigation: {}, goBack() {}, select(tab: string) { notificationRoutes.push({ tab, identity: 'tab-switch' }); }, restoreRoot(tab: string, identity: string) { notificationRoutes.push({ tab, identity }); } }) },
+    './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
   });
   const Root = evaluate(source, dependencies).NativeWalletContent as (props: object) => Element;
   const props = { controllerRef: { current: null }, onExit() {} };
   const render = () => root.renderOwner(Root, props);
   render(); await new Promise((resolve) => setImmediate(resolve));
+  if (realAuthority) { await realAuthority.unlock('123456'); render(); renderTransition = render; }
   const unlock = async (error: string | null) => {
     nextError = error;
     let tree = render();
@@ -457,7 +486,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
     await new Promise((resolve) => setImmediate(resolve));
     return render();
   };
-  return { render, unlock, publish, noteRestore, notificationRoutes, selectedNetwork: () => state.account?.network, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupAcknowledgements, lifecycle, get locks() { return locks; } };
+  return { render, unlock, publish, noteRestore, notificationRoutes, selectedNetwork: () => state.account?.network, authority: realAuthority, dispose: root.dispose, emit: root.emit, hardware: root.hardware, releasePrompt: () => releasePrompt(), enrollments, backupAcknowledgements, lifecycle, get locks() { return locks; } };
 }
 
 for (const refusal of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`Change PIN returns to a fresh current-PIN entry after ${refusal}`, async () => {
@@ -1318,5 +1347,148 @@ test('native tap resolution cannot select a network after background revocation'
     f.render(); await new Promise(resolve => setImmediate(resolve));
     f.emit('change', 'background'); held.resolve(); await new Promise(resolve => setImmediate(resolve)); f.render();
     assert.equal(f.selectedNetwork(), 'ethereum'); assert.deepEqual(f.notificationRoutes, []);
+  } finally { f.dispose(); }
+});
+
+type RootNavigationAction = 'native' | 'token' | 'receive' | 'asset' | 'activity' | 'speed-up';
+const navigationChoice = () => {
+  const network = networkContext.getNativeNetwork('syscoin-nevm');
+  return { label: 'Account 1', networkName: network.name, symbol: network.symbol,
+    scope: { id: `native:hd:60:0:${network.id}`, accountId: 'hd:60:0', accountType: 'HDAccount',
+      accountAddress: '0x' + '11'.repeat(20), network, guardian: false } };
+};
+const navigationHash = '0x' + 'ab'.repeat(32);
+const navigationToken = { contractAddress: '0x' + 'cd'.repeat(20), name: 'Saved token', symbol: 'TOK', decimals: 6 };
+function startRootNavigation(f: Awaited<ReturnType<typeof walletFeedbackFixture>>, action: RootNavigationAction, check: () => void) {
+  const choice = navigationChoice();
+  const surface = all(f.render()).find(node => node.type === (action === 'speed-up' ? 'AllNetworksActivity' : 'NativePortfolio'));
+  assert(surface);
+  const invoke = (name: string, ...args: unknown[]) => (surface.props[name] as (...values: unknown[]) => Promise<void>)(...args);
+  if (action === 'speed-up') return invoke('onAction', { choice, row: { hash: navigationHash } }, 'speed-up', navigationHash, check);
+  if (action === 'activity') return invoke('navigateActivity', choice, check);
+  if (action === 'asset' || action === 'receive') return invoke('navigateDetail', choice, action === 'receive', action === 'asset' ? navigationToken.contractAddress : undefined, check);
+  return invoke('sendFrom', choice, action === 'token' ? navigationToken : undefined, check);
+}
+const settleRootNavigation = async (f: Awaited<ReturnType<typeof walletFeedbackFixture>>) => {
+  f.render(); await new Promise(resolve => setImmediate(resolve)); return f.render();
+};
+
+for (const action of ['native', 'token', 'receive', 'asset', 'activity', 'speed-up'] as const)
+test(`root-owned ${action} navigation survives the real authority's transient authentication`, async () => {
+  let viewAlive = true, checks = 0;
+  const phases: string[] = [], transientAccounts: unknown[] = [];
+  let f: Awaited<ReturnType<typeof walletFeedbackFixture>> | undefined;
+  f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, {
+    tab: action === 'speed-up' ? 'activity' : 'wallet', phases,
+    onAuthenticating() { viewAlive = false; if (f) transientAccounts.push(f.authority!.getSnapshot().account); },
+  });
+  phases.length = 0; viewAlive = true;
+  try {
+    await startRootNavigation(f, action, () => { checks++; if (!viewAlive) throw Error('Public initiating view was unmounted'); });
+    assert.deepEqual(transientAccounts, [null]);
+    assert.deepEqual(phases, ['authenticating', 'ready']);
+    assert.equal(checks, 1, 'the root owns the continuation after accepting the public view');
+    assert.equal(f.authority!.getSnapshot().phase, 'ready');
+    assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
+    assert.equal(f.authority!.getCatalogue()?.active.networkId, 'syscoin-nevm');
+    const tree = await settleRootNavigation(f);
+    if (action === 'activity') assert.deepEqual(f.notificationRoutes, [{ tab: 'activity', identity: 'hd:60:0:syscoin-nevm' }]);
+    else if (action === 'receive' || action === 'asset') {
+      const portfolio = all(tree).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+      assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.detail)), {
+        accountId: 'hd:60:0', networkId: 'syscoin-nevm', receive: action === 'receive',
+        ...(action === 'asset' ? { token: navigationToken.contractAddress } : {}),
+      });
+    } else {
+      const send = all(tree).find(node => node.type === 'NativeSend'); assert(send);
+      assert.equal((send.props.context as { networkId: string }).networkId, 'syscoin-nevm');
+      if (action === 'token') assert.deepEqual(send.props.token, navigationToken);
+      if (action === 'speed-up') assert.deepEqual(JSON.parse(JSON.stringify(send.props.replacement)), { hash: navigationHash, mode: 'speed-up' });
+    }
+  } finally { f.dispose(); }
+});
+
+for (const interruption of ['back', 'lock'] as const)
+test(`root-owned navigation stops when ${interruption} interrupts real authority authentication`, async () => {
+  const held = Promise.withResolvers<void>();
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { wait: held.promise });
+  try {
+    const pending = startRootNavigation(f, 'native', () => {});
+    const refused = assert.rejects(pending, /CANCELLED|OPERATION_FAILED/);
+    assert.equal(f.authority!.getSnapshot().phase, 'authenticating');
+    if (interruption === 'back') f.hardware(); else f.authority!.lock();
+    held.resolve(); await refused;
+    const tree = await settleRootNavigation(f);
+    assert(!all(tree).some(node => node.type === 'NativeSend'));
+    assert.equal(f.authority!.getSnapshot().phase, 'locked');
+    assert.deepEqual(f.notificationRoutes, []);
+  } finally { held.resolve(); f.dispose(); }
+});
+
+for (const interruption of ['back', 'tab', 'network-aba'] as const)
+test(`root-owned queued send is cancelled by ${interruption} before its destination effect`, async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, {});
+  try {
+    const shell = all(f.render()).find(node => node.type === 'RealAppShell'); assert(shell);
+    await startRootNavigation(f, 'native', () => {});
+    assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
+    if (interruption === 'back') f.hardware();
+    else if (interruption === 'tab') (shell.props.onTab as (tab: string) => void)('settings');
+    else {
+      for (const network of ['ethereum', 'syscoin-nevm']) {
+        const state = f.authority!.getSnapshot(), catalogue = f.authority!.getCatalogue()!;
+        await f.authority!.selectNetwork(network, state.revision, catalogue.revision, () => {});
+      }
+    }
+    const tree = await settleRootNavigation(f);
+    assert(!all(tree).some(node => node.type === 'NativeSend'));
+    if (interruption === 'back') assert.equal(f.authority!.getSnapshot().phase, 'locked');
+    else assert.equal(f.authority!.getSnapshot().phase, 'ready');
+    if (interruption === 'network-aba') assert.equal(f.authority!.getSnapshot().account?.network, 'syscoin-nevm');
+  } finally { f.dispose(); }
+});
+
+const currentNavigationChoice = () => {
+  const choice = navigationChoice(), network = networkContext.getNativeNetwork('ethereum');
+  return { ...choice, networkName: network.name, symbol: network.symbol,
+    scope: { ...choice.scope, id: 'native:hd:60:0:ethereum', network } };
+};
+
+test('unbacked same-network Receive keeps its public continuation and foreign selection stays unavailable', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { backup: 'unconfirmed' });
+  try {
+    let portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    await (portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(currentNavigationChoice(), true, undefined, () => {});
+    portfolio = all(await settleRootNavigation(f)).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    assert.deepEqual(JSON.parse(JSON.stringify(portfolio.props.detail)), { accountId: 'hd:60:0', networkId: 'ethereum', receive: true });
+    assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
+    await assert.rejects((portfolio.props.navigateDetail as (...args: unknown[]) => Promise<void>)(navigationChoice(), true, undefined, () => {}), /NOT_READY/);
+    assert.equal(f.authority!.getSnapshot().phase, 'backup-required');
+    assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+  } finally { f.dispose(); }
+});
+
+test('unbacked Send opens the existing backup flow before selection or signing', async () => {
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { backup: 'unconfirmed' });
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    await (portfolio.props.sendFrom as (...args: unknown[]) => Promise<void>)(navigationChoice(), undefined, () => {});
+    const tree = await settleRootNavigation(f);
+    assert(all(tree).some(node => node.type === 'BackupIntroduction'));
+    assert(!all(tree).some(node => node.type === 'NativeSend'));
+    assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
+  } finally { f.dispose(); }
+});
+
+test('same-network root Send uses the current authority without an authentication transition', async () => {
+  const phases: string[] = [];
+  const f = await walletFeedbackFixture(false, false, undefined, undefined, false, 'evm', undefined, quietActivityNotifications, { phases });
+  phases.length = 0;
+  try {
+    const portfolio = all(f.render()).find(node => node.type === 'NativePortfolio'); assert(portfolio);
+    await (portfolio.props.sendFrom as (...args: unknown[]) => Promise<void>)(currentNavigationChoice(), undefined, () => {});
+    assert(all(await settleRootNavigation(f)).some(node => node.type === 'NativeSend'));
+    assert.deepEqual(phases, []);
+    assert.equal(f.authority!.getSnapshot().account?.network, 'ethereum');
   } finally { f.dispose(); }
 });

@@ -65,9 +65,10 @@ export function createNotificationReader() {
       : reader.readGuardianRecoveryStatus(scope.accountAddress, signal, guard)) : Promise.resolve(null);
     const [historyResult, guardianResult] = await Promise.allSettled([history, guardian]);
     guard();
-    if (historyResult.status === 'rejected' && guardianResult.status === 'rejected') throw new Error('Alert observations unavailable');
     const guardianValue = guardianResult.status === 'fulfilled' ? guardianResult.value : null;
+    const guardianObservation = guardianValue?.status === 'observed' ? guardianValue.observation : undefined;
+    if (historyResult.status === 'rejected' && !guardianObservation) throw new Error('Alert observations unavailable');
     return { transactions: historyResult.status === 'fulfilled' ? historyResult.value : [], historyReadSucceeded: historyResult.status === 'fulfilled',
-      ...(guardianValue?.status === 'observed' ? { guardianObservation: guardianValue.observation } : {}) };
+      ...(guardianObservation ? { guardianObservation } : {}) };
   };
 }

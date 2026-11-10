@@ -296,31 +296,31 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (pending) pairingInbox.consume(pending.id);
     };
   }, [go, pairingInbox, setSheet]);
-  const rememberSelection = (selection: AccountSelection | null) => {
+  const rememberSelection = useCallback((selection: AccountSelection | null) => {
     if ((!selection && !lastSelection.current) || (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id)) return;
     lastSelection.current = selection;
     void saveAccountSelection(selection).then(() => setSelectionError('')).catch(() => {
       if (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id) lastSelection.current = null;
       setSelectionError('Your last account choice could not be saved. Your accounts are unchanged.');
     });
-  };
-  const openWallet = (id?: unknown) => {
+  }, []);
+  const openWallet = useCallback((id?: unknown) => {
     setInitialSetup(undefined);
     const selectedId = typeof id === 'string' ? id : requestedHdId ?? catalogue?.active.accountId;
     setRequestedHdId(selectedId);
     if (selectedId) rememberSelection(nativeAccountSelection(selectedId));
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
-  };
+  }, [requestedHdId, catalogue, rememberSelection, go, setSheet]);
   const startWalletSetup = (kind: 'create' | 'import') => {
     setRequestedHdId(undefined); setInitialSetup(kind);
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
   };
-  const openWatch = (selection: AccountSelection) => {
+  const openWatch = useCallback((selection: AccountSelection) => {
     if (!foreground.current || selection.kind !== 'watch' || watchAccounts.getSnapshot().status !== 'ready' || !authority.current?.getSnapshot().accounts.some((account) => account.id === selection.id)) return;
     authority.current.unlock(); authority.current.selectAccount(selection.id);
     rememberSelection(selection); setPreview(false); setSheet(null); go('home');
     void authority.current.refresh();
-  };
+  }, [watchAccounts, rememberSelection, go, setSheet]);
   useEffect(() => {
     const eventId = notificationSnapshot.pendingEventId;
     if (!eventId || Platform.OS === 'web' || !foreground.current || routedNotification.current === eventId || loading) return;
@@ -343,7 +343,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       }
     }).catch(() => undefined);
     return () => { current = false; };
-  }, [notificationSnapshot.pendingEventId, loading, watchState.status, watchAuthority, route, preview, catalogue]);
+  }, [notificationSnapshot.pendingEventId, loading, watchState.status, watchAuthority, route, preview, catalogue, openWallet, openWatch, watchAccounts]);
   const announce = (message: string) => {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);

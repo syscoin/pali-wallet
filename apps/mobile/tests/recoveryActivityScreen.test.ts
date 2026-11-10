@@ -11,7 +11,7 @@ import { DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 type Element = { type: any; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; dependencies?: unknown[]; cleanup?: () => void };
 const hash = '0x' + '11'.repeat(32);
-function fixture(initialHash?: string, held = false) {
+function fixture(initialHash?: string, held = false, props: Record<string, unknown> = {}) {
   let privacyHidden = false;
   const cells = new Map<unknown, Cell[]>();
   let current: Cell[] = [],
@@ -84,6 +84,8 @@ function fixture(initialHash?: string, held = false) {
   };
   let loaded = 0,
     replays = 0,
+    backs = 0,
+    closedPending = 0,
     release!: () => void;
   const inspected: string[] = [];
   const gate = new Promise<void>((resolve) => {
@@ -108,7 +110,7 @@ function fixture(initialHash?: string, held = false) {
     inspect(value: string) {
       inspected.push(value);
     },
-    closeSavedPending() {},
+    closeSavedPending() { closedPending++; snapshot = { ...snapshot, savedPending: undefined }; },
     async setView() {},
   };
   const ui = Object.fromEntries(
@@ -184,16 +186,19 @@ function fixture(initialHash?: string, held = false) {
         controller,
         initialHash,
         accountLabel: 'Guardian',
-        onBack() {},
+        onBack() { backs++; },
         onReplay() {
           replays++;
         },
+        ...props,
       });
       return renderOne(parent.type, parent.props);
     },
     loaded: () => loaded,
     inspected: () => inspected,
     replays: () => replays,
+    backs: () => backs,
+    closedPending: () => closedPending,
     release,
     lock() {
       snapshot = { ...snapshot, status: 'locked', scopeKey: null };
@@ -288,5 +293,66 @@ test('privacy masks Activity list quantities and accessibility labels but keeps 
     preview.props.onPress(); await settle();
     const detail = all(f.render()).find(node => node.type === 'TransactionDetailLayout'); assert(detail);
     assert.equal(detail.props.amount, '1.25 ETH');
+  } finally { f.dispose(); }
+});
+
+const pendingScopedRow = (reviewNavigation?: { speedUp: boolean }) => ({ hash, checking: false, unavailable: false,
+  local: { walletFingerprint: 'b'.repeat(64), accountId: 'hd:60:0', address: '0x' + '22'.repeat(20),
+    networkId: 'ethereum', registrationHash: '0x' + '33'.repeat(32), chainId: '1', nonce: 0,
+    createdAt: 1700000000000, recipient: '0x' + '44'.repeat(20), amountUnits: '1', maximumFeeUnits: '21000',
+    phase: 'submitted', transactionType: 2, inspectionOnly: true, reviewNavigation },
+  observation: { status: 'pending', timestamp: null, valueUnits: '1', feeUnits: null, nonce: '0',
+    from: '0x' + '22'.repeat(20), to: '0x' + '44'.repeat(20), events: [] } });
+
+async function openFixtureRow(f: ReturnType<typeof fixture>, row: unknown) {
+  f.rows([row]);
+  const list = all(f.render()).find(node => node.type === 'FlatList'); assert(list);
+  await list.props.renderItem({ item: row, index: 0 }).props.onPress();
+  return f.render();
+}
+
+test('scoped retained actions navigate to a host review without invoking direct action callbacks', async () => {
+  const navigation: [string, string][] = [];
+  const direct = () => { throw Error('A read-only projection cannot invoke a direct action'); };
+  const f = fixture(undefined, false, { onNavigateToReview: (action: string, value: string) => navigation.push([action, value]),
+    onReplay: direct, onSpeedUpPending: direct, onCancelPending: direct, onCancelSaved: direct });
+  try {
+    const tree = await openFixtureRow(f, pendingScopedRow({ speedUp: true }));
+    for (const title of ['Speed Up', 'Cancel pending transaction', 'Review resend']) {
+      const button = all(tree).find(node => node.type === 'Button' && node.props.title === title); assert(button, title);
+      button.props.onPress(); await settle();
+    }
+    assert.deepEqual(navigation, [['speed-up', hash], ['cancel', hash], ['saved', hash]]);
+  } finally { f.dispose(); }
+});
+
+for (const host of [false, true]) test(`read-only actions stay hidden without ${host ? 'canonical navigation eligibility' : 'an explicit host navigation callback'}`, async () => {
+  const forbidden = () => { throw Error('Unexpected transaction action'); };
+  const f = fixture(undefined, false, { onReplay: forbidden, onSpeedUpPending: forbidden,
+    onCancelPending: forbidden, onCancelSaved: forbidden, ...(host ? { onNavigateToReview: forbidden } : {}) });
+  try {
+    const tree = await openFixtureRow(f, pendingScopedRow(host ? undefined : { speedUp: true }));
+    assert(!all(tree).some(node => node.type === 'Button' && ['Speed Up', 'Cancel pending transaction', 'Review resend'].includes(node.props.title)));
+  } finally { f.dispose(); }
+});
+
+test('a network saved-pending entry never falls back to ordinary history and Back returns through the host', async () => {
+  const f = fixture(undefined, false, { savedPendingOnly: true });
+  try {
+    f.rows([pendingScopedRow({ speedUp: true })]);
+    let tree = f.render();
+    assert(all(tree).some(node => node.type === 'Header' && node.props.title === 'Saved pending'));
+    assert.equal(all(tree).find(node => node.type === 'FlatList')?.props.data.length, 0);
+    await settle(); tree = f.render();
+    assert.equal(f.loaded(), 1);
+    const list = all(tree).find(node => node.type === 'FlatList'); assert(list);
+    await list.props.renderItem({ item: list.props.data[0], index: 0 }).props.onPress();
+    tree = f.render();
+    all(tree).find(node => node.type === 'Header')!.props.onBack();
+    tree = f.render();
+    assert(all(tree).some(node => node.type === 'Header' && node.props.title === 'Saved pending'));
+    assert.equal(f.backs(), 0);
+    all(tree).find(node => node.type === 'Header')!.props.onBack();
+    assert.equal(f.backs(), 1); assert.equal(f.closedPending(), 1);
   } finally { f.dispose(); }
 });

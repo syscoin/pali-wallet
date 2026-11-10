@@ -2306,7 +2306,9 @@
       "error": "Revisa los permisos de notificación del dispositivo e inténtalo de nuevo.",
       "checkNow": "Comprobar ahora",
       "disableAll": "Desactivar todas las alertas",
-      "search": "Buscar cuentas o redes"
+      "search": "Buscar cuentas o redes",
+      "noTransactionProvider": "Alertas de transacciones no disponibles",
+      "guardianOnly": "Solo actualizaciones de guardianes"
     },
     "accountPortfolio": {
       "value": "Valor de la cartera",

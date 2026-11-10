@@ -65,6 +65,8 @@ export class AccountPortfolioController {
     if (!this.connection) return this.state;
     let current: ReturnType<AccountPortfolioController['context']> = null;
     try { current = this.context(); } catch { /* A retired owner has no visible observations. */ }
+    if (!current && this.state.status === 'unavailable' && this.state.accountId === null && !this.state.choices.length && !this.state.rows.length)
+      return this.state;
     if (!current || current.owner !== this.owner || JSON.stringify(current.choices) !== JSON.stringify(this.state.choices)) {
       this.request?.abort(); this.generation++; this.cache.clear(); this.owner = current?.owner ?? '';
       this.state = Object.freeze({ ...empty(), filter: this.state.filter, currency: this.state.currency,

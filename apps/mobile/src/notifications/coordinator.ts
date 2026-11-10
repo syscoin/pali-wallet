@@ -1,6 +1,7 @@
 import { detectActivityNotifications, type ActivityNotificationBaseline, type ActivityNotificationScope } from '../../../../source/shared/activityNotifications.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import type { NativeNotificationScope, NotificationDelivery, NotificationDocument, NotificationRoute, NotificationSnapshot, NotificationStore } from './types.ts';
+import { notificationCapabilities } from './capabilities.ts';
 
 export const NOTIFICATION_LIMITS = Object.freeze({ scopes: 64, events: 128, scopesPerRun: 8, runMs: 25000 });
 export const emptyNotificationDocument = (): NotificationDocument => ({ scopes: [], events: [], cursor: 0 });
@@ -56,6 +57,10 @@ export class NativeNotificationCoordinator {
     if (!inputs.length || inputs.length > NOTIFICATION_LIMITS.scopes) throw new Error('Choose accounts for alerts');
     const scopes = inputs.map(this.ports.normalize);
     if (new Set(scopes.map((scope) => scope.id)).size !== scopes.length) throw new Error('Duplicate alert scope');
+    if (scopes.some(scope => {
+      const capability = notificationCapabilities(scope);
+      return !capability.transactions && !capability.guardian;
+    })) throw new Error('Alerts are unavailable for this account and network');
     const permission = await this.ports.delivery.permission(true);
     check();
     this.publish({ permission });

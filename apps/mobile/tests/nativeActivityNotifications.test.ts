@@ -3,17 +3,20 @@ import assert from 'node:assert/strict';
 import { NativeNotificationCoordinator, emptyNotificationDocument } from '../src/notifications/coordinator.ts';
 import { startNotificationLifecycle } from '../src/notifications/lifecycle.ts';
 import type { NativeNotificationScope, NotificationDocument, NotificationStore } from '../src/notifications/types.ts';
+import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
+import { notificationCapabilities } from '../src/notifications/capabilities.ts';
 
 const address = `0x${'11'.repeat(20)}`;
 const external = `0x${'22'.repeat(20)}`;
 const scope = (id = 'watch:one'): NativeNotificationScope => ({ id, accountId: id, accountType: 'watch', accountAddress: address,
-  network: { id: 'ethereum', chainId: '1', kind: 'evm', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '33'.repeat(32) } as NativeNotificationScope['network'] });
+  network: getNativeNetwork('ethereum') });
 function harness() {
   let document = emptyNotificationDocument();
   let serial: Promise<unknown> = Promise.resolve();
   let commitHook: (() => Promise<void>) | undefined;
   let storageUnavailable = false;
-  const store: NotificationStore = { initialize: async () => undefined,
+  let initialized = 0;
+  const store: NotificationStore = { initialize: async () => { initialized++; },
     transact<T>(action: (doc: NotificationDocument) => Promise<T> | T, guard: () => void): Promise<T> {
       const result = serial.then(async () => { if (storageUnavailable) throw Error('Storage unavailable'); guard(); const next = structuredClone(document); const output = await action(next); await commitHook?.(); guard(); document = next; return output; });
       serial = result.catch(() => undefined); return result;
@@ -38,6 +41,7 @@ function harness() {
   };
   const coordinator = new NativeNotificationCoordinator(ports);
   return { coordinator, secondCoordinator: () => new NativeNotificationCoordinator(ports), posted, removed, reads, get document() { return document; }, get prompts() { return prompts; }, get registered() { return registered; },
+    get initialized() { return initialized; },
     rows: (next: unknown[]) => { rows = next; }, permission: (next: typeof permission) => { permission = next; }, hook: (next: typeof readHook) => { readHook = next; },
     commitHook: (next: typeof commitHook) => { commitHook = next; }, promptHook: (next: typeof promptHook) => { promptHook = next; }, postHook: (next: typeof postHook) => { postHook = next; },
     pruneHook: (next: typeof pruneHook) => { pruneHook = next; }, storageUnavailable: (next: boolean) => { storageUnavailable = next; } };
@@ -211,4 +215,31 @@ test('stale catalogue reconciliation rolls back instead of pruning a current enr
   await assert.rejects(pending, /CANCELLED/);
   assert.equal(h.document.scopes.length, 1);
   assert.equal(h.coordinator.getSnapshot().status, 'ready');
+});
+
+const customNetwork = createNativeNetwork({ ...getNativeNetwork('ethereum'), id: 'custom:ethereum', name: 'Custom Ethereum' });
+for (const network of [getNativeNetwork('base'), customNetwork]) test(`unsupported ${network.id} transaction-only enrollment is refused before permission or storage`, async () => {
+  const h = harness(), unsupported = { ...scope(), network };
+  assert.deepEqual(notificationCapabilities(unsupported), { transactions: false, guardian: false });
+  await assert.rejects(h.coordinator.enable([unsupported], () => undefined), /Alerts are unavailable/);
+  assert.equal(h.prompts, 0); assert.equal(h.initialized, 0); assert.equal(h.registered, false);
+  assert.equal(h.document.scopes.length, 0); assert.deepEqual(h.reads, []);
+});
+
+test('guardian-only coverage can be explicitly enrolled without claiming transaction coverage', async () => {
+  const h = harness(), guardianOnly = { ...scope(), network: customNetwork, guardian: true };
+  assert.deepEqual(notificationCapabilities(guardianOnly), { transactions: false, guardian: true });
+  await h.coordinator.enable([guardianOnly], () => undefined);
+  assert.equal(h.prompts, 1); assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, [guardianOnly.id]);
+});
+
+test('previously enabled unsupported scopes remain loadable and removable', async () => {
+  const h = harness(), unsupported = { ...scope(), network: getNativeNetwork('base') };
+  h.document.scopes.push({ scope: unsupported, generation: 'prior-enrollment', baseline: null, enrolledAt: 1 });
+  await h.coordinator.load();
+  assert.equal(h.coordinator.getSnapshot().status, 'ready');
+  assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, [unsupported.id]);
+  assert.equal(h.prompts, 0);
+  await h.coordinator.disableScope(unsupported.id);
+  assert.deepEqual(h.coordinator.getSnapshot().enabledScopeIds, []); assert.equal(h.registered, false);
 });

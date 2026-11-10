@@ -320,10 +320,15 @@ test('native network without an explorer shows saved-transfer coverage and retai
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await tabs(page);
   await chooseTab(page, 'Activity');
+  await page.getByRole('button', { name: 'Activity network: All networks', exact: true }).click();
+  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Activity network: Base', exact: true })).toBeVisible();
+  await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('Some network activity is unavailable.', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Activity options', exact: true }).click();
-  await expect(page.getByText('Activity discovery is unavailable for this network.', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Close activity options', exact: true }).click();
-  await expect(page.getByText('Activity unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Show zero-value token activity', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByText('Some activity is unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText('No activity yet', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.networkId)).toBe('base');
   expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);

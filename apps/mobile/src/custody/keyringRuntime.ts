@@ -3465,8 +3465,11 @@ export function createKeyringRuntimeFactory(
           const fingerprint = await dataBinding(captured, guard); guard();
           return { scope: createActivityScope(fingerprint, selected.id, selected.address, network), guard, index: selected.index, type: selected.type };
         };
-        const inspectionOnly = <T extends object>(local: T): T & { inspectionOnly: true } => {
-          const record = { ...local, inspectionOnly: true as const };
+        const inspectionOnly = <T extends object>(local: T, navigation = false): T & { inspectionOnly: true } => {
+          const eligibility = local as { inspectionOnly?: true; speedUpEligible?: true; smartAccount?: unknown };
+          const record = { ...local, inspectionOnly: true as const,
+            ...(navigation && !eligibility.inspectionOnly && !eligibility.smartAccount
+              ? { reviewNavigation: Object.freeze({ speedUp: eligibility.speedUpEligible === true }) } : {}) };
           delete (record as { speedUpEligible?: true }).speedUpEligible;
           return record;
         };
@@ -3481,11 +3484,11 @@ export function createKeyringRuntimeFactory(
               record.amountUnits === local.amountUnits && record.maximumFeeUnits === local.maximumFeeUnits && record.nonce === local.nonce && record.createdAt === local.createdAt);
             return archived ? { ...local, phase: archived.phase } : local;
           }) : recent.records;
-          if (target) locals = locals.map(inspectionOnly);
+          if (target) locals = locals.map(local => inspectionOnly(local, true));
           const inventory = await tokens.load({ walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
             address: scope.address, network: scope.network.id, chainId: scope.network.chainId, registrationHash: scope.network.registrationHash }, guard); guard();
           return { scope, locals, assets: inventory.items, saved: { ...saved,
-            archived: type === 'SmartAccount' || target ? saved.archived.map(inspectionOnly) : saved.archived,
+            archived: type === 'SmartAccount' || target ? saved.archived.map(local => inspectionOnly(local, !!target)) : saved.archived,
             truncated: saved.truncated || recent.truncated } };
         };
         const checkActivityContext = async (scope: EvmActivityReadScope, assertCurrent: () => void) => {
@@ -6910,9 +6913,9 @@ export function createKeyringRuntimeFactory(
                   const journal = createNativeSignedRecordView(signedRecords, { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, scope.walletFingerprint,
                     { index, type, address: scope.address }, scope.network);
                   const page = await journal.pendingActivities(beforeHash); guard();
-                  if (type !== 'SmartAccount') return { ...page, records: page.records.map(inspectionOnly) };
+                  if (type !== 'SmartAccount') return { ...page, records: page.records.map(local => inspectionOnly(local, true)) };
                   const saved = await activityHistory.load(scope, guard); guard();
-                  return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')).map(inspectionOnly) };
+                  return { ...page, records: page.records.filter(local => !saved.archived.some(record => record.hash === local.hash && record.phase !== 'submitted')).map(local => inspectionOnly(local, true)) };
                 },
                 async observeLocal(local, assertCurrent, signal) {
                   const { scope, guard } = await activityContext(checked(assertCurrent), target);

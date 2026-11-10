@@ -2306,7 +2306,9 @@
       "error": "Check notification permissions in device settings, then try again.",
       "checkNow": "Check now",
       "disableAll": "Turn off all alerts",
-      "search": "Search accounts or networks"
+      "search": "Search accounts or networks",
+      "noTransactionProvider": "Transaction alerts unavailable",
+      "guardianOnly": "Guardian updates only"
     },
     "accountPortfolio": {
       "value": "Portfolio value",

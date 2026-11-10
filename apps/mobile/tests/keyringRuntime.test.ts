@@ -2290,6 +2290,11 @@ test('scoped activity includes an inactive-network retained pending transaction 
     assert.equal(loaded.locals[0]?.hash, signed.hash);
     assert.equal(loaded.locals[0]?.inspectionOnly, true);
     assert.equal(loaded.locals[0]?.speedUpEligible, undefined);
+    assert.deepEqual(loaded.locals[0]?.reviewNavigation, { speedUp: true });
+    const pending = await scoped.loadSavedPending!(loaded.scope, undefined, () => undefined);
+    assert.equal(pending.records[0]?.inspectionOnly, true);
+    assert.equal(pending.records[0]?.speedUpEligible, undefined);
+    assert.deepEqual(pending.records[0]?.reviewNavigation, { speedUp: true });
     await scoped.saveCache(loaded.scope, [], () => undefined);
     await scoped.saveView(loaded.scope, { filter: 'sent', showZero: true, anchor: null, offset: 0 }, () => undefined);
     assert.deepEqual([...f.disk.records], records);

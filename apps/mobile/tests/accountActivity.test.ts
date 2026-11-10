@@ -15,7 +15,7 @@ const tick = async () => { for (let i = 0; i < 8; i++) await new Promise<void>(r
 function fixture(initialFilter: string | Promise<string> = 'all') {
   let currentId = 'hd:60:0', revision = 1;
   const listeners = new Set<(snapshot: any) => void>();
-  const calls: { id: string; account: string; signal: AbortSignal }[] = [], loads: string[] = [];
+  const calls: { id: string; account: string; signal: AbortSignal }[] = [], loads: string[] = [], savedLoads: string[] = [];
   let held: Promise<void> | undefined, saveHeld: Promise<void> | undefined;
   const choices: NotificationChoice[] = Array.from({ length: 15 }, (_, index) => networks.map(network => ({
     label: `Account ${index + 1}`, networkName: network.name, symbol: network.symbol,
@@ -39,6 +39,14 @@ function fixture(initialFilter: string | Promise<string> = 'all') {
       },
       async saveCache(_scope, _rows, check) { guard(); check(); },
       async saveView(_scope, _view, check) { guard(); check(); },
+      async loadSavedPending(_scope, _cursor, check) {
+        guard(); check(); savedLoads.push(scope.accountId + ':' + scope.network.id);
+        const network = scope.network as NativeNetworkRegistration;
+        return { records: [{ walletFingerprint: 'b'.repeat(64), accountId: scope.accountId, address: scope.accountAddress,
+          networkId: network.id, registrationHash: network.registrationHash, chainId: network.chainId,
+          hash: '0x' + 'c'.repeat(64), phase: 'submitted' as const, nonce: 9, createdAt: 1000,
+          recipient: outsider, amountUnits: '1', maximumFeeUnits: '21000' }], nextCursor: null };
+      },
     }),
     explorer: { async page(scope, feed, _page, signal, guard) {
       calls.push({ id: scope.network.id, account: scope.address, signal });
@@ -50,7 +58,7 @@ function fixture(initialFilter: string | Promise<string> = 'all') {
     } },
     receipts: { async read() { throw Error('List rendering must not request receipts'); } },
   });
-  return { model, calls, loads, selected: () => selected,
+  return { model, calls, loads, savedLoads, selected: () => selected,
     hold(value: Promise<void> | undefined) { held = value; },
     holdSave(value: Promise<void> | undefined) { saveHeld = value; },
     refreshSource() { revision++; for (const listener of listeners) listener(source.getSnapshot()); },
@@ -93,6 +101,28 @@ test('all-network rows retain distinct identities for an identical hash and shar
   assert.equal(f.model.getSnapshot().view.filter, 'received');
   assert.equal(f.model.getSnapshot().view.showZero, true);
   stopAgain();
+});
+
+test('saved inventory opens only an existing visible account/network child and includes older journal rows', async () => {
+  const f = fixture('ethereum'), stop = f.model.connect(); await tick();
+  assert.equal(f.model.getNetwork('rollux'), undefined);
+  assert.equal(f.model.getNetwork('missing'), undefined);
+  const ethereum = f.model.getNetwork('ethereum')!;
+  assert(ethereum.controller.getSnapshot().canViewSavedPending);
+  assert(!f.model.getSnapshot().rows.some(row => row.row.hash === '0x' + 'c'.repeat(64)));
+  await ethereum.controller.loadSavedPending();
+  assert.deepEqual(f.savedLoads, ['hd:60:0:ethereum']);
+  assert.equal(ethereum.controller.getSnapshot().savedPending?.rows[0]?.hash, '0x' + 'c'.repeat(64));
+  await f.model.selectFilter('all'); await tick();
+  const other = f.model.getNetwork('rollux')!;
+  await other.controller.loadSavedPending();
+  assert.deepEqual(f.savedLoads, ['hd:60:0:ethereum', 'hd:60:0:rollux']);
+  assert.equal(other.controller.getSnapshot().savedPending?.rows[0]?.local?.networkId, 'rollux');
+  assert.notEqual(other.controller, ethereum.controller);
+  f.changeAccount('hd:60:1'); await tick();
+  assert.equal(f.model.getNetwork('rollux')?.choice.scope.accountId, 'hd:60:1');
+  assert.equal(ethereum.controller.getSnapshot().savedPending, undefined);
+  stop(); assert.equal(f.model.getNetwork('ethereum'), undefined);
 });
 
 test('filter and account changes abort old reads and cannot publish late rows from the previous scope', async () => {

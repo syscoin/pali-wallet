@@ -2306,7 +2306,9 @@
       "error": "Vérifiez les autorisations de notification dans les réglages de l’appareil, puis réessayez.",
       "checkNow": "Vérifier maintenant",
       "disableAll": "Désactiver toutes les alertes",
-      "search": "Rechercher des comptes ou réseaux"
+      "search": "Rechercher des comptes ou réseaux",
+      "noTransactionProvider": "Alertes de transactions indisponibles",
+      "guardianOnly": "Mises à jour des gardiens uniquement"
     },
     "accountPortfolio": {
       "value": "Valeur du portefeuille",

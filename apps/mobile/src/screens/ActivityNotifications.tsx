@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState, useSyncExternalSto
 import { AppState, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NotificationChoice } from '../notifications/choices';
+import { notificationCapabilities } from '../notifications/capabilities';
 import { nativeActivityNotifications } from '../notifications/service';
 import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, Coin, colors, Header, Icon, Screen, Text } from '../ui';
@@ -64,14 +65,18 @@ export function ActivityNotifications({ target, onBack }: { target: Notification
       autoCapitalize="none" autoCorrect={false} maxLength={80} style={s.search} />
     {matches.length > 0 && <Card style={s.card}>{matches.map((choice, index) => {
       const checked = enabled.has(choice.scope.id);
+      const coverage = notificationCapabilities(choice.scope);
+      const supported = coverage.transactions || coverage.guardian;
+      const limitation = coverage.transactions ? '' : t(coverage.guardian ? 'mobile.notifications.guardianOnly' : 'mobile.notifications.noTransactionProvider');
       return <IdlePressable key={choice.scope.id} accessibilityRole="checkbox"
-        accessibilityLabel={`${choice.label}, ${choice.networkName}, ${choice.scope.accountAddress}`}
-        accessibilityState={{ checked, disabled: busy || !ready }} aria-checked={checked} disabled={busy || !ready}
-        onPress={() => void run(check => checked ? nativeActivityNotifications.disableScope(choice.scope.id) : nativeActivityNotifications.enable([choice.scope], check))}
+        accessibilityLabel={`${choice.label}, ${choice.networkName}, ${choice.scope.accountAddress}${limitation ? `, ${limitation}` : ''}`}
+        accessibilityState={{ checked, disabled: busy || !ready || !checked && !supported }} aria-checked={checked} disabled={busy || !ready || !checked && !supported}
+        onPress={() => { if (checked || supported) void run(check => checked ? nativeActivityNotifications.disableScope(choice.scope.id) : nativeActivityNotifications.enable([choice.scope], check)); }}
         style={({ pressed }) => [s.row, index > 0 && s.divider, pressed && s.pressed]}>
         <Coin id={choice.scope.network.id} fallbackSymbol={choice.symbol} size={36} />
         <View style={s.details}><Text numberOfLines={2} style={s.name}>{choice.label}</Text>
-          <Text numberOfLines={2} style={s.network}>{choice.networkName} · {choice.symbol}</Text></View>
+          <Text numberOfLines={2} style={s.network}>{choice.networkName} · {choice.symbol}</Text>
+          {!!limitation && <Text style={s.network}>{limitation}</Text>}</View>
         <View style={[s.checkbox, checked && s.checked]}>{checked && <Icon name="check" size={17} color={colors.bg} />}</View>
       </IdlePressable>;
     })}</Card>}

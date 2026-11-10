@@ -43,7 +43,7 @@ import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
 import { Button, Card, colors, Header, Icon, Notice, PaliMark, Row, Screen, styles, Text } from '../ui';
 import { type NativeReceiveContinuation } from './NativePortfolio';
-import { NativePortfolioRoute } from './NativeAccountOverview';
+import { NativePortfolioRoute, type NativeAccountDetail } from './NativeAccountOverview';
 import { AccountPortfolioController } from '../portfolio/accountPortfolio';
 import { AccountActivityController, type AccountActivityRow } from '../activity/accountActivity';
 import { portfolioFilter } from '../platform/portfolioFilter';
@@ -111,6 +111,7 @@ type NetworkReturn = Readonly<{ local: Controllers; origin: RootOrigin; sourceRe
   { kind: 'send'; target: SendTarget; form: NativeUnsignedSendDraft } |
   { kind: 'receive'; continuation: NativeReceiveContinuation }
 )>;
+type AccountNavigation = Readonly<{ local: Controllers; origin: RootOrigin; choice: NotificationChoice; sourceRevision: number; sourceCatalogueRevision: number }>;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
 type Stage = 'choose' | 'create' | 'import' | 'import-security' | 'backup-intro' | 'backup-auth' | 'words' | 'backup-complete' | 'backup-verify' | 'change-pin' | 'change-pin-new' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'note-maintenance' | 'privacy-settings' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'trezor' | 'smart-deploy' | 'smart-resume' | 'smart-authenticator' | 'slh-dsa' | 'smart-modules' | 'sentry-keys' | 'smart-infrastructure';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
@@ -161,6 +162,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const [recoveryFlow, setRecoveryFlow] = useState<NativeRecoveryFlow | null>(null);
   const [recoveryOutcome, setRecoveryOutcome] = useState<RecoveryOutcome | null>(savedRecoveryOutcome);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
+  const [controllerOwner, setControllerOwner] = useState<Controllers | null>(null);
   const [recipientResolver, setRecipientResolver] = useState<Controllers['recipientResolver'] | undefined>(undefined);
   const [balanceReader, setBalanceReader] = useState<Controllers['balanceReader'] | null>(null);
   const [sentry, setSentry] = useState<Controllers['sentry'] | null>(null);
@@ -224,7 +226,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendDraft, setSendDraft] = useState<Readonly<{ origin: RootOrigin; target: SendTarget; recipientPicker?: NativeRecipientPicker; resume?: ReturnType<typeof trezorResumeDraft>; resumeId?: string; form?: NativeUnsignedSendDraft; notice?: string }> | null>(null);
-  const [portfolioSend, setPortfolioSend] = useState<{ choice: NotificationChoice; token?: Erc20Metadata; epoch: number; assertCurrent(): void } | null>(null);
+  const [portfolioSend, setPortfolioSend] = useState<{ choice: NotificationChoice; target: SendTarget; epoch: number; assertCurrent(): void; release(): void } | null>(null);
+  const accountNavigation = useRef<AccountNavigation | null>(null);
+  const [portfolioDetail, setPortfolioDetail] = useState<{ owner: Controllers; context: string; detail: NativeAccountDetail } | null>(null);
   const [networkReturn, setNetworkReturn] = useState<NetworkReturn | null>(null);
   const networkReturnOwner = useRef<NetworkReturn | null>(null);
   const [receiveContinuation, setReceiveContinuation] = useState<NativeReceiveContinuation | undefined>(undefined);
@@ -242,7 +246,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const notificationView = useRef({ stage, busy: false, immersive: false });
   const sendBalanceModel = useMemo(() => publicSource && balanceReader ? new NativePortfolioController(publicSource, balanceReader) : null, [publicSource, balanceReader]);
   const accountPortfolio = useMemo(() => {
-    const local = controllersRef.current;
+    const local = controllerOwner;
     if (!publicSource || !balanceReader || !local?.getNotificationChoices || !local.readPortfolioAssets) return null;
     const readQuote = createNativeCoinQuoteReader(walletFetch), readMarket = createNativeAssetMarketReader(walletFetch);
     const pendingQuotes = new Map<string, Promise<number | null>>();
@@ -263,7 +267,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         return source ? (await readMarket(source, currency, signal))?.price ?? null : null;
       },
     });
-  }, [publicSource, balanceReader, controllersRef]);
+  }, [publicSource, balanceReader, controllerOwner]);
   const sendBalance = useSyncExternalStore(sendBalanceModel?.subscribe ?? noBalanceSubscribe, sendBalanceModel?.getSnapshot ?? noBalanceSnapshot, noBalanceSnapshot);
   const showSendBalance = stage === 'send' || stage === 'networks' && networkReturn !== null;
   useEffect(() => showSendBalance ? sendBalanceModel?.connect() : undefined, [showSendBalance, sendBalanceModel]);
@@ -315,6 +319,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     if (removal && !retainRemoval) { removalRef.current = null; setRemovalScope(null); }
     lockNoteRestore();
     rootOrigin.current = null;
+    accountNavigation.current = null; setPortfolioSend(null); setPortfolioDetail(null);
     networkReturnOwner.current = null; setNetworkReturn(null); setReceiveContinuation(undefined);
     setSentryScope(null);
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
@@ -360,6 +365,9 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     sameNativePortfolioAccount(sendBalance.account, { ...snapshot.account, revision: snapshot.revision })
     ? formatBaseUnits(sendBalance.units, utxo?.decimals ?? 18) : undefined;
   const selectedCatalogueAccount = catalogue?.accounts.find(account => account.id === catalogue.active.accountId);
+  const publicPortfolioContext = snapshot.account && catalogue && ['ready', 'backup-required'].includes(snapshot.phase)
+    ? `${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}` : null;
+  const visiblePortfolioDetail = portfolioDetail?.owner === controllerOwner && portfolioDetail.context === publicPortfolioContext ? portfolioDetail.detail : undefined;
   const selectedAccountType = selectedCatalogueAccount?.type;
   const guardianContext = custodyContext(snapshot, catalogue)?.context;
   const guardianRecovery = selectedAccountType === 'SmartAccount' && snapshot.account && readGuardianRecovery && guardianContext ? {
@@ -424,10 +432,11 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const shellIdentity = stage === 'choose' && ['ready', 'backup-required'].includes(snapshot.phase) && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
+  const restoreRoot = shell.restoreRoot;
   useLayoutEffect(() => { notificationView.current = { stage, busy, immersive: shell.immersive }; });
-  const notificationOwner = controllersRef.current;
+  const notificationOwner = controllerOwner;
   const notificationSettings = notificationOwner && snapshot.account && catalogue && ['ready', 'backup-required'].includes(snapshot.phase) ? {
-    scope: `${epoch.current}:${snapshot.revision}:${catalogue.revision}`,
+    scope: `${guardianEpoch}:${snapshot.revision}:${catalogue.revision}`,
     assertCurrent() {
       const current = notificationOwner.authority.getSnapshot(), saved = notificationOwner.authority.getCatalogue();
       if (!mounted.current || controllersRef.current !== notificationOwner || AppState.currentState !== 'active' ||
@@ -437,21 +446,22 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     },
     readChoices: () => notificationOwner.getNotificationChoices(),
   } : undefined;
+  const notificationCatalogueRevision = catalogue?.revision;
   useEffect(() => {
     const local = controllersRef.current;
-    if (!local || !protectedScreen || !catalogue || !['ready', 'backup-required'].includes(snapshot.phase)) return;
+    if (!local || !protectedScreen || notificationCatalogueRevision === undefined || !['ready', 'backup-required'].includes(snapshot.phase)) return;
     try {
       const choices = local.getNotificationChoices(), catalogueKey = JSON.stringify(choices);
       const check = () => {
         const current = local.authority.getSnapshot(), saved = local.authority.getCatalogue();
         if (!mounted.current || controllersRef.current !== local || !['ready', 'backup-required'].includes(current.phase) ||
-            current.revision !== snapshot.revision || saved?.revision !== catalogue.revision ||
+            current.revision !== snapshot.revision || saved?.revision !== notificationCatalogueRevision ||
             JSON.stringify(local.getNotificationChoices()) !== catalogueKey) throw Error('CANCELLED');
       };
       check();
       void nativeActivityNotifications.replaceAccountTypes(['HDAccount', 'Imported', 'SmartAccount', 'Ledger', 'Trezor'], choices.map(choice => choice.scope), check).catch(() => undefined);
     } catch { /* A locked or replaced owner keeps its existing enrollment until current data is available. */ }
-  }, [snapshot.phase, snapshot.revision, catalogue?.revision, protectedScreen]);
+  }, [snapshot.phase, snapshot.revision, notificationCatalogueRevision, protectedScreen, controllersRef]);
   const sentryAvailable = snapshot.phase === 'ready' && !!utxo && sentry?.available() === true;
   const sentryRoute = stage === 'sentry-keys' && sentryAvailable &&
     sentryScope?.context === custodyContext(snapshot, catalogue)?.context;
@@ -544,56 +554,107 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         form: { kind: 'evm', recipient: form.recipient, amount: '', nonce: '', max: false, advanced: false } });
     }).catch(() => undefined);
   };
-  const selectPortfolioNetwork = async (choice: NotificationChoice, assertView: () => void) => {
-    const local = controllersRef.current, capturedEpoch = epoch.current;
-    const check = () => {
-      assertView();
-      const state = local?.authority.getSnapshot(), saved = local?.authority.getCatalogue();
-      if (!mounted.current || !local || controllersRef.current !== local || capturedEpoch !== epoch.current || AppState.currentState !== 'active' ||
-          rootOrigin.current || !state || !['ready', 'backup-required'].includes(state.phase) || saved?.active.accountId !== choice.scope.accountId || state.account?.address !== choice.scope.accountAddress ||
-          !local.getNotificationChoices().some(current => JSON.stringify(current.scope) === JSON.stringify(choice.scope))) throw Error('CANCELLED');
+  const navigateAccount = async (choice: NotificationChoice, assertView: () => void,
+    complete: (context: { context: string; identity: string }, check: () => void, local: Controllers, release: () => void) => void | 'queued') => {
+    assertView();
+    const local = controllersRef.current, state = local?.authority.getSnapshot(), saved = local?.authority.getCatalogue();
+    if (!mounted.current || !local || !state?.account || !saved || stage !== 'choose' || accountNavigation.current || rootOrigin.current ||
+        AppState.currentState !== 'active' || !['ready', 'backup-required'].includes(state.phase) ||
+        saved.active.accountId !== choice.scope.accountId || state.account.address !== choice.scope.accountAddress ||
+        !local.getNotificationChoices().some(current => JSON.stringify(current.scope) === JSON.stringify(choice.scope))) throw Error('CANCELLED');
+    const origin: RootOrigin = { tab: shell.tab, stage: 'networks', epoch: epoch.current,
+      context: `${state.revision}:${saved.active.accountId}:${state.account.network}`, identity: `${saved.active.accountId}:${state.account.network}` };
+    const intent: AccountNavigation = { local, origin, choice, sourceRevision: state.revision, sourceCatalogueRevision: saved.revision };
+    // From here the wallet owns navigation. Expected authentication may unmount the initiating public view.
+    accountNavigation.current = intent; rootOrigin.current = origin;
+    let queued = false;
+    const release = () => {
+      if (accountNavigation.current === intent) accountNavigation.current = null;
+      if (rootOrigin.current === origin) rootOrigin.current = null;
     };
-    check();
-    const saved = local!.authority.getCatalogue()!;
-    if (saved.active.networkId !== choice.scope.network.id) {
-      const receipt = await local!.authority.selectNetwork(choice.scope.network.id, local!.authority.getSnapshot().revision, saved.revision, () => {});
-      receipt.assertCurrent(); check();
-      if (receipt.selection.accountId !== choice.scope.accountId || receipt.selection.address !== choice.scope.accountAddress) throw Error('CANCELLED');
+    const check = () => {
+      const current = local.authority.getSnapshot();
+      if (!mounted.current || controllersRef.current !== local || accountNavigation.current !== intent || rootOrigin.current !== origin ||
+          epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
+          !['ready', 'backup-required', 'authenticating'].includes(current.phase) ||
+          current.revision < intent.sourceRevision || current.revision > intent.sourceRevision + 1) throw Error('CANCELLED');
+    };
+    try {
+      check();
+      if (saved.active.networkId !== choice.scope.network.id) {
+        const receipt = await local.authority.selectNetwork(choice.scope.network.id, state.revision, saved.revision, proof => {
+          check(); proof.assertCurrent();
+          if (proof.sourceCatalogueRevision !== saved.revision || proof.selection.accountId !== choice.scope.accountId ||
+              proof.selection.address !== choice.scope.accountAddress || proof.selection.networkId !== choice.scope.network.id ||
+              JSON.stringify(proof.target) !== JSON.stringify(choice.scope.network)) throw Error('CANCELLED');
+        });
+        check(); receipt.assertCurrent();
+      }
+      const current = local.authority.getSnapshot(), selected = local.authority.getCatalogue();
+      check();
+      if (!current.account || !['ready', 'backup-required'].includes(current.phase) || selected?.active.accountId !== choice.scope.accountId ||
+          current.account.address !== choice.scope.accountAddress || current.account.network !== choice.scope.network.id ||
+          !local.getNotificationChoices().some(value => JSON.stringify(value.scope) === JSON.stringify(choice.scope))) throw Error('CANCELLED');
+      const context = { context: `${current.revision}:${selected.active.accountId}:${current.account.network}`,
+        identity: `${selected.active.accountId}:${current.account.network}` };
+      const checkDestination = () => {
+        check();
+        const next = local.authority.getSnapshot(), catalogue = local.authority.getCatalogue();
+        if (!mounted.current || controllersRef.current !== local || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
+            !next.account || !['ready', 'backup-required'].includes(next.phase) ||
+            `${next.revision}:${catalogue?.active.accountId}:${next.account.network}` !== context.context ||
+            next.account.address !== choice.scope.accountAddress) throw Error('CANCELLED');
+      };
+      checkDestination(); queued = complete(context, checkDestination, local, release) === 'queued';
+    } finally {
+      if (!queued) release();
     }
   };
-  const sendFromPortfolio = async (choice: NotificationChoice, token: Erc20Metadata | undefined, assertCurrent: () => void) => {
-    await selectPortfolioNetwork(choice, assertCurrent);
-    assertCurrent(); setPortfolioSend({ choice, token, epoch: epoch.current, assertCurrent });
+  const cancelAccountNavigation = () => {
+    const intent = accountNavigation.current;
+    if (!intent) return;
+    accountNavigation.current = null;
+    if (rootOrigin.current === intent.origin) rootOrigin.current = null;
+    setPortfolioSend(null); intent.local.authority.cancelAccountOperation();
   };
-  const openAccountActivityAction = async (entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertView: () => void) => {
-    const local = controllersRef.current, capturedEpoch = epoch.current, choice = entry.choice;
-    const check = () => {
-      assertView();
-      const state = local?.authority.getSnapshot(), saved = local?.authority.getCatalogue();
-      if (!mounted.current || !local || controllersRef.current !== local || epoch.current !== capturedEpoch || stage !== 'choose' ||
-          rootOrigin.current || AppState.currentState !== 'active' || state?.phase !== 'ready' || saved?.active.accountId !== choice.scope.accountId ||
-          state.account?.address !== choice.scope.accountAddress || !/^0x[0-9a-f]{64}$/i.test(hash) ||
-          !local.getNotificationChoices().some(current => JSON.stringify(current.scope) === JSON.stringify(choice.scope))) throw Error('CANCELLED');
-    };
-    check();
-    const saved = local!.authority.getCatalogue()!;
-    if (saved.active.networkId !== choice.scope.network.id) {
-      const receipt = await local!.authority.selectNetwork(choice.scope.network.id, local!.authority.getSnapshot().revision, saved.revision, check);
-      receipt.assertCurrent(); check();
-    }
-    if (local!.authority.getSnapshot().account?.network !== choice.scope.network.id) throw Error('CANCELLED');
-    openStage('send', { kind: action, hash });
+  const selectPortfolioNetwork = (choice: NotificationChoice, assertView: () => void) => navigateAccount(choice, assertView, () => {});
+  const sendFromPortfolio = (choice: NotificationChoice, token: Erc20Metadata | undefined, assertView: () => void) => {
+    if (controllersRef.current?.authority.getSnapshot().backup === 'unconfirmed') { assertView(); openRequiredBackup(); return Promise.resolve(); }
+    return navigateAccount(choice, assertView, (_context, check, _local, release) => {
+      setPortfolioSend({ choice, target: token ? { kind: 'token', token } : { kind: 'native' }, epoch: epoch.current, assertCurrent: check, release }); return 'queued';
+    });
+  };
+  const openPortfolioDetail = (choice: NotificationChoice, receive: boolean, token: string | undefined, assertView: () => void) =>
+    navigateAccount(choice, assertView, (context, _check, local) => {
+      setPortfolioDetail({ owner: local, context: context.context, detail: { accountId: choice.scope.accountId, networkId: choice.scope.network.id, receive, token } });
+      restoreRoot('wallet', context.identity);
+    });
+  const openPortfolioActivity = async (choice: NotificationChoice | undefined, assertView: () => void) => {
+    if (!choice) { assertView(); shell.select('activity'); return; }
+    await navigateAccount(choice, assertView, context => restoreRoot('activity', context.identity));
+  };
+  const openAccountActivityAction = (entry: AccountActivityRow, action: AccountActivityAction, hash: string, assertView: () => void) => {
+    if (!/^0x[0-9a-f]{64}$/i.test(hash) || entry.row.hash !== hash) return Promise.reject(Error('CANCELLED'));
+    return navigateAccount(entry.choice, assertView, (_context, check, _local, release) => {
+      setPortfolioSend({ choice: entry.choice, target: { kind: action, hash }, epoch: epoch.current, assertCurrent: check, release }); return 'queued';
+    });
   };
   useEffect(() => {
     if (!portfolioSend) return;
-    const saved = controllersRef.current?.authority.getCatalogue(), state = controllersRef.current?.authority.getSnapshot();
-    setPortfolioSend(null);
-    try { portfolioSend.assertCurrent(); } catch { return; }
-    if (epoch.current !== portfolioSend.epoch || stage !== 'choose' || state?.phase !== 'ready' ||
-        saved?.active.accountId !== portfolioSend.choice.scope.accountId || state.account?.network !== portfolioSend.choice.scope.network.id ||
-        state.account.address !== portfolioSend.choice.scope.accountAddress) return;
-    openStage('send', portfolioSend.token ? { kind: 'token', token: portfolioSend.token } : { kind: 'native' });
-  }, [portfolioSend, snapshot.revision, stage]);
+    let current = true;
+    queueMicrotask(() => {
+      if (!current || !mounted.current) return;
+      const saved = controllersRef.current?.authority.getCatalogue(), state = controllersRef.current?.authority.getSnapshot();
+      setPortfolioSend(pending => pending === portfolioSend ? null : pending);
+      try { portfolioSend.assertCurrent(); } catch { portfolioSend.release(); return; }
+      if (epoch.current !== portfolioSend.epoch || stage !== 'choose' || state?.phase !== 'ready' ||
+          saved?.active.accountId !== portfolioSend.choice.scope.accountId || state.account?.network !== portfolioSend.choice.scope.network.id ||
+          state.account.address !== portfolioSend.choice.scope.accountAddress) { portfolioSend.release(); return; }
+      portfolioSend.release();
+      openStage('send', portfolioSend.target);
+    });
+    return () => { current = false; };
+  });
   const openSendNetwork = (form: NativeUnsignedSendDraft) => {
     const local = controllersRef.current, before = readyContext(), saved = sendDraft, captured = epoch.current;
     if (!local || !before || !saved || rootOrigin.current !== saved.origin || before.context !== saved.origin.context ||
@@ -692,10 +753,10 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       if (!current || selected?.active.accountId !== route.accountId || account?.network !== route.networkId || account.address !== choice.scope.accountAddress) return;
       if (route.kind.startsWith('transaction-')) {
         setTransactionActivity(route.transactionHash ? { context: current.context, hash: route.transactionHash } : null);
-        shell.restoreRoot('activity', current.identity);
+        restoreRoot('activity', current.identity);
       } else {
         setResumeGuardianScope(`${capturedEpoch}:${current.context}`);
-        shell.restoreRoot('tools', current.identity);
+        restoreRoot('tools', current.identity);
       }
     })().catch(() => undefined).finally(() => {
       if (notificationTransition.current !== token) return;
@@ -703,7 +764,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       const pending = nativeActivityNotifications.getSnapshot().pendingEventId;
       if (mounted.current && pending && pending !== eventId) setNotificationWake(value => value + 1);
     });
-  }, [notificationSnapshot.pendingEventId, notificationWake, snapshot.phase, snapshot.revision, protectedScreen, stage, busy, shell.immersive, connectionSnapshot]);
+  }, [notificationSnapshot.pendingEventId, notificationWake, snapshot.phase, snapshot.revision, protectedScreen, stage, busy, shell.immersive, connectionSnapshot, controllersRef, readyContext, restoreRoot]);
   useEffect(() => {
     if (incomingPairing && incomingPairing.expiresAt <= Date.now()) { onPairingHandled?.(incomingPairing.id); return; }
     const pendingLink = incomingPairing && onPairingHandled;
@@ -763,6 +824,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {
     latestBack.current = () => {
+      if (accountNavigation.current) { revoke(); return true; }
       if (['backup-intro', 'backup-auth', 'words', 'backup-verify'].includes(stage) && ['ready', 'backup-required'].includes(snapshot.phase)) { closeBackup(); return true; }
       if (stage === 'backup-complete' && snapshot.phase === 'ready') {
         closeStage();
@@ -803,6 +865,8 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     cancelNoteRestore();
     detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
     controllersRef.current = null;
+    accountNavigation.current = null; setPortfolioSend(null); setPortfolioDetail(null);
+    setControllerOwner(null);
     setSentry(null); setSentryScope(null);
     if (rootOrigin.current?.stage === 'send' || rootOrigin.current?.stage === 'smart-resume') {
       rootOrigin.current = null;
@@ -892,6 +956,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
       runtime: local.getScopedActivityRuntime, ...local.activityReaders });
     const update = (state: CustodySnapshot) => {
       if (!mounted.current || controllersRef.current !== local) return;
+      setControllerOwner(local);
       setGuardianEpoch(epoch.current);
       setCanSignSmart(local.canSignSmartAccount()); setCanManageSlh(local.canManageSlhDsa()); setCanManageModules(local.canManageSmartAccountModules());
       setCanUseWalletAuthenticator(local.canUseWalletAuthenticator());
@@ -1598,7 +1663,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
     </View>;
   }
   else if (snapshot.phase === 'backup-required' && stage === 'choose' && publicSource) {
-    const content = shell.tab === 'wallet' ? <NativePortfolioRoute overview={utxo ? null : accountPortfolio} selectNetwork={selectPortfolioNetwork} sendFrom={sendFromPortfolio} cancelSelection={() => controllersRef.current?.authority.cancelAccountOperation()} source={publicSource} reader={balanceReader ?? undefined} accountLabel={accountLabel}
+    const content = shell.tab === 'wallet' ? <NativePortfolioRoute overview={utxo ? null : accountPortfolio} selectNetwork={selectPortfolioNetwork} sendFrom={sendFromPortfolio} detail={visiblePortfolioDetail} closeDetail={() => setPortfolioDetail(null)} navigateDetail={openPortfolioDetail} navigateActivity={openPortfolioActivity} cancelSelection={() => { if (accountNavigation.current) revoke(); else controllersRef.current?.authority.cancelAccountOperation(); }} source={publicSource} reader={balanceReader ?? undefined} accountLabel={accountLabel}
       onExit={exit} onLock={revoke} onViewRecovery={openRequiredBackup} onBackup={openRequiredBackup} navigation={shell.navigation} />
       : shell.tab === 'settings' ? <RealSettings accountLabel={accountLabel} watchOnly={false} navigation={shell.navigation} notifications={notificationSettings}
         backupRequired onBackup={openRequiredBackup} onSecurity={() => setStage('security')} onLock={revoke} onBack={() => shell.select('wallet')} />
@@ -1609,7 +1674,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         onBack={() => shell.select('wallet')} navigation={shell.navigation} />
       : <Screen><Header title={shell.tab === 'tools' ? 'Tools' : 'Activity'} /><Notice title="Back up your wallet" body="Keep a recovery phrase backup before using wallet tools." />
         <Button title="Back up now" onPress={openRequiredBackup} /></Screen>;
-    return <RealAppShell tab={shell.tab} onTab={tab => { notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>{content}</RealAppShell>;
+    return <RealAppShell tab={shell.tab} onTab={tab => { cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>{content}</RealAppShell>;
   }
   else if (snapshot.phase === 'ready' && stage === 'slh-dsa' && openSlhDsaManagement) return <NativeSlhDsaManagementScreen ledgerConnection={ledgerConnection ?? undefined} open={openSlhDsaManagement} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && stage === 'smart-infrastructure' && openSmartInfrastructure) return <NativeInfrastructureScreen ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} open={openSmartInfrastructure} onBack={closeStage} />;
@@ -1663,7 +1728,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
-    if (shell.tab === 'wallet') content = <NativePortfolioRoute overview={utxo ? null : accountPortfolio} selectNetwork={selectPortfolioNetwork} sendFrom={sendFromPortfolio} cancelSelection={() => controllersRef.current?.authority.cancelAccountOperation()}
+    if (shell.tab === 'wallet') content = <NativePortfolioRoute overview={utxo ? null : accountPortfolio} selectNetwork={selectPortfolioNetwork} sendFrom={sendFromPortfolio} detail={visiblePortfolioDetail} closeDetail={() => setPortfolioDetail(null)} navigateDetail={openPortfolioDetail} navigateActivity={openPortfolioActivity} cancelSelection={() => { if (accountNavigation.current) revoke(); else controllersRef.current?.authority.cancelAccountOperation(); }}
     hardwareRequest={trezorView ? <NativeTrezorResumeNotice controller={trezorView} onResume={() => openStage('trezor')} /> : undefined}
     smartAccount={selectedCatalogueAccount?.smartAccount}
     onManageSmartAccountModules={selectedCatalogueAccount?.smartAccount?.isDeployed && canManageModules && openSmartAccountModules ? () => openStage('smart-modules') : undefined}
@@ -1731,7 +1796,7 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
         },
       } : undefined}
       onLock={revoke} onBack={() => shell.select('wallet')} />;
-    return <RealAppShell tab={shell.tab} onTab={tab => { notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>
+    return <RealAppShell tab={shell.tab} onTab={tab => { cancelAccountNavigation(); notificationTransition.current = null; shell.select(tab); }} immersive={shell.immersive}>
       {recoveryActivity && recoveryActivity.context === guardianContext && <Button title="Return to recovery" variant="secondary" onPress={() => void returnToRecovery().catch(() => undefined)} />}
       {content}
     </RealAppShell>;

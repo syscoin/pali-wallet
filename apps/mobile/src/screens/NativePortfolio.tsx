@@ -212,7 +212,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
     if (openReceive && !requestedReceive.current && account && model.isCurrent(account)) {
       requestedReceive.current = true; requestReceive();
     }
-  }, [openReceive, account, model]);
+  });
   const warningCurrent = (captured: ReceiveWarning) => receiveWarningOwner.current === captured &&
     captured.model === model && lifecycle.current.alive && lifecycle.current.epoch === captured.epoch && AppState.currentState === 'active' && model.isCurrent(captured.account);
   const receiveAnyway = (captured: ReceiveWarning) => {

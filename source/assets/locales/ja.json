@@ -2306,7 +2306,9 @@
       "error": "端末の設定で通知の許可を確認して、もう一度お試しください。",
       "checkNow": "今すぐ確認",
       "disableAll": "すべての通知をオフ",
-      "search": "アカウントやネットワークを検索"
+      "search": "アカウントやネットワークを検索",
+      "noTransactionProvider": "取引通知は利用できません",
+      "guardianOnly": "ガーディアンの更新のみ"
     },
     "accountPortfolio": {
       "value": "ポートフォリオの評価額",

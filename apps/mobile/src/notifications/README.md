@@ -38,3 +38,5 @@ minimum interval; iOS chooses its own execution windows and the OS can delay or
 stop work. Force-quit, power/network limits, permission denial and unavailable
 storage can prevent delivery. These alerts are not an instantaneous guardian
 alarm. No remote push service is enrolled.
+
+Enrollment follows the same registered history-provider capability as Activity. Networks without a supported account-history provider cannot promise transaction alerts; new enrollment is refused when neither history nor guardian observations are supported. Guardian-only coverage is labelled explicitly, and an existing unsupported enrollment can still be removed. An empty successful baseline is distinct from an unavailable history/guardian read.

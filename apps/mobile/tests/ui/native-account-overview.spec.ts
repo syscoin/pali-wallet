@@ -62,3 +62,12 @@ test('255-decimal tracked amounts stay compact and preserve their full accessibl
   expect(await token.evaluate(element => element.getBoundingClientRect().height)).toBeLessThan(130);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+for (const filter of ['all', 'ethereum']) test(`unbacked ${filter} Send opens backup before choosing a source or signing`, async ({ page }) => {
+  await page.goto(`/?account-portfolio&unbacked=1&filter=${filter}`);
+  await expect(page.getByTestId('account-portfolio-value')).not.toHaveText('—');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  expect(await page.evaluate(() => window.__accountPortfolio.backups())).toBe(1);
+  expect(await page.evaluate(() => window.__accountPortfolio.sends)).toEqual([]);
+  await expect(page.getByRole('heading', { name: 'Send from', exact: true })).toHaveCount(0);
+});

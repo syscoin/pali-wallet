@@ -186,6 +186,8 @@ function recipient(row: ActivityRow): string | null {
   return row.local?.recipient ?? row.observation?.to ?? null;
 }
 
+export type NativeActivityReviewAction = 'saved' | 'speed-up' | 'cancel' | 'cancel-saved';
+
 export function NativeActivityScreen({
   controller,
   accountLabel,
@@ -195,9 +197,11 @@ export function NativeActivityScreen({
   onCancelPending,
   onCancelSaved,
   onSpeedUpPending,
+  onNavigateToReview,
   initialHash,
   externallyConnected = false,
   detailOnly = false,
+  savedPendingOnly = false,
 }: {
   controller: NativeActivity;
   accountLabel: string;
@@ -207,9 +211,12 @@ export function NativeActivityScreen({
   onCancelPending?(hash: string): void;
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
+  /** Navigation to a canonical selected-network review, never direct authorization. */
+  onNavigateToReview?(action: NativeActivityReviewAction, hash: string): void;
   initialHash?: string;
   externallyConnected?: boolean;
   detailOnly?: boolean;
+  savedPendingOnly?: boolean;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -229,8 +236,10 @@ export function NativeActivityScreen({
       onCancelPending={onCancelPending}
       onCancelSaved={onCancelSaved}
       onSpeedUpPending={onSpeedUpPending}
+      onNavigateToReview={onNavigateToReview}
       initialHash={initialHash}
       detailOnly={detailOnly}
+      savedPendingOnly={savedPendingOnly}
     />
   );
 }
@@ -244,8 +253,10 @@ function NativeActivityContent({
   onCancelPending,
   onCancelSaved,
   onSpeedUpPending,
+  onNavigateToReview,
   initialHash,
   detailOnly,
+  savedPendingOnly,
 }: {
   controller: NativeActivity;
   snapshot: NativeActivitySnapshot;
@@ -256,8 +267,10 @@ function NativeActivityContent({
   onCancelPending?(hash: string): void;
   onCancelSaved?(hash: string): void;
   onSpeedUpPending?(hash: string): void;
+  onNavigateToReview?(action: NativeActivityReviewAction, hash: string): void;
   initialHash?: string;
   detailOnly?: boolean;
+  savedPendingOnly?: boolean;
 }) {
   const { hidden: hideBalances } = useBalancePrivacy();
   const [selected, setSelected] = useState<string | null>(null);
@@ -269,18 +282,19 @@ function NativeActivityContent({
   const [copying, setCopying] = useState(false);
   const lifetime = useRef({ epoch: 0 });
   useEffect(() => {
-    if (!initialHash || snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === initialHash) return;
-    arrival.current = initialHash;
+    const target = initialHash ?? (savedPendingOnly ? 'saved-pending' : null);
+    if (!target || snapshot.status !== 'ready' || !snapshot.scopeKey || arrival.current === target) return;
+    arrival.current = target;
     const epoch = lifetime.current.epoch;
     void controller.loadSavedPending().then(() => {
-      if (lifetime.current.epoch !== epoch || arrival.current !== initialHash) return;
+      if (!initialHash || lifetime.current.epoch !== epoch || arrival.current !== target) return;
       const current = controller.getSnapshot();
       if (current.savedPending?.rows.some(row => row.hash === initialHash) || current.rows.some(row => row.hash === initialHash)) {
         setSelected(initialHash);
         controller.inspect(initialHash);
       }
     }).catch(() => undefined);
-  }, [controller, initialHash, snapshot.scopeKey, snapshot.status]);
+  }, [controller, initialHash, savedPendingOnly, snapshot.scopeKey, snapshot.status]);
   const list = useRef<FlatList<ActivityRow>>(null);
   const listBounds = useRef<React.ComponentRef<typeof View>>(null);
   const rowViews = useRef(new Map<string, React.ComponentRef<typeof View>>());
@@ -305,7 +319,7 @@ function NativeActivityContent({
     };
   }, []);
   const owner = snapshot.accountAddress ?? '';
-  const savedPending = snapshot.savedPending;
+  const savedPending = snapshot.savedPending ?? (savedPendingOnly ? { rows: [], status: 'loading' as const, hasMore: false } : undefined);
   const rows = savedPending?.rows ?? snapshot.rows.filter(
     (row) =>
       (snapshot.view.showZero || !zeroOnly(row)) &&
@@ -337,6 +351,17 @@ function NativeActivityContent({
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
     chosen.retainedObservation?.status === 'missing' &&
     chosen.retainedObservation.latestNonce === String(chosen.local.nonce);
+  const reviewAction = (action: NativeActivityReviewAction, direct: ((hash: string) => void) | undefined) => {
+    if (!chosen?.local) return undefined;
+    if (!chosen.local.inspectionOnly) return direct;
+    if (!chosen.local.reviewNavigation || !onNavigateToReview) return undefined;
+    return (hash: string) => onNavigateToReview(action, hash);
+  };
+  const speedUp = (chosen?.local?.inspectionOnly ? chosen.local.reviewNavigation?.speedUp : chosen?.local?.speedUpEligible)
+    ? reviewAction('speed-up', onSpeedUpPending) : undefined;
+  const cancelPending = reviewAction('cancel', onCancelPending);
+  const cancelSaved = reviewAction('cancel-saved', onCancelSaved);
+  const replay = reviewAction('saved', onReplay);
   const retained = chosen?.retainedObservation;
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number
@@ -414,6 +439,7 @@ function NativeActivityContent({
       restoreAttempts.current = 0;
       list.current?.scrollToOffset({ offset: 0, animated: false });
       controller.closeSavedPending();
+      if (savedPendingOnly) onBack();
     }
     else {
       void afterPositionSaved(onBack);
@@ -766,19 +792,19 @@ function NativeActivityContent({
           />
           {original && <Button icon="arrow-left" title="View original transaction" variant="secondary" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
           {replacement && <Button title={replacement.local?.operation === 'cancel' ? 'View cancellation attempt' : 'View Speed Up attempt'} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
-          {canReplace && chosen.local?.speedUpEligible && onSpeedUpPending && (
-            <Button title="Speed Up" variant="secondary" onPress={() => void afterPositionSaved(() => onSpeedUpPending(chosen.hash))} />
+          {canReplace && speedUp && (
+            <Button title="Speed Up" variant="secondary" onPress={() => void afterPositionSaved(() => speedUp(chosen.hash))} />
           )}
-          {canReplace && onCancelPending && (
-            <Button title="Cancel pending transaction" variant="secondary" onPress={() => void afterPositionSaved(() => onCancelPending(chosen.hash))} />
+          {canReplace && cancelPending && (
+            <Button title="Cancel pending transaction" variant="secondary" onPress={() => void afterPositionSaved(() => cancelPending(chosen.hash))} />
           )}
-          {canCancelSaved && onCancelSaved && (
-            <Button title="Cancel saved transaction" variant="secondary" onPress={() => void afterPositionSaved(() => onCancelSaved(chosen.hash))} />
+          {canCancelSaved && cancelSaved && (
+            <Button title="Cancel saved transaction" variant="secondary" onPress={() => void afterPositionSaved(() => cancelSaved(chosen.hash))} />
           )}
-          {chosen.local && !chosen.local.inspectionOnly && onReplay && (
+          {replay && (
             <Button
               title="Review resend"
-              onPress={() => onReplay(chosen.hash)}
+              onPress={() => replay(chosen.hash)}
             />
           )}
           {!!feedback && (

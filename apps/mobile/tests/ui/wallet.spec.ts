@@ -79,7 +79,7 @@ test('sample send and receive stay inert and keep their network identity', async
   await expect(page.getByText('DESIGN PREVIEW · SAMPLE DATA')).toBeVisible();
   await page.getByRole('button', { name: 'Preview send', exact: true }).click();
   await page
-    .getByRole('button', { name: 'Choose Bitcoin on Bitcoin', exact: true })
+    .getByRole('radio', { name: 'Bitcoin, BTC', exact: true })
     .click();
   await page
     .getByRole('textbox', { name: 'Sample recipient' })
@@ -95,7 +95,7 @@ test('sample send and receive stay inert and keep their network identity', async
   await page.getByRole('button', { name: 'Back to wallet' }).click();
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
   await page
-    .getByRole('button', { name: 'Choose Bitcoin on Bitcoin', exact: true })
+    .getByRole('radio', { name: 'Bitcoin, BTC', exact: true })
     .click();
   await expect(
     page.getByText('PALI-PREVIEW:bitcoin:NOT-A-PAYMENT-ADDRESS')
@@ -240,14 +240,14 @@ for (const viewport of [
       .getByRole('button', { name: 'Preview send', exact: true })
       .click();
     await page
-      .getByRole('button', {
-        name: 'Choose Syscoin on Syscoin NEVM',
+      .getByRole('radio', {
+        name: 'Syscoin NEVM, SYS',
         exact: true,
       })
       .scrollIntoViewIfNeeded();
     await page
-      .getByRole('button', {
-        name: 'Choose Syscoin on Syscoin NEVM',
+      .getByRole('radio', {
+        name: 'Syscoin NEVM, SYS',
         exact: true,
       })
       .click();

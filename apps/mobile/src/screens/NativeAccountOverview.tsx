@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, Modal, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NotificationChoice } from '../notifications/choices';
@@ -17,16 +17,25 @@ import { WalletBackupBadge } from './WalletBackupBadge';
 import { compactActivityAmountLabel } from '../activity/activityAmountLabel';
 import { useNativeTranslation } from '../platform/localization';
 
-export function NativePortfolioRoute({ overview, selectNetwork, sendFrom, cancelSelection, ...portfolio }: NativePortfolioProps & {
+export type NativeAccountDetail = Readonly<{ accountId: string; networkId: string; receive?: boolean; token?: string }>;
+type AccountNavigation = {
+  detail?: NativeAccountDetail;
+  closeDetail?(): void;
+  navigateDetail?(choice: NotificationChoice, receive: boolean, token: string | undefined, assertCurrent: () => void): Promise<void>;
+  navigateActivity?(choice: NotificationChoice | undefined, assertCurrent: () => void): Promise<void>;
+};
+
+export function NativePortfolioRoute({ overview, selectNetwork, sendFrom, cancelSelection, detail, closeDetail, navigateDetail, navigateActivity, ...portfolio }: NativePortfolioProps & AccountNavigation & {
   overview?: AccountPortfolioController | null;
   selectNetwork(choice: NotificationChoice, assertCurrent: () => void): Promise<void>;
   sendFrom(choice: NotificationChoice, token: Erc20Metadata | undefined, assertCurrent: () => void): Promise<void>;
   cancelSelection?(): void;
 }) {
-  return overview ? <NativeAccountOverview controller={overview} portfolio={portfolio} selectNetwork={selectNetwork} send={sendFrom} cancelSelection={cancelSelection} /> : <NativePortfolio {...portfolio} />;
+  return overview ? <NativeAccountOverview controller={overview} portfolio={portfolio} selectNetwork={selectNetwork} send={sendFrom} cancelSelection={cancelSelection}
+    detail={detail} closeDetail={closeDetail} navigateDetail={navigateDetail} navigateActivity={navigateActivity} /> : <NativePortfolio {...portfolio} />;
 }
 
-export function NativeAccountOverview({ controller, portfolio, selectNetwork, send, cancelSelection }: {
+export function NativeAccountOverview({ controller, portfolio, selectNetwork, send, cancelSelection, detail: externalDetail, closeDetail: closeExternalDetail, navigateDetail, navigateActivity }: AccountNavigation & {
   controller: AccountPortfolioController;
   portfolio: NativePortfolioProps;
   selectNetwork(choice: NotificationChoice, assertCurrent: () => void): Promise<void>;
@@ -37,32 +46,35 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const preference = useFiatCurrency();
   const { hidden } = useBalancePrivacy();
-  const [detail, setDetail] = useState<{ accountId: string; networkId: string; receive?: boolean; token?: string } | null>(() => portfolio.initialReceive ? {
+  const [localDetail, setDetail] = useState<NativeAccountDetail | null>(() => portfolio.initialReceive ? {
     accountId: portfolio.source.getCatalogue?.()?.active.accountId ?? '', networkId: portfolio.initialReceive.account.network,
   } : null);
+  const detail = externalDetail ?? localDetail;
   const [sheet, setSheet] = useState<'filter' | 'send' | 'receive' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const lifetime = useRef({ alive: true, generation: 0, busy: false });
   useLayoutEffect(() => {
-    lifetime.current.alive = true;
-    return () => { lifetime.current.alive = false; lifetime.current.generation++; };
+    const owner = lifetime.current;
+    owner.alive = true;
+    return () => { owner.alive = false; owner.generation++; };
   }, []);
   const accountId = portfolio.source.getCatalogue?.()?.active.accountId ?? null;
   const detailCurrent = detail && detail.accountId === accountId && portfolio.source.getSnapshot().account?.network === detail.networkId;
   const pauseOverview = detail?.accountId === accountId;
+  const currency = preference.status === 'ready' ? preference.currency : null;
   useLayoutEffect(() => {
     if (preference.status === 'loading' || pauseOverview) return;
-    controller.setCurrency(preference.status === 'ready' ? preference.currency : null);
+    controller.setCurrency(currency);
     return controller.connect();
-  }, [controller, pauseOverview, preference.status, preference.status === 'ready' ? preference.currency : null]);
-  const closeDetail = () => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setDetail(null); };
-  const closeSheet = () => { if (busy && sheet !== 'filter') cancelSelection?.(); closeDetail(); setSheet(null); };
+  }, [controller, pauseOverview, preference.status, currency]);
+  const closeDetail = useCallback(() => { lifetime.current.generation++; lifetime.current.busy = false; setBusy(false); setDetail(null); closeExternalDetail?.(); }, [closeExternalDetail]);
+  const closeSheet = useCallback(() => { if (busy && sheet !== 'filter') cancelSelection?.(); closeDetail(); setSheet(null); }, [busy, sheet, cancelSelection, closeDetail]);
   useLayoutEffect(() => portfolio.navigation?.registerBack(() => {
     if (sheet) { closeSheet(); return true; }
     if (detailCurrent) { closeDetail(); return true; }
     return false;
-  }), [portfolio.navigation, detailCurrent, sheet]);
+  }), [portfolio.navigation, detailCurrent, sheet, closeDetail, closeSheet]);
   const run = async (operation: (check: () => void) => Promise<void>) => {
     const owner = lifetime.current;
     if (owner.busy || !owner.alive || AppState.currentState !== 'active') return;
@@ -74,6 +86,7 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     finally { if (owner.alive && generation === owner.generation) { owner.busy = false; setBusy(false); } }
   };
   const openDetail = (choice: NotificationChoice, receive = false, token?: string) => run(async check => {
+    if (navigateDetail) { await navigateDetail(choice, receive, token, check); return; }
     const generation = lifetime.current.generation;
     setDetail({ accountId: choice.scope.accountId, networkId: choice.scope.network.id, receive, token });
     try { await selectNetwork(choice, check); }
@@ -119,7 +132,8 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
       <Text style={s.help}>{t(snapshot.partial ? 'mobile.accountPortfolio.partial' : 'mobile.accountPortfolio.estimated')}</Text>
       {hasTestnets && <Text style={s.help}>{t('mobile.accountPortfolio.testnetsExcluded')}</Text>}</View>
     <View style={s.actions}>
-      {!!portfolio.onSend && <Button title={t('buttons.send')} icon="arrow-up-right" style={s.flex} disabled={busy || snapshot.status !== 'ready' || !filterAvailable} onPress={() => {
+      {(portfolio.onSend || portfolio.source.getSnapshot().backup !== 'confirmed') && <Button title={t('buttons.send')} icon="arrow-up-right" style={s.flex} disabled={busy || snapshot.status !== 'ready' || !filterAvailable} onPress={() => {
+        if (portfolio.source.getSnapshot().backup !== 'confirmed') { (portfolio.onBackup ?? portfolio.onViewRecovery)(); return; }
         if (snapshot.filter === 'all') setSheet('send');
         else if (selectedNetwork) void run(check => send(selectedNetwork, undefined, check));
       }} />}
@@ -147,7 +161,8 @@ export function NativeAccountOverview({ controller, portfolio, selectNetwork, se
     {snapshot.status === 'ready' && !snapshot.rows.length && <Text style={s.help}>{t('mobile.accountPortfolio.noAddress')}</Text>}
     {error && <Text accessibilityRole="alert" style={s.error}>{t('mobile.accountPortfolio.error')}</Text>}
     {portfolio.onActivity && <Card><Row title={t('buttons.activity')} subtitle={selectedNetwork ? t('mobile.accountPortfolio.activityNetwork', { network: selectedNetwork.networkName }) : t('mobile.accountPortfolio.activityAll')} icon="clock" onPress={() => {
-      if (selectedNetwork) void run(async check => { await selectNetwork(selectedNetwork, check); check(); portfolio.onActivity?.(); });
+      if (navigateActivity) void run(check => navigateActivity(selectedNetwork, check));
+      else if (selectedNetwork) void run(async check => { await selectNetwork(selectedNetwork, check); check(); portfolio.onActivity?.(); });
       else portfolio.onActivity?.();
     }} last /></Card>}
   </Screen><Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={closeSheet}>
