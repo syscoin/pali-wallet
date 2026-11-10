@@ -115,6 +115,10 @@ const controller: NativeTransferView = {
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
   },
+  async prepareMaximum(to, nonce) {
+    // Public fixture balance is one coin; its fixed review fee is 63,000 units.
+    publishReview(to, (10n ** 18n - 63_000n).toString(), undefined, nonce);
+  },
   async prepareCollectible(saved, to, tokenId, amountUnits) {
     if (saved !== collectible) throw Error('Unexpected fixture draft');
     const from = sender;

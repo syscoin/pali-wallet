@@ -114,6 +114,7 @@ export class NativeTransferRpcError extends Error {
     | 'REVIEW_REQUIRED'
     | 'NONCE_UNAVAILABLE'
     | 'CANCELLATION_QUEUED'
+    | 'MAX_PENDING'
     | 'INSUFFICIENT_BALANCE'
     | 'INSUFFICIENT_TOKEN_BALANCE'
     | 'INSUFFICIENT_NFT_BALANCE'
@@ -368,7 +369,7 @@ export class NativeTransferRpc {
       if (error.code === 'INSUFFICIENT_BALANCE') throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
       if (error.code === 'INSUFFICIENT_NFT_BALANCE' || error.code === 'NFT_TRANSFER_REJECTED' || error.code === 'TOKEN_CHANGED')
         throw new NativeTransferRpcError(error.code);
-      if (error.code === 'REVIEW_REQUIRED' || error.code === 'NONCE_UNAVAILABLE' || error.code === 'CANCELLATION_QUEUED') throw new NativeTransferRpcError(error.code);
+      if (error.code === 'REVIEW_REQUIRED' || error.code === 'NONCE_UNAVAILABLE' || error.code === 'CANCELLATION_QUEUED' || error.code === 'MAX_PENDING') throw new NativeTransferRpcError(error.code);
       if (error.code === 'CANCELLED') throw new NativeTransferRpcError('CANCELLED');
       if (error.code === 'INVALID_INPUT' || error.code === 'INVALID_RESPONSE' || error.code === 'PROFILE_CHANGED') throw new NativeTransferRpcError('INVALID_RESPONSE');
     }
@@ -382,6 +383,11 @@ export class NativeTransferRpc {
     const value = assertBaseUnits(valueUnits);
     if (value <= 0n) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     return this.receiptRpc.prepare({ from: sender, to: recipient, value: value.toString(), data: '0x' }, signal, () => undefined, undefined, nonceOverride, automaticNonce)
+      .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
+  }
+  prepareMaximum(from: string, to: string, reserveUnits: bigint, signal: AbortSignal, nonceOverride: number | undefined,
+    automaticNonce: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
+    return this.receiptRpc.prepareMaximum(from, to, reserveUnits, signal, () => undefined, nonceOverride, automaticNonce)
       .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
   /** Every EVM rechecks the exact reviewed type, fees, nonce and calldata before signing. */

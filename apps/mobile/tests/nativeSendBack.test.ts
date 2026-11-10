@@ -7,6 +7,7 @@ import ts from 'typescript';
 import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
 import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
 import type { NativeOperationCredential } from '../src/custody/types.ts';
+import { formatBaseUnits } from '../src/core/amounts.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
@@ -36,7 +37,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: (token: { balance?: string }) => token.balance },
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
-    '../core/amounts':{formatBaseUnits:()=>''},
+    '../core/amounts':{formatBaseUnits},
     '../../../../source/shared/erc20':{formatTokenUnits:()=>'',parseErc20Units:()=>''},
     '../../../../source/shared/evmRecipientChoices':{findLocalEvmRecipientChoices:()=>[]},
     '../../../../source/utils/nftTokenId':{normalizeNftTokenId:()=>''},
@@ -57,7 +58,12 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     prepared.push([recipient, amount, nonce]); snapshot = { ...snapshot, phase: 'review', review: {
       id: 'review', recipient, context, amountUnits: '1', maximumFeeUnits: '1', totalUnits: '2' } };
   };
+  const maximumPrepared: unknown[] = [];
   const controller={getSnapshot:()=>snapshot,subscribe:()=>()=>{},cancel(){cancels++;snapshot={...snapshot,phase:'idle',review:null};},prepare,
+    async prepareMaximum(recipient: string, nonce?: string) {
+      maximumPrepared.push([recipient, nonce]); await prepare(recipient, 'maximum', nonce);
+      snapshot = { ...snapshot, review: { ...snapshot.review, amountUnits: '1999999999999937000', maximumFeeUnits: '63000', totalUnits: '2000000000000000000' } };
+    },
     async confirm(id: string, credential: NativeOperationCredential) {
       const approved = snapshot.review; confirmed.push(id); credentials.push(credential);
       if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
@@ -67,8 +73,8 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     }, async prepareToken(...args: unknown[]) { prepared.push(args); }};
   const context={networkId:'ethereum',name:'Ethereum',symbol:'ETH',chainId:1,rpcUrl:'https://example.invalid',testnet:false};
   let account={address:'0x1111111111111111111111111111111111111111',network:'ethereum',revision:1};
-  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,authenticationMethod,onChangeNetwork,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
-  return {render,prepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
+  const render=()=>{cursor=0;const tree=module.exports.NativeSend({controller,context,token,beforeClose,recipientResolver,account,authenticationMethod,availableAmount:'2',onChangeNetwork,onViewTransaction,onBack(){backs++;}}) as Element;effects.splice(0).forEach(run=>run());return tree;};
+  return {render,prepared,maximumPrepared,confirmed,credentials,get snapshot(){return snapshot;},setSnapshot(value: any){snapshot=value;},controller,
     useBiometrics() { authenticationMethod = 'biometric'; },
     failConfirmation(message: string) { confirmationFailure = new Error(message); },
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
@@ -420,4 +426,25 @@ test('unresolved ENS gives feedback without entering fee preparation',async()=>{
   const f=setup(undefined,undefined,{async resolve(){throw new Error('ENS_UNAVAILABLE');}});f.snapshot.phase='idle';
   editSend(f,'Ethereum address','missing.eth');editSend(f,'Amount in ETH','1');reviewSend(f);await settle();
   assert.equal(f.prepared.length,0);assert.match(all(f.render()).flatMap(node=>node.children).join(' '),/could not be resolved/);f.dispose();
+});
+
+test('native coin MAX is inline, selects the dedicated review, and editing returns to fixed amount', async () => {
+  const f = setup();
+  f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  const amount = all(f.render()).find(node => node.props.label === 'Amount in ETH');
+  assert(amount);
+  assert.equal(amount.props.trailing.props.title, 'MAX');
+  amount.props.trailing.props.onPress();
+  assert.equal(button(f.render(), 'MAX selected').props.disabled, false);
+  assert.equal(all(f.render()).find(node => node.props.label === 'Amount in ETH')!.props.value, '2');
+  reviewSend(f); await settle();
+  assert.deepEqual(f.maximumPrepared, [['0x2222222222222222222222222222222222222222', undefined]]);
+  assert.equal(one(f.render(), 'Text', node => node.props.testID === 'native-send-amount').children[0], '1.999999999999937');
+  f.controller.cancel(); f.render();
+  editSend(f, 'Amount in ETH', '0.5');
+  assert.equal(button(f.render(), 'MAX').props.disabled, false);
+  reviewSend(f); await settle();
+  assert.deepEqual(f.prepared.at(-1), ['0x2222222222222222222222222222222222222222', '0.5', undefined]);
+  f.dispose();
 });

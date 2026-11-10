@@ -540,6 +540,18 @@ it('does not reserve another chain or sender through the shared planner', async 
   ).toMatchObject({ kind: 'ready', nonce: 1 });
   expect(fixture.snapshot.readAssetDebit).not.toHaveBeenCalled();
 });
+it('preserves an unused higher manual nonce when latest and pending counts agree', async () => {
+  const fixture = acceptanceFixture([]);
+  expect(
+    await fixture.select({ latest: 3, pending: 3, nonceOverride: 7 })
+  ).toEqual({
+    kind: 'ready',
+    nonce: 7,
+    balanceState: 'pending',
+    nativeReservations: { canonical: BigInt(0), pending: BigInt(0) },
+  });
+  expect(fixture.readPending).not.toHaveBeenCalled();
+});
 it('revalidates a manual nonce and checks its asset predecessors without forcing the automatic nonce', async () => {
   const fixture = acceptanceFixture([record(0)]);
   fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(30));

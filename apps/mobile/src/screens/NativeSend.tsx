@@ -119,6 +119,7 @@ export const nativeTransferFailure = (
   if (code === 'CANCELLED' || code === 'NOT_READY')
     return 'Your wallet was locked. Unlock to continue.';
   if (code === 'PENDING_TRANSFER') return '';
+  if (code === 'MAX_PENDING') return 'MAX is unavailable while an outgoing transaction is pending. Check Activity before trying again.';
   return hasSavedTransaction
     ? 'This request could not be completed. Check your pending transaction before sending again.'
     : 'This request could not be completed. Try again or check Activity for an existing transaction.';
@@ -622,6 +623,7 @@ export function NativeSend({
     if (!draftCollectible) {
       prepareRecipient((address) => token
         ? controller.prepareToken(token.contractAddress, address, amount, nonceOverride)
+        : maximum ? controller.prepareMaximum(address, nonceOverride)
         : controller.prepare(address, amount, nonceOverride));
       return;
     }
@@ -675,7 +677,7 @@ export function NativeSend({
     <Button title="Done" variant={onViewTransaction ? 'secondary' : 'primary'} onPress={close} />
   </> : hasOutcome ? <Button title={replacementHash ? 'Back to Activity' : 'Back to wallet'} variant="secondary" onPress={close} /> : !replacementHash ? (
     <Button title="Review transfer" disabled={busy || !recipient.trim() ||
-      (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount)}
+      (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount && !maximum)}
       onPress={prepare} testID="native-send-review" />
   ) : undefined;
   return (
@@ -1033,7 +1035,13 @@ export function NativeSend({
                         setMaximum(true);
                         setAmount(value);
                       }}
-                    /> : undefined} />
+                    /> : <Button title={maximum ? 'MAX selected' : 'MAX'} variant="secondary" size="compact"
+                      disabled={busy || !availableAmount || !/[1-9]/.test(availableAmount)} onPress={() => {
+                        if (!lifetime.current.alive || busy || !availableAmount || latestRecipientOwner.current.account !== account ||
+                          latestRecipientOwner.current.context.registrationHash !== context.registrationHash) return;
+                        setMaximum(true);
+                        setAmount(availableAmount);
+                      }} />} />
                   <Text style={styles.muted} accessibilityLabel="Available balance">
                     Available {token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) ?? '—' : availableAmount ?? '—'} {token?.symbol ?? capturedContext.symbol}
                   </Text>
