@@ -1,7 +1,9 @@
 import { IdlePressable } from './screens/IdleActivityBoundary';
+import { useWelcomeBackdropMotion } from './screens/useWelcomeBackdropMotion';
 import React, { useLayoutEffect, useRef } from 'react';
 import {
   Image,
+  Animated,
   ScrollView,
   StyleSheet,
   Text as NativeText,
@@ -29,9 +31,10 @@ export const colors = {
   amber: '#edc58c',
 } as const;
 
-/** Static native vector decoration; no images, requests or animation work. */
+/** Native vector decoration with low-amplitude, accessibility-aware welcome motion. */
 export function WelcomeBackdrop() {
-  return <View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={StyleSheet.absoluteFill}>
+  const motion = useWelcomeBackdropMotion();
+  return <Animated.View pointerEvents="none" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, motion]}>
     <Svg width="100%" height="100%" viewBox="0 0 390 844" preserveAspectRatio="xMidYMid slice">
       <Defs>
         <RadialGradient id="welcome-glow" cx="50%" cy="50%" r="50%">
@@ -60,7 +63,7 @@ export function WelcomeBackdrop() {
       <Ellipse cx="195" cy="340" rx="85" ry="230" fill="url(#welcome-blue-glow)" />
       <Rect width="390" height="844" fill="url(#welcome-dots)" mask="url(#welcome-mask)" />
     </Svg>
-  </View>;
+  </Animated.View>;
 }
 
 export function Text({ style, ...props }: TextProps) {

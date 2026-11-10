@@ -60,6 +60,8 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
   const module = { exports: {} as any };
   runInNewContext(code, { module, exports: module.exports, Error, require(name: string) { assert(Object.hasOwn(imports, name), name); return imports[name]; } });
   const requests: any[] = []; let cancels = 0, confirmations = 0, networkChanges = 0, gate: Promise<void> | undefined, release: (() => void) | undefined;
+  let authenticationMethod: NativeOperationCredential['method'] = 'pin';
+  let confirmationFailure: Error | undefined;
   const authorized: { review: NativeUtxoReview; credential: NativeOperationCredential }[] = [];
   const openedTransactions: string[] = [];
   const networkDrafts: unknown[] = [];
@@ -76,18 +78,22 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
       reviews.push(view); return view;
     },
     async confirm(review: NativeUtxoReview, credential: NativeOperationCredential) {
-      confirmations++; authorized.push({ review, credential }); return { txid: 'ab'.repeat(32) };
+      confirmations++; authorized.push({ review, credential });
+      if (confirmationFailure) { const failure = confirmationFailure; confirmationFailure = undefined; throw failure; }
+      return { txid: 'ab'.repeat(32) };
     },
   };
   const open = async () => service;
   const render = () => { cursor = 0; const tree = module.exports.NativeUtxoSendScreen({ accountLabel: 'Account', asset,
-    authenticationMethod: 'pin', maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() {} }) as Element;
+    authenticationMethod, maximumAmount: maximum, availableAmount, network, open, onChangeNetwork(draft: unknown) { networkDrafts.push(draft); networkChanges++; }, onViewTransaction(txid: string) { openedTransactions.push(txid); }, onBack() {} }) as Element;
     effects.splice(0).forEach((run) => run()); return tree; };
   const press = (title: string) => { const button = all(render()).find((node) => node.type === 'Button' && node.props.title === title); assert(button, title); button.props.onPress(); };
   const edit = (label: string, value: string) => { const input = all(render()).find((node) => node.type === 'Input' && node.props.accessibilityLabel === label); assert(input, label); input.props.onChangeText(value); };
   const review = () => { const screen = all(render()).find((node) => node.type === 'Screen')!; screen.props.footer.props.onPress(); };
   const authentication = () => { const modal = all(render()).find(node => node.type === 'TransactionAuthentication'); assert(modal); return modal; };
   return { render, press, edit, review, requests, reviews, authorized, openedTransactions, networkDrafts, authentication, counts: () => ({ cancels, confirmations, networkChanges }),
+    useBiometrics() { authenticationMethod = 'biometric'; },
+    failConfirmation(message: string) { confirmationFailure = new Error(message); },
     changeBalance(value: string) { maximum = value; },
     changeNetwork(id: string) { network = getUtxoNetwork(id); },
     changeAvailable(value: string) { availableAmount = value; },
@@ -95,6 +101,26 @@ function fixture(asset?: NativeUtxoAsset, maximum?: string) {
     release() { release?.(); gate = undefined; },
     close() { cells.forEach((value) => value.cleanup?.()); } };
 }
+
+for (const fallback of ['pin', 'biometric'] as const) test(`biometric refusal keeps the same UTXO authorization page for ${fallback} retry`, async () => {
+  const f = fixture(); f.useBiometrics(); f.render(); await tick();
+  f.edit('Recipient address', 'bc1qfixture'); f.edit('Amount in BTC', '0.1'); f.review(); await tick();
+  assert.equal(all(f.render()).some(node => node.props.title === 'Use PIN instead'), false);
+  f.press('Confirm and send'); const initial = f.authentication();
+  assert.equal(initial.props.method, 'biometric');
+  f.failConfirmation('DEVICE_UNLOCK_UNAVAILABLE');
+  initial.props.onConfirm({ method: 'biometric' }); await tick();
+  const retry = f.authentication();
+  assert.equal(retry.props.identity, initial.props.identity);
+  assert.equal(retry.props.method, 'biometric'); assert.equal(retry.props.busy, false);
+  assert(retry.props.error); assert.equal(f.counts().confirmations, 1);
+  retry.props.onConfirm(fallback === 'pin' ? { method: 'pin', pin: '123456' } : { method: 'biometric' });
+  await tick();
+  assert.deepEqual(f.authorized.map(value => value.credential.method), ['biometric', fallback]);
+  assert.strictEqual(f.authorized[0]?.review, f.authorized[1]?.review);
+  assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
+  f.close();
+});
 
 test('native options start collapsed, preserve RBF default and bind a changed option to review', async () => {
   const f = fixture(); f.render(); await tick();

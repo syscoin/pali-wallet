@@ -95,6 +95,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const validators = (metadata?.installedModules ?? []).filter((module): module is SmartAccountValidatorModule => module.type === 'validator');
   const candidates = metadata ? listCompositeChildCandidates(metadata) : [];
   const label = (module: SmartAccountValidatorModule) => module.id === 'custom' ? module.config.name || t('smartAccountHub.customModule') : t(module.id === 'composite' ? 'settings.compositeAuthenticator' : module.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : module.id === 'p256-webauthn' ? 'settings.passkeyAuthenticator' : 'settings.ecdsaAuthenticator');
+  const moduleIcon = (module: SmartAccountValidatorModule) => module.id === 'custom' ? 'settings' : module.id === 'composite' ? 'grid' : module.id === 'p256-webauthn' ? 'fingerprint' : module.id === 'slh-dsa' ? 'shield' : 'key';
   const checked = preflight?.address === address.trim() ? preflight.result : undefined;
   const validInit = /^0x(?:[0-9a-fA-F]{2})*$/.test(initData.trim());
   const validComposite = children.length > 0 && /^\d+$/.test(threshold) && Number.isSafeInteger(Number(threshold)) && Number(threshold) >= 1 && Number(threshold) <= children.length;
@@ -102,11 +103,11 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   return <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen scrollResetKey={mode} footer={<>
-{!closing && metadata && mode === 'custom' && (<Button title={t('smartAccountHub.install')} disabled={blocked || !checked?.ok || !validInit} onPress={() => {
+{!closing && metadata && mode === 'custom' && (<Button title={t('smartAccountHub.install')} icon="plus" disabled={blocked || !checked?.ok || !validInit} onPress={() => {
             if (checked?.ok && validInit) review({ kind: 'install-custom', address: address.trim(), name: name.trim(), initData: initData.trim() });
           }} />)}
-{!closing && metadata && mode === 'composite' && (<Button title={t('smartAccountHub.compositeSavePolicy')} disabled={blocked || !validComposite} onPress={() => { if (validComposite) review({ kind: 'composite', children: [...children], threshold: Number(threshold) }); }} />)}
-<Button title={t('buttons.close')} variant="secondary" size="compact" disabled={closing} onPress={close} />
+{!closing && metadata && mode === 'composite' && (<Button title={t('smartAccountHub.compositeSavePolicy')} icon="check" disabled={blocked || !validComposite} onPress={() => { if (validComposite) review({ kind: 'composite', children: [...children], threshold: Number(threshold) }); }} />)}
+<Button title={t('buttons.close')} icon="close" variant="secondary" size="compact" disabled={closing} onPress={close} />
 </>}>
       <Header title={t(mode === 'custom' ? 'smartAccountHub.customModule' : mode === 'composite' ? 'settings.compositeAuthenticator' : 'mobile.smartAccountModules.title')}
         onBack={() => { if (shownOwner) navigateBack(shownOwner); }} />
@@ -118,7 +119,10 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
           {!validators.length && <Text>{t('smartAccountHub.noModules')}</Text>}
           {validators.map(module => <Card key={module.address} style={s.card}>
             <View style={s.moduleHeading}>
-              <Text style={s.moduleName}>{label(module)}</Text>
+              <View style={s.moduleIdentity}>
+                <View style={s.moduleIcon}><Icon name={moduleIcon(module)} size={21} color={colors.blue} /></View>
+                <Text style={s.moduleName}>{label(module)}</Text>
+              </View>
               <View accessible accessibilityRole="text"
                 accessibilityLabel={t(module.address.toLowerCase() === metadata.auth?.validator.toLowerCase() ? 'smartAccountHub.active' : 'smartAccountHub.installed')}
                 style={s.statusBadge}>
@@ -127,24 +131,24 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
               </View>
             </View>
             <Text selectable style={s.address}>{module.address}</Text>
-            {canRemoveValidatorModule(metadata, module.address, 'all-installed-composites') && <Button title={t('smartAccountHub.uninstall')} variant="secondary" size="compact" disabled={blocked} onPress={() => {
+            {canRemoveValidatorModule(metadata, module.address, 'all-installed-composites') && <Button title={t('smartAccountHub.uninstall')} icon="trash" variant="secondary" size="compact" disabled={blocked} onPress={() => {
               if (canRemoveValidatorModule(metadata, module.address, 'all-installed-composites')) review({ kind: 'uninstall', address: module.address });
             }} />}
           </Card>)}
-          <Button title={t('smartAccountHub.customModule')} variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('custom')} />
-          <Button title={t('settings.compositeAuthenticator')} variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('composite')} />
+          <Button title={t('smartAccountHub.customModule')} icon="plus" variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('custom')} />
+          <Button title={t('settings.compositeAuthenticator')} icon="grid" variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('composite')} />
         </>}
         {metadata && mode === 'custom' && <Card style={s.card}>
           <Text>{t('smartAccountHub.customModuleHint')}</Text>
           <NativeSendInput label={t('smartAccountHub.moduleAddress')} value={address} busy={blocked} onChange={value => { setAddress(value); setPreflight(undefined); }} />
           <NativeSendInput label={t('smartAccountHub.moduleName')} value={name} busy={blocked} max={120} placeholder={t('smartAccountHub.moduleNamePlaceholder')} onChange={setName} />
           <NativeSendInput label={t('smartAccountHub.moduleInitData')} value={initData} busy={blocked} max={131074} onChange={setInitData} />
-          <Button title={t('smartAccountHub.checkModule')} variant="secondary" size="compact" disabled={blocked || !address.trim()} onPress={() => action(async (owner, value) => {
+          <Button title={t('smartAccountHub.checkModule')} icon="shield" variant="secondary" size="compact" disabled={blocked || !address.trim()} onPress={() => action(async (owner, value) => {
             const checkedAddress = address.trim(); setPreflight(undefined);
             const result = await value.preflightCustom(checkedAddress); check(owner); setPreflight({ address: checkedAddress, result });
           })} />
           {checked && <>
-            {checked.ok && <Text>{t('smartAccountHub.preflightPassed')}</Text>}
+            {checked.ok && <View style={s.preflight}><Icon name="check" size={18} color={colors.green} /><Text style={s.preflightText}>{t('smartAccountHub.preflightPassed')}</Text></View>}
             {checked.failures.map(failure => <Text key={failure}>{t(failure === 'already-installed' ? 'smartAccountHub.preflightAlreadyInstalled' : failure === 'no-contract-code' ? 'smartAccountHub.preflightNoCode' : 'smartAccountHub.preflightNotValidator')}</Text>)}
           </>}
           {!validInit && <Text>{t('smartAccountHub.invalidInitData')}</Text>}
@@ -153,7 +157,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
         {metadata && mode === 'composite' && <Card style={s.card}>
           <Text>{t('smartAccountHub.compositeBuilderHint')}</Text><Text>{t('smartAccountHub.compositeMethods')}</Text>
           {candidates.map(module => <View key={module.address} style={s.candidate}>
-            <View style={s.choice}><Text style={s.choiceText}>{label(module)}</Text><Switch accessibilityLabel={`${label(module)} ${module.address}`} value={children.some(child => child.toLowerCase() === module.address.toLowerCase())} disabled={blocked} onValueChange={value => setChildren(previous => value ? [...previous, module.address] : previous.filter(child => child.toLowerCase() !== module.address.toLowerCase()))} /></View>
+            <View style={s.choice}><Icon name={moduleIcon(module)} size={21} color={colors.blue} /><Text style={s.choiceText}>{label(module)}</Text><Switch accessibilityLabel={`${label(module)} ${module.address}`} value={children.some(child => child.toLowerCase() === module.address.toLowerCase())} disabled={blocked} onValueChange={value => setChildren(previous => value ? [...previous, module.address] : previous.filter(child => child.toLowerCase() !== module.address.toLowerCase()))} /></View>
             <Text selectable style={s.address}>{module.address}</Text>
           </View>)}
           {!candidates.length && <Text>{t('smartAccountHub.compositeSelectMethods')}</Text>}
@@ -162,8 +166,8 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
           <Text>{t('smartAccountHub.compositeLockout')}</Text><Text>{t('smartAccountHub.compositeOnchainHint')}</Text>
 
         </Card>}
-        {metadata && mode !== 'installed' && <Button title={t('smartAccountHub.installedModules')} variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('installed')} />}
-        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} variant="secondary" size="compact" disabled={blocked} onPress={() => action(owner => load(owner))} />}
+        {metadata && mode !== 'installed' && <Button title={t('smartAccountHub.installedModules')} icon="grid" variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('installed')} />}
+        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} icon="refresh" variant="secondary" size="compact" disabled={blocked} onPress={() => action(owner => load(owner))} />}
       </>}
     </Screen>
     </KeyboardAvoidingView>
@@ -171,7 +175,10 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
 }
 const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, address: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, choice: { flexDirection: 'row', alignItems: 'center', gap: 12 }, choiceText: { flex: 1 }, candidate: { gap: 6 },
   moduleHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
-  moduleName: { flex: 1, minWidth: 120, fontWeight: '600', fontSize: 17 },
+  moduleIdentity: { flex: 1, minWidth: 130, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  moduleIcon: { width: 36, height: 36, borderRadius: 12, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' },
+  moduleName: { flex: 1, fontWeight: '600', fontSize: 17 },
+  preflight: { flexDirection: 'row', alignItems: 'center', gap: 8 }, preflightText: { flex: 1 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#12312d' },
   statusText: { color: colors.green, fontSize: 12, fontWeight: '600' },
 });

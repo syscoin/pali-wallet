@@ -40,6 +40,7 @@ export function NativePreferences({ onBack, assertCurrent }: { onBack(): void; a
       <Header title={t('generalMenu.languages')} onBack={back} />
       <Text style={styles.muted}>{t('settings.setYourPreferredLanguage')}</Text>
       <Card>{PALI_LANGUAGE_OPTIONS.map((language, index) => <Row key={language.value}
+        icon={<Text accessible={false} accessibilityElementsHidden importantForAccessibility="no" style={{ fontSize: 24 }}>{language.flag}</Text>}
         title={language.nativeName} subtitle={`${language.name}${selected === language.value ? ` · ${t('mobile.language.selected')}` : ''}`}
         onPress={saving || !saved ? undefined : () => { setChoice(language.value); setFailed(false); }} last={index === PALI_LANGUAGE_OPTIONS.length - 1} />)}</Card>
       <Text style={styles.muted}>{t('mobile.language.fallback')}</Text>

@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { AppState, FlatList, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { currencyFlag } from '../../../../source/shared/currencyFlags.ts';
 import { FIAT_QUOTE_CURRENCIES } from '../../../../source/shared/nativeCoinQuotes.ts';
 import { DEFAULT_FIAT_CURRENCY, type FiatCurrency } from '../core/fiatPreference.ts';
 import { reloadFiatCurrency, saveFiatCurrency, useFiatCurrency } from '../platform/fiatPreferences';
@@ -41,6 +42,7 @@ export function DisplayCurrency({ onBack }: { onBack(): void }) {
       {saved ? <FlatList data={items} keyExtractor={({ code }) => code} keyboardShouldPersistTaps="handled" contentContainerStyle={s.list}
         initialNumToRender={10} windowSize={5} ListEmptyComponent={<Text style={styles.muted}>{t('mobile.currency.empty')}</Text>}
         renderItem={({ item }) => <Card><Row title={item.label || item.code.toUpperCase()}
+          icon={<Text accessible={false} accessibilityElementsHidden importantForAccessibility="no" style={s.flag}>{currencyFlag(item.code)}</Text>}
           subtitle={`${item.code.toUpperCase()}${item.code === selected ? ` · ${t('mobile.currency.selected')}` : ''}`}
           onPress={saving ? undefined : () => setChoice(item.code)} last /></Card>} /> :
         <View style={s.top}>{preference.status === 'loading' ? <Text style={styles.muted} accessibilityLiveRegion="polite">{t('mobile.currency.loading')}</Text> : <>
@@ -60,6 +62,7 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   top: { gap: 14, paddingHorizontal: 22, paddingVertical: 12 },
   list: { gap: 8, paddingHorizontal: 22, paddingBottom: 16 },
+  flag: { fontSize: 24 },
   search: { minHeight: 48, color: colors.text, backgroundColor: colors.surface, borderRadius: 14, paddingHorizontal: 14 },
   footer: { paddingHorizontal: 22, paddingTop: 10, paddingBottom: 12 },
 });

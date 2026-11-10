@@ -32,6 +32,7 @@ function shell() {
   const idle = createIdleComponentFixture(react, dependencies['react-native'] as Record<string, unknown>);
   dependencies['./screens/IdleActivityBoundary'] = idle.components;
   dependencies['./IdleActivityBoundary'] = idle.components;
+  dependencies['./screens/useWelcomeBackdropMotion'] = load('../src/screens/useWelcomeBackdropMotion.ts');
   dependencies['../ui'] = load('../src/ui.tsx');
   return expandIdleElements(load('../src/screens/RealAppShell.tsx').RealAppShell!({ tab: 'wallet', onTab() {}, children: null }));
 }

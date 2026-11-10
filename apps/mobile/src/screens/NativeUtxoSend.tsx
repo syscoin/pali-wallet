@@ -285,7 +285,6 @@ export function NativeUtxoSendScreen({
         if (current()) { setAuthentication(null); setReview(null); setOutcome({ txid, phase: 'submitted' }); }
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : '';
-        if (current() && credential.method === 'biometric' && code === 'DEVICE_UNLOCK_UNAVAILABLE') setAuthentication(null);
         if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE', 'AUTH_THROTTLED'].includes(code)) {
           setAuthentication(null); setReview(null);
           void send.list().then(records => { if (current()) setSaved([...records].reverse()); }).catch(() => undefined);
@@ -313,10 +312,7 @@ export function NativeUtxoSendScreen({
       }} />}
       <Button title="Done" variant={onViewTransaction && outcome.phase !== 'unknown' ? 'secondary' : 'primary'} onPress={close} />
     </View>
-  ) : review ? <>{confirm}{authenticationMethod === 'biometric' && <Button title="Use PIN instead" variant="secondary" icon="lock" disabled={busy} onPress={() => {
-    if (currentReview.current !== review || !review.retryTxid && !ledgerReady) return;
-    setError(''); setAuthentication({ review, identity: `${owner.current.revision}:${draftRevision.current}:${review.retryTxid ?? 'new'}`, method: 'pin' });
-  }} />}</> : (
+  ) : review ? confirm : (
     <Button
       title="Review transfer"
       disabled={!send || busy || !address.trim() || !(amount || max)}

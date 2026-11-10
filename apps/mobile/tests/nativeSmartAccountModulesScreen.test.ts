@@ -64,10 +64,17 @@ test('Modules lists only observed validators and protects active and composite-r
     const elements = f.render(), text = contents(elements);
     assert(text.includes(ownerAddress)); assert(text.includes(childAddress)); assert(!text.includes(customAddress)); assert(!text.includes('Discovery only'));
     assert.equal(elements.filter(element => element.type === 'Icon' && element.props.name === 'check').length, 4);
+    assert.equal(elements.filter(element => element.type === 'Icon' && element.props.name === 'key').length, 1);
+    assert.equal(elements.filter(element => element.type === 'Icon' && element.props.name === 'settings').length, 2);
+    assert.equal(elements.filter(element => element.type === 'Icon' && element.props.name === 'grid').length, 1);
+    assert.equal(f.button(t('smartAccountHub.customModule')).props.icon, 'plus');
+    assert.equal(f.button(t('settings.compositeAuthenticator')).props.icon, 'grid');
+    assert.equal(f.button(t('buttons.close')).props.icon, 'close');
     assert.equal(elements.filter(element => element.props.accessibilityLabel === t('smartAccountHub.active')).length, 1);
     assert.equal(elements.filter(element => element.props.accessibilityLabel === t('smartAccountHub.installed')).length, 3);
     const uninstalls = elements.filter(element => element.type === 'Button' && element.props.title === t('smartAccountHub.uninstall'));
     assert.equal(uninstalls.length, 2); assert.deepEqual(uninstalls.map(element => element.props.disabled), [false, false]);
+    assert(uninstalls.every(element => element.props.icon === 'trash'));
     uninstalls[1]!.props.onPress(); await tick();
     assert.deepEqual(JSON.parse(JSON.stringify(f.drafts)), [{ kind: 'uninstall', address: spareAddress }]);
     assert.equal(f.render()[0]!.type, 'Operation');
@@ -82,6 +89,9 @@ test('custom install preflights public fields and opens review without a risk ac
     assert(f.button(t('smartAccountHub.install')).props.disabled);
     f.button(t('smartAccountHub.checkModule')).props.onPress(); await tick();
     assert.deepEqual(f.preflights, [customAddress]); assert.equal(f.button(t('smartAccountHub.install')).props.disabled, false);
+    assert.equal(f.button(t('smartAccountHub.install')).props.icon, 'plus');
+    assert.equal(f.button(t('smartAccountHub.checkModule')).props.icon, 'shield');
+    assert(f.render().some(element => element.type === 'Icon' && element.props.name === 'check'));
     assert(!f.render().some(element => element.type === 'Switch'));
     assert(!f.render().some(element => element.type === 'Notice' && element.props.body === t('smartAccountHub.customRisk')));
     f.edit(t('smartAccountHub.moduleInitData'), '0x1'); assert(f.button(t('smartAccountHub.install')).props.disabled);
@@ -98,6 +108,7 @@ test('composite editor restores installed choices and threshold and admits only 
   try {
     f.button(t('settings.compositeAuthenticator')).props.onPress();
     const elements = f.render(), choices = elements.filter(element => element.type === 'Switch');
+    assert.equal(f.button(t('smartAccountHub.compositeSavePolicy')).props.icon, 'check');
     assert.equal(choices.length, 2); assert(choices.every(element => element.props.value === true));
     assert.equal(elements.find(element => element.type === 'Input')!.props.value, '1');
     f.edit(t('smartAccountHub.compositeThreshold'), '3'); assert(f.button(t('smartAccountHub.compositeSavePolicy')).props.disabled);

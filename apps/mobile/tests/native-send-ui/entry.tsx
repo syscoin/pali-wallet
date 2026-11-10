@@ -148,6 +148,8 @@ const controller: NativeTransferView = {
     publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
   async confirm(id, credential) {
+    if (credential.method === 'biometric' && route.get('biometric-fallback') === '1')
+      throw Error('DEVICE_UNLOCK_UNAVAILABLE');
     if (!(credential.method === 'pin' && credential.pin === '123456') &&
         !(biometricAuth && credential.method === 'biometric')) throw Error('INVALID_CREDENTIAL');
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');

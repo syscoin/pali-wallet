@@ -2123,22 +2123,18 @@ export function createKeyringRuntimeFactory(
                 check();
                 if (!saved) throw new KeyringRuntimeError('CANCELLED');
               },
-              async authenticate(password, assertCurrent) {
-                const authenticated = await authenticateVerifiedOwner(password, {
-                  ...session,
-                  assertCurrent,
-                });
+              async authenticate(assertCurrent, signal) {
                 assertCurrent();
-                if (!authenticated) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                const credential = await requestCredential('account-change', signal, assertCurrent);
+                await verifyOperationCredential(credential, assertCurrent);
+                assertCurrent();
               },
               derivePublicKey,
               lifetime,
               network,
-              async readSeed(password, assertCurrent) {
+              async readSeed(assertCurrent, signal) {
                 assertCurrent();
-                if (!(await authenticateVerifiedOwner(password, { ...session, assertCurrent }))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
-                assertCurrent();
-                const phrase = await withSoftwareSecret('secret-read', lifetime, assertCurrent, secret => keyring.getSeed(secret), { method: 'pin', pin: password }, null);
+                const phrase = await withSoftwareSecret('secret-read', signal, assertCurrent, secret => keyring.getSeed(secret), null, null);
                 assertCurrent();
                 if (typeof phrase !== 'string' || !keyring.isSeedValid(phrase))
                   throw new KeyringRuntimeError('OPERATION_FAILED');

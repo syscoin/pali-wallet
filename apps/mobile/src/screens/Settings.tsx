@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 
+import appConfiguration from '../../app.json';
 import {
   Button,
   Card,
@@ -109,7 +110,7 @@ export function SettingsScreen({
       <Card>
         <Row
           title="About Pali"
-          subtitle="Version 0.1.0 · Mobile foundation"
+          subtitle={`Version ${appConfiguration.expo.version} · Mobile foundation`}
           icon="info"
           onPress={() => onNavigate('about')}
           last

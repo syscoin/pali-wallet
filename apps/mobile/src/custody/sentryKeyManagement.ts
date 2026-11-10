@@ -15,7 +15,6 @@ import {
   type SentryAuthorityScheme,
   type SentryKeySummary,
 } from '../../../../source/wallet/sentryKeyVault.ts';
-import { isNativePasswordInput } from './password.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import { normalizeSentryServiceSettings, readSentryServiceSettings, type SentryServiceSettings } from '../../../../source/shared/sentrySettings.ts';
 
@@ -85,11 +84,11 @@ type Pending = Readonly<{ approval: Approval }> &
 
 type Ports = Readonly<{
   assertCurrent(): void;
-  authenticate(password: string, check: () => void): Promise<void>;
+  authenticate(check: () => void, signal: AbortSignal): Promise<void>;
   derivePublicKey: DeriveSentryPublicKey;
   lifetime: AbortSignal;
   network: SentryNetwork;
-  readSeed(password: string, check: () => void): Promise<string>;
+  readSeed(check: () => void, signal: AbortSignal): Promise<string>;
   run<T>(operation: () => Promise<T>): Promise<T>;
   vaultHost: ISentryKeyVaultHost;
   vaultId: string;
@@ -105,6 +104,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
   let pending: Pending | undefined;
   let expiry: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
+  let settingsOperation: AbortController | undefined;
 
   function retire(approval = activeApproval) {
     if (approval !== activeApproval) return;
@@ -146,6 +146,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
 
   function dispose() {
     disposed = true;
+    settingsOperation?.abort();
     lifetime.removeEventListener('abort', dispose);
     retire();
   }
@@ -275,18 +276,27 @@ export function createNativeSentryKeyManagement(ports: Ports) {
         return readSentryServiceSettings(saved, network);
       });
     },
-    saveSettings(input: SentryServiceSettings, password: string, assertRequestCurrent: () => void) {
+    saveSettings(input: SentryServiceSettings, assertRequestCurrent: () => void) {
       const settings = normalizeSentryServiceSettings(input);
-      const assertCurrent = () => checkSettings(assertRequestCurrent);
-      assertCurrent();
+      checkSettings(assertRequestCurrent);
       return ports.run(async () => {
-        assertCurrent();
-        if (!isNativePasswordInput(password)) throw invalid();
-        await ports.authenticate(password, assertCurrent);
-        assertCurrent();
-        await ports.writeSettings(settings, assertCurrent);
-        assertCurrent();
-        return settings;
+        const operation = new AbortController();
+        settingsOperation = operation;
+        const assertCurrent = () => {
+          checkSettings(assertRequestCurrent);
+          if (settingsOperation !== operation || operation.signal.aborted) throw changed();
+        };
+        try {
+          assertCurrent();
+          await ports.authenticate(assertCurrent, operation.signal);
+          assertCurrent();
+          await ports.writeSettings(settings, assertCurrent);
+          assertCurrent();
+          return settings;
+        } finally {
+          operation.abort();
+          if (settingsOperation === operation) settingsOperation = undefined;
+        }
       });
     },
     list() {
@@ -345,15 +355,12 @@ export function createNativeSentryKeyManagement(ports: Ports) {
         })
       );
     },
-    confirmImport(review: SentryKeyImportReview, password: string) {
+    confirmImport(review: SentryKeyImportReview) {
       return ports.run(async () => {
         const owned = take('import', review);
         const assertCurrent = () => check(owned.approval);
         try {
-          if (!isNativePasswordInput(password)) throw invalid();
-          await ports.authenticate(password, assertCurrent);
-          assertCurrent();
-          const seed = await ports.readSeed(password, assertCurrent);
+          const seed = await ports.readSeed(assertCurrent, owned.approval.controller.signal);
           assertCurrent();
           const entries = owned.keys.map(({ key, label, secret }) => ({
             label,
@@ -394,7 +401,6 @@ export function createNativeSentryKeyManagement(ports: Ports) {
     },
     confirmRemoval(
       review: SentryKeyRemovalReview,
-      password: string,
       hasBackup: boolean
     ) {
       return ports.run(async () => {
@@ -403,8 +409,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
         const owned = take('remove', review);
         const assertCurrent = () => check(owned.approval);
         try {
-          if (!isNativePasswordInput(password)) throw invalid();
-          await ports.authenticate(password, assertCurrent);
+          await ports.authenticate(assertCurrent, owned.approval.controller.signal);
           assertCurrent();
           const { key } = owned.review;
           const fresh = (await inventory(owned.approval)).find(
@@ -424,7 +429,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
         }
       });
     },
-    cancel: () => retire(),
+    cancel() { settingsOperation?.abort(); retire(); },
     dispose,
   });
 }

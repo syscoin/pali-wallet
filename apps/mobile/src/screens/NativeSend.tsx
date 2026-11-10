@@ -508,7 +508,7 @@ export function NativeSend({
     }
     if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
   }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
-  const submit = (method: NativeOperationCredential['method'] = authenticationMethod) => {
+  const submit = () => {
     if (!review || controller.getSnapshot().review !== review || busy ||
         !review.retry && ledgerConnection && !ledgerConnection.isConnected()) return;
     const held = resolution.current;
@@ -525,7 +525,7 @@ export function NativeSend({
     }
     Keyboard.dismiss();
     const next = { review, epoch: lifetime.current.epoch, account,
-      registrationHash: context.registrationHash, submitted: false, method };
+      registrationHash: context.registrationHash, submitted: false, method: authenticationMethod };
     authenticationOwner.current = next;
     setError('');
     setAuthentication(next);
@@ -548,15 +548,7 @@ export function NativeSend({
     }
     held.submitted = true;
     setAuthenticationBusy(true);
-    await run(async () => {
-      try { await controller.confirm(held.review.id, credential); }
-      catch (cause) {
-        if (credential.method === 'biometric' && cause instanceof Error && cause.message === 'DEVICE_UNLOCK_UNAVAILABLE' && authenticationOwner.current === held) {
-          authenticationOwner.current = null; setAuthentication(null); setAuthenticationBusy(false);
-        }
-        throw cause;
-      }
-    }, () => authenticationOwner.current === held);
+    await run(() => controller.confirm(held.review.id, credential), () => authenticationOwner.current === held);
     if (!lifetime.current.alive || authenticationOwner.current !== held || lifetime.current.epoch !== held.epoch) return;
     const result = controller.getSnapshot();
     if (result.hash && result.context?.registrationHash === held.review.context.registrationHash)
@@ -676,7 +668,6 @@ export function NativeSend({
                 onPress={() => submit()}
                 testID="native-send-confirm"
               />
-              {authenticationMethod === 'biometric' && <Button title="Use PIN instead" variant="secondary" icon="lock" disabled={busy} onPress={() => submit('pin')} />}
   </> : hasOutcome && knownOutcome ? <>
     {onViewTransaction && <Button title="View transaction" onPress={() => {
       if (lifetime.current.alive && snapshot.hash && controller.getSnapshot().hash === snapshot.hash) onViewTransaction(snapshot.hash);
