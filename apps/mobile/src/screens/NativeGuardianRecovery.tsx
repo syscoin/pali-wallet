@@ -18,9 +18,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus';
 import type {
   NativeGuardianRecoveryController,
+  NativeGuardianRecoveryChoice,
+  NativeGuardianRecoveryChoices,
   NativeGuardianRecoveryDraft,
 } from '../smartAccount/guardianRecovery';
 import { formatBaseUnits } from '../core/amounts';
+import { useNativeTranslation } from '../platform/localization';
 import {
   Button,
   Card,
@@ -34,10 +37,9 @@ import {
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { TransactionDetails } from './NativeTransactionReview';
 
-export type NativeGuardianRecoveryTool = {
+export type NativeGuardianRecoveryTool = NativeGuardianRecoveryChoices & {
   chainId: number;
   currency: string;
-  accounts: readonly { id: string; address: string; label: string }[];
   hasIntent: boolean;
   open(
     draft: NativeGuardianRecoveryDraft,
@@ -45,6 +47,7 @@ export type NativeGuardianRecoveryTool = {
     assertCurrent: () => void
   ): Promise<NativeGuardianRecoveryController>;
   onActivity(payerId: string, chainId: number, hash: string): Promise<void>;
+  openRecoveryAlerts(): Promise<void>;
 };
 
 export function NativeGuardianRecovery({
@@ -62,19 +65,26 @@ export function NativeGuardianRecovery({
   lifetime: AbortSignal;
   onBack(): void;
 }) {
+  const { t } = useNativeTranslation();
   const [port] = useState(recovery);
   const policySupported =
     observation?.exists === true && observation.threshold === 1;
-  const guardians = port.accounts.filter((account) =>
+  const guardians = port.guardians.filter((account) =>
     observation?.guardians.some(
       (guardian) => guardian.toLowerCase() === account.address.toLowerCase()
     )
   );
   const [guardianId, setGuardianId] = useState(guardians[0]?.id ?? '');
   const [replacementId, setReplacementId] = useState('');
-  const [choosing, setChoosing] = useState<'guardian' | 'replacement' | null>(
-    null
+  const [payerId, setPayerId] = useState(
+    () =>
+      port.payers.find((account) => account.id === guardians[0]?.id)?.id ??
+      port.payers[0]?.id ??
+      ''
   );
+  const [choosing, setChoosing] = useState<
+    'guardian' | 'replacement' | 'payer' | null
+  >(null);
   const [search, setSearch] = useState('');
   const [controller, setController] =
     useState<NativeGuardianRecoveryController | null>(null);
@@ -98,10 +108,37 @@ export function NativeGuardianRecovery({
       retire();
     };
   }, [lifetime]);
+  const openRecoveryAlerts = useCallback(async () => {
+    if (!owner.current.live || lifetime.aborted) throw Error('CANCELLED');
+    await port.openRecoveryAlerts();
+  }, [port, lifetime]);
+  const onActivity = useCallback(
+    async (payerId: string, chainId: number, hash: string) => {
+      if (!owner.current.live || lifetime.aborted) throw Error('CANCELLED');
+      await port.onActivity(payerId, chainId, hash);
+    },
+    [port, lifetime]
+  );
   const open = useCallback(
     async (draft: NativeGuardianRecoveryDraft) => {
       const current = owner.current;
-      if (draft.kind === 'start' && !policySupported) return;
+      if (
+        draft.kind === 'start' &&
+        (!policySupported ||
+          !port.guardians.some(
+            (account) =>
+              account.id === draft.guardianId &&
+              observation?.guardians.some(
+                (guardian) =>
+                  guardian.toLowerCase() === account.address.toLowerCase()
+              )
+          ) ||
+          !port.replacements.some(
+            (account) => account.id === draft.replacementId
+          ) ||
+          !port.payers.some((account) => account.id === draft.payerId))
+      )
+        return;
       if (!current.live || current.busy || lifetime.aborted) return;
       current.busy = true;
       setBusy(true);
@@ -127,7 +164,7 @@ export function NativeGuardianRecovery({
         if (current.live) setBusy(false);
       }
     },
-    [port, lifetime, policySupported]
+    [port, lifetime, policySupported, observation]
   );
   useEffect(() => {
     if (port.hasIntent) void open({ kind: 'resume' });
@@ -143,7 +180,11 @@ export function NativeGuardianRecovery({
   }, [choosing]);
   if (choosing) {
     const options = (
-      choosing === 'guardian' ? guardians : port.accounts
+      choosing === 'guardian'
+        ? guardians
+        : choosing === 'replacement'
+        ? port.replacements
+        : port.payers
     ).filter((account) =>
       `${account.label} ${account.address}`
         .toLowerCase()
@@ -159,7 +200,9 @@ export function NativeGuardianRecovery({
             title={
               choosing === 'guardian'
                 ? 'Choose guardian'
-                : 'Choose replacement owner'
+                : choosing === 'replacement'
+                ? 'Choose replacement owner'
+                : 'Choose fee payer'
             }
             onBack={() => {
               setChoosing(null);
@@ -185,13 +228,18 @@ export function NativeGuardianRecovery({
               <AccountChoice
                 account={item}
                 selected={
-                  (choosing === 'guardian' ? guardianId : replacementId) ===
-                  item.id
+                  (choosing === 'guardian'
+                    ? guardianId
+                    : choosing === 'replacement'
+                    ? replacementId
+                    : payerId) === item.id
                 }
                 disabled={false}
                 onPress={() => {
                   if (choosing === 'guardian') setGuardianId(item.id);
-                  else setReplacementId(item.id);
+                  else if (choosing === 'replacement')
+                    setReplacementId(item.id);
+                  else setPayerId(item.id);
                   setChoosing(null);
                   setSearch('');
                 }}
@@ -210,7 +258,8 @@ export function NativeGuardianRecovery({
         chainId={port.chainId}
         currency={port.currency}
         networkLabel={networkLabel}
-        onActivity={port.onActivity}
+        onActivity={onActivity}
+        openRecoveryAlerts={openRecoveryAlerts}
         onBack={onBack}
       />
     );
@@ -272,8 +321,8 @@ export function NativeGuardianRecovery({
               </>
             ) : (
               <Notice
-                title="Guardian key unavailable"
-                body="This recovery requires a guardian key held by this wallet."
+                title="Guardian account unavailable"
+                body="This recovery requires a guardian account held by this wallet."
                 tone="amber"
               />
             )}
@@ -282,14 +331,14 @@ export function NativeGuardianRecovery({
               <Card style={s.card}>
                 <Text style={s.label}>
                   {
-                    port.accounts.find(
+                    port.replacements.find(
                       (account) => account.id === replacementId
                     )?.label
                   }
                 </Text>
                 <Text selectable style={s.address}>
                   {
-                    port.accounts.find(
+                    port.replacements.find(
                       (account) => account.id === replacementId
                     )?.address
                   }
@@ -302,13 +351,37 @@ export function NativeGuardianRecovery({
               disabled={busy}
               onPress={() => setChoosing('replacement')}
             />
+            <Text style={s.heading}>Fee payer</Text>
+            {payerId && (
+              <Card style={s.card}>
+                <Text style={s.label}>
+                  {port.payers.find((account) => account.id === payerId)?.label}
+                </Text>
+                <Text selectable style={s.address}>
+                  {
+                    port.payers.find((account) => account.id === payerId)
+                      ?.address
+                  }
+                </Text>
+              </Card>
+            )}
+            <Button
+              title="Choose fee payer"
+              variant="secondary"
+              disabled={busy}
+              onPress={() => setChoosing('payer')}
+            />
             <Button
               title="Review recovery"
               disabled={
-                busy || !policySupported || !guardianId || !replacementId
+                busy ||
+                !policySupported ||
+                !guardianId ||
+                !replacementId ||
+                !payerId
               }
               onPress={() =>
-                void open({ kind: 'start', guardianId, replacementId })
+                void open({ kind: 'start', guardianId, replacementId, payerId })
               }
             />
           </>
@@ -331,6 +404,19 @@ export function NativeGuardianRecovery({
             onPress={() => void open({ kind: 'resume' })}
           />
         )}
+        {observation?.exists && (
+          <Button
+            title={t('settings.smartAccountRecoveryEmailAlerts')}
+            variant="quiet"
+            onPress={() => {
+              if (!owner.current.live || lifetime.aborted) return;
+              void openRecoveryAlerts().catch(() => {
+                if (owner.current.live && !lifetime.aborted)
+                  setError('Recovery alerts could not be opened. Try again.');
+              });
+            }}
+          />
+        )}
         <Button title="Close" variant="quiet" onPress={onBack} />
       </Screen>
     </SafeAreaView>
@@ -343,7 +429,7 @@ function AccountChoice({
   disabled,
   onPress,
 }: {
-  account: { label: string; address: string };
+  account: Pick<NativeGuardianRecoveryChoice, 'label' | 'address'>;
   selected: boolean;
   disabled: boolean;
   onPress(): void;
@@ -375,6 +461,7 @@ export function NativeGuardianRecoveryView({
   currency,
   networkLabel,
   onActivity,
+  openRecoveryAlerts,
   onBack,
 }: {
   controller: NativeGuardianRecoveryController;
@@ -383,8 +470,10 @@ export function NativeGuardianRecoveryView({
   currency: string;
   networkLabel: string;
   onActivity(payerId: string, chainId: number, hash: string): Promise<void>;
+  openRecoveryAlerts(): Promise<void>;
   onBack(): void;
 }) {
+  const { t } = useNativeTranslation();
   const state = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -454,6 +543,10 @@ export function NativeGuardianRecoveryView({
               <Text selectable style={s.address}>
                 {state.intent.guardian.address}
               </Text>
+              <Text style={s.label}>Fee payer</Text>
+              <Text selectable style={s.address}>
+                {state.intent.payer.address}
+              </Text>
             </>
           )}
         </Card>
@@ -499,10 +592,10 @@ export function NativeGuardianRecoveryView({
                   ? 'Confirm finalization'
                   : 'Confirm recovery schedule'
               }
-              body="The selected guardian account pays the network fee for the exact transaction below."
+              body="The selected fee payer pays the network fee for the exact transaction below."
             />
             <Card style={s.card}>
-              <Text style={s.label}>Guardian account paying the fee</Text>
+              <Text style={s.label}>Fee payer</Text>
               <Text selectable style={s.address}>
                 {state.feeReview.transaction.from}
               </Text>
@@ -586,10 +679,11 @@ export function NativeGuardianRecoveryView({
             variant="secondary"
             disabled={activityBusy}
             onPress={() => {
+              if (!live.current) return;
               setActivityBusy(true);
               setActivityError('');
               void onActivity(
-                state.intent!.guardian.id,
+                state.intent!.payer.id,
                 state.intent!.operation.chainId,
                 state.transactionHash!
               )
@@ -686,6 +780,21 @@ export function NativeGuardianRecoveryView({
               }}
             />
           </>
+        )}
+        {state.observation?.exists && (
+          <Button
+            title={t('settings.smartAccountRecoveryEmailAlerts')}
+            variant="quiet"
+            onPress={() => {
+              if (!live.current) return;
+              void openRecoveryAlerts().catch(() => {
+                if (live.current)
+                  setActivityError(
+                    'Recovery alerts could not be opened. Try again.'
+                  );
+              });
+            }}
+          />
         )}
         <Button title="Close" variant="quiet" onPress={onBack} />
       </Screen>

@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeGuardianRecoveryStatus } from '../custody/evmTransferReadRpc';
+import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { NativeGuardianPolicy, type NativeGuardianPolicyTool } from './NativeGuardianPolicy';
 import { NativeGuardianRecovery, type NativeGuardianRecoveryTool } from './NativeGuardianRecovery';
@@ -28,13 +29,17 @@ const OPERATION_LABELS = {
 
 export function WatchGuardianRecovery({ address, networkLabel, read, manage, recovery, initialRecovery, lifetime, onBack, registerBack }:
   Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; initialRecovery?: boolean; onBack(): void; registerBack?(handler: () => void): () => void }) {
+  const { t } = useNativeTranslation();
   const [state, setState] = useState<State>({ status: 'idle' });
+  const [alertError, setAlertError] = useState(false);
   const [editing, setEditing] = useState<'set' | 'remove' | 'recover' | null>(initialRecovery && recovery?.hasIntent ? 'recover' : null);
   const owner = useRef<AbortController | null>(null);
+  const live = useRef(true);
   const cancel = () => { owner.current?.abort(); owner.current = null; };
   useLayoutEffect(() => {
+    live.current = true;
     lifetime.addEventListener('abort', cancel, { once: true });
-    return () => { lifetime.removeEventListener('abort', cancel); cancel(); };
+    return () => { live.current = false; lifetime.removeEventListener('abort', cancel); cancel(); };
   }, [lifetime]);
   const check = async () => {
     if (owner.current || lifetime.aborted) return;
@@ -95,6 +100,17 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, rec
     {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing('set')} />}
     {manage && observation?.exists && <Button title="Remove guardian" variant="quiet" onPress={() => setEditing('remove')} />}
     {recovery && (recovery.hasIntent || observation?.exists) && <Button title={recovery.hasIntent ? 'Resume recovery' : 'Recover account'} onPress={() => setEditing('recover')} />}
+    {recovery && observation?.exists && <>
+      <Button title={t('settings.smartAccountRecoveryEmailAlerts')} variant="quiet" onPress={() => {
+        if (!live.current || lifetime.aborted) return;
+        setAlertError(false);
+        void recovery.openRecoveryAlerts().catch(() => {
+          if (live.current && !lifetime.aborted) setAlertError(true);
+        });
+      }} />
+      <Text style={styles.body}>{t('settings.smartAccountRecoveryEmailAlertsDescription')}</Text>
+      {alertError && <Text accessibilityRole="alert" style={styles.body}>Recovery alerts could not be opened. Try again.</Text>}
+    </>}
     <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} onPress={() => { void check(); }} disabled={state.status === 'loading'} />
   </Screen></SafeAreaView>;
 }

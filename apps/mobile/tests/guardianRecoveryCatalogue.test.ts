@@ -71,6 +71,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       : catalogue.mutate(catalogue.privateRecords.revision, input, guard);
   const guardian = await sdk.derive(1, 'Guardian');
   await change({ kind: 'create', account: guardian });
+  const payer = await sdk.derive(2, 'Payer');
+  await change({ kind: 'create', account: payer });
   const replacement = await sdk.imported('0x' + '07'.repeat(32), 'Replacement');
   await change({
     kind: 'import',
@@ -146,6 +148,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       address: guardian.address,
       xpub: guardian.xpub.toLowerCase(),
     },
+    payer: { id: 'hd:60:2', address: payer.address, xpub: payer.xpub.toLowerCase() },
     replacement: {
       id: `imported:60:${replacement.account.id}`,
       address: replacement.account.address,
@@ -260,8 +263,14 @@ test('intent retries preserve the exact operation and reject replacement or dupl
 test('recovery intent rejects unrelated replacement keys, payloads and target accounts', async () => {
   const f = await fixture();
   try {
+    const legacy = { ...f.intent };
+    Reflect.deleteProperty(legacy, 'payer');
     const variants = [
       { ...f.intent, replacement: f.intent.guardian },
+      legacy,
+      { ...f.intent, payer: { ...f.intent.payer, xpub: f.intent.replacement.xpub } },
+      { ...f.intent, payer: { id: f.intent.accountId, address: f.smart.address, xpub: f.smart.xpub.toLowerCase() } },
+      { ...f.intent, replacement: { id: f.intent.accountId, address: f.smart.address, xpub: f.smart.xpub.toLowerCase() } },
       {
         ...f.intent,
         guardian: { ...f.intent.guardian, xpub: f.intent.replacement.xpub },
@@ -289,12 +298,39 @@ test('recovery intent rejects unrelated replacement keys, payloads and target ac
   }
 });
 
+test('guardian references admit canonical same-chain Smart accounts while payer and replacement remain software EOAs', async () => {
+  const f = await fixture();
+  try {
+    const descriptor = getPaliSmartAccountDescriptor({
+      accountIndex: 1, accountVersion: PALI_SMART_ACCOUNT_VERSION,
+      anchor: f.smart.smartAccount.descriptor.anchor, chainId: 1, factoryAddress: f.smart.smartAccount.factoryAddress,
+    });
+    const deployment = derivePaliSmartAccountDeployment({
+      ...f.smart.smartAccount.auth, factoryAddress: f.smart.smartAccount.factoryAddress, deploySalt: descriptor.deploymentSalt,
+    });
+    const guardian = { ...f.smart, id: 1, address: deployment.address, xpub: deployment.address,
+      smartAccount: { ...f.smart.smartAccount, descriptor, deploymentSalt: descriptor.deploymentSalt } };
+    await f.change({ kind: 'create-smart', account: guardian });
+    await f.change({ kind: 'select', id: f.intent.accountId });
+    const ref = { id: 'smart:60:1', address: guardian.address, xpub: guardian.xpub.toLowerCase() };
+    const intent = { ...f.intent, guardian: ref };
+    await f.change({ kind: 'store-guardian-recovery', id: intent.accountId, intent, expectedOperationHash: null });
+    await f.reopen();
+    assert.deepEqual(f.catalogue.privateRecords.guardianRecoveryIntents, [intent]);
+    await assert.rejects(f.change({ kind: 'remove', id: ref.id }), /CATALOGUE_NOT_REMOVABLE/);
+    await f.change({ kind: 'retire-guardian-recovery', id: intent.accountId, operationHash: intent.operation.hash });
+    for (const role of ['payer', 'replacement'] as const)
+      await assert.rejects(f.change({ kind: 'store-guardian-recovery', id: intent.accountId, intent: { ...intent, [role]: ref }, expectedOperationHash: null }));
+    await f.change({ kind: 'remove', id: ref.id });
+  } finally { await f.cleanup(); }
+});
+
 test('referenced guardian and replacement keys remain until intent retirement', async () => {
   const f = await fixture();
   try {
     await store(f);
     const imported = f.catalogue.privateRecords.recovery;
-    for (const id of [f.intent.guardian.id, f.intent.replacement.id]) {
+    for (const id of [f.intent.guardian.id, f.intent.replacement.id, f.intent.payer.id]) {
       await assert.rejects(
         f.change({ kind: 'remove', id }),
         /CATALOGUE_NOT_REMOVABLE/
@@ -314,6 +350,7 @@ test('referenced guardian and replacement keys remain until intent retirement', 
       operationHash: f.intent.operation.hash,
     });
     await f.change({ kind: 'remove', id: f.intent.replacement.id });
+    await f.change({ kind: 'remove', id: f.intent.payer.id });
     assert.equal(f.catalogue.privateRecords.recovery.length, 0);
   } finally {
     await f.cleanup();

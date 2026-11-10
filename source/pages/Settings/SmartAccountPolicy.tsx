@@ -11,6 +11,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 
+import { PALI_RECOVERY_ALERTS_URL } from '../../shared/smartAccountLinks.ts';
 import { LoadingSvg } from 'components/Icon/Icon';
 import { Button, ConfirmationModal, Icon } from 'components/index';
 import { PqOperationStatus, PqSigningOverlay } from 'components/Loading';
@@ -3953,7 +3954,7 @@ const SmartAccountPolicy = () => {
                                 )}
                               </p>
                               <a
-                                href="https://sysnode.info/account#recovery-alerts"
+                                href={PALI_RECOVERY_ALERTS_URL}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="mt-2 inline-flex max-w-full items-center gap-2 rounded text-xs font-semibold text-brand-blue100 underline underline-offset-4 transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"

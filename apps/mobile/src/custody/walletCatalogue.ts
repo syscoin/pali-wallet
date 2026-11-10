@@ -100,6 +100,7 @@ export type NativeGuardianRecoveryIntent = Readonly<{
   target: PaliRecoveryTarget;
   guardian: NativeGuardianRecoveryAccountRef;
   replacement: NativeGuardianRecoveryAccountRef;
+  payer: NativeGuardianRecoveryAccountRef;
 }>;
 type SmartAccountObservedMetadata = Pick<ISmartAccountMetadata,
   'auth' | 'availableModules' | 'isDeployed' | 'installedModules'>;
@@ -213,11 +214,17 @@ function softwareGroup(record: NativeAccountRecord): RecoveryAccountGroup {
   return group ?? invalid();
 }
 
-function recoveryAccountReference(value: unknown, record: NativeAccountRecord): NativeGuardianRecoveryAccountRef {
+function recoveryAccountReference(value: unknown, record: NativeAccountRecord, role: 'guardian' | 'software', chainId: number): NativeGuardianRecoveryAccountRef {
   const raw = object(value, ['id', 'address', 'xpub']);
   const identity = parseNativeAccountId(raw.id);
-  if (identity.slip44 !== 60 || !['HDAccount', 'Imported'].includes(identity.type)) return invalid();
+  if (identity.slip44 !== 60 || !['HDAccount', 'Imported', ...(role === 'guardian' ? ['SmartAccount'] : [])].includes(identity.type)) return invalid();
   const account = softwareGroup(record).accounts[identity.type]?.[identity.index];
+  if (identity.type === 'SmartAccount') {
+    if (!account?.smartAccount || typeof raw.xpub !== 'string') return invalid();
+    requireSmartAccountAddressIdentity(account, chainId);
+    if (getAddress(raw.address) !== getAddress(account.address) || raw.xpub.toLowerCase() !== account.xpub.toLowerCase()) return invalid();
+    return Object.freeze({ id: identity.id, address: getAddress(account.address), xpub: account.xpub.toLowerCase() });
+  }
   const publicKey = publicIdentity({ address: raw.address, publicKey: raw.xpub });
   if (!account?.xprv || account.address.toLowerCase() !== publicKey.address.toLowerCase() ||
       account.xpub.toLowerCase() !== publicKey.publicKey) return invalid();
@@ -225,7 +232,7 @@ function recoveryAccountReference(value: unknown, record: NativeAccountRecord): 
 }
 
 function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRecord): NativeGuardianRecoveryIntent {
-  const raw = object(value, ['accountId', 'operation', 'target', 'guardian', 'replacement']);
+  const raw = object(value, ['accountId', 'operation', 'target', 'guardian', 'replacement', 'payer']);
   const identity = parseNativeAccountId(raw.accountId);
   if (identity.type !== 'SmartAccount' || identity.slip44 !== 60) return invalid();
   const account = softwareGroup(record).accounts.SmartAccount[identity.index];
@@ -233,12 +240,13 @@ function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRec
   const { operation, target } = captureGuardianRecoveryIntent({ operation: raw.operation, target: raw.target });
   requireSmartAccountAddressIdentity(account, operation.chainId);
   if (getAddress(account.address) !== operation.account) return invalid();
-  const guardian = recoveryAccountReference(raw.guardian, record);
-  const replacement = recoveryAccountReference(raw.replacement, record);
+  const guardian = recoveryAccountReference(raw.guardian, record, 'guardian', operation.chainId);
+  const replacement = recoveryAccountReference(raw.replacement, record, 'software', operation.chainId);
+  const payer = recoveryAccountReference(raw.payer, record, 'software', operation.chainId);
   if (target.auth.module !== 'ecdsa' ||
       getAddress(target.auth.validator) !== getAddress(getConfiguredAuthenticatorAddress(operation.chainId, 'ecdsa')) ||
       target.auth.data.toLowerCase() !== encodeEcdsaValidatorInitData([replacement.address], 1).toLowerCase()) return invalid();
-  return Object.freeze({ accountId: identity.id, operation, target, guardian, replacement });
+  return Object.freeze({ accountId: identity.id, operation, target, guardian, replacement, payer });
 }
 export function catalogueEvmNetworks(record: NativeAccountRecord): readonly NativeNetworkRegistration[] {
   return record.networks.filter((network) => network.kind === 'evm');
@@ -878,7 +886,7 @@ export class NativeWalletCatalogue {
             active.accountId === mutation.id ||
             projection(record).accounts.length <= 1 ||
             guardianRecoveryIntents?.some(intent => intent.accountId === mutation.id ||
-              intent.guardian.id === mutation.id || intent.replacement.id === mutation.id)
+              intent.guardian.id === mutation.id || intent.replacement.id === mutation.id || intent.payer.id === mutation.id)
           )
             throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
           removeAccountRecord(

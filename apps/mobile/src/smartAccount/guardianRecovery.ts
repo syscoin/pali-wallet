@@ -1,12 +1,64 @@
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import type { NativePreparedConnectionTransaction } from '../connections/transactionRuntime.ts';
-import type { NativeGuardianRecoveryIntent } from '../custody/walletCatalogue.ts';
+import type {
+  NativeCatalogueAccount,
+  NativeGuardianRecoveryIntent,
+} from '../custody/walletCatalogue.ts';
 
 export type NativeGuardianRecoveryDraft = Readonly<
-  | { kind: 'start'; guardianId: string; replacementId: string }
+  | {
+      kind: 'start';
+      guardianId: string;
+      replacementId: string;
+      payerId: string;
+    }
   | { kind: 'resume' }
 >;
+export type NativeGuardianRecoveryChoice = Readonly<{
+  id: string;
+  address: string;
+  label: string;
+}>;
+export type NativeGuardianRecoveryChoices = Readonly<{
+  guardians: readonly NativeGuardianRecoveryChoice[];
+  replacements: readonly NativeGuardianRecoveryChoice[];
+  payers: readonly NativeGuardianRecoveryChoice[];
+}>;
+
+/** Public role choices; the host verifies current policy and signing eligibility. */
+export function getNativeGuardianRecoveryChoices(
+  accounts: readonly NativeCatalogueAccount[],
+  chainId: number
+): NativeGuardianRecoveryChoices {
+  const software: NativeGuardianRecoveryChoice[] = [],
+    guardians: NativeGuardianRecoveryChoice[] = [];
+  for (const account of accounts) {
+    if (account.slip44 !== 60) continue;
+    const isSoftware =
+      account.type === 'HDAccount' || account.type === 'Imported';
+    if (
+      !isSoftware &&
+      !(
+        account.type === 'SmartAccount' &&
+        account.smartAccount?.chainId === chainId
+      )
+    )
+      continue;
+    const choice = Object.freeze({
+      id: account.id,
+      address: account.address,
+      label: account.label,
+    });
+    guardians.push(choice);
+    if (isSoftware) software.push(choice);
+  }
+  return Object.freeze({
+    guardians: Object.freeze(guardians),
+    replacements: Object.freeze(software),
+    payers: Object.freeze([...software]),
+  });
+}
 export type NativeGuardianRecoveryAction = 'schedule' | 'finalize';
 export type NativeGuardianRecoveryStatus = Readonly<{
   intent: NativeGuardianRecoveryIntent;
@@ -49,12 +101,12 @@ export type NativeGuardianRecoverySnapshot = Readonly<{
 type Host = Readonly<{
   assertCurrent(): void;
   dispose(): void;
-  submissionFailure(
-    error: unknown
-  ): Readonly<{
-    transactionNotBroadcast: boolean;
-    signedTransactionHash?: string;
-  }> | undefined;
+  submissionFailure(error: unknown):
+    | Readonly<{
+        transactionNotBroadcast: boolean;
+        signedTransactionHash?: string;
+      }>
+    | undefined;
   observe(signal: AbortSignal): Promise<NativeGuardianRecoveryStatus>;
   prepare(
     action: NativeGuardianRecoveryAction,
@@ -262,7 +314,8 @@ export class NativeGuardianRecoveryController {
         () => this.check(),
         (hash) => {
           this.publish({ transactionHash: hash, canAbandon: false });
-        }, { kind: 'transaction' }
+        },
+        { kind: 'transaction' }
       );
       this.check();
       this.publish({ transactionHash: hash, phase: 'waiting' });
@@ -273,7 +326,9 @@ export class NativeGuardianRecoveryController {
         this.publish({ transactionHash: failure.signedTransactionHash });
       this.failed(
         error,
-        !entered || failure?.transactionNotBroadcast === true ? 'failed' : 'unknown'
+        !entered || failure?.transactionNotBroadcast === true
+          ? 'failed'
+          : 'unknown'
       );
     } finally {
       this.busy = false;
