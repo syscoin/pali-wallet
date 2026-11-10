@@ -18,6 +18,7 @@ async function openWallet(page: Page, query = '') {
   await unlock(page);
 }
 async function manage(page: Page) {
+  await page.getByRole('tab', { name: 'Wallet', exact: true }).click();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Manage wallet accounts', exact: true }).click();
 }
@@ -289,7 +290,6 @@ for (const departure of ['back', 'background', 'inactive', 'blur', 'new-unlock']
     await page.evaluate(() => { window.__watchFixture.lifecycle('active'); window.__watchFixture.releaseImport(); });
     if (departure === 'back') {
       await expect.poll(() => page.evaluate(() => window.__watchFixture.nativePhase())).toBe('locked');
-      await page.getByRole('button', { name: 'Back', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
     }
     if (departure === 'new-unlock') { await unlock(page); await expect(page.getByText('Account 1 · Ethereum', { exact: true })).toBeVisible(); }

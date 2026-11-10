@@ -1,5 +1,7 @@
 # Pali mobile screen review — 10 November 2026
 
+Latest flow updates: [recovery, shared authentication and decoded asset reviews](#current-flow-updates) · [contact sheet](flow-updates/contact-sheet.png) · [per-frame provenance](flow-updates/manifest.json).
+
 The 32 reference screens below compare the supplied PDF with **actual implemented React Native components**. Home, Send, Receive and Activity also include video stills. Each screen includes a narrow 320px capture.
 
 Original comparison source: `04466c2e9498dfd250ac575e393db72fceec0e1f`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
@@ -140,6 +142,8 @@ Component: `NativeWalletScreen`
 
 <details>
 <summary>08. Recover access</summary>
+
+Updated source: `ca14d91409defadcd45f0cd044cf3eccae02cada`.
 
 Phrase verification, wallet confirmation and new PIN setup. Retained independent keys/notes still depend on their recovery material; a seed does not derive unrelated keys.
 
@@ -453,7 +457,9 @@ Component: `NativeConnections`
 <details>
 <summary>32. Transaction request</summary>
 
-App identity, exact amount, compact From/To/network/maximum-fee facts and real Reject/Confirm buttons. All fee, phishing, account-switch and uncertain-delivery safeguards remain.
+Updated source: `a7c370a22656574043007ccc8d15fe2af342351a`.
+
+Supported ERC-20, ERC-721 and ERC-1155 calls show the asset movement, exact quantity or ID, recipient and contract before confirmation. Unknown calls label the native currency separately. The new examples and narrow scrolled facts are below; existing approval safeguards remain.
 
 ![Transaction request: reference and implementation](32-transaction-request.png)
 
@@ -811,6 +817,8 @@ Component: `NativeSentryNodes`
 <details>
 <summary>32-sentry-consent: Sentry request approval</summary>
 
+Updated source: `a7c370a22656574043007ccc8d15fe2af342351a`. Authorization opens the shared prompt.
+
 Component: `NativeSentryReview`
 
 ![Sentry request approval at 390px](extras/32-sentry-consent-390.png)
@@ -955,6 +963,8 @@ Component: `HelpAbout`
 
 <details>
 <summary>45-private-key-auth: Private-key reveal authorization</summary>
+
+Updated source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065`. Authorization opens the shared prompt.
 
 Component: `NativeSecurity`
 
@@ -1216,4 +1226,463 @@ Component: `WatchSession / AutoLockSettings`
 ![Watch-only auto-lock at 320px](extras/67-watch-auto-lock-320.png)
 
 </details>
+
+<!-- current-flow-updates:start -->
+
+## Current flow updates
+
+These are actual implemented React Native Web screens. Existing Recover access, transaction-request, private-key and Sentry review images above are updated in place. The additional states below show the next steps and newly decoded asset reviews. Each image records its exact source commit and loaded-asset hashes in the [manifest](flow-updates/manifest.json); unchanged earlier frames retain their original provenance. Synthetic public adapters demonstrate presentation and navigation; they do not qualify OS prompts, protected storage, real notes, files or transactions.
+
+[Validation details](flow-updates/validation.json) record the full watch baseline and each focused retry separately; the unchanged preview suite passed 302 cases.
+
+Recovery verifies the existing wallet before new PIN setup. Sensitive leaves use the shared authentication screen, and portable-file passwords remain separate. Authentication Back was checked in the DOM and by cancellation without entering a PIN.
+
+![Updated flow contact sheet](flow-updates/contact-sheet.png)
+
+<details>
+<summary>Shared authorization for key reveal</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 390px.
+
+![Shared authorization for key reveal at 390px](flow-updates/private-key-auth-390.png)
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 320px.
+
+![Shared authorization for key reveal at 320px](flow-updates/private-key-auth-320.png)
+
+</details>
+
+<details>
+<summary>Import review without embedded PIN</summary>
+
+Component: `NativeImport`.
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 390px.
+
+![Import review without embedded PIN at 390px](flow-updates/key-import-review-390.png)
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 320px.
+
+![Import review without embedded PIN at 320px](flow-updates/key-import-review-320.png)
+
+</details>
+
+<details>
+<summary>Shared authorization for key import</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 390px.
+
+![Shared authorization for key import at 390px](flow-updates/key-import-auth-390.png)
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 320px.
+
+![Shared authorization for key import at 320px](flow-updates/key-import-auth-320.png)
+
+</details>
+
+<details>
+<summary>export note review</summary>
+
+Component: `NativeNoteExport`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![export note review at 390px](flow-updates/note-export-review-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![export note review at 320px](flow-updates/note-export-review-320.png)
+
+</details>
+
+<details>
+<summary>export note shared authorization</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![export note shared authorization at 390px](flow-updates/note-export-auth-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![export note shared authorization at 320px](flow-updates/note-export-auth-320.png)
+
+</details>
+
+<details>
+<summary>restore note review</summary>
+
+Component: `NativeNoteRestore`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![restore note review at 390px](flow-updates/note-restore-review-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![restore note review at 320px](flow-updates/note-restore-review-320.png)
+
+</details>
+
+<details>
+<summary>restore note shared authorization</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![restore note shared authorization at 390px](flow-updates/note-restore-auth-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![restore note shared authorization at 320px](flow-updates/note-restore-auth-320.png)
+
+</details>
+
+<details>
+<summary>maintenance note review</summary>
+
+Component: `NativeNoteMaintenance`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![maintenance note review at 390px](flow-updates/note-maintenance-review-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![maintenance note review at 320px](flow-updates/note-maintenance-review-320.png)
+
+</details>
+
+<details>
+<summary>maintenance note shared authorization</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![maintenance note shared authorization at 390px](flow-updates/note-maintenance-auth-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![maintenance note shared authorization at 320px](flow-updates/note-maintenance-auth-320.png)
+
+</details>
+
+<details>
+<summary>Sentry shared authorization</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Sentry shared authorization at 390px](flow-updates/sentry-auth-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Sentry shared authorization at 320px](flow-updates/sentry-auth-320.png)
+
+</details>
+
+<details>
+<summary>Collateral release acknowledgement</summary>
+
+Component: `NativeSentryNodes`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Collateral release acknowledgement at 390px](flow-updates/collateral-review-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Collateral release acknowledgement at 320px](flow-updates/collateral-review-320.png)
+
+</details>
+
+<details>
+<summary>Collateral release shared authorization</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Collateral release shared authorization at 390px](flow-updates/collateral-auth-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Collateral release shared authorization at 320px](flow-updates/collateral-auth-320.png)
+
+</details>
+
+<details>
+<summary>Restored note prerequisite review</summary>
+
+Component: `NativePrivateWithdrawal`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Restored note prerequisite review at 390px](flow-updates/restored-note-review-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Restored note prerequisite review at 320px](flow-updates/restored-note-review-320.png)
+
+</details>
+
+<details>
+<summary>Restored note shared authorization</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Restored note shared authorization at 390px](flow-updates/restored-note-auth-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Restored note shared authorization at 320px](flow-updates/restored-note-auth-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc20 primary transfer review</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Dapp erc20 primary transfer review at 390px](flow-updates/dapp-erc20-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc20 primary transfer review at 320px](flow-updates/dapp-erc20-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc721 primary transfer review</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Dapp erc721 primary transfer review at 390px](flow-updates/dapp-erc721-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc721 primary transfer review at 320px](flow-updates/dapp-erc721-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc1155 primary transfer review</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 390px.
+
+![Dapp erc1155 primary transfer review at 390px](flow-updates/dapp-erc1155-390.png)
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc1155 primary transfer review at 320px](flow-updates/dapp-erc1155-320.png)
+
+</details>
+
+<details>
+<summary>Private note before shared authorization</summary>
+
+Component: `NativeNoteReveal`.
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 390px.
+
+![Private note before shared authorization at 390px](flow-updates/note-reveal-review-390.png)
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 320px.
+
+![Private note before shared authorization at 320px](flow-updates/note-reveal-review-320.png)
+
+</details>
+
+<details>
+<summary>Shared authorization for note reveal</summary>
+
+Component: `NativeOperationAuthentication`.
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 390px.
+
+![Shared authorization for note reveal at 390px](flow-updates/note-reveal-auth-390.png)
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065` · 320px.
+
+![Shared authorization for note reveal at 320px](flow-updates/note-reveal-auth-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc20 recipient and fee review</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc20 recipient and fee review at 320px](flow-updates/dapp-erc20-details-320.png)
+
+</details>
+
+<details>
+<summary>Transaction copy remains disabled while pending</summary>
+
+Component: `UtxoActivityScreen / TransactionDetailLayout`.
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 390px.
+
+![Transaction copy remains disabled while pending at 390px](flow-updates/utxo-copy-pending-390.png)
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 320px.
+
+![Transaction copy remains disabled while pending at 320px](flow-updates/utxo-copy-pending-320.png)
+
+</details>
+
+<details>
+<summary>Recovery phrase before verification</summary>
+
+Component: `NativeRecovery`.
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 390px.
+
+![Recovery phrase before verification at 390px](flow-updates/recovery-phrase-390.png)
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 320px.
+
+![Recovery phrase before verification at 320px](flow-updates/recovery-phrase-320.png)
+
+</details>
+
+<details>
+<summary>Verified wallet before new PIN</summary>
+
+Component: `NativeRecovery`.
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 390px.
+
+![Verified wallet before new PIN at 390px](flow-updates/recovery-verified-390.png)
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 320px.
+
+![Verified wallet before new PIN at 320px](flow-updates/recovery-verified-320.png)
+
+</details>
+
+<details>
+<summary>Create new PIN after verification</summary>
+
+Component: `NativeRecovery / PinSetup`.
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 390px.
+
+![Create new PIN after verification at 390px](flow-updates/recovery-new-pin-390.png)
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 320px.
+
+![Create new PIN after verification at 320px](flow-updates/recovery-new-pin-320.png)
+
+</details>
+
+<details>
+<summary>Confirm replacement PIN</summary>
+
+Component: `NativeRecovery / PinSetup`.
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 390px.
+
+![Confirm replacement PIN at 390px](flow-updates/recovery-confirm-pin-390.png)
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 320px.
+
+![Confirm replacement PIN at 320px](flow-updates/recovery-confirm-pin-320.png)
+
+</details>
+
+<details>
+<summary>Recovery complete: unlock with the new PIN</summary>
+
+Component: `NativeWallet / PinEntryScreen`.
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 390px.
+
+![Recovery complete: unlock with the new PIN at 390px](flow-updates/recovery-complete-390.png)
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 320px.
+
+![Recovery complete: unlock with the new PIN at 320px](flow-updates/recovery-complete-320.png)
+
+</details>
+
+<details>
+<summary>Recovery interrupted: possible completion notice</summary>
+
+Component: `NativeWallet / PinEntryScreen`.
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 390px.
+
+![Recovery interrupted: possible completion notice at 390px](flow-updates/recovery-interrupted-390.png)
+
+Source: `ca14d91409defadcd45f0cd044cf3eccae02cada` · 320px.
+
+![Recovery interrupted: possible completion notice at 320px](flow-updates/recovery-interrupted-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc721 full recipient and token contract</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc721 full recipient and token contract at 320px](flow-updates/dapp-erc721-recipient-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc721 token contract, owner and fee review</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc721 token contract, owner and fee review at 320px](flow-updates/dapp-erc721-details-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc1155 full recipient and token contract</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc1155 full recipient and token contract at 320px](flow-updates/dapp-erc1155-recipient-320.png)
+
+</details>
+
+<details>
+<summary>Dapp erc1155 token contract, owner and fee review</summary>
+
+Component: `NativeTransactionReviewScreen`.
+
+Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
+
+![Dapp erc1155 token contract, owner and fee review at 320px](flow-updates/dapp-erc1155-details-320.png)
+
+</details>
+
+<!-- current-flow-updates:end -->
 

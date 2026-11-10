@@ -1,0 +1,1598 @@
+{
+  "exports": {
+    "watch": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+    "send": "a7c370a22656574043007ccc8d15fe2af342351a"
+  },
+  "report": [
+    {
+      "id": "dapp-unknown",
+      "label": "Dapp unknown primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 390,
+      "height": 844,
+      "file": "dapp-unknown-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=unknown",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nContract interaction\nNative currency sent\n0.00123456789\nCOIN\nThis amount excludes any tokens or NFTs the contract may move.\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nTo\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.001234567890252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "1e0b54b6a5bf1f1d8a5490e333db106709e241d4a52736556745a25ba8fe8a35"
+    },
+    {
+      "id": "private-key-review",
+      "label": "Selected key before shared authentication",
+      "component": "NativeSecurity",
+      "width": 390,
+      "height": 844,
+      "file": "private-key-review-390.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Account private key\nAccount 1\n0x52908400098527886E0F7030069857D2E4169EE7\nThis key controls one EVM account\nAnyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.\nReveal private key",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "183788e18fc3679bf7cac2b5333845a0b5d3442055e292b0ff90ddfe8f94dd9c"
+    },
+    {
+      "id": "private-key-auth",
+      "label": "Shared authorization for key reveal",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "private-key-auth-390.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Account private key\nAccount 1\n0x52908400098527886E0F7030069857D2E4169EE7\nThis key controls one EVM account\nAnyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.\nReveal private key\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
+    },
+    {
+      "id": "key-import-review",
+      "label": "Import review without embedded PIN",
+      "component": "NativeImport",
+      "width": 390,
+      "height": 844,
+      "file": "key-import-review-390.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nEdit private key\nDevelopment build \u00b7 Use a test wallet\nImport account",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "a90146992199c160dd9135b7f2cb7863fe1ca5e299df0be6b6576571fe798411"
+    },
+    {
+      "id": "key-import-auth",
+      "label": "Shared authorization for key import",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "key-import-auth-390.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nDevelopment build \u00b7 Use a test wallet\nImport account\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "238c8e25f364168e238c5f8788797d099d750f55f6c39b67c336f15ebd26b151"
+    },
+    {
+      "id": "note-export-review",
+      "label": "export note review",
+      "component": "NativeNoteExport",
+      "width": 390,
+      "height": 844,
+      "file": "note-export-review-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=export",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nSave encrypted backup",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "32f6ef396c71fc4b47fc58ea95fc2aa1b4a0b666e2f929f83423705046ac2378"
+    },
+    {
+      "id": "note-export-auth",
+      "label": "export note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "note-export-auth-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=export",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nWorking\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
+    },
+    {
+      "id": "note-restore-review",
+      "label": "restore note review",
+      "component": "NativeNoteRestore",
+      "width": 390,
+      "height": 844,
+      "file": "note-restore-review-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=restore",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestore notes",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "9acaf478b17fdf3d8a4256f3a209231791b67a96707a8166716bfd2b191eb808"
+    },
+    {
+      "id": "note-restore-auth",
+      "label": "restore note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "note-restore-auth-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=restore",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestoring\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
+    },
+    {
+      "id": "note-maintenance-review",
+      "label": "maintenance note review",
+      "component": "NativeNoteMaintenance",
+      "width": 390,
+      "height": 844,
+      "file": "note-maintenance-review-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=maintenance",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "30137affcdd5286c7ef81400b1bb5af16ea6be45e6743a9235c04b331988eabc"
+    },
+    {
+      "id": "note-maintenance-auth",
+      "label": "maintenance note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "note-maintenance-auth-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=maintenance",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
+    },
+    {
+      "id": "sentry-review",
+      "label": "Sentry authority changes before shared authorization",
+      "component": "NativeSentryReview",
+      "width": 390,
+      "height": 844,
+      "file": "sentry-review-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-consent",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "6fd5ed73bb86c79e221458714f5c2138bae655967c7a69a1b00dc30b087f7326"
+    },
+    {
+      "id": "sentry-auth",
+      "label": "Sentry shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "sentry-auth-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-consent",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nAuthorizing\u2026\nReject\nAuthorize transaction\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "85a9edc2a8fbea4be3ba95ac9b1e2642d39fb1285bc57f48fbda55a80c71d272"
+    },
+    {
+      "id": "collateral-review",
+      "label": "Collateral release acknowledgement",
+      "component": "NativeSentryNodes",
+      "width": 390,
+      "height": 844,
+      "file": "collateral-review-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-nodes=1&linked",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nRelease collateral",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "b9774081400e700fac0ba82508d5429967cc4c37a24b86dd71e35d6d64325223"
+    },
+    {
+      "id": "collateral-auth",
+      "label": "Collateral release shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "collateral-auth-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-nodes=1&linked",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nReleasing\u2026\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "238c8e25f364168e238c5f8788797d099d750f55f6c39b67c336f15ebd26b151"
+    },
+    {
+      "id": "restored-note-review",
+      "label": "Restored note prerequisite review",
+      "component": "NativePrivateWithdrawal",
+      "width": 390,
+      "height": 844,
+      "file": "restored-note-review-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?private-withdrawal&restored",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "3a462c18bb214522f54b3e33e1e27d139eb71f1875e816519e2dfdae29ab157e"
+    },
+    {
+      "id": "restored-note-auth",
+      "label": "Restored note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "restored-note-auth-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?private-withdrawal&restored",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel\nReview private transaction\nUnlock this private note to review its saved transaction. This does not sign or resend it.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "92eeebbe303334268e0bcbb64655120f04cdf9199d630c947b746bccfdeb8427"
+    },
+    {
+      "id": "dapp-unknown",
+      "label": "Dapp unknown primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-unknown-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=unknown",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nContract interaction\nNative currency sent\n0.00123456789\nCOIN\nThis amount excludes any tokens or NFTs the contract may move.\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nTo\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.001234567890252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "1c6f02451ac0d862f8040714fa56b9856f91b7a10ecf511f6d0a9abb6eb09cbc"
+    },
+    {
+      "id": "private-key-review",
+      "label": "Selected key before shared authentication",
+      "component": "NativeSecurity",
+      "width": 320,
+      "height": 568,
+      "file": "private-key-review-320.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Account private key\nAccount 1\n0x52908400098527886E0F7030069857D2E4169EE7\nThis key controls one EVM account\nAnyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.\nReveal private key",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "58ad340ce894f70388a2d8c64258f66f0d1abb56911cc127d7915383bb60cbe0"
+    },
+    {
+      "id": "private-key-auth",
+      "label": "Shared authorization for key reveal",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "private-key-auth-320.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Account private key\nAccount 1\n0x52908400098527886E0F7030069857D2E4169EE7\nThis key controls one EVM account\nAnyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.\nReveal private key\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
+    },
+    {
+      "id": "key-import-review",
+      "label": "Import review without embedded PIN",
+      "component": "NativeImport",
+      "width": 320,
+      "height": 568,
+      "file": "key-import-review-320.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nEdit private key\nDevelopment build \u00b7 Use a test wallet\nImport account",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "7fe960611d145e1c4bdeb922010ca740af1df37a7631d70403817050781993d6"
+    },
+    {
+      "id": "key-import-auth",
+      "label": "Shared authorization for key import",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "key-import-auth-320.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Review imported account\nEthereum \u00b7 EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nImported savings\n0x1563915e194D8CfBA1943570603F7606A3115508\nCheck the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.\n\u2713\nI have a separate backup of this private key.\nDevelopment build \u00b7 Use a test wallet\nImport account\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "ca249beb0e6db3171260b9c641bddc51c21123196bc1e2b2ad5da386c464657d"
+    },
+    {
+      "id": "note-export-review",
+      "label": "export note review",
+      "component": "NativeNoteExport",
+      "width": 320,
+      "height": 568,
+      "file": "note-export-review-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=export",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nSave encrypted backup",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "cf7afe2ed1fc5e9ea08792c10815a334445e471782b48ed3d361f0ba0eb84eb1"
+    },
+    {
+      "id": "note-export-auth",
+      "label": "export note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "note-export-auth-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=export",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up private notes\nUse a separate backup password with at least 12 characters. Pali cannot recover it for you.\nBackup password\nConfirm backup password\nWorking\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
+    },
+    {
+      "id": "note-restore-review",
+      "label": "restore note review",
+      "component": "NativeNoteRestore",
+      "width": 320,
+      "height": 568,
+      "file": "note-restore-review-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=restore",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestore notes",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "f7b2a0a5d2e99bbaa7a9ef7f7b9aed651ba72566715f2e773a97e40ee4177f00"
+    },
+    {
+      "id": "note-restore-auth",
+      "label": "restore note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "note-restore-auth-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=restore",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Review restore\nNew notes\n2\nAlready in this wallet\n1\nExisting notes are kept. The backup may flag notes that need a status check before use.\nRestoring\u2026\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
+    },
+    {
+      "id": "note-maintenance-review",
+      "label": "maintenance note review",
+      "component": "NativeNoteMaintenance",
+      "width": 320,
+      "height": 568,
+      "file": "note-maintenance-review-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=maintenance",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "df5b168303f58de9f001a747d3c216a23885214deb02a76e541933400c802a16"
+    },
+    {
+      "id": "note-maintenance-auth",
+      "label": "maintenance note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "note-maintenance-auth-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?note-auth-leaf=maintenance",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Your notes\nYour notes \u00b7 1\nRecovery is available only after the transaction is finalized as failed and its original proof can no longer execute. Your note and withdrawal history stay saved. A new withdrawal requires a fresh review.\nThis check shares the transaction hash, original proof root and public note nullifier with your selected Ethereum RPC.\nCheck and recover\nCancel\nClose\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
+    },
+    {
+      "id": "sentry-review",
+      "label": "Sentry authority changes before shared authorization",
+      "component": "NativeSentryReview",
+      "width": 320,
+      "height": 568,
+      "file": "sentry-review-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-consent",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nUpdate node service\nReject",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "507dbb855c710f3edb15c1ef30007a31d6579bfe0194a1130130a39c47489727"
+    },
+    {
+      "id": "sentry-auth",
+      "label": "Sentry shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "sentry-auth-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-consent",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Update node service\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet \u00b7 Syscoin\nsys1qexamplepublicaddress\nUpdate node service\nChange the service information for this node using the selected authority key.\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nAuthority\nMy operator key\noperator \u00b7 bls-basic\nService address\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nNEVM address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\nOperator payout script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nTransaction fee\n1000 satoshis\nChoose authority key\nMy operator key \u00b7 operator\nbls-basic \u00b7 Selected\nView request details\nAuthorizing\u2026\nReject\nAuthorize transaction\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "4451be9523044bb6513eefd01205aa8e38c5f0e621e8cd0092f293766632cd68"
+    },
+    {
+      "id": "collateral-review",
+      "label": "Collateral release acknowledgement",
+      "component": "NativeSentryNodes",
+      "width": 320,
+      "height": 568,
+      "file": "collateral-review-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-nodes=1&linked",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nRelease collateral",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "d4253574f454ac25a2f2fe16b3d3e3558bf89a30b4235d9e3404752d5d2afbb2"
+    },
+    {
+      "id": "collateral-auth",
+      "label": "Collateral release shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "collateral-auth-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?sentry-nodes=1&linked",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Release collateral\nSyscoin\nAllow this collateral to be spent?\nSpending this output stops the Sentry node. Releasing protection does not send a transaction or remove saved authority keys.\n3333333333333333333333333333333333333333333333333333333333333333:0\nI intend to stop this node and allow its collateral to be spent.\nReleasing\u2026\nAuthorize change\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "ca249beb0e6db3171260b9c641bddc51c21123196bc1e2b2ad5da386c464657d"
+    },
+    {
+      "id": "restored-note-review",
+      "label": "Restored note prerequisite review",
+      "component": "NativePrivateWithdrawal",
+      "width": 320,
+      "height": 568,
+      "file": "restored-note-review-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?private-withdrawal&restored",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "7667d446ace5cd7f41dcef4681990d86ef706dd0360ab550c65e9ad11e7846ea"
+    },
+    {
+      "id": "restored-note-auth",
+      "label": "Restored note shared authorization",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "restored-note-auth-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?private-withdrawal&restored",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet \u00b7 Private note\nReview this restored note before withdrawing.\nReview restored note\nCancel\nReview private transaction\nUnlock this private note to review its saved transaction. This does not sign or resend it.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "d2fab1f6e44606a62175ddbd396456ccb1b84c45eae9fa29191a4727230c893c"
+    },
+    {
+      "id": "dapp-erc20",
+      "label": "Dapp erc20 primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 390,
+      "height": 844,
+      "file": "dapp-erc20-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-20 transfer\n123.456789\nTOK\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "2cf38a9bd94acd7794de98381a111d3344a084cca07de6af5ce68cbdacc5ce4e"
+    },
+    {
+      "id": "dapp-erc721",
+      "label": "Dapp erc721 primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 390,
+      "height": 844,
+      "file": "dapp-erc721-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "ec5c9d834ebe199b8233a5e03ef3891fd636c1a4d38242adb231d7dc8e94fae1"
+    },
+    {
+      "id": "dapp-erc1155",
+      "label": "Dapp erc1155 primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 390,
+      "height": 844,
+      "file": "dapp-erc1155-390.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "19d2f5cd4240438faeb5b6b68361baa8329918a7cbc5b60253d7db56b011adaa"
+    },
+    {
+      "id": "note-reveal-review",
+      "label": "Private note before shared authorization",
+      "component": "NativeNoteReveal",
+      "width": 390,
+      "height": 844,
+      "file": "note-reveal-review-390.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1&private-note-fixture",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nReveal private note\nLock wallet",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "7ade5607eb0e324239febea7bf60a309a50a55f0b2da2ab570d601eb3df43d30"
+    },
+    {
+      "id": "note-reveal-auth",
+      "label": "Shared authorization for note reveal",
+      "component": "NativeOperationAuthentication",
+      "width": 390,
+      "height": 844,
+      "file": "note-reveal-auth-390.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1&private-note-fixture",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nAuthorizing\u2026\nLock wallet\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "0eaaab4ced8ad90cdeb709773d0e2b50387c601014a44b6e1a144590b36556f8"
+    },
+    {
+      "id": "note-reveal-review",
+      "label": "Private note before shared authorization",
+      "component": "NativeNoteReveal",
+      "width": 320,
+      "height": 568,
+      "file": "note-reveal-review-320.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1&private-note-fixture",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nReveal private note\nLock wallet",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "1145295a154f10deb0bc95fc8d9378aaafa14ddfe71438c2caa00eac44f6a459"
+    },
+    {
+      "id": "note-reveal-auth",
+      "label": "Shared authorization for note reveal",
+      "component": "NativeOperationAuthentication",
+      "width": 320,
+      "height": 568,
+      "file": "note-reveal-auth-320.png",
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "url": "http://127.0.0.1:4182/?visual-review=1&private-note-fixture",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        }
+      ],
+      "overflow": false,
+      "text": "Back up this note\nAnyone with this note can withdraw\nKeep your backup private. Your recovery phrase can\u2019t restore this note.\nAuthorizing\u2026\nLock wallet\nUnlock private information\nEnter your Pali PIN to continue.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "9b941670ecae301b3b872f883837febec45da824de56931cbcadf8f3074eed6d"
+    },
+    {
+      "id": "dapp-erc20",
+      "label": "Dapp erc20 primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc20-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-20 transfer\n123.456789\nTOK\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "25a6651d41ca2403d4393c2993759880a080db5da61bbe850a198094a7b1a957"
+    },
+    {
+      "id": "dapp-erc20-details",
+      "label": "Dapp erc20 recipient and fee review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc20-details-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc20",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-20 transfer\n123.456789\nTOK\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "42a98b4f854c61474d2e8cb9c454b4e38bc9f32d698da21214652e456b1f43fd"
+    },
+    {
+      "id": "utxo-copy-pending",
+      "label": "Transaction copy remains disabled while pending",
+      "component": "UtxoActivityScreen / TransactionDetailLayout",
+      "width": 390,
+      "height": 844,
+      "file": "utxo-copy-pending-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?utxo-activity=bitcoin&activity-mode=value",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction details\nActivity watch \u00b7 Bitcoin\nAll\nSent\nReceived\nNov 14, 2023\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nOlder activity\n20 transactions shown\nSent\n-9 BTC\nConfirmed\nNetwork\nBitcoin\nDate\nNov 14, 2023, 2:13 PM\nFrom\nbc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4\nTo\nbc1qw508d6qejxtd\u2026V7uhcoDz92PH\nNetwork fee\n1.0 BTC\nTransaction ID\n0000000000000000\u2026000000000001\nView on explorer\nDetails",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "f484283917fbb4e40307a1736037bc304c6d3eb26bc6d53da751100dcfda6a71"
+    },
+    {
+      "id": "recovery-intro",
+      "label": "Recover access introduction",
+      "component": "NativeRecovery",
+      "width": 390,
+      "height": 844,
+      "file": "recovery-intro-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Recover access\nForgot your PIN?\nRestore with your recovery phrase, then create a new Pali PIN.\nYour phrase restores the wallet\nYou cannot recover your old PIN. Your recovery phrase is required to regain access.\nThis checks the wallet saved on this phone. Nothing is erased automatically.\nSaved-data details\nRestore Wallet\nCancel",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "bf157d5d8c647387cb18950dd4c7069c3a45c2b6abd0e931ddd20f76f3a65eac"
+    },
+    {
+      "id": "recovery-phrase",
+      "label": "Recovery phrase before verification",
+      "component": "NativeRecovery",
+      "width": 390,
+      "height": 844,
+      "file": "recovery-phrase-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Recovery phrase\nEnter your recovery phrase\nEnter each word in its original order. Pali will check that the phrase matches this wallet.\n12 words\n24 words\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\nKeep your phrase private\nPali support will never ask for these words.\nContinue\nCancel",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "d12f74c95ac8c35c34bd41996419b9063102aac7a26850571d3bc9a608b03df9"
+    },
+    {
+      "id": "recovery-verified",
+      "label": "Verified wallet before new PIN",
+      "component": "NativeRecovery",
+      "width": 390,
+      "height": 844,
+      "file": "recovery-verified-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Wallet verified\nYour phrase matches this saved wallet.\nOnly the PIN for this phone will change. Saved accounts, imported-key records, tokens and transaction records will be kept.\nSaved-data details\nCreate new PIN\nCancel recovery",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "f7c00b60acf8b1c076304424a722595eb0110237aa12e293167c69d4ede68795"
+    },
+    {
+      "id": "recovery-new-pin",
+      "label": "Create new PIN after verification",
+      "component": "NativeRecovery / PinSetup",
+      "width": 390,
+      "height": 844,
+      "file": "recovery-new-pin-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "1 of 2\nCreate a new 6-digit PIN\nUse this PIN to unlock Pali and confirm transactions.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "e0a34eb6af41e62a27ac5eabf9883687c50ea1716790a50ef9745dd16b079c17"
+    },
+    {
+      "id": "recovery-confirm-pin",
+      "label": "Confirm replacement PIN",
+      "component": "NativeRecovery / PinSetup",
+      "width": 390,
+      "height": 844,
+      "file": "recovery-confirm-pin-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "2 of 2\nConfirm your PIN\nEnter the same PIN again.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "0ac1be722f2d39bdb973a33063469ea192b36bc6b73f5a06938006807b5268fa"
+    },
+    {
+      "id": "recovery-complete",
+      "label": "Recovery complete: unlock with the new PIN",
+      "component": "NativeWallet / PinEntryScreen",
+      "width": 390,
+      "height": 844,
+      "file": "recovery-complete-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Pali Wallet\nWelcome back\nPIN changed\nPIN changed. Unlock with your new PIN.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0\nForgot PIN?",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "40d27f7c9e4063c557f806fe9b6657602e7c8767a0ced5c64597d50184031c25"
+    },
+    {
+      "id": "recovery-interrupted",
+      "label": "Recovery interrupted: possible completion notice",
+      "component": "NativeWallet / PinEntryScreen",
+      "width": 390,
+      "height": 844,
+      "file": "recovery-interrupted-390.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Pali Wallet\nWelcome back\nCheck your PIN\nWe could not confirm the PIN change. It may have completed. Unlock with your new PIN first; if it does not work, try your previous unlock method.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0\nForgot PIN?",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "26507b09de1d4e8da6368526389af401d8d1aa8aa7be7a0271ea84d9b5a0e6a1"
+    },
+    {
+      "id": "dapp-erc721",
+      "label": "Dapp erc721 primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc721-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "f2976203604668653ba094eb4f90194e8b491b75aaab2c1d8ae0c3f12d638e1c"
+    },
+    {
+      "id": "dapp-erc721-recipient",
+      "label": "Dapp erc721 full recipient and token contract",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc721-recipient-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "248fcaa608fa71441c1fb4820ff9fd12f137e586a17dd01619be9dd9dd3e6410"
+    },
+    {
+      "id": "dapp-erc721-details",
+      "label": "Dapp erc721 token contract, owner and fee review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc721-details-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc721",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-721 transfer\n#42\n1 NFT\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "ddddc6f9a73150c79b4bc38103df1b9e13c8c97d18c841514b395c9558947550"
+    },
+    {
+      "id": "dapp-erc1155",
+      "label": "Dapp erc1155 primary transfer review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc1155-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "6b14360345f08b9cccf3322df64a635a3fca487e7ee0b08c6e026139e24b33f2"
+    },
+    {
+      "id": "dapp-erc1155-recipient",
+      "label": "Dapp erc1155 full recipient and token contract",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc1155-recipient-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "248fcaa608fa71441c1fb4820ff9fd12f137e586a17dd01619be9dd9dd3e6410"
+    },
+    {
+      "id": "dapp-erc1155-details",
+      "label": "Dapp erc1155 token contract, owner and fee review",
+      "component": "NativeTransactionReviewScreen",
+      "width": 320,
+      "height": 568,
+      "file": "dapp-erc1155-details-320.png",
+      "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "url": "http://127.0.0.1:4179/?transaction-review&transfer-kind=erc1155",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4179/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+          "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction request\nE\nExample app\nCustom network \u00b7 https://example.invalid\nERC-1155 transfer\n#7\n2 NFTs\n#42\n3 NFTs\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x2222222222222222222222222222222222222222\nRecipient\n0x4444444444444444444444444444444444444444\nToken contract\n0x3333333333333333333333333333333333333333\nAsset owner\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network \u00b7 Chain 743211\nMaximum network fee\n0.000000000000252 COIN\nMaximum COIN debit\n0.000000000000252 COIN\nView transaction details\nReject\nConfirm",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "ddddc6f9a73150c79b4bc38103df1b9e13c8c97d18c841514b395c9558947550"
+    },
+    {
+      "id": "utxo-copy-pending",
+      "label": "Transaction copy remains disabled while pending",
+      "component": "UtxoActivityScreen / TransactionDetailLayout",
+      "width": 320,
+      "height": 568,
+      "file": "utxo-copy-pending-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?utxo-activity=bitcoin&activity-mode=value",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Transaction details\nActivity watch \u00b7 Bitcoin\nAll\nSent\nReceived\nNov 14, 2023\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nSent\nBitcoin \u00b7 Confirmed\n-10 BTC\n2:13 PM\nOlder activity\n20 transactions shown\nSent\n-9 BTC\nConfirmed\nNetwork\nBitcoin\nDate\nNov 14, 2023, 2:13 PM\nFrom\nbc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4\nTo\nbc1qw508d6qejxtd\u2026V7uhcoDz92PH\nNetwork fee\n1.0 BTC\nTransaction ID\n0000000000000000\u2026000000000001\nView on explorer\nDetails",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "dea55690d6595136e3652266777727f2971c7e069f76bef59c8624c568961f96"
+    },
+    {
+      "id": "recovery-intro",
+      "label": "Recover access introduction",
+      "component": "NativeRecovery",
+      "width": 320,
+      "height": 568,
+      "file": "recovery-intro-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Recover access\nForgot your PIN?\nRestore with your recovery phrase, then create a new Pali PIN.\nYour phrase restores the wallet\nYou cannot recover your old PIN. Your recovery phrase is required to regain access.\nThis checks the wallet saved on this phone. Nothing is erased automatically.\nSaved-data details\nRestore Wallet\nCancel",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "5a034a9789ec6f87bd6d66d571abf21ef45585cf253193920461043679294b07"
+    },
+    {
+      "id": "recovery-phrase",
+      "label": "Recovery phrase before verification",
+      "component": "NativeRecovery",
+      "width": 320,
+      "height": 568,
+      "file": "recovery-phrase-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Recovery phrase\nEnter your recovery phrase\nEnter each word in its original order. Pali will check that the phrase matches this wallet.\n12 words\n24 words\n1\n2\n3\n4\n5\n6\n7\n8\n9\n10\n11\n12\nKeep your phrase private\nPali support will never ask for these words.\nContinue\nCancel",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "537c5e4fdb109a46205c75d04bfecd917df1f33e870dc2ed3d495a87697aae8d"
+    },
+    {
+      "id": "recovery-verified",
+      "label": "Verified wallet before new PIN",
+      "component": "NativeRecovery",
+      "width": 320,
+      "height": 568,
+      "file": "recovery-verified-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Wallet verified\nYour phrase matches this saved wallet.\nOnly the PIN for this phone will change. Saved accounts, imported-key records, tokens and transaction records will be kept.\nSaved-data details\nCreate new PIN\nCancel recovery",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "9130417fb2114e719d29940beaf16738f5deac94744a246bd276e75f71f19fd3"
+    },
+    {
+      "id": "recovery-new-pin",
+      "label": "Create new PIN after verification",
+      "component": "NativeRecovery / PinSetup",
+      "width": 320,
+      "height": 568,
+      "file": "recovery-new-pin-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "1 of 2\nCreate a new 6-digit PIN\nUse this PIN to unlock Pali and confirm transactions.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "a17d9c6ed421c4a10745ad264311347e61cd8cc336a3986aefbd81ef2245c3bb"
+    },
+    {
+      "id": "recovery-confirm-pin",
+      "label": "Confirm replacement PIN",
+      "component": "NativeRecovery / PinSetup",
+      "width": 320,
+      "height": 568,
+      "file": "recovery-confirm-pin-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "2 of 2\nConfirm your PIN\nEnter the same PIN again.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "dbb6c4a5f9684f0011276064e0e6b9a923ea38412ac961d6d5c471bde6c6dd96"
+    },
+    {
+      "id": "recovery-complete",
+      "label": "Recovery complete: unlock with the new PIN",
+      "component": "NativeWallet / PinEntryScreen",
+      "width": 320,
+      "height": 568,
+      "file": "recovery-complete-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Pali Wallet\nWelcome back\nPIN changed\nPIN changed. Unlock with your new PIN.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0\nForgot PIN?",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "3a4cf1919670036e91de1401237280b31c224e3cbca029b2b219454250ca3159"
+    },
+    {
+      "id": "recovery-interrupted",
+      "label": "Recovery interrupted: possible completion notice",
+      "component": "NativeWallet / PinEntryScreen",
+      "width": 320,
+      "height": 568,
+      "file": "recovery-interrupted-320.png",
+      "sourceCommit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "url": "http://127.0.0.1:4182/?visual-review=1",
+      "assets": [
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "url": "http://127.0.0.1:4182/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+        }
+      ],
+      "overflow": false,
+      "text": "Pali Wallet\nWelcome back\nCheck your PIN\nWe could not confirm the PIN change. It may have completed. Unlock with your new PIN first; if it does not work, try your previous unlock method.\n1\n2\n3\n4\n5\n6\n7\n8\n9\n0\nForgot PIN?",
+      "errors": [],
+      "qualification": "Actual React Native Web components with synthetic public adapters; no real custody, OS biometric, file, or transaction qualification.",
+      "sha256": "b1d19251ef8d3e7958b1fc326b337193b3a2b8dbd4982332bd492320b7d3ac38"
+    }
+  ],
+  "failures": []
+}

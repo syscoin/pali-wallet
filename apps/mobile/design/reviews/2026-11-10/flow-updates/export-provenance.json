@@ -1,0 +1,564 @@
+{
+  "sourceCommit": "a7c370a22656574043007ccc8d15fe2af342351a",
+  "capturedAt": "2026-11-10T21:52:18.046Z",
+  "candidateHead": "d42ec22ad9db7a2325d7f1acd03ce18680329002",
+  "candidateArchiveSha256": "f9e95f86a62c3c01ffcd646bb4b529b8c1b22c9ad43a20fa71dc4628b7e77536",
+  "resolver": "/private/tmp/pali-preview-metro.cjs",
+  "resolverSha256": "bc29f87b3c1bcdd33ddfda6afab3e0686c8ff190f0e285cc3cfa44cc9492b3b2",
+  "keyringRoot": "/Users/sidhujag/.codex/worktrees/pali-mobile-ux-review/pali-wallet/apps/mobile/node_modules/@sidhujag/sysweb3-keyring",
+  "keyringCoreSha256": "0458ec1b4c72e7c940dfb0103195733b6c8fe4dacac1f2907118655143b98d44",
+  "keyringIndexSha256": "f761854347d5b8dd71f70b88ed7dbb062109973a256c8dddf3ddaeed4fe864bc",
+  "files": [
+    {
+      "path": "dist/_expo/static/js/web/bootstrap-8af2daec3f9101067b436eeaa4a8d8b0.js",
+      "sha256": "7c8c9366cc9473c81f880cd5e116f897dcbe74a1aa7924b50a9ded5d14d4b445"
+    },
+    {
+      "path": "dist/_expo/static/js/web/de-a41a9f557278f8ba70c1cb6dc828fc8f.js",
+      "sha256": "f9423119cbfd32db4b5a4054c72eb10a074e71762106ffdf7288489704ac0ba8"
+    },
+    {
+      "path": "dist/_expo/static/js/web/es-c112d5cab3f62ce7a708d32f8fbaff23.js",
+      "sha256": "93e1b7951ff98e625c9dd45b8a6c4f4019086fdd3591194853f04a038f273bf6"
+    },
+    {
+      "path": "dist/_expo/static/js/web/fr-e69c5db8f3f3ef5c1766ab90d86f743d.js",
+      "sha256": "b5b91777f7a7fa65aafd00f4769f5998d3ce323b5df7ea1ce609e5682e7d4c3f"
+    },
+    {
+      "path": "dist/_expo/static/js/web/guardianStatus-fa33b109bfb304eadbfefa660659b130.js",
+      "sha256": "9c4ab13e16541c9005cf885f1655755d3a8b3e637224219337197a65cc601b9a"
+    },
+    {
+      "path": "dist/_expo/static/js/web/index-6ae8d8e4e3fe08d3738d18f178b9d5b0.js",
+      "sha256": "2bd5b9123c5d43d5ca71438eea384c86dac57855694466f85984d7b0a2a5b5ee"
+    },
+    {
+      "path": "dist/_expo/static/js/web/infrastructureObservation-28e9a824ff954be9e41c65f41bab2c2c.js",
+      "sha256": "99cc95b234a8c57957d726c6d4087e4007424eddec4f32f806df5ae78f1a3c8e"
+    },
+    {
+      "path": "dist/_expo/static/js/web/ja-7ad3dfb74aba79a1c7f8365318d3592a.js",
+      "sha256": "f03520e786bcd134a6d5f9e1e7d69fd7388ddda3f25adcc6d7384dee6ac63561"
+    },
+    {
+      "path": "dist/_expo/static/js/web/ko-d60211265d2abc48a961be7aa2fd5cbf.js",
+      "sha256": "e834eb16a576ed99beb273e568533cde6a52aeee6dc8a0b071c7abfaa9d58166"
+    },
+    {
+      "path": "dist/_expo/static/js/web/pt-0f31071bfaca2a59109f23fcfb3b44b0.js",
+      "sha256": "8f5a7c974646d565eb799286d3be476296237ab326e8bf31eba15fc3d71177e1"
+    },
+    {
+      "path": "dist/_expo/static/js/web/ru-57871593f4c1f94a102be779f0fded7f.js",
+      "sha256": "ca694034b1b638e1b948d64dd0a37ff50e96b936793c2ecf1f137a30e5ff3e26"
+    },
+    {
+      "path": "dist/_expo/static/js/web/zh-4fa2971c4aba4b38ffe8ef5b08c3f4f5.js",
+      "sha256": "7535ddc41359cc91de0d146c6a7e3d143c19618a3d450e317ff4751c079eccf5"
+    },
+    {
+      "path": "dist/assets/__source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png",
+      "sha256": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0"
+    },
+    {
+      "path": "dist/assets/assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png",
+      "sha256": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8"
+    },
+    {
+      "path": "dist/index.html",
+      "sha256": "8e5226801cdd9993df4bb9ffcd0c39de8132bf06308caca5eff80415cfb3bfbf"
+    },
+    {
+      "path": "dist/metadata.json",
+      "sha256": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/bootstrap-3cb74762bdcf6b22c62e89261b3953d8.js",
+      "sha256": "707425bd982c067b40ca4085560bbc0b435ae6eb3b5efe04c1a7d7b24612ebf0"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/de-2133b8684f498b7693fa9bac6a762fc2.js",
+      "sha256": "c0a7d5b119fe67fd7de0527a9959118e2a057a463467b416bdfbde1b9f47b165"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/entry-e1d860740ba1fa750118f9a8d7eaa7e4.js",
+      "sha256": "d1a0cd1d0465fe2caf1a43360b9a429852e31d047c5dbeb0605cf170c8fba7a6"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/es-bdeacf38c6401795e592fa59ac21c63e.js",
+      "sha256": "df9b01c5324227a08b34d3ab0a20e8ba8f8dad31b404eba0e27d3c60b007166f"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/fr-f3b3921408b71c47b9115fbd79060a09.js",
+      "sha256": "7c383d4c4cd5413fd44910cec0345e945ad68ccd427fedccbf672b3d44eae9f4"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/guardianStatus-ba1b0c8d4e793408bba9d17d0e6e38f7.js",
+      "sha256": "9463c06a5b837209a81d925ecfb5dce80e14d5a66c31d8e92a5bd4a411bdc9a5"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/ja-b48f0794880f6ab349089fb8cf3d212b.js",
+      "sha256": "f7a14557d7de3862d3b5a9987632ac2e9ca407a9752242d0461d6a28ad9b982c"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/ko-25f5c4b8d39bceb334baa2ee356edf3d.js",
+      "sha256": "d34e2c63f12d11f4265d87d28586f90160d5160cf42e992cac05a5f372a0efb3"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/pt-4f8ac711be63d3e2e6478f337a91b258.js",
+      "sha256": "645e54b842213227261c2b4d6d879a488113b08a63d400df88db230192f50568"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/ru-6edfd95c6a11e68ec8c3a217feb18e23.js",
+      "sha256": "d52b695ebab7aa02e9a1c44dd1a612b4715461d3c15d0cea79161368d6b8765e"
+    },
+    {
+      "path": "dist-native-send-ui/_expo/static/js/web/zh-7af21d6bcc949fb945ced69caa7f74c6.js",
+      "sha256": "eb12489fc0be75a6360d296d0495134d903ce6ba0df1265bd88862ba9e6a1748"
+    },
+    {
+      "path": "dist-native-send-ui/assets/____source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png",
+      "sha256": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0"
+    },
+    {
+      "path": "dist-native-send-ui/assets/__assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png",
+      "sha256": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8"
+    },
+    {
+      "path": "dist-native-send-ui/index.html",
+      "sha256": "d2b0c1ef8d8e99afe0a3a580d94a64721d757e412a2fa44d28e2732ce3ea47cc"
+    },
+    {
+      "path": "dist-native-send-ui/metadata.json",
+      "sha256": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/bls12-381-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "d6421e93688b8b488e4392bea0dc394c6669e3f15f620392666170da849c8041"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/bootstrap-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "61bb98224f0d913f49bf78a16d99460a752a058ca6254af38f1e4a49d8b69696"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/classical-public-key-3fc9ba62b536c195871bba6e089f3ee0.js",
+      "sha256": "f2f758d848cadcb30b05736c1eb3ef93b301eaf7bd0dee4f9f48dce95531fc70"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/dappPsbt-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "f8bf09d16d72b4115adcd49a9909bedfe11930f996b9222647ea63b390b6c85d"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/de-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "d8e8655a51f14490b770a354077ea4caf8500603dc78aa8199c622e785358dcb"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/deployment-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "62f333aeb53db56f10ad2fcc9e70f7af8495c02fa3b8f8c5cec441c7636cd012"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+      "sha256": "929c1263e1517a9d117b7e57adf8ac3fd60590dfb17a6cb4a1c3152a37cf51ab"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/es-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "f6bcacc5cd700d8a91fbe1c277f5166b0b9eed005b5a071603cea6a407ac2817"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/fr-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "6079cb390f660065165889c1f62cf4bf4ff373a4594441398553d5d7f6b65940"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/hkdf-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "2d78e1312203967c15db36559957346123f7c720d7ec2682288e55e2e77ea405"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/index-518129db70a18c657a3dbefd328e09e8.js",
+      "sha256": "fedf978099e6a627d94b39987418d456efe9d465d32bec721afea7ce3619b182"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/index-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "739dc2c0170523cb4e276018877a2a89f913040174f7ee9ac010cee9145cff75"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/infrastructureObservation-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "1e52840a3d3cbf5d3b12eb8520006c7558dc789c314422c9e1d89caf5199e7f7"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/ja-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "f2587f1908766c2be26fe2173baf735424e99600b6dbcc9da4ef009cc019ddc9"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/ko-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "52546be5552557ace2dd8ec9dbd9d9be681837431015f336eaa4b57e115d23fe"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/ledger-hardware-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "4416c1351e2ae81e0c1766391a9412425b61dce6b461783caf7e13ef73d7e220"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/nativeNoteExport-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "25d384b689fa907373e417a40f01861169676a2f63a28e7fcaf92c86a06fcc3a"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/nativeNoteRestore-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "39758eafe95d4c6a9e9dea2f76cac5e12ec62588cb80b1465ba5aa3fd9e1d020"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/noteBackupPicker-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "364972c78ed4e2eca33e26fad5258ed2a1b60c83f07e88df9af37d11bd5d42f1"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/noteBackupRuntime-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "338dc6691e051a1a86fb0d6c453e6bbca8d16f8ac9755873ffb176ec95cfdf92"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/pt-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "9de02a2618fca01bfed48ec5a7b4f1e569d0336c77d1a3b9d7d54168e9f16f08"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/ru-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "ab431f83bc8d143516cb26571d803cf00abc6bed21fa6436a1a8d66f05b23248"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/secp256k1-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "7ea7b410ca8b3833cffca73d8672c54d9be5a97d7dac4336eed6fbf98747a8bd"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/sentryKeyManagement-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "b1292c928e47fc783b8b8b13a6b35170751ccce2ba81632e5744fbe491904441"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/slh-dsa-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "27c24641de7ade0cd644c738040e0310e45bde08dd498f54a25af20578ab5aef"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/trezor-hardware-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "16489a93875111000ef99b979429c2155a16c5f6faa917beb9afdb59ff9e0f4a"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/utxoSend-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "0238dd639ba1701a26a16404de2f9b709c2d7afa46373c7c3e0ad964ce06dfd8"
+    },
+    {
+      "path": "dist-native-watch-ui/_expo/static/js/web/zh-d41d8cd98f00b204e9800998ecf8427e.js",
+      "sha256": "206c95b3045f30f8e2f61c0f720203132c6d2df07f8fa523579881fde8fd5ac1"
+    },
+    {
+      "path": "dist-native-watch-ui/assets/____source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png",
+      "sha256": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0"
+    },
+    {
+      "path": "dist-native-watch-ui/assets/__assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png",
+      "sha256": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8"
+    },
+    {
+      "path": "dist-native-watch-ui/index.html",
+      "sha256": "c22a6c491b8cf8df998b5b75f4185aef787a7eff2d494c550dc0dcefe130b08c"
+    },
+    {
+      "path": "dist-native-watch-ui/metadata.json",
+      "sha256": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991"
+    }
+  ],
+  "watchReexportCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+  "sourceCommitByExport": {
+    "dist": "a7c370a22656574043007ccc8d15fe2af342351a",
+    "dist-native-send-ui": "a7c370a22656574043007ccc8d15fe2af342351a",
+    "dist-native-watch-ui": "ca14d91409defadcd45f0cd044cf3eccae02cada"
+  },
+  "previousWatchExports": [
+    {
+      "sourceCommit": "ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065",
+      "files": [
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/bls12-381-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "d6421e93688b8b488e4392bea0dc394c6669e3f15f620392666170da849c8041"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/bootstrap-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "61bb98224f0d913f49bf78a16d99460a752a058ca6254af38f1e4a49d8b69696"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/classical-public-key-3fc9ba62b536c195871bba6e089f3ee0.js",
+          "sha256": "f2f758d848cadcb30b05736c1eb3ef93b301eaf7bd0dee4f9f48dce95531fc70"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/dappPsbt-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "f8bf09d16d72b4115adcd49a9909bedfe11930f996b9222647ea63b390b6c85d"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/de-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "d8e8655a51f14490b770a354077ea4caf8500603dc78aa8199c622e785358dcb"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/deployment-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "62f333aeb53db56f10ad2fcc9e70f7af8495c02fa3b8f8c5cec441c7636cd012"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "e2ef393a456885ce2cceca85a789debfec92e420a3900589586f15283f17e8bf"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/es-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "f6bcacc5cd700d8a91fbe1c277f5166b0b9eed005b5a071603cea6a407ac2817"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/fr-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "6079cb390f660065165889c1f62cf4bf4ff373a4594441398553d5d7f6b65940"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/hkdf-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "2d78e1312203967c15db36559957346123f7c720d7ec2682288e55e2e77ea405"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/index-518129db70a18c657a3dbefd328e09e8.js",
+          "sha256": "fedf978099e6a627d94b39987418d456efe9d465d32bec721afea7ce3619b182"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/index-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "739dc2c0170523cb4e276018877a2a89f913040174f7ee9ac010cee9145cff75"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/infrastructureObservation-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "1e52840a3d3cbf5d3b12eb8520006c7558dc789c314422c9e1d89caf5199e7f7"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ja-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "f2587f1908766c2be26fe2173baf735424e99600b6dbcc9da4ef009cc019ddc9"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ko-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "52546be5552557ace2dd8ec9dbd9d9be681837431015f336eaa4b57e115d23fe"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ledger-hardware-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "4416c1351e2ae81e0c1766391a9412425b61dce6b461783caf7e13ef73d7e220"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/nativeNoteExport-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "25d384b689fa907373e417a40f01861169676a2f63a28e7fcaf92c86a06fcc3a"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/nativeNoteRestore-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "39758eafe95d4c6a9e9dea2f76cac5e12ec62588cb80b1465ba5aa3fd9e1d020"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/noteBackupPicker-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "364972c78ed4e2eca33e26fad5258ed2a1b60c83f07e88df9af37d11bd5d42f1"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/noteBackupRuntime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "338dc6691e051a1a86fb0d6c453e6bbca8d16f8ac9755873ffb176ec95cfdf92"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/pt-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "9de02a2618fca01bfed48ec5a7b4f1e569d0336c77d1a3b9d7d54168e9f16f08"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ru-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "ab431f83bc8d143516cb26571d803cf00abc6bed21fa6436a1a8d66f05b23248"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/secp256k1-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "7ea7b410ca8b3833cffca73d8672c54d9be5a97d7dac4336eed6fbf98747a8bd"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/sentryKeyManagement-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "b1292c928e47fc783b8b8b13a6b35170751ccce2ba81632e5744fbe491904441"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/slh-dsa-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "27c24641de7ade0cd644c738040e0310e45bde08dd498f54a25af20578ab5aef"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/trezor-hardware-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "16489a93875111000ef99b979429c2155a16c5f6faa917beb9afdb59ff9e0f4a"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/utxoSend-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "0238dd639ba1701a26a16404de2f9b709c2d7afa46373c7c3e0ad964ce06dfd8"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/zh-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "206c95b3045f30f8e2f61c0f720203132c6d2df07f8fa523579881fde8fd5ac1"
+        },
+        {
+          "path": "dist-native-watch-ui/assets/____source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png",
+          "sha256": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0"
+        },
+        {
+          "path": "dist-native-watch-ui/assets/__assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png",
+          "sha256": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8"
+        },
+        {
+          "path": "dist-native-watch-ui/index.html",
+          "sha256": "c22a6c491b8cf8df998b5b75f4185aef787a7eff2d494c550dc0dcefe130b08c"
+        },
+        {
+          "path": "dist-native-watch-ui/metadata.json",
+          "sha256": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991"
+        }
+      ]
+    },
+    {
+      "sourceCommit": "e197989f1fd1ac0112771cf9dc02bc677a076526",
+      "files": [
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "fb231b0fff3ab939b1211808081b179c105b7d3357f4b7094fe7c2950679892c"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "818f8bc5d039443f1b1ef0ae4d9f7fd0365762e2322d595fd6752a7e19975f3d"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/bls12-381-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "d6421e93688b8b488e4392bea0dc394c6669e3f15f620392666170da849c8041"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/bootstrap-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "61bb98224f0d913f49bf78a16d99460a752a058ca6254af38f1e4a49d8b69696"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/classical-public-key-3fc9ba62b536c195871bba6e089f3ee0.js",
+          "sha256": "f2f758d848cadcb30b05736c1eb3ef93b301eaf7bd0dee4f9f48dce95531fc70"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/dappPsbt-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "f8bf09d16d72b4115adcd49a9909bedfe11930f996b9222647ea63b390b6c85d"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/de-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "d8e8655a51f14490b770a354077ea4caf8500603dc78aa8199c622e785358dcb"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/deployment-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "62f333aeb53db56f10ad2fcc9e70f7af8495c02fa3b8f8c5cec441c7636cd012"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js",
+          "sha256": "6ea5b2514f832d579204d4b70ffd16a8373a1c1a9c9de0971d2e040a623195a6"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/es-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "f6bcacc5cd700d8a91fbe1c277f5166b0b9eed005b5a071603cea6a407ac2817"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/fr-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "6079cb390f660065165889c1f62cf4bf4ff373a4594441398553d5d7f6b65940"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/hkdf-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "2d78e1312203967c15db36559957346123f7c720d7ec2682288e55e2e77ea405"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/index-518129db70a18c657a3dbefd328e09e8.js",
+          "sha256": "fedf978099e6a627d94b39987418d456efe9d465d32bec721afea7ce3619b182"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/index-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "739dc2c0170523cb4e276018877a2a89f913040174f7ee9ac010cee9145cff75"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/infrastructureObservation-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "1e52840a3d3cbf5d3b12eb8520006c7558dc789c314422c9e1d89caf5199e7f7"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ja-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "f2587f1908766c2be26fe2173baf735424e99600b6dbcc9da4ef009cc019ddc9"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ko-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "52546be5552557ace2dd8ec9dbd9d9be681837431015f336eaa4b57e115d23fe"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ledger-hardware-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "4416c1351e2ae81e0c1766391a9412425b61dce6b461783caf7e13ef73d7e220"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/nativeNoteExport-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "25d384b689fa907373e417a40f01861169676a2f63a28e7fcaf92c86a06fcc3a"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/nativeNoteRestore-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "39758eafe95d4c6a9e9dea2f76cac5e12ec62588cb80b1465ba5aa3fd9e1d020"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/noteBackupPicker-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "364972c78ed4e2eca33e26fad5258ed2a1b60c83f07e88df9af37d11bd5d42f1"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/noteBackupRuntime-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "338dc6691e051a1a86fb0d6c453e6bbca8d16f8ac9755873ffb176ec95cfdf92"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/pt-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "9de02a2618fca01bfed48ec5a7b4f1e569d0336c77d1a3b9d7d54168e9f16f08"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/ru-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "ab431f83bc8d143516cb26571d803cf00abc6bed21fa6436a1a8d66f05b23248"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/secp256k1-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "7ea7b410ca8b3833cffca73d8672c54d9be5a97d7dac4336eed6fbf98747a8bd"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/sentryKeyManagement-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "b1292c928e47fc783b8b8b13a6b35170751ccce2ba81632e5744fbe491904441"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/slh-dsa-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "27c24641de7ade0cd644c738040e0310e45bde08dd498f54a25af20578ab5aef"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/trezor-hardware-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "16489a93875111000ef99b979429c2155a16c5f6faa917beb9afdb59ff9e0f4a"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/utxoSend-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "0238dd639ba1701a26a16404de2f9b709c2d7afa46373c7c3e0ad964ce06dfd8"
+        },
+        {
+          "path": "dist-native-watch-ui/_expo/static/js/web/zh-d41d8cd98f00b204e9800998ecf8427e.js",
+          "sha256": "206c95b3045f30f8e2f61c0f720203132c6d2df07f8fa523579881fde8fd5ac1"
+        },
+        {
+          "path": "dist-native-watch-ui/assets/____source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png",
+          "sha256": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0"
+        },
+        {
+          "path": "dist-native-watch-ui/assets/__assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png",
+          "sha256": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8"
+        },
+        {
+          "path": "dist-native-watch-ui/index.html",
+          "sha256": "c22a6c491b8cf8df998b5b75f4185aef787a7eff2d494c550dc0dcefe130b08c"
+        },
+        {
+          "path": "dist-native-watch-ui/metadata.json",
+          "sha256": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991"
+        }
+      ]
+    }
+  ],
+  "updatedAt": "2026-11-10T22:19:48.383Z"
+}

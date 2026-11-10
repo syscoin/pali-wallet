@@ -186,7 +186,9 @@
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-08-320.png",
-      "comparison_sha256": "c8bee6056ddad12bcbb77cb01c05465133464e6faa539ed04fe817136575baa0"
+      "comparison_sha256": "c8df3c41a7b18e02a99d6cb51d2ca33465f2e95718f23422774d8e089140b3e9",
+      "source_commit": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "narrow_actual_sha256": "5a034a9789ec6f87bd6d66d571abf21ef45585cf253193920461043679294b07"
     },
     {
       "page": 9,
@@ -750,13 +752,23 @@
         390,
         844
       ],
-      "actual_sha256": "b350c2d93edfb9ad9afd2c29fccf6ee65120e53b9e21b3c3812ea6d886cb220c",
+      "actual_sha256": "1e0b54b6a5bf1f1d8a5490e333db106709e241d4a52736556745a25ba8fe8a35",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-32-320.png",
-      "comparison_sha256": "18da6ab8c6c5ca1e2ad140b2eed0d2541d4b98c6f56449b1109ebe0129496b9e"
+      "comparison_sha256": "8ebe67290783dfeb7d882aefb992b4bd71a8e868db3b2ee4f1a42273fc5438b1",
+      "source_commit": "a7c370a22656574043007ccc8d15fe2af342351a",
+      "narrow_actual_sha256": "1c6f02451ac0d862f8040714fa56b9856f91b7a10ecf511f6d0a9abb6eb09cbc"
     }
   ],
   "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
-  "capture_method": "Actual React Native components with synthetic adapters at 390x844 and 320x568. No native-device qualification."
+  "capture_method": "Actual React Native components with synthetic adapters at 390x844 and 320x568. No native-device qualification.",
+  "targeted_flow_updates": {
+    "manifest": "flow-updates/manifest.json",
+    "exports": {
+      "watch": "ca14d91409defadcd45f0cd044cf3eccae02cada",
+      "send": "a7c370a22656574043007ccc8d15fe2af342351a"
+    },
+    "frames": 65
+  }
 }
