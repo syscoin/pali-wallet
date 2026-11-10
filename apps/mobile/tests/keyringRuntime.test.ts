@@ -715,8 +715,8 @@ test('an incomplete canonical account record is refused unchanged before account
     disk.records.delete(WALLET_CATALOGUE_KEY);
     const incomplete = JSON.stringify([...disk.records]);
     runtime = await disk.factory.open() as KeyringRuntime;
-    await assert.rejects(runtime.session.unlock('000000'), /OPERATION_FAILED/);
-    await assert.rejects(runtime.session.unlock(PASSWORD), /OPERATION_FAILED/);
+    await assert.rejects(runtime.session.unlock('000000'), /NOT_READY/);
+    await assert.rejects(runtime.session.unlock(PASSWORD), /NOT_READY/);
     assert.equal(disk.failureWrites, initialChecks, 'invalid record admission precedes any additional PIN check');
     assert.equal(runtime.catalogue.getSnapshot(), null);
     assert.equal(JSON.stringify([...disk.records]), incomplete);
