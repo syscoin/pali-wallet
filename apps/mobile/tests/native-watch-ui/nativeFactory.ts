@@ -28,6 +28,10 @@ import { createWalletRemovalFixture, fixtureWalletPresent, recreateFixtureWallet
 import { sysxSendFixture } from './sysxSendFixture';
 import { BITCOIN_BIP84_ADDRESS, BITCOIN_BIP84_KEY, BITCOIN_WIF_ADDRESS, BITCOIN_WIF_KEY } from './utxoImportVectors';
 
+const idleTrezorSnapshot = Object.freeze({
+  phase: 'idle' as const, operation: null, networkLabel: '', accountLabel: '', address: null, error: null,
+});
+
 const noteFixtureEnabled = new URLSearchParams(window.location.search).has('private-note-fixture');
 const recorded = Date.UTC(2024, 5, 15);
 const noteResults = {
@@ -372,7 +376,7 @@ export function createNativeWalletControllers() {
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, connections: connections.view, keyExport, imports,
     trezor: {background() {}, async cancel() {}, subscribe: () => () => undefined,
-      getSnapshot: () => ({phase: 'idle' as const, operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+      getSnapshot: () => idleTrezorSnapshot,
       async startImport() {throw Error('Trezor is outside this fixture');},
       async resumeImport() {throw Error('Trezor is outside this fixture');},
       async resumeSend(): Promise<never> {throw Error('Trezor is outside this fixture');}},

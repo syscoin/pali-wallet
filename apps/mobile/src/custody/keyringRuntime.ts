@@ -4,6 +4,7 @@ import { createNativeNoteMaintenanceProofs } from './noteMaintenance.ts';
 import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
 import { NativeSigningHandoffs, sameSigningResumeOwner, type NativeSigningHandoff, type LocalSigningResumeScope, type LocalSigningHandoffDescriptor, requireNativeSigningHandoff } from '../connections/signingHandoff.ts';
 import { signNativeSmartTrezorOwner } from '../hardware/smartOwnerSigning.ts';
+import { snapshotNativeSmartLocalAction } from '../smartAccount/localAction.ts';
 import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '../../../../source/utils/smartAccount/ownerSigning.ts';
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
@@ -3926,22 +3927,29 @@ export function createKeyringRuntimeFactory(
               { keyring: ring, assertCurrent: check }, network.chainId, account.address);
             check();
             const ownerInventory = captureSmartSigningOwners();
+            // Suite continuation owns only an actual Trezor signing plan. Ordinary
+            // wallet operations keep their existing authorization/cancellation path.
+            const localTrezor = origin.kind !== 'dapp' &&
+              ownerInventory.localOwners.some(owner => owner.type === 'Trezor') &&
+              canSignNativeSmartAccountActionHash(account.smartAccount, ownerInventory.localOwners, { slhDsa: slhCapability !== null }) &&
+              getNativeSmartAccountSigningPlan(account.smartAccount, ownerInventory.localOwners, { slhDsa: slhCapability !== null })!
+                .authenticators.some(entry => entry.owners.some(owner => owner.type === 'Trezor'));
             const saved=origin.kind==='local-resume'?origin.descriptor:null;
             const deadline=origin.kind==='dapp'?origin.handoff.expiresAt:saved?.expiresAt??Date.now()+SMART_ACCOUNT_EXECUTION_LIFETIME_MS;
-            const scope=origin.kind==='dapp'?null:await localSmartScope(captured,check);check();
+            const scope=localTrezor?await localSmartScope(captured,check):null;check();
             if(saved&&(!scope||localSmartHandoffs.localDescriptor(saved.id)!==saved||!sameSigningResumeOwner(saved.scope,scope)||scope.unlockGeneration<=saved.scope.unlockGeneration))throw new KeyringRuntimeError('CANCELLED');
             let operation!:NativeSmartAccountOperation;
             let disposeOriginal:()=>Promise<void>;
             const id=saved?.id??`local-smart-${++trezorSequence}`;
-            const handoff=origin.kind==='dapp'?origin.handoff:localSmartHandoffs.captureLocal({id,scope:scope!,action:origin.kind==='local-new'?origin.action:origin.descriptor.action,
+            const handoff=origin.kind==='dapp'?origin.handoff:localTrezor?localSmartHandoffs.captureLocal({id,scope:scope!,action:origin.kind==='local-new'?origin.action:origin.descriptor.action,
               expiresAt:deadline,order:0,assertCurrent:check,
               eligible:()=>operation?.getSnapshot().phase==='preparing-fee'&&!operation.getSnapshot().transactionHash&&!operation.getSnapshot().userOperationSubmissionStarted,
               drain:()=>disposeOriginal(),retire:()=>{if(localSmartContext?.handoff===handoff)localSmartContext=undefined;void disposeOriginal().catch(()=>undefined);},
-            });
+            },snapshotNativeSmartLocalAction):null;
             operation=createNativeSmartOperation({
               intent, pendingRecords, authorizationExpiresAt: Math.min(deadline, Date.now() + SMART_ACCOUNT_EXECUTION_LIFETIME_MS),
               // Dapp departure belongs to the connection queue; wallet actions use this local owner.
-              background: origin.kind==='dapp'?()=>undefined:backgroundLocalSmart,
+              background: localTrezor?backgroundLocalSmart:()=>undefined,
               signingOwners: ownerInventory.localOwners, assertOwnerCurrent(owner) {
                 const record = ownerInventory.ownerRecords.get(`${owner.type}:${owner.id}`);
                 check(); if (!record || state.accounts[owner.type][owner.id] !== record || record.address.toLowerCase() !== owner.address.toLowerCase()) throw new KeyringRuntimeError('CANCELLED');
@@ -3960,10 +3968,15 @@ export function createKeyringRuntimeFactory(
                   if ((owner.type !== 'HDAccount' && owner.type !== 'Imported' && owner.type !== 'Ledger' && owner.type !== 'Trezor') || !target ||
                       target.address.toLowerCase() !== address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
                   if (intent.actionHash !== digest) throw new KeyringRuntimeError('INVALID_INPUT');
+                  let trezorPort: NonNullable<SmartAccountOwnerSigningSdk['trezor']> | null = null;
+                  if (owner.type === 'Trezor') {
+                    requireNativeSigningHandoff(handoff);
+                    trezorPort = smartTrezorSigningPort({id:owner.id,type:'Trezor',address}, metadata, intent, signal, guard, handoff);
+                  }
                   const signature = await signSmartAccountOwnerIntent({
                     intent, selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
                     owner: { ...owner, address }, authority: { assertCurrent: guard, signal },
-                    sdk: smartOwnerSigningPorts({ id: owner.id, type: owner.type, address }, signal, guard, ring, owner.type === 'Trezor' ? smartTrezorSigningPort({id:owner.id,type:'Trezor',address}, metadata, intent, signal, guard, handoff) : null),
+                    sdk: smartOwnerSigningPorts({ id: owner.id, type: owner.type, address }, signal, guard, ring, trezorPort),
                   });
                   guard();
                   return signature;
@@ -4038,7 +4051,8 @@ export function createKeyringRuntimeFactory(
                 }
               },
             });
-            if(origin.kind!=='dapp'){
+            if(localTrezor){
+              requireNativeSigningHandoff(handoff);
               disposeOriginal=operation.dispose.bind(operation);
               const owned:LocalSmartContext={handoff,operation,disposeOriginal};
               localSmartContext=owned;

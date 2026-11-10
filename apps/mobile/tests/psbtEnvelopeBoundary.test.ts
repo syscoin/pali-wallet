@@ -10,7 +10,7 @@ test('public PSBT request queue loads without custody SDK packages', () => {
     import assert from 'node:assert/strict';
     import { registerHooks } from 'node:module';
     registerHooks({ resolve(name, context, next) {
-      if (name.startsWith('@sidhujag/sysweb3') ||
+      if (name === 'ethers' || name.startsWith('ethers/') || name.startsWith('@sidhujag/sysweb3') ||
           ['syscoinjs-lib', 'syscointx-js', 'bitcoinjs-lib'].includes(name))
         throw new Error('blocked custody SDK import');
       return next(name, context);

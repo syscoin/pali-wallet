@@ -1,4 +1,3 @@
-import { snapshotNativeSmartLocalAction } from '../smartAccount/localAction.ts';
 import { measureJsonWorkBudget, DAPP_REQUEST_LIMITS } from '../../../../source/utils/requestPayloadBudget.ts';
 import type { NativeSmartLocalAction } from '../custody/trezorAccounts.ts';
 import type { NativeConnectionBinding } from './storage.ts';
@@ -93,11 +92,12 @@ export class NativeSigningHandoffs {
     const wire=JSON.stringify(entry.wire),requestId=entry.wire.id,binding=Object.freeze({...entry.wire.session.binding});
     return this.captureState(entry,fresh,(job,expiresAt)=>Object.freeze({kind:'dapp',id:entry.id,binding,requestId,wire,scope,expiresAt,order:entry.order,job}));
   }
-  captureLocal(entry: LocalEntry): NativeSigningHandoff {
+  captureLocal(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction): NativeSigningHandoff {
     // Locally initiated public actions have a distinct admission source; they
     // never acquire WalletConnect freshness, topic or grant by fabrication.
+    // The required local DTO capture keeps asset/signing dependencies out of PSBT transport.
     entry.assertCurrent(); measureJsonWorkBudget(entry.action,DAPP_REQUEST_LIMITS.bytes);
-    const action = freezePublicJson(snapshotNativeSmartLocalAction(entry.action)),scope=Object.freeze({...entry.scope});
+    const action = freezePublicJson(snapshotAction(entry.action)),scope=Object.freeze({...entry.scope});
     return this.captureState(entry,true,(job,expiresAt)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}));
   }
   private captureState(entry: Capture, admitted: boolean, describe: (job: object, expiresAt: number) => Descriptor): NativeSigningHandoff {

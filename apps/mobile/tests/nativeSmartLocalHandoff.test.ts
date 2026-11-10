@@ -12,7 +12,7 @@ function fixture(action: NativeSmartLocalAction = {kind:'operation',intent:{kind
   const handoff=manager.captureLocal({id:'local-original',action,scope,expiresAt:Date.now()+60000,order:0,
     assertCurrent(){if(!live)throw Error('CANCELLED');},eligible:()=>true,drain:()=>drain.promise,
     retire(){events.push(handoff.isSuspended()?'suspended-before-retire':'unsafe-retire');live=false;},
-  });
+  }, snapshotNativeSmartLocalAction);
   return {manager,handoff,scope,canceled,events,drain,unlock(){live=true;},async close(){manager.cancelLocal();drain.resolve();await manager.retired();}};
 }
 

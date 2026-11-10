@@ -2988,6 +2988,38 @@ async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | 
   } catch(error) {await f.close();await device.dispose();throw error;}
 }
 
+
+for (const ownerKind of ['software', 'external'] as const)
+  test(`an unrelated saved Trezor account does not own the ${ownerKind} Smart operation lifecycle`, async () => {
+    const { f, device, close } = await readyTrezorSmartOwner();
+    let operation: NativeSmartAccountOperation | undefined;
+    try {
+      const owner = ownerKind === 'software'
+        ? f.owner.getCatalogue()!.accounts.find(account => account.type === 'HDAccount')!.address
+        : '0x' + '66'.repeat(20);
+      f.observedEcdsaOwners([owner], 1);
+      await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+      f.deployed(); f.fundedSmart();
+      operation = await f.runtime.openSmartAccountSend('0x' + '44'.repeat(20), { kind: 'exact', amount: '0.001' }, () => undefined);
+      await operation.prepare();
+      assert.equal(operation.getSnapshot().phase, 'authorize');
+      const signing = operation.authorize(operation.getSnapshot().revision);
+      if (ownerKind === 'software') {
+        for (let attempt = 0; attempt < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
+          await new Promise(resolve => setTimeout(resolve, 5));
+        const review = operation.getSnapshot().payerReview;
+        assert(review);
+        f.owner.lock();
+        operation.confirmPayer(review.id);
+      }
+      await signing;
+      assert.equal(operation.getSnapshot().phase, 'failed');
+      assert.equal(device.signatures.length, 0);
+      assert.equal(f.submitted.length, 0);
+      await assert.rejects(f.runtime.trezor.resumeSend());
+    } finally { await operation?.dispose(); await close(); }
+  });
+
 test('native Smart Trezor dapp typed signing preserves selected Smart and the original journal capability', async () => {
   const {f,device,close} = await readyTrezorSmartOwner();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;

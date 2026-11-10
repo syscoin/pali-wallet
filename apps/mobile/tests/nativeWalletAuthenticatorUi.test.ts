@@ -1,5 +1,6 @@
 import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
+import { snapshotNativeSmartLocalAction } from '../src/smartAccount/localAction.ts';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { URL as NodeURL } from 'node:url';
@@ -807,7 +808,7 @@ for (const action of ['header-event', 'close-event', 'review-event', 'app-backgr
         action: { kind: 'operation', intent: { kind: 'deploy' } },
         scope: { wallet: 'public-wallet', unlockGeneration: 1, accountId: 'smart:60:0', address: account, type: 'SmartAccount', xpub: 'public-xpub', registration: 'full-network', signing: 'public-owner-policy', trezor: true },
         assertCurrent() { assert.equal(signal.aborted, false); }, eligible: () => true, drain: async () => undefined, retire() {},
-      });
+      }, snapshotNativeSmartLocalAction);
       // A real Suite launch is armed before either a manual press or AppState event.
       handoff.beforeSuiteOpen(Date.now() + 45000, job)(true);
       release(controller); await settle();
