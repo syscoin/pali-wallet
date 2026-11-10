@@ -180,7 +180,7 @@ export async function qualifyNativeZksysTransfer(
     expect(!before.entries.some(entry => entry.signer.type === 'HDAccount' && entry.signer.id === 4));
     initialGuard();
     await check('native zkSYS dedicated HD4 account', () =>
-      manage({ kind: 'create', label: 'Qualification zkSYS account', password })
+      manage({ kind: 'create', label: 'Qualification zkSYS account',})
     );
   } else
     await check('native zkSYS select retained HD4 after cold restart', () =>

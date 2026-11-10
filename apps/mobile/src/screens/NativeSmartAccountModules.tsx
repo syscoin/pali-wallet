@@ -9,7 +9,7 @@ import { useNativeTranslation } from '../platform/localization';
 import type { NativeSmartModuleManagement } from '../smartAccount/moduleManagement';
 import type { NativeSmartModuleDraft } from '../smartAccount/modules';
 import type { NativeSmartAccountOperation } from '../smartAccount/operation';
-import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { NativeSendInput } from './NativeSend';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 
@@ -117,8 +117,16 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
         {metadata && mode === 'installed' && <>
           {!validators.length && <Text>{t('smartAccountHub.noModules')}</Text>}
           {validators.map(module => <Card key={module.address} style={s.card}>
-            <Text>{label(module)}</Text><Text selectable style={s.address}>{module.address}</Text>
-            <Text>{t(module.address.toLowerCase() === metadata.auth?.validator.toLowerCase() ? 'smartAccountHub.active' : 'smartAccountHub.installed')}</Text>
+            <View style={s.moduleHeading}>
+              <Text style={s.moduleName}>{label(module)}</Text>
+              <View accessible accessibilityRole="text"
+                accessibilityLabel={t(module.address.toLowerCase() === metadata.auth?.validator.toLowerCase() ? 'smartAccountHub.active' : 'smartAccountHub.installed')}
+                style={s.statusBadge}>
+                <Icon name="check" size={15} color={colors.green} />
+                <Text style={s.statusText}>{t(module.address.toLowerCase() === metadata.auth?.validator.toLowerCase() ? 'smartAccountHub.active' : 'smartAccountHub.installed')}</Text>
+              </View>
+            </View>
+            <Text selectable style={s.address}>{module.address}</Text>
             {canRemoveValidatorModule(metadata, module.address, 'all-installed-composites') && <Button title={t('smartAccountHub.uninstall')} variant="secondary" size="compact" disabled={blocked} onPress={() => {
               if (canRemoveValidatorModule(metadata, module.address, 'all-installed-composites')) review({ kind: 'uninstall', address: module.address });
             }} />}
@@ -161,4 +169,9 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
     </KeyboardAvoidingView>
   </SafeAreaView>;
 }
-const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, address: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, choice: { flexDirection: 'row', alignItems: 'center', gap: 12 }, choiceText: { flex: 1 }, candidate: { gap: 6 } });
+const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, address: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, choice: { flexDirection: 'row', alignItems: 'center', gap: 12 }, choiceText: { flex: 1 }, candidate: { gap: 6 },
+  moduleHeading: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
+  moduleName: { flex: 1, minWidth: 120, fontWeight: '600', fontSize: 17 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#12312d' },
+  statusText: { color: colors.green, fontSize: 12, fontWeight: '600' },
+});

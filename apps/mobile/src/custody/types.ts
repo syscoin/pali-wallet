@@ -80,6 +80,7 @@ export interface CustodyRuntime {
   readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
   readonly security?: {
+    isAuthenticationRefusal(error: unknown): boolean;
     changePin(currentPin: string, nextPin: string, assertCurrent: () => void): Promise<void>;
     authenticationStatus(): Promise<Readonly<{ pinConfigured: boolean; biometricsAvailable: boolean; biometricsEnabled: boolean }>>;
     reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void>;

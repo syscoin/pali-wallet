@@ -76,7 +76,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         label: 'Qualification retired imported key' }, password, state().revision, catalogue().revision);
       expect(catalogue().active.accountId === 'imported:60:0');
       await manage(hd1.id);
-      await authority.manageAccounts({ kind: 'remove', id: 'imported:60:0', password }, state().revision, catalogue().revision);
+      await authority.manageAccounts({ kind: 'remove', id: 'imported:60:0',}, state().revision, catalogue().revision);
       await authority.importAccount({ privateKey: FIXTURE_KEY, expectedAddress: ADDRESS, label: 'Qualification imported key' },
         password, state().revision, catalogue().revision);
     });

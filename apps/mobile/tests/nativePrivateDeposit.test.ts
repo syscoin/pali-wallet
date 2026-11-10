@@ -213,7 +213,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       const accounts = runtime.accounts!;
       await accounts
         .reserve(
-          { kind: 'create', label: 'Second', password: PASSWORD },
+          { kind: 'create', label: 'Second',},
           accounts.getSnapshot()!.revision
         )
         .execute(noop);

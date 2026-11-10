@@ -150,7 +150,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     key={view.selected} note={note} open={openWithdrawal} onBack={closeWithdrawal} />;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
-    <Screen key={note ? 'detail' : 'list'} footer={<Button title="Lock wallet" variant="secondary" onPress={lock} />}>
+    <Screen key={note ? 'detail' : 'list'} footer={<Button title="Lock wallet" icon="lock" variant="secondary" onPress={lock} />}>
       <Header title={note ? 'Note details' : 'Saved notes'} onBack={back} />
       {note ? <>
         <Card>

@@ -145,6 +145,8 @@ function harness(
     ActivityIndicator: 'ActivityIndicator',
     View: 'View',
     KeyboardAvoidingView: 'KeyboardAvoidingView',
+    Keyboard: { dismiss() {} },
+    Modal: 'Modal',
   };
   const dependencies: Record<string, unknown> = {
     react,
@@ -164,7 +166,7 @@ function harness(
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': {
       ...Object.fromEntries(
-        ['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(
+        ['Button', 'Card', 'Coin', 'IconButton', 'Header', 'Notice', 'Screen', 'Text'].map(
           (value) => [value, value]
         )
       ),
@@ -181,13 +183,16 @@ function harness(
       normalizeNftTokenId: (value: string) => value,
     },
     '../portfolio/nativePortfolio': {
+      sameNativePortfolioAccount: () => false,
       NativePortfolioController: class {
         getSnapshot = () => ({ status: 'available', units: '1' });
         subscribe = () => () => undefined;
         connect = () => () => undefined;
       },
     },
-    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum' },
+    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: () => null },
+    './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
+    './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './NativeSend': {
       NativeSendInput: 'Input',
       nativeTransferFailure: () => 'Error',
@@ -604,7 +609,7 @@ for (const route of [
           .find((node) => node.props.label === 'Recipient address')!
           .props.onChange(owner);
         all(tree)
-          .find((node) => node.props.label === 'Amount (ETH)')!
+          .find((node) => node.props.label === 'Amount in ETH')!
           .props.onChange('1');
         tree = f.render(component, props);
         one(tree, 'Button', 'Review transfer').props.onPress();

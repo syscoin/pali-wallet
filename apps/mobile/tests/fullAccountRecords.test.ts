@@ -171,7 +171,7 @@ test('complete SDK records survive normal unlock without deriving or importing a
 test('the existing SDK reuses a deleted HD ID and the canonical map preserves a legal imported alias', async () => {
   const f = await fixture();
   try {
-    await f.execute({ kind: 'create', label: 'Second', password: PASSWORD });
+    await f.execute({ kind: 'create', label: 'Second',});
     const second = f.authority
       .getCatalogue()!
       .accounts.find(
@@ -183,7 +183,7 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
       "m/44'/60'/0'/0/1"
     ).privateKey;
     await f.execute({ kind: 'select', id: 'hd:60:0' });
-    await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
+    await f.execute({ kind: 'remove', id: second.id,});
     await f.authority.importAccount(
       {
         privateKey: secret,
@@ -194,7 +194,7 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
       f.authority.getSnapshot().revision,
       f.authority.getCatalogue()!.revision
     );
-    await f.execute({ kind: 'create', label: 'HD alias', password: PASSWORD });
+    await f.execute({ kind: 'create', label: 'HD alias',});
     const aliases = f.authority
       .getCatalogue()!
       .accounts.filter((account) => account.address === second.address);

@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { BackHandler, StyleSheet } from 'react-native';
+import { BackHandler, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeDappControlReview as Review } from '../connections/controlRequests';
 import type { NativeConnectionsView } from '../connections/types';
-import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
 import { DappSiteStatus } from './DappSiteStatus';
 
 export function NativeDappControlReview({ review, controller }: { review: Review; controller: Pick<NativeConnectionsView, 'approveControl' | 'rejectControl'> }) {
@@ -22,23 +22,26 @@ export function NativeDappControlReview({ review, controller }: { review: Review
   const blocked = expired || !!review.error || !details || review.busy;
   const reject = () => { void controller.rejectControl(review.id).catch(() => undefined); };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}><Screen key={review.id} footer={<>
-    <Button title={review.busy ? 'Applying…' : title} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => undefined); }} />
-    <Button title="Reject" variant="secondary" onPress={reject} />
+    <Button title={review.busy ? 'Applying…' : title} icon={network?.kind === 'network-switch' ? 'globe' : 'plus'} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => undefined); }} />
+    <Button title="Reject" icon="close" variant="secondary" onPress={reject} />
   </>}>
     <Header title={title} onBack={reject} />
     <Card style={s.card}>
-      <Text style={s.title}>{review.appName}</Text>
+      <View style={s.identity}><View style={s.appIcon}><Icon name="link" size={23} color={colors.blue} /></View>
+        <Text style={[s.title, s.identityLabel]}>{review.appName}</Text></View>
       <Text style={s.muted}>Reported website</Text><Text selectable>{review.origin}</Text>
       <DappSiteStatus verification={review.verification} />
       <Text style={s.muted}>{review.accountLabel} · {review.networkLabel}</Text><Text selectable style={s.identifier}>{review.address}</Text>
     </Card>
     {network && <Card style={s.card}>
-      <Text style={s.title}>{network.name}</Text>
+      <View style={s.identity}><View style={s.appIcon}><Icon name="globe" size={23} color={colors.blue} /></View>
+        <Text style={[s.title, s.identityLabel]}>{network.name}</Text></View>
       <Text>Chain ID {network.chainId} · {network.symbol}</Text>
       <Text style={s.muted}>RPC endpoint</Text><Text selectable style={s.identifier}>{network.rpcUrl}</Text>
     </Card>}
     {asset && <Card style={s.card}>
-      <Text style={s.title}>{asset.name}</Text><Text>{asset.symbol} · {asset.type}</Text>
+      <View style={s.identity}><View style={s.appIcon}><Icon name="wallet" size={23} color={colors.blue} /></View>
+        <Text style={[s.title, s.identityLabel]}>{asset.name}</Text></View><Text>{asset.symbol} · {asset.type}</Text>
       <Text style={s.muted}>Contract</Text><Text selectable style={s.identifier}>{asset.address}</Text>
       {asset.tokenId !== undefined && <><Text style={s.muted}>Token ID</Text><Text selectable style={s.identifier}>{asset.tokenId}</Text></>}
       <Text style={s.muted}>Adding an asset saves it to your list.</Text>
@@ -50,4 +53,7 @@ export function NativeDappControlReview({ review, controller }: { review: Review
     {expired && <Notice title="Request expired" body="Ask the app to send a new request." />}
   </Screen></SafeAreaView>;
 }
-const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, title: { fontSize: 18, fontWeight: '700' }, muted: { color: colors.muted, lineHeight: 22 }, identifier: { fontSize: 13, lineHeight: 20 } });
+const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, title: { fontSize: 18, fontWeight: '700' }, muted: { color: colors.muted, lineHeight: 22 }, identifier: { fontSize: 13, lineHeight: 20 },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: 12 }, identityLabel: { flex: 1 },
+  appIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' },
+});

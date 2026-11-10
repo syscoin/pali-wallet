@@ -609,7 +609,7 @@ export function NativeUtxoSendScreen({
       </Modal>}
       {authentication && authentication.review === review && review && <TransactionAuthentication
         identity={authentication.identity}
-        method={authentication.method} autoBiometric busy={busy} error={error}
+        method={authentication.method} busy={busy} error={error}
         onConfirm={confirmAuthenticated} onCancel={() => {
           if (currentReview.current !== review) return;
           if (inFlight.current) { close(); return; }

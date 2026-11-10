@@ -270,7 +270,7 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
   const collection = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-721' as const };
   const item = { contractAddress: `0x${'44'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: ((1n << 256n) - 1n).toString() };
   try {
-    await f.owner.manageAccounts({ kind: 'create', label: 'Second HD', password: OLD }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.owner.manageAccounts({ kind: 'create', label: 'Second HD',}, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     await f.owner.importAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported private account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     await f.owner.importAccount({ privateKey: KEY2, expectedAddress: importedWallet2.address, label: 'Second imported account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     await f.owner.manageAccounts({ kind: 'select', id: 'imported:60:1' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
@@ -1851,10 +1851,10 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     f.owner.manageAccounts(request, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
   const current = () => undefined;
   const primary = 'hd:0:0', sending = 'hd:0:1';
-  const remove = { kind: 'remove', id: sending, password: OLD } as const;
+  const remove = { kind: 'remove', id: sending,} as const;
   try {
     await selectNetwork(f, network.id);
-    await manage({ kind: 'create', label: 'Bitcoin spending', password: OLD });
+    await manage({ kind: 'create', label: 'Bitcoin spending',});
     assert.equal(f.owner.getCatalogue()!.active.accountId, sending);
     account = (await accountRecord(f)).groups.find((group) => group.key === '0')!.accounts.HDAccount[1]!;
     previous.addOutput(bitcoin.address.toOutputScript(account.address, network.addressNetwork), 100000n);
@@ -1892,7 +1892,7 @@ test('UTXO custody uses SDK groups, preserves EVM selection and survives real pa
   const manage = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) =>
     f.owner.manageAccounts(request, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
   try {
-    await manage({ kind: 'create', label: 'EVM account two', password: OLD });
+    await manage({ kind: 'create', label: 'EVM account two',});
     const evm = f.owner.getSnapshot().account!;
     assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:60:1');
     const originalRoot = (await f.store.recovery.readIdentity())!;
@@ -1914,12 +1914,12 @@ test('UTXO custody uses SDK groups, preserves EVM selection and survives real pa
       assert(!JSON.stringify(f.owner.getCatalogue()).includes(first.xpub));
       assert(!JSON.stringify(f.owner.getSnapshot()).includes(first.xpub));
     }
-    await manage({ kind: 'create', label: 'Bitcoin account two', password: OLD });
+    await manage({ kind: 'create', label: 'Bitcoin account two',});
     const gap = f.owner.getSnapshot().account!;
     assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:0:1');
-    await manage({ kind: 'create', label: 'Bitcoin account three', password: OLD });
-    await manage({ kind: 'remove', id: 'hd:0:1', password: OLD });
-    await manage({ kind: 'create', label: 'Bitcoin gap reused', password: OLD });
+    await manage({ kind: 'create', label: 'Bitcoin account three',});
+    await manage({ kind: 'remove', id: 'hd:0:1',});
+    await manage({ kind: 'create', label: 'Bitcoin gap reused',});
     assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:0:1');
     assert.deepEqual(f.owner.getSnapshot().account, gap);
     assert.deepEqual(f.owner.getCatalogue()?.accounts.map((account) => account.id), ['hd:0:0', 'hd:0:1', 'hd:0:2']);

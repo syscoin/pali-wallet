@@ -3,6 +3,7 @@ import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import type { NativeOperationCredential } from '../custody/types';
 import { TransactionAuthentication } from './TransactionAuthentication';
 import { RecipientQrScanner } from './RecipientQrScanner';
+import { SendNetworkCard } from './SendNetworkCard';
 import type { NativeRecipientResolution, NativeRecipientResolver } from '../portfolio/nativeRecipientResolver';
 import { NativeTokenMaximum, nativeTokenAvailableAmount } from './NativeTokenMaximum';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
@@ -942,15 +943,10 @@ export function NativeSend({
             !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
-              <Card style={s.networkCard}>
-                <Coin id={capturedContext.networkId} size={32} />
-                <View style={s.networkDescription}><Text style={s.networkName}>{capturedContext.name}</Text>
-                  <Text style={styles.muted}>{capturedContext.symbol}{capturedContext.testnet ? ' · Test network' : ''}</Text></View>
-                {onChangeNetwork && <Button title="Change" variant="secondary" size="compact" disabled={busy} onPress={() => {
+              <SendNetworkCard context={capturedContext} disabled={busy} onChange={onChangeNetwork ? () => {
                   if (busy || !lifetime.current.alive) return;
                   closeScanner(); onChangeNetwork(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced }));
-                }} />}
-              </Card>
+                } : undefined} />
               {draftNotice && <Text accessibilityLiveRegion="polite" style={styles.muted}>{draftNotice}</Text>}
               <NativeSendInput
                 label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}

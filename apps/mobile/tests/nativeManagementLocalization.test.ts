@@ -86,16 +86,16 @@ test('language changes preserve exact Open website session and review revision',
   assert.deepEqual(f.returned, [['exact-session', 7]]); screen.close();
 });
 
-test('translated account creation retains the original PIN, name and catalogue scope', async () => {
+test('translated account creation sends only the name and catalogue scope to shared authentication', async () => {
   const f = await fixture('fr'), screen = f.screen('NativeAccounts');
   screen.render().find(element => element.type === 'Header')!.props.right.props.onPress();
   screen.render().find(element => element.type === 'Row' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();
   const inputs = screen.render().filter(element => element.type === 'Input');
   inputs[0]!.props.onChangeText('Exact account');
-  screen.render().find(element => element.type === 'PinField')!.props.onChange('123456');
+  assert.equal(screen.render().some(element => element.type === 'PinField'), false);
   screen.render().find(element => element.type === 'Button' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();
   await Promise.resolve();
-  assert.deepEqual(f.selected, [[{ kind: 'create', label: 'Exact account', password: '123456' }, 9, 3]]);
+  assert.deepEqual(f.selected, [[{ kind: 'create', label: 'Exact account' }, 9, 3]]);
   screen.close();
 });
 

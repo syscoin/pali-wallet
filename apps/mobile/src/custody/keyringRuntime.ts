@@ -2888,7 +2888,7 @@ export function createKeyringRuntimeFactory(
         };
         const allocateSmartAccountRecord = async (label: string, expectedRevision: number, lifetime: AbortSignal | null,
           assertOwner: () => void, onCommitted: (next: NativeWalletCatalogueSnapshot, created: IKeyringAccountState) => void,
-          credential: NativeOperationCredential | null) => {
+          credential: NativeOperationCredential | null, beforeCommit: () => void) => {
             checkGuard(assertOwner);
             const before = catalogueSnapshot, ring = keyring, selected = selectedAccount();
             const prepare = dependencies.prepareSmartAccount, managementOwner = state.accounts.HDAccount[0];
@@ -2915,6 +2915,7 @@ export function createKeyringRuntimeFactory(
               requireSmartAccountAddressIdentity({ address: created.address, xpub: created.xpub, smartAccount: created.smartAccount }, Number(network.chainId));
               await verifyOperationCredential(credential ?? await requestCredential('account-change', signal.signal, check), check);
               check();
+              beforeCommit(); check();
               const next = await catalogue.mutate(expectedRevision, { kind: 'create-smart', account: created }, check);
               check();
               // The request records its durable allocation before publication
@@ -2941,13 +2942,12 @@ export function createKeyringRuntimeFactory(
             const accountTarget = 'id' in request && !['select-network', 'remove-network'].includes(request.kind);
             const requiresUtxoApproval = request.kind === 'add-utxo-network' ||
               request.kind === 'edit-utxo-network' || request.kind === 'remove-utxo-network';
-            const fields = request.kind === 'import-ledger' || request.kind === 'import-trezor' ? ['kind', 'label'] : request.kind === 'create' || request.kind === 'create-smart' ? ['kind', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
-              : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'save-network' ? ['kind', 'registration'] : requiresUtxoApproval ? ['kind'] : request.kind === 'select' || request.kind === 'select-network' || request.kind === 'remove-network' ? ['kind', 'id'] : [];
+            const fields = request.kind === 'import-ledger' || request.kind === 'import-trezor' || request.kind === 'create' || request.kind === 'create-smart' ? ['kind', 'label'] : request.kind === 'rename' ? ['kind', 'id', 'label']
+              : request.kind === 'remove' ? ['kind', 'id'] : request.kind === 'save-network' ? ['kind', 'registration'] : requiresUtxoApproval ? ['kind'] : request.kind === 'select' || request.kind === 'select-network' || request.kind === 'remove-network' ? ['kind', 'id'] : [];
             if (!fields.length || Object.keys(request).sort().join(',') !== fields.sort().join(',') ||
                 (accountTarget && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
                 ('label' in request && (typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label || request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label))))
               throw new KeyringRuntimeError('INVALID_INPUT');
-            if ('password' in request) validPassword(request.password, false);
             if (request.kind === 'create-smart' && (!dependencies.prepareSmartAccount || findUtxoNetwork(catalogueSnapshot.active.networkId, catalogueSnapshot.utxoNetworks)))
               throw new KeyringRuntimeError('NOT_READY');
             // Expected eligibility failures leave the current authority/reviews intact.
@@ -2977,20 +2977,31 @@ export function createKeyringRuntimeFactory(
             reserved = token;
             const generationAtAdmission = revokeGeneration();
             let used = false;
+            const cancellation = new AbortController();
+            const protectedAccount = request.kind === 'create' || request.kind === 'create-smart' || request.kind === 'remove';
+            let committing = false;
             return {
-              cancel() { if (!used && reserved === token) reserved = null; used = true; },
+              cancel() { cancellation.abort(); if (!used && reserved === token) reserved = null; used = true; },
               execute(assertCurrent: () => void) {
                 if (used || reserved !== token || generationAtAdmission !== generation) {
                   if (reserved === token) reserved = null;
-                  return Promise.reject(new KeyringRuntimeError('CANCELLED'));
+                  const error = new KeyringRuntimeError('CANCELLED');
+                  if (cancellation.signal.aborted && protectedAccount && !committing &&
+                      generationAtAdmission === generation && keyring.hasPublicSession() && !requiresReopen())
+                    secretAuthenticationRefusals.add(error);
+                  return Promise.reject(error);
                 }
                 used = true; reserved = null;
                 return run(async (captured) => {
-                  current(captured); checkGuard(assertCurrent);
-                  if ('password' in request && request.kind !== 'create-smart') {
-                    if (!(await authenticate(request.password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                  const guard = () => {
                     current(captured); checkGuard(assertCurrent);
-                  }
+                    if (cancellation.signal.aborted) {
+                      const error = new KeyringRuntimeError('CANCELLED');
+                      if (protectedAccount && !committing) secretAuthenticationRefusals.add(error);
+                      throw error;
+                    }
+                  };
+                  guard();
                   const before = catalogueSnapshot;
                   if (!before || before.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
                   let derived: IKeyringAccountState | undefined;
@@ -3004,18 +3015,17 @@ export function createKeyringRuntimeFactory(
                     derived = { ...trezor.account, label: request.label };
                     mutation = { kind: 'import-trezor', account: derived } as const;
                   } else if (request.kind === 'create') {
-                  const created = await withSoftwareSecret('account-change', new AbortController().signal,
-                    () => { current(captured); checkGuard(assertCurrent); }, () => keyring.addNewAccount(request.label),
-                    { method: 'pin', pin: request.password }, null);
-                      current(captured); checkGuard(assertCurrent);
+                  const created = await withSoftwareSecret('account-change', cancellation.signal,
+                    guard, () => keyring.addNewAccount(request.label), null, null);
+                      guard();
                       if (!created || !Number.isSafeInteger(created.id) || created.id < 1 ||
                           before.accounts.some((account) => account.type === 'HDAccount' && account.index === created.id))
                         throw new KeyringRuntimeError('CANCELLED');
                       derived = checkedAccount(created, created.id, before.active.networkId, before.utxoNetworks);
                   mutation = { kind: 'create', account: derived } as const;
                   } else if (request.kind === 'create-smart') {
-                    await allocateSmartAccountRecord(request.label, expectedRevision, null,
-                      () => { current(captured); checkGuard(assertCurrent); }, () => undefined, { method: 'pin', pin: request.password });
+                    await allocateSmartAccountRecord(request.label, expectedRevision, cancellation.signal,
+                      guard, () => undefined, null, () => { guard(); committing = true; });
                     return null;
                   } else if (requiresUtxoApproval) {
                     if (!approval || approval.signal.aborted || approval.snapshot !== before)
@@ -3026,7 +3036,6 @@ export function createKeyringRuntimeFactory(
                   } else {
                     mutation = request;
                     if (request.kind === 'select-network') {
-                      const guard = () => { current(captured); checkGuard(assertCurrent); };
                       const utxo = findUtxoNetwork(request.id, before.utxoNetworks);
                       if (utxo && !supportsUtxoSoftwareCustody(utxo)) throw new KeyringRuntimeError('INVALID_INPUT');
                       if ((utxo?.slip44 ?? 60) !== state.activeNetwork.slip44) {
@@ -3040,7 +3049,6 @@ export function createKeyringRuntimeFactory(
                       if (account.slip44 === 60) {
                         await dataBinding(captured, assertCurrent);
                         current(captured); checkGuard(assertCurrent);
-                        const guard = () => { current(captured); checkGuard(assertCurrent); };
                         const retained = await signedRecords.listAddress({ keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard }, account.address);
                         const hasAlias = before.accounts.some((candidate) => candidate.id !== account.id && candidate.address.toLowerCase() === account.address.toLowerCase());
                         if (!hasAlias && retained.some((entry) => !['confirmed','reverted','nonce-consumed'].includes(entry.phase))) throw new TransferJournalError('PENDING_TRANSFER');
@@ -3051,7 +3059,6 @@ export function createKeyringRuntimeFactory(
                         if (!utxoRecords || !network || network.slip44 !== account.slip44 ||
                             !source?.xpub || source.address !== account.address)
                           throw new KeyringRuntimeError('NOT_READY');
-                        const guard = () => { current(captured); checkGuard(assertCurrent); };
                         await dataBinding(captured, guard); guard();
                         const pending = await utxoRecords.hasUnresolvedForAccount(
                           { keyring: transactionRecordKeyring(keyring, guard), assertCurrent: guard },
@@ -3067,11 +3074,14 @@ export function createKeyringRuntimeFactory(
                     expected: previewNativeNetworkSelection(catalogue.privateRecords, mutation.id, 'initialGroup' in mutation ? mutation.initialGroup : null),
                     target: findUtxoNetwork(mutation.id, before.utxoNetworks) ?? getNativeNetwork(mutation.id, before.networks),
                   } : null;
-                  const guard = () => { current(captured); checkGuard(assertCurrent); };
+                  guard();
                   if (mutation.kind === 'remove') {
+                    await verifyOperationCredential(await requestCredential('account-change', cancellation.signal, guard), guard);
+                    guard();
                     const target = parseNativeAccountId(mutation.id);
                     const repository = await getConnectionRepository(captured);
                     guard();
+                    committing = true;
                     await repository.retireAccount({
                       accountId: target.index,
                       accountType: sdk.KeyringAccountType[target.type],
@@ -3082,6 +3092,7 @@ export function createKeyringRuntimeFactory(
                       publishAccounts(next);
                     }, guard);
                   } else {
+                    if (protectedAccount) committing = true;
                     const next = await catalogue.mutate(expectedRevision, mutation, guard);
                     guard();
                     if (derived) state.accounts[derived.isLedgerWallet ? 'Ledger' : derived.isTrezorWallet ? 'Trezor' : derived.isSmartAccount ? 'SmartAccount' : 'HDAccount'][derived.id] = derived;
@@ -3201,6 +3212,7 @@ export function createKeyringRuntimeFactory(
           },
         };
         const accounts: NativeAccountRuntime = {
+          isAuthenticationRefusal: error => !!error && typeof error === 'object' && secretAuthenticationRefusals.has(error),
           supported: () => typeof keyring.addNewAccount === 'function',
           supportsSmartAccounts: () => !!dependencies.prepareSmartAccount && !!catalogueSnapshot && !findUtxoNetwork(catalogueSnapshot.active.networkId, catalogueSnapshot.utxoNetworks),
           getSnapshot: () => closed || requiresReopen() || !keyring.hasPublicSession() ? null : catalogueSnapshot,
@@ -5418,7 +5430,7 @@ export function createKeyringRuntimeFactory(
                       bootstrapAuthHash: getSmartAccountAuthHash(created.smartAccount.auth) }));
                     allocation = receipt;
                     checkGuard(() => onCommitted(receipt));
-                  }, null);
+                  }, null, () => undefined);
                   publishing = false;
                 });
                 if (!allocation) throw new KeyringRuntimeError('OPERATION_FAILED');
@@ -6040,6 +6052,7 @@ export function createKeyringRuntimeFactory(
             return rows;
           }),
           security: {
+            isAuthenticationRefusal: error => !!error && typeof error === 'object' && secretAuthenticationRefusals.has(error),
             authenticationStatus: async () => {
               const captured = generation; current(captured);
               const configured = !!pinVault && !!(await storage.pin.read()); current(captured);
@@ -6051,7 +6064,14 @@ export function createKeyringRuntimeFactory(
               const ring = keyring, identity = verifiedIdentity;
               const check = () => { current(captured); checkGuard(assertOwner); if (!identity || verifiedIdentity !== identity || ring !== keyring || !ring.hasPublicSession()) throw new KeyringRuntimeError('CANCELLED'); };
               check(); if (!pinVault) throw new KeyringRuntimeError('NOT_READY');
-              await pinVault.changePin(oldPin, nextPin, check); check();
+              try { await pinVault.changePin(oldPin, nextPin, check); check(); }
+              catch (error) {
+                check();
+                const code = error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED' ? 'AUTH_THROTTLED'
+                  : error instanceof Error && error.message === 'INVALID_CREDENTIAL' ? 'INVALID_CREDENTIAL' : null;
+                if (code === null) throw error;
+                const refusal = new KeyringRuntimeError(code); secretAuthenticationRefusals.add(refusal); throw refusal;
+              }
             }),
             authenticateOperation,
             reauthenticateIdlePolicy: (password, assertCurrent) => run(async (captured) => {

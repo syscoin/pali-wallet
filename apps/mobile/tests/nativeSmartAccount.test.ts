@@ -939,9 +939,9 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
   const f = await fixture();
   try {
     const ownerAddress = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create', label: 'Other selected account', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Other selected account',});
     assert.notEqual(f.owner.getSnapshot().account!.address, ownerAddress);
-    await f.change({ kind: 'create-smart', label: 'Smart savings', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Smart savings',});
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     assert.equal(smart.id, 'smart:60:0');
     assert.equal(smart.smartAccount!.managementAddress.toLowerCase(), ownerAddress.toLowerCase());
@@ -966,7 +966,7 @@ test('real SDK smart account creation, selection and cold unlock retain the orig
     disconnect();
     await f.change({ kind: 'select', id: 'hd:60:0' });
     assert.equal(f.owner.getSnapshot().account!.address, ownerAddress);
-    await assert.rejects(f.change({ kind: 'remove', id: 'hd:60:0', password: PASSWORD }), { code: 'ACCOUNT_NOT_REMOVABLE' });
+    await assert.rejects(f.change({ kind: 'remove', id: 'hd:60:0',}), { code: 'ACCOUNT_NOT_REMOVABLE' });
   } finally { await f.close(); }
 });
 
@@ -974,7 +974,7 @@ test('wallet authenticator recognizes an already configured owner without signin
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator',});
     f.guardianStatus('no-policy');
     operation = await f.runtime.openWalletAuthenticator(new AbortController().signal, () => undefined);
     await operation.prepare();
@@ -991,9 +991,9 @@ for (const delayedMetadata of [false, 'stale', 'unavailable'] as const) test(`wa
   let operation: NativeSmartAccountOperation | undefined;
   try {
     const target = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create', label: 'Previous owner', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Previous owner',});
     const previous = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator',});
     f.guardianStatus('no-policy');
     f.observedEcdsaOwners([previous], 1);
     f.fundedSmart();
@@ -1052,9 +1052,9 @@ for (const revoked of ['lifetime', 'selection', 'source-config'] as const) test(
   let operation: NativeSmartAccountOperation | undefined;
   try {
     const target = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create', label: 'Previous owner', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Previous owner',});
     const previous = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator',});
     f.guardianStatus('no-policy'); f.observedEcdsaOwners([previous], 1); f.fundedSmart();
     operation = await f.runtime.openWalletAuthenticator(lifetime.signal, () => undefined);
     await operation.prepare();
@@ -1086,9 +1086,9 @@ test('wallet authenticator disposal drains held owner signing before another wal
   let operation: NativeSmartAccountOperation | undefined;
   let submitting: Promise<void> | undefined;
   try {
-    await f.change({ kind: 'create', label: 'Previous owner', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Previous owner',});
     const previous = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create-smart', label: 'Wallet authenticator', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Wallet authenticator',});
     f.guardianStatus('no-policy'); f.observedEcdsaOwners([previous], 1); f.fundedSmart();
     operation = await f.runtime.openWalletAuthenticator(new AbortController().signal, () => undefined);
     await operation.prepare();
@@ -1113,7 +1113,7 @@ test('wallet authenticator disposal drains held owner signing before another wal
 test('a smart account remains selected on its chain and uses shared compatible-account fallback on another chain', async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'Chain account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Chain account',});
     await f.selectNetwork('ethereum');
     assert.equal(f.owner.getCatalogue()!.active.accountId, 'smart:60:0');
     await f.selectNetwork('syscoin-nevm');
@@ -1129,7 +1129,7 @@ test('a substituted factory address cannot create a saved smart account', async 
   const f = await fixture();
   try {
     f.substitute();
-    await assert.rejects(f.change({ kind: 'create-smart', label: 'Rejected account', password: PASSWORD }));
+    await assert.rejects(f.change({ kind: 'create-smart', label: 'Rejected account',}));
     await f.owner.unlock(PASSWORD);
     assert.equal(f.owner.getCatalogue()!.accounts.length, 1);
   } finally { await f.close(); }
@@ -1142,7 +1142,7 @@ test('lock while the owned factory read is pending prevents creation', async () 
   const held = new Promise<void>(resolve => { finish = resolve; });
   try {
     f.hold(async () => { enter(); await held; });
-    const creating = f.change({ kind: 'create-smart', label: 'Cancelled account', password: PASSWORD });
+    const creating = f.change({ kind: 'create-smart', label: 'Cancelled account',});
     await reached;
     f.owner.lock(); finish();
     await assert.rejects(creating, { code: 'CANCELLED' });
@@ -1155,9 +1155,9 @@ test('lock while the owned factory read is pending prevents creation', async () 
 test('recovery lists smart accounts on every saved chain and preserves their metadata through password reset', async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'Ethereum savings', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Ethereum savings',});
     await f.selectNetwork('syscoin-nevm');
-    await f.change({ kind: 'create-smart', label: 'NEVM savings', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'NEVM savings',});
     const before = await f.inspectRecovery();
     const smart = before.accounts.filter(account => account.type === 'SmartAccount');
     assert.deepEqual(smart.map(account => account.smartAccount!.chainId).sort((a, b) => a - b), [1, 57]);
@@ -1180,7 +1180,7 @@ test('real smart deployment uses the owned payer, separate consent and durable S
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   try {
     const owner = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create-smart', label: 'Deploy fixture', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Deploy fixture',});
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
     const submissionAtWire: boolean[] = [];
@@ -1222,7 +1222,7 @@ for (const cancel of ['owner', 'lock'] as const) test(`real deployment ${cancel}
   let current = true;
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Cancelled deployment', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Cancelled deployment',});
     deployment = await f.runtime.openSmartAccountDeployment(() => { assert(current, 'owner retired'); });
     await deployment.prepare();
     const pending = deployment.authorize(deployment.getSnapshot().revision);
@@ -1244,7 +1244,7 @@ for (const failure of [null, 'invalid-code', 'owner-loss'] as const)
     let current = true;
     let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
     try {
-      await f.change({ kind: 'create-smart', label: 'Existing deployment', password: PASSWORD });
+      await f.change({ kind: 'create-smart', label: 'Existing deployment',});
       const before = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
       f.deployed(failure === 'invalid-code' ? '0x0' : '0x6000');
       if (failure === 'owner-loss') f.onSmartCodeRead(() => { current = false; });
@@ -1270,7 +1270,7 @@ test('restart after the deployment receipt refreshes metadata without another tr
   const f = await fixture();
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Interrupted deployment', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Interrupted deployment',});
     const smartId = f.owner.getCatalogue()!.active.accountId;
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
     await deployment.prepare();
@@ -1302,7 +1302,7 @@ for (const alreadyDeployed of [false, true]) test(`real SDK smart native send au
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
     const payer = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Smart sender',});
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     f.fundedSmart(); f.holdReceipts();
     if (alreadyDeployed) f.deployed();
@@ -1354,7 +1354,7 @@ for (const boundary of ['before-authentication', 'during-signing', 'payer-review
   const f = await fixture({}, true);
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Spendability sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Spendability sender',});
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
     await operation.prepare();
@@ -1381,7 +1381,7 @@ test('smart native sends reject invalid input and blocked recipients before auth
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Smart sender',});
     for (const [recipient, amount] of [['bad', '1'], ['0x2222222222222222222222222222222222222222', '1e2'], ['0x2222222222222222222222222222222222222222', '0']])
       await assert.rejects(f.runtime.openSmartAccountSend(recipient!, { kind: 'exact', amount: amount! }, () => undefined), { code: 'INVALID_INPUT' });
     f.blockRecipient();
@@ -1398,7 +1398,7 @@ test('locking a native Smart send at payer review retires its signed operation w
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Smart sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Smart sender',});
     f.fundedSmart();
     operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.01' }, () => undefined);
     await operation.prepare();
@@ -1421,7 +1421,7 @@ test('fresh absent code overrides saved deployed metadata for a Smart send', asy
   let deployment: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   let send: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Reorg fixture', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Reorg fixture',});
     f.deployed();
     deployment = await f.runtime.openSmartAccountDeployment(() => undefined);
     await deployment.prepare();
@@ -1442,7 +1442,7 @@ for (const change of ['deployed', 'malformed', 'account', 'network'] as const) t
   let operation: NativeSmartAccountOperation | undefined;
   let reads = 0;
   try {
-    await f.change({ kind: 'create-smart', label: 'Deployment race', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Deployment race',});
     f.fundedSmart();
     f.onSmartCodeRead(async () => {
       reads++;
@@ -1476,7 +1476,7 @@ for (const point of ['before-commit', 'lost-ack'] as const) test(`deployment rac
   let operation: NativeSmartAccountOperation | undefined;
   let reads = 0;
   try {
-    await f.change({ kind: 'create-smart', label: 'Deployment persistence', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Deployment persistence',});
     f.fundedSmart();
     f.onSmartCodeRead(() => {
       if (++reads === 1) { f.deployed(); armed = true; }
@@ -1500,7 +1500,7 @@ for (const loseCredit of [false, true]) test(`gas-tank deployment with zero paye
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountDeployment']>> | undefined;
   try {
     await f.selectNetwork('zksys-testnet');
-    await f.change({ kind: 'create-smart', label: 'Sponsored smart account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Sponsored smart account',});
     f.gasSponsored();
     operation = await f.runtime.openSmartAccountDeployment(() => undefined);
     await operation.prepare();
@@ -1526,7 +1526,7 @@ for (const success of [true, false]) test(`Smart Activity survives reopen and di
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
     const payer = f.owner.getSnapshot().account!.address;
-    await f.change({ kind: 'create-smart', label: 'Activity sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Activity sender',});
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
     await operation.prepare();
@@ -1591,7 +1591,7 @@ for (const sponsored of [false, true]) test(`Smart native MAX uses the shared re
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
     if (sponsored) await f.selectNetwork('zksys-testnet');
-    await f.change({ kind: 'create-smart', label: 'MAX sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'MAX sender',});
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     if (sponsored) f.gasSponsored();
     const recipient = '0x2222222222222222222222222222222222222222';
@@ -1623,7 +1623,7 @@ test('Smart ERC20 send preserves 255-decimal base units through approval, signin
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Token sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Token sender',});
     const metadata = { contractAddress: '0x5555555555555555555555555555555555555555', decimals: 255, name: 'Exact token', symbol: 'EXACT' };
     const registry = await f.runtime.tokens!.load(() => undefined);
     await f.runtime.tokens!.add(registry.revision, metadata, () => undefined);
@@ -1665,7 +1665,7 @@ test('Smart ERC20 send preserves 255-decimal base units through approval, signin
 test('Smart ERC20 send requires the selected account owned token catalogue', async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'Token sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Token sender',});
     await assert.rejects(f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', {
       kind: 'erc20', contractAddress: '0x5555555555555555555555555555555555555555', amount: '1',
     }, () => undefined), { code: 'NOT_READY' });
@@ -1678,7 +1678,7 @@ for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`Smart ${standard}
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Collectible sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Collectible sender',});
     const smart = f.owner.getCatalogue()!.accounts.find(account => account.type === 'SmartAccount')!;
     const contractAddress = '0x5555555555555555555555555555555555555555', tokenId = ((1n << 256n) - 1n).toString();
     const collectible = standard === 'ERC-721' ? { contractAddress, tokenStandard: standard } : { contractAddress, tokenStandard: standard, tokenId };
@@ -1720,7 +1720,7 @@ for (const standard of ['ERC-721', 'ERC-1155'] as const) test(`Smart ${standard}
 test('Smart NFT requests cannot replace the owned contract, standard, fixed ID or network scope', async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'Collectible sender', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Collectible sender',});
     const collectible = { contractAddress: '0x5555555555555555555555555555555555555555', tokenStandard: 'ERC-1155' as const, tokenId: '7' };
     const registry = await f.runtime.tokens!.load(() => undefined);
     await f.runtime.tokens!.addCollectible!(registry.revision, collectible, () => undefined);
@@ -1739,7 +1739,7 @@ for (const [data, self] of [['0x', false], ['0x12345678', false], ['0x', true]] 
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   let approval: ReturnType<typeof createDappSigningApproval> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Dapp account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Dapp account',});
     f.fundedSmart(); f.deployed();
     const host = await f.runtime.openConnectionHost();
     const selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
@@ -1788,7 +1788,7 @@ for (const existing of [false, true]) test(`two real Smart sends queue before mi
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Queued Smart', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Queued Smart',});
     f.fundedSmart(); f.holdReceipts();
     if (existing) f.deployed();
     const nonces: bigint[] = [];
@@ -1819,7 +1819,7 @@ test('a changed pending nonce during payer consent requires fresh Smart authoriz
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Fresh nonce', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Fresh nonce',});
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
     await operation.prepare();
@@ -1845,7 +1845,7 @@ for (const phase of ['inner-sign', 'payer-review']) test(`changed RPC chain refu
   const f = await fixture();
   let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Chain bound', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Chain bound',});
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
     await operation.prepare();
@@ -1870,7 +1870,7 @@ for (const outcome of ['success', 'revert', 'lock-after-broadcast']) test(`real 
   let approval: ReturnType<typeof createDappSigningApproval> | undefined;
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Batch account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Batch account',});
     f.fundedSmart(); f.deployed(); f.holdReceipts();
     if (outcome === 'lock-after-broadcast') f.onBroadcast(() => f.owner.lock());
     const host = await f.runtime.openConnectionHost(), selected = host.context().accounts.find(account => account.type === 'SmartAccount')!;
@@ -1915,7 +1915,7 @@ test('owned Smart metadata refresh commits shared observations and survives auth
     const privateKey = '0x' + '02'.repeat(32);
     await f.owner.importAccount({ privateKey, label: 'Independent imported key', expectedAddress: importedKeyIdentity(privateKey, 0).address },
       PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
-    await f.change({ kind: 'create-smart', label: 'Guardian account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Guardian account',});
     const before = (await f.inspectRecovery()).record;
     const accountBefore = savedSmartAccount(before);
     f.guardianStatus();
@@ -1945,7 +1945,7 @@ test('owned Smart metadata refresh commits shared observations and survives auth
 for (const mode of ['unsupported', 'unavailable'] as const) test(`a ${mode} guardian read preserves metadata and the unlocked wallet`, async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'Read failure', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Read failure',});
     const before = (await f.inspectRecovery()).record;
     f.guardianStatus(mode);
     await assert.rejects(f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined));
@@ -1959,7 +1959,7 @@ for (const change of ['signal', 'owner', 'lock', 'account', 'network', 'account-
   const f = await fixture();
   let guardian: ReturnType<typeof f.guardianStatus> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Revoked read', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Revoked read',});
     const before = savedSmartAccount((await f.inspectRecovery()).record);
     guardian = f.guardianStatus('hold');
     const signal = new AbortController();
@@ -1994,7 +1994,7 @@ for (const point of ['before-commit', 'lost-ack'] as const) test(`Smart metadata
   };
   const f = await fixture(point === 'before-commit' ? { before: fail } : { after: fail });
   try {
-    await f.change({ kind: 'create-smart', label: 'Interrupted metadata', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Interrupted metadata',});
     const before = savedSmartAccount((await f.inspectRecovery()).record);
     f.guardianStatus(); armed = true;
     await assert.rejects(f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined));
@@ -2009,7 +2009,7 @@ for (const point of ['before-commit', 'lost-ack'] as const) test(`Smart metadata
 test('metadata CAS refuses immutable edits and non-Smart or stale selections', async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'Immutable identity', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Immutable identity',});
     const record = (await f.inspectRecovery()).record as any;
     const account = savedSmartAccount(record);
     const root = (await f.storage.recovery.readIdentity())!.root!;
@@ -2036,7 +2036,7 @@ test('cancellation while metadata SQL is held cannot commit or publish the new p
     if (armed && kind === 'run' && sql.startsWith('UPDATE keyring_records')) { armed = false; entered(); await held; }
   } });
   try {
-    await f.change({ kind: 'create-smart', label: 'Cancelled metadata commit', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Cancelled metadata commit',});
     const before = savedSmartAccount((await f.inspectRecovery()).record);
     const snapshot = f.owner.getCatalogue();
     f.guardianStatus(); armed = true;
@@ -2057,7 +2057,7 @@ test('observing an external ECDSA owner cannot grant native signing authority', 
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Externally controlled account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Externally controlled account',});
     f.guardianStatus(); f.externalOwner();
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     const metadata = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
@@ -2077,7 +2077,7 @@ for (const existing of [false, true]) test(`guardian policy ${existing ? 'update
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Guardian policy', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Guardian policy',});
     f.fundedSmart(); f.guardianStatus(existing ? 'installed' : 'no-policy');
     const guardian = '0x' + '77'.repeat(20), delaySeconds = 259200;
     f.onBroadcast(() => {
@@ -2111,7 +2111,7 @@ for (const mode of ['unavailable', 'stale'] as const) test(`guardian policy pres
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Guardian metadata retry', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Guardian metadata retry',});
     f.fundedSmart(); f.guardianStatus('no-policy');
     const guardian = '0x' + '77'.repeat(20), delaySeconds = 259200;
     f.onBroadcast(() => { if (Transaction.from(f.submitted.at(-1)!).to === getPaliEntryPointAddress(1)) f.guardianStatus(mode === 'unavailable' ? 'unavailable' : 'installed'); });
@@ -2139,7 +2139,7 @@ test('guardian policy requires the current pending recovery acknowledgement and 
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Guardian pending change', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Guardian pending change',});
     f.fundedSmart(); f.guardianStatus();
     const draft = { action: 'set' as const, guardian: '0x' + '77'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
     await assert.rejects(f.runtime.openGuardianPolicy(draft, new AbortController().signal, () => undefined), /GUARDIAN_POLICY_CONFIRMATION_REQUIRED/);
@@ -2161,7 +2161,7 @@ test('guardian policy binds an acknowledged pending recovery and refuses a chang
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Bound guardian policy', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Bound guardian policy',});
     f.fundedSmart();
     const fixture = f.guardianStatus();
     const observation = await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
@@ -2181,7 +2181,7 @@ test('an unsuccessful UserOperation cannot report a completed guardian policy fr
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Reverted guardian policy', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Reverted guardian policy',});
     f.fundedSmart(); f.guardianStatus('no-policy'); f.showReceipts(false);
     operation = await f.runtime.openGuardianPolicy({ action: 'set', guardian: '0x' + '77'.repeat(20), delaySeconds: 259200,
       acknowledgedPendingOperationId: null }, new AbortController().signal, () => undefined);
@@ -2202,7 +2202,7 @@ for (const acknowledged of [false, true]) test(`guardian policy snapshots the dr
   let held: ReturnType<typeof f.guardianStatus> | undefined;
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Immutable guardian draft', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Immutable guardian draft',});
     f.guardianStatus();
     const observation = await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     assert(observation?.pending);
@@ -2247,7 +2247,7 @@ async function confirmPolicyOperation(operation: NativeSmartAccountOperation) {
 test('guardian removal requires explicit loss consent and the current pending recovery acknowledgement', async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'Remove consent', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Remove consent',});
     f.fundedSmart(); f.guardianStatus();
     await assert.rejects(f.runtime.openGuardianPolicy({ ...removalDraft, recoveryLossAcknowledged: false } as never,
       new AbortController().signal, () => undefined), /INVALID_INPUT/);
@@ -2261,7 +2261,7 @@ for (const lag of [false, true]) test(`guardian removal commits canonical absenc
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Remove guardian', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Remove guardian',});
     f.fundedSmart(); f.guardianStatus('installed');
     if (!lag) f.onBroadcast(() => { f.guardianStatus('no-policy'); });
     operation = await f.runtime.openGuardianPolicy(removalDraft, new AbortController().signal, () => undefined);
@@ -2298,7 +2298,7 @@ test('unresolved guardian removal is recovered from the signed journal after res
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Pending guardian removal', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Pending guardian removal',});
     f.fundedSmart(); f.guardianStatus('installed'); f.holdReceipts();
     operation = await f.runtime.openGuardianPolicy(removalDraft, new AbortController().signal, () => undefined);
     await operation.prepare();
@@ -2327,7 +2327,7 @@ test('guardian removal inner failure never reports removal from a successful out
   const f = await fixture();
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Failed removal', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Failed removal',});
     f.fundedSmart(); f.guardianStatus('installed'); f.showReceipts(false);
     operation = await f.runtime.openGuardianPolicy(removalDraft, new AbortController().signal, () => undefined);
     await confirmPolicyOperation(operation);
@@ -2344,7 +2344,7 @@ for (const cancel of ['owner', 'signal', 'lock'] as const) test(`guardian remova
   const f = await fixture();
   let held: ReturnType<typeof f.guardianStatus> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Bound removal read', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Bound removal read',});
     held = f.guardianStatus('hold');
     let current = true;
     const abort = new AbortController();
@@ -2373,7 +2373,7 @@ test('guardian removal inspection rechecks the policy after a held retained-reco
     }
   } });
   try {
-    await f.change({ kind: 'create-smart', label: 'Policy race', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Policy race',});
     const guardian = f.guardianStatus('installed');
     armed = true;
     const pending = f.runtime.inspectGuardianRemoval(new AbortController().signal, () => undefined);
@@ -2393,7 +2393,7 @@ for (const delayedMetadata of [false, true]) test(`native guardian recovery pers
     const privateKey = '0x' + '02'.repeat(32);
     await f.owner.importAccount({ privateKey, label: 'Replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
       PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
-    await f.change({ kind: 'create-smart', label: 'Recoverable account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Recoverable account',});
     const accounts = f.owner.getCatalogue()!.accounts;
     const guardian = accounts.find(account => account.id === 'hd:60:0')!;
     const replacement = accounts.find(account => account.type === 'Imported')!;
@@ -2451,7 +2451,7 @@ async function startNativeRecovery() {
   const privateKey = '0x' + '03'.repeat(32);
   await f.owner.importAccount({ privateKey, label: 'Recovery replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
     PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
-  await f.change({ kind: 'create-smart', label: 'Recovery target', password: PASSWORD });
+  await f.change({ kind: 'create-smart', label: 'Recovery target',});
   const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!;
   const replacement = f.owner.getCatalogue()!.accounts.find(account => account.type === 'Imported')!;
   const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
@@ -2465,11 +2465,11 @@ async function smartGuardianRecoveryFixture(composite = false, hooks: { before?:
     const privateKey = '0x' + '04'.repeat(32);
     await f.owner.importAccount({ privateKey, label: 'Smart guardian replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
       PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
-    await f.change({ kind: 'create-smart', label: 'Smart guardian', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Smart guardian',});
     const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'smart:60:0')!;
-    await f.change({ kind: 'create', label: 'Separate recovery payer', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Separate recovery payer',});
     const payer = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:1')!;
-    await f.change({ kind: 'create-smart', label: 'Smart recovery target', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Smart recovery target',});
     const accounts = f.owner.getCatalogue()!.accounts;
     const owner = accounts.find(account => account.id === 'hd:60:0')!;
     const replacement = accounts.find(account => account.type === 'Imported')!;
@@ -2675,7 +2675,7 @@ test('locking during new recovery observation cannot persist an intent or sign',
   const f = await fixture({}, true);
   let held: ReturnType<typeof f.guardianStatus> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Held recovery', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Held recovery',});
     held = f.guardianStatus('hold');
     const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacementId: 'hd:60:0', payerId: 'hd:60:0' }, new AbortController().signal, () => undefined);
     const rejected = assert.rejects(pending);
@@ -2749,7 +2749,7 @@ for (const deployed of [false, true]) test(`real SDK Smart personal and V4 messa
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Message signer', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Message signer',});
     if (deployed) f.deployed();
     connection = await smartMessageApproval(f);
     const { host, selected, approval } = connection;
@@ -2788,7 +2788,7 @@ test('Smart message signing refuses a freshly observed external validator owner'
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Changed owner', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Changed owner',});
     f.deployed(); f.externalOwner();
     connection = await smartMessageApproval(f);
     const { host, selected, approval } = connection;
@@ -2807,7 +2807,7 @@ for (const phase of ['metadata', 'signing'] as const) test(`Smart message signin
   const held = new Promise<void>(resolve => { release = resolve; });
   let entered = false;
   try {
-    await f.change({ kind: 'create-smart', label: 'Revoked approval', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Revoked approval',});
     f.deployed(); connection = await smartMessageApproval(f);
     const { host, selected, approval } = connection;
     const stop = async () => { entered = true; await held; };
@@ -2827,7 +2827,7 @@ for (const method of ['eth_signTypedData', 'eth_signTypedData_v3'] as const) tes
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'V4 only', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'V4 only',});
     connection = await smartMessageApproval(f);
     const { host, selected, approval } = connection;
     const request: DappMessageRequest = method === 'eth_signTypedData'
@@ -2847,8 +2847,8 @@ test('Smart native transfers collect the configured local ECDSA threshold before
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create', label: 'Second transaction owner', password: PASSWORD });
-    await f.change({ kind: 'create-smart', label: 'Two transaction owners', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Second transaction owner',});
+    await f.change({ kind: 'create-smart', label: 'Two transaction owners',});
     const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
     assert.equal(owners.length, 2);
     f.deployed(); f.fundedSmart(); f.holdReceipts();
@@ -2883,8 +2883,8 @@ test('Smart message signing assembles the configured local ECDSA threshold using
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
-    await f.change({ kind: 'create', label: 'Second owner', password: PASSWORD });
-    await f.change({ kind: 'create-smart', label: 'Two owners', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Second owner',});
+    await f.change({ kind: 'create-smart', label: 'Two owners',});
     const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
     assert.equal(owners.length, 2);
     f.deployed(); f.observedEcdsaOwners(owners.map(owner => owner.address), 2);
@@ -2907,7 +2907,7 @@ test('Smart message signing refuses an RPC chain change before signing', async (
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Chain-bound signer', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Chain-bound signer',});
     connection = await smartMessageApproval(f);
     f.wrongChain();
     const { host, selected, approval } = connection;
@@ -2977,7 +2977,7 @@ test('executed recovery followed by a later owner change can retire tracking wit
     await f.reopen();
     await f.owner.unlock(PASSWORD);
     assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
-    await f.change({ kind: 'remove', id: replacement.id, password: PASSWORD });
+    await f.change({ kind: 'remove', id: replacement.id,});
     assert(
       !f.owner
         .getCatalogue()!
@@ -3036,8 +3036,8 @@ test('revoking an executed recovery clear during its fresh observation preserves
 
 async function compositeMessageFixture(ownerThreshold = 2, childThreshold = 1, ecdsaFirst = false) {
   const f = await fixture({}, true);
-  await f.change({ kind: 'create', label: 'Second message owner', password: PASSWORD });
-  await f.change({ kind: 'create-smart', label: 'Composite message owner', password: PASSWORD });
+  await f.change({ kind: 'create', label: 'Second message owner',});
+  await f.change({ kind: 'create-smart', label: 'Composite message owner',});
   const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60);
   f.guardianStatus('no-policy'); f.observedEcdsaOwners(owners.map(owner => owner.address), ownerThreshold); f.observedComposite(childThreshold, ecdsaFirst);
   await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
@@ -3129,8 +3129,8 @@ for (const threshold of [1, 2]) test(`plain ECDSA Smart messages keep configured
   const f = await fixture({}, true);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
-    await f.change({ kind: 'create', label: 'Configured first owner', password: PASSWORD });
-    await f.change({ kind: 'create-smart', label: 'Ordered message owners', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Configured first owner',});
+    await f.change({ kind: 'create-smart', label: 'Ordered message owners',});
     const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60).reverse();
     f.deployed(); f.observedEcdsaOwners(owners.map(owner => owner.address), threshold);
     connection = await smartMessageApproval(f);
@@ -3153,8 +3153,8 @@ test('plain ECDSA Smart transactions keep configured inverse owner order before 
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create', label: 'Configured first transaction owner', password: PASSWORD });
-    await f.change({ kind: 'create-smart', label: 'Ordered transaction owners', password: PASSWORD });
+    await f.change({ kind: 'create', label: 'Configured first transaction owner',});
+    await f.change({ kind: 'create-smart', label: 'Ordered transaction owners',});
     const owners = f.owner.getCatalogue()!.accounts.filter(account => account.type === 'HDAccount' && account.slip44 === 60).reverse();
     f.deployed(); f.fundedSmart(); f.holdReceipts(); f.observedEcdsaOwners(owners.map(owner => owner.address), 2);
     operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', { kind: 'exact', amount: '0.000000000000000009' }, () => undefined);
@@ -3173,7 +3173,7 @@ test('plain ECDSA Smart transactions keep configured inverse owner order before 
 test('native SLH stays explicitly unavailable until full primitive/cache qualification', async () => {
   const f = await fixture();
   try {
-    await f.change({ kind: 'create-smart', label: 'SLH qualification gate', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'SLH qualification gate',});
     await assert.rejects(f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), { code: 'NOT_READY' });
   } finally { await f.close(); }
 });
@@ -3181,7 +3181,7 @@ test('native SLH stays explicitly unavailable until full primitive/cache qualifi
 test('native SLH management and send availability remain closed without the qualified execution port', async () => {
   const f = await fixture({}, true);
   try {
-    await f.change({ kind: 'create-smart', label: 'Capability-only admission', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Capability-only admission',});
     assert.equal(f.runtime.canSignSmartAccount(), true); assert.equal(f.runtime.canManageSlhDsa(), false);
     f.guardianStatus('no-policy'); f.observedSlh({pkRoot:`0x${'44'.repeat(16)}${'00'.repeat(16)}`,pkSeed:`0x${'33'.repeat(16)}${'00'.repeat(16)}`});
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
@@ -3194,7 +3194,7 @@ test('real selected Smart metadata prevents fresh SLH setup over an installed ke
   let executionCalls = 0;
   const f = await fixture({}, false, { open() { executionCalls++; throw Error('native crypto must not start'); }, async purgePublicCache(_namespace, check) { check(); } });
   try {
-    await f.change({ kind: 'create-smart', label: 'Installed SLH', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Installed SLH',});
     f.installSlh();
     const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.equal(account.installedKeys.length, 1);
@@ -3211,7 +3211,7 @@ test('fresh SLH setup derives only the verified descriptor index, independently 
   let executionCalls = 0;
   const f = await fixture({}, false, { open() { executionCalls++; throw Error('native crypto must not start'); }, async purgePublicCache(_namespace, check) { check(); } });
   try {
-    await f.change({ kind: 'create-smart', label: 'Explicit SLH descriptor index', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Explicit SLH descriptor index',});
     f.mutateSelectedSmart(account => { assert.equal(account.smartAccount!.descriptor!.accountIndex, 0); account.id = 91; });
     const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     await assert.rejects(account.prepareFresh(() => undefined));
@@ -3224,7 +3224,7 @@ for (const mutation of ['missing', 'index', 'anchor'] as const) test(`fresh SLH 
   let executionCalls = 0;
   const f = await fixture({}, false, { open() { executionCalls++; throw Error('native crypto must not start'); }, async purgePublicCache(_namespace, check) { check(); } });
   try {
-    await f.change({ kind: 'create-smart', label: 'Captured SLH descriptor', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Captured SLH descriptor',});
     const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     f.mutateSelectedSmart(selected => {
       if (mutation === 'missing') delete selected.smartAccount!.descriptor;
@@ -3241,7 +3241,7 @@ test('fresh SLH setup refuses a missing descriptor at facade admission before SD
   let executionCalls = 0;
   const f = await fixture({}, false, { open() { executionCalls++; throw Error('native crypto must not start'); }, async purgePublicCache(_namespace, check) { check(); } });
   try {
-    await f.change({ kind: 'create-smart', label: 'No inferred SLH index', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'No inferred SLH index',});
     f.mutateSelectedSmart(account => { delete account.smartAccount!.descriptor; });
     await assert.rejects(f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), /Smart account address could not be verified/);
     assert.deepEqual(f.slhDerivations, []);
@@ -3287,7 +3287,7 @@ function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) 
   return { capability, actions, get opened() { return opened; }, get active() { return opened - closed; }, get setups() { return setups; }, get cacheLoads() { return cacheLoads; }, checkPublic(check: () => void) { assertPublic = check; }, forgetCache() { cached.clear(); } };
 }
 async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
-  await f.change({ kind: 'create-smart', label: 'Owned SLH signer', password: PASSWORD });
+  await f.change({ kind: 'create-smart', label: 'Owned SLH signer',});
   const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
   const key = await account.prepareFresh(() => undefined);
   f.observedSlh(key); f.guardianStatus('no-policy');
@@ -3299,7 +3299,7 @@ test('prepared uninstalled SLH status survives cold unlock without rederivation 
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
   backend.checkPublic(() => f.assertNoSigningKeys());
   try {
-    await f.change({ kind: 'create-smart', label: 'Prepared signer', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Prepared signer',});
     let facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     const key = await facade.prepareFresh(() => undefined);
     assert.equal(backend.active, 0, 'setup releases its native context before returning');
@@ -3370,7 +3370,7 @@ for (const delayedMetadata of [false, true]) test(`SLH installation uses exact p
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Install prepared signer', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Install prepared signer',});
     const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), key = await facade.prepareFresh(() => undefined);
     f.guardianStatus('no-policy'); f.fundedSmart();
     operation = await f.runtime.openSlhDsaInstallation(key.keyId, new AbortController().signal, () => undefined);
@@ -3406,7 +3406,7 @@ test('SLH installation refuses a missing saved key and retains uncertain submiss
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Uncertain signer installation', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Uncertain signer installation',});
     const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), key = await facade.prepareFresh(() => undefined);
     f.guardianStatus('no-policy'); f.fundedSmart();
     const missing = getSLHDSAKeyId({ pkSeed: key.pkSeed, pkRoot: `0x${'55'.repeat(16)}${'00'.repeat(16)}` });
@@ -3553,7 +3553,7 @@ for (const method of ['message', 'operation'] as const) test(`actual Smart ${met
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Missing SLH private state', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Missing SLH private state',});
     f.observedSlh({ pkSeed: `0x${'33'.repeat(16)}${'00'.repeat(16)}`, pkRoot: `0x${'44'.repeat(16)}${'00'.repeat(16)}` });
     f.guardianStatus('no-policy'); f.fundedSmart();
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
@@ -3652,7 +3652,7 @@ async function readyLedgerSmartOwner(count = 1) {
     for (let index = 0; index < count; index++) {
       await picker.start(); await picker.select(picker.getSnapshot().devices[0]!.id); await picker.importAccount(`Ledger owner ${index}`);
     }
-    await f.change({kind: 'create-smart', label: 'Ledger Smart account', password: PASSWORD});
+    await f.change({kind: 'create-smart', label: 'Ledger Smart account',});
     f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners(device.wallets.slice(0, count).map(wallet => wallet.address), count);
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     const connection = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'connect');
@@ -3799,7 +3799,7 @@ async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | 
       await f.runtime.trezor.startImport(`Trezor owner ${index+1}`);
       await f.change({kind:'import-trezor',label:`Trezor owner ${index+1}`});
     }
-    await f.change({kind:'create-smart',label:'Trezor Smart account',password:PASSWORD});
+    await f.change({kind:'create-smart',label:'Trezor Smart account',});
     f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners(device.wallets.slice(0,count).map(wallet=>wallet.address).reverse(),count);
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal,()=>undefined);
     return {f,device,async close(){await f.close();await device.dispose();}};
@@ -4123,7 +4123,7 @@ const customModuleDraft = () => ({ kind: 'install-custom' as const, address: CUS
 test('dapp module inventory reads only the requested cached Smart account without network or signing work', async () => {
   const f = await fixture({}, true);
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     const selected = f.owner.getCatalogue()!.active.accountId;
     const host = await f.runtime.openConnectionHost();
     const calls = f.calls.length;
@@ -4166,7 +4166,7 @@ for (const deployed of [false, true]) test(`dapp custom module consent uses the 
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Dapp modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Dapp modules',});
     if (deployed) f.guardianStatus('no-policy');
     f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
     connection = await smartMessageApproval(f);
@@ -4238,7 +4238,7 @@ for (const delayed of [false, true]) test(`module management custom install surv
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
     const before = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
@@ -4267,7 +4267,7 @@ test('module management rejects stale owner before signing and active-validator 
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
     await assert.rejects(f.runtime.openSmartAccountModuleChange({ kind: 'uninstall', address: getConfiguredAuthenticatorAddress(1, 'ecdsa') }, new AbortController().signal, () => undefined), /modules changed/);
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
@@ -4283,7 +4283,7 @@ test('module management composite uses shared execution and reconciles its exact
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.fundedSmart();
     const children = [getConfiguredAuthenticatorAddress(1, 'ecdsa')];
     operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold: 1 }, new AbortController().signal, () => undefined);
@@ -4306,7 +4306,7 @@ test('module management cancellation while saving a discovery record rolls back 
     }
   } }, true);
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.customValidator(CUSTOM_MODULE);
     const operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), lifetime.signal, () => undefined);
     try {
@@ -4327,7 +4327,7 @@ test('module management confirmed custom uninstall retires its discovery record'
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
     f.onBroadcast(() => f.customValidator(CUSTOM_MODULE, true));
@@ -4347,7 +4347,7 @@ test('module management follows the extension self-target blacklist policy', asy
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.customValidator(CUSTOM_MODULE); f.blockRecipient();
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
     await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'failed');
@@ -4360,7 +4360,7 @@ for (const boundary of ['before-review', 'before-sign'] as const) test(`custom v
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
@@ -4385,7 +4385,7 @@ test('a custom installation during payer review is refused before wire submissio
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Modules',});
     f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
     operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
     await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
@@ -4404,7 +4404,7 @@ for (const kind of ['exact', 'maximum'] as const) test(`ordinary Smart ${kind} s
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
   try {
-    await f.change({ kind: 'create-smart', label: 'Externally deployed account', password: PASSWORD });
+    await f.change({ kind: 'create-smart', label: 'Externally deployed account',});
     // Cached constructor metadata remains undeployed/ECDSA. Another client has
     // deployed the account and activated composite authentication on-chain.
     f.guardianStatus('no-policy'); f.fundedSmart();

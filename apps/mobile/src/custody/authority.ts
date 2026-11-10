@@ -49,6 +49,7 @@ export class NativeCustodyAuthority {
   private lockFailed = false;
   private revoking = false;
   private accountOperation = false;
+  private accountCancellation: (() => void) | null = null;
   private snapshot: CustodySnapshot = Object.freeze({
     phase: 'opening',
     revision: 0,
@@ -82,13 +83,16 @@ export class NativeCustodyAuthority {
 
   supportsAccountManagement(): boolean { return this.runtime?.accounts?.supported() === true; }
 
-  cancelAccountOperation(): void { if (this.accountOperation) this.lock(); }
+  cancelAccountOperation(): void {
+    if (this.accountCancellation) this.accountCancellation();
+    else if (this.accountOperation) this.lock();
+  }
 
   manageAccounts(request: NativeAccountRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
     return this.manageContext((runtime) => {
       if (!runtime.accounts) throw new CustodyRuntimeError('NOT_READY');
       return runtime.accounts.reserve(request, expectedCatalogueRevision);
-    }, expectedRevision);
+    }, expectedRevision, true);
   }
 
   /** Adopt only the allocation produced by this authority's live private host. */
@@ -318,11 +322,13 @@ export class NativeCustodyAuthority {
     return id;
   }
 
-  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number): Promise<T> {
+  private manageContext<T>(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<T>; cancel(): void }, expectedRevision: number, accountAuthentication = false): Promise<T> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
     if (!this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.revision !== expectedRevision) return Promise.reject(new CustodyOperationError('CANCELLED'));
     const runtime = this.runtime;
+    const previous = this.snapshot;
+    const previousCatalogue = accountAuthentication ? runtime.accounts?.getSnapshot() : null;
     let reservation: { execute(assertCurrent: () => void): Promise<T>; cancel(): void };
     try {
       // Runtime admission happens before observers can attempt competing work.
@@ -334,6 +340,8 @@ export class NativeCustodyAuthority {
     let release!: () => void;
     this.pending = new Promise<void>((resolve) => { release = resolve; });
     this.accountOperation = true;
+    const cancelAccount = () => reservation.cancel();
+    if (accountAuthentication) this.accountCancellation = cancelAccount;
     const revision = ++this.revision;
     this.publish({ phase: 'authenticating', account: null, error: null });
     const current = () => {
@@ -353,6 +361,14 @@ export class NativeCustodyAuthority {
         current();
         return result;
       } catch (cause) {
+        if (accountAuthentication && runtime.accounts?.isAuthenticationRefusal(cause) &&
+            cause instanceof CustodyRuntimeError && this.runtime === runtime && this.revision === revision &&
+            this.snapshot.phase === 'authenticating' && previous.phase === 'ready' && previous.account &&
+            runtime.accounts.getSnapshot() === previousCatalogue) {
+          current();
+          this.publish({ phase: 'ready', account: previous.account, error: cause.code });
+          throw new CustodyOperationError(cause.code);
+        }
         reservation.cancel();
         this.requestLock();
         try { await this.drainLocks(); } catch { /* Unavailable was published by cleanup. */ }
@@ -363,6 +379,7 @@ export class NativeCustodyAuthority {
         this.publish({ phase: 'locked', account: null, error: code });
         throw new CustodyOperationError(code);
       } finally {
+        if (this.accountCancellation === cancelAccount) this.accountCancellation = null;
         reservation.cancel();
         this.accountOperation = false;
         this.pending = null;
@@ -579,6 +596,21 @@ export class NativeCustodyAuthority {
     this.pending = new Promise<void>(resolve => { release = resolve; });
     return (async () => {
       try { check(); await runtime.security!.changePin(currentPin, nextPin, check); check(); }
+      catch (cause) {
+        if (runtime.security!.isAuthenticationRefusal(cause) && cause instanceof CustodyRuntimeError) {
+          check();
+          this.publish({ error: cause.code });
+          throw new CustodyOperationError(cause.code);
+        }
+        if (runtime === this.runtime && revision === this.revision && this.snapshot.phase !== 'disposed') {
+          this.requestLock();
+          try { await this.drainLocks(); } catch { /* Cleanup publishes quarantine. */ }
+          if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
+          if (revision === this.revision)
+            this.publish({ phase: 'locked', account: null, error: cause instanceof CustodyRuntimeError ? cause.code : 'OPERATION_FAILED' });
+        }
+        throw new CustodyOperationError(cause instanceof CustodyRuntimeError ? cause.code : 'OPERATION_FAILED');
+      }
       finally { this.pending = null; release(); }
     })();
   }

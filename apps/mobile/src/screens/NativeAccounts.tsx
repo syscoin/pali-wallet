@@ -1,7 +1,6 @@
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
-import { PinField } from './PinEntry';
 import React, {
   useCallback,
   useEffect,
@@ -88,7 +87,6 @@ export function NativeAccounts({
   const [form, setForm] = useState<Form | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
@@ -101,7 +99,6 @@ export function NativeAccounts({
   const subscribe = useCallback(
     (listener: () => void) =>
       controller.subscribe(() => {
-        setPassword('');
         setForm(null);
         setAdding(false);
         setName('');
@@ -119,7 +116,6 @@ export function NativeAccounts({
     lifetime.current.epoch++;
     controller.cancel();
     Keyboard.dismiss();
-    setPassword('');
     latestBack.current();
   }, [controller]);
   useEffect(() => {
@@ -140,7 +136,6 @@ export function NativeAccounts({
     if (!snapshot || working.current) return;
     setError('');
     setAdding(false);
-    setPassword('');
     setName(value.label);
     setRemoveAcknowledged(false);
     setForm({
@@ -158,7 +153,6 @@ export function NativeAccounts({
     working.current = true;
     setBusy(true);
     setError('');
-    setPassword('');
     Keyboard.dismiss();
     const epoch = lifetime.current.epoch;
     try {
@@ -174,7 +168,6 @@ export function NativeAccounts({
       working.current = false;
       if (lifetime.current.alive && epoch === lifetime.current.epoch) {
         setBusy(false);
-        setPassword('');
       }
     }
   };
@@ -187,24 +180,18 @@ export function NativeAccounts({
         !removeAcknowledged)
     )
       return;
-    let entered = password;
     const request: NativeAccountRequest =
       form.kind === 'create' || form.kind === 'create-smart'
-        ? { kind: form.kind, label: name.trim(), password: entered }
+        ? { kind: form.kind, label: name.trim() }
         : form.kind === 'remove'
-        ? { kind: 'remove', id: form.id!, password: entered }
+        ? { kind: 'remove', id: form.id! }
         : { kind: 'rename', id: form.id!, label: name.trim() };
-    void run(request, form.contextRevision, form.catalogueRevision).finally(
-      () => {
-        entered = '';
-      }
-    );
+    void run(request, form.contextRevision, form.catalogueRevision);
   };
   const field = (
     title: string,
     value: string,
-    change: (text: string) => void,
-    secret = false
+    change: (text: string) => void
   ) => (
     <View style={s.field}>
       <Text style={s.label}>{title}</Text>
@@ -213,8 +200,7 @@ export function NativeAccounts({
         value={value}
         onChangeText={change}
         editable={!busy}
-        maxLength={secret ? 1024 : 64}
-        secureTextEntry={secret}
+        maxLength={64}
         autoCapitalize="none"
         autoCorrect={false}
         spellCheck={false}
@@ -225,7 +211,6 @@ export function NativeAccounts({
       />
     </View>
   );
-  const needsPassword = form && form.kind !== 'rename';
   const title = !form
     ? t('mobile.accounts.title')
     : form.kind === 'create-smart'
@@ -366,7 +351,6 @@ export function NativeAccounts({
                 disabled={
                   busy ||
                   (form.kind !== 'remove' && !name.trim()) ||
-                  (!!needsPassword && !password) ||
                   (form.kind === 'remove' &&
                     form.accountType === 'Imported' &&
                     !removeAcknowledged)
@@ -382,7 +366,6 @@ export function NativeAccounts({
             onBack={() => {
               if (form && !busy) {
                 setForm(null);
-                setPassword('');
                 setError('');
               } else close();
             }}
@@ -446,7 +429,6 @@ export function NativeAccounts({
                   )}
                 </>
               )}
-              {needsPassword && <PinField label={t('mobile.accounts.confirmPassword')} value={password} onChange={setPassword} busy={busy} />}
             </>
           ) : null}
           {!!error && (

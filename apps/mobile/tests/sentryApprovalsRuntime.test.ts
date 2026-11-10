@@ -171,7 +171,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
     manager = await runtime.openSentryApprovals!(lifetime.signal, checkTopic);
     id = await manager.votes.prepare(request, 'https://connected.test', checkTopic, { assertCurrent: checkTopic, signal: lifetime.signal });
     await authority.manageAccounts(
-      { kind: 'create', label: 'Second public fixture', password: PASSWORD },
+      { kind: 'create', label: 'Second public fixture',},
       authority.getSnapshot().revision,
       authority.getCatalogue()!.revision
     );

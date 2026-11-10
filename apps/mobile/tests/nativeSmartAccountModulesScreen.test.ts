@@ -27,7 +27,7 @@ function metadata(): ISmartAccountMetadata {
       { type: 'validator', id: 'custom', address: spareAddress, config: { name: 'Spare validator', moduleType: 1, compositeCompatible: false } },
     ] };
 }
-const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} };
+const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} };
 function fixture() {
   let returned = 0, reads = 0, opens = 0, disposed = 0;
   let readWait: Promise<void> = Promise.resolve(), openWait: Promise<void> = Promise.resolve();
@@ -63,6 +63,9 @@ test('Modules lists only observed validators and protects active and composite-r
   try {
     const elements = f.render(), text = contents(elements);
     assert(text.includes(ownerAddress)); assert(text.includes(childAddress)); assert(!text.includes(customAddress)); assert(!text.includes('Discovery only'));
+    assert.equal(elements.filter(element => element.type === 'Icon' && element.props.name === 'check').length, 4);
+    assert.equal(elements.filter(element => element.props.accessibilityLabel === t('smartAccountHub.active')).length, 1);
+    assert.equal(elements.filter(element => element.props.accessibilityLabel === t('smartAccountHub.installed')).length, 3);
     const uninstalls = elements.filter(element => element.type === 'Button' && element.props.title === t('smartAccountHub.uninstall'));
     assert.equal(uninstalls.length, 2); assert.deepEqual(uninstalls.map(element => element.props.disabled), [false, false]);
     uninstalls[1]!.props.onPress(); await tick();

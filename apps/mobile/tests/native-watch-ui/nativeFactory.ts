@@ -1,4 +1,6 @@
 import { unsignedTransferBytes } from '../../src/custody/evmFeeContracts.ts';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
+import { isOperationAuthenticationCancellation } from '../../src/core/operationAuthentication';
 import { createTestOperationAuthorizer } from '../fixtures/operationAuthorization.ts';
 import { activityFetch } from './utxoActivityFixture';
 import { createNativeUtxoActivity } from '../../src/custody/utxoActivity';
@@ -242,6 +244,10 @@ export function createNativeWalletControllers() {
     }
     check();
   };
+  const credentialRefusals = new WeakSet<object>();
+  const refused = (code: 'CANCELLED' | 'INVALID_CREDENTIAL' | 'DEVICE_UNLOCK_UNAVAILABLE') => {
+    const error = new KeyringRuntimeError(code); credentialRefusals.add(error); return error;
+  };
   const runtime: CustodyRuntime = {
     async previewPhrase(phrase, check) {
       check();
@@ -272,9 +278,10 @@ export function createNativeWalletControllers() {
       },
     } satisfies NonNullable<CustodyRuntime['deviceUnlock']> } : {}),
     security: {
+      isAuthenticationRefusal: error => !!error && typeof error === 'object' && credentialRefusals.has(error),
       authenticateOperation,
       async authenticationStatus() { return { pinConfigured: true, biometricsAvailable: !!authentication, biometricsEnabled: visualDeviceUnlockEnabled }; },
-      async changePin(current, next, check) { check(); if (current !== fixturePassword || !/^\d{6}$/.test(next)) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); fixturePassword = next; check(); },
+      async changePin(current, next, check) { check(); if (current !== fixturePassword || !/^\d{6}$/.test(next)) throw refused('INVALID_CREDENTIAL'); fixturePassword = next; check(); },
       async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); },
     },
     networks: {
@@ -299,18 +306,32 @@ export function createNativeWalletControllers() {
       },
     },
     accounts: {
+      isAuthenticationRefusal: error => !!error && typeof error === 'object' && credentialRefusals.has(error),
       supported: () => true,
       getSnapshot: () => catalogue,
       reserve(request, expectedRevision) {
         if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
+        const cancellation = new AbortController();
         return {
-          cancel() {},
-          async execute(guard) {
+          cancel() { cancellation.abort(); },
+          async execute(check) {
+            const guard = () => { check(); if (cancellation.signal.aborted) throw refused('CANCELLED'); };
             guard();
+            if (request.kind === 'create' || request.kind === 'remove' || request.kind === 'create-smart') {
+              try {
+                const credential = await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: !!authentication && visualDeviceUnlockEnabled }, cancellation.signal, guard);
+                await authenticateOperation(credential, guard);
+              } catch (error) {
+                guard();
+                if (isOperationAuthenticationCancellation(error)) throw refused('CANCELLED');
+                if (error instanceof Error && (error.message === 'INVALID_CREDENTIAL' || error.message === 'DEVICE_UNLOCK_UNAVAILABLE')) throw refused(error.message);
+                throw error;
+              }
+              guard();
+            }
             let active = catalogue.active.accountId;
             let items = [...catalogue.accounts];
             if (request.kind === 'create') {
-              if (request.password !== (visualReviewEnabled ? fixturePassword : '123456')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
               const index = nextAccountIndex('HDAccount');
               const account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label,
                 address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
@@ -321,7 +342,6 @@ export function createNativeWalletControllers() {
               if (request.kind === 'select') active = account.id;
               else if (request.kind === 'rename') items = items.map((item) => item.id === account.id ? { ...item, label: request.label } : item);
               else if (request.kind === 'remove') {
-                if (request.password !== (visualReviewEnabled ? fixturePassword : '123456')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
                 if (account.id === active || account.type === 'HDAccount' && account.index === 0) throw new KeyringRuntimeError('ACCOUNT_NOT_REMOVABLE');
                 items = items.filter((item) => item.id !== account.id); importedKeys.delete(account.id);
               } else throw new KeyringRuntimeError('INVALID_INPUT');

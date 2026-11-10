@@ -159,7 +159,6 @@ export async function qualifyNativeErc20Transfer(
       await manage({
         kind: 'create',
         label: 'Qualification ERC20 account',
-        password,
       });
     });
   } else

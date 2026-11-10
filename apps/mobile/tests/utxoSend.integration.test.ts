@@ -838,7 +838,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const current = () => undefined;
   const selectNetwork = () => owner.selectNetwork(network.id, owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
   const selectAccount = (id: string) => owner.manageAccounts({ kind: 'select', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
-  const removeAccount = (id: string, credential = password) => owner.manageAccounts({ kind: 'remove', id, password: credential }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
+  const removeAccount = (id: string) => owner.manageAccounts({ kind: 'remove', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
   const preview = (privateKey: string, utxoAddressType?: UtxoImportAddressType) => owner.previewUtxoImport(
     { privateKey, ...(utxoAddressType && { utxoAddressType }) }, owner.getSnapshot().revision, owner.getCatalogue()!.revision, current
   );

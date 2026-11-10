@@ -41,6 +41,8 @@ import type { CustodyErrorCode } from '../../src/custody/types';
 import { Header, Screen, Text } from '../../src/ui';
 import { TransactionDetailLayout } from '../../src/screens/TransactionDetailLayout';
 import { NativeAccounts } from '../../src/screens/NativeAccounts';
+import { NativeOperationAuthentication } from '../../src/screens/NativeOperationAuthentication';
+import { nativeOperationAuthentication } from '../../src/platform/operationAuthentication';
 import type {
   NativeAccountView,
   NativeAccountRequest,
@@ -296,6 +298,7 @@ let accountContext = 0;
 let accountFailure: CustodyErrorCode | null = null;
 const accountListeners = new Set<() => void>();
 const accountRequests: NativeAccountRequest[] = [];
+let accountAuthentication: AbortController | undefined;
 const accountController: NativeAccountView = {
   getSnapshot: () => accountSnapshot,
   getContextRevision: () => accountContext,
@@ -303,7 +306,7 @@ const accountController: NativeAccountView = {
     accountListeners.add(listener);
     return () => accountListeners.delete(listener);
   },
-  cancel() {},
+  cancel() { accountAuthentication?.abort(); },
   async execute(request, contextRevision, catalogueRevision) {
     if (
       !accountSnapshot ||
@@ -311,6 +314,16 @@ const accountController: NativeAccountView = {
       catalogueRevision !== accountSnapshot.revision
     )
       throw Error('CANCELLED');
+    if (request.kind === 'create' || request.kind === 'create-smart' || request.kind === 'remove') {
+      const captured = accountSnapshot, revision = accountContext, abort = new AbortController();
+      accountAuthentication = abort;
+      const check = () => { if (abort.signal.aborted || accountSnapshot !== captured || accountContext !== revision) throw Error('CANCELLED'); };
+      try {
+        const credential = await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, abort.signal, check);
+        check();
+        if (credential.method !== 'pin' || credential.pin !== '123456') throw Error('INVALID_CREDENTIAL');
+      } finally { if (accountAuthentication === abort) accountAuthentication = undefined; }
+    }
     accountRequests.push(request);
     const injectedFailure = new URLSearchParams(window.location.search).get(
       'failure'
@@ -477,10 +490,10 @@ function Fixture() {
             <NativeCustodyFeedback error={failure} />
           </>
         ) : (
-          <NativeAccounts
+          <><NativeAccounts
             controller={accountController}
             onBack={() => undefined}
-          />
+          /><NativeOperationAuthentication /></>
         )
       ) : (
         <NativeSend

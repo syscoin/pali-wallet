@@ -30,6 +30,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
   const deps: Record<string,unknown> = {
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
+    './SendNetworkCard': { SendNetworkCard: 'SendNetworkCard' },
     './NativeLedger': { NativeLedgerConnectionModal: 'NativeLedgerConnectionModal' },
     './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: (token: { balance?: string }) => token.balance },
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
@@ -139,12 +140,12 @@ for (const boundary of ['close', 'account', 'draft'] as const) test(`recipient s
 test('draft network card exposes Change only when the parent provides it', () => {
   let changes = 0;
   const f = setup(undefined, undefined, undefined, () => { changes++; }); f.snapshot.phase = 'idle';
-  assert.match(all(f.render()).flatMap(node => node.children.filter(child => typeof child === 'string')).join(' '), /Ethereum/);
-  openRecipientScanner(f); button(f.render(), 'Change').props.onPress();
+  assert.equal(one(f.render(), 'SendNetworkCard').props.context.name, 'Ethereum');
+  openRecipientScanner(f); one(f.render(), 'SendNetworkCard').props.onChange();
   assert.equal(changes, 1); assert.equal(all(f.render()).some(node => node.type === 'RecipientQrScanner'), false);
   assert.deepEqual(f.prepared, []); f.dispose();
   const unavailable = setup(); unavailable.snapshot.phase = 'idle';
-  assert.equal(all(unavailable.render()).some(node => node.props.title === 'Change'), false); unavailable.dispose();
+  assert.equal(one(unavailable.render(), 'SendNetworkCard').props.onChange, undefined); unavailable.dispose();
 });
 
 test('network Change captures unsigned form text without preparing or authorizing a transfer', () => {
@@ -152,7 +153,7 @@ test('network Change captures unsigned form text without preparing or authorizin
   const f = setup(undefined, undefined, undefined, draft => captured.push(draft)); f.snapshot.phase = 'idle';
   editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
   editSend(f, 'Amount in ETH', '1.234567890123456789');
-  button(f.render(), 'Change').props.onPress();
+  one(f.render(), 'SendNetworkCard').props.onChange();
   assert.equal(captured.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false });
   assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();

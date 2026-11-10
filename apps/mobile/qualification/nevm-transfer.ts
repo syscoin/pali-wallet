@@ -175,7 +175,6 @@ export async function qualifyNativeNevmTransfer(
       manage({
         kind: 'create',
         label: 'Qualification NEVM account',
-        password,
       })
     );
   } else

@@ -16,15 +16,17 @@ export type NativeNetworkSelectionReceipt = NativeNetworkSelectionProof & Readon
 
 /** UI requests contain no SDK records, private keys or arbitrary method names. */
 export type NativeAccountRequest =
-  | Readonly<{ kind: 'create'; label: string; password: string }>
-  | Readonly<{ kind: 'create-smart'; label: string; password: string }>
+  | Readonly<{ kind: 'create'; label: string }>
+  | Readonly<{ kind: 'create-smart'; label: string }>
   | Readonly<{ kind: 'import-ledger'; label: string }>
   | Readonly<{ kind: 'import-trezor'; label: string }>
   | Readonly<{ kind: 'select'; id: string }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
-  | Readonly<{ kind: 'remove'; id: string; password: string }>;
+  | Readonly<{ kind: 'remove'; id: string }>;
 
 export interface NativeAccountRuntime {
+  /** Only private host-branded, precommit credential refusals can preserve browsing. */
+  isAuthenticationRefusal(error: unknown): boolean;
   /** Synchronous admission excludes SDK authentication/signing before UI revocation. */
   reserve(request: NativeAccountRequest, expectedCatalogueRevision: number): {
     execute(assertCurrent: () => void): Promise<void>;

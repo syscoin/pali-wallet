@@ -214,7 +214,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
     assert.equal(beforeSelection.signal.aborted, false);
     const manage = (change: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) =>
       owner.manageAccounts(change, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
-    const createSecond = manage({ kind: 'create', label: 'Second account', password });
+    const createSecond = manage({ kind: 'create', label: 'Second account',});
     assert.equal(beforeSelection.signal.aborted, true);
     await createSecond;
     await assert.rejects(resolveCollectible(multi, current), { code: 'NOT_READY' });

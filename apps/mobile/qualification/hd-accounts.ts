@@ -129,16 +129,16 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     firstTransferHash = await check('native first-account prepared signature and durable container', () => sign(firstAddress, 0));
     address = await check('native HD create select remove and SDK gap reuse', async () => {
       requireEvidence(catalogue().active.accountId === first.id && selected() === firstAddress);
-      await manage({ kind: 'create', label: 'Qualification account 2', password });
+      await manage({ kind: 'create', label: 'Qualification account 2',});
       const second = catalogue().accounts.find((account) => account.index === 1);
       requireEvidence(second?.id === 'hd:60:1' && second.address !== firstAddress && selected() === second.address);
       if (options.expectedSecondAddress) requireEvidence(second.address === options.expectedSecondAddress);
-      await assertRejected({ kind: 'remove', id: second.id, password }, 'ACCOUNT_NOT_REMOVABLE', false);
-      await assertRejected({ kind: 'remove', id: first.id, password }, 'ACCOUNT_NOT_REMOVABLE', false);
+      await assertRejected({ kind: 'remove', id: second.id,}, 'ACCOUNT_NOT_REMOVABLE', false);
+      await assertRejected({ kind: 'remove', id: first.id,}, 'ACCOUNT_NOT_REMOVABLE', false);
       await manage({ kind: 'select', id: first.id });
-      await manage({ kind: 'remove', id: second.id, password });
+      await manage({ kind: 'remove', id: second.id,});
       requireEvidence(!catalogue().accounts.some((account) => account.id === second.id));
-      await manage({ kind: 'create', label: 'Qualification reused account 2', password });
+      await manage({ kind: 'create', label: 'Qualification reused account 2',});
       const restored = catalogue().accounts.find((account) => account.index === 1);
       requireEvidence(restored?.id === second.id && restored.address === second.address && selected() === second.address);
       return second.address;
@@ -147,7 +147,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     await check('native account journal isolation and pending-removal refusal', async () => {
       await manage({ kind: 'select', id: first.id });
       requireEvidence(await readSigned(firstAddress, 0) === firstTransferHash);
-      await assertRejected({ kind: 'remove', id: 'hd:60:1', password }, 'PENDING_TRANSFER', true);
+      await assertRejected({ kind: 'remove', id: 'hd:60:1',}, 'PENDING_TRANSFER', true);
       await authority.unlock(password);
       requireEvidence(catalogue().active.accountId === first.id && selected() === firstAddress);
       await manage({ kind: 'select', id: 'hd:60:1' });

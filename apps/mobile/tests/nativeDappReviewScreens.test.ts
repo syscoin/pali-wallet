@@ -7,7 +7,7 @@ function fixture(kind: 'control' | 'sentry') {
   const timers = new Map<number, () => void>(), approvals: unknown[][] = [], rejections: string[] = [];
   const native = { Platform: { OS: 'ios' }, KeyboardAvoidingView: 'KeyboardAvoidingView', AppState: { currentState: 'active', addEventListener(_event: string, handler: (state: string) => void) { app = handler; return { remove() { app = undefined; } }; } },
     BackHandler: { addEventListener(_event: string, handler: () => boolean) { back = handler; return { remove() { back = undefined; } }; } },
-    Keyboard: { dismiss() {} }, StyleSheet: { create: (v: unknown) => v } };
+    Keyboard: { dismiss() {} }, StyleSheet: { create: (v: unknown) => v }, View: 'View' };
   const review: any = { id: 'request-1', revision: 1, appName: 'Example', origin: 'https://example.test', accountLabel: 'Wallet', address: '0x123',
     networkLabel: 'Test network', chainId: '1', expiresAt: 1000, busy: false, error: null,
     verification: { validation: 'UNKNOWN', isScam: false }, details: kind === 'control'
@@ -20,7 +20,7 @@ function fixture(kind: 'control' | 'sentry') {
   const f = screenFixture(new URL(`../src/screens/${kind === 'control' ? 'NativeDappControlReview' : 'NativeSentryReview'}.tsx`, import.meta.url),
     kind === 'control' ? 'NativeDappControlReview' : 'NativeSentryReview', {
       'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-      '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
+      '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './DappSiteStatus': { DappSiteStatus: 'SiteStatus' }, './IdleActivityBoundary': { IdleTextInput: 'Input' },
       './PinEntry': { PinField: 'Input' },
     }, { Date: class extends Date { static now() { return clock; } },
@@ -36,7 +36,9 @@ function fixture(kind: 'control' | 'sentry') {
 }
 
 test('network control uses only request ID/revision, rejects Back and explains blocked sites', async () => {
-  const f = fixture('control'); f.render(); await f.button().props.onPress();
+  const f = fixture('control');
+  assert(f.render().some(node => node.type === 'Icon' && node.props.name === 'globe'));
+  await f.button().props.onPress();
   assert.deepEqual(f.approvals, [['request-1', 1]]); assert.equal(f.back(), true); await f.tick();
   assert.deepEqual(f.rejections, ['request-1']);
   f.review.error = 'BLOCKED_SITE';
