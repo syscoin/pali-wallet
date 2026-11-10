@@ -1,0 +1,2891 @@
+{
+  "started": "2026-11-10T18:25:17.455Z",
+  "updated": "2026-11-10T18:25:19.988Z",
+  "report": [
+    {
+      "id": "01-watch-wallet",
+      "label": "Watch-only account",
+      "component": "App / RealPortfolio",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "View my accounts"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "01-watch-wallet-390.png",
+      "capturedAt": "2026-11-10T18:15:56.267Z",
+      "note": null,
+      "text": "Pali Wallet\nShared address watch · Watch-only\nETHEREUM BALANCE\n2.5\nETH\n \nReceive\nAssets\nETH\nEthereum\n2.5 ETH\nNetwork\nEthereum\nHide public account\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "02-account-manager",
+      "label": "Native account manager",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "02-account-manager-390.png",
+      "capturedAt": "2026-11-10T18:15:57.435Z",
+      "note": null,
+      "text": "Accounts\nEVM · Wallet accounts\nChoose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.\nAccount 1\nSelected\nRecovery phrase account\n0x00000000…000001\nAccount 2\nRecovery phrase account\n0x00000000…000002",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "03-create-account",
+      "label": "Create another software account",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [
+        "Add account",
+        "Create account"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "03-create-account-390.png",
+      "capturedAt": "2026-11-10T18:15:58.653Z",
+      "note": null,
+      "text": "Add an account\nEVM · Wallet accounts\nAccount name\nOne recovery phrase, another address\nThis account is derived from your existing recovery phrase. Keep that phrase backed up offline.\nConfirm wallet password\nCreate account",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "04-network-add",
+      "label": "Add a custom network",
+      "component": "NativeNetworks",
+      "url": "http://127.0.0.1:4291/?networks=1",
+      "steps": [
+        "Add network"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "04-network-add-390.png",
+      "capturedAt": "2026-11-10T18:15:59.840Z",
+      "note": null,
+      "text": "Add network\nNetwork name\nRPC URL\nChain ID\nCurrency symbol\nThis is a test network\nRPC changes apply to pending status checks and retries you approve.\nSave network\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "05-token-assets",
+      "label": "Token assets",
+      "component": "NativePortfolio",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "05-token-assets-390.png",
+      "capturedAt": "2026-11-10T18:16:01.229Z",
+      "note": null,
+      "text": "Pali Wallet\nAccount 1 · Ethereum\nETHEREUM BALANCE\n1.23\nETH\n \nUpdated 10:16 AM\nSend\nReceive\nAssets\nImport token\nETH\nEthereum\n1.23 ETH\nNo custom tokens added\nAdd a token by its contract address on this network.\nCollectibles\nView recovery phrase\nConfirm your password to continue\nLock wallet",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "06-import-token",
+      "label": "Import token / find holdings",
+      "component": "NativeTokens",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [
+        "Import token",
+        "Find holdings"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "06-import-token-390.png",
+      "capturedAt": "2026-11-10T18:16:02.666Z",
+      "note": null,
+      "text": "Import token\nAccount 1 · Ethereum\nEnter the token contract on Ethereum. Its name and symbol do not verify its identity.\nCONTRACT ADDRESS\nReview token\nWallet holdings\nSuggestions from the network explorer for this address. Check the contract before adding a token.\nExplorer fixture · HINT\n0x1111111111111111111111111111111111111111",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "07-token-review",
+      "label": "Verified token preview",
+      "component": "NativeTokens",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [
+        "Import token",
+        "Enter public contract",
+        "Review token"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "07-token-review-390.png",
+      "capturedAt": "2026-11-10T18:16:04.119Z",
+      "note": null,
+      "text": "Import token\nAccount 1 · Ethereum\nEnter the token contract on Ethereum. Its name and symbol do not verify its identity.\nCONTRACT ADDRESS\nReview token\nFixture token\nCustom token · Unverified issuer metadata\nNETWORK\nEthereum · Chain 1\nCONTRACT ADDRESS\n0x1111111111111111111111111111111111111111\nSYMBOL · DECIMALS\nFIXTURE · 2\n90071992547409.93 FIXTURE\nCheck the contract\nAnyone can create a token with a familiar name or symbol. Compare this complete contract address with a source you trust.\nAdd token",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "08-collectible-discovery",
+      "label": "Collectible discovery",
+      "component": "NativeTokens",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [
+        "Collectibles",
+        "Find collectibles"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "08-collectible-discovery-390.png",
+      "capturedAt": "2026-11-10T18:16:06.311Z",
+      "note": null,
+      "text": "Collectibles\nAccount 1 · Ethereum\nReported by the explorer. Ownership hasn’t been verified.\nNFT Collection\nERC-1155\n0x3333333333333333333333333333333333333333\nToken ID 0\nQuantity reported: 900719925474099312345\nPaper foxes\nERC-721\n0x2222222222222222222222222222222222222222\nItems reported: 1\nRefresh results",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "09-collectible-ownership",
+      "label": "Collectible ownership form",
+      "component": "NativeTokens / CollectibleOwnership",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings&collectible-check",
+      "steps": [
+        "Collectibles",
+        "Check by contract"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "09-collectible-ownership-390.png",
+      "capturedAt": "2026-11-10T18:16:07.773Z",
+      "note": null,
+      "text": "Check collectible\nAccount 1 · Ethereum\nCheck this account on Ethereum.\nCONTRACT ADDRESS\nTOKEN STANDARD\nERC-721\nERC-1155\nTOKEN ID\nQuantity on network: 900719925474099312345\nCheck ownership\nSave collectible",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "10-evm-nonce",
+      "label": "EVM advanced nonce",
+      "component": "NativeSend",
+      "url": "http://127.0.0.1:4291/?",
+      "steps": [
+        "Advanced options"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "10-evm-nonce-390.png",
+      "capturedAt": "2026-11-10T18:16:08.944Z",
+      "note": null,
+      "text": "Send ETH\nAccount 1 · Ethereum\nEthereum\nETH\nEthereum address\nAmount in ETH\nHide advanced options\nTransaction nonce\nLeave blank for automatic selection. A higher nonce can wait for earlier transactions.\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "11-utxo-advanced",
+      "label": "UTXO advanced transaction options",
+      "component": "NativeUtxoSend",
+      "url": "http://127.0.0.1:4291/?utxo-send=1",
+      "steps": [
+        "Advanced options"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "11-utxo-advanced-390.png",
+      "capturedAt": "2026-11-10T18:16:10.119Z",
+      "note": null,
+      "text": "Send BTC\nAccount 1 · Bitcoin\nRecipient address\nAmount in BTC\nUse maximum\nHide advanced options\nReplace-by-fee enabled\nReplace-by-fee allows this transaction to be replaced with a higher network fee.\nSaved transfers\nCheck transfer aaaaaaaa…\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "12-erc20-send",
+      "label": "ERC-20 transfer form",
+      "component": "NativeSend",
+      "url": "http://127.0.0.1:4291/?erc20-send=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "12-erc20-send-390.png",
+      "capturedAt": "2026-11-10T18:16:11.270Z",
+      "note": null,
+      "text": "Send FIX\nAccount 1 · Ethereum\nEthereum\nETH\nEthereum address\nTOKEN CONTRACT · ETHEREUM\n0x3333333333333333333333333333333333333333\nPublic fixture token · FIX\nDECIMALS\n6\nCustom token · Unverified issuer metadata\nAmount in FIX\nMAX\nAdvanced options\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "14-guardian-policy",
+      "label": "Guardian policy and status",
+      "component": "NativeGuardianPolicy",
+      "url": "http://127.0.0.1:4291/?guardian-policy=1",
+      "steps": [
+        "Check status"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "14-guardian-policy-390.png",
+      "capturedAt": "2026-11-10T18:16:13.616Z",
+      "note": null,
+      "text": "Guardian recovery\nEthereum\nCheck the on-chain recovery status for this account.\n0x1111111111111111111111111111111111111111\nNo recovery scheduled\nChecked at block 100\nUpdate guardian\nRemove guardian\nCheck again",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "15-guardian-policy-edit",
+      "label": "Guardian policy editor",
+      "component": "NativeGuardianPolicy",
+      "url": "http://127.0.0.1:4291/?guardian-policy=1&new-policy",
+      "steps": [
+        "Check status",
+        "Set guardian"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "15-guardian-policy-edit-390.png",
+      "capturedAt": "2026-11-10T18:16:14.811Z",
+      "note": null,
+      "text": "Set guardian\nEthereum\nSmart account · Chain ID 1\n0x1111111111111111111111111111111111111111\nGuardian address\nRecovery delay\n3 days\n7 days\nThis policy uses one guardian. A recovery request becomes ready after 3 days and can be finalized for 6 days once ready.\nReview policy\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "16-smart-guardian-recovery",
+      "label": "Smart guardian / separate payer recovery",
+      "component": "NativeGuardianRecovery",
+      "url": "http://127.0.0.1:4291/?guardian-recovery=1&smart-guardian=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "16-smart-guardian-recovery-390.png",
+      "capturedAt": "2026-11-10T18:16:15.969Z",
+      "note": null,
+      "text": "Recover smart account\nEthereum\nSmart account · Chain ID 1\n0x1111111111111111111111111111111111111111\nChoose the replacement owner\nRecovery replaces the account’s current validator with the wallet key you select. The guardian policy’s waiting period applies before finalization.\nGuardian account\nGuardian smart account\n0x2222222222222222222222222222222222222222\nReplacement owner\nChoose replacement owner\nFee payer\nFee payer\n0x5555555555555555555555555555555555555555\nChoose fee payer\nReview recovery\nEmail alerts in Sysnode\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "17-guardian-recovery-review",
+      "label": "Guardian recovery proof review",
+      "component": "NativeGuardianRecovery",
+      "url": "http://127.0.0.1:4291/?guardian-recovery=1&smart-guardian=1",
+      "steps": [
+        "Choose replacement owner",
+        "Replacement key",
+        "Review recovery"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "17-guardian-recovery-review-390.png",
+      "capturedAt": "2026-11-10T18:16:17.201Z",
+      "note": null,
+      "text": "Recover smart account\nEthereum\nSmart account · Chain ID 1\n0x1111111111111111111111111111111111111111\nReplacement owner\n0x3333333333333333333333333333333333333333\nGuardian\n0x2222222222222222222222222222222222222222\nFee payer\n0x5555555555555555555555555555555555555555\nAuthorize the recovery\nAuthorize the guardian and replacement-key proofs for this exact recovery. Review the paying account and fee next.\nAuthorize recovery\nClear local recovery tracking\nEmail alerts in Sysnode\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "18-slh-keys",
+      "label": "SLH-DSA prepared keys",
+      "component": "NativeSlhDsaManagement",
+      "url": "http://127.0.0.1:4292/?slh-fixture=ready",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "18-slh-keys-390.png",
+      "capturedAt": "2026-11-10T18:16:18.376Z",
+      "note": null,
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nReady\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA · 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "19-slh-installed",
+      "label": "SLH-DSA installed keys",
+      "component": "NativeSlhDsaManagement",
+      "url": "http://127.0.0.1:4292/?slh-fixture=installed",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "19-slh-installed-390.png",
+      "capturedAt": "2026-11-10T18:16:19.551Z",
+      "note": null,
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nInstalled\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA · 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "20-smart-transfer",
+      "label": "Smart account transfer",
+      "component": "NativeSmartAccountSend",
+      "url": "http://127.0.0.1:4291/?smart-currency=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "20-smart-transfer-390.png",
+      "capturedAt": "2026-11-10T18:16:20.717Z",
+      "note": null,
+      "text": "Send\nSmart account · Ethereum\nBalance 5.0 ETH\nRecipient address\nAmount (ETH)\nMAX\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "21-smart-deployment",
+      "label": "Smart account deployment authorization",
+      "component": "NativeSmartAccountOperation",
+      "url": "http://127.0.0.1:4291/?smart-deployment=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "21-smart-deployment-390.png",
+      "capturedAt": "2026-11-10T18:16:21.882Z",
+      "note": null,
+      "text": "Authorize deployment\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nCreate this account on the network\nAuthorize the account’s deployment. This operation sends no assets. The following review confirms the wallet account and network fee used to submit it.\nMaximum account charge\n0.003\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize deployment\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "22-smart-batch",
+      "label": "Smart account batched calls",
+      "component": "NativeSmartTransactionReview",
+      "url": "http://127.0.0.1:4291/?smart-batch=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "22-smart-batch-390.png",
+      "capturedAt": "2026-11-10T18:16:23.037Z",
+      "note": null,
+      "text": "Review calls\nExample batch app\nhttps://batch.example.invalid\nWebsite origin matched by WalletConnect\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nCall 1 of 2\n0x3333333333333333333333333333333333333333\n0.001\nETH\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"1000000000000000\",\n  \"data\": \"0x12345678\"\n}\nCall 2 of 2\n0x4444444444444444444444444444444444444444\n0.002\nETH\nTransaction details\n{\n  \"to\": \"0x4444444444444444444444444444444444444444\",\n  \"value\": \"2000000000000000\",\n  \"data\": \"0x87654321\"\n}\nAuthorize these calls\nAuthorize the ordered calls together. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.00021\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize calls\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "23-eoa-batch",
+      "label": "Software account batched calls",
+      "component": "NativeTransactionReview",
+      "url": "http://127.0.0.1:4291/?eoa-batch=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "23-eoa-batch-390.png",
+      "capturedAt": "2026-11-10T18:16:24.191Z",
+      "note": null,
+      "text": "Review calls\nE\nExample batch app\nCustom network · https://batch.example.invalid\nCall 1 of 2\nCOIN transfer\n0.001 COIN\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x1111111111111111111111111111111111111111\nTo\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000042 COIN\nMaximum total\n0.001042 COIN\nView transaction details\nView all 2 calls\nReject\nConfirm call 1/2",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "24-private-deposit",
+      "label": "Private deposit form",
+      "component": "NativePrivateDeposit",
+      "url": "http://127.0.0.1:4291/?private-deposit=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "24-private-deposit-390.png",
+      "capturedAt": "2026-11-10T18:16:25.343Z",
+      "note": null,
+      "text": "Deposit to pool\nChoose an Ethereum privacy pool.\n0.1 ETH\n1 ETH\n10 ETH\n100 ETH\nReview deposit\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "25-private-deposit-review",
+      "label": "Private deposit review",
+      "component": "NativePrivateDeposit",
+      "url": "http://127.0.0.1:4291/?private-deposit=1",
+      "steps": [
+        "Review deposit"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "25-private-deposit-review-390.png",
+      "capturedAt": "2026-11-10T18:16:26.605Z",
+      "note": null,
+      "text": "Review deposit\n0.1 ETH\nEthereum privacy pool\nFrom account\n0x2222222222222222222222222222222222222222\nPool contract\n0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc\nMaximum network fee\n0.0042 ETH\nMaximum total\n0.1042 ETH\nView transaction details\nKeep a private backup of this note. Your recovery phrase cannot restore it.\nBack up private notes\nI understand that I need the note backup to withdraw.\nChange amount\nConfirm deposit\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "26-private-notes",
+      "label": "Private note inventory",
+      "component": "NativeNoteInventory",
+      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "26-private-notes-390.png",
+      "capturedAt": "2026-11-10T18:16:27.771Z",
+      "note": null,
+      "text": "Saved notes\nOpen a note to check its pool status or make a backup.\n1 ETH pool\nNote 1 · 11/1/2025\nLock wallet",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "27-private-withdrawal",
+      "label": "Private withdrawal form",
+      "component": "NativePrivateWithdrawal",
+      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
+      "steps": [
+        "Select 1 ETH pool",
+        "Check pool status",
+        "Withdraw"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "27-private-withdrawal-390.png",
+      "capturedAt": "2026-11-10T18:16:28.981Z",
+      "note": null,
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet · Private note\nRecipient address\nSend with\nDirect\n●\nRelayer\n○\nYour account pays gas. This can link the gas payer to the recipient.\nReview withdrawal\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "28-import-note",
+      "label": "Import private note",
+      "component": "NativeNoteImport",
+      "url": "http://127.0.0.1:4291/?note-import=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "28-import-note-390.png",
+      "capturedAt": "2026-11-10T18:16:30.131Z",
+      "note": null,
+      "text": "Import private note\nEnter one private note. Pali checks its public pool history before saving it.\nAnyone with this note can withdraw. Keep it private.\nPrivate note\nImport note\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "29-sentry-keys",
+      "label": "Sentry key management",
+      "component": "NativeSentryKeys",
+      "url": "http://127.0.0.1:4291/?sentry=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "29-sentry-keys-390.png",
+      "capturedAt": "2026-11-10T18:16:31.281Z",
+      "note": null,
+      "text": "Sentry keys\nSyscoin\nNo Sentry keys saved on this network.\nService settings\nImport key\nImport multiple keys",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "30-sentry-service",
+      "label": "Sentry service settings",
+      "component": "NativeSentrySettings",
+      "url": "http://127.0.0.1:4291/?sentry=1",
+      "steps": [
+        "Service settings"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "30-sentry-service-390.png",
+      "capturedAt": "2026-11-10T18:16:32.457Z",
+      "note": null,
+      "text": "Service settings\nSyscoin\nChoose the Sentry data service and maximum transaction fee for this network.\nService origin\nMaximum fee in satoshis\nConfirm wallet password\nSave settings\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "31-sentry-nodes",
+      "label": "Sentry nodes",
+      "component": "NativeSentryNodes",
+      "url": "http://127.0.0.1:4291/?sentry-nodes=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "31-sentry-nodes-390.png",
+      "capturedAt": "2026-11-10T18:16:33.598Z",
+      "note": null,
+      "text": "Linked nodes\nSyscoin\nYour nodes, together\nLink a registered Sentry node to save its public identity and protect its collateral from ordinary wallet sends.\nLink a node\nRefresh",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a7db374c0ae046349161b89069fdd12c.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "34-ledger-account",
+      "label": "Ledger account review",
+      "component": "NativeLedger",
+      "url": "http://127.0.0.1:4291/?ledger=1",
+      "steps": [
+        "Find Ledger",
+        "My Ledger · Nano X"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "34-ledger-account-390.png",
+      "capturedAt": "2026-11-10T18:16:43.001Z",
+      "note": null,
+      "text": "Connect Ledger\nEthereum\nReview the address and choose a name for this account.\nMy Ledger\nAddress\n0x1111111111111111111111111111111111111111\nAccount name\nAdd Ledger account",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "35-trezor-import",
+      "label": "Trezor account import",
+      "component": "NativeTrezor",
+      "url": "http://127.0.0.1:4291/?trezor=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "35-trezor-import-390.png",
+      "capturedAt": "2026-11-10T18:16:44.176Z",
+      "note": null,
+      "text": "Connect Trezor\nEthereum\nConnect your Trezor in Trezor Suite, then return to Pali to continue.\nAccount name\nOpen Trezor Suite",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "36-trezor-smart-resume",
+      "label": "Trezor Smart owner continuation",
+      "component": "NativeTrezorResumeNotice",
+      "url": "http://127.0.0.1:4291/?trezor=1&resume=smart",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "36-trezor-smart-resume-390.png",
+      "capturedAt": "2026-11-10T18:16:45.351Z",
+      "note": "Actual resume notice only; Continue is not invoked because this fixture transitions to placeholder review copy.",
+      "text": "Continue with Trezor\nEthereum\nReview the request again before continuing.\nSmart savings\n0x1111111111111111111111111111111111111111\nExpected signer\nSigner 2 of 3\nTravel Trezor signer\n0x2222222222222222222222222222222222222222\nContinue",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "39-auto-lock",
+      "label": "Auto-lock preferences",
+      "component": "AutoLockSettings",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Security & backups",
+        "Auto-lock"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "39-auto-lock-390.png",
+      "capturedAt": "2026-11-10T18:16:49.273Z",
+      "note": null,
+      "text": "Auto-lock\nNative wallet\nLock wallet after foreground inactivity. Current: 5 minutes.\n5 minutes\n15 minutes\n30 minutes\n1 hour\n2 hours\nOff while open\nCustom minutes (5–120, or 0 for Off)\nPali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock.\nSave auto-lock\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "40-biometric-settings",
+      "label": "Biometric enrollment settings",
+      "component": "NativeWallet.native (device-unlock stage)",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Security & backups",
+        "Biometric unlock"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "40-biometric-settings-390.png",
+      "capturedAt": "2026-11-10T18:16:50.848Z",
+      "note": null,
+      "text": "Biometric unlock\nDevelopment build · Use a test wallet\nBiometric unlock is off\nConfirm your wallet password and device biometrics to enable faster unlock. Your password remains available.\nWallet password\nEnable biometric unlock\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "41-import-private-key",
+      "label": "Import software private key",
+      "component": "NativeImport",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Accounts",
+        "Manage wallet accounts",
+        "Add account",
+        "Import private key"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "41-import-private-key-390.png",
+      "capturedAt": "2026-11-10T18:16:52.407Z",
+      "note": null,
+      "text": "Import private key\nEthereum · EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nAccount name\nEVM private key\nUse a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.\nDevelopment build · Use a test wallet\nReview address",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "42-display-currency",
+      "label": "Display currency preferences",
+      "component": "DisplayCurrency",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Display currency"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "42-display-currency-390.png",
+      "capturedAt": "2026-11-10T18:16:54.008Z",
+      "note": null,
+      "text": "Display currency\nChoose the currency for estimated wallet values.\nUnited Arab Emirates Dirham\nAED\nArgentine Peso\nARS\nAustralian Dollar\nAUD\nBCH\nBCH\nBangladeshi Taka\nBDT\nBahraini Dinar\nBHD\nBITS\nBITS\nBermudan Dollar\nBMD\nBNB\nBNB\nBrazilian Real\nBRL\nSave currency",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "43-languages",
+      "label": "Language preferences",
+      "component": "NativePreferences",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Languages"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "43-languages-390.png",
+      "capturedAt": "2026-11-10T18:16:55.587Z",
+      "note": null,
+      "text": "Languages\nSet your preferred language for the wallet interface and translations.\nEnglish\nEnglish · Selected\nEspañol\nSpanish\nPortuguês\nPortuguese\nFrançais\nFrench\nDeutsch\nGerman\n中文\nChinese\n日本語\nJapanese\n한국어\nKorean\nРусский\nRussian\nEnglish is used where a translation is unavailable.\nSave",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "44-help-about",
+      "label": "Help and about",
+      "component": "HelpAbout",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Help & about"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "44-help-about-390.png",
+      "capturedAt": "2026-11-10T18:16:57.123Z",
+      "note": null,
+      "text": "Help & about\nPali Wallet\nVersion 0.1.0 · Development build\nNative features are under qualification. Use only test wallets and testnet funds.\nSupport\nhttps://discord.com/invite/syscoin\nGet support\nCopy support link\nPali documentation\nData provider\nRoutescan\nDone",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "45-private-key-auth",
+      "label": "Private-key reveal authorization",
+      "component": "NativeSecurity",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Security & backups",
+        "Reveal account private key"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "45-private-key-auth-390.png",
+      "capturedAt": "2026-11-10T18:16:58.700Z",
+      "note": null,
+      "text": "Account private key\nAccount 1\n0x52908400098527886E0F7030069857D2E4169EE7\nThis key controls one EVM account\nAnyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.\nConfirm your wallet password\nReveal private key",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "46-watch-address-form",
+      "label": "Add public watch account",
+      "component": "Onboarding / AddWatchAccount",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "Accounts",
+        "Watch an account"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "46-watch-address-form-390.png",
+      "capturedAt": "2026-11-10T18:17:00.125Z",
+      "note": null,
+      "text": "ADD ACCOUNT\nWatch an account\nKeep an eye on a wallet using only its public information.\nAddress network\nEVM networks\nSyscoin Mainnet\nBitcoin\nSyscoin Testnet\nAccount name\nPublic EVM address\nEthereum and compatible networks. Paste only a public address.\nReview account\nUse public information only. Never enter a recovery phrase or private key.",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "47-watch-utxo-key",
+      "label": "Watch UTXO address, public key or descriptor",
+      "component": "Onboarding / AddWatchAccount",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "Accounts",
+        "Watch an account",
+        "Bitcoin network",
+        "Scroll to public identifier"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "47-watch-utxo-key-390.png",
+      "capturedAt": "2026-11-10T18:17:01.624Z",
+      "note": null,
+      "text": "ADD ACCOUNT\nWatch an account\nKeep an eye on a wallet using only its public information.\nAddress network\nEVM networks\nSyscoin Mainnet\nBitcoin\nSyscoin Testnet\nAccount name\nPublic address, account key or descriptor\nA public account key or descriptor includes its receive and change addresses.\nReview account\nUse public information only. Never enter a recovery phrase or private key.",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "49-backup-required-home",
+      "label": "Wallet with backup still required",
+      "component": "NativePortfolio / WalletBackupBadge",
+      "url": "http://127.0.0.1:4292/?visual-review=1&backup-required=1",
+      "steps": [
+        "Unlock synthetic wallet with unconfirmed backup"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "49-backup-required-home-390.png",
+      "capturedAt": "2026-11-10T18:17:04.499Z",
+      "note": null,
+      "text": "Pali Wallet\nAccount 1 · Ethereum\nBack up your wallet\nProtect access if this phone is lost.\nETHEREUM BALANCE\n≈18.446744\nETH\n \nUpdated 10:17 AM\nSend\nReceive\nAssets\nETH\nEthereum\n≈18.446744 ETH\nView recovery phrase\nConfirm your password to continue\nLock wallet\nDevelopment build · Use a test wallet\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "01-watch-wallet",
+      "label": "Watch-only account",
+      "component": "App / RealPortfolio",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "View my accounts"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "01-watch-wallet-320.png",
+      "capturedAt": "2026-11-10T18:17:05.922Z",
+      "note": null,
+      "text": "Pali Wallet\nShared address watch · Watch-only\nETHEREUM BALANCE\n2.5\nETH\n \nReceive\nAssets\nETH\nEthereum\n2.5 ETH\nNetwork\nEthereum\nHide public account\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "02-account-manager",
+      "label": "Native account manager",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "02-account-manager-320.png",
+      "capturedAt": "2026-11-10T18:17:07.075Z",
+      "note": null,
+      "text": "Accounts\nEVM · Wallet accounts\nChoose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.\nAccount 1\nSelected\nRecovery phrase account\n0x00000000…000001\nAccount 2\nRecovery phrase account\n0x00000000…000002",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "03-create-account",
+      "label": "Create another software account",
+      "component": "NativeAccounts",
+      "url": "http://127.0.0.1:4291/?accounts=1",
+      "steps": [
+        "Add account",
+        "Create account"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "03-create-account-320.png",
+      "capturedAt": "2026-11-10T18:17:08.267Z",
+      "note": null,
+      "text": "Add an account\nEVM · Wallet accounts\nAccount name\nOne recovery phrase, another address\nThis account is derived from your existing recovery phrase. Keep that phrase backed up offline.\nConfirm wallet password\nCreate account",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "04-network-add",
+      "label": "Add a custom network",
+      "component": "NativeNetworks",
+      "url": "http://127.0.0.1:4291/?networks=1",
+      "steps": [
+        "Add network"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "04-network-add-320.png",
+      "capturedAt": "2026-11-10T18:17:09.459Z",
+      "note": null,
+      "text": "Add network\nNetwork name\nRPC URL\nChain ID\nCurrency symbol\nThis is a test network\nRPC changes apply to pending status checks and retries you approve.\nSave network\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "05-token-assets",
+      "label": "Token assets",
+      "component": "NativePortfolio",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "05-token-assets-320.png",
+      "capturedAt": "2026-11-10T18:17:10.844Z",
+      "note": null,
+      "text": "Pali Wallet\nAccount 1 · Ethereum\nETHEREUM BALANCE\n1.23\nETH\n \nUpdated 10:17 AM\nSend\nReceive\nAssets\nImport token\nETH\nEthereum\n1.23 ETH\nNo custom tokens added\nAdd a token by its contract address on this network.\nCollectibles\nView recovery phrase\nConfirm your password to continue\nLock wallet",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "06-import-token",
+      "label": "Import token / find holdings",
+      "component": "NativeTokens",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [
+        "Import token",
+        "Find holdings"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "06-import-token-320.png",
+      "capturedAt": "2026-11-10T18:17:12.265Z",
+      "note": null,
+      "text": "Import token\nAccount 1 · Ethereum\nEnter the token contract on Ethereum. Its name and symbol do not verify its identity.\nCONTRACT ADDRESS\nReview token\nWallet holdings\nSuggestions from the network explorer for this address. Check the contract before adding a token.\nExplorer fixture · HINT\n0x1111111111111111111111111111111111111111",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "07-token-review",
+      "label": "Verified token preview",
+      "component": "NativeTokens",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [
+        "Import token",
+        "Enter public contract",
+        "Review token"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "07-token-review-320.png",
+      "capturedAt": "2026-11-10T18:17:13.691Z",
+      "note": null,
+      "text": "Import token\nAccount 1 · Ethereum\nEnter the token contract on Ethereum. Its name and symbol do not verify its identity.\nCONTRACT ADDRESS\nReview token\nFixture token\nCustom token · Unverified issuer metadata\nNETWORK\nEthereum · Chain 1\nCONTRACT ADDRESS\n0x1111111111111111111111111111111111111111\nSYMBOL · DECIMALS\nFIXTURE · 2\n90071992547409.93 FIXTURE\nCheck the contract\nAnyone can create a token with a familiar name or symbol. Compare this complete contract address with a source you trust.\nAdd token",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "08-collectible-discovery",
+      "label": "Collectible discovery",
+      "component": "NativeTokens",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings",
+      "steps": [
+        "Collectibles",
+        "Find collectibles"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "08-collectible-discovery-320.png",
+      "capturedAt": "2026-11-10T18:17:15.886Z",
+      "note": null,
+      "text": "Collectibles\nAccount 1 · Ethereum\nReported by the explorer. Ownership hasn’t been verified.\nNFT Collection\nERC-1155\n0x3333333333333333333333333333333333333333\nToken ID 0\nQuantity reported: 900719925474099312345\nPaper foxes\nERC-721\n0x2222222222222222222222222222222222222222\nItems reported: 1\nRefresh results",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "09-collectible-ownership",
+      "label": "Collectible ownership form",
+      "component": "NativeTokens / CollectibleOwnership",
+      "url": "http://127.0.0.1:4291/?token-portfolio&holdings&collectible-check",
+      "steps": [
+        "Collectibles",
+        "Check by contract"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "09-collectible-ownership-320.png",
+      "capturedAt": "2026-11-10T18:17:17.377Z",
+      "note": null,
+      "text": "Check collectible\nAccount 1 · Ethereum\nCheck this account on Ethereum.\nCONTRACT ADDRESS\nTOKEN STANDARD\nERC-721\nERC-1155\nTOKEN ID\nQuantity on network: 900719925474099312345\nCheck ownership\nSave collectible",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "10-evm-nonce",
+      "label": "EVM advanced nonce",
+      "component": "NativeSend",
+      "url": "http://127.0.0.1:4291/?",
+      "steps": [
+        "Advanced options"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "10-evm-nonce-320.png",
+      "capturedAt": "2026-11-10T18:17:18.574Z",
+      "note": null,
+      "text": "Send ETH\nAccount 1 · Ethereum\nEthereum\nETH\nEthereum address\nAmount in ETH\nHide advanced options\nTransaction nonce\nLeave blank for automatic selection. A higher nonce can wait for earlier transactions.\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "11-utxo-advanced",
+      "label": "UTXO advanced transaction options",
+      "component": "NativeUtxoSend",
+      "url": "http://127.0.0.1:4291/?utxo-send=1",
+      "steps": [
+        "Advanced options"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "11-utxo-advanced-320.png",
+      "capturedAt": "2026-11-10T18:17:19.768Z",
+      "note": null,
+      "text": "Send BTC\nAccount 1 · Bitcoin\nRecipient address\nAmount in BTC\nUse maximum\nHide advanced options\nReplace-by-fee enabled\nReplace-by-fee allows this transaction to be replaced with a higher network fee.\nSaved transfers\nCheck transfer aaaaaaaa…\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "12-erc20-send",
+      "label": "ERC-20 transfer form",
+      "component": "NativeSend",
+      "url": "http://127.0.0.1:4291/?erc20-send=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "12-erc20-send-320.png",
+      "capturedAt": "2026-11-10T18:17:20.942Z",
+      "note": null,
+      "text": "Send FIX\nAccount 1 · Ethereum\nEthereum\nETH\nEthereum address\nTOKEN CONTRACT · ETHEREUM\n0x3333333333333333333333333333333333333333\nPublic fixture token · FIX\nDECIMALS\n6\nCustom token · Unverified issuer metadata\nAmount in FIX\nMAX\nAdvanced options\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "14-guardian-policy",
+      "label": "Guardian policy and status",
+      "component": "NativeGuardianPolicy",
+      "url": "http://127.0.0.1:4291/?guardian-policy=1",
+      "steps": [
+        "Check status"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "14-guardian-policy-320.png",
+      "capturedAt": "2026-11-10T18:17:23.286Z",
+      "note": null,
+      "text": "Guardian recovery\nEthereum\nCheck the on-chain recovery status for this account.\n0x1111111111111111111111111111111111111111\nNo recovery scheduled\nChecked at block 100\nUpdate guardian\nRemove guardian\nCheck again",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "15-guardian-policy-edit",
+      "label": "Guardian policy editor",
+      "component": "NativeGuardianPolicy",
+      "url": "http://127.0.0.1:4291/?guardian-policy=1&new-policy",
+      "steps": [
+        "Check status",
+        "Set guardian"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "15-guardian-policy-edit-320.png",
+      "capturedAt": "2026-11-10T18:17:24.497Z",
+      "note": null,
+      "text": "Set guardian\nEthereum\nSmart account · Chain ID 1\n0x1111111111111111111111111111111111111111\nGuardian address\nRecovery delay\n3 days\n7 days\nThis policy uses one guardian. A recovery request becomes ready after 3 days and can be finalized for 6 days once ready.\nReview policy\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "16-smart-guardian-recovery",
+      "label": "Smart guardian / separate payer recovery",
+      "component": "NativeGuardianRecovery",
+      "url": "http://127.0.0.1:4291/?guardian-recovery=1&smart-guardian=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "16-smart-guardian-recovery-320.png",
+      "capturedAt": "2026-11-10T18:17:25.644Z",
+      "note": null,
+      "text": "Recover smart account\nEthereum\nSmart account · Chain ID 1\n0x1111111111111111111111111111111111111111\nChoose the replacement owner\nRecovery replaces the account’s current validator with the wallet key you select. The guardian policy’s waiting period applies before finalization.\nGuardian account\nGuardian smart account\n0x2222222222222222222222222222222222222222\nReplacement owner\nChoose replacement owner\nFee payer\nFee payer\n0x5555555555555555555555555555555555555555\nChoose fee payer\nReview recovery\nEmail alerts in Sysnode\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "17-guardian-recovery-review",
+      "label": "Guardian recovery proof review",
+      "component": "NativeGuardianRecovery",
+      "url": "http://127.0.0.1:4291/?guardian-recovery=1&smart-guardian=1",
+      "steps": [
+        "Choose replacement owner",
+        "Replacement key",
+        "Review recovery"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "17-guardian-recovery-review-320.png",
+      "capturedAt": "2026-11-10T18:17:26.870Z",
+      "note": null,
+      "text": "Recover smart account\nEthereum\nSmart account · Chain ID 1\n0x1111111111111111111111111111111111111111\nReplacement owner\n0x3333333333333333333333333333333333333333\nGuardian\n0x2222222222222222222222222222222222222222\nFee payer\n0x5555555555555555555555555555555555555555\nAuthorize the recovery\nAuthorize the guardian and replacement-key proofs for this exact recovery. Review the paying account and fee next.\nAuthorize recovery\nClear local recovery tracking\nEmail alerts in Sysnode\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "18-slh-keys",
+      "label": "SLH-DSA prepared keys",
+      "component": "NativeSlhDsaManagement",
+      "url": "http://127.0.0.1:4292/?slh-fixture=ready",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "18-slh-keys-320.png",
+      "capturedAt": "2026-11-10T18:17:28.052Z",
+      "note": null,
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nReady\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA · 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "19-slh-installed",
+      "label": "SLH-DSA installed keys",
+      "component": "NativeSlhDsaManagement",
+      "url": "http://127.0.0.1:4292/?slh-fixture=installed",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "19-slh-installed-320.png",
+      "capturedAt": "2026-11-10T18:17:29.217Z",
+      "note": null,
+      "text": "Post-quantum SLH-DSA\nEthereum\n0x1111111111111111111111111111111111111111\nUse a wallet-managed post-quantum key to approve account actions.\nInstalled\n0x4444444444444444444444444444444400000000000000000000000000000000\nSLH-DSA · 7 / 16776216\nUse this method\nRegenerate local signer\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "20-smart-transfer",
+      "label": "Smart account transfer",
+      "component": "NativeSmartAccountSend",
+      "url": "http://127.0.0.1:4291/?smart-currency=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "20-smart-transfer-320.png",
+      "capturedAt": "2026-11-10T18:17:30.374Z",
+      "note": null,
+      "text": "Send\nSmart account · Ethereum\nBalance 5.0 ETH\nRecipient address\nAmount (ETH)\nMAX\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "21-smart-deployment",
+      "label": "Smart account deployment authorization",
+      "component": "NativeSmartAccountOperation",
+      "url": "http://127.0.0.1:4291/?smart-deployment=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "21-smart-deployment-320.png",
+      "capturedAt": "2026-11-10T18:17:31.529Z",
+      "note": null,
+      "text": "Authorize deployment\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nCreate this account on the network\nAuthorize the account’s deployment. This operation sends no assets. The following review confirms the wallet account and network fee used to submit it.\nMaximum account charge\n0.003\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize deployment\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "22-smart-batch",
+      "label": "Smart account batched calls",
+      "component": "NativeSmartTransactionReview",
+      "url": "http://127.0.0.1:4291/?smart-batch=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "22-smart-batch-320.png",
+      "capturedAt": "2026-11-10T18:17:32.686Z",
+      "note": null,
+      "text": "Review calls\nExample batch app\nhttps://batch.example.invalid\nWebsite origin matched by WalletConnect\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nCall 1 of 2\n0x3333333333333333333333333333333333333333\n0.001\nETH\nTransaction details\n{\n  \"to\": \"0x3333333333333333333333333333333333333333\",\n  \"value\": \"1000000000000000\",\n  \"data\": \"0x12345678\"\n}\nCall 2 of 2\n0x4444444444444444444444444444444444444444\n0.002\nETH\nTransaction details\n{\n  \"to\": \"0x4444444444444444444444444444444444444444\",\n  \"value\": \"2000000000000000\",\n  \"data\": \"0x87654321\"\n}\nAuthorize these calls\nAuthorize the ordered calls together. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.00021\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize calls\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "23-eoa-batch",
+      "label": "Software account batched calls",
+      "component": "NativeTransactionReview",
+      "url": "http://127.0.0.1:4291/?eoa-batch=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "23-eoa-batch-320.png",
+      "capturedAt": "2026-11-10T18:17:33.847Z",
+      "note": null,
+      "text": "Review calls\nE\nExample batch app\nCustom network · https://batch.example.invalid\nCall 1 of 2\nCOIN transfer\n0.001\nCOIN\nWebsite origin matched by WalletConnect\nFrom\nSavings\n0x1111111111111111111111111111111111111111\nTo\n0x2222222222222222222222222222222222222222\nNetwork\nCustom network · Chain 743211\nMaximum network fee\n0.000042 COIN\nMaximum total\n0.001042 COIN\nView transaction details\nView all 2 calls\nReject\nConfirm call 1/2",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "24-private-deposit",
+      "label": "Private deposit form",
+      "component": "NativePrivateDeposit",
+      "url": "http://127.0.0.1:4291/?private-deposit=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "24-private-deposit-320.png",
+      "capturedAt": "2026-11-10T18:17:34.997Z",
+      "note": null,
+      "text": "Deposit to pool\nChoose an Ethereum privacy pool.\n0.1 ETH\n1 ETH\n10 ETH\n100 ETH\nReview deposit\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "25-private-deposit-review",
+      "label": "Private deposit review",
+      "component": "NativePrivateDeposit",
+      "url": "http://127.0.0.1:4291/?private-deposit=1",
+      "steps": [
+        "Review deposit"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "25-private-deposit-review-320.png",
+      "capturedAt": "2026-11-10T18:17:36.244Z",
+      "note": null,
+      "text": "Review deposit\n0.1 ETH\nEthereum privacy pool\nFrom account\n0x2222222222222222222222222222222222222222\nPool contract\n0x12d66f87a04a9e220743712ce6d9bb1b5616b8fc\nMaximum network fee\n0.0042 ETH\nMaximum total\n0.1042 ETH\nView transaction details\nKeep a private backup of this note. Your recovery phrase cannot restore it.\nBack up private notes\nI understand that I need the note backup to withdraw.\nChange amount\nConfirm deposit\nClose",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "26-private-notes",
+      "label": "Private note inventory",
+      "component": "NativeNoteInventory",
+      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "26-private-notes-320.png",
+      "capturedAt": "2026-11-10T18:17:37.397Z",
+      "note": null,
+      "text": "Saved notes\nOpen a note to check its pool status or make a backup.\n1 ETH pool\nNote 1 · 11/1/2025\nLock wallet",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "27-private-withdrawal",
+      "label": "Private withdrawal form",
+      "component": "NativePrivateWithdrawal",
+      "url": "http://127.0.0.1:4291/?private-withdrawal=1",
+      "steps": [
+        "Select 1 ETH pool",
+        "Check pool status",
+        "Withdraw"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "27-private-withdrawal-320.png",
+      "capturedAt": "2026-11-10T18:17:38.626Z",
+      "note": null,
+      "text": "Withdraw note\n1 ETH\nEthereum Mainnet · Private note\nRecipient address\nSend with\nDirect\n●\nRelayer\n○\nYour account pays gas. This can link the gas payer to the recipient.\nReview withdrawal\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "28-import-note",
+      "label": "Import private note",
+      "component": "NativeNoteImport",
+      "url": "http://127.0.0.1:4291/?note-import=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "28-import-note-320.png",
+      "capturedAt": "2026-11-10T18:17:39.797Z",
+      "note": null,
+      "text": "Import private note\nEnter one private note. Pali checks its public pool history before saving it.\nAnyone with this note can withdraw. Keep it private.\nPrivate note\nImport note\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "29-sentry-keys",
+      "label": "Sentry key management",
+      "component": "NativeSentryKeys",
+      "url": "http://127.0.0.1:4291/?sentry=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "29-sentry-keys-320.png",
+      "capturedAt": "2026-11-10T18:17:40.941Z",
+      "note": null,
+      "text": "Sentry keys\nSyscoin\nNo Sentry keys saved on this network.\nService settings\nImport key\nImport multiple keys",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "30-sentry-service",
+      "label": "Sentry service settings",
+      "component": "NativeSentrySettings",
+      "url": "http://127.0.0.1:4291/?sentry=1",
+      "steps": [
+        "Service settings"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "30-sentry-service-320.png",
+      "capturedAt": "2026-11-10T18:17:42.123Z",
+      "note": null,
+      "text": "Service settings\nSyscoin\nChoose the Sentry data service and maximum transaction fee for this network.\nService origin\nMaximum fee in satoshis\nConfirm wallet password\nSave settings\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "31-sentry-nodes",
+      "label": "Sentry nodes",
+      "component": "NativeSentryNodes",
+      "url": "http://127.0.0.1:4291/?sentry-nodes=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "31-sentry-nodes-320.png",
+      "capturedAt": "2026-11-10T18:17:43.276Z",
+      "note": null,
+      "text": "Linked nodes\nSyscoin\nYour nodes, together\nLink a registered Sentry node to save its public identity and protect its collateral from ordinary wallet sends.\nLink a node\nRefresh",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "34-ledger-account",
+      "label": "Ledger account review",
+      "component": "NativeLedger",
+      "url": "http://127.0.0.1:4291/?ledger=1",
+      "steps": [
+        "Find Ledger",
+        "My Ledger · Nano X"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "34-ledger-account-320.png",
+      "capturedAt": "2026-11-10T18:17:46.833Z",
+      "note": null,
+      "text": "Connect Ledger\nEthereum\nReview the address and choose a name for this account.\nMy Ledger\nAddress\n0x1111111111111111111111111111111111111111\nAccount name\nAdd Ledger account",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "35-trezor-import",
+      "label": "Trezor account import",
+      "component": "NativeTrezor",
+      "url": "http://127.0.0.1:4291/?trezor=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "35-trezor-import-320.png",
+      "capturedAt": "2026-11-10T18:17:48.007Z",
+      "note": null,
+      "text": "Connect Trezor\nEthereum\nConnect your Trezor in Trezor Suite, then return to Pali to continue.\nAccount name\nOpen Trezor Suite",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "36-trezor-smart-resume",
+      "label": "Trezor Smart owner continuation",
+      "component": "NativeTrezorResumeNotice",
+      "url": "http://127.0.0.1:4291/?trezor=1&resume=smart",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "36-trezor-smart-resume-320.png",
+      "capturedAt": "2026-11-10T18:17:49.160Z",
+      "note": "Actual resume notice only; Continue is not invoked because this fixture transitions to placeholder review copy.",
+      "text": "Continue with Trezor\nEthereum\nReview the request again before continuing.\nSmart savings\n0x1111111111111111111111111111111111111111\nExpected signer\nSigner 2 of 3\nTravel Trezor signer\n0x2222222222222222222222222222222222222222\nContinue",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-de5543d186566bce4fbe04822973e919.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "39-auto-lock",
+      "label": "Auto-lock preferences",
+      "component": "AutoLockSettings",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Security & backups",
+        "Auto-lock"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "39-auto-lock-320.png",
+      "capturedAt": "2026-11-10T18:17:53.031Z",
+      "note": null,
+      "text": "Auto-lock\nNative wallet\nLock wallet after foreground inactivity. Current: 5 minutes.\n5 minutes\n15 minutes\n30 minutes\n1 hour\n2 hours\nOff while open\nCustom minutes (5–120, or 0 for Off)\nPali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock.\nSave auto-lock\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "40-biometric-settings",
+      "label": "Biometric enrollment settings",
+      "component": "NativeWallet.native (device-unlock stage)",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Security & backups",
+        "Biometric unlock"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "40-biometric-settings-320.png",
+      "capturedAt": "2026-11-10T18:17:54.628Z",
+      "note": null,
+      "text": "Biometric unlock\nDevelopment build · Use a test wallet\nBiometric unlock is off\nConfirm your wallet password and device biometrics to enable faster unlock. Your password remains available.\nWallet password\nEnable biometric unlock\nCancel",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "41-import-private-key",
+      "label": "Import software private key",
+      "component": "NativeImport",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Accounts",
+        "Manage wallet accounts",
+        "Add account",
+        "Import private key"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "41-import-private-key-320.png",
+      "capturedAt": "2026-11-10T18:17:56.254Z",
+      "note": null,
+      "text": "Import private key\nEthereum · EVM account\nKeep a separate copy of this key\nYour recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing.\nAccount name\nEVM private key\nUse a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.\nDevelopment build · Use a test wallet\nReview address",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "42-display-currency",
+      "label": "Display currency preferences",
+      "component": "DisplayCurrency",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Display currency"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "42-display-currency-320.png",
+      "capturedAt": "2026-11-10T18:17:57.838Z",
+      "note": null,
+      "text": "Display currency\nChoose the currency for estimated wallet values.\nUnited Arab Emirates Dirham\nAED\nArgentine Peso\nARS\nAustralian Dollar\nAUD\nBCH\nBCH\nBangladeshi Taka\nBDT\nBahraini Dinar\nBHD\nBITS\nBITS\nBermudan Dollar\nBMD\nBNB\nBNB\nBrazilian Real\nBRL\nSave currency",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "43-languages",
+      "label": "Language preferences",
+      "component": "NativePreferences",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Languages"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "43-languages-320.png",
+      "capturedAt": "2026-11-10T18:17:59.386Z",
+      "note": null,
+      "text": "Languages\nSet your preferred language for the wallet interface and translations.\nEnglish\nEnglish · Selected\nEspañol\nSpanish\nPortuguês\nPortuguese\nFrançais\nFrench\nDeutsch\nGerman\n中文\nChinese\n日本語\nJapanese\n한국어\nKorean\nРусский\nRussian\nEnglish is used where a translation is unavailable.\nSave",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "44-help-about",
+      "label": "Help and about",
+      "component": "HelpAbout",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Help & about"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "44-help-about-320.png",
+      "capturedAt": "2026-11-10T18:18:00.956Z",
+      "note": null,
+      "text": "Help & about\nPali Wallet\nVersion 0.1.0 · Development build\nNative features are under qualification. Use only test wallets and testnet funds.\nSupport\nhttps://discord.com/invite/syscoin\nGet support\nCopy support link\nPali documentation\nData provider\nRoutescan\nDone",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "45-private-key-auth",
+      "label": "Private-key reveal authorization",
+      "component": "NativeSecurity",
+      "url": "http://127.0.0.1:4292/?visual-review=1",
+      "steps": [
+        "Unlock synthetic wallet",
+        "Settings",
+        "Security & backups",
+        "Reveal account private key"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "45-private-key-auth-320.png",
+      "capturedAt": "2026-11-10T18:18:02.502Z",
+      "note": null,
+      "text": "Account private key\nAccount 1\n0x52908400098527886E0F7030069857D2E4169EE7\nThis key controls one EVM account\nAnyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place.\nConfirm your wallet password\nReveal private key",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "46-watch-address-form",
+      "label": "Add public watch account",
+      "component": "Onboarding / AddWatchAccount",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "Accounts",
+        "Watch an account"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "46-watch-address-form-320.png",
+      "capturedAt": "2026-11-10T18:18:03.928Z",
+      "note": null,
+      "text": "ADD ACCOUNT\nWatch an account\nKeep an eye on a wallet using only its public information.\nAddress network\nEVM networks\nSyscoin Mainnet\nBitcoin\nSyscoin Testnet\nAccount name\nPublic EVM address\nEthereum and compatible networks. Paste only a public address.\nReview account\nUse public information only. Never enter a recovery phrase or private key.",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "47-watch-utxo-key",
+      "label": "Watch UTXO address, public key or descriptor",
+      "component": "Onboarding / AddWatchAccount",
+      "url": "http://127.0.0.1:4292/?evm-activity=1&evm-activity-mode=value",
+      "steps": [
+        "Accounts",
+        "Watch an account",
+        "Bitcoin network",
+        "Scroll to public identifier"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "47-watch-utxo-key-320.png",
+      "capturedAt": "2026-11-10T18:18:05.390Z",
+      "note": null,
+      "text": "ADD ACCOUNT\nWatch an account\nKeep an eye on a wallet using only its public information.\nAddress network\nEVM networks\nSyscoin Mainnet\nBitcoin\nSyscoin Testnet\nAccount name\nPublic address, account key or descriptor\nA public account key or descriptor includes its receive and change addresses.\nReview account\nUse public information only. Never enter a recovery phrase or private key.",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "49-backup-required-home",
+      "label": "Wallet with backup still required",
+      "component": "NativePortfolio / WalletBackupBadge",
+      "url": "http://127.0.0.1:4292/?visual-review=1&backup-required=1",
+      "steps": [
+        "Unlock synthetic wallet with unconfirmed backup"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "49-backup-required-home-320.png",
+      "capturedAt": "2026-11-10T18:18:08.268Z",
+      "note": null,
+      "text": "Pali Wallet\nAccount 1 · Ethereum\nBack up your wallet\nProtect access if this phone is lost.\nETHEREUM BALANCE\n≈18.446744\nETH\n \nUpdated 10:18 AM\nSend\nReceive\nAssets\nETH\nEthereum\n≈18.446744 ETH\nView recovery phrase\nConfirm your password to continue\nLock wallet\nDevelopment build · Use a test wallet\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "13-erc1155-send",
+      "label": "ERC-1155 transfer form",
+      "component": "NativeSend",
+      "url": "http://127.0.0.1:4291/?collectible=1155",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "13-erc1155-send-390.png",
+      "capturedAt": "2026-11-10T18:18:35.488Z",
+      "note": null,
+      "text": "Send collectible\nAccount 1 · Ethereum\nEthereum\nETH\nRecipient address\nCOLLECTIBLE CONTRACT · ERC-1155\n0x3333333333333333333333333333333333333333\nTOKEN ID\n115792089237316195423570985008687907853269984665640564039457584007913129639935\nQuantity\nAdvanced options\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "33-ledger-connect",
+      "label": "Ledger discovery",
+      "component": "NativeLedger",
+      "url": "http://127.0.0.1:4291/?ledger=1",
+      "steps": [
+        "Find Ledger"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "33-ledger-connect-390.png",
+      "capturedAt": "2026-11-10T18:18:36.664Z",
+      "note": null,
+      "text": "Connect Ledger\nEthereum\nUnlock your Ledger and turn on Bluetooth. Keep it nearby while connecting.\nLooking for your Ledger…\nMy Ledger · Nano X",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "48-asset-details",
+      "label": "Native coin details",
+      "component": "NativePortfolio (native-asset view) / AssetMarketCard",
+      "url": "http://127.0.0.1:4291/?network-portfolio=1",
+      "steps": [
+        "ETH Ethereum"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "48-asset-details-390.png",
+      "capturedAt": "2026-11-10T18:18:38.051Z",
+      "note": "The existing fixture has no successful market-history provider; the actual unavailable state is shown. No chart data was invented.",
+      "text": "Ethereum\nAccount 1 · Ethereum\nETHEREUM BALANCE\n1.234\nETH\n \nUpdated 10:18 AM\nSend\nReceive\nMarket price\n7 days\nMarket data is unavailable.\nTry again\nACCOUNT 1 · ETHEREUM\n0x52908400098527886E0F7030069857D2E4169EE7",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price",
+        "https://api.coingecko.com/api/v3/coins/markets"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "13-erc1155-send",
+      "label": "ERC-1155 transfer form",
+      "component": "NativeSend",
+      "url": "http://127.0.0.1:4291/?collectible=1155",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "13-erc1155-send-320.png",
+      "capturedAt": "2026-11-10T18:18:39.206Z",
+      "note": null,
+      "text": "Send collectible\nAccount 1 · Ethereum\nEthereum\nETH\nRecipient address\nCOLLECTIBLE CONTRACT · ERC-1155\n0x3333333333333333333333333333333333333333\nTOKEN ID\n115792089237316195423570985008687907853269984665640564039457584007913129639935\nQuantity\nAdvanced options\nReview transfer",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "33-ledger-connect",
+      "label": "Ledger discovery",
+      "component": "NativeLedger",
+      "url": "http://127.0.0.1:4291/?ledger=1",
+      "steps": [
+        "Find Ledger"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "33-ledger-connect-320.png",
+      "capturedAt": "2026-11-10T18:18:40.364Z",
+      "note": null,
+      "text": "Connect Ledger\nEthereum\nUnlock your Ledger and turn on Bluetooth. Keep it nearby while connecting.\nLooking for your Ledger…\nMy Ledger · Nano X",
+      "errors": [],
+      "blocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "48-asset-details",
+      "label": "Native coin details",
+      "component": "NativePortfolio (native-asset view) / AssetMarketCard",
+      "url": "http://127.0.0.1:4291/?network-portfolio=1",
+      "steps": [
+        "ETH Ethereum"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "48-asset-details-320.png",
+      "capturedAt": "2026-11-10T18:18:41.735Z",
+      "note": "The existing fixture has no successful market-history provider; the actual unavailable state is shown. No chart data was invented.",
+      "text": "Ethereum\nAccount 1 · Ethereum\nETHEREUM BALANCE\n1.234\nETH\n \nUpdated 10:18 AM\nSend\nReceive\nMarket price\n7 days\nMarket data is unavailable.\nTry again\nACCOUNT 1 · ETHEREUM\n0x52908400098527886E0F7030069857D2E4169EE7",
+      "errors": [],
+      "blocked": [
+        "https://api.coingecko.com/api/v3/simple/price",
+        "https://api.coingecko.com/api/v3/coins/markets"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "50-synthetic-market-chart",
+      "label": "Healthy market chart — synthetic data",
+      "component": "NativePortfolio / AssetMarketCard",
+      "url": "http://127.0.0.1:4291/?network-portfolio=1",
+      "steps": [
+        "Intercept only quote/market responses with synthetic test data",
+        "ETH Ethereum",
+        "Wait for real chart",
+        "Scroll market card into view"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "50-synthetic-market-chart-390.png",
+      "capturedAt": "2026-11-10T18:19:58.354Z",
+      "note": "Explicitly synthetic CoinGecko-shaped data from the tests/assetMarket.test.ts contract: 2,200 USD, -1.2%, 2,100/2,300 low/high, 250 billion USD cap, four seven-day samples. No remote market data was fetched.",
+      "text": "Ethereum\nAccount 1 · Ethereum\nETHEREUM BALANCE\n1.234\nETH\n≈ 2,714.8 USD\nUpdated 10:19 AM\nSend\nReceive\nMarket price\n7 days\n2,200 USD\n-1.20% · 24h\n24h low\n2,100 USD\n24h high\n2,300 USD\nMarket cap\n250,000,000,000 USD\nCoinGecko · Updated 10:19 AM\nACCOUNT 1 · ETHEREUM\n0x52908400098527886E0F7030069857D2E4169EE7",
+      "errors": [],
+      "blocked": [],
+      "mocked": [
+        "https://api.coingecko.com/api/v3/simple/price",
+        "https://api.coingecko.com/api/v3/coins/markets"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "50-synthetic-market-chart",
+      "label": "Healthy market chart — synthetic data",
+      "component": "NativePortfolio / AssetMarketCard",
+      "url": "http://127.0.0.1:4291/?network-portfolio=1",
+      "steps": [
+        "Intercept only quote/market responses with synthetic test data",
+        "ETH Ethereum",
+        "Wait for real chart",
+        "Scroll market card into view"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "50-synthetic-market-chart-320.png",
+      "capturedAt": "2026-11-10T18:19:59.781Z",
+      "note": "Explicitly synthetic CoinGecko-shaped data from the tests/assetMarket.test.ts contract: 2,200 USD, -1.2%, 2,100/2,300 low/high, 250 billion USD cap, four seven-day samples. No remote market data was fetched.",
+      "text": "Ethereum\nAccount 1 · Ethereum\nETHEREUM BALANCE\n1.234\nETH\n≈ 2,714.8 USD\nUpdated 10:19 AM\nSend\nReceive\nMarket price\n7 days\n2,200 USD\n-1.20% · 24h\n24h low\n2,100 USD\n24h high\n2,300 USD\nMarket cap\n250,000,000,000 USD\nCoinGecko · Updated 10:19 AM\nACCOUNT 1 · ETHEREUM\n0x52908400098527886E0F7030069857D2E4169EE7",
+      "errors": [],
+      "blocked": [],
+      "mocked": [
+        "https://api.coingecko.com/api/v3/simple/price",
+        "https://api.coingecko.com/api/v3/coins/markets"
+      ],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-a667615b880761f578c86d918a544688.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "d7534eca79309277cf2a1df927f8b56d5f655fb6"
+    },
+    {
+      "id": "32-sentry-consent",
+      "label": "Sentry request approval",
+      "component": "NativeSentryReview",
+      "url": "http://127.0.0.1:4291/?sentry-consent=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "32-sentry-consent-390.png",
+      "capturedAt": "2026-11-10T18:23:52.169Z",
+      "note": null,
+      "text": "Authorize Sentry update\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nOperation\nupdateService\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nState source\nhttps://state.example.test\nTransaction fee\n1000 satoshis\nservice\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nnevm Address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\noperator Payout Script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nFee transaction outputs\n50000 satoshis\n00149999999999999999999999999999999999999999\nAuthority key\nMy operator key · operator\nbls-basic · Selected\nAuthorize Sentry update\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "37-message-signature",
+      "label": "Message signature review",
+      "component": "NativeMessageReview",
+      "url": "http://127.0.0.1:4291/?message-review=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "37-message-signature-390.png",
+      "capturedAt": "2026-11-10T18:23:53.310Z",
+      "note": null,
+      "text": "Sign message\nExample app\nReported website\nhttps://example.invalid\nWebsite origin matched by WalletConnect\nSavings\n0x2222222222222222222222222222222222222222\nEthereum · Chain ID 1\nMessage\nSign in to Example app.\nNonce: 12345678\nReject\nSign message",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "38-dapp-network-request",
+      "label": "Dapp network-change approval",
+      "component": "NativeDappControlReview",
+      "url": "http://127.0.0.1:4291/?control-consent=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "38-dapp-network-request-390.png",
+      "capturedAt": "2026-11-10T18:23:54.453Z",
+      "note": null,
+      "text": "Add network\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nExample network\nChain ID 12345 · COIN\nRPC endpoint\nhttps://rpc.example.test\nAdd network\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "51-smart-modules",
+      "label": "Installed Smart account modules",
+      "component": "NativeSmartAccountModules",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "51-smart-modules-390.png",
+      "capturedAt": "2026-11-10T18:23:55.616Z",
+      "note": null,
+      "text": "Modules\nEthereum\n0x1111111111111111111111111111111111111111\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nActive\nIndependent approval service\n0x3333333333333333333333333333333333333333\nInstalled\nSpare validator\n0x4444444444444444444444444444444444444444\nInstalled\nUninstall\nCombined approvals\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nInstalled\nUninstall\nCustom validator\nCombined approvals\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "53-composite-approvals",
+      "label": "Combined approval policy editor",
+      "component": "NativeSmartAccountModules",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [
+        "Combined approvals"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "53-composite-approvals-390.png",
+      "capturedAt": "2026-11-10T18:23:58.085Z",
+      "note": null,
+      "text": "Combined approvals\nEthereum\n0x1111111111111111111111111111111111111111\nChoose which methods can approve transactions for this account.\nApproval methods\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nIndependent approval service\n0x3333333333333333333333333333333333333333\nApprovals required\n1 of 2 selected methods must approve.\nThe policy must keep enough Pali-signable validators to reach the threshold, otherwise you could be locked out.\nSaving updates your account on-chain and may require a network fee.\nSave policy\nInstalled modules\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "54-wallet-authenticator",
+      "label": "Use Pali wallet — authenticator change",
+      "component": "NativeSmartAccountAuthenticator / NativeSmartAccountOperationContent",
+      "url": "http://127.0.0.1:4291/?smart-authenticator=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "54-wallet-authenticator-390.png",
+      "capturedAt": "2026-11-10T18:23:59.246Z",
+      "note": null,
+      "text": "Current approval method\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\n0x2222222222222222222222222222222222222222\n0x4444444444444444444444444444444444444444\nApprovals required\n1\nUse this method\nAuthorize replacing the current authenticator settings with the owner and threshold shown above. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.001023\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize authenticator change\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "55-smart-creation-consent",
+      "label": "Configured Smart account creation consent",
+      "component": "NativeSmartPreparationReview",
+      "url": "http://127.0.0.1:4291/?smart-preparation=1&preparation-mode=configured",
+      "steps": [
+        "Show requested external owners; acknowledgement remains off"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "55-smart-creation-consent-390.png",
+      "capturedAt": "2026-11-10T18:24:00.427Z",
+      "note": null,
+      "text": "Smart Account Request\nExample account app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nEthereum\nNetwork: 1\nThis site wants to set up a smart account for you.\nApp smart account\nSign-in method: Pali wallet\n0x2222222222222222222222222222222222222222\n0x4444444444444444444444444444444444444444\nApprovals required · 2\nPali wallet\nThis site requested ECDSA owner addresses that are not local Pali accounts. Those owners can control the smart account after setup.\n0x2222222222222222222222222222222222222222\n0x4444444444444444444444444444444444444444\nI understand these external owners can approve smart-account actions.\nConfirm\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "56-infrastructure-status",
+      "label": "Smart account infrastructure status",
+      "component": "NativeInfrastructure",
+      "url": "http://127.0.0.1:4291/?smart-infrastructure=1",
+      "steps": [],
+      "width": 390,
+      "height": 844,
+      "image": "56-infrastructure-status-390.png",
+      "capturedAt": "2026-11-10T18:24:01.605Z",
+      "note": null,
+      "text": "Smart account setup\nEthereum Sepolia\nFee payer\nDeployment fee wallet\n0x2222222222222222222222222222222222222222\nRefresh\nCREATE2 deployer\n0x4e59b44847b379578588920cA78FbF26c0B4956C\nDeployed\nERC-4337 EntryPoint v0.9\n0x433709009B8330FDa32311DF1C2AFA402eD8D009\nDeployed\nPali smart account implementation\n0x7e072ef1cb48e3b6763502a03e8e74ef88a6f032\nNot deployed\nECDSA validator module\n0xbe057b217a1e17ffdc27c5262db790f0aaaa9133\nNot deployed\nP-256 passkey validator module\n0xcde85b38a769dbe696574b5f4d8fa6ff4e420a24\nNot deployed\nPali SLH-DSA verifier\n0x588d8afa40c08983a114957310c04d05a9dcb56d\nNot deployed\nPali SLH-DSA validator\n0x3b35e207243164753af0b6d2d99c7ad61f4c4034\nNot deployed\nComposite validator module\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nNot deployed\nGuardian recovery module\n0x8f919fc9a92da490d305054bfd862379d2760f84\nNot deployed\nPali ERC-7579 smart account factory\n0x9ee1ab16e273fec939b82541b6fa17e55797f7bc\nNot deployed\nMulticall3 read aggregator\noptional\n0x62b891d08ec9ec21f3a7f9c215a23189c2b6d341\nNot deployed\nReview next deployment\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "57-infrastructure-fee",
+      "label": "Smart infrastructure deployment fee review",
+      "component": "NativeInfrastructure",
+      "url": "http://127.0.0.1:4291/?smart-infrastructure=1",
+      "steps": [
+        "Review next deployment"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "57-infrastructure-fee-390.png",
+      "capturedAt": "2026-11-10T18:24:02.811Z",
+      "note": null,
+      "text": "Smart account setup\nEthereum Sepolia\nFee payer\nDeployment fee wallet\n0x2222222222222222222222222222222222222222\nPali smart account implementation\n0x7e072ef1cb48e3b6763502a03e8e74ef88a6f032\nMaximum network fee\n0.000942477 ETH\nMaximum total cost\n0.000942477 ETH\nShow Details\nConfirm\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "58-biometric-transaction-auth",
+      "label": "Biometric transaction confirmation — simulated prompt",
+      "component": "NativeSend / TransactionAuthentication",
+      "url": "http://127.0.0.1:4291/?biometric-auth=1",
+      "steps": [
+        "Enter public recipient and 0.001 ETH",
+        "Review transfer",
+        "Confirm opens authentication modal"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "58-biometric-transaction-auth-390.png",
+      "capturedAt": "2026-11-10T18:24:04.053Z",
+      "note": "Actual biometric-choice modal only. No operating-system prompt, biometric proof, signature or transaction submission is performed.",
+      "text": "Review transfer\nAccount 1 · Ethereum\n0.001\nETH · Ethereum\nTO\n0x1111111111111111111111111111111111111111\nEXECUTION FEE LIMIT\n0.000000000000063 ETH\nThe final fee depends on network execution. This review limits the gas price and gas used by this transaction.\nAMOUNT + EXECUTION FEE LIMIT\n0.001000000000063 ETH\nConfirm the full address and network before sending. Completed transfers cannot be reversed.\nConfirm and send\nConfirm transaction\nConfirm with your device biometrics to continue.\nConfirm with biometrics\nUse password\nCancel",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "32-sentry-consent",
+      "label": "Sentry request approval",
+      "component": "NativeSentryReview",
+      "url": "http://127.0.0.1:4291/?sentry-consent=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "32-sentry-consent-320.png",
+      "capturedAt": "2026-11-10T18:24:05.232Z",
+      "note": null,
+      "text": "Authorize Sentry update\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nOperation\nupdateService\nRegistered node\n3333333333333333333333333333333333333333333333333333333333333333\nState source\nhttps://state.example.test\nTransaction fee\n1000 satoshis\nservice\nCurrent\nold.example.test:8369\nProposed\nnew.example.test:8369\nnevm Address\nCurrent\n0x4444444444444444444444444444444444444444\nProposed\n0x5555555555555555555555555555555555555555\noperator Payout Script\nCurrent\n00146666666666666666666666666666666666666666\nProposed\n00147777777777777777777777777777777777777777\nFee transaction outputs\n50000 satoshis\n00149999999999999999999999999999999999999999\nAuthority key\nMy operator key · operator\nbls-basic · Selected\nAuthorize Sentry update\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "37-message-signature",
+      "label": "Message signature review",
+      "component": "NativeMessageReview",
+      "url": "http://127.0.0.1:4291/?message-review=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "37-message-signature-320.png",
+      "capturedAt": "2026-11-10T18:24:06.406Z",
+      "note": null,
+      "text": "Sign message\nExample app\nReported website\nhttps://example.invalid\nWebsite origin matched by WalletConnect\nSavings\n0x2222222222222222222222222222222222222222\nEthereum · Chain ID 1\nMessage\nSign in to Example app.\nNonce: 12345678\nReject\nSign message",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "38-dapp-network-request",
+      "label": "Dapp network-change approval",
+      "component": "NativeDappControlReview",
+      "url": "http://127.0.0.1:4291/?control-consent=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "38-dapp-network-request-320.png",
+      "capturedAt": "2026-11-10T18:24:07.571Z",
+      "note": null,
+      "text": "Add network\nExample staking app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nDaily wallet · Syscoin\nsys1qexamplepublicaddress\nExample network\nChain ID 12345 · COIN\nRPC endpoint\nhttps://rpc.example.test\nAdd network\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "51-smart-modules",
+      "label": "Installed Smart account modules",
+      "component": "NativeSmartAccountModules",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "51-smart-modules-320.png",
+      "capturedAt": "2026-11-10T18:24:08.728Z",
+      "note": null,
+      "text": "Modules\nEthereum\n0x1111111111111111111111111111111111111111\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nActive\nIndependent approval service\n0x3333333333333333333333333333333333333333\nInstalled\nSpare validator\n0x4444444444444444444444444444444444444444\nInstalled\nUninstall\nCombined approvals\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nInstalled\nUninstall\nCustom validator\nCombined approvals\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "53-composite-approvals",
+      "label": "Combined approval policy editor",
+      "component": "NativeSmartAccountModules",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [
+        "Combined approvals"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "53-composite-approvals-320.png",
+      "capturedAt": "2026-11-10T18:24:11.162Z",
+      "note": null,
+      "text": "Combined approvals\nEthereum\n0x1111111111111111111111111111111111111111\nChoose which methods can approve transactions for this account.\nApproval methods\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\nIndependent approval service\n0x3333333333333333333333333333333333333333\nApprovals required\n1 of 2 selected methods must approve.\nThe policy must keep enough Pali-signable validators to reach the threshold, otherwise you could be locked out.\nSaving updates your account on-chain and may require a network fee.\nSave policy\nInstalled modules\nCheck status\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "54-wallet-authenticator",
+      "label": "Use Pali wallet — authenticator change",
+      "component": "NativeSmartAccountAuthenticator / NativeSmartAccountOperationContent",
+      "url": "http://127.0.0.1:4291/?smart-authenticator=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "54-wallet-authenticator-320.png",
+      "capturedAt": "2026-11-10T18:24:12.328Z",
+      "note": null,
+      "text": "Current approval method\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nPali wallet\n0xbE057B217A1E17ffDc27C5262DB790f0aaAA9133\n0x2222222222222222222222222222222222222222\n0x4444444444444444444444444444444444444444\nApprovals required\n1\nUse this method\nAuthorize replacing the current authenticator settings with the owner and threshold shown above. The following review confirms the paying account and submission fee.\nMaximum account charge\n0.001023\nETH\nUnused prefund stays with your account.\nView authorization details\nAuthorize authenticator change\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "55-smart-creation-consent",
+      "label": "Configured Smart account creation consent",
+      "component": "NativeSmartPreparationReview",
+      "url": "http://127.0.0.1:4291/?smart-preparation=1&preparation-mode=configured",
+      "steps": [
+        "Show requested external owners; acknowledgement remains off"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "55-smart-creation-consent-320.png",
+      "capturedAt": "2026-11-10T18:24:13.533Z",
+      "note": null,
+      "text": "Smart Account Request\nExample account app\nReported website\nhttps://app.example.test\nUnverified website\nCheck the website address before continuing.\nEthereum\nNetwork: 1\nThis site wants to set up a smart account for you.\nApp smart account\nSign-in method: Pali wallet\n0x2222222222222222222222222222222222222222\n0x4444444444444444444444444444444444444444\nApprovals required · 2\nPali wallet\nThis site requested ECDSA owner addresses that are not local Pali accounts. Those owners can control the smart account after setup.\n0x2222222222222222222222222222222222222222\n0x4444444444444444444444444444444444444444\nI understand these external owners can approve smart-account actions.\nConfirm\nReject",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "56-infrastructure-status",
+      "label": "Smart account infrastructure status",
+      "component": "NativeInfrastructure",
+      "url": "http://127.0.0.1:4291/?smart-infrastructure=1",
+      "steps": [],
+      "width": 320,
+      "height": 568,
+      "image": "56-infrastructure-status-320.png",
+      "capturedAt": "2026-11-10T18:24:14.710Z",
+      "note": null,
+      "text": "Smart account setup\nEthereum Sepolia\nFee payer\nDeployment fee wallet\n0x2222222222222222222222222222222222222222\nRefresh\nCREATE2 deployer\n0x4e59b44847b379578588920cA78FbF26c0B4956C\nDeployed\nERC-4337 EntryPoint v0.9\n0x433709009B8330FDa32311DF1C2AFA402eD8D009\nDeployed\nPali smart account implementation\n0x7e072ef1cb48e3b6763502a03e8e74ef88a6f032\nNot deployed\nECDSA validator module\n0xbe057b217a1e17ffdc27c5262db790f0aaaa9133\nNot deployed\nP-256 passkey validator module\n0xcde85b38a769dbe696574b5f4d8fa6ff4e420a24\nNot deployed\nPali SLH-DSA verifier\n0x588d8afa40c08983a114957310c04d05a9dcb56d\nNot deployed\nPali SLH-DSA validator\n0x3b35e207243164753af0b6d2d99c7ad61f4c4034\nNot deployed\nComposite validator module\n0x85b6218f5ef96e8e33bed1b08ba6d021bd574bd9\nNot deployed\nGuardian recovery module\n0x8f919fc9a92da490d305054bfd862379d2760f84\nNot deployed\nPali ERC-7579 smart account factory\n0x9ee1ab16e273fec939b82541b6fa17e55797f7bc\nNot deployed\nMulticall3 read aggregator\noptional\n0x62b891d08ec9ec21f3a7f9c215a23189c2b6d341\nNot deployed\nReview next deployment\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "57-infrastructure-fee",
+      "label": "Smart infrastructure deployment fee review",
+      "component": "NativeInfrastructure",
+      "url": "http://127.0.0.1:4291/?smart-infrastructure=1",
+      "steps": [
+        "Review next deployment"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "57-infrastructure-fee-320.png",
+      "capturedAt": "2026-11-10T18:24:15.903Z",
+      "note": null,
+      "text": "Smart account setup\nEthereum Sepolia\nFee payer\nDeployment fee wallet\n0x2222222222222222222222222222222222222222\nPali smart account implementation\n0x7e072ef1cb48e3b6763502a03e8e74ef88a6f032\nMaximum network fee\n0.000942477 ETH\nMaximum total cost\n0.000942477 ETH\nShow Details\nConfirm\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "58-biometric-transaction-auth",
+      "label": "Biometric transaction confirmation — simulated prompt",
+      "component": "NativeSend / TransactionAuthentication",
+      "url": "http://127.0.0.1:4291/?biometric-auth=1",
+      "steps": [
+        "Enter public recipient and 0.001 ETH",
+        "Review transfer",
+        "Confirm opens authentication modal"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "58-biometric-transaction-auth-320.png",
+      "capturedAt": "2026-11-10T18:24:17.124Z",
+      "note": "Actual biometric-choice modal only. No operating-system prompt, biometric proof, signature or transaction submission is performed.",
+      "text": "Review transfer\nAccount 1 · Ethereum\n0.001\nETH · Ethereum\nTO\n0x1111111111111111111111111111111111111111\nEXECUTION FEE LIMIT\n0.000000000000063 ETH\nThe final fee depends on network execution. This review limits the gas price and gas used by this transaction.\nAMOUNT + EXECUTION FEE LIMIT\n0.001000000000063 ETH\nConfirm the full address and network before sending. Completed transfers cannot be reversed.\nConfirm and send\nConfirm transaction\nConfirm with your device biometrics to continue.\nConfirm with biometrics\nUse password\nCancel",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "59-backup-required-settings",
+      "label": "Settings with backup still required",
+      "component": "RealSettings / WalletBackupBadge",
+      "url": "http://127.0.0.1:4292/?visual-review=1&backup-required=1",
+      "steps": [
+        "Unlock synthetic wallet with unconfirmed backup",
+        "Settings"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "59-backup-required-settings-390.png",
+      "capturedAt": "2026-11-10T18:24:42.412Z",
+      "note": null,
+      "text": "Settings\nAccount 1\nBack up your wallet\nProtect access if this phone is lost.\nSecurity & backups\nRecovery phrase and account private key\nLanguages\nCurrent language\nDisplay currency\nEstimated wallet values\nHelp & about\nSupport, documentation and version\nPali hides and locks the current session when the app leaves the foreground. Public blockchain activity remains public.\nLock wallet\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "60-backup-required-security",
+      "label": "Security with unconfirmed backup",
+      "component": "NativeSecurity",
+      "url": "http://127.0.0.1:4292/?visual-review=1&backup-required=1",
+      "steps": [
+        "Unlock synthetic wallet with unconfirmed backup",
+        "Settings",
+        "Security & backups"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "60-backup-required-security-390.png",
+      "capturedAt": "2026-11-10T18:24:43.981Z",
+      "note": null,
+      "text": "Security & backups\nView recovery phrase\nBack up needed\nBiometric unlock\nOff\nPrivacy mode\nHide balances and Activity summaries\nRecovery guide\nUnderstand what your backups restore\nLock wallet",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "59-backup-required-settings",
+      "label": "Settings with backup still required",
+      "component": "RealSettings / WalletBackupBadge",
+      "url": "http://127.0.0.1:4292/?visual-review=1&backup-required=1",
+      "steps": [
+        "Unlock synthetic wallet with unconfirmed backup",
+        "Settings"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "59-backup-required-settings-320.png",
+      "capturedAt": "2026-11-10T18:24:45.524Z",
+      "note": null,
+      "text": "Settings\nAccount 1\nBack up your wallet\nProtect access if this phone is lost.\nSecurity & backups\nRecovery phrase and account private key\nLanguages\nCurrent language\nDisplay currency\nEstimated wallet values\nHelp & about\nSupport, documentation and version\nPali hides and locks the current session when the app leaves the foreground. Public blockchain activity remains public.\nLock wallet\nWallet\nActivity\nTools\nSettings",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "60-backup-required-security",
+      "label": "Security with unconfirmed backup",
+      "component": "NativeSecurity",
+      "url": "http://127.0.0.1:4292/?visual-review=1&backup-required=1",
+      "steps": [
+        "Unlock synthetic wallet with unconfirmed backup",
+        "Settings",
+        "Security & backups"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "60-backup-required-security-320.png",
+      "capturedAt": "2026-11-10T18:24:47.071Z",
+      "note": null,
+      "text": "Security & backups\nView recovery phrase\nBack up needed\nBiometric unlock\nOff\nPrivacy mode\nHide balances and Activity summaries\nRecovery guide\nUnderstand what your backups restore\nLock wallet",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4292/_expo/static/js/web/__expo-metro-runtime-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/__common-d41d8cd98f00b204e9800998ecf8427e.js",
+        "http://127.0.0.1:4292/_expo/static/js/web/entry-a420ce26ee6d803a50a05f61717fb0c4.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "52-custom-validator-consent",
+      "label": "Custom validator risk review",
+      "component": "NativeSmartAccountModules / NativeSmartAccountOperationContent",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [
+        "Custom validator",
+        "Enter synthetic module address and name",
+        "Check module",
+        "Install (opens review only)",
+        "Scroll to real risk acknowledgement; leave it off"
+      ],
+      "width": 390,
+      "height": 844,
+      "image": "52-custom-validator-consent-390.png",
+      "capturedAt": "2026-11-10T18:25:18.721Z",
+      "note": null,
+      "text": "Review module change\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nInstall\nModule address\n0x5555555555555555555555555555555555555555\nName\nPublic fixture validator\nInit data (hex)\n0x\nAuthorize module change\nAuthorize the module action shown above. The next review confirms the paying account and submission fee.\nMaximum account charge\n0.001023\nETH\nUnused prefund stays with your account.\nView authorization details\nCustom validator\nThis module is not reviewed by Pali. A malicious validator can approve transactions without your consent and steal funds. Only install modules you trust and have verified.\nI understand the risks and have verified this module myself.\nAuthorize module change\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    },
+    {
+      "id": "52-custom-validator-consent",
+      "label": "Custom validator risk review",
+      "component": "NativeSmartAccountModules / NativeSmartAccountOperationContent",
+      "url": "http://127.0.0.1:4291/?smart-modules=1",
+      "steps": [
+        "Custom validator",
+        "Enter synthetic module address and name",
+        "Check module",
+        "Install (opens review only)",
+        "Scroll to real risk acknowledgement; leave it off"
+      ],
+      "width": 320,
+      "height": 568,
+      "image": "52-custom-validator-consent-320.png",
+      "capturedAt": "2026-11-10T18:25:19.984Z",
+      "note": null,
+      "text": "Review module change\nEthereum\n0x1111111111111111111111111111111111111111\nChain ID 1\nInstall\nModule address\n0x5555555555555555555555555555555555555555\nName\nPublic fixture validator\nInit data (hex)\n0x\nAuthorize module change\nAuthorize the module action shown above. The next review confirms the paying account and submission fee.\nMaximum account charge\n0.001023\nETH\nUnused prefund stays with your account.\nView authorization details\nCustom validator\nThis module is not reviewed by Pali. A malicious validator can approve transactions without your consent and steal funds. Only install modules you trust and have verified.\nI understand the risks and have verified this module myself.\nAuthorize module change\nClose",
+      "errors": [],
+      "blocked": [],
+      "mocked": [],
+      "assets": [
+        "http://127.0.0.1:4291/_expo/static/js/web/entry-193cafdc179fb09a6ceb0a0b0a35ca35.js"
+      ],
+      "horizontalOverflow": false,
+      "qualification": "Actual React Native Web screen with synthetic public adapters; no real funds, keys, OS biometric prompt, BLE, camera or Trezor Suite.",
+      "sourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+    }
+  ],
+  "failures": [],
+  "latestSourceCheckpoint": "065e1211cad2e84c3d21f618ba967452ac768e5a",
+  "sourceCheckpoints": {
+    "original": "d7534eca79309277cf2a1df927f8b56d5f655fb6",
+    "refreshed": "065e1211cad2e84c3d21f618ba967452ac768e5a"
+  },
+  "sourceQualification": "Original frames 01–50 retain d7534eca7, except refreshed 32/37/38. New frames 51 onward and refreshed 32/37/38 reflect 065e1211c. This gallery does not claim one common binary; exact loaded asset URLs, source checkpoint and capture timestamp are retained per frame."
+}

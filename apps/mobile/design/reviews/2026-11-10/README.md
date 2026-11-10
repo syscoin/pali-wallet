@@ -2,34 +2,36 @@
 
 All 32 PDF reference states are compared below with screenshots of the **actual implemented React Native components**. Home, Send, Receive and Activity also include frames from the supplied video. Each image opens at full size; each row has a 320-pixel capture for narrow-screen review.
 
-**Source:** `c6a874d8733823fa4ac491fcad23a1d3e7c3c4e4`. Captures use public synthetic wallet/network/connection adapters in a browser at 390×844 and 320×568. They are UI evidence, not native-device, biometric, camera or funded-transaction qualification. Recovery words shown are a publicly known test phrase. No real wallet data is included.
+**Source:** `d7534eca79309277cf2a1df927f8b56d5f655fb6`. Captures use public synthetic wallet/network/connection adapters in a browser at 390×844 and 320×568. They are UI evidence, not native-device, biometric, camera or funded-transaction qualification. Recovery words shown are a publicly known test phrase. No real wallet data is included.
 
-**Known gap:** page 13 currently uses unlocked-session confirmation. Per-send Face ID/fingerprint with password fallback remains to be implemented and reviewed. Page 28 shows the browser fallback for the implemented native camera. Other differences are marked “Adapted”; they are available for product review rather than silently treated as exact matches.
+**Implemented authentication:** sends now require transaction-bound password or enabled device-biometric confirmation; the gallery shows the password fallback. Browser adapters cannot demonstrate the OS biometric prompt. **Remaining design difference:** the current vault still uses a password, so pages 2–4 and 7 retain password setup; the proposed PIN-only architecture is not implemented. Page 28 honestly shows the browser fallback for the native camera. Other adaptations are identified per screen.
+
+[Additional implemented features outside the PDF](#additional-implemented-screens-without-pdf-references) · [Removal with a confirmed backup](actual/actual-26-backed-up.png) · [Confirmed-backup removal at 320 px](actual/actual-26-backed-up-320.png)
 
 [Open all-screen contact sheet](contact-sheet.png) · [Capture manifest and hashes](manifest.json)
 
 | PDF page | Comparison | Narrow actual capture | Status |
 | --- | --- | --- | --- |
-| 01 | [Welcome](01-welcome.png) | [320 px](actual/actual-01-320.png) | adapted |
+| 01 | [Welcome](01-welcome.png) | [320 px](actual/actual-01-320.png) | implemented |
 | 02 | [Create PIN](02-create-pin.png) | [320 px](actual/actual-02-320.png) | adapted |
 | 03 | [Confirm PIN](03-confirm-pin.png) | [320 px](actual/actual-03-320.png) | adapted |
 | 04 | [Fingerprint](04-fingerprint.png) | [320 px](actual/actual-04-320.png) | adapted |
 | 05 | [Import wallet](05-import-wallet.png) | [320 px](actual/actual-05-320.png) | implemented |
-| 06 | [Confirm restored wallet](06-confirm-restored-wallet.png) | [320 px](actual/actual-06-320.png) | adapted |
+| 06 | [Confirm restored wallet](06-confirm-restored-wallet.png) | [320 px](actual/actual-06-320.png) | implemented |
 | 07 | [Locked](07-locked.png) | [320 px](actual/actual-07-320.png) | adapted |
-| 08 | [Recover access](08-recover-access.png) | [320 px](actual/actual-08-320.png) | implemented |
+| 08 | [Recover access](08-recover-access.png) | [320 px](actual/actual-08-320.png) | adapted |
 | 09 | [Wallet Home](09-wallet-home.png) | [320 px](actual/actual-09-320.png) | adapted |
 | 10 | [Choose Send network](10-choose-send-network.png) | [320 px](actual/actual-10-320.png) | adapted |
 | 11 | [Send details](11-send-details.png) | [320 px](actual/actual-11-320.png) | implemented |
-| 12 | [Review Send](12-review-send.png) | [320 px](actual/actual-12-320.png) | implemented |
-| 13 | [Authorize Send](13-authorize-send.png) | [320 px](actual/actual-13-320.png) | missing |
+| 12 | [Review Send](12-review-send.png) | [320 px](actual/actual-12-320.png) | adapted |
+| 13 | [Authorize Send](13-authorize-send.png) | [320 px](actual/actual-13-320.png) | adapted |
 | 14 | [Send submitted](14-send-submitted.png) | [320 px](actual/actual-14-320.png) | implemented |
 | 15 | [Choose Receive network](15-choose-receive-network.png) | [320 px](actual/actual-15-320.png) | adapted |
-| 16 | [Receive backup warning](16-receive-backup-warning.png) | [320 px](actual/actual-16-320.png) | adapted |
+| 16 | [Receive backup warning](16-receive-backup-warning.png) | [320 px](actual/actual-16-320.png) | implemented |
 | 17 | [Receive](17-receive.png) | [320 px](actual/actual-17-320.png) | implemented |
 | 18 | [Activity](18-activity.png) | [320 px](actual/actual-18-320.png) | adapted |
-| 19 | [Transaction details](19-transaction-details.png) | [320 px](actual/actual-19-320.png) | implemented |
-| 20 | [Backup introduction](20-backup-introduction.png) | [320 px](actual/actual-20-320.png) | adapted |
+| 19 | [Transaction details](19-transaction-details.png) | [320 px](actual/actual-19-320.png) | adapted |
+| 20 | [Backup introduction](20-backup-introduction.png) | [320 px](actual/actual-20-320.png) | implemented |
 | 21 | [Recovery phrase](21-recovery-phrase.png) | [320 px](actual/actual-21-320.png) | implemented |
 | 22 | [Verify backup](22-verify-backup.png) | [320 px](actual/actual-22-320.png) | adapted |
 | 23 | [Backup complete](23-backup-complete.png) | [320 px](actual/actual-23-320.png) | implemented |
@@ -39,14 +41,14 @@ All 32 PDF reference states are compared below with screenshots of the **actual 
 | 27 | [WalletConnect](27-walletconnect.png) | [320 px](actual/actual-27-320.png) | implemented |
 | 28 | [Scan WalletConnect QR](28-scan-walletconnect-qr.png) | [320 px](actual/actual-28-320.png) | native-only |
 | 29 | [Pairing preview](29-pairing-preview.png) | [320 px](actual/actual-29-320.png) | adapted |
-| 30 | [Connection request](30-connection-request.png) | [320 px](actual/actual-30-320.png) | implemented |
-| 31 | [Connected app details](31-connected-app-details.png) | [320 px](actual/actual-31-320.png) | adapted |
-| 32 | [Transaction request](32-transaction-request.png) | [320 px](actual/actual-32-320.png) | implemented |
+| 30 | [Connection request](30-connection-request.png) | [320 px](actual/actual-30-320.png) | adapted |
+| 31 | [Connected app details](31-connected-app-details.png) | [320 px](actual/actual-31-320.png) | implemented |
+| 32 | [Transaction request](32-transaction-request.png) | [320 px](actual/actual-32-320.png) | adapted |
 
 <details>
-<summary>01. Welcome — adapted</summary>
+<summary>01. Welcome — implemented</summary>
 
-Wallet setup and watch-only entry. Real component; public test adapters.
+Centered Pali identity, subtle native-vector glow and dot pattern, direct Create/Import actions, and quiet watch-account entry.
 
 ![Welcome: reference and implemented screen](01-welcome.png)
 
@@ -59,7 +61,7 @@ Component: `Onboarding.Welcome`
 <details>
 <summary>02. Create PIN — adapted</summary>
 
-Wallet password replaces the reference PIN. Create and confirm fields share one form.
+The existing password-encrypted vault is retained. This is a password form, not a PIN keypad; a PIN-only/OS-protected custody redesign is not claimed.
 
 ![Create PIN: reference and implemented screen](02-create-pin.png)
 
@@ -72,7 +74,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>03. Confirm PIN — adapted</summary>
 
-Confirmation is on the same password form; no separate PIN keypad route.
+Password confirmation remains on the same form. A separate PIN route is not implemented.
 
 ![Confirm PIN: reference and implemented screen](03-confirm-pin.png)
 
@@ -85,7 +87,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>04. Fingerprint — adapted</summary>
 
-Actual optional setup control. Authentication is simulated in this browser capture; no native prompt is being claimed.
+Real optional biometric enrollment control on the security form. This browser uses a public test adapter; no physical biometric prompt is claimed.
 
 ![Fingerprint: reference and implemented screen](04-fingerprint.png)
 
@@ -98,7 +100,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>05. Import wallet — implemented</summary>
 
-Recovery phrase and fallback password form. Only public test wallet data is used.
+Numbered 12/24-word entry. Phrase verification uses the existing shared SDK; no automatic clipboard read.
 
 ![Import wallet: reference and implemented screen](05-import-wallet.png)
 
@@ -109,9 +111,9 @@ Component: `NativeWalletScreen`
 </details>
 
 <details>
-<summary>06. Confirm restored wallet — adapted</summary>
+<summary>06. Confirm restored wallet — implemented</summary>
 
-Import continues through the actual mandatory backup flow; no separate restored-wallet summary.
+Public address preview precedes security setup. This fixture displays a public synthetic EVM address; the production preview uses shared EVM/UTXO derivation.
 
 ![Confirm restored wallet: reference and implemented screen](06-confirm-restored-wallet.png)
 
@@ -124,7 +126,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>07. Locked — adapted</summary>
 
-Password fallback and optional native biometric unlock replace the PIN keypad.
+Branded locked state with biometric entry and wallet-password fallback. The current password architecture is retained rather than changing the vault to PIN encryption.
 
 ![Locked: reference and implemented screen](07-locked.png)
 
@@ -135,9 +137,9 @@ Component: `NativeWalletScreen`
 </details>
 
 <details>
-<summary>08. Recover access — implemented</summary>
+<summary>08. Recover access — adapted</summary>
 
-Matching recovery phrase authorizes a new local password through the existing recovery flow.
+Recovery remains an explicit, protected existing flow. Recovery phrase verification authorizes changing local access; imported keys and notes require their independent recovery material.
 
 ![Recover access: reference and implemented screen](08-recover-access.png)
 
@@ -150,7 +152,7 @@ Component: `NativeRecovery`
 <details>
 <summary>09. Wallet Home — adapted</summary>
 
-Full app home: Pali branding, account/network, balance, Send/Receive, Assets and Import token. Selected-network balance replaces combined UTXO/NEVM total.
+Pali branding without a root Back arrow; compact amount with exact accessible value and asset detail; Send/Receive, asset list, and Import token. Balance follows the selected network.
 
 ![Wallet Home: reference and implemented screen](09-wallet-home.png)
 
@@ -176,7 +178,7 @@ Component: `NativeNetworks`
 <details>
 <summary>11. Send details — implemented</summary>
 
-Actual recipient and amount fields; fee and nonce are reviewed using the existing transfer flow.
+Selected-network badge and in-field recipient scanner. Exact amounts and advanced nonce behavior retained.
 
 ![Send details: reference and implemented screen](11-send-details.png)
 
@@ -187,9 +189,9 @@ Component: `NativeSend`
 </details>
 
 <details>
-<summary>12. Review Send — implemented</summary>
+<summary>12. Review Send — adapted</summary>
 
-Actual review with exact recipient, amount, fee and total before confirmation.
+One primary action; Header Back edits. Exact recipient, amount and maximum execution fee remain visible.
 
 ![Review Send: reference and implemented screen](12-review-send.png)
 
@@ -200,9 +202,9 @@ Component: `NativeSend`
 </details>
 
 <details>
-<summary>13. Authorize Send — missing</summary>
+<summary>13. Authorize Send — adapted</summary>
 
-Reference fingerprint authorization is not wired for individual sends. This capture shows the actual unlocked-session confirmation, not a fake biometric screen.
+Implemented transaction-bound password/biometric authentication, with stale-review checks and retryable credential refusal. This capture shows the actual password fallback, not a native biometric prompt.
 
 ![Authorize Send: reference and implemented screen](13-authorize-send.png)
 
@@ -215,7 +217,7 @@ Component: `NativeSend`
 <details>
 <summary>14. Send submitted — implemented</summary>
 
-Actual pending outcome after explicit confirmation. Pending is not presented as confirmed.
+Checkmark and Done; known submitted outcomes offer the parent-provided View transaction action. Uncertain submission keeps explicit status/retry controls.
 
 ![Send submitted: reference and implemented screen](14-send-submitted.png)
 
@@ -239,9 +241,9 @@ Component: `NativeNetworks`
 </details>
 
 <details>
-<summary>16. Receive backup warning — adapted</summary>
+<summary>16. Receive backup warning — implemented</summary>
 
-Backup is required before the portfolio can be used, rather than adding a warning only when Receive opens.
+Bottom sheet over dimmed Home with Back Up Now and Receive Anyway. Acknowledgement is bound to the current account/network and is cleared on departure.
 
 ![Receive backup warning: reference and implemented screen](16-receive-backup-warning.png)
 
@@ -267,7 +269,7 @@ Component: `NativePortfolio`
 <details>
 <summary>18. Activity — adapted</summary>
 
-Approved header and direction filters retained. Compact dated rows replace large cards; full amounts and hashes remain in details.
+Approved compact header and filter layout with dated transaction rows. Full values and identifiers remain available in details.
 
 ![Activity: reference and implemented screen](18-activity.png)
 
@@ -278,9 +280,9 @@ Component: `NativeActivityScreen + ActivityListRow`
 </details>
 
 <details>
-<summary>19. Transaction details — implemented</summary>
+<summary>19. Transaction details — adapted</summary>
 
-Full exact values and transaction identifiers remain available in the detail screen.
+Centered status and amount with compact facts and expandable technical detail; real observation and error semantics retained.
 
 ![Transaction details: reference and implemented screen](19-transaction-details.png)
 
@@ -291,9 +293,9 @@ Component: `NativeActivityScreen`
 </details>
 
 <details>
-<summary>20. Backup introduction — adapted</summary>
+<summary>20. Backup introduction — implemented</summary>
 
-Actual password-protected backup introduction. No postpone action when backup is required.
+Shield hero, three concise steps and fixed Back Up Now / Do It Later. Phrase access is authenticated after this introduction.
 
 ![Backup introduction: reference and implemented screen](20-backup-introduction.png)
 
@@ -306,7 +308,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>21. Recovery phrase — implemented</summary>
 
-Actual numbered word grid using the publicly known test phrase only.
+Numbered words, privacy warning and acknowledgement. Public known test phrase only.
 
 ![Recovery phrase: reference and implemented screen](21-recovery-phrase.png)
 
@@ -319,7 +321,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>22. Verify backup — adapted</summary>
 
-Three selected-word checks replace rearranging all words.
+Per user direction the quiz is removed. This checked acknowledgement completes the current protected presentation; it does not claim to prove an external backup.
 
 ![Verify backup: reference and implemented screen](22-verify-backup.png)
 
@@ -332,7 +334,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>23. Backup complete — implemented</summary>
 
-New completion state after actual backup confirmation; secret presentation cleared before this screen.
+Centered success state, one Done action, no redundant Back control.
 
 ![Backup complete: reference and implemented screen](23-backup-complete.png)
 
@@ -345,7 +347,7 @@ Component: `NativeWalletScreen`
 <details>
 <summary>24. Settings — adapted</summary>
 
-Production settings including security, auto-lock, language and currency; Connected apps is in Tools.
+Root tab without Back. The backup badge is conditional on backup status; unconfirmed state is also included in the extra gallery.
 
 ![Settings: reference and implemented screen](24-settings.png)
 
@@ -358,7 +360,7 @@ Component: `RealSettings`
 <details>
 <summary>25. Security — adapted</summary>
 
-Password-based security, phrase/key backup and optional biometric unlock. Auto-lock is a separate settings route.
+Compact recovery status, biometric settings, Auto-lock and actual persistent Privacy mode. Change PIN is not fabricated while the vault still uses a password.
 
 ![Security: reference and implemented screen](25-security.png)
 
@@ -371,7 +373,7 @@ Component: `NativeSecurity`
 <details>
 <summary>26. Remove wallet — adapted</summary>
 
-Fresh password followed by an explicit destructive confirmation; no real wallet is removed in this capture.
+Reference-style destructive review with bottom actions and conditional red backup warning. The countdown is removed from presentation; expiry and authorization remain enforced. Confirmed-backup variant is linked separately.
 
 ![Remove wallet: reference and implemented screen](26-remove-wallet.png)
 
@@ -384,7 +386,7 @@ Component: `NativeWalletRemovalScreen`
 <details>
 <summary>27. WalletConnect — implemented</summary>
 
-Actual scan/paste entry and session management.
+Compact connection entry, explicit Scan/Paste and always-visible Active connections list. Clipboard is read only on tap.
 
 ![WalletConnect: reference and implemented screen](27-walletconnect.png)
 
@@ -397,7 +399,7 @@ Component: `NativeConnections`
 <details>
 <summary>28. Scan WalletConnect QR — native-only</summary>
 
-Native camera implementation exists; this browser capture honestly shows its fallback. Device-camera qualification remains separate.
+Shared actual scanner; camera is native-only. Browser capture honestly shows the fallback, not a simulated camera view.
 
 ![Scan WalletConnect QR: reference and implemented screen](28-scan-walletconnect-qr.png)
 
@@ -410,7 +412,7 @@ Component: `ConnectionQrScanner.web`
 <details>
 <summary>29. Pairing preview — adapted</summary>
 
-Actual wait-for-proposal state. A pairing link does not establish a trustworthy app identity for a fabricated preview.
+Spinner, selected network and authoritative expiry; no invented app identity before its proposal. Pairing does not grant account access.
 
 ![Pairing preview: reference and implemented screen](29-pairing-preview.png)
 
@@ -421,9 +423,9 @@ Component: `NativeConnections`
 </details>
 
 <details>
-<summary>30. Connection request — implemented</summary>
+<summary>30. Connection request — adapted</summary>
 
-Actual verified-origin proposal review with account/network choice and Connect/Reject. Public synthetic proposal.
+App identity, verified-origin status, account/network, permission icons and real expiry. Displayed permissions use the same selection as the actual grant. Fixed Reject/Connect actions.
 
 ![Connection request: reference and implemented screen](30-connection-request.png)
 
@@ -434,9 +436,9 @@ Component: `NativeConnections`
 </details>
 
 <details>
-<summary>31. Connected app details — adapted</summary>
+<summary>31. Connected app details — implemented</summary>
 
-Actual session card and Disconnect action are inline rather than a separate details route.
+Isolated app detail with network, account, permissions, expiry and bottom Disconnect. Last-used is omitted because the wallet has no authoritative measurement.
 
 ![Connected app details: reference and implemented screen](31-connected-app-details.png)
 
@@ -447,9 +449,9 @@ Component: `NativeConnections`
 </details>
 
 <details>
-<summary>32. Transaction request — implemented</summary>
+<summary>32. Transaction request — adapted</summary>
 
-Actual dapp-origin, account/network, recipient, amount and fee review. Synthetic public request; no live signature.
+App identity, exact amount, compact From/To/network/maximum-fee facts and real Reject/Confirm buttons. All fee, phishing, account-switch and uncertain-delivery safeguards remain.
 
 ![Transaction request: reference and implemented screen](32-transaction-request.png)
 
@@ -459,3 +461,675 @@ Component: `NativeTransactionReviewScreen`
 
 </details>
 
+
+## Additional implemented screens without PDF references
+
+60 feature states below have fresh captures at 390 and 320 pixels wide. These are the implemented components with public synthetic adapters. Per-capture source revisions, routes and loaded assets are recorded in the manifest; the additional fixture routes and final approval controls use source `065e1211cad2e84c3d21f618ba967452ac768e5a`. The market chart uses explicitly synthetic data.
+
+[Overview 1](extras/contact-01.png) · [Overview 2](extras/contact-02.png) · [Overview 3](extras/contact-03.png) · [Overview 4](extras/contact-04.png) · [Overview 5](extras/contact-05.png) · [Capture provenance](extras/manifest.json)
+
+<details>
+<summary>Watch-only account — no PDF reference</summary>
+
+Component: `App / RealPortfolio`.
+
+![Watch-only account](extras/01-watch-wallet-390.png)
+
+[390 px](extras/01-watch-wallet-390.png) · [320 px](extras/01-watch-wallet-320.png)
+
+</details>
+
+<details>
+<summary>Native account manager — no PDF reference</summary>
+
+Component: `NativeAccounts`.
+
+![Native account manager](extras/02-account-manager-390.png)
+
+[390 px](extras/02-account-manager-390.png) · [320 px](extras/02-account-manager-320.png)
+
+</details>
+
+<details>
+<summary>Create another software account — no PDF reference</summary>
+
+Component: `NativeAccounts`.
+
+![Create another software account](extras/03-create-account-390.png)
+
+[390 px](extras/03-create-account-390.png) · [320 px](extras/03-create-account-320.png)
+
+</details>
+
+<details>
+<summary>Add a custom network — no PDF reference</summary>
+
+Component: `NativeNetworks`.
+
+![Add a custom network](extras/04-network-add-390.png)
+
+[390 px](extras/04-network-add-390.png) · [320 px](extras/04-network-add-320.png)
+
+</details>
+
+<details>
+<summary>Token assets — no PDF reference</summary>
+
+Component: `NativePortfolio`.
+
+![Token assets](extras/05-token-assets-390.png)
+
+[390 px](extras/05-token-assets-390.png) · [320 px](extras/05-token-assets-320.png)
+
+</details>
+
+<details>
+<summary>Import token / find holdings — no PDF reference</summary>
+
+Component: `NativeTokens`.
+
+![Import token / find holdings](extras/06-import-token-390.png)
+
+[390 px](extras/06-import-token-390.png) · [320 px](extras/06-import-token-320.png)
+
+</details>
+
+<details>
+<summary>Verified token preview — no PDF reference</summary>
+
+Component: `NativeTokens`.
+
+![Verified token preview](extras/07-token-review-390.png)
+
+[390 px](extras/07-token-review-390.png) · [320 px](extras/07-token-review-320.png)
+
+</details>
+
+<details>
+<summary>Collectible discovery — no PDF reference</summary>
+
+Component: `NativeTokens`.
+
+![Collectible discovery](extras/08-collectible-discovery-390.png)
+
+[390 px](extras/08-collectible-discovery-390.png) · [320 px](extras/08-collectible-discovery-320.png)
+
+</details>
+
+<details>
+<summary>Collectible ownership form — no PDF reference</summary>
+
+Component: `NativeTokens / CollectibleOwnership`.
+
+![Collectible ownership form](extras/09-collectible-ownership-390.png)
+
+[390 px](extras/09-collectible-ownership-390.png) · [320 px](extras/09-collectible-ownership-320.png)
+
+</details>
+
+<details>
+<summary>EVM advanced nonce — no PDF reference</summary>
+
+Component: `NativeSend`.
+
+![EVM advanced nonce](extras/10-evm-nonce-390.png)
+
+[390 px](extras/10-evm-nonce-390.png) · [320 px](extras/10-evm-nonce-320.png)
+
+</details>
+
+<details>
+<summary>UTXO advanced transaction options — no PDF reference</summary>
+
+Component: `NativeUtxoSend`.
+
+![UTXO advanced transaction options](extras/11-utxo-advanced-390.png)
+
+[390 px](extras/11-utxo-advanced-390.png) · [320 px](extras/11-utxo-advanced-320.png)
+
+</details>
+
+<details>
+<summary>ERC-20 transfer form — no PDF reference</summary>
+
+Component: `NativeSend`.
+
+![ERC-20 transfer form](extras/12-erc20-send-390.png)
+
+[390 px](extras/12-erc20-send-390.png) · [320 px](extras/12-erc20-send-320.png)
+
+</details>
+
+<details>
+<summary>Guardian policy and status — no PDF reference</summary>
+
+Component: `NativeGuardianPolicy`.
+
+![Guardian policy and status](extras/14-guardian-policy-390.png)
+
+[390 px](extras/14-guardian-policy-390.png) · [320 px](extras/14-guardian-policy-320.png)
+
+</details>
+
+<details>
+<summary>Guardian policy editor — no PDF reference</summary>
+
+Component: `NativeGuardianPolicy`.
+
+![Guardian policy editor](extras/15-guardian-policy-edit-390.png)
+
+[390 px](extras/15-guardian-policy-edit-390.png) · [320 px](extras/15-guardian-policy-edit-320.png)
+
+</details>
+
+<details>
+<summary>Smart guardian / separate payer recovery — no PDF reference</summary>
+
+Component: `NativeGuardianRecovery`.
+
+![Smart guardian / separate payer recovery](extras/16-smart-guardian-recovery-390.png)
+
+[390 px](extras/16-smart-guardian-recovery-390.png) · [320 px](extras/16-smart-guardian-recovery-320.png)
+
+</details>
+
+<details>
+<summary>Guardian recovery proof review — no PDF reference</summary>
+
+Component: `NativeGuardianRecovery`.
+
+![Guardian recovery proof review](extras/17-guardian-recovery-review-390.png)
+
+[390 px](extras/17-guardian-recovery-review-390.png) · [320 px](extras/17-guardian-recovery-review-320.png)
+
+</details>
+
+<details>
+<summary>SLH-DSA prepared keys — no PDF reference</summary>
+
+Component: `NativeSlhDsaManagement`.
+
+![SLH-DSA prepared keys](extras/18-slh-keys-390.png)
+
+[390 px](extras/18-slh-keys-390.png) · [320 px](extras/18-slh-keys-320.png)
+
+</details>
+
+<details>
+<summary>SLH-DSA installed keys — no PDF reference</summary>
+
+Component: `NativeSlhDsaManagement`.
+
+![SLH-DSA installed keys](extras/19-slh-installed-390.png)
+
+[390 px](extras/19-slh-installed-390.png) · [320 px](extras/19-slh-installed-320.png)
+
+</details>
+
+<details>
+<summary>Smart account transfer — no PDF reference</summary>
+
+Component: `NativeSmartAccountSend`.
+
+![Smart account transfer](extras/20-smart-transfer-390.png)
+
+[390 px](extras/20-smart-transfer-390.png) · [320 px](extras/20-smart-transfer-320.png)
+
+</details>
+
+<details>
+<summary>Smart account deployment authorization — no PDF reference</summary>
+
+Component: `NativeSmartAccountOperation`.
+
+![Smart account deployment authorization](extras/21-smart-deployment-390.png)
+
+[390 px](extras/21-smart-deployment-390.png) · [320 px](extras/21-smart-deployment-320.png)
+
+</details>
+
+<details>
+<summary>Smart account batched calls — no PDF reference</summary>
+
+Component: `NativeSmartTransactionReview`.
+
+![Smart account batched calls](extras/22-smart-batch-390.png)
+
+[390 px](extras/22-smart-batch-390.png) · [320 px](extras/22-smart-batch-320.png)
+
+</details>
+
+<details>
+<summary>Software account batched calls — no PDF reference</summary>
+
+Component: `NativeTransactionReview`.
+
+![Software account batched calls](extras/23-eoa-batch-390.png)
+
+[390 px](extras/23-eoa-batch-390.png) · [320 px](extras/23-eoa-batch-320.png)
+
+</details>
+
+<details>
+<summary>Private deposit form — no PDF reference</summary>
+
+Component: `NativePrivateDeposit`.
+
+![Private deposit form](extras/24-private-deposit-390.png)
+
+[390 px](extras/24-private-deposit-390.png) · [320 px](extras/24-private-deposit-320.png)
+
+</details>
+
+<details>
+<summary>Private deposit review — no PDF reference</summary>
+
+Component: `NativePrivateDeposit`.
+
+![Private deposit review](extras/25-private-deposit-review-390.png)
+
+[390 px](extras/25-private-deposit-review-390.png) · [320 px](extras/25-private-deposit-review-320.png)
+
+</details>
+
+<details>
+<summary>Private note inventory — no PDF reference</summary>
+
+Component: `NativeNoteInventory`.
+
+![Private note inventory](extras/26-private-notes-390.png)
+
+[390 px](extras/26-private-notes-390.png) · [320 px](extras/26-private-notes-320.png)
+
+</details>
+
+<details>
+<summary>Private withdrawal form — no PDF reference</summary>
+
+Component: `NativePrivateWithdrawal`.
+
+![Private withdrawal form](extras/27-private-withdrawal-390.png)
+
+[390 px](extras/27-private-withdrawal-390.png) · [320 px](extras/27-private-withdrawal-320.png)
+
+</details>
+
+<details>
+<summary>Import private note — no PDF reference</summary>
+
+Component: `NativeNoteImport`.
+
+![Import private note](extras/28-import-note-390.png)
+
+[390 px](extras/28-import-note-390.png) · [320 px](extras/28-import-note-320.png)
+
+</details>
+
+<details>
+<summary>Sentry key management — no PDF reference</summary>
+
+Component: `NativeSentryKeys`.
+
+![Sentry key management](extras/29-sentry-keys-390.png)
+
+[390 px](extras/29-sentry-keys-390.png) · [320 px](extras/29-sentry-keys-320.png)
+
+</details>
+
+<details>
+<summary>Sentry service settings — no PDF reference</summary>
+
+Component: `NativeSentrySettings`.
+
+![Sentry service settings](extras/30-sentry-service-390.png)
+
+[390 px](extras/30-sentry-service-390.png) · [320 px](extras/30-sentry-service-320.png)
+
+</details>
+
+<details>
+<summary>Sentry nodes — no PDF reference</summary>
+
+Component: `NativeSentryNodes`.
+
+![Sentry nodes](extras/31-sentry-nodes-390.png)
+
+[390 px](extras/31-sentry-nodes-390.png) · [320 px](extras/31-sentry-nodes-320.png)
+
+</details>
+
+<details>
+<summary>Ledger account review — no PDF reference</summary>
+
+Component: `NativeLedger`.
+
+![Ledger account review](extras/34-ledger-account-390.png)
+
+[390 px](extras/34-ledger-account-390.png) · [320 px](extras/34-ledger-account-320.png)
+
+</details>
+
+<details>
+<summary>Trezor account import — no PDF reference</summary>
+
+Component: `NativeTrezor`.
+
+![Trezor account import](extras/35-trezor-import-390.png)
+
+[390 px](extras/35-trezor-import-390.png) · [320 px](extras/35-trezor-import-320.png)
+
+</details>
+
+<details>
+<summary>Trezor Smart owner continuation — no PDF reference</summary>
+
+Component: `NativeTrezorResumeNotice`.
+
+![Trezor Smart owner continuation](extras/36-trezor-smart-resume-390.png)
+
+[390 px](extras/36-trezor-smart-resume-390.png) · [320 px](extras/36-trezor-smart-resume-320.png)
+
+</details>
+
+<details>
+<summary>Auto-lock preferences — no PDF reference</summary>
+
+Component: `AutoLockSettings`.
+
+![Auto-lock preferences](extras/39-auto-lock-390.png)
+
+[390 px](extras/39-auto-lock-390.png) · [320 px](extras/39-auto-lock-320.png)
+
+</details>
+
+<details>
+<summary>Biometric enrollment settings — no PDF reference</summary>
+
+Component: `NativeWallet.native (device-unlock stage)`.
+
+![Biometric enrollment settings](extras/40-biometric-settings-390.png)
+
+[390 px](extras/40-biometric-settings-390.png) · [320 px](extras/40-biometric-settings-320.png)
+
+</details>
+
+<details>
+<summary>Import software private key — no PDF reference</summary>
+
+Component: `NativeImport`.
+
+![Import software private key](extras/41-import-private-key-390.png)
+
+[390 px](extras/41-import-private-key-390.png) · [320 px](extras/41-import-private-key-320.png)
+
+</details>
+
+<details>
+<summary>Display currency preferences — no PDF reference</summary>
+
+Component: `DisplayCurrency`.
+
+![Display currency preferences](extras/42-display-currency-390.png)
+
+[390 px](extras/42-display-currency-390.png) · [320 px](extras/42-display-currency-320.png)
+
+</details>
+
+<details>
+<summary>Language preferences — no PDF reference</summary>
+
+Component: `NativePreferences`.
+
+![Language preferences](extras/43-languages-390.png)
+
+[390 px](extras/43-languages-390.png) · [320 px](extras/43-languages-320.png)
+
+</details>
+
+<details>
+<summary>Help and about — no PDF reference</summary>
+
+Component: `HelpAbout`.
+
+![Help and about](extras/44-help-about-390.png)
+
+[390 px](extras/44-help-about-390.png) · [320 px](extras/44-help-about-320.png)
+
+</details>
+
+<details>
+<summary>Private-key reveal authorization — no PDF reference</summary>
+
+Component: `NativeSecurity`.
+
+![Private-key reveal authorization](extras/45-private-key-auth-390.png)
+
+[390 px](extras/45-private-key-auth-390.png) · [320 px](extras/45-private-key-auth-320.png)
+
+</details>
+
+<details>
+<summary>Add public watch account — no PDF reference</summary>
+
+Component: `Onboarding / AddWatchAccount`.
+
+![Add public watch account](extras/46-watch-address-form-390.png)
+
+[390 px](extras/46-watch-address-form-390.png) · [320 px](extras/46-watch-address-form-320.png)
+
+</details>
+
+<details>
+<summary>Watch UTXO address, public key or descriptor — no PDF reference</summary>
+
+Component: `Onboarding / AddWatchAccount`.
+
+![Watch UTXO address, public key or descriptor](extras/47-watch-utxo-key-390.png)
+
+[390 px](extras/47-watch-utxo-key-390.png) · [320 px](extras/47-watch-utxo-key-320.png)
+
+</details>
+
+<details>
+<summary>Wallet with backup still required — no PDF reference</summary>
+
+Component: `NativePortfolio / WalletBackupBadge`.
+
+![Wallet with backup still required](extras/49-backup-required-home-390.png)
+
+[390 px](extras/49-backup-required-home-390.png) · [320 px](extras/49-backup-required-home-320.png)
+
+</details>
+
+<details>
+<summary>ERC-1155 transfer form — no PDF reference</summary>
+
+Component: `NativeSend`.
+
+![ERC-1155 transfer form](extras/13-erc1155-send-390.png)
+
+[390 px](extras/13-erc1155-send-390.png) · [320 px](extras/13-erc1155-send-320.png)
+
+</details>
+
+<details>
+<summary>Ledger discovery — no PDF reference</summary>
+
+Component: `NativeLedger`.
+
+![Ledger discovery](extras/33-ledger-connect-390.png)
+
+[390 px](extras/33-ledger-connect-390.png) · [320 px](extras/33-ledger-connect-320.png)
+
+</details>
+
+<details>
+<summary>Native coin details — no PDF reference</summary>
+
+Component: `NativePortfolio (native-asset view) / AssetMarketCard`.
+
+![Native coin details](extras/48-asset-details-390.png)
+
+[390 px](extras/48-asset-details-390.png) · [320 px](extras/48-asset-details-320.png)
+
+</details>
+
+<details>
+<summary>Healthy market chart — synthetic data — no PDF reference</summary>
+
+Component: `NativePortfolio / AssetMarketCard`.
+
+![Healthy market chart — synthetic data](extras/50-synthetic-market-chart-390.png)
+
+[390 px](extras/50-synthetic-market-chart-390.png) · [320 px](extras/50-synthetic-market-chart-320.png)
+
+</details>
+
+<details>
+<summary>Sentry request approval — no PDF reference</summary>
+
+Component: `NativeSentryReview`.
+
+![Sentry request approval](extras/32-sentry-consent-390.png)
+
+[390 px](extras/32-sentry-consent-390.png) · [320 px](extras/32-sentry-consent-320.png)
+
+</details>
+
+<details>
+<summary>Message signature review — no PDF reference</summary>
+
+Component: `NativeMessageReview`.
+
+![Message signature review](extras/37-message-signature-390.png)
+
+[390 px](extras/37-message-signature-390.png) · [320 px](extras/37-message-signature-320.png)
+
+</details>
+
+<details>
+<summary>Dapp network-change approval — no PDF reference</summary>
+
+Component: `NativeDappControlReview`.
+
+![Dapp network-change approval](extras/38-dapp-network-request-390.png)
+
+[390 px](extras/38-dapp-network-request-390.png) · [320 px](extras/38-dapp-network-request-320.png)
+
+</details>
+
+<details>
+<summary>Installed Smart account modules — no PDF reference</summary>
+
+Component: `NativeSmartAccountModules`.
+
+![Installed Smart account modules](extras/51-smart-modules-390.png)
+
+[390 px](extras/51-smart-modules-390.png) · [320 px](extras/51-smart-modules-320.png)
+
+</details>
+
+<details>
+<summary>Combined approval policy editor — no PDF reference</summary>
+
+Component: `NativeSmartAccountModules`.
+
+![Combined approval policy editor](extras/53-composite-approvals-390.png)
+
+[390 px](extras/53-composite-approvals-390.png) · [320 px](extras/53-composite-approvals-320.png)
+
+</details>
+
+<details>
+<summary>Use Pali wallet — authenticator change — no PDF reference</summary>
+
+Component: `NativeSmartAccountAuthenticator / NativeSmartAccountOperationContent`.
+
+![Use Pali wallet — authenticator change](extras/54-wallet-authenticator-390.png)
+
+[390 px](extras/54-wallet-authenticator-390.png) · [320 px](extras/54-wallet-authenticator-320.png)
+
+</details>
+
+<details>
+<summary>Configured Smart account creation consent — no PDF reference</summary>
+
+Component: `NativeSmartPreparationReview`.
+
+![Configured Smart account creation consent](extras/55-smart-creation-consent-390.png)
+
+[390 px](extras/55-smart-creation-consent-390.png) · [320 px](extras/55-smart-creation-consent-320.png)
+
+</details>
+
+<details>
+<summary>Smart account infrastructure status — no PDF reference</summary>
+
+Component: `NativeInfrastructure`.
+
+![Smart account infrastructure status](extras/56-infrastructure-status-390.png)
+
+[390 px](extras/56-infrastructure-status-390.png) · [320 px](extras/56-infrastructure-status-320.png)
+
+</details>
+
+<details>
+<summary>Smart infrastructure deployment fee review — no PDF reference</summary>
+
+Component: `NativeInfrastructure`.
+
+![Smart infrastructure deployment fee review](extras/57-infrastructure-fee-390.png)
+
+[390 px](extras/57-infrastructure-fee-390.png) · [320 px](extras/57-infrastructure-fee-320.png)
+
+</details>
+
+<details>
+<summary>Biometric transaction confirmation — simulated prompt — no PDF reference</summary>
+
+Component: `NativeSend / TransactionAuthentication`.
+
+![Biometric transaction confirmation — simulated prompt](extras/58-biometric-transaction-auth-390.png)
+
+[390 px](extras/58-biometric-transaction-auth-390.png) · [320 px](extras/58-biometric-transaction-auth-320.png)
+
+</details>
+
+<details>
+<summary>Settings with backup still required — no PDF reference</summary>
+
+Component: `RealSettings / WalletBackupBadge`.
+
+![Settings with backup still required](extras/59-backup-required-settings-390.png)
+
+[390 px](extras/59-backup-required-settings-390.png) · [320 px](extras/59-backup-required-settings-320.png)
+
+</details>
+
+<details>
+<summary>Security with unconfirmed backup — no PDF reference</summary>
+
+Component: `NativeSecurity`.
+
+![Security with unconfirmed backup](extras/60-backup-required-security-390.png)
+
+[390 px](extras/60-backup-required-security-390.png) · [320 px](extras/60-backup-required-security-320.png)
+
+</details>
+
+<details>
+<summary>Custom validator risk review — no PDF reference</summary>
+
+Component: `NativeSmartAccountModules / NativeSmartAccountOperationContent`.
+
+![Custom validator risk review](extras/52-custom-validator-consent-390.png)
+
+[390 px](extras/52-custom-validator-consent-390.png) · [320 px](extras/52-custom-validator-consent-320.png)
+
+</details>
+
+These are visual review captures, not physical-device, real-biometrics, camera, hardware-signing or live-funds qualification. The authenticator capture is the implemented change review; it does not imply a separate chooser exists.
+
+## Validation
+
+Mobile TypeScript and scoped lint pass. The composed focused suite passes 713 tests; approval-control checks pass 61 tests. Actual SDK/SQLite regressions cover authentication expiry and storage failures. All displayed captures completed without page errors or horizontal document overflow. Native/device qualification and current-head hosted CI remain separate gates.
