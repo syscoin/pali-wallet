@@ -1,4 +1,6 @@
 import { getSmartAccountModulesProjection } from '../../../source/shared/smartAccountModules.ts';
+import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, type SmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
+import { buildNativeSmartModuleCommand } from '../src/smartAccount/modules.ts';
 import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import type { NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
@@ -65,6 +67,7 @@ function fixture(
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
     moduleInventory?: boolean;
+    moduleChanges?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -106,6 +109,7 @@ function fixture(
   const sentryRequests: unknown[] = [], sentryAssents: NativeSentryAssent[] = [];
   const psbtRequests: unknown[] = [], psbtApprovals: unknown[] = [];
   let signingHandoff: NativeSigningHandoff | undefined;
+  let smartSigningBinding: string | undefined;
   let registrationSuffix = '';
   let psbtWait = Promise.resolve(), psbtSignWait = Promise.resolve(), psbtDisposals = 0;
   let psbtHandoff: NativeSigningHandoff | undefined, pendingOverride: 'missing' | 'method' | 'fresh' | null = null, pendingReads = 0;
@@ -114,6 +118,9 @@ function fixture(
   let readError: Error | undefined;
   const readRequests: unknown[] = [];
   const moduleInventoryReads: { accountId: string; networkId: string }[] = [];
+  const moduleChangeRequests: SmartAccountModuleRequest[] = [];
+  let moduleMetadataUnavailable = false, moduleMetadataReads = 0;
+  let moduleMetadataWait = Promise.resolve();
   let signWait: Promise<void> = Promise.resolve();
   let storageWait: Promise<void> = Promise.resolve();
   let preparationError: Error | undefined;
@@ -211,7 +218,7 @@ function fixture(
     },
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
-    signingContext: (accountId) => ({ trezor: options.hardware === 'Trezor' || options.smartTrezor === true, binding: accountId }),
+    signingContext: (accountId) => ({ trezor: options.hardware === 'Trezor' || options.smartTrezor === true, binding: smart ? smartSigningBinding ?? accountId : accountId }),
     registration: () => createNativeNetwork({ id: 'ethereum', name: network.label + registrationSuffix, kind: 'evm', chainId: String(selectedChainId), slip44: 60, rpcUrl: network.url, symbol: network.currency, decimals: 18, testnet: false }),
     async cancelSigningHandoff(job) { canceledPsbtJobs.push(job); },
     syscoin: {
@@ -281,6 +288,40 @@ function fixture(
         smartAccount: { chainId: 1, contractVersion: 'fixture', isDeployed: true, deploymentSalt: '0x00',
           auth: { module: 'ecdsa', validator: '0x' + '33'.repeat(20), data: '0x1234' },
           installedModules: [{ id: 'ecdsa', address: '0x' + '33'.repeat(20), type: 'validator', data: '0x1234', config: { owners: [ADDRESS], threshold: 1 } }] } }, selectedChainId);
+    },
+    async prepareModuleChange(input, check) {
+      signingHandoff = input.handoff;
+      check(); await preparationWait; check(); input.approval.assertCurrent();
+      assert(options.smart && options.moduleChanges); assert.equal(input.accountId, selectedAccountId);
+      moduleChangeRequests.push(input.request);
+      const active = '0x' + '33'.repeat(20), target = input.request.module.address ?? '';
+      const command = buildNativeSmartModuleCommand({ accountAddress: ADDRESS, metadata: {
+        chainId: 1, contractVersion: 'fixture', isDeployed: true, deploymentSalt: '0x00',
+        auth: { module: 'ecdsa', validator: active, data: '0x1234' },
+        installedModules: [{ id: 'ecdsa', address: active, type: 'validator', data: '0x1234', config: { owners: [ADDRESS], threshold: 1 } },
+          ...(input.request.action === 'uninstall' && target !== active ? [{ id: 'custom' as const, address: target, type: 'validator' as const, data: '0x', config: { name: 'Installed module', initData: '0x', moduleType: 1 } }] : [])],
+      }, draft: input.request.action === 'install'
+        ? { kind: 'install-custom', address: target, name: input.request.module.name ?? 'Public module', initData: input.request.module.initData || '0x' }
+        : { kind: 'uninstall', address: target }, isAlgorithmAvailable: module => module.id === 'ecdsa', removalPolicy: 'active-composite', deploymentAdmission: 'constructor-or-deployed' });
+      const intent = Object.freeze({ kind: 'modules' as const, command });
+      const transaction = snapshotPreparedEvmTransaction({ from: '0x' + '33'.repeat(20), to: '0x' + '44'.repeat(20),
+        chainId: '1', value: '0', data: '0x1234', nonce: '9', gasLimit: '50000', type: 2, accessList: [], maxFeePerGas: '10', maxPriorityFeePerGas: '1' });
+      const operation = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: Math.min(input.handoff.expiresAt, freshSmartOperationDeadline()),
+        account: ADDRESS, intent, network: { id: 'ethereum', chainId: '1', rpcUrl: 'https://rpc.example', registrationHash: '0x' + '55'.repeat(32) } as never,
+        assertCurrent: () => { check(); input.approval.assertCurrent(); },
+        async prepare() { return { kind: 'authorization', intent, operation: { executions: command.executions.map(value => ({ ...value })), actionHash: '0x' + '66'.repeat(32),
+          userOperation: { nonce: '7', initCode: '0x', callData: '0x', accountGasLimits: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '01', preVerificationGas: '1', gasFees: '0x' + '00'.repeat(15) + '01' + '00'.repeat(15) + '03' } } as never }; },
+        async sign(_prepared, guard) { await signWait; guard(); if (options.smartTrezor) input.handoff.beforeSignature(); signatures.push(intent); return '0x1234'; },
+        async submit(_prepared, _signature, _signal, guard, reviewPayer, onBroadcast) {
+          await reviewPayer({ transaction, maximumFeeUnits: '500000', coveredFeeUnits: '0', maximumTotalUnits: '500000', purpose: 'submit-operation' }, guard);
+          guard(); transactions.push(intent); const hash = '0x' + '34'.repeat(32); onBroadcast(hash, 'submit-operation'); return hash;
+        },
+        async refreshMetadata(_signal, guard) { moduleMetadataReads++; await moduleMetadataWait; guard(); if (moduleMetadataUnavailable) throw Error('Canonical module state unavailable'); },
+      });
+      const dispose = operation.dispose.bind(operation);
+      operation.dispose = () => { smartDisposals++; return dispose(); };
+      beforePreparedReturn?.(); check();
+      return { operation, approval: null };
     },
     async prepareCalls(input, check) {
       check(); await preparationWait; check();
@@ -460,6 +501,7 @@ function fixture(
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
+          ...(options.moduleChanges ? SMART_ACCOUNT_MODULE_REQUEST_METHODS : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
@@ -493,6 +535,7 @@ function fixture(
         methods: [
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
+          ...(options.moduleChanges ? SMART_ACCOUNT_MODULE_REQUEST_METHODS : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
@@ -665,11 +708,15 @@ function fixture(
   });
   return {
     controller,
-    controlCommits, externalUrls, readRequests, moduleInventoryReads, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
+    controlCommits, externalUrls, readRequests, moduleInventoryReads, moduleChangeRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
+    setModuleMetadataUnavailable(value: boolean) { moduleMetadataUnavailable = value; },
+    setModuleMetadataWait(value: Promise<void>) { moduleMetadataWait = value; },
+    moduleMetadataReads: () => moduleMetadataReads,
     setPsbtWait(value: Promise<void>) { psbtWait = value; },
     setPsbtSignWait(value: Promise<void>) { psbtSignWait = value; },
     psbtDisposals: () => psbtDisposals,
     signingHandoff: () => signingHandoff!,
+    setSmartSigningBinding(value: string) { smartSigningBinding = value; },
     changeRegistration() { registrationSuffix = ' changed'; snapshot = { ...snapshot, revision: snapshot.revision + 1 }; for (const listener of listeners) listener(); },
     psbtHandoff: () => psbtHandoff!, canceledPsbtJobs, pendingReads: () => pendingReads,
     setPendingOverride(value: typeof pendingOverride) { pendingOverride = value; },
@@ -1636,6 +1683,7 @@ async function connectedFixture(
     hardware?: 'Ledger' | 'Trezor';
     capabilities?: boolean;
     moduleInventory?: boolean;
+    moduleChanges?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -4770,4 +4818,273 @@ test('Smart module inventory cannot disclose after its response deadline expires
     release(); await settle(); assert.equal(f.responses.length, 0);
     assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
   } finally { release?.(); await f.controller.dispose(); }
+});
+
+const REQUESTED_MODULE = '0x' + '77'.repeat(20);
+const MODULE_INSTALL = SMART_ACCOUNT_MODULE_REQUEST_METHODS[0];
+const MODULE_UNINSTALL = SMART_ACCOUNT_MODULE_REQUEST_METHODS[1];
+const moduleParams = () => [{ address: REQUESTED_MODULE, name: 'Dapp validator', initData: '0x1234', riskAcknowledged: true, acknowledged: true }];
+const connectedModuleFixture = (extra: Parameters<typeof connectedFixture>[0] = {}) => connectedFixture({ smart: true, moduleChanges: true, accountId: 'smart:60:0', ...extra });
+async function confirmModulePayer(f: Awaited<ReturnType<typeof connectedModuleFixture>>, completing: Promise<void>) {
+  await settle();
+  const payer = f.view.getSnapshot().signingReview;
+  assert(payer?.kind === 'smart-transaction' && payer.operation.payerReview);
+  assert.equal(payer.operation.payerReview.transaction.nonce, '9');
+  assert.equal(payer.operation.payerReview.maximumFeeUnits, '500000');
+  await f.view.confirmSmartPayer(payer.id, payer.revision, payer.operation.payerReview.id);
+  await completing;
+}
+
+test('dapp module install requires trusted risk acknowledgement and returns the extension response after both authorizations', async () => {
+  const f = await connectedModuleFixture();
+  try {
+    const review = await messageRequest(f, MODULE_INSTALL, moduleParams());
+    assert(review?.kind === 'smart-transaction' && review.operation.intent.kind === 'modules');
+    assert.equal(review.operation.phase, 'authorize'); assert.equal(review.operation.authorization!.nonce, '7');
+    assert.deepEqual(f.moduleChangeRequests[0], { method: MODULE_INSTALL, action: 'install', module: { address: REQUESTED_MODULE, name: 'Dapp validator', initData: '0x1234' } });
+    assert(!Object.hasOwn(review.operation.intent.command.draft, 'riskAcknowledged'));
+    await assert.rejects(f.view.approveRequest(review.id, review.revision, false), { code: 'UNSUPPORTED_REQUEST' });
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    const fresh = f.view.getSnapshot().signingReview; assert(fresh?.kind === 'smart-transaction');
+    const completing = f.view.approveRequest(fresh.id, fresh.revision, true);
+    await confirmModulePayer(f, completing);
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1); assert.equal(f.moduleMetadataReads(), 1);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { action: 'install', address: REQUESTED_MODULE, success: true } } });
+    assert.equal(f.view.getSnapshot().signingReview, null); assert.equal(f.readRequests.length, 0); assert.equal(f.preparedTransactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('dapp module uninstall uses its existing Smart operation without custom-risk assent', async () => {
+  const f = await connectedModuleFixture();
+  try {
+    const review = await messageRequest(f, MODULE_UNINSTALL, [{ address: REQUESTED_MODULE }]);
+    assert(review?.kind === 'smart-transaction');
+    await confirmModulePayer(f, f.view.approveRequest(review.id, review.revision, false));
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { action: 'uninstall', address: REQUESTED_MODULE, success: true } } });
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('dapp module metadata-only retry waits for canonical observation and never signs or submits again', async () => {
+  const f = await connectedModuleFixture();
+  try {
+    f.setModuleMetadataUnavailable(true);
+    const review = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(review?.kind === 'smart-transaction');
+    await confirmModulePayer(f, f.view.approveRequest(review.id, review.revision, true));
+    let current = f.view.getSnapshot().signingReview; assert(current?.kind === 'smart-transaction');
+    assert.equal(current.operation.phase, 'complete'); assert.equal(current.operation.metadataRefresh, 'failed');
+    assert.equal(f.responses.length, 0);
+    await assert.rejects(f.view.approveRequest(current.id, current.revision, true), { code: 'REQUEST_EXPIRED' });
+    current = f.view.getSnapshot().signingReview; assert(current?.kind === 'smart-transaction');
+    await f.view.retrySmartMetadata(current.id, current.revision);
+    assert.equal(f.responses.length, 0); assert.equal(f.moduleMetadataReads(), 2);
+    f.setModuleMetadataUnavailable(false);
+    current = f.view.getSnapshot().signingReview; assert(current?.kind === 'smart-transaction');
+    await f.view.retrySmartMetadata(current.id, current.revision);
+    assert.equal(f.moduleMetadataReads(), 3); assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1);
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { action: 'install', address: REQUESTED_MODULE, success: true } } });
+  } finally { await f.controller.dispose(); }
+});
+
+for (const revoke of ['lock', 'chain', 'session', 'expiry'] as const) test(`dapp module payer cannot submit after ${revoke}`, async () => {
+  const f = await connectedModuleFixture();
+  let completing: Promise<void> | undefined;
+  try {
+    const review = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(review?.kind === 'smart-transaction');
+    completing = f.view.approveRequest(review.id, review.revision, true).catch(() => undefined); await settle();
+    const payer = f.view.getSnapshot().signingReview; assert(payer?.kind === 'smart-transaction' && payer.operation.payerReview);
+    if (revoke === 'lock') f.lock(); else if (revoke === 'chain') f.selectChain(2);
+    else if (revoke === 'session') f.event({ type: 'session-ended', topic: TOPIC });
+    else f.event({ type: 'request-expired', id: 10 });
+    await assert.rejects(f.view.confirmSmartPayer(payer.id, payer.revision, payer.operation.payerReview.id));
+    await completing;
+    assert.equal(f.transactions.length, 0);
+    assert(!f.responses.some(value => 'result' in (value as { result: object }).result));
+  } finally { await completing; await f.controller.dispose(); }
+});
+
+test('dapp module metadata retry cannot disclose after the request deadline', async t => {
+  const f = await connectedModuleFixture();
+  try {
+    f.setModuleMetadataUnavailable(true);
+    const review = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(review?.kind === 'smart-transaction');
+    await confirmModulePayer(f, f.view.approveRequest(review.id, review.revision, true));
+    const completed = f.view.getSnapshot().signingReview; assert(completed?.kind === 'smart-transaction');
+    t.mock.method(Date, 'now', () => completed.expiresAt + 1);
+    await assert.rejects(f.view.retrySmartMetadata(completed.id, completed.revision));
+    assert.equal(f.responses.length, 0); assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('dapp module preflight preparation is retired before signing when its owner changes', async () => {
+  const f = await connectedModuleFixture();
+  let release!: () => void;
+  try {
+    f.setPreparationWait(new Promise(resolve => { release = resolve; }));
+    await messageRequest(f, MODULE_INSTALL, moduleParams());
+    f.selectChain(2); release(); await settle();
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0); assert.equal(f.view.getSnapshot().signingReview, null);
+  } finally { release?.(); await f.controller.dispose(); }
+});
+
+test('dapp module action follows the connected account through the existing explicit account switch', async () => {
+  const f = await connectedModuleFixture({ secondAccount: true });
+  try {
+    f.selectDisplayAccount('hd:60:1');
+    const review = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(review);
+    assert.equal(review.needsAccountSwitch, true); assert.equal(f.moduleChangeRequests.length, 0);
+    await f.view.activateRequestAccount(review.id, review.revision);
+    const prepared = f.view.getSnapshot().signingReview; assert(prepared?.kind === 'smart-transaction');
+    assert.equal(prepared.needsAccountSwitch, false); assert.equal(f.moduleChangeRequests.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const field of ['method', 'account'] as const) test(`dapp module request cannot bypass changed namespace ${field}`, async () => {
+  const f = await connectedModuleFixture();
+  try {
+    if (field === 'method') Object.assign(f.session.namespaces.eip155!, { methods: f.session.namespaces.eip155!.methods.filter(method => method !== MODULE_INSTALL) });
+    else Object.assign(f.session.namespaces.eip155!, { accounts: ['eip155:1:0x' + '22'.repeat(20)] });
+    await messageRequest(f, MODULE_INSTALL, moduleParams());
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4100);
+    assert.equal(f.moduleChangeRequests.length, 0); assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('dapp module requests on an EOA preserve the explicit Smart-account error', async () => {
+  const f = await connectedFixture({ moduleChanges: true });
+  try {
+    await messageRequest(f, MODULE_INSTALL, moduleParams());
+    assert.deepEqual(f.responses.at(-1), { id: 10, result: { error: { code: -32600, message: 'The connected account is not a smart account' } } });
+    assert.equal(f.moduleChangeRequests.length, 0); assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const hardware of ['Ledger', 'Trezor', 'UTXO'] as const) test(`dapp module requests are not negotiated for ${hardware}`, async () => {
+  const f = await connectedFixture(hardware === 'UTXO' ? { moduleChanges: true, utxo: true } : { moduleChanges: true, hardware, accountId: `${hardware.toLowerCase()}:60:0` });
+  try {
+    assert(!Object.values(f.session.namespaces).some(namespace => namespace.methods.some(isMethod => SMART_ACCOUNT_MODULE_REQUEST_METHODS.includes(isMethod as typeof MODULE_INSTALL))));
+  } finally { await f.controller.dispose(); }
+});
+
+for (const module of [{}, { address: REQUESTED_MODULE, initData: 'not-hex' }]) test(`dapp module semantic validation stays fail closed in the review: ${JSON.stringify(module)}`, async () => {
+  const f = await connectedModuleFixture();
+  try {
+    const review = await messageRequest(f, MODULE_INSTALL, [module]); assert(review);
+    assert.equal(review.error, 'TRANSACTION_UNAVAILABLE');
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('dapp module response uncertainty stays consumed without metadata retry or resubmission', async () => {
+  const f = await connectedModuleFixture();
+  try {
+    const review = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(review?.kind === 'smart-transaction');
+    f.failDispatch();
+    const completing = f.view.approveRequest(review.id, review.revision, true), rejected = assert.rejects(completing, { code: 'DELIVERY_UNCERTAIN' });
+    await confirmModulePayer(f, rejected);
+    const consumed = f.view.getSnapshot().signingReview; assert(consumed?.kind === 'smart-transaction');
+    await assert.rejects(f.view.retrySmartMetadata(consumed.id, consumed.revision));
+    await assert.rejects(f.view.approveRequest(consumed.id, consumed.revision, true));
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1); assert.equal(f.handedOff.length, 1);
+  } finally { await f.controller.dispose(); }
+});
+
+test('dapp module metadata retry is revoked while its canonical read is held', async () => {
+  const f = await connectedModuleFixture(), held = Promise.withResolvers<void>();
+  let waiting: Promise<unknown> | undefined;
+  try {
+    f.setModuleMetadataUnavailable(true);
+    const review = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(review?.kind === 'smart-transaction');
+    await confirmModulePayer(f, f.view.approveRequest(review.id, review.revision, true));
+    const completed = f.view.getSnapshot().signingReview; assert(completed?.kind === 'smart-transaction');
+    f.setModuleMetadataUnavailable(false); f.setModuleMetadataWait(held.promise);
+    waiting = f.view.retrySmartMetadata(completed.id, completed.revision).catch(() => undefined);
+    await settle(); f.lock(); held.resolve(); await waiting; await settle();
+    assert(!f.responses.some(value => 'result' in (value as { result: object }).result));
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1);
+  } finally { held.resolve(); await waiting; await f.controller.dispose(); }
+});
+
+test('dapp module Smart Trezor continuation rebuilds the same request and requires new risk acknowledgement', async () => {
+  const f = await connectedModuleFixture({ smartTrezor: true }), held = Promise.withResolvers<void>();
+  try {
+    const first = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(first?.kind === 'smart-transaction');
+    f.setSignWait(held.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), rejected = assert.rejects(old); await settle();
+    const handoff = f.signingHandoff(), selector = handoff.id;
+    handoff.beforeSuiteOpen(Date.now() + 60000, {})(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; await settle();
+    f.unlock(); await settle(); await f.view.resumeSigning(selector); await settle();
+    const fresh = f.view.getSnapshot().signingReview; assert(fresh?.kind === 'smart-transaction');
+    assert.notEqual(fresh.id, first.id); assert.equal(f.moduleChangeRequests.length, 2);
+    assert.deepEqual(f.moduleChangeRequests[0], f.moduleChangeRequests[1]);
+    await assert.rejects(f.view.approveRequest(fresh.id, fresh.revision, false), { code: 'UNSUPPORTED_REQUEST' });
+    const ready = f.view.getSnapshot().signingReview; assert(ready?.kind === 'smart-transaction');
+    await confirmModulePayer(f, f.view.approveRequest(ready.id, ready.revision, true));
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1); assert.equal(f.responses.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const changedAfterSuspension of [false, true]) test(`prepared Smart Trezor metadata ${changedAfterSuspension ? 'cannot change after suspension' : 'survives canonical hydration before Suite departure'}`, async () => {
+  const f = await connectedModuleFixture({ smartTrezor: true }), held = Promise.withResolvers<void>();
+  try {
+    f.setSmartSigningBinding('cached-undeployed-constructor');
+    f.beforePreparedReturn(() => f.setSmartSigningBinding('hydrated-deployed-same-owner'));
+    const first = await messageRequest(f, MODULE_INSTALL, moduleParams()); assert(first?.kind === 'smart-transaction');
+    f.setSignWait(held.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), rejected = assert.rejects(old); await settle();
+    const handoff = f.signingHandoff(), selector = handoff.id, suiteDeadline = first.expiresAt - 1000, job = {};
+    handoff.beforeSuiteOpen(suiteDeadline, job)(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; await settle();
+    if (changedAfterSuspension) f.setSmartSigningBinding('changed-owner-policy');
+    f.unlock(); await settle();
+    if (changedAfterSuspension) {
+      await assert.rejects(f.view.resumeSigning(selector));
+      assert.equal(f.view.getSnapshot().signingReview, null); assert.deepEqual(f.canceledPsbtJobs, [job]);
+      assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+      return;
+    }
+    await f.view.resumeSigning(selector); await settle();
+    const fresh = f.view.getSnapshot().signingReview; assert(fresh?.kind === 'smart-transaction');
+    assert.notEqual(fresh.id, first.id); assert.equal(fresh.expiresAt, suiteDeadline);
+    assert.deepEqual(f.moduleChangeRequests[0], f.moduleChangeRequests[1]);
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    await assert.rejects(f.view.approveRequest(fresh.id, fresh.revision, false), { code: 'UNSUPPORTED_REQUEST' });
+    const ready = f.view.getSnapshot().signingReview; assert(ready?.kind === 'smart-transaction');
+    await confirmModulePayer(f, f.view.approveRequest(ready.id, ready.revision, true));
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1); assert.equal(f.responses.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+test('ordinary prepared Smart transfers retain canonical hydration across the same Suite lifecycle', async () => {
+  const f = await connectedFixture({ smart: true, smartTrezor: true, accountId: 'smart:60:0' }), held = Promise.withResolvers<void>();
+  try {
+    f.setSmartSigningBinding('cached-undeployed-constructor');
+    f.beforePreparedReturn(() => f.setSmartSigningBinding('hydrated-deployed-same-owner'));
+    const first = await messageRequest(f, 'eth_sendTransaction', [{ from: ADDRESS, to: '0x' + '22'.repeat(20), value: '0x0' }]);
+    assert(first?.kind === 'smart-transaction'); f.setSignWait(held.promise);
+    const old = f.view.approveRequest(first.id, first.revision, true), rejected = assert.rejects(old); await settle();
+    const handoff = f.signingHandoff(), deadline = first.expiresAt - 1000;
+    handoff.beforeSuiteOpen(deadline, {})(true);
+    f.view.backgroundSigning(); f.lock(); held.resolve(); await rejected; await settle();
+    f.unlock(); await settle(); await f.view.resumeSigning(handoff.id); await settle();
+    const fresh = f.view.getSnapshot().signingReview; assert(fresh?.kind === 'smart-transaction');
+    assert.notEqual(fresh.id, first.id); assert.equal(fresh.expiresAt, deadline);
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+    const completing = f.view.approveRequest(fresh.id, fresh.revision, false); await settle();
+    const payer = f.view.getSnapshot().signingReview; assert(payer?.kind === 'smart-transaction' && payer.operation.payerReview);
+    await f.view.confirmSmartPayer(payer.id, payer.revision, payer.operation.payerReview.id); await completing;
+    assert.equal(f.signatures.length, 1); assert.equal(f.transactions.length, 1); assert.equal(f.responses.length, 1);
+  } finally { held.resolve(); await f.controller.dispose(); }
+});
+
+for (const freshness of ['unproven', undefined] as const) test(`dapp module Smart Trezor refuses ${freshness} request freshness`, async () => {
+  const f = await connectedModuleFixture({ smartTrezor: true });
+  try {
+    f.event({ type: 'request', request: { freshness, id: 10, session: f.session, chainId: 'eip155:1', method: MODULE_INSTALL,
+      params: moduleParams(), expiresAt: Date.now() + 60000, verification: UNKNOWN } as WalletConnectRequest });
+    await settle();
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4200);
+    assert.equal(f.moduleChangeRequests.length, 0); assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
 });

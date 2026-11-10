@@ -219,6 +219,7 @@ export function NativeSmartBatchFixture() {
           },
         }));
       },
+      async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
       async confirmSmartPayer(...args) {
         const review = current.current.review;
         if (

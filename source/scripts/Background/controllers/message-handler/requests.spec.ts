@@ -12,6 +12,83 @@ import { getMethodConfig } from './method-registry';
 import { getPipelineInstance } from './request-pipeline';
 import { methodRequest } from './requests';
 
+describe.each([
+  'wallet_requestSmartAccountModuleInstall',
+  'wallet_requestSmartAccountModuleUninstall',
+])('%s public module schema admission', (method) => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it.each([
+    [{}],
+    [{ address: 'invalid-address', name: '', initData: 'not-hex' }],
+    [
+      [
+        {
+          address: 'public-address',
+          riskAcknowledged: true,
+          acknowledged: true,
+          privateKey: 'secret',
+        },
+        { address: 123 },
+      ],
+    ],
+  ])(
+    'preserves parser compatibility while forwarding only public fields: %p',
+    async (params) => {
+      const execute = jest
+        .spyOn(getPipelineInstance()!, 'execute')
+        .mockResolvedValueOnce(null);
+      await expect(
+        methodRequest('https://requester.example', {
+          method,
+          params: params as any,
+        })
+      ).resolves.toBeNull();
+      const raw = Array.isArray(params) ? params[0] : params;
+      const publicFields = Object.fromEntries(
+        Object.entries(raw).filter(
+          ([key, value]) =>
+            ['address', 'name', 'initData'].includes(key) && value !== undefined
+        )
+      );
+      expect(execute.mock.calls[0]![0].originalRequest.params).toEqual([
+        publicFields,
+      ]);
+      expect(
+        Object.isFrozen(execute.mock.calls[0]![0].originalRequest.params![0])
+      ).toBe(true);
+    }
+  );
+
+  it.each([
+    [undefined],
+    [null],
+    [[]],
+    [[null]],
+    [[[]]],
+    [[{ address: null }]],
+    [[{ name: false }]],
+    [[{ initData: 123 }]],
+  ])(
+    'preserves -32602 before account selection or UI for malformed input: %p',
+    async (params) => {
+      jest.mocked(getController).mockClear();
+      const execute = jest.spyOn(getPipelineInstance()!, 'execute');
+      await expect(
+        methodRequest('https://requester.example', {
+          method,
+          params: params as any,
+        })
+      ).rejects.toMatchObject({
+        code: -32602,
+        message: 'Invalid smart account module',
+      });
+      expect(execute).not.toHaveBeenCalled();
+      expect(getController).not.toHaveBeenCalled();
+    }
+  );
+});
+
 describe('public read lifetime propagation through actual method admission', () => {
   afterEach(() => jest.restoreAllMocks());
   it.each([

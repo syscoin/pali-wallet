@@ -247,7 +247,7 @@ export function createNativeSmartOperation(
         return { kind: 'already-deployed' };
       }
       if (intent.kind === 'authenticator' || intent.kind === 'modules') {
-        if (state !== 'deployed')
+        if (state !== 'deployed' && (intent.kind !== 'modules' || intent.command.deploymentAdmission !== 'constructor-or-deployed' || intent.command.sourceIsDeployed))
           throw new Error('Smart account must be deployed');
         metadata = await readSmartAccountValidatorMetadata({
           account: intent.kind === 'modules' ? { ...account, smartAccount: metadata } : account,

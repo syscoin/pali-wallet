@@ -49,7 +49,7 @@ function freezePublicJson<T>(value: T): T {
 export class NativeSigningHandoffs {
   private suspended: Suspended | undefined;
   private retirement: Promise<void> = Promise.resolve();
-  private readonly controls = new WeakMap<NativeSigningHandoff, () => boolean>();
+  private readonly controls = new WeakMap<NativeSigningHandoff, { background(): boolean; bindPreparedScope?(scope: SigningResumeScope): void }>();
   private readonly options: Readonly<{ cancel(job: object): Promise<void>; changed(): void }>;
   constructor(options: NativeSigningHandoffs['options']) { this.options = options; }
   get active() { return this.suspended !== undefined; }
@@ -87,29 +87,36 @@ export class NativeSigningHandoffs {
   expire(id: number) { const value=this.suspended?.descriptor;if(value?.kind === 'dapp' && value.requestId === id)this.discard(value); }
   retired() { return this.retirement; }
   capture(entry: Entry): NativeSigningHandoff {
-    const fresh = entry.wire.freshness === 'fresh', scope = Object.freeze({ ...entry.scope });
-    if (scope.trezor && !fresh) throw Error('REQUEST_EXPIRED');
+    const fresh = entry.wire.freshness === 'fresh';
+    if (entry.scope.trezor && !fresh) throw Error('REQUEST_EXPIRED');
     const wire=JSON.stringify(entry.wire),requestId=entry.wire.id,binding=Object.freeze({...entry.wire.session.binding});
-    return this.captureState(entry,fresh,(job,expiresAt)=>Object.freeze({kind:'dapp',id:entry.id,binding,requestId,wire,scope,expiresAt,order:entry.order,job}));
+    return this.captureState(entry,fresh,(job,expiresAt,scope)=>Object.freeze({kind:'dapp',id:entry.id,binding,requestId,wire,scope:scope as SigningResumeScope,expiresAt,order:entry.order,job}),true);
   }
   captureLocal(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction): NativeSigningHandoff {
     // Locally initiated public actions have a distinct admission source; they
     // never acquire WalletConnect freshness, topic or grant by fabrication.
     // The required local DTO capture keeps asset/signing dependencies out of PSBT transport.
     entry.assertCurrent(); measureJsonWorkBudget(entry.action,DAPP_REQUEST_LIMITS.bytes);
-    const action = freezePublicJson(snapshotAction(entry.action)),scope=Object.freeze({...entry.scope});
-    return this.captureState(entry,true,(job,expiresAt)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}));
+    const action = freezePublicJson(snapshotAction(entry.action));
+    return this.captureState(entry,true,(job,expiresAt,scope)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}));
   }
-  private captureState(entry: Capture, admitted: boolean, describe: (job: object, expiresAt: number) => Descriptor): NativeSigningHandoff {
-    const scope=Object.freeze({...entry.scope});
-    let marker: { token: object; expiresAt: number; launchExpiresAt: number; job: object } | undefined;
-    let suspendedToken: object | undefined, signatureReady = false;
+  /** Bind canonical preparation once, before the queue exposes its new review. */
+  bindPreparedScope(handoff: NativeSigningHandoff, scope: SigningResumeScope): void {
+    const bind = this.controls.get(handoff)?.bindPreparedScope;
+    if (!bind) throw Error('REQUEST_EXPIRED');
+    bind(scope);
+  }
+  private captureState(entry: Capture, admitted: boolean, describe: (job: object, expiresAt: number, scope: SigningResumeScope | LocalSigningResumeScope) => Descriptor, allowPreparedBinding = false): NativeSigningHandoff {
+    let scope=Object.freeze({...entry.scope});
+    let marker: { token: object; expiresAt: number; launchExpiresAt: number; job: object; scope: typeof scope } | undefined;
+    let suspendedToken: object | undefined, signatureReady = false, launched = false, preparedBound = false;
     const eligible = () => !signatureReady && entry.eligible();
     const handoff: NativeSigningHandoff = Object.freeze({ id: entry.id, expiresAt: entry.expiresAt,
       beforeSuiteOpen: (expiresAt, job) => {
         entry.assertCurrent();
         if (!scope.trezor || !admitted || !eligible() || !Number.isSafeInteger(expiresAt) || expiresAt <= Date.now() || !job || typeof job !== 'object') throw Error('REQUEST_EXPIRED');
-        const launch = { token: {}, job, expiresAt: Math.min(expiresAt, entry.expiresAt), launchExpiresAt: Math.min(Date.now() + 5000, expiresAt, entry.expiresAt) };
+        const launch = { token: {}, job, scope, expiresAt: Math.min(expiresAt, entry.expiresAt), launchExpiresAt: Math.min(Date.now() + 5000, expiresAt, entry.expiresAt) };
+        launched = true;
         marker = launch;
         return opened => {
           if (opened) return;
@@ -120,10 +127,19 @@ export class NativeSigningHandoffs {
       beforeSignature: () => { entry.assertCurrent(); if (!eligible()) throw Error('REQUEST_EXPIRED'); signatureReady = true; marker = undefined; },
       isSuspended: () => !!suspendedToken && this.suspended?.token === suspendedToken,
     });
-    this.controls.set(handoff, () => {
-      if (!marker || !scope.trezor || !admitted || !eligible() || marker.expiresAt <= Date.now() || marker.launchExpiresAt <= Date.now()) return false;
+    this.controls.set(handoff, { ...(allowPreparedBinding ? { bindPreparedScope(next: SigningResumeScope) {
+      entry.assertCurrent();
+      const identity = (value: SigningResumeScope | LocalSigningResumeScope) => [
+        'adapter' in value ? value.adapter : undefined, value.wallet, value.unlockGeneration, value.accountId,
+        value.address, value.type, value.xpub, value.registration, 'grant' in value ? value.grant : undefined,
+      ];
+      if (launched || signatureReady || JSON.stringify(identity(scope)) !== JSON.stringify(identity(next)) ||
+          next.trezor && !admitted || preparedBound && !sameSigningResumeOwner(scope, next)) throw Error('REQUEST_EXPIRED');
+      scope = Object.freeze({ ...next }); preparedBound = true;
+    } } : {}), background: () => {
+      if (!marker || !marker.scope.trezor || !admitted || !eligible() || marker.expiresAt <= Date.now() || marker.launchExpiresAt <= Date.now()) return false;
       this.discard();
-      const descriptor = describe(marker.job,marker.expiresAt);
+      const descriptor = describe(marker.job,marker.expiresAt,marker.scope);
       suspendedToken = marker.token;
       const saved: Suspended = { descriptor, token: marker.token, timer: undefined as unknown as ReturnType<typeof setTimeout>, draining: Promise.resolve().then(() => entry.drain()).catch(() => undefined) };
       saved.timer = setTimeout(() => this.discard(descriptor), descriptor.expiresAt - Date.now());
@@ -131,8 +147,8 @@ export class NativeSigningHandoffs {
       entry.retire();
       this.options.changed();
       return true;
-    });
+    } });
     return handoff;
   }
-  background(handoff: NativeSigningHandoff) { return this.controls.get(handoff)?.() ?? false; }
+  background(handoff: NativeSigningHandoff) { return this.controls.get(handoff)?.background() ?? false; }
 }

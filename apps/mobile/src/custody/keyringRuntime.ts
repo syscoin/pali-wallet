@@ -1,5 +1,6 @@
 import { getSmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
-import { buildNativeSmartModuleCommand, snapshotNativeSmartModuleDraft, assertNativeSmartModuleCommandApplied, type NativeSmartModuleDraft } from '../smartAccount/modules.ts';
+import { normalizeSmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
+import { buildNativeSmartModuleCommand, snapshotNativeSmartModuleDraft, assertNativeSmartModuleCommandApplied, type NativeSmartModuleDraft, type NativeSmartModuleDeploymentAdmission } from '../smartAccount/modules.ts';
 import { preflightCustomValidatorInstall, type CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom.ts';
 import { createNativePrivacyControls, type NativePrivacyControls, type NativePrivacyServiceSettingsPort } from '../privacy/privacyControls.ts';
 import { createNativePrivacyLifecycle } from '../privacy/privacyLifecycle.ts';
@@ -4033,7 +4034,7 @@ export function createKeyringRuntimeFactory(
               async rememberCustomModule(signal, assertCurrent) {
                 if (intent.kind !== 'modules' || intent.command.draft.kind !== 'install-custom') throw new KeyringRuntimeError('INVALID_INPUT');
                 const draft = intent.command.draft, guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
-                const preflight = await preflightSmartAccountModule(draft.address, signal, guard); guard();
+                const preflight = await preflightModuleInstall(draft.address, signal, guard, intent.command.deploymentAdmission); guard();
                 if (!preflight.ok) throw new Error('Custom validator preflight changed');
                 const record = { address: draft.address, name: draft.name, initData: draft.initData, moduleType: 1, compositeCompatible: preflight.compositeCompatible };
                 await run(async () => {
@@ -4189,10 +4190,11 @@ export function createKeyringRuntimeFactory(
             };
             return openSmartAccountOperation({ kind: 'authenticator', command }, checkOwner, origin);
         };
-        const preflightSmartAccountModule = async (address: string, signal: AbortSignal, assertOwner: () => void): Promise<CustomValidatorPreflightResult> => {
+        const preflightModuleInstall = async (address: string, signal: AbortSignal, assertOwner: () => void, deploymentAdmission: NativeSmartModuleDeploymentAdmission): Promise<CustomValidatorPreflightResult> => {
             const captured = generation, snapshot = catalogueSnapshot, selected = selectedAccount();
             const account = state.accounts.SmartAccount[selected.index];
-            if (!snapshot || selected.type !== 'SmartAccount' || !account?.smartAccount?.isDeployed)
+            if (!snapshot || selected.type !== 'SmartAccount' || !account?.smartAccount ||
+                (deploymentAdmission === 'deployed-only' && !account.smartAccount.isDeployed))
               throw new KeyringRuntimeError('NOT_READY');
             const check = () => {
               current(captured); checkGuard(assertOwner);
@@ -4227,14 +4229,16 @@ export function createKeyringRuntimeFactory(
                 throw new KeyringRuntimeError('CANCELLED');
             };
             await refreshSmartAccountMetadata(signal, check); check();
+            const deploymentAdmission: NativeSmartModuleDeploymentAdmission = origin.kind === 'dapp' ? 'constructor-or-deployed' : 'deployed-only';
             if (draft.kind === 'install-custom') {
-              const preflight = await preflightSmartAccountModule(draft.address, signal, check); check();
+              const preflight = await preflightModuleInstall(draft.address, signal, check, deploymentAdmission); check();
               if (!preflight.ok) throw new Error('Custom validator preflight failed');
 
             }
             const selected = selectedAccount(), account = state.accounts.SmartAccount[selected.index];
             if (!account?.smartAccount || !canSignSmartAccount()) throw new KeyringRuntimeError('NOT_READY');
             const command = buildNativeSmartModuleCommand({ accountAddress: account.address, metadata: account.smartAccount, draft,
+              deploymentAdmission, removalPolicy: origin.kind === 'dapp' ? 'active-composite' : 'all-installed-composites',
               isAlgorithmAvailable: module => module.id === 'ecdsa' || (module.id === 'slh-dsa' && slhCapability !== null) });
             if (draft.kind === 'composite') {
               const installed = account.smartAccount.installedModules?.filter((module: NonNullable<ISmartAccountMetadata['installedModules']>[number]) => module.id !== 'composite') ?? [];
@@ -4305,7 +4309,7 @@ export function createKeyringRuntimeFactory(
           refreshSmartAccountMetadata,
           openGuardianPolicy: (draft, signal, assertOwner) => openGuardianPolicy(draft, signal, assertOwner, {kind:'local-new',action:{kind:'guardian-policy',draft}}),
           openSlhDsaAccount, canSignSmartAccount, canManageSlhDsa,
-          readSmartAccountModules, preflightSmartAccountModule,
+          readSmartAccountModules, preflightSmartAccountModule: (address, signal, assertOwner) => preflightModuleInstall(address, signal, assertOwner, 'deployed-only'),
           openSmartAccountModuleChange: (draft, signal, assertOwner) => openSmartAccountModuleChange(draft, signal, assertOwner, { kind: 'local-new', action: { kind: 'modules', draft } }),
           openSmartAccountDeployment: (assertOwner) => openSmartAccountOperation({ kind: 'deploy' }, assertOwner, {kind:'local-new',action:{kind:'operation',intent:{kind:'deploy'}}}),
           canUseWalletAuthenticator: () => {
@@ -4555,6 +4559,35 @@ export function createKeyringRuntimeFactory(
               calls: repository.calls,
               supportsAtomicCalls: supportsLocalSmartAccount,
               supportsSmartAccountMessages: supportsLocalSmartAccount,
+              async prepareModuleChange(input, assertRequestCurrent) {
+                assertOwner(); input.approval.assertCurrent(); checkGuard(assertRequestCurrent);
+                requireNativeSigningHandoff(input.handoff);
+                const ring = keyring, captured = generation, initial = catalogueSnapshot;
+                const selected = initial?.accounts.find(account => account.id === input.accountId);
+                if (!initial || !selected || selected.type !== 'SmartAccount' || initial.active.accountId !== selected.id ||
+                    initial.active.networkId !== input.networkId || !ring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+                const registration = getNativeNetwork(input.networkId, initial.networks), address = selected.address;
+                const owned = () => {
+                  assertOwner(); current(captured);
+                  const snapshot = catalogueSnapshot, activeAccount = snapshot?.accounts.find(account => account.id === input.accountId);
+                  if (keyring !== ring || !ring.isUnlocked() || input.approval.signal.aborted || !snapshot ||
+                      snapshot.active.accountId !== input.accountId || snapshot.active.networkId !== input.networkId ||
+                      activeAccount?.type !== 'SmartAccount' || activeAccount.address !== address ||
+                      state.accounts.SmartAccount[activeAccount.index]?.address.toLowerCase() !== address.toLowerCase() ||
+                      getNativeNetwork(input.networkId, snapshot.networks).registrationHash !== registration.registrationHash)
+                    throw new KeyringRuntimeError('CANCELLED');
+                  return true;
+                };
+                input.approval.bindSigner(`native-smart-module:${input.accountId}`, owned);
+                const check = () => { owned(); input.approval.assertCurrent(); checkGuard(assertRequestCurrent); };
+                const request = normalizeSmartAccountModuleRequest(input.request.method, [input.request.module]);
+                const draft: NativeSmartModuleDraft = request.action === 'install'
+                  ? { kind: 'install-custom', address: request.module.address ?? '', name: request.module.name ?? '', initData: request.module.initData ?? '0x' }
+                  : { kind: 'uninstall', address: request.module.address ?? '' };
+                const operation = await openSmartAccountModuleChange(draft, input.approval.signal, check, { kind: 'dapp', handoff: input.handoff });
+                try { check(); return { operation, approval: null }; }
+                catch (error) { await operation.dispose(); throw error; }
+              },
               readSmartAccountModules(accountId, networkId, assertRequestCurrent) {
                 assertOwner(); checkGuard(assertRequestCurrent);
                 const snapshot = catalogueSnapshot;

@@ -63,6 +63,8 @@ function fixture() {
       ];
     },
     useEffect() {},
+    useRef(initial: unknown) { return { current: initial }; },
+    useLayoutEffect(run: () => unknown) { run(); },
     useCallback<T>(callback: T) {return callback;},
     useSyncExternalStore(_subscribe: unknown, read: () => unknown) {
       return read();
@@ -87,6 +89,8 @@ function fixture() {
     './useDappLedgerConnection': {useOwnedLedgerConnection: () => ({blocked: false, showConnect: false, modal: null, canApprove: () => true})},
     'react-native': {
       ActivityIndicator: 'ActivityIndicator',
+      AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+      Platform: { OS: 'ios' },
       View: 'View',
       StyleSheet: { create: (styles: unknown) => styles },
     },

@@ -1,4 +1,5 @@
 import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
+import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, isSmartAccountModuleRequestMethod, normalizeSmartAccountModuleRequest, SmartAccountModuleRequestError, type SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
 import { NativeSigningHandoffs, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
 import { isDappEncryptionMethod, readDappEncryptionRequest, supportsDappEncryptionAccount, type DappEncryptionRequest } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { prepareDappEncryptionApproval } from '../../../../source/wallet/dappEncryptionApproval.ts';
@@ -98,6 +99,7 @@ const METHODS = Object.freeze([
   ...PSBT_DAPP_METHODS,
   'wallet_getCapabilities',
   'wallet_getSmartAccountModules',
+  ...SMART_ACCOUNT_MODULE_REQUEST_METHODS,
   'eth_sendTransaction',
   'wallet_sendCalls',
   'wallet_getCallsStatus',
@@ -136,7 +138,13 @@ type CallsRequest = Readonly<{
   bundleId: string;
   reservationId: string;
 }>;
-type SigningRequest = DappMessageRequest | DappEncryptionRequest | TransactionRequest | CallsRequest;
+type SigningRequest = DappMessageRequest | DappEncryptionRequest | TransactionRequest | CallsRequest | SmartAccountModuleRequest;
+function isModuleRequest(request: SigningRequest): request is SmartAccountModuleRequest {
+  return isSmartAccountModuleRequestMethod(request.method);
+}
+function isOperationRequest(request: SigningRequest): request is TransactionRequest | CallsRequest | SmartAccountModuleRequest {
+  return isTransactionRequest(request) || isModuleRequest(request);
+}
 function isEncryptionRequest(request: SigningRequest): request is DappEncryptionRequest {
   return isDappEncryptionMethod(request.method);
 }
@@ -414,6 +422,10 @@ export class NativeConnectionsController {
           () => this.approveRequest(id, revision, acknowledgeWarning),
           { owner: this.requests.get(id) }
         ),
+      retrySmartMetadata: (id, revision) => this.perform(
+        () => this.retrySmartMetadata(id, revision),
+        { owner: this.requests.get(id) }
+      ),
       confirmSmartPayer: (id, revision, payerId) =>
         this.perform(
           async () => {
@@ -555,7 +567,7 @@ export class NativeConnectionsController {
     return METHODS.filter((method) => {
       const hardware = accountType === 'Ledger' || accountType === 'Trezor';
       if (isDappEncryptionMethod(method) && !supportsDappEncryptionAccount({ type: accountType })) return false;
-      if (hardware && (method === 'eth_signTypedData' || method === 'wallet_getSmartAccountModules')) return false;
+      if (hardware && (method === 'eth_signTypedData' || method === 'wallet_getSmartAccountModules' || isSmartAccountModuleRequestMethod(method))) return false;
       if (scope?.kind === 'syscoin') {
         if ((SENTRY_DAPP_METHODS as readonly string[]).includes(method)) return !hardware && Object.values(SENTRY_NETWORKS).some(network => network.chainId === scope.chainId && network.genesisHash === scope.genesisHash);
         return isDappSyscoinRead(method) || (DAPP_MODE_METHODS as readonly string[]).includes(method) || isDappPermissionMethod(method) || (PSBT_DAPP_METHODS as readonly string[]).includes(method);
@@ -1556,7 +1568,7 @@ export class NativeConnectionsController {
     if (
       isDappMessageMethod(request.method) || isDappEncryptionMethod(request.method) ||
       request.method === 'eth_sendTransaction' ||
-      request.method === 'wallet_sendCalls'
+      request.method === 'wallet_sendCalls' || isSmartAccountModuleRequestMethod(request.method)
     ) {
       await this.queueSigningRequest(request);
       return;
@@ -1872,6 +1884,13 @@ export class NativeConnectionsController {
       throw error;
     }
   }
+  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope): NativeSigningHandoff {
+    return this.handoffs.capture({ id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
+      assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
+      eligible: () => message.busy && !message.dispatched && !message.resultReady && !message.broadcastHash && !message.eoa,
+      drain: () => message.work ?? Promise.resolve(), retire: () => { void this.retireRequest(message, false); },
+    });
+  }
   private revalidateSigningRequests() {
     for (const message of [...this.requests.values()]) {
       try {
@@ -2047,6 +2066,9 @@ export class NativeConnectionsController {
           bundleId: calls.id ?? this.host!.calls.generateWalletBundleId(),
           reservationId: this.host!.calls.generateWalletBundleId(),
         };
+      } else if (isSmartAccountModuleRequestMethod(wire.method)) {
+        if (account.type !== 'SmartAccount') throw new EthereumRpcErrorHandler(-32600, 'The connected account is not a smart account');
+        request = normalizeSmartAccountModuleRequest(wire.method, wire.params);
       } else if (isDappEncryptionMethod(wire.method)) {
         request = readDappEncryptionRequest(wire.method, wire.params, account.address);
       } else {
@@ -2059,6 +2081,8 @@ export class NativeConnectionsController {
       }
     } catch (error) {
       if (error instanceof EthereumRpcErrorHandler)
+        return reject(error.code, error.message);
+      if (error instanceof SmartAccountModuleRequestError)
         return reject(error.code, error.message);
       /* Invalid requests never become signing capabilities. */
     }
@@ -2079,7 +2103,7 @@ export class NativeConnectionsController {
       ? 'INVALID_MESSAGE'
       : null;
     const order =
-      isTransactionRequest(request) || isEncryptionRequest(request) ||
+      isOperationRequest(request) || isEncryptionRequest(request) ||
       request.method === 'personal_sign' ||
       request.version === 'V1'
         ? null
@@ -2164,7 +2188,7 @@ export class NativeConnectionsController {
         error,
         advisories: Object.freeze([]),
         requiresWarningAcknowledgement: false,
-        ...(isTransactionRequest(request)
+        ...(isOperationRequest(request)
           ? {
               kind: 'transaction' as const,
               feeComparison: null,
@@ -2201,11 +2225,7 @@ export class NativeConnectionsController {
         void this.retireRequest(message);
       }, Math.max(0, expiresAt - Date.now())),
     };
-    message.handoff = this.handoffs.capture({ id: message.resumeId, wire, scope, expiresAt, order: queueOrder,
-      assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
-      eligible: () => message.busy && !message.dispatched && !message.resultReady && !message.broadcastHash && !message.eoa,
-      drain: () => message.work ?? Promise.resolve(), retire: () => { void this.retireRequest(message, false); },
-    });
+    message.handoff = this.captureSigningHandoff(message, scope);
     if (saved) {
       const waiting = [...this.requests]; this.requests.clear(); this.requests.set(id, message);
       for (const [key, value] of waiting) this.requests.set(key, value);
@@ -2221,7 +2241,7 @@ export class NativeConnectionsController {
           ...message.review,
           error: 'BLOCKED_SITE',
         });
-      if (isTransactionRequest(request)) {
+      if (isOperationRequest(request)) {
         await this.requestRetirement;
         message.approval.assertCurrent();
         if (
@@ -2279,7 +2299,7 @@ export class NativeConnectionsController {
       this.publish();
     } catch {
       if (
-        isTransactionRequest(message.request) &&
+        isOperationRequest(message.request) &&
         this.requestConnectionCurrent(message)
       ) {
         message.prepared = undefined;
@@ -2308,7 +2328,7 @@ export class NativeConnectionsController {
       message.prepared ||
       message.smart ||
       message.review.error ||
-      !isTransactionRequest(message.request) ||
+      !isOperationRequest(message.request) ||
       this.disposed ||
       this.options.source.getSnapshot().phase !== 'ready' ||
       this.host?.context().activeAccountId !== message.accountId
@@ -2407,7 +2427,7 @@ export class NativeConnectionsController {
   }
   private async prepareTransactionReview(message: PendingSigning) {
     if (
-      !isTransactionRequest(message.request) ||
+      !isOperationRequest(message.request) ||
       message.review.kind === 'message'
     )
       throw new Error('Invalid transaction request');
@@ -2425,7 +2445,15 @@ export class NativeConnectionsController {
     message.smart = undefined;
     message.unsubscribeSmart = undefined;
     const prepared =
-      message.request.method === 'wallet_sendCalls'
+      isModuleRequest(message.request)
+        ? await this.host!.prepareModuleChange({
+            accountId: message.accountId,
+            networkId: message.networkId,
+            request: message.request,
+            approval,
+            handoff: message.handoff,
+          }, approval.assertCurrent)
+        : message.request.method === 'wallet_sendCalls'
         ? await this.host!.prepareCalls(
             {
               accountId: message.accountId,
@@ -2459,8 +2487,10 @@ export class NativeConnectionsController {
       const operation = prepared.operation;
       message.smart = operation;
       message.prepared = undefined;
+      let reviewReady = false;
       const publishOperation = () => {
         if (
+          !reviewReady ||
           this.requests.get(message.id) !== message ||
           message.smart !== operation
         )
@@ -2473,7 +2503,8 @@ export class NativeConnectionsController {
           kind: 'smart-transaction',
           method: message.request.method as
             | 'eth_sendTransaction'
-            | 'wallet_sendCalls',
+            | 'wallet_sendCalls'
+            | SmartAccountModuleRequest['method'],
           operation: snapshot,
           batchApprovals: prepared.batchApprovals,
           approval: prepared.approval,
@@ -2485,6 +2516,15 @@ export class NativeConnectionsController {
       approval.assertCurrent();
       if (operation.getSnapshot().phase !== 'authorize')
         throw new Error('Smart operation unavailable');
+      const preparedScope = this.signingResumeScope(message.wire.session.binding, 'selected');
+      if (!preparedScope) throw new Error('Smart operation context changed');
+      this.handoffs.bindPreparedScope(message.handoff, preparedScope);
+      if (isModuleRequest(message.request)) {
+        const intent = operation.getSnapshot().intent;
+        if (intent.kind !== 'modules' || intent.command.draft.kind !== (message.request.action === 'install' ? 'install-custom' : 'uninstall')) throw new Error('Module review changed');
+        reviewReady = true; publishOperation();
+        return;
+      }
       const transactions =
         message.request.method === 'wallet_sendCalls'
           ? message.request.calls.calls
@@ -2526,7 +2566,7 @@ export class NativeConnectionsController {
         advisories: Object.freeze(advisories.addresses),
         requiresWarningAcknowledgement: Boolean(advisories.warning),
       });
-      publishOperation();
+      reviewReady = true; publishOperation();
       return;
     }
     const remaining =
@@ -2776,6 +2816,60 @@ export class NativeConnectionsController {
     if (message) message.work = work;
     return work;
   }
+  private moduleResult(message: PendingSigning) {
+    if (!isModuleRequest(message.request)) throw new Error('Invalid module response');
+    const snapshot = message.smart?.getSnapshot();
+    if (!snapshot || snapshot.phase !== 'complete' || !snapshot.transactionHash || snapshot.intent.kind !== 'modules' ||
+        snapshot.intent.command.draft.kind !== (message.request.action === 'install' ? 'install-custom' : 'uninstall')) throw new Error('Module operation ended');
+    if (snapshot.metadataRefresh !== 'complete') return null;
+    return { action: message.request.action, address: snapshot.intent.command.targetAddress, success: true };
+  }
+  private async deliverSigningResult(message: PendingSigning, result: unknown): Promise<void> {
+    const approval = message.approval;
+    if (!approval) return failure('REQUEST_EXPIRED');
+    approval.assertCurrent();
+    message.resultReady = true;
+    await this.transport!.respond(message.session.binding, message.wire.id, { result }, approval.assertCurrent, () => {
+      message.dispatched = true;
+      queueMicrotask(() => { if (this.requests.get(message.id) === message) this.publish(); });
+    });
+    await this.retireRequest(message, false);
+  }
+  private retrySmartMetadata(id: string, revision: number): Promise<void> {
+    const message = this.requests.get(id);
+    const work = this.performRetrySmartMetadata(id, revision);
+    if (message) message.work = work;
+    return work;
+  }
+  private async performRetrySmartMetadata(id: string, revision: number): Promise<void> {
+    const message = this.requests.get(id);
+    if (!message || revision !== this.revision || this.requests.values().next().value !== message ||
+        Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder ||
+        !isModuleRequest(message.request) || message.dispatched || message.resultReady || message.review.error ||
+        this.host!.context().activeAccountId !== message.accountId || !message.smart || message.smart.getSnapshot().phase !== 'complete')
+      return failure('REQUEST_EXPIRED');
+    if (message.busy || this.action) return failure('BUSY');
+    const approval = message.approval;
+    if (!approval) return failure('REQUEST_EXPIRED');
+    approval.assertCurrent();
+    message.busy = true;
+    this.publish();
+    try {
+      await message.smart.retryMetadata();
+      approval.assertCurrent();
+      const result = this.moduleResult(message);
+      if (result) await this.deliverSigningResult(message, result);
+      else { message.busy = false; this.publish(); }
+    } catch (error) {
+      if (this.requests.get(id) === message) {
+        message.busy = false;
+        message.review = Object.freeze({ ...message.review, error: 'DELIVERY_UNCERTAIN' });
+        approval.dispose();
+        this.publish();
+      }
+      throw error;
+    }
+  }
   private async performApproveRequest(
     id: string,
     revision: number,
@@ -2795,9 +2889,11 @@ export class NativeConnectionsController {
       message.review.error ||
       (message.review.requiresWarningAcknowledgement && !acknowledgeWarning &&
         !(message.review.kind === 'transaction' && message.review.batch?.phase === 'failed')) ||
+      (isModuleRequest(message.request) && message.request.action === 'install' && !acknowledgeWarning) ||
       this.host!.context().activeAccountId !== message.accountId
     )
       return failure('UNSUPPORTED_REQUEST');
+    if (isModuleRequest(message.request) && message.smart?.getSnapshot().phase !== 'authorize') return failure('REQUEST_EXPIRED');
     const approval = message.approval;
     if (!approval) return failure('REQUEST_EXPIRED');
     approval.assertCurrent();
@@ -2810,7 +2906,7 @@ export class NativeConnectionsController {
         await this.retireRequest(message, false);
         return;
       }
-      if (isTransactionRequest(message.request)) {
+      if (isOperationRequest(message.request)) {
         if (message.eoa) {
           const state = message.eoa.getSnapshot();
           if (state.phase === 'failed') await message.eoa.start();
@@ -2825,7 +2921,13 @@ export class NativeConnectionsController {
           if (message.request.method !== 'wallet_sendCalls') throw new Error('Invalid calls response');
           result = { id: message.request.bundleId, capabilities: {} };
         } else if (message.smart) {
-          await message.smart.authorize(message.smart.getSnapshot().revision);
+          if (isModuleRequest(message.request)) {
+            const snapshot = message.smart.getSnapshot();
+            if (snapshot.phase !== 'authorize' || snapshot.intent.kind !== 'modules') return failure('REQUEST_EXPIRED');
+            const kind = snapshot.intent.command.draft.kind;
+            if (kind === 'install-custom') await message.smart.authorizeModuleChange(snapshot.revision, { kind, riskAcknowledged: true });
+            else await message.smart.authorizeModuleChange(snapshot.revision, { kind });
+          } else await message.smart.authorize(message.smart.getSnapshot().revision);
           approval.assertCurrent();
           const snapshot = message.smart.getSnapshot();
           if (snapshot.phase === 'authorize') {
@@ -2835,6 +2937,11 @@ export class NativeConnectionsController {
           }
           if (snapshot.phase !== 'complete' || !snapshot.transactionHash)
             throw new Error('Smart operation ended');
+          if (isModuleRequest(message.request)) {
+            const confirmed = this.moduleResult(message);
+            if (!confirmed) { message.busy = false; this.publish(); return; }
+            result = confirmed;
+          } else
           result =
             message.request.method === 'wallet_sendCalls'
               ? { id: message.request.bundleId, capabilities: {} }
@@ -2863,21 +2970,7 @@ export class NativeConnectionsController {
           handoff: message.handoff,
         });
       }
-      approval.assertCurrent();
-      message.resultReady = true;
-      await this.transport!.respond(
-        message.session.binding,
-        message.wire.id,
-        { result },
-        approval.assertCurrent,
-        () => {
-          message.dispatched = true;
-          queueMicrotask(() => {
-            if (this.requests.get(message.id) === message) this.publish();
-          });
-        }
-      );
-      await this.retireRequest(message, false);
+      await this.deliverSigningResult(message, result);
     } catch (error) {
       if (message.dispatched || message.broadcastHash) {
         approval.dispose();
@@ -2941,7 +3034,13 @@ export class NativeConnectionsController {
       message.approval = this.captureSigningApproval(message);
       message.switching = false;
       message.switchRevision = undefined;
-      if (isTransactionRequest(message.request))
+      // No signer exists before this explicit switch's new approval. Capture
+      // its initial handoff now, without changing the original request bound.
+      if (message.smart || message.prepared || message.eoa || message.dispatched || message.broadcastHash || message.resultReady || message.handoff.isSuspended()) return failure('REQUEST_EXPIRED');
+      const scope = this.signingResumeScope(message.wire.session.binding, 'selected');
+      if (!scope) return failure('REQUEST_EXPIRED');
+      message.handoff = this.captureSigningHandoff(message, scope);
+      if (isOperationRequest(message.request))
         await this.prepareTransactionReview(message);
       message.busy = false;
       this.publish();

@@ -71,22 +71,22 @@ test('Modules lists only observed validators and protects active and composite-r
   } finally { f.close(); }
 });
 
-test('custom install requires explicit address-bound preflight, valid bytes and risk acknowledgment', async () => {
+test('custom install preflights public fields and opens review without a risk acknowledgment', async () => {
   const f = fixture(); f.render(); await tick();
   try {
     f.button(t('smartAccountHub.customModule')).props.onPress();
     f.edit(t('smartAccountHub.moduleAddress'), customAddress); f.edit(t('smartAccountHub.moduleName'), 'My validator');
     assert(f.button(t('smartAccountHub.install')).props.disabled);
     f.button(t('smartAccountHub.checkModule')).props.onPress(); await tick();
-    assert.deepEqual(f.preflights, [customAddress]); assert(f.button(t('smartAccountHub.install')).props.disabled);
-    f.switchValue(t('smartAccountHub.customRiskAck'), true);
+    assert.deepEqual(f.preflights, [customAddress]); assert.equal(f.button(t('smartAccountHub.install')).props.disabled, false);
+    assert(!f.render().some(element => element.type === 'Switch'));
+    assert(!f.render().some(element => element.type === 'Notice' && element.props.body === t('smartAccountHub.customRisk')));
     f.edit(t('smartAccountHub.moduleInitData'), '0x1'); assert(f.button(t('smartAccountHub.install')).props.disabled);
     f.edit(t('smartAccountHub.moduleInitData'), '0xab'); assert.equal(f.button(t('smartAccountHub.install')).props.disabled, false);
     f.edit(t('smartAccountHub.moduleAddress'), spareAddress); assert(f.button(t('smartAccountHub.install')).props.disabled);
     f.edit(t('smartAccountHub.moduleAddress'), customAddress); f.button(t('smartAccountHub.checkModule')).props.onPress(); await tick();
-    f.switchValue(t('smartAccountHub.customRiskAck'), true);
     const press = f.button(t('smartAccountHub.install')).props.onPress; press(); press(); await tick();
-    assert.deepEqual(JSON.parse(JSON.stringify(f.drafts)), [{ kind: 'install-custom', address: customAddress, name: 'My validator', initData: '0xab', riskAcknowledged: true }]);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.drafts)), [{ kind: 'install-custom', address: customAddress, name: 'My validator', initData: '0xab' }]);
   } finally { f.close(); }
 });
 
@@ -148,14 +148,14 @@ test('returning from a module operation disposes its owner and reloads observed 
 test('module review displays exact public changes, both authorization stages and confirmed metadata retry', () => {
   const calls: string[] = [];
   const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationContent', {
-    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View' },
+    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'android' } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
     '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
     './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({}) },
   });
   const state: NativeSmartAccountOperationSnapshot = { phase: 'authorize', revision: 1, account: ownerAddress, network: getNativeNetwork('ethereum'), maximumPrefundUnits: '1', userOperationHash: null, authorization: null, payerReview: null, transactionHash: null, userOperationSubmissionStarted: false, error: null,
-    intent: { kind: 'modules', command: { accountAddress: ownerAddress, chainId: 1, targetAddress: compositeAddress, sourceAuthHash: '0x', sourceAuthModule: 'ecdsa', sourceModuleFingerprint: 'public', executions: [], draft: { kind: 'composite', children: [ownerAddress, childAddress], threshold: 1 } } } };
+    intent: { kind: 'modules', command: { accountAddress: ownerAddress, chainId: 1, targetAddress: compositeAddress, deploymentAdmission: 'deployed-only', removalPolicy: 'all-installed-composites', sourceIsDeployed: true, sourceAuthHash: '0x', sourceAuthModule: 'ecdsa', sourceModuleFingerprint: 'public', executions: [], draft: { kind: 'composite', children: [ownerAddress, childAddress], threshold: 1 } } } };
   const render = (snapshot = state) => screenElements(screen.render({ state: snapshot, onBack() {}, authorize() { calls.push('authorize'); }, confirmPayer(id: number) { calls.push(`payer:${id}`); }, retryMetadata() { calls.push('refresh'); } }));
   try {
     const initial = render(), text = contents(initial);
@@ -170,10 +170,117 @@ test('module review displays exact public changes, both authorization stages and
     complete.find(element => element.type === 'Button' && element.props.title === t('mobile.smartAccountModules.refresh'))!.props.onPress();
     assert.deepEqual(calls, ['authorize', 'payer:7', 'refresh']);
     for (const kind of ['install-custom', 'uninstall'] as const) {
-      const draft = kind === 'install-custom' ? { kind, address: customAddress, name: 'Exact custom name', initData: '0xabcd', riskAcknowledged: true as const } : { kind, address: customAddress };
+      const draft = kind === 'install-custom' ? { kind, address: customAddress, name: 'Exact custom name', initData: '0xabcd' as const } : { kind, address: customAddress };
       const elements = render({ ...state, intent: { kind: 'modules', command: { ...(state.intent.kind === 'modules' ? state.intent.command : {} as never), draft, targetAddress: customAddress } } });
       assert(contents(elements).includes(customAddress));
       if (kind === 'install-custom') { assert(contents(elements).includes('Exact custom name')); assert(contents(elements).includes('0xabcd')); }
     }
+  } finally { screen.close(); }
+});
+
+function customReviewState(): NativeSmartAccountOperationSnapshot {
+  return { phase: 'authorize', revision: 7, account: ownerAddress, network: getNativeNetwork('ethereum'), maximumPrefundUnits: '1', userOperationHash: '0x' + 'ab'.repeat(32), authorization: null, payerReview: null, transactionHash: null, userOperationSubmissionStarted: false, error: null,
+    intent: { kind: 'modules', command: { accountAddress: ownerAddress, chainId: 1, targetAddress: customAddress, deploymentAdmission: 'deployed-only', removalPolicy: 'all-installed-composites', sourceIsDeployed: true, sourceAuthHash: '0x', sourceAuthModule: 'ecdsa', sourceModuleFingerprint: 'public', executions: [], draft: { kind: 'install-custom', address: customAddress, name: 'Reviewed validator', initData: '0xabcd' } } } };
+}
+
+function consentReviewFixture() {
+  const events = new Map<string, () => void>(), acknowledgements: boolean[] = [];
+  const native = { StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch', Platform: { OS: 'android' },
+    AppState: { currentState: 'active', addEventListener(event: string, callback: () => void) { events.set(event, callback); return { remove() { events.delete(event); } }; } } };
+  const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationContent', {
+    'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
+    '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
+    './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({}) },
+  });
+  let state = customReviewState(), disabled = false;
+  const render = (value = state) => { state = value; return screenElements(screen.render({ state, disabled, onBack() {}, authorize(acknowledged: boolean) { acknowledgements.push(acknowledged); }, confirmPayer() {} })); };
+  const button = () => { const result = render().find(element => element.type === 'Button' && element.props.title === t('mobile.smartAccountModules.authorize')); assert(result); return result; };
+  const checkbox = () => { const result = render().find(element => element.type === 'Switch' && element.props.accessibilityLabel === t('smartAccountHub.customRiskAck')); assert(result); return result; };
+  return { render, button, checkbox, acknowledgements, close: screen.close, state: () => state, block(value: boolean) { disabled = value; },
+    background() { native.AppState.currentState = 'background'; events.get('change')?.(); }, active() { native.AppState.currentState = 'active'; }, blur() { events.get('blur')?.(); } };
+}
+
+test('shared custom authorization requires the current local checkbox and revokes a cleared acknowledgment synchronously', () => {
+  const f = consentReviewFixture();
+  try {
+    assert(f.button().props.disabled); assert.equal(f.checkbox().props.value, false); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, []);
+    assert.equal(f.render().filter(element => element.type === 'Notice' && element.props.body === t('smartAccountHub.customRisk')).length, 1);
+    f.checkbox().props.onValueChange(true); assert.equal(f.button().props.disabled, false);
+    const held = f.button().props.onPress; held(); assert.deepEqual(f.acknowledgements, [true]);
+    f.checkbox().props.onValueChange(false); held(); assert.deepEqual(f.acknowledgements, [true]); assert(f.button().props.disabled);
+  } finally { f.close(); }
+});
+
+for (const change of ['intent', 'hash'] as const) test(`custom consent cannot survive an exact ${change} replacement, including held old callbacks`, () => {
+  const f = consentReviewFixture();
+  try {
+    f.checkbox().props.onValueChange(true); const held = f.button().props.onPress, heldCheckbox = f.checkbox().props.onValueChange;
+    const state = f.state();
+    const next = change === 'hash' ? { ...state, userOperationHash: '0x' + 'cd'.repeat(32) } : { ...state, intent: { ...state.intent } };
+    const first = f.render(next);
+    assert(first.find(element => element.type === 'Button' && element.props.title === t('mobile.smartAccountModules.authorize'))!.props.disabled);
+    assert.equal(first.find(element => element.type === 'Switch')!.props.value, false);
+    held(); heldCheckbox(true); assert.deepEqual(f.acknowledgements, []); assert(f.button().props.disabled);
+    f.checkbox().props.onValueChange(true); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, [true]);
+  } finally { f.close(); }
+});
+
+for (const phase of ['preparing', 'review-fee', 'failed', 'complete'] as const) test(`custom consent resets across ${phase} and cannot replay on the same operation`, () => {
+  const f = consentReviewFixture();
+  try {
+    f.checkbox().props.onValueChange(true); const held = f.button().props.onPress, state = f.state();
+    const other = f.render({ ...state, phase });
+    assert(!other.some(element => element.type === 'Switch')); held(); assert.deepEqual(f.acknowledgements, []);
+    f.render(state); assert.equal(f.checkbox().props.value, false); assert(f.button().props.disabled); held(); assert.deepEqual(f.acknowledgements, []);
+  } finally { f.close(); }
+});
+
+for (const retire of ['close', 'background', 'blur', 'unmount'] as const) test(`${retire} retires custom consent and held input/authorization callbacks`, () => {
+  const f = consentReviewFixture();
+  try {
+    f.checkbox().props.onValueChange(true); const held = f.button().props.onPress, heldCheckbox = f.checkbox().props.onValueChange;
+    if (retire === 'close') f.render().find(element => element.type === 'Button' && element.props.title === 'Close')!.props.onPress();
+    else if (retire === 'unmount') f.close(); else f[retire]();
+    f.active(); heldCheckbox(true); held(); assert.deepEqual(f.acknowledgements, []);
+  } finally { f.close(); }
+});
+
+test('Ledger blocking also blocks custom checkbox and authorization without changing ordinary consent', () => {
+  const f = consentReviewFixture();
+  try {
+    f.block(true); assert(f.checkbox().props.disabled); f.checkbox().props.onValueChange(true); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, []);
+    f.block(false); f.checkbox().props.onValueChange(true); f.button().props.onPress(); assert.deepEqual(f.acknowledgements, [true]);
+    const ordinary = f.render({ ...f.state(), intent: { kind: 'deploy' } });
+    assert(!ordinary.some(element => element.type === 'Switch'));
+    ordinary.find(element => element.type === 'Button' && element.props.title === 'Authorize deployment')!.props.onPress(); assert.deepEqual(f.acknowledgements, [true, false]);
+  } finally { f.close(); }
+});
+
+test('wallet wrapper routes only checked current module consent through the explicit operation method and preserves Ledger gating', async () => {
+  const moduleAuthorizations: unknown[][] = [], ordinaryAuthorizations: number[] = [];
+  let state = customReviewState(), connected = true;
+  const controller = { getSnapshot: () => state, subscribe: () => () => {}, authorizationExpiresAt: 9999999999999,
+    async prepare() {}, async dispose() {}, async authorize(revision: number) { ordinaryAuthorizations.push(revision); },
+    async authorizeModuleChange(...args: unknown[]) { moduleAuthorizations.push(args); }, async confirmPayer() {}, async retryMetadata() {} };
+  const screen = screenFixture(new URL('../src/screens/NativeSmartAccountOperation.tsx', import.meta.url), 'NativeSmartAccountOperationScreen', {
+    'react-native': { StyleSheet: { create: (value: unknown) => value }, View: 'View', Switch: 'Switch' }, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
+    '../../../../source/shared/erc20': { formatTokenUnits: () => '' }, '../core/amounts': { formatBaseUnits }, '../custody/networkContext': { getNativeSendContext },
+    '../platform/localization': nativeTranslationFixture, './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' }, './guardianPolicyLabels': { guardianDelayLabel: () => '' },
+    './useDappLedgerConnection': { useOwnedLedgerConnection: () => ({ blocked: !connected, canApprove: () => connected, showConnect: false, modal: null }) },
+  });
+  const render = () => screen.render({ controller, onBack() {} });
+  try {
+    const first = render(); first.props.authorize(false); assert.deepEqual(moduleAuthorizations, []); assert.deepEqual(ordinaryAuthorizations, []);
+    connected = false; first.props.authorize(true); assert.deepEqual(moduleAuthorizations, []);
+    connected = true; first.props.authorize(true); assert.deepEqual(JSON.parse(JSON.stringify(moduleAuthorizations)), [[7, { kind: 'install-custom', riskAcknowledged: true }]]);
+    state = { ...state, userOperationHash: '0x' + 'ef'.repeat(32) }; first.props.authorize(true); assert.equal(moduleAuthorizations.length, 1);
+    for (const kind of ['uninstall', 'composite'] as const) {
+      const previous = state.intent; assert(previous.kind === 'modules');
+      state = { ...state, intent: { kind: 'modules', command: { ...previous.command, draft: kind === 'uninstall' ? { kind, address: customAddress } : { kind, children: [ownerAddress], threshold: 1 } } } };
+      render().props.authorize(false);
+      assert.deepEqual(JSON.parse(JSON.stringify(moduleAuthorizations.at(-1))), [7, { kind }]);
+    }
+    state = { ...state, intent: { kind: 'deploy' } }; render().props.authorize(false); assert.deepEqual(ordinaryAuthorizations, [7]);
   } finally { screen.close(); }
 });

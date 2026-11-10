@@ -10,6 +10,11 @@ import {
   isDappWalletControlMethod,
   normalizeDappWalletControl,
 } from '../../../../shared/dappWalletControl.ts';
+import {
+  isSmartAccountModuleRequestMethod,
+  normalizeSmartAccountModuleRequest,
+  SmartAccountModuleRequestError,
+} from '../../../../shared/smartAccountModuleRequest.ts';
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import {
@@ -108,21 +113,16 @@ export const methodRequest = async (
   }
 
   // Reject malformed module fields before account selection or approval UI.
-  if (
-    data.method === 'wallet_requestSmartAccountModuleInstall' ||
-    data.method === 'wallet_requestSmartAccountModuleUninstall'
-  ) {
-    const module = data.params?.[0];
-    if (
-      !module ||
-      typeof module !== 'object' ||
-      Array.isArray(module) ||
-      ['address', 'name', 'initData'].some(
-        (field) =>
-          module[field] !== undefined && typeof module[field] !== 'string'
-      )
-    )
-      throw ethErrors.rpc.invalidParams('Invalid smart account module');
+  if (isSmartAccountModuleRequestMethod(data.method)) {
+    try {
+      data.params = [
+        normalizeSmartAccountModuleRequest(data.method, data.params).module,
+      ];
+    } catch (error) {
+      if (error instanceof SmartAccountModuleRequestError)
+        throw ethErrors.rpc.invalidParams('Invalid smart account module');
+      throw error;
+    }
   }
 
   if (data.method === 'eth_sendTransaction') {

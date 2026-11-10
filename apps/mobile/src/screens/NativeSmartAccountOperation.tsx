@@ -18,6 +18,7 @@ import {
   BackHandler,
   Platform,
   StyleSheet,
+  Switch,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -179,8 +180,9 @@ export function NativeSmartAccountOperationScreen({
   );
   const isReviewCurrent = useCallback(() => {
     const current = controller.getSnapshot();
-    return current.revision === state.revision && current.phase === 'authorize';
-  }, [controller, state.revision]);
+    return current.revision === state.revision && current.phase === 'authorize' &&
+      current.intent === state.intent && current.userOperationHash === state.userOperationHash;
+  }, [controller, state.revision, state.intent, state.userOperationHash]);
   const ledger = useOwnedLedgerConnection({owner: controller, revision: state.revision, expiresAt: controller.authorizationExpiresAt,
     available: state.phase === 'authorize', isReviewCurrent, ledgerConnection});
   useEffect(() => {
@@ -195,7 +197,16 @@ export function NativeSmartAccountOperationScreen({
       onBack={onBack}
       disabled={state.phase === 'authorize' && ledger.blocked}
       before={<>{ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}{ledger.modal}</>}
-      authorize={() => { if (ledger.canApprove()) void controller.authorize(state.revision); }}
+      authorize={(acknowledgedCustomRisk) => {
+        if (!ledger.canApprove()) return;
+        if (state.intent.kind !== 'modules') { void controller.authorize(state.revision); return; }
+        if (!isReviewCurrent()) return;
+        const kind = state.intent.command.draft.kind;
+        if (kind === 'install-custom') {
+          if (acknowledgedCustomRisk === true)
+            void controller.authorizeModuleChange(state.revision, { kind, riskAcknowledged: true });
+        } else void controller.authorizeModuleChange(state.revision, { kind });
+      }}
       confirmPayer={(id) => controller.confirmPayer(id)}
       retryMetadata={() => void controller.retryMetadata()}
     />
@@ -214,7 +225,7 @@ export function NativeSmartAccountOperationContent({
 }: {
   state: NativeSmartAccountOperationSnapshot;
   onBack(): void;
-  authorize(): void;
+  authorize(acknowledgedCustomRisk: boolean): void;
   confirmPayer(id: number): void;
   retryMetadata?(): void;
   before?: React.ReactNode;
@@ -222,6 +233,37 @@ export function NativeSmartAccountOperationContent({
 }) {
   const { t } = useNativeTranslation();
   const [details, setDetails] = useState(false);
+  type RiskAcknowledgement = Readonly<{ intent: NativeSmartAccountOperationSnapshot['intent']; hash: string | null }>;
+  const [riskAcknowledgement, setRiskAcknowledgement] = useState<RiskAcknowledgement | null>(null);
+  const risk = useRef<RiskAcknowledgement | null>(null), live = useRef(false);
+  const intent = state.intent, hash = state.userOperationHash, phase = state.phase;
+  const latest = useRef({ intent, hash, phase });
+  const clearRisk = useCallback(() => {
+    if (!risk.current) return;
+    risk.current = null; setRiskAcknowledgement(null);
+  }, []);
+  useLayoutEffect(() => { latest.current = { intent, hash, phase }; clearRisk(); }, [intent, hash, phase, clearRisk]);
+  useLayoutEffect(() => {
+    live.current = true;
+    const retire = () => { live.current = false; clearRisk(); };
+    const change = AppState.addEventListener('change', next => { if (next !== 'active') retire(); });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', retire) : undefined;
+    return () => { live.current = false; risk.current = null; change.remove(); blur?.remove(); };
+  }, [clearRisk]);
+  const reviewCurrent = () => live.current && AppState.currentState === 'active' &&
+    latest.current.intent === intent && latest.current.hash === hash &&
+    latest.current.phase === 'authorize' && phase === 'authorize';
+  const customInstall = intent.kind === 'modules' && intent.command.draft.kind === 'install-custom';
+  const riskAcknowledged = phase === 'authorize' && riskAcknowledgement?.intent === intent && riskAcknowledgement.hash === hash;
+  const authorizeCurrent = () => {
+    if (disabled) return;
+    if (intent.kind !== 'modules') { authorize(false); return; }
+    if (!reviewCurrent()) return;
+    const acknowledged = risk.current?.intent === intent && risk.current.hash === hash;
+    if (customInstall && !acknowledged) return;
+    authorize(customInstall && acknowledged);
+  };
+  const close = () => { live.current = false; clearRisk(); onBack(); };
   const network = getNativeSendContext(state.network);
   const amount = (units: string, token?: Erc20Metadata) => {
     const value = token
@@ -296,7 +338,7 @@ export function NativeSmartAccountOperationContent({
               ? 'Send'
               : 'Deploy smart account'
           }
-          onBack={onBack}
+          onBack={close}
         />
         {before}
         <Card style={s.card}>
@@ -314,7 +356,6 @@ export function NativeSmartAccountOperationContent({
             {modules.draft.kind === 'install-custom' && <>
               <Text style={s.label}>{t('smartAccountHub.moduleName')}</Text><Text>{modules.draft.name}</Text>
               <Text style={s.label}>{t('smartAccountHub.moduleInitData')}</Text><Text selectable style={s.address}>{modules.draft.initData}</Text>
-              <Notice title={t('smartAccountHub.customModule')} body={t('smartAccountHub.customRisk')} tone="amber" />
             </>}
             {modules.draft.kind === 'uninstall' && <Text>{t('smartAccountHub.uninstallDescription')}</Text>}
             {modules.draft.kind === 'composite' && <>
@@ -533,6 +574,17 @@ export function NativeSmartAccountOperationContent({
                 </>
               )}
             </Card>
+            {customInstall && <Card style={s.card}>
+              <Notice title={t('smartAccountHub.customModule')} body={t('smartAccountHub.customRisk')} tone="amber" />
+              <View style={s.riskChoice}>
+                <Text style={s.riskText}>{t('smartAccountHub.customRiskAck')}</Text>
+                <Switch accessibilityLabel={t('smartAccountHub.customRiskAck')} value={riskAcknowledged} disabled={disabled} onValueChange={value => {
+                  if (!reviewCurrent() || disabled) return;
+                  const acknowledged = value ? { intent, hash } : null;
+                  risk.current = acknowledged; setRiskAcknowledgement(acknowledged);
+                }} />
+              </View>
+            </Card>}
             <Button
               title={
                 modules
@@ -551,8 +603,8 @@ export function NativeSmartAccountOperationContent({
                   ? 'Authorize transfer'
                   : 'Authorize deployment'
               }
-              disabled={disabled}
-              onPress={authorize}
+              disabled={disabled || customInstall && !riskAcknowledged}
+              onPress={authorizeCurrent}
             />
           </>
         )}
@@ -767,7 +819,7 @@ export function NativeSmartAccountOperationContent({
             </Text>
           </Card>
         )}
-        <Button title="Close" variant="quiet" onPress={onBack} />
+        <Button title="Close" variant="quiet" onPress={close} />
       </Screen>
     </SafeAreaView>
   );
@@ -797,4 +849,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
+  riskChoice: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  riskText: { flex: 1 },
 });

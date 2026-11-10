@@ -1,4 +1,5 @@
 import type { DappEncryptionMethod } from '../../../../source/shared/dappEncryptionRequest.ts';
+import type { SmartAccountModuleRequestMethod } from '../../../../source/shared/smartAccountModuleRequest.ts';
 import type { EvmDappFeeChoice, EvmDappFeeComparison } from '../../../../source/shared/evmDappFeePolicy.ts';
 import type { NativeSmartAccountOperationSnapshot } from '../smartAccount/operation.ts';
 import type { WalletConnectVerification } from './walletConnect.ts';
@@ -79,7 +80,7 @@ export type NativeTransactionReview = NativeSigningReviewBase &
     kind: 'transaction';
     feeComparison: EvmDappFeeComparison | null;
     feeChoice: EvmDappFeeChoice | null;
-    method: 'eth_sendTransaction' | 'wallet_sendCalls';
+    method: 'eth_sendTransaction' | 'wallet_sendCalls' | SmartAccountModuleRequestMethod;
     transaction: PreparedEvmTransaction | null;
     maximumFeeUnits: string | null;
     maximumTotalUnits: string | null;
@@ -102,7 +103,7 @@ export type NativeTransactionReview = NativeSigningReviewBase &
 export type NativeSmartTransactionReview = NativeSigningReviewBase &
   Readonly<{
     kind: 'smart-transaction';
-    method: 'eth_sendTransaction' | 'wallet_sendCalls';
+    method: 'eth_sendTransaction' | 'wallet_sendCalls' | SmartAccountModuleRequestMethod;
     operation: NativeSmartAccountOperationSnapshot;
     approval: ApprovalSummary | null;
     batchApprovals?: readonly (ApprovalSummary | null)[];
@@ -185,6 +186,7 @@ export type NativeConnectionsView = Readonly<{
     revision: number,
     acknowledgeWarning: boolean
   ): Promise<void>;
+  retrySmartMetadata(id: string, revision: number): Promise<void>;
   confirmSmartPayer(
     id: string,
     revision: number,

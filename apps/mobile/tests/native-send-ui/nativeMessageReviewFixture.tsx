@@ -53,6 +53,7 @@ export function NativeMessageReviewFixture() {
   ...unsupportedDappViews,
     async callsStatusShown() { throw new Error('Calls status is outside this fixture'); },
     dismissCallsStatus() { throw new Error('Calls status is outside this fixture'); },
+    async retrySmartMetadata() { throw new Error('Smart metadata refresh is outside this fixture'); },
     async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
     getSnapshot() { throw new Error('The review receives its public snapshot from its parent'); },
     subscribe() { throw new Error('The review receives its public snapshot from its parent'); },

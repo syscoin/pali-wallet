@@ -1,4 +1,5 @@
 import type { SmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
+import type { SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
 import type { NativeSigningHandoff } from './signingHandoff.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { DappEncryptionSdk } from '../../../../source/wallet/dappEncryptionApproval.ts';
@@ -100,6 +101,16 @@ export type NativeConnectionSigningHost = Readonly<{
     | NativePreparedConnectionTransaction
     | NativePreparedSmartConnectionTransaction
   >;
+  prepareModuleChange(
+    input: Readonly<{
+      accountId: string;
+      networkId: string;
+      request: SmartAccountModuleRequest;
+      approval: ReturnType<typeof createDappSigningApproval>;
+      handoff: NativeSigningHandoff;
+    }>,
+    assertCurrent: () => void
+  ): Promise<NativePreparedSmartConnectionTransaction>;
   context(): Readonly<{
     network: INetwork;
     networkId: string;
