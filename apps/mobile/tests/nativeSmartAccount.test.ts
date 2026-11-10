@@ -10,6 +10,8 @@ import type { IKeyringAccountState, SmartAccountInstalledModule } from '../../..
 import type { NativeSlhPublicState, NativeSlhExecutionCapability } from '../src/smartAccount/slhDsaRuntime.ts';
 import { getSLHDSAKeyId, getSLHDSAStateStorageKey, SLH_DSA_SIGNATURE_LIMIT } from '../../../source/utils/slhDsa/constants.ts';
 import { prepareSmartAccountMessage, encodeSmartAccountMessageSignature } from '../../../source/utils/smartAccount/messageSigning.ts';
+import { getPaliErc7739PersonalSignHash } from '../../../source/utils/smartAccount/erc7739.ts';
+import { encodeSmartAccountAuthenticatorSignature } from '../../../source/utils/smartAccount/signature.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
@@ -63,6 +65,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const calls: string[] = [];
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
   const submitted: string[] = [];
+  const payerSignatures: string[] = [];
   const spendabilityReads = { native: 0, deposit: 0 };
   let deployed = false;
   let deployedCode = '0x01';
@@ -85,6 +88,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let recoveredOwner: string | undefined;
   let observedOwners: string[] | undefined;
   let observedThreshold = 1;
+  let smartGuardianMetadata: { address: string; owners: string[]; threshold: number; compositeThreshold?: number; deployed: boolean } | undefined;
+  const estimatedSenders: string[] = [];
   let composite: { threshold: number; ecdsaFirst: boolean; children?: string[] } | undefined;
   const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
@@ -119,6 +124,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
           result = builtIn || customValidators.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
             await smartCodeRead?.();
             if (deployed && interruptAfterReceipt) {
@@ -133,6 +139,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (request.method === 'eth_estimateGas') {
           const call = request.params[0];
+          if (call.from) estimatedSenders.push(call.from);
           if (call.to?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) {
             const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
             for (const op of operations) {
@@ -175,33 +182,38 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         else if (request.method === 'eth_call') {
           const to = request.params[0].to.toLowerCase();
           const data = request.params[0].data;
-          const smartAddress = runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase();
+          const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === to);
+          const ownGuardian = smartGuardianMetadata?.address.toLowerCase() === to ? smartGuardianMetadata : undefined;
+          const smartComposite = ownGuardian ? ownGuardian.compositeThreshold !== undefined : !!composite;
           if (to === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
             result = coder.encode(['uint256'], [gasCredit]);
-          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('supportsExecutionMode')!.selector)) {
+          } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('supportsExecutionMode')!.selector)) {
             result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
-          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
+          } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
             const args = paliSmartAccountInterface.decodeFunctionData('isModuleInstalled', data);
-            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [customValidators.get(args[1].toLowerCase())?.installed === true || args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || !!composite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
-          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
-            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), composite ? 'composite' : observedSlh ? 'slh-dsa' : 'ecdsa')]);
+            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [customValidators.get(args[1].toLowerCase())?.installed === true || args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !ownGuardian && !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || smartComposite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
+          } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
+            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), smartComposite ? 'composite' : !ownGuardian && observedSlh ? 'slh-dsa' : 'ecdsa')]);
           } else if (customValidators.has(to)) {
             const [type] = coder.decode(['uint256'], '0x' + data.slice(10));
             result = coder.encode(['bool'], [type === 1n || customValidators.get(to)!.compatible]);
           } else if (observedSlh && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase()) {
             result = paliSlhDsaValidatorInterface.encodeFunctionResult('authData', [[observedSlh.pkSeed, observedSlh.pkRoot]]);
-          } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'composite').toLowerCase()) {
+          } else if ((composite || smartGuardianMetadata?.compositeThreshold !== undefined) && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'composite').toLowerCase()) {
             const ecdsa = getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa'), passkey = getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn');
+            const guardianConfig = paliCompositeValidatorInterface.parseTransaction({ data })?.args[0]?.toLowerCase() === smartGuardianMetadata?.address.toLowerCase() ? smartGuardianMetadata : undefined;
             result = data.startsWith(paliCompositeValidatorInterface.getFunction('childValidators')!.selector)
-              ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [composite.children ?? (composite.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa])])
-              : paliCompositeValidatorInterface.encodeFunctionResult('threshold', [composite.threshold]);
-          } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
+              ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [guardianConfig ? [ecdsa, passkey] : composite?.children ?? (composite?.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa])])
+              : paliCompositeValidatorInterface.encodeFunctionResult('threshold', [guardianConfig?.compositeThreshold ?? composite?.threshold ?? 1]);
+          } else if ((composite || smartGuardianMetadata?.compositeThreshold !== undefined) && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
             result = paliP256WebAuthnValidatorInterface.encodeFunctionResult('authData', [[`0x${'01'.repeat(32)}`, `0x${'02'.repeat(32)}`, `0x${'03'.repeat(32)}`, `0x${'04'.repeat(32)}`, 32]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
             const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
+            const guardianConfig = paliEcdsaValidatorInterface.decodeFunctionData('owners', data)[0].toLowerCase() === smartGuardianMetadata?.address.toLowerCase() ? smartGuardianMetadata : undefined;
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [guardianConfig?.owners ?? observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('threshold')!.selector)) {
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [observedThreshold]);
+            const guardianConfig = paliEcdsaValidatorInterface.decodeFunctionData('threshold', data)[0].toLowerCase() === smartGuardianMetadata?.address.toLowerCase() ? smartGuardianMetadata : undefined;
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [guardianConfig?.threshold ?? observedThreshold]);
           } else if (to === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector)) {
             assert.equal(request.params[1], 'pending');
             const [sender, key] = paliEntryPointInterface.decodeFunctionData('getNonce', data);
@@ -280,6 +292,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             signatures.push({ address: input[0][0]!, digest: input[0][1]!, signature, intentPersisted: !!saved.guardianRecoveryIntents?.length });
             return signature;
           };
+          const signPrepared = this.signPreparedEvmTransaction.bind(this);
+          this.signPreparedEvmTransaction = (...input: Parameters<typeof signPrepared>) => {
+            const signed = signPrepared(...input);
+            payerSignatures.push(signed.rawTransaction);
+            return signed;
+          };
         }
       } };
     } } : {}),
@@ -304,9 +322,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
-    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures, spendabilityReads,
+    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders,
+    smartGuardian(address: string, owners: string[], options: { compositeThreshold?: number; threshold?: number; deployed?: boolean } = {}) {
+      smartGuardianMetadata = { address, owners: [...owners], threshold: options.threshold ?? 1, compositeThreshold: options.compositeThreshold, deployed: options.deployed ?? true };
+    },
     guardianStatus(mode: Parameters<ReturnType<typeof createGuardianRecoveryFixture>['select']>[0] = 'healthy') {
-      const address = runtime.catalogue.getSnapshot()!.accounts.find(account => account.type === 'SmartAccount')!.address;
+      const snapshot = runtime.catalogue.getSnapshot()!;
+      const address = snapshot.accounts.find(account => account.id === snapshot.active.accountId && account.type === 'SmartAccount')!.address;
       guardian = createGuardianRecoveryFixture(address);
       guardian.select(mode, GUARDIAN_FIXTURE_RUNTIME);
       deployed = true;
@@ -1987,7 +2009,7 @@ for (const delayedMetadata of [false, true]) test(`native guardian recovery pers
     const replacement = accounts.find(account => account.type === 'Imported')!;
     const status = f.guardianStatus('installed'); status.configure(guardian.address, 600);
     f.externalOwner();
-    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id }, new AbortController().signal, () => undefined);
+    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: guardian.id }, new AbortController().signal, () => undefined);
     const intent = f.runtime.getGuardianRecoveryIntent()!;
     assert(intent); assert.equal(f.submitted.length, 0);
     assert.equal(((await f.inspectRecovery()).record as { guardianRecoveryIntents: unknown[] }).guardianRecoveryIntents.length, 1);
@@ -2043,9 +2065,182 @@ async function startNativeRecovery() {
   const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!;
   const replacement = f.owner.getCatalogue()!.accounts.find(account => account.type === 'Imported')!;
   const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
-  const controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id }, new AbortController().signal, () => undefined);
+  const controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: guardian.id }, new AbortController().signal, () => undefined);
   return { f, guardian, replacement, policy, controller };
 }
+
+async function smartGuardianRecoveryFixture(composite = false, hooks: { before?: SqlHook; after?: SqlHook } = {}) {
+  const f = await fixture(hooks, true);
+  try {
+    const privateKey = '0x' + '04'.repeat(32);
+    await f.owner.importAccount({ privateKey, label: 'Smart guardian replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
+      PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.change({ kind: 'create-smart', label: 'Smart guardian', password: PASSWORD });
+    const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'smart:60:0')!;
+    await f.change({ kind: 'create', label: 'Separate recovery payer', password: PASSWORD });
+    const payer = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:1')!;
+    await f.change({ kind: 'create-smart', label: 'Smart recovery target', password: PASSWORD });
+    const accounts = f.owner.getCatalogue()!.accounts;
+    const owner = accounts.find(account => account.id === 'hd:60:0')!;
+    const replacement = accounts.find(account => account.type === 'Imported')!;
+    const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
+    f.smartGuardian(guardian.address, [owner.address], { compositeThreshold: composite ? 1 : undefined });
+    f.externalOwner();
+    const draft = { kind: 'start' as const, guardianId: guardian.id, replacementId: replacement.id, payerId: payer.id };
+    return { f, guardian, owner, replacement, payer, policy, draft,
+      open: (signal = new AbortController().signal) => f.runtime.openGuardianRecovery(draft, signal, () => undefined) };
+  } catch (error) { await f.close(); throw error; }
+}
+
+for (const composite of [false, true]) test(`native Smart guardian uses shared ERC1271 proof and a durable separate payer (${composite})`, async () => {
+  const { f, guardian, owner, replacement, payer, policy, open } = await smartGuardianRecoveryFixture(composite);
+  let controller: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    controller = await open();
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    assert.equal(intent.guardian.id, guardian.id); assert.equal(intent.payer.id, payer.id);
+    await controller.prepare(); await controller.review();
+    const review = controller.getSnapshot();
+    assert.equal(review.phase, 'review', JSON.stringify(review));
+    assert.equal(review.feeReview!.transaction.from.toLowerCase(), payer.address.toLowerCase());
+    assert(f.estimatedSenders.length > 0 && f.estimatedSenders.every(address => address.toLowerCase() === payer.address.toLowerCase()));
+    assert.equal(f.signatures.length, 2);
+    assert(f.signatures.every(proof => proof.intentPersisted));
+    assert.equal(recoverAddress(intent.operation.hash, f.signatures[0]!.signature).toLowerCase(), replacement.address.toLowerCase());
+    const actionHash = getPaliErc7739PersonalSignHash({ accountAddress: guardian.address, chainId: intent.operation.chainId, hash: intent.operation.hash });
+    assert.equal(f.signatures[1]!.digest, actionHash);
+    assert.equal(recoverAddress(actionHash, f.signatures[1]!.signature).toLowerCase(), owner.address.toLowerCase());
+    f.holdReceipts();
+    await controller.confirm(review.feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'waiting', JSON.stringify(controller.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    const transaction = Transaction.from(f.submitted[0]);
+    assert.equal(transaction.from!.toLowerCase(), payer.address.toLowerCase());
+    const schedule = paliGuardianRecoveryModuleInterface.decodeFunctionData('scheduleRecovery', transaction.data);
+    assert.equal(schedule[4][0].guardian.toLowerCase(), guardian.address.toLowerCase());
+    assert.equal(schedule[4][0].signature, encodeSmartAccountAuthenticatorSignature({
+      validator: getConfiguredAuthenticatorAddress(1, composite ? 'composite' : 'ecdsa'),
+      signature: composite ? coder.encode(['bytes[]'], [[f.signatures[1]!.signature, '0x']]) : f.signatures[1]!.signature,
+    }));
+    controller.dispose(); controller = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = await f.runtime.openGuardianRecovery({ kind: 'resume' }, new AbortController().signal, () => undefined);
+    await controller.prepare(); await controller.review();
+    assert.equal(controller.getSnapshot().phase, 'waiting', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().transactionHash, transaction.hash);
+    assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 1);
+    policy.recover(intent.operation, 'ready'); f.showReceipts();
+    await controller.refresh(); await controller.review();
+    assert.equal(controller.getSnapshot().feeReview!.transaction.from.toLowerCase(), payer.address.toLowerCase());
+    f.onBroadcast(() => { policy.recover(intent.operation, 'executed'); f.recoveredOwner(replacement.address); });
+    await controller.confirm(controller.getSnapshot().feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'complete', JSON.stringify(controller.getSnapshot()));
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 2);
+    assert(f.submitted.every(raw => Transaction.from(raw).from!.toLowerCase() === payer.address.toLowerCase()));
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+for (const changed of ['metadata', 'undeployed', 'owner', 'payer', 'network', 'lock', 'cancel', 'recovery-policy'] as const)
+  test(`native Smart guardian rejects stale ${changed} before additional owner or payer authority`, async () => {
+    const { f, guardian, owner, policy, open } = await smartGuardianRecoveryFixture();
+    const lifetime = new AbortController();
+    let controller: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      controller = await open(lifetime.signal); await controller.prepare();
+      if (changed === 'metadata') f.smartGuardian(guardian.address, ['0x' + '77'.repeat(20)]);
+      else if (changed === 'undeployed') f.smartGuardian(guardian.address, [owner.address], { deployed: false });
+      else if (changed === 'network') f.wrongChain();
+      else if (changed === 'recovery-policy') policy.configure(guardian.address, 1200);
+      else f.onSignature(() => {
+        if (changed === 'owner') f.replaceSoftwareOwner('HDAccount', 0);
+        if (changed === 'payer') f.replaceSoftwareOwner('HDAccount', 1);
+        if (changed === 'lock') f.owner.lock();
+        if (changed === 'cancel') lifetime.abort();
+      });
+      await controller.review();
+      assert.notEqual(controller.getSnapshot().phase, 'review');
+      assert.equal(f.signatures.filter(proof => proof.address.toLowerCase() === owner.address.toLowerCase()).length, 0);
+      assert.equal(f.signatures.length, changed === 'owner' ? 1 : 0);
+      assert.equal(f.submitted.length, 0);
+    } finally { controller?.dispose(); await f.close(); }
+  });
+
+test('native Smart guardian refuses unsatisfied composite and undeployed policies before persisting an intent', async () => {
+  const { f, guardian, owner, draft, open } = await smartGuardianRecoveryFixture();
+  try {
+    const missingPayer = { ...draft }; Reflect.deleteProperty(missingPayer, 'payerId');
+    await assert.rejects(f.runtime.openGuardianRecovery(missingPayer, new AbortController().signal, () => undefined), /INVALID_INPUT/);
+    await assert.rejects(f.runtime.openGuardianRecovery({ ...draft, payerId: guardian.id }, new AbortController().signal, () => undefined), /INVALID_INPUT/);
+    await assert.rejects(f.runtime.openGuardianRecovery({ ...draft, replacementId: guardian.id }, new AbortController().signal, () => undefined), /INVALID_INPUT/);
+    f.smartGuardian(guardian.address, [owner.address], { compositeThreshold: 2 });
+    await assert.rejects(open(), /unavailable authenticator/);
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    f.smartGuardian(guardian.address, [owner.address], { deployed: false });
+    await assert.rejects(open(), /unavailable authenticator/);
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('native recovery uses an explicitly selected imported payer for an EOA guardian', async () => {
+  const { f, controller: initial, guardian, replacement } = await startNativeRecovery();
+  let controller: typeof initial | undefined;
+  try {
+    await initial.prepare(); await initial.abandon(); initial.dispose();
+    controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: replacement.id }, new AbortController().signal, () => undefined);
+    await controller.prepare(); await controller.review();
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    assert.equal(review.transaction.from.toLowerCase(), replacement.address.toLowerCase());
+    f.holdReceipts(); await controller.confirm(review.id);
+    assert.equal(f.submitted.length, 1);
+    const transaction = Transaction.from(f.submitted[0]);
+    assert.equal(transaction.from!.toLowerCase(), replacement.address.toLowerCase());
+    const schedule = paliGuardianRecoveryModuleInterface.decodeFunctionData('scheduleRecovery', transaction.data);
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    assert.equal(intent.payer.id, replacement.id);
+    assert.equal(recoverAddress(intent.operation.hash, schedule[4][0].signature).toLowerCase(), guardian.address.toLowerCase());
+  } finally { initial.dispose(); controller?.dispose(); await f.close(); }
+});
+
+for (const changed of ['metadata', 'owner', 'payer'] as const)
+  test(`native Smart guardian rejects ${changed} changed after fee review before payer signing`, async () => {
+    const { f, guardian, open } = await smartGuardianRecoveryFixture();
+    const controller = await open();
+    try {
+      await controller.prepare(); await controller.review();
+      const review = controller.getSnapshot().feeReview!; assert(review);
+      assert.equal(f.signatures.length, 2); assert.equal(f.payerSignatures.length, 0);
+      if (changed === 'metadata') f.smartGuardian(guardian.address, ['0x' + '77'.repeat(20)]);
+      else f.replaceSoftwareOwner('HDAccount', changed === 'owner' ? 0 : 1);
+      await controller.confirm(review.id);
+      assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+      assert(f.runtime.getGuardianRecoveryIntent());
+    } finally { controller.dispose(); await f.close(); }
+  });
+
+for (const changed of ['Smart policy', 'recovery policy'] as const)
+  test(`native Smart guardian rechecks ${changed} after durable payer signing before broadcast`, async () => {
+    let armed = false;
+    let revoke: () => void = () => undefined;
+    const { f, guardian, policy, open } = await smartGuardianRecoveryFixture(false, { after(kind, sql) {
+      if (armed && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) { armed = false; revoke(); }
+    } });
+    const controller = await open();
+    try {
+      await controller.prepare(); await controller.review();
+      const review = controller.getSnapshot().feeReview!; assert(review);
+      revoke = () => {
+        if (changed === 'Smart policy') f.smartGuardian(guardian.address, ['0x' + '77'.repeat(20)]);
+        else policy.configure(guardian.address, 1200);
+      };
+      armed = true;
+      await controller.confirm(review.id);
+      assert.equal(armed, false, 'the regression must revoke authority after the actual signed-record write');
+      assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 0);
+      assert(f.runtime.getGuardianRecoveryIntent());
+    } finally { controller.dispose(); await f.close(); }
+  });
 
 test('clearing a canceled pre-sign recovery preserves both keys and only removes local tracking', async () => {
   const { f, controller, guardian, replacement } = await startNativeRecovery();
@@ -2092,7 +2287,7 @@ test('locking during new recovery observation cannot persist an intent or sign',
   try {
     await f.change({ kind: 'create-smart', label: 'Held recovery', password: PASSWORD });
     held = f.guardianStatus('hold');
-    const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacementId: 'hd:60:0' }, new AbortController().signal, () => undefined);
+    const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacementId: 'hd:60:0', payerId: 'hd:60:0' }, new AbortController().signal, () => undefined);
     const rejected = assert.rejects(pending);
     for (let i = 0; !held.methods().length && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert(held.methods().length); f.owner.lock(); held.release(); await rejected;

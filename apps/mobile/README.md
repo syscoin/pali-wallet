@@ -33,7 +33,7 @@ Ordinary Activity rows use indexed facts without per-row RPC enrichment. Retaine
 
 UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation window. EVM recent-history storage keeps up to 48 local terminal summaries, 24 indexed candidates and 20 list preferences within 60 KiB. Byte limits can reduce those counts. Older history remains available through a configured explorer.
 
-Guardian recovery uses an existing verified Smart account with local HD/imported guardian and replacement keys. The first flow supports threshold 1 and uses the guardian as fee payer. It saves public recovery intent before signing, resumes after interruption, and atomically adopts recovered metadata before releasing intent references. Pure watch accounts provide read-only status. Separate fee payers, higher thresholds, other authenticators and physical-device qualification remain open.
+Guardian recovery uses an existing verified Smart account with a local HD/imported ECDSA guardian or a deployed same-chain Smart guardian whose ECDSA/composite policy can be satisfied by local software keys. Threshold 1 recovery selects an independent HD/imported fee payer and replacement owner. It saves all three public identities before signing, rechecks canonical guardian policy around proof and payer signing, resumes through the saved payer after interruption, and atomically adopts recovered metadata before releasing intent references. Pure watch accounts provide read-only status. The recovery-alert action opens the same Sysnode email enrollment page as the extension. Higher recovery thresholds, P256/SLH or hardware guardian proofs, native/device and live-contract qualification remain open.
 
 ### Signed transaction recovery
 

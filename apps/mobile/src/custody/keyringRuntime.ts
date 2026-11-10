@@ -12,6 +12,9 @@ import { NativeSigningHandoffs, sameSigningResumeOwner, type NativeSigningHandof
 import { signNativeSmartTrezorOwner } from '../hardware/smartOwnerSigning.ts';
 import { snapshotNativeSmartLocalAction } from '../smartAccount/localAction.ts';
 import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '../../../../source/utils/smartAccount/ownerSigning.ts';
+import { createSmartAccountRawSigningIntent } from '../../../../source/utils/smartAccount/ownerSigningIntent.ts';
+import { getPaliErc7739PersonalSignHash } from '../../../../source/utils/smartAccount/erc7739.ts';
+import { encodeSmartAccountAuthenticatorSignature } from '../../../../source/utils/smartAccount/signature.ts';
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
@@ -932,8 +935,10 @@ export function createKeyringRuntimeFactory(
         const enteredPrivateSubmissions = new WeakSet<object>();
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
           selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
-          hardwareSigner: (NativeHardwareDappSigning & {keyring(): IndexedKeyring}) | null) {
+          hardwareSigner: (NativeHardwareDappSigning & {keyring(): IndexedKeyring}) | null,
+          validateSigningAndBroadcast: (() => Promise<void>) | null) {
           check();
+          if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
           const hardware = selected.type === 'Ledger' || selected.type === 'Trezor';
           if (hardware ? !hardwareSigner || typeof hardwareSigner.signTransaction !== 'function' || typeof hardwareSigner.keyring !== 'function'
             : (hardwareSigner !== null || (selected.type !== 'HDAccount' && selected.type !== 'Imported')))
@@ -958,6 +963,8 @@ export function createKeyringRuntimeFactory(
             sign(transaction, assertSigningCurrent) {
               return run(async (ownerGeneration) => {
                 const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
+                guard();
+                if (validateSigningAndBroadcast !== null) await validateSigningAndBroadcast();
                 guard();
                 if (hardwareSigner) return hardwareSigner.signTransaction(serializePreparedEvmTransaction(transaction), {signal, assertCurrent: guard});
                 if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
@@ -992,8 +999,11 @@ export function createKeyringRuntimeFactory(
                   ? bindEoaCallsSignedLifecycle(lifecycle, registry!, submission.attempt) : lifecycle;
               });
               if (metadata) enteredPrivateSubmissions.add(metadata);
-              const broadcast: Parameters<typeof sdk.submitSignedEvmTransaction<string>>[1] = ({rawTransaction, admit}) =>
-                sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast);
+              const broadcast: Parameters<typeof sdk.submitSignedEvmTransaction<string>>[1] = async ({rawTransaction, admit}) => {
+                if (validateSigningAndBroadcast !== null) await validateSigningAndBroadcast();
+                guard();
+                return sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast);
+              };
               const work = hardwareSigner
                 ? sdk.submitSignedHardwareEvmTransaction<string>(signed.rawTransaction, broadcast, boundary, undefined,
                     serializePreparedEvmTransaction(transaction), () => sender.verifyChain(signal, guard))
@@ -2008,7 +2018,7 @@ export function createKeyringRuntimeFactory(
                               check,
                               metadata,
                               NATIVE_EVM_FEE_FUNDING,
-                              { kind: 'fixed', gasLimit: PRIVACY_WITHDRAWAL_GAS }, null
+                              { kind: 'fixed', gasLimit: PRIVACY_WITHDRAWAL_GAS }, null, null
                             );
                             check();
                             if (
@@ -2237,7 +2247,7 @@ export function createKeyringRuntimeFactory(
                   check,
                   metadata,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }, null
+                  { kind: 'estimate' }, null, null
                 );
                 check();
                 prepared.set(owner.context, { quote, metadata });
@@ -3450,19 +3460,20 @@ export function createKeyringRuntimeFactory(
           const kind = Object.getOwnPropertyDescriptor(draft, 'kind')?.value;
           const input = readOwnData(
             draft,
-            kind === 'start' ? ['kind', 'guardianId', 'replacementId'] : ['kind']
+            kind === 'start' ? ['kind', 'guardianId', 'replacementId', 'payerId'] : ['kind']
           );
           if (
             (kind !== 'start' && kind !== 'resume') ||
             (kind === 'start' &&
               (typeof input.guardianId !== 'string' ||
-                typeof input.replacementId !== 'string'))
+                typeof input.replacementId !== 'string' || typeof input.payerId !== 'string'))
           )
             throw new KeyringRuntimeError('INVALID_INPUT');
           const request = Object.freeze({
             kind,
             guardianId: input.guardianId as string,
             replacementId: input.replacementId as string,
+            payerId: input.payerId as string,
           });
           const lifetime = new AbortController();
           const signal = lifetime.signal;
@@ -3489,10 +3500,13 @@ export function createKeyringRuntimeFactory(
               throw new KeyringRuntimeError('NOT_READY');
             let snapshot = initialSnapshot,
               account = initialAccount;
+            const targetIdentity = { address: initialAccount.address, xpub: initialAccount.xpub };
             const network = getNativeNetwork(
               snapshot.active.networkId,
               snapshot.networks
             );
+            let roleChecks: readonly (() => void)[] = [];
+            let rebindRoles: (() => void) | undefined;
             requireSmartAccountAddressIdentity(account, Number(network.chainId));
             const check = () => {
               checkGuard(assertOwner);
@@ -3503,9 +3517,14 @@ export function createKeyringRuntimeFactory(
                 !ring.isUnlocked() ||
                 catalogueSnapshot !== snapshot ||
                 selectedAccount() !== selected ||
-                state.accounts.SmartAccount[selected.index] !== account
+                state.accounts.SmartAccount[selected.index] !== account ||
+                account.address !== targetIdentity.address || account.xpub !== targetIdentity.xpub ||
+                state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type ||
+                state.activeNetwork.chainId !== Number(network.chainId) || state.activeNetwork.url !== network.rpcUrl || state.activeNetwork.slip44 !== 60
               )
                 throw new KeyringRuntimeError('CANCELLED');
+              requireSmartAccountAddressIdentity(account, Number(network.chainId));
+              for (const assertRoleCurrent of roleChecks) assertRoleCurrent();
             };
             const rpc = new EvmTransferReadRpc(network, {
               fetch: dependencies.connectionFetch ?? walletFetch,
@@ -3521,24 +3540,31 @@ export function createKeyringRuntimeFactory(
               paliSmartAccountInterface,
               provider
             );
-            const reference = (id: string) => {
+            const reference = (id: string, role: 'guardian' | 'software') => {
               const saved = snapshot!.accounts.find(
                 (entry) =>
                   entry.id === id &&
                   entry.slip44 === 60 &&
-                  (entry.type === 'HDAccount' || entry.type === 'Imported')
+                  (entry.type === 'HDAccount' || entry.type === 'Imported' || role === 'guardian' && entry.type === 'SmartAccount')
               );
               if (!saved) throw new KeyringRuntimeError('INVALID_INPUT');
               const key = state.accounts[saved.type]?.[saved.index];
               if (
-                !key?.xprv ||
+                !key || (saved.type !== 'SmartAccount' && !key.xprv) ||
                 key.address.toLowerCase() !== saved.address.toLowerCase()
               )
                 throw new KeyringRuntimeError('INVALID_INPUT');
+              if (saved.type === 'SmartAccount') requireSmartAccountAddressIdentity(key, Number(network.chainId));
+              const identity = { address: key.address, xpub: key.xpub, xprv: key.xprv };
               return {
                 saved,
                 key,
-                ref: Object.freeze({ id, address: saved.address, xpub: key.xpub }),
+                ref: Object.freeze({ id, address: saved.address, xpub: key.xpub.toLowerCase() }),
+                assertCurrent() {
+                  if (state.accounts[saved.type]?.[saved.index] !== key || key.address !== identity.address || key.xpub !== identity.xpub || key.xprv !== identity.xprv)
+                    throw new KeyringRuntimeError('CANCELLED');
+                  if (saved.type === 'SmartAccount') requireSmartAccountAddressIdentity(key, Number(network.chainId));
+                },
               };
             };
             const commit = async (
@@ -3556,6 +3582,7 @@ export function createKeyringRuntimeFactory(
                 snapshot = next;
                 selected = selectedAccount();
                 account = state.accounts.SmartAccount[selected.index]!;
+                rebindRoles?.();
               });
             };
             const readPolicy = async (operationId?: string) => {
@@ -3588,6 +3615,33 @@ export function createKeyringRuntimeFactory(
                   .policyEpoch(account.address)
                   .then((value: bigint) => value.toString()),
             };
+            const readGuardianSigningState = async (guardian: ReturnType<typeof reference>) => {
+              check(); guardian.assertCurrent();
+              if (guardian.saved.type !== 'SmartAccount') return null;
+              if (!guardian.key.smartAccount) throw new KeyringRuntimeError('NOT_READY');
+              const metadata = await readSmartAccountValidatorMetadata({
+                account: { ...guardian.key, smartAccount: guardian.key.smartAccount },
+                chainId: Number(network.chainId), provider, assertCurrent: check,
+              });
+              check(); guardian.assertCurrent();
+              const inventory = captureSmartSigningOwners();
+              const localOwners = inventory.localOwners.filter(owner => owner.type === 'HDAccount' || owner.type === 'Imported');
+              const plan = getNativeSmartAccountSigningPlan(metadata, localOwners, { slhDsa: false });
+              if (!metadata.isDeployed || !plan) throw new Error('This Smart guardian requires an unavailable authenticator');
+              const owners = plan.authenticators.flatMap(entry => entry.owners).map(owner => {
+                const type = owner.type;
+                if (type !== 'HDAccount' && type !== 'Imported') throw new KeyringRuntimeError('NOT_READY');
+                const record = inventory.ownerRecords.get(`${owner.type}:${owner.id}`);
+                if (!record?.xprv) throw new KeyringRuntimeError('NOT_READY');
+                const identity = { address: record.address, xpub: record.xpub, xprv: record.xprv };
+                return { owner, assertCurrent() {
+                  check();
+                  if (state.accounts[type]?.[owner.id] !== record || record.address !== identity.address || record.xpub !== identity.xpub || record.xprv !== identity.xprv)
+                    throw new KeyringRuntimeError('CANCELLED');
+                } };
+              });
+              return { metadata, localOwners, owners, fingerprint: JSON.stringify({ auth: getSmartAccountAuthHash(metadata.auth!), plan }) };
+            };
             let intent = getGuardianRecoveryIntent();
             check();
             await dataBinding(captured, check);
@@ -3595,8 +3649,9 @@ export function createKeyringRuntimeFactory(
             if (request.kind === 'start') {
               if (intent)
                 throw new Error('Resume or clear the existing recovery first');
-              const guardian = reference(request.guardianId),
-                replacement = reference(request.replacementId);
+              const guardian = reference(request.guardianId, 'guardian'),
+                replacement = reference(request.replacementId, 'software'),
+                payer = reference(request.payerId, 'software');
               const status = await readPolicy();
               if (
                 !status.exists ||
@@ -3608,6 +3663,7 @@ export function createKeyringRuntimeFactory(
                 status.pending
               )
                 throw new Error('The selected guardian cannot start this recovery');
+              await readGuardianSigningState(guardian);
               const target = {
                 auth: {
                   module: 'ecdsa' as const,
@@ -3635,12 +3691,14 @@ export function createKeyringRuntimeFactory(
                 }
               );
               check();
+              guardian.assertCurrent(); replacement.assertCurrent(); payer.assertCurrent();
               const canonical = captureGuardianRecoveryIntent({ operation, target });
               intent = Object.freeze({
                 accountId: selected.id,
                 ...canonical,
                 guardian: guardian.ref,
                 replacement: replacement.ref,
+                payer: payer.ref,
               });
               await commit({
                 kind: 'store-guardian-recovery',
@@ -3651,14 +3709,16 @@ export function createKeyringRuntimeFactory(
             } else if (!intent) throw new Error('No saved recovery is available');
             const savedIntent = intent!;
             const operationId = getGuardianRecoveryOperationId(savedIntent.operation);
-            const guardian = reference(savedIntent.guardian.id),
-              replacement = reference(savedIntent.replacement.id);
-            for (const [actual, saved] of [
-              [guardian.ref, savedIntent.guardian],
-              [replacement.ref, savedIntent.replacement],
-            ] as const)
-              if (actual.address !== saved.address || actual.xpub !== saved.xpub)
-                throw new KeyringRuntimeError('INVALID_INPUT');
+            let guardian: ReturnType<typeof reference>, replacement: ReturnType<typeof reference>, payer: ReturnType<typeof reference>;
+            rebindRoles = () => {
+              guardian = reference(savedIntent.guardian.id, 'guardian');
+              replacement = reference(savedIntent.replacement.id, 'software');
+              payer = reference(savedIntent.payer.id, 'software');
+              for (const [actual, saved] of [[guardian.ref, savedIntent.guardian], [replacement.ref, savedIntent.replacement], [payer.ref, savedIntent.payer]] as const)
+                if (actual.address !== saved.address || actual.xpub !== saved.xpub) throw new KeyringRuntimeError('INVALID_INPUT');
+              roleChecks = [guardian.assertCurrent, replacement.assertCurrent, payer.assertCurrent];
+            };
+            rebindRoles();
             const validate = async () => {
               await validateGuardianRecoveryOperation(
                 {
@@ -3685,13 +3745,13 @@ export function createKeyringRuntimeFactory(
             };
             const pendingTransaction = () => pendingGuardianRecoveryTransaction(
               savedIntent.operation,
-              { kind: 'ecdsa', guardian: guardian.ref.address },
+              { kind: guardian.saved.type === 'SmartAccount' ? 'contract' : 'ecdsa', guardian: guardian.ref.address },
               {
                 read: async () => {
                   const saved = await signedRecords.readRecent(
                     { keyring: ring, assertCurrent: check },
                     network.chainId,
-                    guardian.ref.address,
+                    payer.ref.address,
                     EVM_SIGNED_RECORD_LIMITS.transactions
                   );
                   check();
@@ -3703,7 +3763,7 @@ export function createKeyringRuntimeFactory(
                   signedRecords,
                   { keyring: ring, assertCurrent: check },
                   network.chainId,
-                  guardian.ref.address,
+                  payer.ref.address,
                   entry.hash,
                   request => rpc.observation({ hash: request.hash, from: request.from, to: request.to, nonce: request.nonce }, signal, check),
                   check
@@ -3784,30 +3844,25 @@ export function createKeyringRuntimeFactory(
                 canAbandon: true,
               };
             };
-            const sign = async (owner: typeof guardian) =>
+            const sign = async (owner: ReturnType<typeof reference>, digest: string, validateAuthority: () => Promise<void>) =>
               run(async (ownerGeneration) => {
                 const guard = () => {
                   current(ownerGeneration);
                   check();
+                  owner.assertCurrent();
                 };
                 guard();
-                const signature = await ring.ethereumTransaction.ethSign(
-                  [owner.ref.address, savedIntent.operation.hash],
-                  {
-                    selectedAccount: {
-                      id: selected.index,
-                      type: selected.type,
-                      expectedAddress: selected.address,
-                    },
-                    targetAccount: {
-                      id: owner.saved.index,
-                      type: owner.saved.type,
-                      expectedAddress: owner.ref.address,
-                    },
-                    assertCurrent: guard, signal,
-                  }
-                );
+                if (owner.saved.type !== 'HDAccount' && owner.saved.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
+                await validateAuthority(); guard();
+                const identity = { id: owner.saved.index, type: owner.saved.type, address: owner.ref.address };
+                const signature = await signSmartAccountOwnerIntent({
+                  intent: createSmartAccountRawSigningIntent('recovery', digest, 'recovery-digest'),
+                  selectedSmart: { id: selected.index, type: selected.type, expectedAddress: selected.address },
+                  owner: identity, authority: { assertCurrent: guard, signal },
+                  sdk: smartOwnerSigningPorts(identity, signal, guard, ring, null),
+                });
                 guard();
+                await validateAuthority(); guard();
                 return signature;
               });
             handedOff = true;
@@ -3822,10 +3877,42 @@ export function createKeyringRuntimeFactory(
                   if (status.action !== action)
                     throw new Error('Recovery status changed');
                   await validate();
+                  const smartGuardian = action === 'schedule' ? await readGuardianSigningState(guardian) : null;
+                  const validateAuthority = async () => {
+                    await validate();
+                    if (smartGuardian) {
+                      for (const owner of smartGuardian.owners) owner.assertCurrent();
+                      const latest = await readGuardianSigningState(guardian);
+                      if (!latest || latest.fingerprint !== smartGuardian.fingerprint) throw new Error('Smart guardian policy changed');
+                      for (const owner of smartGuardian.owners) owner.assertCurrent();
+                    }
+                    check();
+                  };
                   let transaction;
                   if (action === 'schedule') {
-                    await sign(replacement);
-                    const signature = await sign(guardian);
+                    await sign(replacement, savedIntent.operation.hash, validateAuthority);
+                    let signature: string;
+                    if (smartGuardian) {
+                      const actionHash = getPaliErc7739PersonalSignHash({ accountAddress: guardian.ref.address, chainId: Number(network.chainId), hash: savedIntent.operation.hash });
+                      const approval = await signNativeSmartAccountActionHash({
+                        metadata: smartGuardian.metadata, actionHash, localOwners: smartGuardian.localOwners,
+                        accountId: guardian.saved.index, slhDsa: null, allowReservedSLHDSASignature: false, assertCurrent: check,
+                        assertOwnerCurrent(owner) {
+                          const capturedOwner = smartGuardian.owners.find(candidate => candidate.owner.type === owner.type && candidate.owner.id === owner.id && candidate.owner.address === owner.address);
+                          if (!capturedOwner) throw new KeyringRuntimeError('CANCELLED');
+                          capturedOwner.assertCurrent();
+                        },
+                        async signOwner(address, digest, owner, assertCurrent) {
+                          assertCurrent();
+                          const saved = snapshot.accounts.find(candidate => candidate.type === owner.type && candidate.index === owner.id && candidate.address.toLowerCase() === address.toLowerCase());
+                          if (!saved) throw new KeyringRuntimeError('CANCELLED');
+                          const result = await sign(reference(saved.id, 'software'), digest, validateAuthority);
+                          assertCurrent(); return result;
+                        },
+                      });
+                      signature = encodeSmartAccountAuthenticatorSignature(approval);
+                    } else signature = await sign(guardian, savedIntent.operation.hash, validateAuthority);
+                    await validateAuthority();
                     transaction = buildGuardianRecoveryScheduleTransaction({
                       account: account.address,
                       guardian: guardian.ref.address,
@@ -3840,7 +3927,7 @@ export function createKeyringRuntimeFactory(
                   check();
                   const prepared = await prepareOwnedEvmTransaction(
                     transaction,
-                    guardian.saved,
+                    payer.saved,
                     selected,
                     signal,
                     check,
@@ -3850,7 +3937,7 @@ export function createKeyringRuntimeFactory(
                       smartAccountRecoveryAccount: account.address,
                     },
                     NATIVE_EVM_FEE_FUNDING,
-                    { kind: 'estimate' }, null
+                    { kind: 'estimate' }, null, validateAuthority
                   );
                   check();
                   return Object.freeze({
@@ -3860,7 +3947,7 @@ export function createKeyringRuntimeFactory(
                       checkGuard(assertCurrent);
                       if ((await observe()).action !== action)
                         throw new Error('Recovery status changed');
-                      await validate();
+                      await validateAuthority();
                       check();
                       checkGuard(assertCurrent);
                       return prepared.submit(assertCurrent, onBroadcast, submission);
@@ -4028,7 +4115,7 @@ export function createKeyringRuntimeFactory(
                   if (state.accounts[payer.type]?.[payer.id] !== payerRecord || payerRecord?.address.toLowerCase() !== owned.address.toLowerCase())
                     throw new KeyringRuntimeError('CANCELLED');
                 };
-                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null);
+                return prepareOwnedEvmTransaction(request, owned, selected, signal, guard, metadata, funding, { kind: 'estimate' }, null, null);
               },
               async waitForReceipt(hash, transaction, signal, assertCurrent, operation) {
                 const guard = () => { check(); checkGuard(assertCurrent); if (signal.aborted) throw new KeyringRuntimeError('CANCELLED'); };
@@ -4975,7 +5062,7 @@ export function createKeyringRuntimeFactory(
                   check,
                   undefined,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding, input.handoff)
+                  { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding, input.handoff), null
                 );
               },
               encryptionSdk(input) {

@@ -1,3 +1,5 @@
+import { PALI_RECOVERY_ALERTS_URL } from '../../../../source/shared/smartAccountLinks.ts';
+import { getNativeGuardianRecoveryChoices } from '../smartAccount/guardianRecovery';
 import { NativeNoteMaintenance } from './NativeNoteMaintenance';
 import { NativePrivacyControls } from './NativePrivacyControls';
 import { NativeEncryptionReviewScreen } from './NativeEncryptionReview';
@@ -20,7 +22,7 @@ import { IdleTextInput } from './IdleActivityBoundary';
 import { isNativeNewPassword, NEW_PASSWORD_HELP } from '../custody/password';
 import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Linking, Platform, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeRecoveryCoordinator, createNativeWalletControllers } from '../platform/nativeFactory';
 import { NativeControllerLifecycle } from '../custody/nativeControllerLifecycle';
@@ -305,7 +307,12 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     recovery: guardianRecoveryController ? {
       chainId: Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId),
       currency: getNativeNetwork(snapshot.account.network, catalogue?.networks).symbol,
-      accounts: (catalogue?.accounts ?? []).filter(account => account.slip44 === 60 && (account.type === 'HDAccount' || account.type === 'Imported')),
+      ...getNativeGuardianRecoveryChoices(catalogue?.accounts ?? [], Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId)),
+      openRecoveryAlerts: async () => {
+        if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
+          throw new Error('CANCELLED');
+        await Linking.openURL(PALI_RECOVERY_ALERTS_URL);
+      },
       hasIntent: guardianRecoveryController.hasIntent(),
       onActivity: (payerId: string, chainId: number, hash: string) => openRecoveryActivity(payerId, chainId, hash),
       open: (draft: Parameters<Controllers['guardianRecovery']['open']>[0], signal: AbortSignal, assertView: () => void) => guardianRecoveryController.open(draft, signal, () => {

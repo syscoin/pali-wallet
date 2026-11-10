@@ -137,6 +137,33 @@ const action = (tree: Element, name: string) => {
 };
 const navigation = { registerBack: () => () => {}, setImmersive() {} };
 
+test('guardian status exposes recovery alerts after policy observation and retires old actions', async () => {
+  const lifetime = new AbortController();
+  let opened = 0;
+  const view = screen('WatchGuardianRecovery', {
+    address: '0x' + '11'.repeat(20), networkLabel: 'Ethereum',
+    lifetime: lifetime.signal, onBack() {},
+    recovery: { hasIntent: false, async openRecoveryAlerts() { opened++; } },
+    async read() {
+      return { status: 'observed', observation: { exists: true, active: null, observedBlock: { number: 42 } } };
+    },
+  });
+  const label = nativeTranslationFixture.useNativeTranslation().t('settings.smartAccountRecoveryEmailAlerts');
+  assert.ok(!all(view.render()).some((node) => node.props.title === label));
+  action(view.render(), 'Check status');
+  await new Promise<void>((done) => setImmediate(done));
+  const button = all(view.render()).find((node) => node.props.title === label);
+  assert.ok(button);
+  button.props.onPress();
+  assert.equal(opened, 1);
+  lifetime.abort();
+  button.props.onPress();
+  assert.equal(opened, 1);
+  view.dispose();
+  button.props.onPress();
+  assert.equal(opened, 1);
+});
+
 for (const available of [false, true])
   test(`Tools guardian entry follows the supplied account capability (${available})`, () => {
     let reads = 0;
