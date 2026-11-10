@@ -1,10 +1,12 @@
+import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
+import { nativeSmartLedgerDevice } from './nativeSmartLedgerDevice.ts';
 import type { NativeSlhKey, NativeSlhTree } from '../src/crypto/slhDsaNativeExecution.ts';
 import type { SlhDsaExecutionHost } from '../../../source/wallet/slhDsaExecution.ts';
 import type { IKeyringAccountState } from '../../../source/types/network.ts';
 import type { NativeSlhPublicState, NativeSlhExecutionCapability } from '../src/smartAccount/slhDsaRuntime.ts';
 import { getSLHDSAKeyId, getSLHDSAStateStorageKey, SLH_DSA_SIGNATURE_LIMIT } from '../../../source/utils/slhDsa/constants.ts';
 import { prepareSmartAccountMessage, encodeSmartAccountMessageSignature } from '../../../source/utils/smartAccount/messageSigning.ts';
-import type { DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
+import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
 import { decodeNftSafeTransferData } from '../../../source/shared/nftTransfer.ts';
@@ -25,7 +27,7 @@ import { keccak256 } from 'ethers/crypto';
 import { concat, getBytes, hexlify } from 'ethers/utils';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
-import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
@@ -48,7 +50,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, recordSignatures = false, slhFactory: NativeSlhExecutionCapability | null = null) {
+async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, recordSignatures = false, slhFactory: NativeSlhExecutionCapability | null = null, ledgerFactory?: KeyringRuntimeDependencies['createLedgerTransport']) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-smart-account-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   let initialized = false, substituteAddress = false, hold: (() => Promise<void>) | undefined;
@@ -83,6 +85,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
   const slhDerivations: number[] = [];
   let mutateSelectedSmart: ((mutate: (account: IKeyringAccountState) => void) => void) | undefined;
+  let mutateLedgerOwner: ((index: number, mutate: (account: IKeyringAccountState) => void) => void) | undefined;
   let installSlh: (() => void) | undefined;
   let replaceSoftwareOwner: ((type: 'HDAccount' | 'Imported', id: number) => void) | undefined;
   const openStorage = async () => {
@@ -223,7 +226,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         } else assert.fail(`Unexpected RPC ${request.method}`);
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  const factory = createKeyringRuntimeFactory({ slhExecution: slhFactory,
+  const factory = createKeyringRuntimeFactory({ slhExecution: slhFactory, ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
     ...(recordSignatures || slhFactory !== null ? { loadSdk: async () => {
       const sdk = await loadNativeKeyringSdk();
       const Base = sdk.HostKeyring;
@@ -238,6 +241,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const setState = this.setVaultStateGetter.bind(this);
           this.setVaultStateGetter = getter => {
             setState(getter);
+            mutateLedgerOwner = (index, mutate) => {const account = getter().accounts.Ledger[index]; assert(account); mutate(account);};
             mutateSelectedSmart = mutate => {
               const current = getter(), account = current.accounts.SmartAccount[current.activeAccount.id];
               assert(account?.smartAccount); mutate(account);
@@ -284,6 +288,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   await owner.refreshAuthenticatedMetadata();
   return {
     slhDerivations,
+    mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
     get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures, spendabilityReads,
@@ -2813,4 +2818,151 @@ test('actual Smart password reset authenticates retained SLH ciphertext before a
     assert.deepEqual(await f.storage.recovery.readSnapshot(), before);
     assert.deepEqual(f.slhDerivations, [0]); assert.deepEqual(backend.actions, []); assert.equal(f.submitted.length, 0);
   } finally { await f.close(); }
+});
+
+async function readyLedgerSmartOwner(count = 1) {
+  const device = nativeSmartLedgerDevice();
+  const f = await fixture({}, true, null, device.factory);
+  const picker = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'import');
+  try {
+    for (let index = 0; index < count; index++) {
+      await picker.start(); await picker.select(picker.getSnapshot().devices[0]!.id); await picker.importAccount(`Ledger owner ${index}`);
+    }
+    await f.change({kind: 'create-smart', label: 'Ledger Smart account', password: PASSWORD});
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners(device.wallets.slice(0, count).map(wallet => wallet.address), count);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+    const connection = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'connect');
+    return {f, device, connection, async close() {await connection.dispose(); await picker.dispose(); await f.close();}};
+  } catch(error) {await picker.dispose(); await f.close(); throw error;}
+}
+async function connectLedgerSmart(f: Awaited<ReturnType<typeof readyLedgerSmartOwner>>) {
+  await f.connection.start(); await f.connection.select(f.connection.getSnapshot().devices[0]!.id); await f.connection.finishConnection();
+}
+
+test('Ledger Smart owner connection verifies every planned key while preserving selected Smart account and consent', async () => {
+  const owned = await readyLedgerSmartOwner(2), {f, device} = owned;
+  try {
+    const catalogue = f.owner.getCatalogue(), active = catalogue!.active.accountId;
+    assert.equal(f.runtime.canSignSmartAccount(), true, 'disconnected capability permits entering its connection review');
+    assert.deepEqual(f.runtime.ledger.getConnectionTargets(), ['ledger:60:0', 'ledger:60:1']);
+    assert.equal(owned.connection.isConnected(), false);
+    const before = device.addressReads.length;
+    await connectLedgerSmart(owned);
+    assert.deepEqual(device.addressReads.slice(before), [0, 1]);
+    assert.equal(f.owner.getCatalogue(), catalogue);
+    assert.equal(f.owner.getCatalogue()!.active.accountId, active);
+    assert.equal(device.signatures.length, 0, 'connecting never authorizes or signs');
+    const operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), {kind: 'exact', amount: '0.000001'}, () => undefined);
+    try {
+      await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
+      const pending = operation.authorize(operation.getSnapshot().revision);
+      for (let i=0; i<300 && !['complete', 'failed'].includes(operation.getSnapshot().phase); i++) {
+        const review = operation.getSnapshot().payerReview; if (review) operation.confirmPayer(review.id);
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      await pending;
+      assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+      assert.deepEqual(device.signatures.map(entry => entry.index), [0, 1]);
+      assert(device.signatures.every(entry => entry.digest === operation.getSnapshot().userOperationHash));
+      assert.equal(f.owner.getCatalogue()!.active.accountId, active);
+      assert(f.submitted.length > 0);
+    } finally {await operation.dispose();}
+  } finally {await owned.close();}
+});
+
+test('Ledger Smart owner connection rejects a mismatched later owner before any signing or funding', async () => {
+  const owned = await readyLedgerSmartOwner(2), {f, device} = owned;
+  try {
+    const active = f.owner.getCatalogue()!.active.accountId;
+    device.wrongKey(1);
+    await owned.connection.start();
+    await assert.rejects(owned.connection.select(owned.connection.getSnapshot().devices[0]!.id));
+    assert.equal(owned.connection.isConnected(), false);
+    assert.match(owned.connection.getSnapshot().error!, /every required owner/);
+    assert.equal(device.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(f.owner.getCatalogue()!.active.accountId, active);
+  } finally {await owned.close();}
+});
+
+test('Ledger Smart owner cannot sign before verified connection and an incompatible proof cannot prefund', async () => {
+  const owned = await readyLedgerSmartOwner(), {f, device} = owned;
+  try {
+    const blocked = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), {kind: 'exact', amount: '0.000001'}, () => undefined);
+    try {await blocked.prepare(); await blocked.authorize(blocked.getSnapshot().revision); assert.equal(blocked.getSnapshot().phase, 'failed');}
+    finally {await blocked.dispose();}
+    assert.equal(device.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    await connectLedgerSmart(owned); device.wrongProof(); f.smartBalance(10n ** 12n);
+    const operation = await f.runtime.openSmartAccountSend('0x' + '55'.repeat(20), {kind: 'exact', amount: '0.000001'}, () => undefined);
+    try {await operation.prepare(); await operation.authorize(operation.getSnapshot().revision); assert.equal(operation.getSnapshot().phase, 'failed');}
+    finally {await operation.dispose();}
+    assert.equal(f.submitted.length, 0, 'wrong owner digest is rejected before prefunding or any wire POST');
+  } finally {await owned.close();}
+});
+
+test('Ledger Smart owner dapp personal and V4 signing uses exact typed intents without selecting the owner account', async () => {
+  const owned = await readyLedgerSmartOwner(), {f, device} = owned;
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    await connectLedgerSmart(owned); connection = await smartMessageApproval(f);
+    const selected = connection.selected;
+    const requests = [readDappMessageRequest('personal_sign', ['Ledger Smart message', selected.address], selected.address)!,
+      readDappMessageRequest('eth_signTypedData_v4', [selected.address, {types: {EIP712Domain: [], Message: [{name:'text',type:'string'}]}, primaryType:'Message', domain:{}, message:{text:'Ledger Smart typed'}}], selected.address)!];
+    for(const request of requests) {
+      const prepared = prepareSmartAccountMessage({accountAddress:selected.address,chainId:1,request});
+      const signature = await connection.host.signMessage({accountId:selected.id, networkId:connection.host.context().networkId, request, approval:connection.approval});
+      assert.match(signature, /^0x[0-9a-f]+$/i);
+      assert.equal(device.signatures.at(-1)!.digest, prepared.actionHash);
+      assert.equal(f.owner.getCatalogue()!.active.accountId, selected.id);
+    }
+    assert.equal(f.submitted.length, 0);
+  } finally {connection?.approval.dispose(); await owned.close();}
+});
+
+for (const boundary of ['Back', 'lock', 'account', 'network'] as const) test(`Ledger Smart owner held connection retires on ${boundary} without adopting a device or changing consent`, async () => {
+  const owned = await readyLedgerSmartOwner(), {f, device} = owned;
+  let release!: () => void, enter!: () => void;
+  const entered = new Promise<void>(resolve => {enter = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+  try {
+    device.holdAddress(async () => {enter(); await held;});
+    await owned.connection.start();
+    const selecting = owned.connection.select(owned.connection.getSnapshot().devices[0]!.id);
+    const refused = assert.rejects(selecting);
+    await entered;
+    if (boundary === 'Back') await owned.connection.close();
+    if (boundary === 'lock') f.owner.lock();
+    if (boundary === 'account') await f.change({kind: 'select', id: 'hd:60:0'});
+    if (boundary === 'network') await f.selectNetwork('syscoin-nevm');
+    release(); await refused;
+    assert.equal(owned.connection.isConnected(), false);
+    assert.equal(device.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally {release(); await owned.close();}
+});
+
+for (const boundary of ['grant revocation', 'wallet lock'] as const) test(`Ledger Smart owner held dapp proof is withheld after ${boundary}`, async () => {
+  const owned = await readyLedgerSmartOwner(), {f, device} = owned;
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  let release!: () => void, enter!: () => void;
+  const entered = new Promise<void>(resolve => {enter = resolve;}), held = new Promise<void>(resolve => {release = resolve;});
+  try {
+    await connectLedgerSmart(owned); connection = await smartMessageApproval(f);
+    device.holdSignature(async () => {enter(); await held;});
+    const request = readDappMessageRequest('personal_sign', ['Held Ledger proof', connection.selected.address], connection.selected.address)!;
+    const signing = connection.host.signMessage({accountId:connection.selected.id, networkId:connection.host.context().networkId, request, approval:connection.approval});
+    const rejected = assert.rejects(signing);
+    await entered;
+    if (boundary === 'wallet lock') f.owner.lock(); else connection.revoke();
+    release(); await rejected;
+    assert.equal(device.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally {release(); connection?.approval.dispose(); await owned.close();}
+});
+
+for (const mutation of ['Ledger public key', 'Smart policy'] as const) test(`Ledger Smart owner connection loses readiness after in-place ${mutation} changes`, async () => {
+  const owned = await readyLedgerSmartOwner(), {f} = owned;
+  try {
+    await connectLedgerSmart(owned); assert(owned.connection.isConnected());
+    if (mutation === 'Ledger public key') f.mutateLedgerOwner(0, account => {account.xpub = '0x' + '99'.repeat(65);});
+    else f.mutateSelectedSmart(account => {account.smartAccount!.auth!.data = encodeEcdsaValidatorInitData([owned.device.wallets[0]!.address], 2);});
+    assert.equal(owned.connection.isConnected(), false);
+    assert.equal(owned.device.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally {await owned.close();}
 });

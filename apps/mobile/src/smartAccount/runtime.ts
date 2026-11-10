@@ -139,11 +139,11 @@ export function createNativeSmartOperation(
   let policySignal: AbortSignal;
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   const ownerFor = (address: string) => {
-    for (const type of ['HDAccount', 'Imported'] as const) {
+    for (const type of ['HDAccount', 'Imported', 'Ledger'] as const) {
       const owner = Object.values(ports.wallet.accounts[type]).find(
         (candidate) =>
           !candidate.isSmartAccount &&
-          !candidate.isLedgerWallet &&
+          (type === 'Ledger' || !candidate.isLedgerWallet) &&
           !candidate.isTrezorWallet &&
           candidate.address.toLowerCase() === address.toLowerCase()
       );
@@ -405,11 +405,11 @@ export function createNativeSmartOperation(
       });
       const localOwners: NativeSmartAccountSigningOwner[] = [];
       const ownerRecords = new Map<string, IKeyringAccountState>();
-      for (const type of ['HDAccount', 'Imported'] as const)
+      for (const type of ['HDAccount', 'Imported', 'Ledger'] as const)
         for (const owner of Object.values(ports.wallet.accounts[type]))
           if (
             !owner.isSmartAccount &&
-            !owner.isLedgerWallet &&
+            (type === 'Ledger' || !owner.isLedgerWallet) &&
             !owner.isTrezorWallet
           ) {
             localOwners.push({ address: owner.address, id: owner.id, type });

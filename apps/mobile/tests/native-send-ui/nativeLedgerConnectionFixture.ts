@@ -27,6 +27,7 @@ export function createLedgerConnectionFixture(address: string) {
     cancelAccountOperation() {},
   } as unknown as NativeCustodyAuthority;
   const runtime: NativeLedgerRuntime = {
+    getConnectionTargets: () => ['ledger:60:0'],
     isConnected: () => connected,
     subscribeStatus(listener) {
       listeners.add(listener);

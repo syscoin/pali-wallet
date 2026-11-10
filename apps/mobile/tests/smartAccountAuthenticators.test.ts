@@ -133,7 +133,7 @@ function fixture() {
       );
       if (
         index < 0 ||
-        accounts[owner.type][owner.id] !== records[index] ||
+        (owner.type === 'Ledger' ? undefined : accounts[owner.type][owner.id]) !== records[index] ||
         records[index]!.address !== owner.address
       )
         throw Error('OWNER_CHANGED');
@@ -308,8 +308,8 @@ test('the shared collector keeps contract child slots and ECDSA owner thresholds
   );
   assert.equal(
     f.calls.length,
-    1,
-    'shared collection cannot satisfy a second child using absent platform ports'
+    0,
+    'shared planning refuses an unsatisfiable policy before any signer is prompted'
   );
 });
 

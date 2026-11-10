@@ -146,6 +146,14 @@ function harness(
   };
   const dependencies: Record<string, unknown> = {
     react,
+    './useDappLedgerConnection': {
+      // These policy UI cases have no Ledger owner; real ownership/picker
+      // behavior is exercised by nativeSmartLedgerReview.test.ts.
+      useOwnedLedgerConnection: () => ({
+        blocked: false, showConnect: false, modal: null,
+        canApprove: () => true,
+      }),
+    },
     '../platform/localization': { useNativeTranslation: () => ({ t: (key: string) => {
       const dictionary = JSON.parse(readFileSync(new NodeURL(`../../../source/assets/locales/${language}.json`, import.meta.url), 'utf8'));
       return key.split('.').reduce((value: any, part) => value?.[part], dictionary) ?? key;

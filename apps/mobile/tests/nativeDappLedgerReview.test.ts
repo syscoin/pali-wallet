@@ -5,7 +5,7 @@ import { formatBaseUnits } from '../src/core/amounts.ts';
 import { screenElements, screenFixture, type ScreenElement } from './screenFixture.ts';
 
 type LedgerState = ReturnType<typeof useDappLedgerConnection>;
-function fixture(kind: 'message' | 'transaction' | 'psbt' = 'message') {
+function fixture(kind: 'message' | 'transaction' | 'psbt' | 'smart-transaction' = 'message') {
   let clock = 100, connected = false, closes = 0, timerId = 0, current: object | null;
   const timers = new Map<number, () => void>(), approvals: unknown[][] = [], deviceActions: string[] = [];
   const review: any = { kind, id: 'exact-request', revision: 7, expiresAt: 1000, busy: false, dispatched: false,
@@ -15,6 +15,7 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' = 'message') {
     method: kind === 'message' ? 'personal_sign' : 'eth_sendTransaction', message: 'Exact message', order: null,
     transaction: { from: `0x${'12'.repeat(20)}`, to: `0x${'34'.repeat(20)}`, value: '1', data: '0x', nonce: '3' },
     maximumFeeUnits: '1', maximumTotalUnits: '2', feeChoice: null, feeComparison: null, approval: null, broadcastHash: null };
+  if (kind === 'smart-transaction') Object.assign(review, {operation: {phase:'authorize', revision:3, intent:{kind:'dapp-call'}}, batchApprovals:undefined});
   if (kind === 'psbt') Object.assign(review, { attempted: false, details: {} });
   current = review;
   const controller: any = { getSnapshot: () => ({ signingReview: kind === 'psbt' ? null : current, psbtReview: kind === 'psbt' ? current : null }),
@@ -29,9 +30,10 @@ function fixture(kind: 'message' | 'transaction' | 'psbt' = 'message') {
     './NativeLedger': { NativeLedgerConnectionModal: 'LedgerModal' },
   }, globals);
   const state = () => hook.render({ review, controller, ledgerConnection }) as unknown as LedgerState;
-  const screen = screenFixture(new URL(`../src/screens/${kind === 'message' ? 'NativeMessageReview' : 'NativeTransactionReview'}.tsx`, import.meta.url),
-    kind === 'message' ? 'NativeMessageReviewScreen' : 'NativeTransactionReviewScreen', {
+  const screen = screenFixture(new URL(`../src/screens/${kind === 'smart-transaction' ? 'NativeSmartTransactionReview' : kind === 'message' ? 'NativeMessageReview' : 'NativeTransactionReview'}.tsx`, import.meta.url),
+    kind === 'smart-transaction' ? 'NativeSmartTransactionReviewScreen' : kind === 'message' ? 'NativeMessageReviewScreen' : 'NativeTransactionReviewScreen', {
       './useDappLedgerConnection': { useDappLedgerConnection: state },
+      './NativeSmartAccountOperation': {NativeSmartAccountOperationContent:'SmartOperationContent'},
       'react-native': { ActivityIndicator: 'ActivityIndicator', View: 'View', KeyboardAvoidingView: 'KeyboardAvoidingView',
         Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -121,4 +123,23 @@ test('PSBT connection is review-owned, needs a fresh approval after connect and 
     f.review.attempted = true; const retired = f.state(); assert(!retired.canApprove()); assert(!retired.showConnect);
     original.connect(); assert.equal(f.state().modal, null);
   } finally { f.close(); }
+});
+
+
+test('Smart dapp review connects before approveRequest and keeps payer confirmation independent after its proof', async () => {
+  const f=fixture('smart-transaction');
+  try {
+    let content=f.render().find(value=>value.type==='SmartOperationContent')!;
+    assert(content.props.disabled); content.props.authorize(); assert.deepEqual(f.approvals,[]);
+    f.state().connect(); const connection=modal(f.state()); f.connect();
+    content=f.render().find(value=>value.type==='SmartOperationContent')!;
+    assert(content.props.disabled); assert.deepEqual(f.approvals,[]);
+    connection.props.onFinished(); content=f.render().find(value=>value.type==='SmartOperationContent')!;
+    assert(!content.props.disabled); content.props.authorize(); await Promise.resolve();
+    assert.deepEqual(f.approvals,[['exact-request',7,true]]);
+    f.review.operation={...f.review.operation,phase:'review-fee'}; f.connect(false);
+    content=f.render().find(value=>value.type==='SmartOperationContent')!;
+    assert(!content.props.disabled, 'owner device may disconnect after its proof; payer review retains its own controls');
+    assert(!f.state().showConnect);
+  } finally {f.close();}
 });

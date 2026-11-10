@@ -1,3 +1,5 @@
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
+import { useOwnedLedgerConnection } from './useDappLedgerConnection';
 import {
   formatTokenUnits,
   type Erc20Metadata,
@@ -46,7 +48,9 @@ function disposeDeployment(owner: DeploymentOwner): Promise<void> {
 export function NativeSmartAccountOperationRoute({
   open,
   onBack,
+  ledgerConnection,
 }: {
+  ledgerConnection?: NativeLedgerConnectionView;
   open(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   onBack(): void;
 }) {
@@ -116,6 +120,7 @@ export function NativeSmartAccountOperationRoute({
     return (
       <NativeSmartAccountOperationScreen
         controller={current.controller}
+        ledgerConnection={ledgerConnection}
         onBack={back}
       />
     );
@@ -147,7 +152,9 @@ export function NativeSmartAccountOperationRoute({
 export function NativeSmartAccountOperationScreen({
   controller,
   onBack,
+  ledgerConnection,
 }: {
+  ledgerConnection?: NativeLedgerConnectionView;
   controller: NativeSmartAccountOperation;
   onBack(): void;
 }) {
@@ -156,6 +163,12 @@ export function NativeSmartAccountOperationScreen({
     controller.getSnapshot,
     controller.getSnapshot
   );
+  const isReviewCurrent = useCallback(() => {
+    const current = controller.getSnapshot();
+    return current.revision === state.revision && current.phase === 'authorize';
+  }, [controller, state.revision]);
+  const ledger = useOwnedLedgerConnection({owner: controller, revision: state.revision, expiresAt: controller.authorizationExpiresAt,
+    available: state.phase === 'authorize', isReviewCurrent, ledgerConnection});
   useEffect(() => {
     void controller.prepare();
     return () => {
@@ -166,7 +179,9 @@ export function NativeSmartAccountOperationScreen({
     <NativeSmartAccountOperationContent
       state={state}
       onBack={onBack}
-      authorize={() => void controller.authorize(state.revision)}
+      disabled={state.phase === 'authorize' && ledger.blocked}
+      before={<>{ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}{ledger.modal}</>}
+      authorize={() => { if (ledger.canApprove()) void controller.authorize(state.revision); }}
       confirmPayer={(id) => controller.confirmPayer(id)}
       retryMetadata={() => void controller.retryMetadata()}
     />

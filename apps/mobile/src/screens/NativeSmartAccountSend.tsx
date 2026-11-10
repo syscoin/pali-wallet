@@ -1,3 +1,4 @@
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
@@ -69,7 +70,9 @@ export function NativeSmartAccountSend({
   collectible,
   onBack,
   recipientResolver,
+  ledgerConnection,
 }: {
+  ledgerConnection?: NativeLedgerConnectionView;
   open(
     recipient: string,
     amount: NativeSmartAccountAmount,
@@ -351,7 +354,7 @@ export function NativeSmartAccountSend({
       </SafeAreaView>
     );
   if (controller && !resolvedRecipient)
-    return <NativeSmartAccountOperationScreen controller={controller} onBack={back} />;
+    return <NativeSmartAccountOperationScreen ledgerConnection={ledgerConnection} controller={controller} onBack={back} />;
   if (controller)
     return (
       <>
@@ -359,7 +362,7 @@ export function NativeSmartAccountSend({
           <Text selectable style={styles.muted}>ENS name: {resolvedRecipient.input}</Text>
           <Text selectable style={styles.muted}>Resolved address: {resolvedRecipient.address}</Text>
         </SafeAreaView>}
-        <NativeSmartAccountOperationScreen controller={controller} onBack={back} />
+        <NativeSmartAccountOperationScreen ledgerConnection={ledgerConnection} controller={controller} onBack={back} />
       </>
     );
   return (

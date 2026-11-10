@@ -39,6 +39,7 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
   let cancelled = false,
     failSelect = false,
     connected = false;
+  let selectErrorCode: string | undefined;
   const authority = {
     getSnapshot: () => state,
     getCatalogue: () => catalogue,
@@ -59,6 +60,7 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
   } as unknown as NativeCustodyAuthority;
   const statusListeners = new Set<() => void>();
   const runtime: NativeLedgerRuntime = {
+    getConnectionTargets: () => ['ledger:60:0'],
     subscribeStatus(listener) {
       statusListeners.add(listener);
       return () => {
@@ -81,7 +83,7 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
         async select() {
           await selectWait;
           check();
-          if (failSelect) throw Error('Device disconnected');
+          if (failSelect) throw Object.assign(Error('Device disconnected'), selectErrorCode ? {code: selectErrorCode} : {});
           return { name: 'Ledger', address: '0x' + '11'.repeat(20) };
         },
         handoff() {
@@ -124,8 +126,9 @@ function fixture(purpose: 'import' | 'connect' = 'import') {
     error() {
       scanError?.(Error('scan failed'));
     },
-    failSelect() {
+    failSelect(code?: string) {
       failSelect = true;
+      selectErrorCode = code;
     },
     closeWait(value: Promise<void>) {
       closeWait = value;
@@ -408,4 +411,19 @@ test('a handed-off connection notifies subscribers immediately on disconnect', a
     await f.view.dispose();
     assert.equal(f.statusListeners(), 0);
   }
+});
+
+
+for (const code of ['INVALID_INPUT', 'LEDGER_SMART_OWNERS_UNAVAILABLE']) test(`Ledger wrong-key feedback stays specific to its account mode (${code})`, async () => {
+  const f = fixture('connect');
+  try {
+    await f.view.start(); f.failSelect(code);
+    await assert.rejects(f.view.select('1:0'), {code});
+    assert.equal(f.view.isConnected(), false);
+    const message = f.view.getSnapshot().error!;
+    if (code === 'INVALID_INPUT') {
+      assert.match(message, /Open the matching app on your Ledger/);
+      assert.doesNotMatch(message, /multiple Ledger|every required owner/);
+    } else assert.match(message, /every required owner.*multiple Ledger/);
+  } finally {await f.view.dispose();}
 });

@@ -1,3 +1,4 @@
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { getAddress } from 'ethers/address';
 import React, {
   useCallback,
@@ -31,6 +32,7 @@ import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation
 import { guardianDelayLabel } from './guardianPolicyLabels';
 
 export type NativeGuardianPolicyTool = {
+  ledgerConnection?: NativeLedgerConnectionView;
   chainId: number;
   inspectRemoval(
     signal: AbortSignal,
@@ -259,7 +261,7 @@ export function NativeGuardianPolicy({
     );
   if (operation)
     return (
-      <NativeSmartAccountOperationScreen controller={operation} onBack={back} />
+      <NativeSmartAccountOperationScreen ledgerConnection={port.ledgerConnection} controller={operation} onBack={back} />
     );
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>

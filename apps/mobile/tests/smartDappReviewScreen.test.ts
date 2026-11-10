@@ -32,6 +32,13 @@ function fixture() {
     useRef(initial: unknown) { const index = cursor++; if (!(index in hooks)) hooks[index] = { current: initial }; return hooks[index]; },
   };
   const imports: Record<string, unknown> = {
+    './useDappLedgerConnection': {
+      // This fixture reviews software-owner approval and allowance editing.
+      useDappLedgerConnection: () => ({
+        blocked: false, showConnect: false, modal: null,
+        canApprove: () => true,
+      }),
+    },
     react, 'react-native': { StyleSheet: { create: (value: unknown) => value }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
     './NativeSmartAccountOperation': { NativeSmartAccountOperationContent: 'Content' },
     './ApprovalReview': { ApprovalReview: 'Approval' }, './DappSiteStatus': { DappSiteStatus: 'Site' },

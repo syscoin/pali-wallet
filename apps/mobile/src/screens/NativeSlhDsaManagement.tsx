@@ -1,3 +1,4 @@
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +9,7 @@ import type { NativeSmartAccountOperation } from '../smartAccount/operation';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { NativeSmartAccountOperationScreen } from './NativeSmartAccountOperation';
 
-type Props = { open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSlhDsaManagement>; onBack(): void };
+type Props = { ledgerConnection?: NativeLedgerConnectionView; open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeSlhDsaManagement>; onBack(): void };
 type Snapshot = { prepared: readonly NativeSlhPublicState[]; installed: readonly { keyId: string; state: NativeSlhPublicState | null }[] };
 type Owner = { live: boolean; busy: boolean; abort: AbortController; work?: Promise<void>; closing?: Promise<void>; manager?: NativeSlhDsaManagement; operation?: NativeSmartAccountOperation };
 function retire(owner: Owner) {
@@ -18,7 +19,7 @@ function retire(owner: Owner) {
 }
 
 /** Local setup and status; the existing operation screen owns on-chain consent. */
-export function NativeSlhDsaManagementScreen({ open, onBack }: Props) {
+export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }: Props) {
   const { t } = useNativeTranslation();
   const selected = useRef<Owner | undefined>(undefined), mounted = useRef(false), callbacks = useRef({ onBack });
   const [epoch, setEpoch] = useState(0), [manager, setManager] = useState<NativeSlhDsaManagement>(), [snapshot, setSnapshot] = useState<Snapshot>();
@@ -72,7 +73,7 @@ export function NativeSlhDsaManagementScreen({ open, onBack }: Props) {
   }, [current]);
   const shownOwner = selected.current;
   const close = () => { if (shownOwner) back(shownOwner); };
-  if (operation) return <NativeSmartAccountOperationScreen controller={operation} onBack={() => { if (shownOwner) returnToStatus(shownOwner, operation); }} />;
+  if (operation) return <NativeSmartAccountOperationScreen ledgerConnection={ledgerConnection} controller={operation} onBack={() => { if (shownOwner) returnToStatus(shownOwner, operation); }} />;
   const action = (task: (owner: Owner, manager: NativeSlhDsaManagement) => Promise<void>) => {
     const owner = shownOwner, capturedManager = manager;
     if (!owner || !capturedManager || !current(owner) || owner.manager !== capturedManager) return;
