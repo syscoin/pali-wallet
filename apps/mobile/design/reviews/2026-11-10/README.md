@@ -2,7 +2,7 @@
 
 The 32 reference screens below compare the supplied PDF with **actual implemented React Native components**. Home, Send, Receive and Activity also include video stills. Each screen includes a narrow 320px capture.
 
-Source: `04466c2e9498dfd250ac575e393db72fceec0e1f`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
+Original comparison source: `04466c2e9498dfd250ac575e393db72fceec0e1f`. These are browser renders with public synthetic wallet, network and connection adapters. They demonstrate presentation and navigation; they do not qualify native biometrics, camera, hardware, protected storage or funded transactions. The displayed recovery phrase is a public test phrase.
 
 The update implements six-digit PIN creation/confirmation, optional native biometric entry, locked and recovery flows, operation-bound send authorization, and ordered-word backup verification. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release are documented in `vendor/sysweb3-operation/REVIEWED-CANDIDATE.json`.
 
@@ -1189,6 +1189,31 @@ Component: `NativeSmartAccountSend / SendNetworkCard`
 ![Smart account send form at 390px](extras/65-smart-send-form-390.png)
 
 ![Smart account send form at 320px](extras/65-smart-send-form-320.png)
+
+</details>
+
+
+The two watch-only settings additions below were captured at `f56efcd161caa58a73379d785bdcade27776fdea`. Unchanged earlier frames retain their original source revision in the additional-screen manifest.
+
+<details>
+<summary>66-watch-settings: Watch-only settings</summary>
+
+Component: `WatchSession / RealSettings`
+
+![Watch-only settings at 390px](extras/66-watch-settings-390.png)
+
+![Watch-only settings at 320px](extras/66-watch-settings-320.png)
+
+</details>
+
+<details>
+<summary>67-watch-auto-lock: Watch-only auto-lock</summary>
+
+Component: `WatchSession / AutoLockSettings`
+
+![Watch-only auto-lock at 390px](extras/67-watch-auto-lock-390.png)
+
+![Watch-only auto-lock at 320px](extras/67-watch-auto-lock-320.png)
 
 </details>
 
