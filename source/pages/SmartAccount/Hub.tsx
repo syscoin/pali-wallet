@@ -38,19 +38,20 @@ import { getAddress, isAddress } from 'utils/ethersV6Compat';
 import { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
-  encodeCompositeValidatorInitData,
-  encodeInstallValidatorModuleCall,
-  encodeRotateValidatorModuleCall,
-  encodeUninstallValidatorModuleCall,
   getAvailablePaliModules,
   getPaliModuleAddress,
   getSmartAccountLocalOwnerContexts,
-  isPaliSignableValidator,
   listCompositeChildCandidates,
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
 import type { CustomValidatorPreflightResult } from 'utils/smartAccount';
 import { hasVerifiedSmartAccountAddress } from 'utils/smartAccount/addressIdentity';
+import {
+  buildCompositeValidatorExecutions,
+  buildCustomValidatorInstallExecutions,
+  buildValidatorUninstallExecutions,
+  SmartAccountModuleCommandError,
+} from 'utils/smartAccount/moduleCommands';
 import { getSmartAccountActionErrorMessage } from 'utils/smartAccountErrors';
 
 import CompositeApprovalDialog from './CompositeApprovalDialog';
@@ -114,37 +115,6 @@ type HubScope = {
   navigationScope: string;
 };
 type ApprovalScope = HubScope & { expectedContext: IEvmTransactionContext };
-
-const buildCustomValidatorInstallExecutions = ({
-  accountAddress,
-  activeValidatorAddress,
-  activeValidatorData,
-  customInitData,
-  customValidatorAddress,
-}: {
-  accountAddress: string;
-  activeValidatorAddress: string;
-  activeValidatorData: string;
-  customInitData: string;
-  customValidatorAddress: string;
-}) => [
-  {
-    data: encodeInstallValidatorModuleCall(
-      customValidatorAddress,
-      customInitData
-    ),
-    target: accountAddress,
-    value: '0x0',
-  },
-  {
-    data: encodeRotateValidatorModuleCall(
-      activeValidatorAddress,
-      activeValidatorData
-    ),
-    target: accountAddress,
-    value: '0x0',
-  },
-];
 
 const SmartAccountHub = () => {
   const { t } = useTranslation();
@@ -525,13 +495,10 @@ const SmartAccountHub = () => {
       try {
         await assertApprovalSession(scope);
         await submitExecutions(
-          [
-            {
-              data: encodeUninstallValidatorModuleCall(module.address),
-              target: account.address,
-              value: '0x0',
-            },
-          ],
+          buildValidatorUninstallExecutions({
+            accountAddress: account.address,
+            validatorAddress: module.address,
+          }),
           scope
         );
         acknowledged = true;
@@ -912,58 +879,31 @@ const SmartAccountHub = () => {
       !isCurrentScope(scope)
     )
       return;
-    const { children, threshold } = compositeBuilder;
-    let normalizedChildren: string[];
+    let executions;
     try {
-      normalizedChildren = children.map(getAddress);
-    } catch {
-      alert.error(t('smartAccountHub.compositeInvalid'));
-      return;
-    }
-    if (
-      normalizedChildren.length === 0 ||
-      !Number.isSafeInteger(threshold) ||
-      threshold < 1 ||
-      threshold > normalizedChildren.length ||
-      new Set(normalizedChildren).size !== normalizedChildren.length ||
-      normalizedChildren.some(
-        (child) =>
-          child === '0x0000000000000000000000000000000000000000' ||
-          !compositeCandidates.some(
-            (candidate) =>
-              candidate.address.toLowerCase() === child.toLowerCase()
-          )
-      )
-    ) {
-      alert.error(t('smartAccountHub.compositeInvalid'));
-      return;
-    }
-    // Lockout guard: the composite must keep at least one Pali-signable
-    // child below threshold reach (i.e. signable children >= threshold).
-    const signableChildren = normalizedChildren.filter((child) => {
-      const childModule = installedValidators.find(
-        (module) => module.address.toLowerCase() === child.toLowerCase()
-      );
-      return (
-        childModule &&
-        isPaliSignableValidator(
-          childModule,
-          metadata,
-          isPaliValidatorAlgorithmSupported
-        ) &&
-        childModule.id !== 'composite'
-      );
-    });
-    if (signableChildren.length < threshold) {
-      alert.error(t('smartAccountHub.compositeLockout'));
-      return;
-    }
-
-    const compositeAddress = marketplaceModules.find(
-      (module) => module.id === 'composite'
-    );
-    if (!compositeAddress) {
-      alert.error(t('smartAccountHub.compositeUnavailable'));
+      executions = buildCompositeValidatorExecutions({
+        accountAddress: account.address,
+        metadata,
+        children: compositeBuilder.children,
+        threshold: compositeBuilder.threshold,
+        compositeValidatorAddress: marketplaceModules.some(
+          (module) => module.id === 'composite'
+        )
+          ? installedComposite?.address ??
+            getPaliModuleAddress(activeNetwork.chainId, 'composite')
+          : null,
+        isAlgorithmAvailable: isPaliValidatorAlgorithmSupported,
+      });
+    } catch (error) {
+      const key =
+        error instanceof SmartAccountModuleCommandError &&
+        error.code === 'COMPOSITE_LOCKOUT'
+          ? 'smartAccountHub.compositeLockout'
+          : error instanceof SmartAccountModuleCommandError &&
+            error.code === 'COMPOSITE_UNAVAILABLE'
+          ? 'smartAccountHub.compositeUnavailable'
+          : 'smartAccountHub.compositeInvalid';
+      alert.error(t(key));
       return;
     }
     const job = {};
@@ -983,53 +923,7 @@ const SmartAccountHub = () => {
         throw Object.assign(new Error('PALI_TRANSACTION_CONTEXT_CHANGED'), {
           transactionNotBroadcast: true,
         });
-      const initData = encodeCompositeValidatorInitData(
-        normalizedChildren,
-        threshold
-      );
-      const moduleAddress = installedComposite?.address;
-      if (moduleAddress) {
-        const isActive = moduleAddress.toLowerCase() === activeValidatorAddress;
-        await submitExecutions(
-          [
-            {
-              data: isActive
-                ? encodeRotateValidatorModuleCall(moduleAddress, initData)
-                : encodeUninstallValidatorModuleCall(moduleAddress),
-              target: account.address,
-              value: '0x0',
-            },
-            ...(!isActive
-              ? [
-                  {
-                    data: encodeInstallValidatorModuleCall(
-                      moduleAddress,
-                      initData
-                    ),
-                    target: account.address,
-                    value: '0x0',
-                  },
-                ]
-              : []),
-          ],
-          scope
-        );
-      } else {
-        // Fresh install: resolve the builtin composite module address.
-        await submitExecutions(
-          [
-            {
-              data: encodeInstallValidatorModuleCall(
-                getPaliModuleAddress(activeNetwork.chainId, 'composite'),
-                initData
-              ),
-              target: account.address,
-              value: '0x0',
-            },
-          ],
-          scope
-        );
-      }
+      await submitExecutions(executions, scope);
       if (isCurrentScope(scope)) {
         alert.success(t('smartAccountHub.compositeSaved'));
         compositeScope.current = undefined;
@@ -1054,14 +948,11 @@ const SmartAccountHub = () => {
   }, [
     account?.address,
     activeNetwork.chainId,
-    activeValidatorAddress,
     alert,
     assertCurrentScope,
     compositeBuilder,
-    compositeCandidates,
     controllerEmitter,
     installedComposite?.address,
-    installedValidators,
     marketplaceModules,
     metadata,
     isCurrentScope,
