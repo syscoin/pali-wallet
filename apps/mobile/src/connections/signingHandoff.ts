@@ -40,7 +40,63 @@ type Capture = Readonly<{
 }>;
 type Entry = Capture & Readonly<{wire: WalletConnectRequest; scope: SigningResumeScope}>;
 type LocalEntry = Capture & Readonly<{action: NativeSmartLocalAction; scope: LocalSigningResumeScope}>;
-type Suspended = { descriptor: Descriptor; token: object; timer: ReturnType<typeof setTimeout>; draining: Promise<unknown> };
+type PrivateContinuation = { retire(): void };
+type ContinuationOwner = {
+  phase: 'active' | 'suspended' | 'retired';
+  acquiring: boolean;
+  expiresAt: number;
+  assertCurrent(): void;
+  completeOwnerStep(final: boolean): void;
+  retireJob(): void;
+  job?: object;
+  continuation?: PrivateContinuation;
+};
+// Renderer-visible descriptors never carry signature outputs or custody state.
+const continuationOwners = new WeakMap<NativeSigningHandoff, ContinuationOwner>();
+export function captureNativeSigningContinuation<T extends PrivateContinuation>(handoff: NativeSigningHandoff, create: (expiresAt: number) => T): T {
+  const owner = continuationOwners.get(handoff);
+  if (!owner || owner.phase !== 'active') throw Error('REQUEST_EXPIRED');
+  if (owner.acquiring) { retireNativeSigningHandoff(handoff); throw Error('REQUEST_EXPIRED'); }
+  owner.acquiring = true;
+  const check = () => {
+    owner.assertCurrent();
+    if (continuationOwners.get(handoff) !== owner || owner.phase !== 'active' || Date.now() >= owner.expiresAt)
+      throw Error('REQUEST_EXPIRED');
+  };
+  try {
+    check();
+    if (!owner.continuation) {
+      const created = create(owner.expiresAt);
+      if (!created || typeof created.retire !== 'function') throw Error('Invalid signing continuation');
+      try { check(); } catch (error) { created?.retire(); throw error; }
+      owner.continuation = created;
+    }
+    if (!owner.continuation || typeof owner.continuation.retire !== 'function') throw Error('Invalid signing continuation');
+    check();
+    return owner.continuation as T;
+  } catch (error) { retireNativeSigningHandoff(handoff); throw error; }
+  finally { owner.acquiring = false; }
+}
+export function retireNativeSigningHandoff(handoff: NativeSigningHandoff): void {
+  const owner = continuationOwners.get(handoff);
+  if (!owner) return;
+  const active = owner.phase === 'active';
+  owner.phase = 'retired';
+  continuationOwners.delete(handoff);
+  const continuation = owner.continuation;
+  owner.continuation = undefined;
+  try { continuation?.retire(); } finally { if (active) owner.retireJob(); owner.job = undefined; }
+}
+export function completeNativeSigningOwnerStep(handoff: NativeSigningHandoff, final: boolean): void {
+  const owner = continuationOwners.get(handoff);
+  if (!owner || owner.phase !== 'active') throw Error('REQUEST_EXPIRED');
+  try {
+    if (typeof final !== 'boolean' || Date.now() >= owner.expiresAt) throw Error('REQUEST_EXPIRED');
+    owner.completeOwnerStep(final);
+    if (continuationOwners.get(handoff) !== owner || owner.phase !== 'active' || Date.now() >= owner.expiresAt) throw Error('REQUEST_EXPIRED');
+  } catch (error) { retireNativeSigningHandoff(handoff); throw error; }
+}
+type Suspended = { descriptor: Descriptor; token: object; timer: ReturnType<typeof setTimeout>; draining: Promise<unknown>; claimed: boolean; continuation?: PrivateContinuation };
 function freezePublicJson<T>(value: T): T {
   if(value&&typeof value==='object'){for(const child of Object.values(value))freezePublicJson(child);Object.freeze(value);}
   return value;
@@ -57,14 +113,16 @@ export class NativeSigningHandoffs {
   get size() { return this.suspended ? 1 : 0; }
   count(topic: string) { const value=this.suspended?.descriptor; return value?.kind === 'dapp' && value.binding.topic === topic ? 1 : 0; }
   has(wire: WalletConnectRequest) { const value=this.suspended?.descriptor; return value?.kind === 'dapp' && value.requestId === wire.id && value.binding.topic === wire.session.binding.topic; }
+  private cancelJob(job: object) {
+    this.retirement = this.retirement.then(() => this.options.cancel(job));
+    void this.retirement.catch(() => undefined);
+  }
   discard(descriptor = this.suspended?.descriptor, cancel = true) {
     const saved = this.suspended;
     if (!saved || saved.descriptor !== descriptor) return;
     clearTimeout(saved.timer); this.suspended = undefined;
-    if (cancel) {
-      this.retirement = this.retirement.then(() => this.options.cancel(saved.descriptor.job));
-      void this.retirement.catch(() => undefined);
-    }
+    const continuation = saved.continuation; saved.continuation = undefined; continuation?.retire();
+    if (cancel) this.cancelJob(saved.descriptor.job);
     this.options.changed();
   }
   private currentDescriptor(id: string) {
@@ -87,18 +145,34 @@ export class NativeSigningHandoffs {
   expire(id: number) { const value=this.suspended?.descriptor;if(value?.kind === 'dapp' && value.requestId === id)this.discard(value); }
   retired() { return this.retirement; }
   capture(entry: Entry): NativeSigningHandoff {
+    return this.captureDapp(entry, null);
+  }
+  resume(entry: Entry, descriptor: SigningHandoffDescriptor): NativeSigningHandoff {
+    if (this.suspended?.descriptor === descriptor && this.suspended.claimed) throw Error('REQUEST_EXPIRED');
+    if (descriptor.wire !== JSON.stringify(entry.wire)) { this.discard(descriptor); throw Error('REQUEST_EXPIRED'); }
+    return this.captureDapp(entry, descriptor);
+  }
+  private captureDapp(entry: Entry, resume: SigningHandoffDescriptor | null): NativeSigningHandoff {
     const fresh = entry.wire.freshness === 'fresh';
     if (entry.scope.trezor && !fresh) throw Error('REQUEST_EXPIRED');
     const wire=JSON.stringify(entry.wire),requestId=entry.wire.id,binding=Object.freeze({...entry.wire.session.binding});
-    return this.captureState(entry,fresh,(job,expiresAt,scope)=>Object.freeze({kind:'dapp',id:entry.id,binding,requestId,wire,scope:scope as SigningResumeScope,expiresAt,order:entry.order,job}),true);
+    return this.captureState(entry,fresh,(job,expiresAt,scope)=>Object.freeze({kind:'dapp',id:entry.id,binding,requestId,wire,scope:scope as SigningResumeScope,expiresAt,order:entry.order,job}),true,resume);
   }
   captureLocal(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction): NativeSigningHandoff {
+    return this.captureLocalState(entry, snapshotAction, null);
+  }
+  resumeLocal(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction, descriptor: LocalSigningHandoffDescriptor): NativeSigningHandoff {
+    if (this.suspended?.descriptor === descriptor && this.suspended.claimed) throw Error('REQUEST_EXPIRED');
+    return this.captureLocalState(entry, snapshotAction, descriptor);
+  }
+  private captureLocalState(entry: LocalEntry, snapshotAction: (action: NativeSmartLocalAction) => NativeSmartLocalAction, resume: LocalSigningHandoffDescriptor | null): NativeSigningHandoff {
     // Locally initiated public actions have a distinct admission source; they
     // never acquire WalletConnect freshness, topic or grant by fabrication.
     // The required local DTO capture keeps asset/signing dependencies out of PSBT transport.
     entry.assertCurrent(); measureJsonWorkBudget(entry.action,DAPP_REQUEST_LIMITS.bytes);
     const action = freezePublicJson(snapshotAction(entry.action));
-    return this.captureState(entry,true,(job,expiresAt,scope)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}));
+    if (resume && JSON.stringify(resume.action) !== JSON.stringify(action)) { this.discard(resume); throw Error('REQUEST_EXPIRED'); }
+    return this.captureState(entry,true,(job,expiresAt,scope)=>Object.freeze({kind:'local-smart',id:entry.id,action,scope,expiresAt,order:entry.order,job}),false,resume);
   }
   /** Bind canonical preparation once, before the queue exposes its new review. */
   bindPreparedScope(handoff: NativeSigningHandoff, scope: SigningResumeScope): void {
@@ -106,17 +180,35 @@ export class NativeSigningHandoffs {
     if (!bind) throw Error('REQUEST_EXPIRED');
     bind(scope);
   }
-  private captureState(entry: Capture, admitted: boolean, describe: (job: object, expiresAt: number, scope: SigningResumeScope | LocalSigningResumeScope) => Descriptor, allowPreparedBinding = false): NativeSigningHandoff {
+  private captureState(entry: Capture, admitted: boolean, describe: (job: object, expiresAt: number, scope: SigningResumeScope | LocalSigningResumeScope) => Descriptor, allowPreparedBinding: boolean, resume: Descriptor | null): NativeSigningHandoff {
     let scope=Object.freeze({...entry.scope});
+    const previous = this.suspended;
+    if (resume ? !previous || previous.descriptor !== resume || resume.id !== entry.id || resume.order !== entry.order ||
+        resume.expiresAt <= Date.now() || entry.expiresAt > resume.expiresAt ||
+        previous.claimed || !sameSigningResumeOwner(resume.scope, scope) || scope.unlockGeneration <= resume.scope.unlockGeneration
+      : previous?.descriptor.id === entry.id) {
+      if (resume) this.discard(resume);
+      throw Error('REQUEST_EXPIRED');
+    }
+    const continuationOwner: ContinuationOwner = { phase: 'active', acquiring: false, expiresAt: entry.expiresAt, assertCurrent: entry.assertCurrent,
+      completeOwnerStep(final) { entry.assertCurrent(); if (!eligible()) throw Error('REQUEST_EXPIRED'); marker = undefined; if (final) signatureReady = true; },
+      job: resume?.job, retireJob: () => { const job = continuationOwner.job; if (job) this.cancelJob(job); },
+      continuation: resume ? previous?.continuation : undefined };
+    if (resume && previous) { previous.claimed = true; previous.continuation = undefined; }
     let marker: { token: object; expiresAt: number; launchExpiresAt: number; job: object; scope: typeof scope } | undefined;
     let suspendedToken: object | undefined, signatureReady = false, launched = false, preparedBound = false;
-    const eligible = () => !signatureReady && entry.eligible();
+    const eligible = () => {
+      if (continuationOwner.phase !== 'active' || signatureReady) return false;
+      const result = entry.eligible();
+      return result === true && continuationOwner.phase === 'active' && !signatureReady && continuationOwners.get(handoff) === continuationOwner;
+    };
     const handoff: NativeSigningHandoff = Object.freeze({ id: entry.id, expiresAt: entry.expiresAt,
       beforeSuiteOpen: (expiresAt, job) => {
         entry.assertCurrent();
         if (!scope.trezor || !admitted || !eligible() || !Number.isSafeInteger(expiresAt) || expiresAt <= Date.now() || !job || typeof job !== 'object') throw Error('REQUEST_EXPIRED');
         const launch = { token: {}, job, scope, expiresAt: Math.min(expiresAt, entry.expiresAt), launchExpiresAt: Math.min(Date.now() + 5000, expiresAt, entry.expiresAt) };
         launched = true;
+        continuationOwner.job = job;
         marker = launch;
         return opened => {
           if (opened) return;
@@ -127,26 +219,40 @@ export class NativeSigningHandoffs {
       beforeSignature: () => { entry.assertCurrent(); if (!eligible()) throw Error('REQUEST_EXPIRED'); signatureReady = true; marker = undefined; },
       isSuspended: () => !!suspendedToken && this.suspended?.token === suspendedToken,
     });
+    continuationOwners.set(handoff, continuationOwner);
     this.controls.set(handoff, { ...(allowPreparedBinding ? { bindPreparedScope(next: SigningResumeScope) {
       entry.assertCurrent();
       const identity = (value: SigningResumeScope | LocalSigningResumeScope) => [
         'adapter' in value ? value.adapter : undefined, value.wallet, value.unlockGeneration, value.accountId,
         value.address, value.type, value.xpub, value.registration, 'grant' in value ? value.grant : undefined,
       ];
-      if (launched || signatureReady || JSON.stringify(identity(scope)) !== JSON.stringify(identity(next)) ||
+      if (continuationOwner.phase !== 'active' || launched || signatureReady || JSON.stringify(identity(scope)) !== JSON.stringify(identity(next)) ||
           next.trezor && !admitted || preparedBound && !sameSigningResumeOwner(scope, next)) throw Error('REQUEST_EXPIRED');
       scope = Object.freeze({ ...next }); preparedBound = true;
     } } : {}), background: () => {
-      if (!marker || !marker.scope.trezor || !admitted || !eligible() || marker.expiresAt <= Date.now() || marker.launchExpiresAt <= Date.now()) return false;
-      this.discard();
-      const descriptor = describe(marker.job,marker.expiresAt,marker.scope);
-      suspendedToken = marker.token;
-      const saved: Suspended = { descriptor, token: marker.token, timer: undefined as unknown as ReturnType<typeof setTimeout>, draining: Promise.resolve().then(() => entry.drain()).catch(() => undefined) };
-      saved.timer = setTimeout(() => this.discard(descriptor), descriptor.expiresAt - Date.now());
-      this.suspended = saved;
-      entry.retire();
-      this.options.changed();
-      return true;
+      const launch = marker;
+      if (!launch) return false;
+      const sameLaunch = () => continuationOwners.get(handoff) === continuationOwner && continuationOwner.phase === 'active' && !signatureReady &&
+        marker === launch && launch.scope.trezor && admitted && launch.expiresAt > Date.now() && launch.launchExpiresAt > Date.now();
+      try {
+        if (!sameLaunch() || !eligible() || !sameLaunch()) return false;
+        this.discard();
+        if (!sameLaunch() || !eligible() || !sameLaunch()) return false;
+        const descriptor = describe(launch.job,launch.expiresAt,launch.scope);
+        suspendedToken = launch.token;
+        const saved: Suspended = { descriptor, token: launch.token, timer: undefined as unknown as ReturnType<typeof setTimeout>, draining: Promise.resolve().then(() => entry.drain()).catch(() => undefined), claimed: false, continuation: continuationOwner.continuation };
+        continuationOwner.continuation = undefined;
+        continuationOwner.phase = 'suspended';
+        saved.timer = setTimeout(() => this.discard(descriptor), descriptor.expiresAt - Date.now());
+        this.suspended = saved;
+        entry.retire();
+        this.options.changed();
+        return this.suspended === saved;
+      } catch (error) {
+        try { if (this.suspended?.token === launch.token) this.discard(); }
+        finally { retireNativeSigningHandoff(handoff); }
+        throw error;
+      }
     } });
     return handoff;
   }

@@ -44,6 +44,7 @@ export type NativeTrezorSnapshot = Readonly<{
   networkLabel: string;
   accountLabel: string;
   address: string | null;
+  signer: Readonly<{ label: string; address: string; step: number; total: number }> | null;
   error: string | null;
 }>;
 

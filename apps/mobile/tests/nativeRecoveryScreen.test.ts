@@ -1,3 +1,5 @@
+import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
+import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
 import { DeviceUnlockPrompt } from '../src/platform/deviceUnlockPrompt.ts';
 import * as passwordPolicy from '../src/custody/password.ts';
 import assert from 'node:assert/strict';
@@ -20,7 +22,7 @@ import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
 
 function trezorLifecycle() {
   return {background() {}, async cancel() {}, subscribe: () => () => undefined,
-    getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+    getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null}),
   } satisfies Pick<NativeTrezorView, 'background' | 'cancel' | 'subscribe' | 'getSnapshot'>;
 }
 
@@ -232,6 +234,8 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
+    '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
     react: root.hook, 'react-native': leaf.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': { ...leaf.ui, Header: 'Header', PaliMark: 'PaliMark' },
     '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('not used before verification'); } },
@@ -328,6 +332,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
+    '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
     react: root.hook, 'react-native': root.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...root.ui, Header: 'Header', PaliMark: 'PaliMark' },
@@ -527,6 +533,8 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
+    '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
+    '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
     react: root.hook, 'react-native': root.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...root.ui, Header: 'Header', PaliMark: 'PaliMark' },

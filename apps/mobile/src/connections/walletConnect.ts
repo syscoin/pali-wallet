@@ -22,6 +22,12 @@ type Namespace = Readonly<{
   events: readonly string[];
   chains?: readonly string[];
 }>;
+type MutableNamespaces = Record<string, {
+  accounts: string[];
+  methods: string[];
+  events: string[];
+  chains?: string[];
+}>;
 export type WalletConnectNamespaces = Readonly<Record<string, Namespace>>;
 export type WalletConnectVerification = Readonly<{
   validation: 'VALID' | 'INVALID' | 'UNKNOWN';
@@ -95,16 +101,11 @@ interface SignClient {
   pair(input: { uri: string }): Promise<unknown>;
   approve(input: {
     id: number;
-    namespaces: Record<
-      string,
-      {
-        accounts: string[];
-        methods: string[];
-        events: string[];
-        chains?: string[];
-      }
-    >;
+    namespaces: MutableNamespaces;
   }): Promise<{ topic: string; acknowledged(): Promise<unknown> }>;
+  update(input: { topic: string; namespaces: MutableNamespaces }): Promise<{
+    acknowledged(): Promise<void>;
+  }>;
   reject(input: { id: number; reason: Reason }): Promise<void>;
   respond(input: {
     topic: string;
@@ -166,6 +167,14 @@ export type WalletConnectTransport = Readonly<{
     assertRequestCurrent: () => void,
     onDispatch: () => void
   ): Promise<void>;
+  updatePreparedAccount(
+    binding: NativeConnectionBinding,
+    id: number,
+    address: string,
+    signal: AbortSignal,
+    assertRequestCurrent: () => void,
+    onCommitted: (session: WalletConnectSession) => void
+  ): Promise<WalletConnectSession>;
   disconnect(binding: NativeConnectionBinding): Promise<void>;
   emit(
     binding: NativeConnectionBinding,
@@ -398,8 +407,10 @@ export async function openWalletConnectTransport(options: {
   const owned = <T>(promise: Promise<T>) => Promise.race([promise, aborted]);
   const listeners = new Map<EventName, (value: unknown) => void>();
   const proposals = new Map<number, WalletConnectProposal>();
-  const requests = new Map<string, Readonly<{ serialized: string; wire: WalletConnectRequest; session: string }>>();
+  const requests = new Map<string, Readonly<{ serialized: string; wire: WalletConnectRequest; session: string; history: unknown }>>();
   const dispatchedRequests = new Set<string>();
+  const preparedAccountAttempts = new WeakSet<WalletConnectRequest>();
+  const updatingTopics = new Set<string>();
   // Core history is keyed globally by numeric id, including across topics. Never
   // evict a negative identity: an overflow makes hardware replay proof unavailable.
   const seenRequestIds = new Set<number>();
@@ -479,6 +490,7 @@ export async function openWalletConnectTransport(options: {
     proposals.clear();
     requests.clear();
     dispatchedRequests.clear();
+    updatingTopics.clear();
     seenRequestIds.clear();
     startupTopics.clear();
     // Retirement is local and must also complete offline. Per-session remote
@@ -762,7 +774,7 @@ export async function openWalletConnectTransport(options: {
                   : immutable(copy(request.params, DAPP_REQUEST_LIMITS.bytes)),
               verification,
             });
-          requests.set(key, Object.freeze({ serialized, wire, session: JSON.stringify(current) }));
+          requests.set(key, Object.freeze({ serialized, wire, session: JSON.stringify(current), history: historical }));
           event = { type: 'request', request: wire };
         } else if (name === 'session_update') {
           event = {
@@ -846,7 +858,7 @@ export async function openWalletConnectTransport(options: {
       });
     });
     client = await owned(initializing);
-    if (typeof client.dispose !== 'function' || typeof client.getPendingSessionRequests !== 'function') return fail();
+    if (typeof client.dispose !== 'function' || typeof client.getPendingSessionRequests !== 'function' || typeof client.update !== 'function') return fail();
     // Snapshot before the first post-init storage barrier/listener admission.
     // SDK cached relay replay can arrive later than the pending snapshot. Its
     // original explicit expiry is at most seven days; Core history retains ids
@@ -1058,6 +1070,138 @@ export async function openWalletConnectTransport(options: {
             dispatchedRequests.delete(key);
           }
         }, assertBeforeHandoff);
+      },
+      updatePreparedAccount: (
+        binding: NativeConnectionBinding,
+        id: number,
+        address: string,
+        signal: AbortSignal,
+        assertRequestCurrent: () => void,
+        onCommitted: (session: WalletConnectSession) => void
+      ) => {
+        if (!signal || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function' || signal.aborted ||
+          typeof assertRequestCurrent !== 'function' || typeof onCommitted !== 'function')
+          return Promise.reject(new WalletConnectTransportError());
+        let expiresAt: number | undefined, timer: ReturnType<typeof setTimeout> | undefined;
+        let cancel!: () => void;
+        const cancelled = new Promise<never>((_resolve, reject) => {
+          cancel = () => reject(new WalletConnectTransportError());
+        });
+        void cancelled.catch(() => undefined);
+        signal.addEventListener('abort', cancel, { once: true });
+        const assertLifetime = () => {
+          if (signal.aborted || (expiresAt !== undefined && expiresAt <= Date.now())) fail();
+        };
+        const requestOwned = async <T>(promise: Promise<T>) => {
+          const result = await Promise.race([owned(promise), cancelled]);
+          assertLifetime();
+          return result;
+        };
+        let adopted: AdmittedRequest | undefined;
+        const assertTransportCurrent = () => {
+          guard();
+          if (client!.core !== core || core!.storage !== protocolStorage || client!.core.storage !== protocolStorage) fail();
+        };
+        const assertAdoptedCurrent = () => {
+          assertTransportCurrent();
+          assertLifetime();
+          assertRequestCurrent();
+          if (adopted && (!matchesPending(binding, id, adopted) ||
+            !unresolvedHistoryMatches(adopted.history, binding.topic, id, JSON.parse(adopted.serialized).params))) fail();
+        };
+        const updating = run(async () => {
+          const key = `${binding.topic}:${checkedId(id)}`;
+          const admitted = requests.get(key);
+          if (!admitted || !matchesPending(binding, id, admitted) ||
+            admitted.wire.method !== 'wallet_prepareSmartAccount' ||
+            !options.supportedMethods.includes(admitted.wire.method) ||
+            !/^eip155:\d+$/.test(admitted.wire.chainId) ||
+            typeof address !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(address) ||
+            preparedAccountAttempts.has(admitted.wire) || updatingTopics.has(binding.topic)) return fail();
+          expiresAt = admitted.wire.expiresAt;
+          assertLifetime();
+          timer = setTimeout(cancel, Math.max(0, expiresAt - Date.now()));
+          updatingTopics.add(binding.topic);
+          let attempted = false;
+          try {
+            await requestOwned(eventTail);
+            assertTransportCurrent();
+            guard(assertRequestCurrent);
+            if (!matchesPending(binding, id, admitted)) return fail();
+            const original = readSession(binding), chainId = admitted.wire.chainId;
+            const next = copy(original.namespaces) as MutableNamespaces;
+            let negotiated = false;
+            for (const [name, entry] of Object.entries(next)) {
+              const hasChainAccount = entry.accounts.some(value => value.startsWith(`${chainId}:`));
+              if ((name === 'eip155' || name === chainId) && hasChainAccount && entry.methods.includes(admitted.wire.method))
+                negotiated = true;
+              let replaced = false;
+              entry.accounts = entry.accounts.flatMap(value => {
+                if (!value.startsWith(`${chainId}:`)) return [value];
+                if (replaced) return [];
+                replaced = true;
+                return [`${chainId}:${address}`];
+              });
+            }
+            if (!negotiated) return fail();
+            const expected = Object.freeze({ ...original, namespaces: namespaces(next) });
+            const expectedSerialized = JSON.stringify(expected);
+            const historical = await requestOwned(readHistory(binding.topic, id, assertRequestCurrent));
+            assertTransportCurrent();
+            if (historical !== admitted.history ||
+              !unresolvedHistoryMatches(historical, binding.topic, id, JSON.parse(admitted.serialized).params) ||
+              !matchesPending(binding, id, admitted)) return fail();
+            guard(assertRequestCurrent);
+            // The SDK may persist the new namespaces before ACK. Never repeat
+            // this admission's update, even when dispatch or ACK is unknown.
+            preparedAccountAttempts.add(admitted.wire);
+            attempted = true;
+            const update = await requestOwned(client!.update({ topic: binding.topic, namespaces: copy(next) }));
+            assertTransportCurrent();
+            // After dispatch, prove correlation without moving the original
+            // request deadline. Commit notification precedes its final guard.
+            const matchesExpected = () => {
+              if (requests.get(key) !== admitted || dispatchedRequests.has(key)) return false;
+              try {
+                const current = readSession(binding), pending = record(client!.pendingRequest.get(id));
+                return JSON.stringify(current) === expectedSerialized && pending.topic === binding.topic &&
+                  JSON.stringify({ params: copy(pending.params, DAPP_REQUEST_LIMITS.bytes + 1024),
+                    verification: readVerification(pending.verifyContext, current.metadata.url) }) === admitted.serialized;
+              } catch { return false; }
+            };
+            if (!matchesExpected() || typeof update.acknowledged !== 'function') return fail();
+            await requestOwned(update.acknowledged());
+            assertTransportCurrent();
+            await requestOwned(barrier());
+            assertTransportCurrent();
+            const confirmedHistory = await requestOwned(readHistory(binding.topic, id, options.assertOwner));
+            assertTransportCurrent();
+            if (confirmedHistory !== historical ||
+              !unresolvedHistoryMatches(confirmedHistory, binding.topic, id, JSON.parse(admitted.serialized).params) ||
+              !matchesExpected()) return fail();
+            const confirmed = readSession(binding);
+            adopted = Object.freeze({ ...admitted, session: expectedSerialized });
+            requests.set(key, adopted);
+            const committed = onCommitted(confirmed);
+            if (committed !== undefined) {
+              void Promise.resolve(committed).catch(() => undefined);
+              return fail();
+            }
+            guard(assertAdoptedCurrent);
+            return confirmed;
+          } finally {
+            // Unknown dispatch/ACK keeps the topic fenced until disconnect or
+            // transport retirement; another request cannot continue this update.
+            if (!attempted) updatingTopics.delete(binding.topic);
+          }
+        }, assertAdoptedCurrent).then(result => {
+          updatingTopics.delete(binding.topic);
+          return result;
+        });
+        return requestOwned(updating).finally(() => {
+          signal.removeEventListener('abort', cancel);
+          if (timer !== undefined) clearTimeout(timer);
+        });
       },
       disconnect: (binding: NativeConnectionBinding) =>
         run(async () => {

@@ -1,6 +1,9 @@
+import { NativeSmartPreparationRequests } from './smartPreparationRequests.ts';
+import { getRequestedSmartAccountAuthenticator, type SmartAccountPreparationRequest } from '../../../../source/shared/smartAccountPreparation.ts';
+import type { NativeSmartCreationAllocation } from '../smartAccount/preparation.ts';
 import { SmartAccountModulesProjectionError } from '../../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, isSmartAccountModuleRequestMethod, normalizeSmartAccountModuleRequest, SmartAccountModuleRequestError, type SmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
-import { NativeSigningHandoffs, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
+import { NativeSigningHandoffs, retireNativeSigningHandoff, sameSigningResumeOwner, type NativeSigningHandoff, type SigningResumeScope, type SigningHandoffDescriptor } from './signingHandoff.ts';
 import { isDappEncryptionMethod, readDappEncryptionRequest, supportsDappEncryptionAccount, type DappEncryptionRequest } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { prepareDappEncryptionApproval } from '../../../../source/wallet/dappEncryptionApproval.ts';
 import { dappCaipChain, dappNamespace, DAPP_MODE_METHODS, normalizeDappModeRequest, type DappChainScope } from '../../../../source/shared/dappChainScope.ts';
@@ -99,6 +102,7 @@ const METHODS = Object.freeze([
   ...PSBT_DAPP_METHODS,
   'wallet_getCapabilities',
   'wallet_getSmartAccountModules',
+  'wallet_prepareSmartAccount',
   ...SMART_ACCOUNT_MODULE_REQUEST_METHODS,
   'eth_sendTransaction',
   'wallet_sendCalls',
@@ -281,6 +285,8 @@ export class NativeConnectionsController {
   private readonly proposals = new Map<number, WalletConnectProposal>();
   private readonly requests = new Map<string, PendingSigning>();
   private readonly controls: NativeDappControlRequests;
+  private readonly preparations: NativeSmartPreparationRequests;
+  private readonly preparationOwners = new WeakMap<WalletConnectRequest, { connection: Connected; session: WalletConnectSession; updating: boolean; check(): void }>();
   private readonly sentry: NativeSentryRequests;
   private readonly psbt: NativePsbtRequests;
   private readonly handoffs: NativeSigningHandoffs;
@@ -299,7 +305,7 @@ export class NativeConnectionsController {
       changed: () => { this.publish(); void this.controls?.prepare(); void this.sentry?.prepare(); void this.psbt?.prepare(); void this.prepareForegroundRequest(); } });
     this.controls = new NativeDappControlRequests({
       host: () => this.host!.controls,
-      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.sentry?.firstOrder ?? Infinity, this.psbt?.firstOrder ?? Infinity),
+      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.sentry?.firstOrder ?? Infinity, this.psbt?.firstOrder ?? Infinity, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       respond: (wire, response, check) => this.transport!.respond(wire.session.binding, wire.id, response, check, () => {
@@ -309,26 +315,48 @@ export class NativeConnectionsController {
     });
     this.sentry = new NativeSentryRequests({
       host: () => this.host!.sentry,
-      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.psbt?.firstOrder ?? Infinity),
+      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.psbt?.firstOrder ?? Infinity, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
     });
     this.psbt = new NativePsbtRequests({
       host: () => this.host!.psbt,
-      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder),
+      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.preparations?.firstOrder ?? Infinity),
       changed: () => { this.publish(); void this.prepareForegroundRequest(); },
       checkSite: options.checkSite,
       respond: (wire, response, check, handedOff) => this.transport!.respond(wire.session.binding, wire.id, response, check, handedOff),
     });
+    this.preparations = new NativeSmartPreparationRequests({
+      host: () => this.host!,
+      foreground: order => order < Math.min(this.handoffs.firstOrder, this.requests.values().next().value?.queueOrder ?? Infinity, this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder),
+      changed: () => { this.publish(); void this.controls.prepare(); void this.sentry.prepare(); void this.psbt.prepare(); void this.prepareForegroundRequest(); },
+      checkSite: options.checkSite,
+      connect: (wire, allocation, signal, check) => this.connectPreparedAccount(wire, allocation, signal, check),
+      respond: (wire, response, check, dispatched) => this.transport!.respond(wire.session.binding, wire.id, response, check, dispatched),
+    });
     this.snapshot = this.project();
     this.view = Object.freeze({
+      approveSmartPreparation: async (id, revision, acknowledged) => {
+        if (revision !== this.revision) return failure('REQUEST_EXPIRED');
+        await this.preparations.approve(id, acknowledged);
+      },
+      confirmSmartPreparationPayer: async (id, revision, payerId) => {
+        if (revision !== this.revision) return failure('REQUEST_EXPIRED');
+        await this.preparations.confirmPayer(id, payerId);
+      },
+      retrySmartPreparationMetadata: async (id, revision) => {
+        if (revision !== this.revision) return failure('REQUEST_EXPIRED');
+        await this.preparations.retryMetadata(id);
+      },
+      rejectSmartPreparation: id => this.preparations.reject(id),
       approvePsbt: async (id, revision) => {
         if (revision !== this.revision) return failure('REQUEST_EXPIRED');
         await this.psbt.approve(id);
       },
       rejectPsbt: async id => { this.psbt.reject(id); },
       backgroundSigning: () => {
+        this.preparations.clear();
         this.psbt.background();
         const message = this.requests.values().next().value;
         if (message && !this.handoffs.background(message.handoff)) void this.retireRequest(message);
@@ -433,7 +461,7 @@ export class NativeConnectionsController {
             if (
               !message ||
               revision !== this.revision ||
-              (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder) ||
+              (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
               message.review.kind !== 'smart-transaction' ||
               message.review.error ||
               message.dispatched ||
@@ -475,7 +503,7 @@ export class NativeConnectionsController {
       if (phase !== 'ready') this.dismissStatus();
       if (phase !== 'ready' && (this.action || this.pairing)) this.cancel();
       this.revalidateSigningRequests();
-      this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff();
+      this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
       this.revalidateReads();
       const previous = this.publishedScope;
       const current = this.publicScope();
@@ -514,7 +542,7 @@ export class NativeConnectionsController {
   private unavailable() {
     if (!this.disposed) {
       for (const read of this.reads.values()) read.lifetime.abort();
-      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.handoffs.cancelDapp();
+      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
       this.restored = false;
       this.actionEpoch++;
       this.action?.abort();
@@ -650,6 +678,7 @@ export class NativeConnectionsController {
     }
     const evm = context?.network.kind === 'ethereum' || context?.network.kind === 'syscoin';
     return Object.freeze({
+      preparationReview: ready ? this.preparations?.review(this.revision) ?? null : null,
       controlReview: ready ? this.controls.review(this.revision) : null,
       psbtReview: ready ? this.psbt?.review(this.revision) ?? null : null,
       sentryReview: ready ? this.sentry?.review(this.revision) ?? null : null,
@@ -963,7 +992,7 @@ export class NativeConnectionsController {
         }
     } else if (event.type === 'request-expired') {
       for (const read of this.reads.values()) if (read.wire.id === event.id) read.lifetime.abort();
-      this.controls.expire(event.id); this.sentry.expire(event.id); this.psbt.expire(event.id); this.handoffs.expire(event.id);
+      this.controls.expire(event.id); this.preparations.expire(event.id); this.sentry.expire(event.id); this.psbt.expire(event.id); this.handoffs.expire(event.id);
       for (const message of this.requests.values())
         if (message.wire.id === event.id) this.retireRequest(message, false);
     } else if (event.type === 'request')
@@ -976,7 +1005,7 @@ export class NativeConnectionsController {
       });
     else if (event.type === 'unavailable') this.unavailable();
     this.revalidateSigningRequests();
-    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff();
+    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
     this.revalidateReads();
     this.publish();
   }
@@ -1252,7 +1281,7 @@ export class NativeConnectionsController {
     const revoking = connected.engine.revoke(session.binding.origin, {
       allowAlreadyDisconnected: true,
     });
-    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff(); this.revalidateReads();
+    this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff(); this.revalidateReads();
     await revoking;
     if (this.connections.get(key) !== connected || connected.session !== session || connected.engine.get(session.binding.origin)) return false;
     this.connections.delete(key);
@@ -1290,12 +1319,95 @@ export class NativeConnectionsController {
     return [...this.permissionRequests.values()].filter(value => !connection || value === connection).length +
       [...this.reads.values()].filter(value => !connection || value.connection === connection).length +
       [...this.requests.values()].filter(value => !connection || value.connection === connection).length +
-      (connection ? this.controls.count(connection.session.binding.topic) + this.sentry.count(connection.session.binding.topic) + this.psbt.count(connection.session.binding.topic) + this.handoffs.count(connection.session.binding.topic) : this.controls.size + this.sentry.size + this.psbt.size + this.handoffs.size);
+      (connection ? this.preparations.count(connection.session.binding.topic) + this.controls.count(connection.session.binding.topic) + this.sentry.count(connection.session.binding.topic) + this.psbt.count(connection.session.binding.topic) + this.handoffs.count(connection.session.binding.topic) : this.preparations.size + this.controls.size + this.sentry.size + this.psbt.size + this.handoffs.size);
   }
   private hasPendingWire(wire: WalletConnectRequest): boolean {
     const key = `${sessionKey(wire.session)}:${wire.id}`;
-    return this.permissionRequests.has(key) || this.reads.has(key) || this.controls.has(wire) || this.sentry.has(wire) || this.psbt.has(wire) || this.handoffs.has(wire) ||
+    return this.permissionRequests.has(key) || this.reads.has(key) || this.preparations.has(wire) || this.controls.has(wire) || this.sentry.has(wire) || this.psbt.has(wire) || this.handoffs.has(wire) ||
       [...this.requests.values()].some(value => value.wire.id === wire.id && value.session.binding.topic === wire.session.binding.topic);
+  }
+  private async queueSmartPreparation(wire: WalletConnectRequest) {
+    const connection = this.connections.get(sessionKey(wire.session)), host = this.host!, transport = this.transport!;
+    const context = host.context(), source = this.options.source.getSnapshot(), session = connection?.session;
+    const reject = (code: number, message: string) => transport.respond(wire.session.binding, wire.id, { error: { code, message } }, () => this.check(), () => {});
+    if (!connection || !session || source.phase !== 'ready' || !context.unlocked || context.network.kind !== 'ethereum' ||
+        JSON.stringify(session) !== JSON.stringify(wire.session) || wire.chainId !== `eip155:${context.network.chainId}` ||
+        !Object.values(session.namespaces).some(namespace => namespace.methods.includes(wire.method) && namespace.accounts.some(account => account.startsWith(`${wire.chainId}:`))))
+      return reject(4100, 'Smart account creation is not authorized for this session');
+    const selected = context.accounts.find(account => account.id === context.activeAccountId);
+    if (selected?.type === 'Ledger' || selected?.type === 'Trezor')
+      return reject(4874, 'Hardware wallets cannot interact with this request. Please switch to a different account.');
+    if (wire.freshness !== 'fresh') return reject(4001, 'Reissue a fresh smart account creation request');
+    assertProviderRequestBudget({ method: wire.method, params: wire.params });
+    if (this.hasPendingWire(wire)) return;
+    if (this.pendingCount() >= DAPP_REQUEST_LIMITS.pendingRequests || this.pendingCount(connection) >= DAPP_REQUEST_LIMITS.requestsPerOrigin)
+      return reject(-32005, 'Too many requests');
+    const request = ((Array.isArray(wire.params) ? wire.params[0] : wire.params) || {}) as SmartAccountPreparationRequest;
+    const fallbackLabel = `${new URL(session.binding.origin).hostname} Smart Account`.slice(0, 64);
+    const label = typeof request.label === 'string' && request.label.trim() ? request.label.trim() : fallbackLabel;
+    const network = JSON.stringify(context.network), generation = this.transportGeneration, wallet = host.walletBindingId;
+    const identity = (value: WalletConnectSession) => { const { namespaces: _namespaces, ...rest } = value; return JSON.stringify(rest); };
+    const owner = { connection, session, updating: false, check: () => {
+      this.check();
+      const next = host.context(), live = connection.session;
+      if (this.host !== host || this.transport !== transport || this.transportGeneration !== generation || host.walletBindingId !== wallet ||
+          this.options.source.getSnapshot().phase !== 'ready' || !next.unlocked || next.networkId !== context.networkId || JSON.stringify(next.network) !== network ||
+          this.connections.get(sessionKey(wire.session)) !== connection || wire.expiresAt <= Date.now() || live.expiry * 1000 <= Date.now() ||
+          (owner.updating ? identity(live) !== identity(owner.session) : JSON.stringify(live) !== JSON.stringify(owner.session)))
+        failure('CONTEXT_CHANGED');
+    } };
+    this.preparationOwners.set(wire, owner);
+    this.preparations.enqueue(wire, { label, authenticator: getRequestedSmartAccountAuthenticator(request) }, {
+      order: ++this.serial, networkId: context.networkId, networkLabel: context.networkLabel, chainId: String(context.network.chainId),
+      assertSessionCurrent: owner.check,
+      assertCurrent: () => {
+        owner.check();
+        if (this.options.source.getSnapshot().revision !== source.revision || host.context().activeAccountId !== context.activeAccountId)
+          failure('CONTEXT_CHANGED');
+      },
+    });
+  }
+  private async connectPreparedAccount(wire: WalletConnectRequest, allocation: NativeSmartCreationAllocation, signal: AbortSignal, assertCurrent: () => void): Promise<void> {
+    const owner = this.preparationOwners.get(wire), transport = this.transport!, host = this.host!;
+    if (!owner) return failure('REQUEST_EXPIRED');
+    const origin = wire.session.binding.origin, connection = owner.connection;
+    let grantRevocation: Promise<void> | undefined;
+    const cancelGrant = () => {
+      // The shared engine synchronously invalidates its pending grant before
+      // joining the durable revocation; a held write cannot publish it later.
+      grantRevocation ??= connection.engine.revoke(origin, { allowAlreadyDisconnected: true });
+      void grantRevocation.catch(() => this.unavailable());
+    };
+    const check = () => { if (signal.aborted) return failure('REQUEST_EXPIRED'); assertCurrent(); owner.check(); allocation.assertCurrent(); };
+    check();
+    owner.updating = true;
+    try {
+      // Revoke before the protocol mutation. A lost update acknowledgement must
+      // never leave the original account grant active or authorize the new one.
+      await connection.engine.revoke(origin, { allowAlreadyDisconnected: true });
+      check();
+      const session = await transport.updatePreparedAccount(wire.session.binding, wire.id, allocation.account.address, signal, check, current => {
+        owner.session = current;
+        if (this.connections.get(sessionKey(wire.session)) === connection) connection.session = current;
+      });
+      owner.updating = false;
+      check();
+      if (JSON.stringify(connection.session) !== JSON.stringify(session)) return failure('CONTEXT_CHANGED');
+      const context = host.context(), account = allocation.account;
+      signal.addEventListener('abort', cancelGrant, { once: true });
+      try {
+        check();
+        await connection.engine.connect({ host: origin, accountId: account.index, accountType: account.type as KeyringAccountType,
+          chain: context.network.kind, chainId: allocation.chainId, date: Date.now() },
+        { address: account.address, xpub: account.xpub, network: context.network });
+        check();
+      } finally { signal.removeEventListener('abort', cancelGrant); }
+    } catch (error) {
+      cancelGrant();
+      await grantRevocation;
+      this.notifyRemoteDisconnect(connection);
+      throw error;
+    } finally { owner.updating = false; }
   }
   private async queueControlRequest(wire: WalletConnectRequest) {
     const connection = this.connections.get(sessionKey(wire.session));
@@ -1454,7 +1566,7 @@ export class NativeConnectionsController {
         const revoking = connection.engine.revoke(origin, { allowAlreadyDisconnected: true });
         for (const message of [...this.requests.values()]) if (message.connection === connection) void this.retireRequest(message, false);
         for (const read of this.reads.values()) if (read.connection === connection) read.lifetime.abort();
-        this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.revalidatePsbtHandoff();
+        this.controls.revalidate(); this.sentry.revalidate(); this.psbt.revalidate(); this.preparations.revalidate(); this.revalidatePsbtHandoff();
         if (this.statusSession === session) this.dismissStatus();
         this.publish();
         try { await revoking; }
@@ -1533,6 +1645,7 @@ export class NativeConnectionsController {
   }
   private async respond(request: WalletConnectRequest) {
     this.check();
+    if (request.method === 'wallet_prepareSmartAccount') { await this.queueSmartPreparation(request); return; }
     if ((PSBT_DAPP_METHODS as readonly string[]).includes(request.method)) { await this.queuePsbtRequest(request); return; }
     if (isDappPermissionMethod(request.method)) {
       await this.respondPermissions(request);
@@ -1782,7 +1895,7 @@ export class NativeConnectionsController {
     const message = this.requests.values().next().value as
       | PendingSigning
       | undefined;
-    if (!message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder) return null;
+    if (!message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) return null;
     try {
       return Object.freeze({
         ...message.review,
@@ -1884,12 +1997,14 @@ export class NativeConnectionsController {
       throw error;
     }
   }
-  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope): NativeSigningHandoff {
-    return this.handoffs.capture({ id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
+  private captureSigningHandoff(message: PendingSigning, scope: SigningResumeScope, resume: SigningHandoffDescriptor | null): NativeSigningHandoff {
+    if (message.handoff) retireNativeSigningHandoff(message.handoff);
+    const entry = { id: message.resumeId, wire: message.wire, scope, expiresAt: message.review.expiresAt, order: message.queueOrder,
       assertCurrent: () => { const approval = message.approval; if (!approval) return failure('REQUEST_EXPIRED'); approval.assertCurrent(); if (this.requests.get(message.id) !== message || !this.requestConnectionCurrent(message)) failure('CONTEXT_CHANGED'); },
       eligible: () => message.busy && !message.dispatched && !message.resultReady && !message.broadcastHash && !message.eoa,
       drain: () => message.work ?? Promise.resolve(), retire: () => { void this.retireRequest(message, false); },
-    });
+    };
+    return resume ? this.handoffs.resume(entry, resume) : this.handoffs.capture(entry);
   }
   private revalidateSigningRequests() {
     for (const message of [...this.requests.values()]) {
@@ -1909,6 +2024,7 @@ export class NativeConnectionsController {
   ): Promise<void> {
     if (this.requests.get(message.id) !== message) return this.requestRetirement;
     this.requests.delete(message.id);
+    retireNativeSigningHandoff(message.handoff);
     const reservation = message.request.method === 'wallet_sendCalls'
       ? this.host?.calls
         .releaseSendCallsBundleReservation(
@@ -2225,14 +2341,17 @@ export class NativeConnectionsController {
         void this.retireRequest(message);
       }, Math.max(0, expiresAt - Date.now())),
     };
-    message.handoff = this.captureSigningHandoff(message, scope);
-    if (saved) {
-      const waiting = [...this.requests]; this.requests.clear(); this.requests.set(id, message);
-      for (const [key, value] of waiting) this.requests.set(key, value);
-      this.handoffs.discard(saved, false);
-    } else this.requests.set(id, message);
+    let handoffAdopted = false;
     try {
+      message.handoff = this.captureSigningHandoff(message, scope, saved ?? null);
+      if (saved) {
+        const waiting = [...this.requests]; this.requests.clear(); this.requests.set(id, message);
+        for (const [key, value] of waiting) this.requests.set(key, value);
+      } else this.requests.set(id, message);
       message.approval = this.captureSigningApproval(message);
+      if (saved) this.handoffs.discard(saved, false);
+      message.approval.assertCurrent();
+      handoffAdopted = true;
       this.publish();
       const site = await this.options.checkSite(origin);
       message.approval.assertCurrent();
@@ -2246,7 +2365,7 @@ export class NativeConnectionsController {
         message.approval.assertCurrent();
         if (
           this.requests.values().next().value === message &&
-          Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) > message.queueOrder &&
+          Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) > message.queueOrder &&
           context.activeAccountId === account.id &&
           !message.review.error
         )
@@ -2299,7 +2418,7 @@ export class NativeConnectionsController {
       this.publish();
     } catch {
       if (
-        isOperationRequest(message.request) &&
+        handoffAdopted && isOperationRequest(message.request) &&
         this.requestConnectionCurrent(message)
       ) {
         message.prepared = undefined;
@@ -2313,7 +2432,13 @@ export class NativeConnectionsController {
         this.publish();
         return;
       }
-      await this.retireRequest(message);
+      if (message.handoff) retireNativeSigningHandoff(message.handoff);
+      try { if (saved) this.handoffs.discard(saved); }
+      finally {
+        clearTimeout(message.timer);
+        message.approval?.dispose();
+        await this.retireRequest(message);
+      }
     }
   }
   private async prepareForegroundRequest(): Promise<void> {
@@ -2323,7 +2448,7 @@ export class NativeConnectionsController {
     const message = this.requests.values().next().value;
     if (
       !message ||
-      Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder ||
+      Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
       message.busy ||
       message.prepared ||
       message.smart ||
@@ -2637,7 +2762,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder) ||
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
       message.review.kind !== 'transaction' ||
       message.dispatched ||
       (message.broadcastHash && !message.eoa)
@@ -2718,7 +2843,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder) ||
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder) ||
       message.request.method !== 'eth_sendTransaction' ||
       message.review.kind === 'message' ||
       message.dispatched ||
@@ -2802,7 +2927,7 @@ export class NativeConnectionsController {
   private async previewEncryption(id: string, revision: number): Promise<string> {
     const message = this.requests.get(id);
     if (!message || revision !== this.revision || this.requests.values().next().value !== message ||
-      Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder ||
+      Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
       message.review.error || message.dispatched || this.host!.context().activeAccountId !== message.accountId) return failure('REQUEST_EXPIRED');
     if (message.busy || this.action) return failure('BUSY');
     message.busy = true;
@@ -2844,7 +2969,7 @@ export class NativeConnectionsController {
   private async performRetrySmartMetadata(id: string, revision: number): Promise<void> {
     const message = this.requests.get(id);
     if (!message || revision !== this.revision || this.requests.values().next().value !== message ||
-        Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder ||
+        Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder ||
         !isModuleRequest(message.request) || message.dispatched || message.resultReady || message.review.error ||
         this.host!.context().activeAccountId !== message.accountId || !message.smart || message.smart.getSnapshot().phase !== 'complete')
       return failure('REQUEST_EXPIRED');
@@ -2879,7 +3004,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder)
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder)
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -3003,7 +3128,7 @@ export class NativeConnectionsController {
     if (
       !message ||
       revision !== this.revision ||
-      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder) < message.queueOrder)
+      (this.requests.values().next().value !== message || Math.min(this.controls.firstOrder, this.sentry.firstOrder, this.psbt.firstOrder, this.handoffs.firstOrder, this.preparations.firstOrder) < message.queueOrder)
     )
       return failure('REQUEST_EXPIRED');
     if (message.dispatched) return failure('REQUEST_EXPIRED');
@@ -3039,7 +3164,7 @@ export class NativeConnectionsController {
       if (message.smart || message.prepared || message.eoa || message.dispatched || message.broadcastHash || message.resultReady || message.handoff.isSuspended()) return failure('REQUEST_EXPIRED');
       const scope = this.signingResumeScope(message.wire.session.binding, 'selected');
       if (!scope) return failure('REQUEST_EXPIRED');
-      message.handoff = this.captureSigningHandoff(message, scope);
+      message.handoff = this.captureSigningHandoff(message, scope, null);
       if (isOperationRequest(message.request))
         await this.prepareTransactionReview(message);
       message.busy = false;
@@ -3083,7 +3208,7 @@ export class NativeConnectionsController {
       this.dismissStatus();
       this.disposed = true;
       for (const read of this.reads.values()) read.lifetime.abort();
-      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.handoffs.cancelDapp();
+      this.controls.clear(); this.sentry.clear(); this.psbt.clear(); this.preparations.clear(); this.handoffs.cancelDapp();
       for (const message of [...this.requests.values()])
         void this.retireRequest(message, false);
       this.transportOwner = undefined;
@@ -3092,7 +3217,7 @@ export class NativeConnectionsController {
       this.unsubscribe();
       this.publish();
     }, [async () => {
-      await Promise.all([this.controls.dispose(), this.sentry.dispose(), this.psbt.dispose(), this.handoffs.retired()]);
+      await Promise.all([this.controls.dispose(), this.sentry.dispose(), this.psbt.dispose(), this.preparations.dispose(), this.handoffs.retired()]);
       await this.requestRetirement;
       await this.opening?.catch(() => undefined);
       await this.openingTransport?.catch(() => undefined);

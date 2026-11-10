@@ -1,3 +1,5 @@
+import { PALI_RECOVERY_ALERTS_URL } from '../../../source/shared/smartAccountLinks.ts';
+import { getNativeGuardianRecoveryChoices } from '../src/smartAccount/guardianRecovery.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
@@ -48,6 +50,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   let guardianReads = 0;
   let guardianOpens = 0;
   let recoveryOpens = 0;
+  const openedLinks: string[] = [];
   const lifecycleEvents: string[] = [];
   const resumedSmart: {id: string; signal: AbortSignal; check: () => void}[] = [];
   const psbtLifecycle = {
@@ -218,7 +221,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       cancel() {},
     },
     trezor: {
-      getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+      getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null}),
       subscribe: () => () => undefined,
       background() {lifecycleEvents.push('trezor-background');},
       async cancel() {lifecycleEvents.push('trezor-cancel');},
@@ -254,6 +257,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     activity: {},
   };
   const native: any = {
+    Linking: { async openURL(url: string) { openedLinks.push(url); } },
     Platform: { OS: 'android' },
     StyleSheet: { create: (value: unknown) => value },
     Keyboard: { dismiss() {} },
@@ -310,6 +314,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     ])
   );
   Object.assign(dependencies, {
+    '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
+    '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     react,
     'react-native': native,
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
@@ -412,6 +418,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     guardianReads: () => guardianReads,
     guardianOpens: () => guardianOpens,
     recoveryOpens: () => recoveryOpens,
+    openedLinks: () => openedLinks,
     authenticatorGuards: () => authenticatorGuards,
     hardwareBack() {
       assert(hardwareBack);
@@ -658,6 +665,8 @@ test('controlled Smart accounts expose the existing guardian-status tool through
   await tools.props.guardianRecovery.read(new AbortController().signal, () => undefined);
   assert.equal(f.guardianReads(), 1);
   assert.equal(tools.props.guardianRecovery.manage.chainId, 1);
+  await tools.props.guardianRecovery.recovery.openRecoveryAlerts();
+  assert.deepEqual(f.openedLinks(), [PALI_RECOVERY_ALERTS_URL]);
   const draft = { action: 'set', guardian: '0x' + '55'.repeat(20), delaySeconds: 259200, acknowledgedPendingOperationId: null };
   await tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined);
   assert.equal(f.guardianOpens(), 1);
@@ -666,6 +675,8 @@ test('controlled Smart accounts expose the existing guardian-status tool through
   assert.equal(f.guardianReads(), 1);
   await assert.rejects(tools.props.guardianRecovery.manage.open(draft, new AbortController().signal, () => undefined), /CANCELLED/);
   assert.equal(f.guardianOpens(), 1);
+  await assert.rejects(tools.props.guardianRecovery.recovery.openRecoveryAlerts(), /CANCELLED/);
+  assert.equal(f.openedLinks().length, 1);
   f.dispose();
 });
 

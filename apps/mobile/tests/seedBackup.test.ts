@@ -20,7 +20,7 @@ async function fixture() {
   let confirms = 0;
   const runtime: KeyringRuntime = {
     async resumeSmartAccountOperation() { throw Error('Smart resume is outside this fixture'); },
-    trezor: { background() {}, getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null }),
+    trezor: { background() {}, getSnapshot: () => ({ phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, signer: null, error: null }),
       subscribe: () => () => {}, async startImport() { throw new Error('Hardware is outside this fixture'); },
       async resumeImport() { throw new Error('Hardware is outside this fixture'); },
       async resumeSend() { throw new Error('Hardware is outside this fixture'); }, async cancel() {} },
@@ -39,6 +39,7 @@ async function fixture() {
     async openSlhDsaInstallation() { throw Error('SLH is outside this fixture'); },
     async refreshSmartAccountMetadata() { throw new Error('Metadata is outside this fixture'); },
     getGuardianRecoveryIntent: () => null,
+    async openSmartInfrastructure() { throw new Error('Infrastructure is outside this fixture'); },
     async openGuardianRecovery() { throw new Error('Recovery is outside this fixture'); },
     async openGuardianPolicy() { throw new Error('Policy is outside this fixture'); },
     canManageGuardianPolicy: () => false,

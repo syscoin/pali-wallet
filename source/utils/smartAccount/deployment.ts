@@ -1,8 +1,11 @@
-import { hexConcat, hexZeroPad } from 'utils/ethersV6Compat';
-import { keccak256 } from 'utils/ethersV6Compat';
-import { toUtf8Bytes } from 'utils/ethersV6Compat';
+import {
+  hexConcat,
+  hexZeroPad,
+  keccak256,
+  toUtf8Bytes,
+} from '../ethersV6Compat.ts';
 
-import type { PaliAuthenticatorModuleId } from './contracts';
+import type { PaliAuthenticatorModuleId } from './contracts.ts';
 
 export const PALI_CREATE2_DEPLOYER_ADDRESS =
   '0x4e59b44847b379578588920cA78FbF26c0B4956C';

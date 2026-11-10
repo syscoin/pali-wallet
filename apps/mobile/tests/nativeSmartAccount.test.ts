@@ -1,6 +1,9 @@
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
+import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
+import { NativeSigningHandoffs, retireNativeSigningHandoff, type NativeSigningHandoff, type SigningHandoffDescriptor, type SigningResumeScope } from '../src/connections/signingHandoff.ts';
+import type { WalletConnectRequest } from '../src/connections/walletConnect.ts';
 import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
 import { nativeSmartLedgerDevice } from './nativeSmartLedgerDevice.ts';
 import type { NativeSlhKey, NativeSlhTree } from '../src/crypto/slhDsaNativeExecution.ts';
@@ -9,6 +12,8 @@ import type { IKeyringAccountState, SmartAccountInstalledModule } from '../../..
 import type { NativeSlhPublicState, NativeSlhExecutionCapability } from '../src/smartAccount/slhDsaRuntime.ts';
 import { getSLHDSAKeyId, getSLHDSAStateStorageKey, SLH_DSA_SIGNATURE_LIMIT } from '../../../source/utils/slhDsa/constants.ts';
 import { prepareSmartAccountMessage, encodeSmartAccountMessageSignature } from '../../../source/utils/smartAccount/messageSigning.ts';
+import { getPaliErc7739PersonalSignHash } from '../../../source/utils/smartAccount/erc7739.ts';
+import { encodeSmartAccountAuthenticatorSignature } from '../../../source/utils/smartAccount/signature.ts';
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import type { NativeSmartAccountOperation } from '../src/smartAccount/operation.ts';
 import { createDappSigningApproval } from '../../../source/wallet/dappSigningApproval.ts';
@@ -34,14 +39,14 @@ import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDe
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
-import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
 import { createGuardianRecoveryFixture } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
 import { importedKeyIdentity } from '../src/custody/importedAccounts.ts';
 import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliCompositeValidatorInterface, paliP256WebAuthnValidatorInterface, paliSlhDsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface, paliGuardianRecoveryModuleInterface } from '../../../source/utils/smartAccount/contracts.ts';
-import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
+import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID, PALI_CREATE2_DEPLOYER_ADDRESS, type PaliInfrastructureContractId } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
 
@@ -62,6 +67,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const calls: string[] = [];
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
   const submitted: string[] = [];
+  const payerSignatures: string[] = [];
+  const infrastructureBroadcasts: { rawTransaction: string; pending: NativeInfrastructurePending }[] = [];
+  const missingInfrastructure = new Set<string>();
+  let failInfrastructureBroadcast = false;
+  let initialEoaNonce = 0;
+  let physicalStorageCloses = 0;
   const spendabilityReads = { native: 0, deposit: 0 };
   let deployed = false;
   let deployedCode = '0x01';
@@ -84,17 +95,23 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let recoveredOwner: string | undefined;
   let observedOwners: string[] | undefined;
   let observedThreshold = 1;
+  let smartGuardianMetadata: { address: string; owners: string[]; threshold: number; compositeThreshold?: number; deployed: boolean } | undefined;
+  const estimatedSenders: string[] = [];
   let composite: { threshold: number; ecdsaFirst: boolean; children?: string[] } | undefined;
   const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
   const slhDerivations: number[] = [];
   let captureJournal: (() => ReturnType<EvmSignedRecords['captureSmartAccountPendingRecords']>) | undefined;
+  let readPreparedRecord: ((chainId: string, from: string, hash: string) => Promise<string | null>) | undefined;
   let mutateSelectedSmart: ((mutate: (account: IKeyringAccountState) => void) => void) | undefined;
   let mutateLedgerOwner: ((index: number, mutate: (account: IKeyringAccountState) => void) => void) | undefined;
   let installSlh: (() => void) | undefined;
   let replaceSoftwareOwner: ((type: 'HDAccount' | 'Imported', id: number) => void) | undefined;
   const openStorage = async () => {
-    storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, !initialized);
+    const connection = nodeConnection(file, hooks).connection;
+    const close = connection.closeAsync.bind(connection);
+    connection.closeAsync = async () => { physicalStorageCloses++; await close(); };
+    storage = await SqliteWalletStorage.open(connection, digest, INSTALLATION, !initialized);
     initialized = true;
     return storage;
   };
@@ -118,6 +135,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
           result = builtIn || customValidators.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          if (missingInfrastructure.has(target)) result = '0x';
+          if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
             await smartCodeRead?.();
             if (deployed && interruptAfterReceipt) {
@@ -126,12 +145,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             }
           }
         }
-        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(request.params[1] === 'pending' || readReceipts ? submitted.length : 0).toString(16)}`;
+        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(initialEoaNonce + (request.params[1] === 'pending' || readReceipts ? submitted.length : 0)).toString(16)}`;
         else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : payerBalance;
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (request.method === 'eth_estimateGas') {
           const call = request.params[0];
+          if (call.from) estimatedSenders.push(call.from);
           if (call.to?.toLowerCase() === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase()) {
             const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', call.data);
             for (const op of operations) {
@@ -166,41 +186,58 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const saved = await storage.signedRecords.read(identity.profileId);
           assert(saved);
           assert.equal(inspectEvmSignedBundle(saved, identity.profileId).transactions, submitted.length + 1);
+          if (Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase()) {
+            const signed = Transaction.from(request.params[0]);
+            assert(readPreparedRecord);
+            assert.equal(await readPreparedRecord(network.chainId, signed.from!, signed.hash!), request.params[0],
+              'the actual SDK must retain these exact signed bytes before the broadcast transport runs');
+            const record = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { infrastructurePending?: readonly NativeInfrastructurePending[] };
+            const pending = record.infrastructurePending?.find(entry => entry.chainId === network.chainId);
+            assert(pending, 'infrastructure reservation must be durable before broadcasting');
+            infrastructureBroadcasts.push({ rawTransaction: request.params[0], pending: structuredClone(pending) });
+          }
           submitted.push(request.params[0]);
           if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) { if (!deployed) deployedByBroadcast = true; deployed = true; }
           result = Transaction.from(request.params[0]).hash;
           afterBroadcast?.();
+          if (failInfrastructureBroadcast && Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase())
+            throw Error('connection lost after infrastructure submission');
         }
         else if (request.method === 'eth_call') {
           const to = request.params[0].to.toLowerCase();
           const data = request.params[0].data;
-          const smartAddress = runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase();
+          const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === to);
+          const ownGuardian = smartGuardianMetadata?.address.toLowerCase() === to ? smartGuardianMetadata : undefined;
+          const smartComposite = ownGuardian ? ownGuardian.compositeThreshold !== undefined : !!composite;
           if (to === getZkSysGasTankAddress(Number(network.chainId))?.toLowerCase()) {
             result = coder.encode(['uint256'], [gasCredit]);
-          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('supportsExecutionMode')!.selector)) {
+          } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('supportsExecutionMode')!.selector)) {
             result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
-          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
+          } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
             const args = paliSmartAccountInterface.decodeFunctionData('isModuleInstalled', data);
-            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [customValidators.get(args[1].toLowerCase())?.installed === true || args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || !!composite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
-          } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
-            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), composite ? 'composite' : observedSlh ? 'slh-dsa' : 'ecdsa')]);
+            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [customValidators.get(args[1].toLowerCase())?.installed === true || args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !ownGuardian && !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || smartComposite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
+          } else if (smartTarget && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
+            result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), smartComposite ? 'composite' : !ownGuardian && observedSlh ? 'slh-dsa' : 'ecdsa')]);
           } else if (customValidators.has(to)) {
             const [type] = coder.decode(['uint256'], '0x' + data.slice(10));
             result = coder.encode(['bool'], [type === 1n || customValidators.get(to)!.compatible]);
           } else if (observedSlh && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase()) {
             result = paliSlhDsaValidatorInterface.encodeFunctionResult('authData', [[observedSlh.pkSeed, observedSlh.pkRoot]]);
-          } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'composite').toLowerCase()) {
+          } else if ((composite || smartGuardianMetadata?.compositeThreshold !== undefined) && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'composite').toLowerCase()) {
             const ecdsa = getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa'), passkey = getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn');
+            const guardianConfig = paliCompositeValidatorInterface.parseTransaction({ data })?.args[0]?.toLowerCase() === smartGuardianMetadata?.address.toLowerCase() ? smartGuardianMetadata : undefined;
             result = data.startsWith(paliCompositeValidatorInterface.getFunction('childValidators')!.selector)
-              ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [composite.children ?? (composite.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa])])
-              : paliCompositeValidatorInterface.encodeFunctionResult('threshold', [composite.threshold]);
-          } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
+              ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [guardianConfig ? [ecdsa, passkey] : composite?.children ?? (composite?.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa])])
+              : paliCompositeValidatorInterface.encodeFunctionResult('threshold', [guardianConfig?.compositeThreshold ?? composite?.threshold ?? 1]);
+          } else if ((composite || smartGuardianMetadata?.compositeThreshold !== undefined) && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
             result = paliP256WebAuthnValidatorInterface.encodeFunctionResult('authData', [[`0x${'01'.repeat(32)}`, `0x${'02'.repeat(32)}`, `0x${'03'.repeat(32)}`, `0x${'04'.repeat(32)}`, 32]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
             const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
+            const guardianConfig = paliEcdsaValidatorInterface.decodeFunctionData('owners', data)[0].toLowerCase() === smartGuardianMetadata?.address.toLowerCase() ? smartGuardianMetadata : undefined;
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [guardianConfig?.owners ?? observedOwners ?? [recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('threshold')!.selector)) {
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [observedThreshold]);
+            const guardianConfig = paliEcdsaValidatorInterface.decodeFunctionData('threshold', data)[0].toLowerCase() === smartGuardianMetadata?.address.toLowerCase() ? smartGuardianMetadata : undefined;
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [guardianConfig?.threshold ?? observedThreshold]);
           } else if (to === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector)) {
             assert.equal(request.params[1], 'pending');
             const [sender, key] = paliEntryPointInterface.decodeFunctionData('getNonce', data);
@@ -279,6 +316,17 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             signatures.push({ address: input[0][0]!, digest: input[0][1]!, signature, intentPersisted: !!saved.guardianRecoveryIntents?.length });
             return signature;
           };
+          const signPrepared = this.signPreparedEvmTransaction.bind(this);
+          readPreparedRecord = async (chainId, from, hash) => {
+            const entry = await new EvmSignedRecords(storage.signedRecords).readExact(
+              { keyring: this, assertCurrent: () => { assert(this.isUnlocked()); } }, chainId, from, hash);
+            return entry?.rawTransaction ?? null;
+          };
+          this.signPreparedEvmTransaction = (...input: Parameters<typeof signPrepared>) => {
+            const signed = signPrepared(...input);
+            payerSignatures.push(signed.rawTransaction);
+            return signed;
+          };
         }
       } };
     } } : {}),
@@ -303,9 +351,19 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
-    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures, spendabilityReads,
+    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
+      const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
+      if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
+    },
+    infrastructureResponseLost() { failInfrastructureBroadcast = true; },
+    initialEoaNonce(value: number) { assert(Number.isSafeInteger(value) && value >= 0); initialEoaNonce = value; },
+    smartGuardian(address: string, owners: string[], options: { compositeThreshold?: number; threshold?: number; deployed?: boolean } = {}) {
+      smartGuardianMetadata = { address, owners: [...owners], threshold: options.threshold ?? 1, compositeThreshold: options.compositeThreshold, deployed: options.deployed ?? true };
+    },
     guardianStatus(mode: Parameters<ReturnType<typeof createGuardianRecoveryFixture>['select']>[0] = 'healthy') {
-      const address = runtime.catalogue.getSnapshot()!.accounts.find(account => account.type === 'SmartAccount')!.address;
+      const snapshot = runtime.catalogue.getSnapshot()!;
+      const address = snapshot.accounts.find(account => account.id === snapshot.active.accountId && account.type === 'SmartAccount')!.address;
       guardian = createGuardianRecoveryFixture(address);
       guardian.select(mode, GUARDIAN_FIXTURE_RUNTIME);
       deployed = true;
@@ -375,6 +433,321 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
 }
+
+for (const uncertain of [false, true]) test(`native infrastructure private SDK reserves the reviewed nonce and reconciles after reopen without duplicate submission (${uncertain})`, async () => {
+  const f = await fixture({}, true);
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.initialEoaNonce(7);
+    f.infrastructureCode('ecdsaValidator', false); f.infrastructureCode('factory', false);
+    f.holdReceipts();
+    if (uncertain) f.infrastructureResponseLost();
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert.deepEqual(controller.getSnapshot().status!.observation.missing, ['ecdsaValidator', 'factory']);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!;
+    assert(review, JSON.stringify(controller.getSnapshot()));
+    assert.equal(review.contract.id, 'ecdsaValidator'); assert.equal(Number(review.transaction.nonce), 7);
+    const contracts = await import('../../../source/utils/smartAccount/deployment.ts');
+    const contract = contracts.getPaliInfrastructureContracts(1).find(contract => contract.id === 'ecdsaValidator')!;
+    assert.equal(review.transaction.data, contract.deployCalldata);
+    assert.equal(review.transaction.to!.toLowerCase(), PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase());
+    assert.equal(BigInt(review.transaction.value), 0n);
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    const before = f.runtime.catalogue.getSnapshot()!;
+    const payer = before.accounts.find(account => account.id === before.active.accountId)!;
+    f.onBroadcast(() => {
+      const current = f.runtime.catalogue.getSnapshot()!;
+      assert.equal(current.accounts.find(account => account.id === current.active.accountId), payer,
+        'a pending-only reservation must preserve the captured SDK selected-context object');
+    });
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, uncertain ? 'unknown' : 'pending', JSON.stringify(controller.getSnapshot()));
+    assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.infrastructureBroadcasts.length, 1);
+    const raw = Transaction.from(f.submitted[0]);
+    const captured = f.infrastructureBroadcasts[0]!;
+    assert.equal(captured.rawTransaction, f.payerSignatures[0]);
+    assert.equal(raw.from!.toLowerCase(), payer.address.toLowerCase()); assert.equal(raw.nonce, Number(review.transaction.nonce));
+    assert.equal(raw.to!.toLowerCase(), PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase()); assert.equal(raw.data, review.transaction.data);
+    assert.equal(captured.pending.entry.nonce, raw.nonce); assert.equal(captured.pending.entry.contractId, review.contract.id);
+    assert.equal(captured.pending.entry.payerAddress.toLowerCase(), raw.from!.toLowerCase());
+    assert.equal(captured.pending.entry.transactionHash, undefined, 'hash acknowledgement follows the existing submit boundary');
+    const stored = (await f.inspectRecovery()).record as { infrastructurePending: readonly NativeInfrastructurePending[] };
+    assert.equal(stored.infrastructurePending[0]!.entry.transactionHash, raw.hash);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    controller.dispose(); controller = undefined;
+    f.onBroadcast(() => undefined);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().status!.pending!.transactionHash, raw.hash);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    const receiptReads = f.calls.filter(method => method === 'eth_getTransactionReceipt').length;
+    f.showReceipts();
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert(f.calls.filter(method => method === 'eth_getTransactionReceipt').length > receiptReads);
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    f.infrastructureCode('ecdsaValidator', true);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().feeReview!.contract.id, 'factory');
+    assert.equal(Number(controller.getSnapshot().feeReview!.transaction.nonce), 8);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    f.infrastructureCode('factory', true);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'complete', JSON.stringify(controller.getSnapshot()));
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+test('native infrastructure private SDK retains a broadcast reservation when its route retires before acknowledgement', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.initialEoaNonce(9); f.infrastructureCode('factory', false); f.holdReceipts();
+    controller = await f.runtime.openSmartInfrastructure(lifetime.signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review, JSON.stringify(controller.getSnapshot()));
+    f.onBroadcast(() => lifetime.abort());
+    await controller.confirm(review.id);
+    assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 1);
+    const reserved = ((await f.inspectRecovery()).record as { infrastructurePending: readonly NativeInfrastructurePending[] }).infrastructurePending[0]!;
+    assert.equal(reserved.entry.nonce, 9); assert.equal(reserved.entry.transactionHash, undefined);
+    controller.dispose(); controller = undefined; f.onBroadcast(() => undefined);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    f.showReceipts(); await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+test('native infrastructure private SDK clears a durable unsent reservation when shared fee refresh rejects before signing', async () => {
+  let armed = false, journalWrites = 0;
+  const f = await fixture({ after(kind, sql) {
+    if (armed && kind === 'run' && sql.startsWith('UPDATE keyring_records')) journalWrites++;
+  } }, true);
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.infrastructureCode('factory', false);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review, JSON.stringify(controller.getSnapshot()));
+    f.gasSponsored(); // An ordinary EOA has no Smart-account sponsorship route.
+    armed = true;
+    await controller.confirm(review.id);
+    armed = false;
+    assert.equal(controller.getSnapshot().phase, 'failed', 'successful private unsent cleanup must not publish phantom broadcast uncertainty');
+    assert.equal(journalWrites, 2, 'reserve and exact unsent clear must both commit through the catalogue');
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().status!.pending, null);
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+test('native infrastructure private SDK drains admitted unsigned cleanup after route retirement before physical storage close', async () => {
+  const lifetime = new AbortController();
+  let armed = false, retiredAfterReserve = false, beforeRevision = -1;
+  const cleanup = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture({ before: async (kind, sql) => {
+    if (retiredAfterReserve && kind === 'run' && sql.startsWith('UPDATE keyring_records')) {
+      cleanup.resolve(); await release.promise;
+    }
+  } }, true);
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  let confirmation: Promise<void> | undefined, closing: Promise<void> | undefined;
+  try {
+    f.infrastructureCode('factory', false);
+    controller = await f.runtime.openSmartInfrastructure(lifetime.signal, () => {
+      if (armed && (f.runtime.catalogue.getSnapshot()?.revision ?? -1) > beforeRevision) {
+        armed = false; retiredAfterReserve = true; lifetime.abort();
+      }
+    });
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review, JSON.stringify(controller.getSnapshot()));
+    beforeRevision = f.runtime.catalogue.getSnapshot()!.revision;
+    const closes = f.physicalStorageCloses;
+    armed = true;
+    confirmation = controller.confirm(review.id);
+    await Promise.race([cleanup.promise, confirmation.then(() => { throw Error('confirmation settled without exact unsigned cleanup'); })]);
+    let closeSettled = false;
+    closing = f.owner.dispose().then(() => { closeSettled = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(closeSettled, false, 'physical close must join the entire admitted confirmation span');
+    assert.equal(f.physicalStorageCloses, closes);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null, 'cleanup must not revive the locked source');
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    release.resolve(); await confirmation; await closing;
+    assert.equal(f.physicalStorageCloses, closes + 1);
+    controller = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally {
+    release.resolve(); await confirmation?.catch(() => undefined); await closing?.catch(() => undefined);
+    controller?.dispose(); await f.close();
+  }
+});
+
+test('creation allocation saves the canonical bootstrap before publication without a password or signing operation', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  try {
+    const host = await f.runtime.openConnectionHost(), management = host.context().accounts.find(account => account.id === 'hd:60:0')!;
+    let committed: NativeSmartCreationAllocation | undefined;
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Dapp savings', target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, receipt => {
+      committed = receipt; receipt.assertCurrent();
+      assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.some(account => account.type === 'SmartAccount'), false, 'request adopts its receipt before catalogue publication');
+    });
+    assert.equal(allocation, committed); allocation.assertCurrent();
+    assert(Object.isFrozen(allocation)); assert(Object.isFrozen(allocation.account)); assert(Object.isFrozen(allocation.target));
+    assert.equal(allocation.account.id, 'smart:60:0'); assert.equal(host.context().activeAccountId, allocation.account.id);
+    const saved = savedSmartAccount((await f.inspectRecovery()).record);
+    assert.equal(saved.address, allocation.account.address);
+    assert.equal(saved.smartAccount.auth.data, encodeEcdsaValidatorInitData([management.address], 1));
+    assert.equal(saved.smartAccount.isDeployed, false);
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    lifetime.abort(); assert.throws(allocation.assertCurrent, { code: 'CANCELLED' });
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.equal(f.owner.getCatalogue()!.accounts.find(account => account.id === allocation.account.id)!.address, allocation.account.address);
+  } finally { await f.close(); }
+});
+
+test('creation allocation snapshots its target and rejects forged receipts or an unacknowledged external owner before allocation', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  try {
+    const host = await f.runtime.openConnectionHost(), target = { id: 'ecdsa' as const, config: { owners: ['0x' + '66'.repeat(20)], threshold: 1 } };
+    const request = { networkId: 'ethereum', label: 'External owner', target, externalOwnersAcknowledged: false };
+    const calls = f.calls.length;
+    await assert.rejects(host.allocateSmartAccount(request, lifetime.signal, () => undefined, () => undefined), { code: 'INVALID_INPUT' });
+    assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
+    const allocation = await host.allocateSmartAccount({ ...request, externalOwnersAcknowledged: true }, lifetime.signal, () => undefined, () => undefined);
+    target.config.owners[0] = '0x' + '77'.repeat(20);
+    assert(allocation.target.id === 'ecdsa' && allocation.target.config);
+    assert.deepEqual(allocation.target.config.owners, ['0x' + '66'.repeat(20)]);
+    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation }, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    await assert.rejects(host.prepareSmartAccountCreationOperation({ ...allocation, target }, nonSuiteSigningHandoff, () => undefined), { code: 'INVALID_INPUT' });
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation retains a committed account when its request cancels during the commit callback', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  let committed: NativeSmartCreationAllocation | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost();
+    await assert.rejects(host.allocateSmartAccount({ networkId: 'ethereum', label: 'Cancelled after save', target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, lifetime.signal, () => undefined, receipt => {
+      committed = receipt; lifetime.abort();
+    }), { code: 'CANCELLED' });
+    assert(committed); assert.throws(committed.assertCurrent, { code: 'CANCELLED' });
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).address, committed.account.address);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation rejects an invalid label or unselected network before allocator reads', async () => {
+  const f = await fixture();
+  try {
+    const host = await f.runtime.openConnectionHost(), calls = f.calls.length;
+    for (const [networkId, label] of [['ethereum', ' padded '], ['ethereum', 'x'.repeat(65)], ['nevm', 'Wrong network']])
+      await assert.rejects(host.allocateSmartAccount({ networkId: networkId!, label: label!, target: { id: 'ecdsa', config: undefined }, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined));
+    assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
+  } finally { await f.close(); }
+});
+
+for (const target of [{ id: 'p256-webauthn' }, { id: 'slh-dsa' }] as const) test(`creation allocation rejects unavailable ${target.id} acquisition before allocating`, async () => {
+  const f = await fixture();
+  try {
+    const host = await f.runtime.openConnectionHost(), calls = f.calls.length;
+    await assert.rejects(host.allocateSmartAccount({ networkId: 'ethereum', label: 'Unavailable credential', target, externalOwnersAcknowledged: false }, new AbortController().signal, () => undefined, () => undefined));
+    assert.equal(f.calls.length, calls); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.length, 1);
+    assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation serializes the real allocator and cancellation before commit saves no account', async () => {
+  const f = await fixture(), entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), lifetime = new AbortController();
+  try {
+    const host = await f.runtime.openConnectionHost(), input = { networkId: 'ethereum', label: 'Held allocation', target: { id: 'ecdsa' as const, config: undefined }, externalOwnersAcknowledged: false };
+    f.hold(async () => { entered.resolve(); await release.promise; });
+    const allocating = host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => assert.fail('Cancelled allocation committed'));
+    const rejected = assert.rejects(allocating);
+    await entered.promise;
+    await assert.rejects(host.allocateSmartAccount(input, lifetime.signal, () => undefined, () => undefined), /BUSY/);
+    lifetime.abort(); release.resolve(); await rejected;
+    f.owner.lock(); await f.owner.unlock(PASSWORD);
+    assert.equal(f.owner.getCatalogue()!.accounts.length, 1); assert.equal(f.submitted.length, 0);
+  } finally { release.resolve(); await f.close(); }
+});
+
+for (const change of ['owner', 'network', 'source-auth'] as const) test(`creation allocation refuses ${change} drift before preparing its captured target`, async () => {
+  const f = await fixture({}, true);
+  try {
+    const host = await f.runtime.openConnectionHost(), owner = host.context().accounts.find(account => account.id === 'hd:60:0')!.address;
+    let current = true;
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Bound creation', target: { id: 'ecdsa', config: { owners: [owner], threshold: 1 } }, externalOwnersAcknowledged: false }, new AbortController().signal, () => { if (!current) throw Error('REQUEST_RETIRED'); }, () => undefined);
+    if (change === 'owner') current = false;
+    else if (change === 'network') await f.selectNetwork('syscoin-nevm');
+    else { f.guardianStatus('no-policy'); f.observedEcdsaOwners(['0x' + '77'.repeat(20)], 1); }
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined));
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('creation allocation retries the same saved address after a later read failure and configures through existing operations', async () => {
+  const f = await fixture({}, true);
+  let deployment: NativeSmartAccountOperation | undefined, configuration: NativeSmartAccountOperation | undefined, noOp: NativeSmartAccountOperation | undefined;
+  try {
+    const host = await f.runtime.openConnectionHost(), requestedOwner = '0x' + '66'.repeat(20);
+    const allocation = await host.allocateSmartAccount({ networkId: 'ethereum', label: 'Configured creation', target: { id: 'ecdsa', config: { owners: [requestedOwner], threshold: 1 } }, externalOwnersAcknowledged: true }, new AbortController().signal, () => undefined, () => undefined);
+    f.guardianStatus('unavailable');
+    await assert.rejects(host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined));
+    allocation.assertCurrent(); assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.filter(account => account.type === 'SmartAccount').length, 1);
+    f.deployed(); f.undeployed();
+    deployment = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined);
+    assert.equal(deployment.getSnapshot().intent.kind, 'deploy'); await deployment.prepare();
+    const deploying = deployment.authorize(deployment.getSnapshot().revision);
+    for (let i = 0; i < 300 && !['complete', 'failed'].includes(deployment.getSnapshot().phase); i++) {
+      const review = deployment.getSnapshot().payerReview; if (review) deployment.confirmPayer(review.id);
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    await deploying; assert.equal(deployment.getSnapshot().phase, 'complete', JSON.stringify(deployment.getSnapshot()));
+    await deployment.dispose(); deployment = undefined;
+    f.guardianStatus('no-policy'); f.fundedSmart();
+    configuration = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined);
+    await configuration.prepare(); const intent = configuration.getSnapshot().intent;
+    assert(intent.kind === 'authenticator'); assert.equal(intent.command.executions.length, 1);
+    const rotate = paliSmartAccountInterface.decodeFunctionData('rotateValidator', intent.command.executions[0]!.data);
+    assert.equal(rotate[2], encodeEcdsaValidatorInitData([requestedOwner], 1));
+    f.onBroadcast(() => f.observedEcdsaOwners([requestedOwner], 1));
+    const configuring = configuration.authorize(configuration.getSnapshot().revision);
+    for (let i = 0; i < 300 && !configuration.getSnapshot().payerReview && configuration.getSnapshot().phase !== 'failed'; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(configuration.getSnapshot().payerReview, JSON.stringify(configuration.getSnapshot()));
+    configuration.confirmPayer(configuration.getSnapshot().payerReview!.id); await configuring;
+    assert.equal(configuration.getSnapshot().phase, 'complete'); assert.equal(configuration.getSnapshot().metadataRefresh, 'complete');
+    await configuration.dispose(); configuration = undefined;
+    const signed = f.signatures.length, submitted = f.submitted.length;
+    noOp = await host.prepareSmartAccountCreationOperation(allocation, nonSuiteSigningHandoff, () => undefined); await noOp.prepare();
+    assert.equal(noOp.getSnapshot().phase, 'complete'); assert.equal(noOp.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.signatures.length, signed); assert.equal(f.submitted.length, submitted);
+    assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === allocation.account.id)!.address, allocation.account.address);
+    assert.equal(f.runtime.catalogue.getSnapshot()!.accounts.filter(account => account.type === 'SmartAccount').length, 1);
+  } finally { await deployment?.dispose(); await configuration?.dispose(); await noOp?.dispose(); await f.close(); }
+});
 
 test('real SDK smart account creation, selection and cold unlock retain the original owner and receive address', async () => {
   const f = await fixture();
@@ -1840,7 +2213,7 @@ for (const delayedMetadata of [false, true]) test(`native guardian recovery pers
     const replacement = accounts.find(account => account.type === 'Imported')!;
     const status = f.guardianStatus('installed'); status.configure(guardian.address, 600);
     f.externalOwner();
-    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id }, new AbortController().signal, () => undefined);
+    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: guardian.id }, new AbortController().signal, () => undefined);
     const intent = f.runtime.getGuardianRecoveryIntent()!;
     assert(intent); assert.equal(f.submitted.length, 0);
     assert.equal(((await f.inspectRecovery()).record as { guardianRecoveryIntents: unknown[] }).guardianRecoveryIntents.length, 1);
@@ -1896,9 +2269,182 @@ async function startNativeRecovery() {
   const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!;
   const replacement = f.owner.getCatalogue()!.accounts.find(account => account.type === 'Imported')!;
   const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
-  const controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id }, new AbortController().signal, () => undefined);
+  const controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: guardian.id }, new AbortController().signal, () => undefined);
   return { f, guardian, replacement, policy, controller };
 }
+
+async function smartGuardianRecoveryFixture(composite = false, hooks: { before?: SqlHook; after?: SqlHook } = {}) {
+  const f = await fixture(hooks, true);
+  try {
+    const privateKey = '0x' + '04'.repeat(32);
+    await f.owner.importAccount({ privateKey, label: 'Smart guardian replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
+      PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.change({ kind: 'create-smart', label: 'Smart guardian', password: PASSWORD });
+    const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'smart:60:0')!;
+    await f.change({ kind: 'create', label: 'Separate recovery payer', password: PASSWORD });
+    const payer = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:1')!;
+    await f.change({ kind: 'create-smart', label: 'Smart recovery target', password: PASSWORD });
+    const accounts = f.owner.getCatalogue()!.accounts;
+    const owner = accounts.find(account => account.id === 'hd:60:0')!;
+    const replacement = accounts.find(account => account.type === 'Imported')!;
+    const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
+    f.smartGuardian(guardian.address, [owner.address], { compositeThreshold: composite ? 1 : undefined });
+    f.externalOwner();
+    const draft = { kind: 'start' as const, guardianId: guardian.id, replacementId: replacement.id, payerId: payer.id };
+    return { f, guardian, owner, replacement, payer, policy, draft,
+      open: (signal = new AbortController().signal) => f.runtime.openGuardianRecovery(draft, signal, () => undefined) };
+  } catch (error) { await f.close(); throw error; }
+}
+
+for (const composite of [false, true]) test(`native Smart guardian uses shared ERC1271 proof and a durable separate payer (${composite})`, async () => {
+  const { f, guardian, owner, replacement, payer, policy, open } = await smartGuardianRecoveryFixture(composite);
+  let controller: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    controller = await open();
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    assert.equal(intent.guardian.id, guardian.id); assert.equal(intent.payer.id, payer.id);
+    await controller.prepare(); await controller.review();
+    const review = controller.getSnapshot();
+    assert.equal(review.phase, 'review', JSON.stringify(review));
+    assert.equal(review.feeReview!.transaction.from.toLowerCase(), payer.address.toLowerCase());
+    assert(f.estimatedSenders.length > 0 && f.estimatedSenders.every(address => address.toLowerCase() === payer.address.toLowerCase()));
+    assert.equal(f.signatures.length, 2);
+    assert(f.signatures.every(proof => proof.intentPersisted));
+    assert.equal(recoverAddress(intent.operation.hash, f.signatures[0]!.signature).toLowerCase(), replacement.address.toLowerCase());
+    const actionHash = getPaliErc7739PersonalSignHash({ accountAddress: guardian.address, chainId: intent.operation.chainId, hash: intent.operation.hash });
+    assert.equal(f.signatures[1]!.digest, actionHash);
+    assert.equal(recoverAddress(actionHash, f.signatures[1]!.signature).toLowerCase(), owner.address.toLowerCase());
+    f.holdReceipts();
+    await controller.confirm(review.feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'waiting', JSON.stringify(controller.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    const transaction = Transaction.from(f.submitted[0]);
+    assert.equal(transaction.from!.toLowerCase(), payer.address.toLowerCase());
+    const schedule = paliGuardianRecoveryModuleInterface.decodeFunctionData('scheduleRecovery', transaction.data);
+    assert.equal(schedule[4][0].guardian.toLowerCase(), guardian.address.toLowerCase());
+    assert.equal(schedule[4][0].signature, encodeSmartAccountAuthenticatorSignature({
+      validator: getConfiguredAuthenticatorAddress(1, composite ? 'composite' : 'ecdsa'),
+      signature: composite ? coder.encode(['bytes[]'], [[f.signatures[1]!.signature, '0x']]) : f.signatures[1]!.signature,
+    }));
+    controller.dispose(); controller = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = await f.runtime.openGuardianRecovery({ kind: 'resume' }, new AbortController().signal, () => undefined);
+    await controller.prepare(); await controller.review();
+    assert.equal(controller.getSnapshot().phase, 'waiting', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().transactionHash, transaction.hash);
+    assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 1);
+    policy.recover(intent.operation, 'ready'); f.showReceipts();
+    await controller.refresh(); await controller.review();
+    assert.equal(controller.getSnapshot().feeReview!.transaction.from.toLowerCase(), payer.address.toLowerCase());
+    f.onBroadcast(() => { policy.recover(intent.operation, 'executed'); f.recoveredOwner(replacement.address); });
+    await controller.confirm(controller.getSnapshot().feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'complete', JSON.stringify(controller.getSnapshot()));
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    assert.equal(f.signatures.length, 2); assert.equal(f.submitted.length, 2);
+    assert(f.submitted.every(raw => Transaction.from(raw).from!.toLowerCase() === payer.address.toLowerCase()));
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+for (const changed of ['metadata', 'undeployed', 'owner', 'payer', 'network', 'lock', 'cancel', 'recovery-policy'] as const)
+  test(`native Smart guardian rejects stale ${changed} before additional owner or payer authority`, async () => {
+    const { f, guardian, owner, policy, open } = await smartGuardianRecoveryFixture();
+    const lifetime = new AbortController();
+    let controller: Awaited<ReturnType<typeof open>> | undefined;
+    try {
+      controller = await open(lifetime.signal); await controller.prepare();
+      if (changed === 'metadata') f.smartGuardian(guardian.address, ['0x' + '77'.repeat(20)]);
+      else if (changed === 'undeployed') f.smartGuardian(guardian.address, [owner.address], { deployed: false });
+      else if (changed === 'network') f.wrongChain();
+      else if (changed === 'recovery-policy') policy.configure(guardian.address, 1200);
+      else f.onSignature(() => {
+        if (changed === 'owner') f.replaceSoftwareOwner('HDAccount', 0);
+        if (changed === 'payer') f.replaceSoftwareOwner('HDAccount', 1);
+        if (changed === 'lock') f.owner.lock();
+        if (changed === 'cancel') lifetime.abort();
+      });
+      await controller.review();
+      assert.notEqual(controller.getSnapshot().phase, 'review');
+      assert.equal(f.signatures.filter(proof => proof.address.toLowerCase() === owner.address.toLowerCase()).length, 0);
+      assert.equal(f.signatures.length, changed === 'owner' ? 1 : 0);
+      assert.equal(f.submitted.length, 0);
+    } finally { controller?.dispose(); await f.close(); }
+  });
+
+test('native Smart guardian refuses unsatisfied composite and undeployed policies before persisting an intent', async () => {
+  const { f, guardian, owner, draft, open } = await smartGuardianRecoveryFixture();
+  try {
+    const missingPayer = { ...draft }; Reflect.deleteProperty(missingPayer, 'payerId');
+    await assert.rejects(f.runtime.openGuardianRecovery(missingPayer, new AbortController().signal, () => undefined), /INVALID_INPUT/);
+    await assert.rejects(f.runtime.openGuardianRecovery({ ...draft, payerId: guardian.id }, new AbortController().signal, () => undefined), /INVALID_INPUT/);
+    await assert.rejects(f.runtime.openGuardianRecovery({ ...draft, replacementId: guardian.id }, new AbortController().signal, () => undefined), /INVALID_INPUT/);
+    f.smartGuardian(guardian.address, [owner.address], { compositeThreshold: 2 });
+    await assert.rejects(open(), /unavailable authenticator/);
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    f.smartGuardian(guardian.address, [owner.address], { deployed: false });
+    await assert.rejects(open(), /unavailable authenticator/);
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await f.close(); }
+});
+
+test('native recovery uses an explicitly selected imported payer for an EOA guardian', async () => {
+  const { f, controller: initial, guardian, replacement } = await startNativeRecovery();
+  let controller: typeof initial | undefined;
+  try {
+    await initial.prepare(); await initial.abandon(); initial.dispose();
+    controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id, payerId: replacement.id }, new AbortController().signal, () => undefined);
+    await controller.prepare(); await controller.review();
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    assert.equal(review.transaction.from.toLowerCase(), replacement.address.toLowerCase());
+    f.holdReceipts(); await controller.confirm(review.id);
+    assert.equal(f.submitted.length, 1);
+    const transaction = Transaction.from(f.submitted[0]);
+    assert.equal(transaction.from!.toLowerCase(), replacement.address.toLowerCase());
+    const schedule = paliGuardianRecoveryModuleInterface.decodeFunctionData('scheduleRecovery', transaction.data);
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    assert.equal(intent.payer.id, replacement.id);
+    assert.equal(recoverAddress(intent.operation.hash, schedule[4][0].signature).toLowerCase(), guardian.address.toLowerCase());
+  } finally { initial.dispose(); controller?.dispose(); await f.close(); }
+});
+
+for (const changed of ['metadata', 'owner', 'payer'] as const)
+  test(`native Smart guardian rejects ${changed} changed after fee review before payer signing`, async () => {
+    const { f, guardian, open } = await smartGuardianRecoveryFixture();
+    const controller = await open();
+    try {
+      await controller.prepare(); await controller.review();
+      const review = controller.getSnapshot().feeReview!; assert(review);
+      assert.equal(f.signatures.length, 2); assert.equal(f.payerSignatures.length, 0);
+      if (changed === 'metadata') f.smartGuardian(guardian.address, ['0x' + '77'.repeat(20)]);
+      else f.replaceSoftwareOwner('HDAccount', changed === 'owner' ? 0 : 1);
+      await controller.confirm(review.id);
+      assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+      assert(f.runtime.getGuardianRecoveryIntent());
+    } finally { controller.dispose(); await f.close(); }
+  });
+
+for (const changed of ['Smart policy', 'recovery policy'] as const)
+  test(`native Smart guardian rechecks ${changed} after durable payer signing before broadcast`, async () => {
+    let armed = false;
+    let revoke: () => void = () => undefined;
+    const { f, guardian, policy, open } = await smartGuardianRecoveryFixture(false, { after(kind, sql) {
+      if (armed && kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) { armed = false; revoke(); }
+    } });
+    const controller = await open();
+    try {
+      await controller.prepare(); await controller.review();
+      const review = controller.getSnapshot().feeReview!; assert(review);
+      revoke = () => {
+        if (changed === 'Smart policy') f.smartGuardian(guardian.address, ['0x' + '77'.repeat(20)]);
+        else policy.configure(guardian.address, 1200);
+      };
+      armed = true;
+      await controller.confirm(review.id);
+      assert.equal(armed, false, 'the regression must revoke authority after the actual signed-record write');
+      assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 0);
+      assert(f.runtime.getGuardianRecoveryIntent());
+    } finally { controller.dispose(); await f.close(); }
+  });
 
 test('clearing a canceled pre-sign recovery preserves both keys and only removes local tracking', async () => {
   const { f, controller, guardian, replacement } = await startNativeRecovery();
@@ -1945,7 +2491,7 @@ test('locking during new recovery observation cannot persist an intent or sign',
   try {
     await f.change({ kind: 'create-smart', label: 'Held recovery', password: PASSWORD });
     held = f.guardianStatus('hold');
-    const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacementId: 'hd:60:0' }, new AbortController().signal, () => undefined);
+    const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacementId: 'hd:60:0', payerId: 'hd:60:0' }, new AbortController().signal, () => undefined);
     const rejected = assert.rejects(pending);
     for (let i = 0; !held.methods().length && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert(held.methods().length); f.owner.lock(); held.release(); await rejected;
@@ -1985,6 +2531,32 @@ async function smartMessageApproval(f: Awaited<ReturnType<typeof fixture>>) {
     subscribe: changed => f.owner.subscribe(() => changed()),
   });
   return { host, selected, approval, revoke() { grant = undefined; } };
+}
+
+/** Actual continuation ownership for SDK-port tests; relay/UI qualification is separate. */
+function ownedSmartSdkHandoff(connection: Awaited<ReturnType<typeof smartMessageApproval>>, id: string, expiresAt: number, method: string) {
+  const wire: WalletConnectRequest = {id:1,method,params:[],chainId:'eip155:1',freshness:'fresh',expiresAt,
+    verification:{validation:'VALID',isScam:false},session:{binding:{topic:'aa'.repeat(32),peerPublicKey:'bb'.repeat(32),origin:'https://fixture.example'},
+      metadata:{name:'SDK fixture',description:'',url:'https://fixture.example',icons:[]},expiry:Math.ceil(expiresAt/1000),namespaces:{eip155:{accounts:[`eip155:1:${connection.selected.address}`],methods:[method],events:[]}}}};
+  const canceled: object[] = [];
+  const manager = new NativeSigningHandoffs({async cancel(job){canceled.push(job);await connection.host.cancelSigningHandoff(job);},changed(){}});
+  let current: NativeSigningHandoff;
+  const capture = (admitted: typeof connection, saved: SigningHandoffDescriptor | null) => {
+    const context=admitted.host.context(),signing=admitted.host.signingContext(admitted.selected.id);
+    const scope:SigningResumeScope={adapter:1,wallet:'disposable-sdk-fixture',unlockGeneration:admitted.host.sessionGeneration(),accountId:admitted.selected.id,
+      address:admitted.selected.address,type:admitted.selected.type,xpub:admitted.selected.xpub,registration:JSON.stringify(context.network),grant:'fixture-origin-grant',signing:signing.binding,trezor:signing.trezor};
+    let live=true,owned!:NativeSigningHandoff;
+    const entry={id,wire,scope,expiresAt:saved?.expiresAt??expiresAt,order:1,assertCurrent(){if(!live)throw Error('CANCELLED');admitted.approval.assertCurrent();},
+      eligible:()=>true,drain:async()=>undefined,retire(){live=false;retireNativeSigningHandoff(owned);}};
+    owned=saved?manager.resume(entry,saved):manager.capture(entry);
+    current=owned;
+    if(saved)manager.discard(saved,false);
+    return owned;
+  };
+  capture(connection,null);
+  return {get handoff(){return current;},suspend(){assert(manager.background(current));},resume(next:typeof connection){const saved=manager.descriptor(id);assert(saved);return capture(next,saved);},
+    terminal(){assert.throws(()=>current.beforeSuiteOpen(expiresAt,{}),/REQUEST_EXPIRED/);},
+    retired:()=>manager.retired(),async dispose(){manager.cancelDapp();retireNativeSigningHandoff(current);await manager.retired();},canceled};
 }
 
 for (const deployed of [false, true]) test(`real SDK Smart personal and V4 messages share exact ERC-7739 envelopes (deployed ${deployed})`, async () => {
@@ -2983,17 +3555,90 @@ for (const mutation of ['Ledger public key', 'Smart policy'] as const) test(`Led
 });
 
 
-async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null) {
+async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null, count: 1 | 2 = 1) {
   const device = nativeSmartTrezorDevice(), f = await fixture({}, true, slhFactory, undefined, device.sessions);
   try {
-    await f.runtime.trezor.startImport('Trezor owner');
-    await f.change({kind:'import-trezor',label:'Trezor owner'});
+    for(let index=0;index<count;index++){
+      await f.runtime.trezor.startImport(`Trezor owner ${index+1}`);
+      await f.change({kind:'import-trezor',label:`Trezor owner ${index+1}`});
+    }
     await f.change({kind:'create-smart',label:'Trezor Smart account',password:PASSWORD});
-    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners([device.wallets[0]!.address],1);
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners(device.wallets.slice(0,count).map(wallet=>wallet.address).reverse(),count);
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal,()=>undefined);
     return {f,device,async close(){await f.close();await device.dispose();}};
   } catch(error) {await f.close();await device.dispose();throw error;}
 }
+
+test('multiple native Trezor owners sign in the exact shared threshold order through separate terminal jobs',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(null,2);
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'two-smart-owners',Date.now()+120000,'personal_sign');
+    const selected=f.owner.getCatalogue()!.active.accountId;
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Both reviewed Trezor owners'};
+    const prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
+    const result=await connection.host.signMessage({handoff:continuation.handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
+    assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
+    for(const entry of device.signatures)assert.equal(recoverAddress(prepared.actionHash,entry.signature).toLowerCase(),device.wallets[entry.index]!.address.toLowerCase());
+    assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'ecdsa'),signature:coder.encode(['bytes[]'],[device.signatures.map(entry=>entry.signature)])}));
+    continuation.terminal();assert.equal(device.sessions.getSnapshot(),null);
+    assert.equal(f.owner.getCatalogue()!.active.accountId,selected);assert.equal(f.submitted.length,0);
+    assert(device.counts().disposals>=2);
+  }finally{await continuation?.dispose();connection?.approval.dispose();await close();}
+});
+
+test('two native Trezor owner proofs complete before the existing local UserOperation payer review',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(null,2);let operation:NativeSmartAccountOperation|undefined;
+  try{
+    const selected=f.owner.getCatalogue()!.active.accountId;
+    operation=await f.runtime.openSmartAccountSend('0x'+'55'.repeat(20),{kind:'exact',amount:'0.000001'},()=>undefined);
+    await operation.prepare();assert.equal(operation.getSnapshot().phase,'authorize');
+    assert.equal(device.signatures.length,0);assert.equal(operation.getSnapshot().payerReview,null);
+    const signing=operation.authorize(operation.getSnapshot().revision);
+    for(let attempt=0;attempt<3000&&!operation.getSnapshot().payerReview&&!['failed','complete'].includes(operation.getSnapshot().phase);attempt++)await new Promise(resolve=>setTimeout(resolve,5));
+    const review=operation.getSnapshot().payerReview;assert(review,JSON.stringify(operation.getSnapshot()));
+    assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
+    for(const entry of device.signatures)assert.equal(recoverAddress(operation.getSnapshot().userOperationHash!,entry.signature).toLowerCase(),device.wallets[entry.index]!.address.toLowerCase());
+    assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+    operation.confirmPayer(review.id);await signing;
+    assert.equal(operation.getSnapshot().phase,'complete',JSON.stringify(operation.getSnapshot()));
+    assert.equal(f.submitted.length,1);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
+  }finally{await operation?.dispose();await close();}
+});
+
+for(const change of ['none','message','policy'] as const)test(`partial native Trezor owner proofs resume only their exact approved operation (${change})`,async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(null,2),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
+  try{
+    connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'partial-two-owners',Date.now()+120000,'personal_sign');
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'&&device.signatures.length===2){entered.resolve();await release.promise;}});
+    const request:DappMessageRequest={method:'personal_sign',address:connection.selected.address,message:'Approved by each device'};
+    const signing=connection.host.signMessage({handoff:continuation.handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval});
+    const rejected=assert.rejects(signing);
+    await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected the second owner callback');})]);
+    assert.deepEqual(device.signatures.map(value=>value.index),[1,0]);
+    const signer=f.runtime.trezor.getSnapshot().signer;
+    assert(signer);assert.equal(signer.step,2);assert.equal(signer.total,2);assert.equal(signer.address,device.wallets[0]!.address);
+    continuation.suspend();f.owner.lock();await rejected;
+    release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
+    const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');
+    const handoff=continuation.resume(connection),opened=device.urls.length;
+    if(change==='policy')f.observedEcdsaOwners(device.wallets.map(wallet=>wallet.address),2);
+    const work=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',approval:connection.approval,
+      request:change==='message'?{...request,message:'Different unapproved operation'}:request});
+    if(change==='none'){
+      const result=await work,prepared=prepareSmartAccountMessage({accountAddress:connection.selected.address,chainId:1,request});
+      assert.equal(result,encodeSmartAccountMessageSignature(prepared,{validator:getConfiguredAuthenticatorAddress(1,'ecdsa'),signature:coder.encode(['bytes[]'],[device.signatures.map(value=>value.signature)])}));
+      continuation.terminal();
+    }else{await assert.rejects(work);await continuation.retired();assert(continuation.canceled.length>0);}
+    assert.equal(device.signatures.length,2,'completed proofs and the retained callback cannot cause another device signature');
+    assert.equal(device.urls.length,opened);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+    assert.equal(f.runtime.trezor.getSnapshot().signer,null);
+  }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
+});
 
 
 for (const ownerKind of ['software', 'external'] as const)
@@ -3030,48 +3675,53 @@ for (const ownerKind of ['software', 'external'] as const)
 test('native Smart Trezor dapp typed signing preserves selected Smart and the original journal capability', async () => {
   const {f,device,close} = await readyTrezorSmartOwner();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  let continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
   try {
     connection = await smartMessageApproval(f);
     const selected = f.owner.getCatalogue()!.active.accountId, journal = await f.captureOriginalJournal();
     const host = connection.host, signing = host.signingContext(selected);
     assert.equal(signing.trezor,true); assert.equal(host.supportsSmartAccountMessages(selected),true);
-    let fences=0;
-    const handoff = {id:'fresh-smart-dapp',expiresAt:Date.now()+60000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    continuation=ownedSmartSdkHandoff(connection,'fresh-smart-dapp',Date.now()+60000,'personal_sign');
+    const handoff=continuation.handoff;
     const request = readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
     const signature=await host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
-    assert.match(signature,/^0x[0-9a-f]+$/i); assert.equal(fences,1); assert.equal(device.signatures.length,1);
+    assert.match(signature,/^0x[0-9a-f]+$/i); continuation.terminal(); assert.equal(device.signatures.length,1);
     assert.equal(f.owner.getCatalogue()!.active.accountId,selected); assert.equal(host.context().activeAccountId,selected);
     assert.deepEqual(await journal.read(true),[]); assert.equal(f.submitted.length,0);
     assert.equal(device.sessions.getSnapshot(),null); assert(device.counts().disposals>0);
-  } finally {connection?.approval.dispose();await close();}
+  } finally {await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 test('native Smart Trezor UserOperation keeps original expiry and requires payer consent after verified proof', async () => {
   const {f,device,close} = await readyTrezorSmartOwner();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, operation: NativeSmartAccountOperation | undefined;
+  let continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
   try {
     connection=await smartMessageApproval(f); const selected=f.owner.getCatalogue()!.active.accountId, journal=await f.captureOriginalJournal();
-    let fences=0; const deadline=Date.now()+60000;
-    const handoff={id:'fresh-smart-uo',expiresAt:deadline,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    const deadline=Date.now()+60000;
+    continuation=ownedSmartSdkHandoff(connection,'fresh-smart-uo',deadline,'eth_sendTransaction');
+    const handoff=continuation.handoff;
     const result=await connection.host.prepareTransaction({handoff,accountId:selected,networkId:'ethereum',transaction:{from:connection.selected.address,to:'0x'+'55'.repeat(20),value:'0x1',data:'0x'},approval:connection.approval},connection.approval.assertCurrent);
     assert('operation' in result); operation=result.operation;
     await operation.prepare(); assert.equal(operation.getSnapshot().phase,'authorize'); assert(operation.authorizationExpiresAt<=deadline);
     const signing=operation.authorize(operation.getSnapshot().revision);
     for(let i=0;i<1000&&operation.getSnapshot().phase!=='review-fee'&&!['failed','complete'].includes(operation.getSnapshot().phase);i++)await new Promise(resolve=>setTimeout(resolve,5));
-    assert.equal(operation.getSnapshot().phase,'review-fee'); assert.equal(fences,1); assert.equal(device.signatures.length,1); assert.equal(f.submitted.length,0);
+    assert.equal(operation.getSnapshot().phase,'review-fee'); continuation.terminal(); assert.equal(device.signatures.length,1); assert.equal(f.submitted.length,0);
     assert.equal(f.owner.getCatalogue()!.active.accountId,selected); assert.deepEqual(await journal.read(true),[]);
     operation.confirmPayer(operation.getSnapshot().payerReview!.id); await signing;
     assert.equal(operation.getSnapshot().phase,'complete'); assert.equal(f.submitted.length,1); assert((await journal.read(true)).length>0);
     assert.equal(device.sessions.getSnapshot(),null);
-  } finally {await operation?.dispose();connection?.approval.dispose();await close();}
+  } finally {await operation?.dispose();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 for(const failure of ['wrong key','changed policy','cancelled raw callback'] as const) test(`native Smart Trezor ${failure} cannot release a proof or prefund`,async()=>{
   const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),released=Promise.withResolvers<void>();
   let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined;
+  let continuation: ReturnType<typeof ownedSmartSdkHandoff> | undefined;
   try{
-    connection=await smartMessageApproval(f);let fences=0;
-    const handoff={id:'fresh-refusal',expiresAt:Date.now()+60000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'fresh-refusal',Date.now()+60000,'personal_sign');
+    const handoff=continuation.handoff;
     if(failure==='wrong key')device.wrongKey(0);
     if(failure==='changed policy')device.onBeforeCallback(request=>{
       if(request.method==='ethereumGetPublicKey')f.mutateSelectedSmart(account=>{account.smartAccount!.auth={...account.smartAccount!.auth!,data:encodeEcdsaValidatorInitData([device.wallets[1]!.address],1)};});
@@ -3083,49 +3733,51 @@ for(const failure of ['wrong key','changed policy','cancelled raw callback'] as 
     const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
     if(failure==='cancelled raw callback'){
       await entered.promise;f.owner.lock();await new Promise(resolve=>setImmediate(resolve));
-      assert.equal(fences,0);released.resolve();
+      released.resolve();
     }
     await rejected;
-    assert.equal(fences,0);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+    assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
     assert(device.counts().disposals>0);
-  }finally{released.resolve();connection?.approval.dispose();await close();}
+  }finally{released.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 test('native Smart Trezor return creates a fresh private message approval after unlock and replays only after separate Confirm',async()=>{
   const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
-  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,suspended=false,fences=0;
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined;
+  let continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
   const deadline=Date.now()+120000;
-  const handoff={id:'original-smart-message',expiresAt:deadline,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>suspended};
   try{
     connection=await smartMessageApproval(f);const selected=connection.selected.id;
+    continuation=ownedSmartSdkHandoff(connection,'original-smart-message',deadline,'personal_sign');let handoff=continuation.handoff;
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
     const signing=connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
-    await entered.promise;suspended=true;f.owner.lock();await rejected;
-    release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');assert.equal(fences,0);
+    await entered.promise;continuation.suspend();f.owner.lock();await rejected;
+    release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');
     connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
     const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');assert.equal(resume.accountId,selected);assert.equal(resume.id,handoff.id);
-    assert.equal(fences,0);const opened=device.urls.length;suspended=false;
+    const opened=device.urls.length;handoff=continuation.resume(connection);
     const result=await connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
-    assert.match(result,/^0x[0-9a-f]+$/i);assert.equal(fences,1);assert.equal(device.urls.length,opened);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
+    assert.match(result,/^0x[0-9a-f]+$/i);continuation.terminal();assert.equal(device.urls.length,opened);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
     assert.equal(device.sessions.getSnapshot(),null);assert.equal(f.submitted.length,0);
-  }finally{release.resolve();connection?.approval.dispose();await close();}
+  }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 
 test('native Smart Trezor return after network change discards the old public transcript',async()=>{
   const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
-  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,suspended=false,fences=0;
-  const handoff={id:'network-bound-smart-message',expiresAt:Date.now()+120000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>suspended};
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined;
+  let continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
   try{
     connection=await smartMessageApproval(f);
+    continuation=ownedSmartSdkHandoff(connection,'network-bound-smart-message',Date.now()+120000,'personal_sign');const handoff=continuation.handoff;
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
     const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
     const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
-    await entered.promise;suspended=true;f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    await entered.promise;continuation.suspend();f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
     connection.approval.dispose();await f.owner.unlock(PASSWORD);await f.selectNetwork('base');
-    await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(fences,0);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
-  }finally{release.resolve();connection?.approval.dispose();await close();}
+    await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+  }finally{release.resolve();await continuation?.dispose();connection?.approval.dispose();await close();}
 });
 
 test('local Smart Trezor wallet send resumes through a fresh operation and separate signing/payer reviews',async()=>{
@@ -3315,14 +3967,13 @@ test('dapp Trezor module installation preserves private approval through signed 
   const { f, device, close } = await readyTrezorSmartOwner();
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   let operation: NativeSmartAccountOperation | undefined;
+  let continuation:ReturnType<typeof ownedSmartSdkHandoff>|undefined;
   try {
     f.customValidator(CUSTOM_MODULE);
     connection = await smartMessageApproval(f);
-    let signaturesAccepted = 0;
     const deadline = Date.now() + 60000;
-    const handoff = { id: 'module-trezor', expiresAt: deadline,
-      beforeSuiteOpen() { return () => undefined; },
-      beforeSignature() { signaturesAccepted++; }, isSuspended: () => false };
+    continuation=ownedSmartSdkHandoff(connection,'module-trezor',deadline,'wallet_requestSmartAccountModuleInstall');
+    const handoff=continuation.handoff;
     const prepared = await connection.host.prepareModuleChange({ accountId: connection.selected.id, networkId: 'ethereum',
       request: normalizeSmartAccountModuleRequest('wallet_requestSmartAccountModuleInstall', [{ address: CUSTOM_MODULE, name: 'Trezor module', initData: '0x1234' }]),
       approval: connection.approval, handoff }, connection.approval.assertCurrent);
@@ -3335,7 +3986,7 @@ test('dapp Trezor module installation preserves private approval through signed 
     for (let attempt = 0; attempt < 1000 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
       await new Promise(resolve => setTimeout(resolve, 5));
     assert.equal(operation.getSnapshot().phase, 'review-fee', JSON.stringify(operation.getSnapshot()));
-    assert.equal(signaturesAccepted, 1); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
+    continuation.terminal(); assert.equal(device.signatures.length, 1); assert.equal(f.submitted.length, 0);
     connection.approval.assertCurrent();
     operation.confirmPayer(operation.getSnapshot().payerReview!.id); await signing;
     assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
@@ -3343,7 +3994,7 @@ test('dapp Trezor module installation preserves private approval through signed 
     assert.equal(f.submitted.length, 1); assert.equal(device.signatures.length, 1);
     assert.equal(f.owner.getCatalogue()!.active.accountId, connection.selected.id);
     connection.approval.assertCurrent();
-  } finally { await operation?.dispose(); connection?.approval.dispose(); await close(); }
+  } finally { await operation?.dispose(); await continuation?.dispose(); connection?.approval.dispose(); await close(); }
 });
 
 for (const delayed of [false, true]) test(`module management custom install survives restart and metadata-only retry (delayed=${delayed})`, async () => {

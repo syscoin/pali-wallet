@@ -3,6 +3,7 @@ import { NativeGuardianRecovery } from '../../src/screens/NativeGuardianRecovery
 import {
   NativeGuardianRecoveryController,
   type NativeGuardianRecoveryAction,
+  type NativeGuardianRecoveryChoice,
 } from '../../src/smartAccount/guardianRecovery';
 import type { NativeGuardianRecoveryIntent } from '../../src/custody/walletCatalogue';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus';
@@ -13,6 +14,38 @@ const account = '0x1111111111111111111111111111111111111111';
 const guardian = '0x2222222222222222222222222222222222222222';
 const replacement = '0x3333333333333333333333333333333333333333';
 const moduleAddress = '0x4444444444444444444444444444444444444444';
+const separatePayer = query.has('separate-payer') || query.has('smart-guardian');
+const guardianChoice: NativeGuardianRecoveryChoice = {
+  id: query.has('smart-guardian') ? 'smart:60:1' : 'hd:60:0',
+  address: guardian,
+  label: query.has('smart-guardian') ? 'Guardian smart account' : 'Guardian wallet',
+};
+const replacementChoice: NativeGuardianRecoveryChoice = {
+  id: 'imported:60:0',
+  address: replacement,
+  label: 'Replacement key',
+};
+const payerChoice: NativeGuardianRecoveryChoice = separatePayer
+  ? { id: 'hd:60:1', address: '0x5555555555555555555555555555555555555555', label: 'Fee payer' }
+  : guardianChoice;
+const guardians = [guardianChoice];
+const replacements = [
+  ...(query.has('large')
+    ? Array.from({ length: 1500 }, (_, index) => ({
+        id: `hd:60:${index + 10}`,
+        label: `Wallet account ${index + 10}`,
+        address: '0x' + (index + 10).toString(16).padStart(40, '0'),
+      }))
+    : []),
+  ...(query.has('smart-guardian') ? [] : [guardianChoice]),
+  replacementChoice,
+];
+const payers = separatePayer ? [payerChoice] : [guardianChoice, replacementChoice];
+const accountRef = ({ id, address }: NativeGuardianRecoveryChoice) => ({
+  id,
+  address,
+  xpub: 'public fixture',
+});
 const hash = '0x' + 'ab'.repeat(32);
 const events: string[] = [];
 let releaseOpen: (() => void) | undefined;
@@ -45,12 +78,9 @@ const intent: NativeGuardianRecoveryIntent = {
     salt: '0x' + 'cd'.repeat(32),
   },
   target: { auth: { module: 'ecdsa', validator: moduleAddress, data: '0x' } },
-  guardian: { id: 'hd:60:0', address: guardian, xpub: 'public fixture' },
-  replacement: {
-    id: 'imported:60:0',
-    address: replacement,
-    xpub: 'public fixture',
-  },
+  guardian: accountRef(guardianChoice),
+  replacement: accountRef(replacementChoice),
+  payer: accountRef(payerChoice),
 };
 const observation: GuardianRecoveryObservation = {
   account,
@@ -88,25 +118,16 @@ export function NativeGuardianRecoveryFixture() {
         chainId: 1,
         currency: 'ETH',
         hasIntent: query.has('resume'),
+        async openRecoveryAlerts() {
+          events.push('recovery-alerts');
+        },
         onActivity: async (_payerId, _chainId, hash) => {
           events.push(`activity:${hash}`);
           if (query.has('handoff-fails')) throw Error('Private failure');
         },
-        accounts: [
-          ...(query.has('large')
-            ? Array.from({ length: 1500 }, (_, index) => ({
-                id: `hd:60:${index + 10}`,
-                label: `Wallet account ${index + 10}`,
-                address: '0x' + (index + 10).toString(16).padStart(40, '0'),
-              }))
-            : []),
-          { id: 'hd:60:0', address: guardian, label: 'Guardian wallet' },
-          {
-            id: 'imported:60:0',
-            address: replacement,
-            label: 'Replacement key',
-          },
-        ],
+        guardians,
+        replacements,
+        payers,
         async open(draft, signal, check) {
           events.push(`open:${draft.kind}`);
           if (query.has('held-open'))
@@ -114,6 +135,14 @@ export function NativeGuardianRecoveryFixture() {
               releaseOpen = resolve;
             });
           check();
+          const selectedIntent = draft.kind === 'start'
+            ? {
+                ...intent,
+                guardian: accountRef(guardians.find(({ id }) => id === draft.guardianId)!),
+                replacement: accountRef(replacements.find(({ id }) => id === draft.replacementId)!),
+                payer: accountRef(payers.find(({ id }) => id === draft.payerId)!),
+              }
+            : intent;
           let phase: 'new' | 'pending' | 'ready' | 'executed' = query.has(
             'executed-owner-change'
           )
@@ -151,7 +180,7 @@ export function NativeGuardianRecoveryFixture() {
                       }
                     : null;
                 return {
-                  intent,
+                  intent: selectedIntent,
                   observation: {
                     ...observation,
                     active,
@@ -177,7 +206,7 @@ export function NativeGuardianRecoveryFixture() {
                 return {
                   transaction: {
                     chainId: '1',
-                    from: guardian,
+                    from: selectedIntent.payer.address,
                     to: moduleAddress,
                     nonce: '3',
                     type: 2,

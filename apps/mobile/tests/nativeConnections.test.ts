@@ -1,3 +1,4 @@
+import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { getSmartAccountModulesProjection } from '../../../source/shared/smartAccountModules.ts';
 import { SMART_ACCOUNT_MODULE_REQUEST_METHODS, type SmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
 import { buildNativeSmartModuleCommand } from '../src/smartAccount/modules.ts';
@@ -68,6 +69,7 @@ function fixture(
     capabilities?: boolean;
     moduleInventory?: boolean;
     moduleChanges?: boolean;
+    smartCreation?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -119,6 +121,11 @@ function fixture(
   const readRequests: unknown[] = [];
   const moduleInventoryReads: { accountId: string; networkId: string }[] = [];
   const moduleChangeRequests: SmartAccountModuleRequest[] = [];
+  let creationAllocation: NativeSmartCreationAllocation | undefined;
+  const creationRequests: unknown[] = [], preparedAccountUpdates: string[] = [];
+  const creationGrantPublications: number[] = [];
+  let creationUpdateFailure = false;
+  let beforeCreationGrant = () => {};
   let moduleMetadataUnavailable = false, moduleMetadataReads = 0;
   let moduleMetadataWait = Promise.resolve();
   let signWait: Promise<void> = Promise.resolve();
@@ -218,6 +225,21 @@ function fixture(
     },
   };
   const host: Omit<NativeConnectionHost, 'repository' | 'calls'> = {
+    async allocateSmartAccount(input, signal, check, onCommitted) {
+      assert(options.smartCreation, 'Creation is outside this fixture'); check();
+      assert.equal(creationAllocation, undefined, 'An allocated account cannot be replaced');
+      assert.equal(input.target.id, 'ecdsa'); creationRequests.push(input);
+      const account = Object.freeze({ id: 'smart:60:7', index: 7, type: 'SmartAccount' as const,
+        address: '0x' + '77'.repeat(20), xpub: 'new-smart-public-address', label: input.label });
+      const allocation = Object.freeze({ account, networkId: input.networkId, chainId: selectedChainId, target: input.target,
+        assertCurrent() { assert(!signal.aborted && snapshot.phase === 'ready' && selectedAccountId === account.id && selectedChainId === allocation.chainId); } });
+      onCommitted(allocation);
+      creationAllocation = allocation; selectedAccountId = account.id;
+      snapshot = { ...snapshot, revision: snapshot.revision + 1, account: { network: 'ethereum', address: account.address } };
+      for (const listener of listeners) listener();
+      allocation.assertCurrent(); return allocation;
+    },
+    async prepareSmartAccountCreationOperation() { throw Error('Configured creation operations are outside this controller fixture'); },
     signingContext: (accountId) => ({ trezor: options.hardware === 'Trezor' || options.smartTrezor === true, binding: smart ? smartSigningBinding ?? accountId : accountId }),
     registration: () => createNativeNetwork({ id: 'ethereum', name: network.label + registrationSuffix, kind: 'evm', chainId: String(selectedChainId), slip44: 60, rpcUrl: network.url, symbol: network.currency, decimals: 18, testnet: false }),
     async cancelSigningHandoff(job) { canceledPsbtJobs.push(job); },
@@ -469,6 +491,7 @@ function fixture(
                 xpub: 'private-host-public-xpub',
                 label: 'Account 1',
               },
+              ...(creationAllocation ? [creationAllocation.account] : []),
               ...(secondAccount
                 ? [
                     {
@@ -502,6 +525,7 @@ function fixture(
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
           ...(options.moduleChanges ? SMART_ACCOUNT_MODULE_REQUEST_METHODS : []),
+          ...(options.smartCreation ? ['wallet_prepareSmartAccount'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
@@ -536,6 +560,7 @@ function fixture(
           ...(options.capabilities ? ['wallet_getCapabilities'] : []),
           ...(options.moduleInventory ? ['wallet_getSmartAccountModules'] : []),
           ...(options.moduleChanges ? SMART_ACCOUNT_MODULE_REQUEST_METHODS : []),
+          ...(options.smartCreation ? ['wallet_prepareSmartAccount'] : []),
           ...(options.batch ? ['wallet_sendCalls', 'wallet_getCallsStatus', 'wallet_showCallsStatus'] : []),
           'wallet_switchEthereumChain',
           'wallet_addEthereumChain',
@@ -604,7 +629,19 @@ function fixture(
         };
       },
     },
-    openHost: async () => { const repository = await restoredRepository; return { ...host, repository, calls: repository.calls }; },
+    openHost: async () => {
+      const repository = await restoredRepository;
+      const observed = { ...repository, permissions(binding: Parameters<typeof repository.permissions>[0]) {
+        const port = repository.permissions(binding);
+        return { ...port, publish(frame: Parameters<typeof port.publish>[0]) {
+          const grant = frame.dapps[ORIGIN];
+          if (options.smartCreation && grant?.accountType === 'SmartAccount')
+            creationGrantPublications.push(grant.accountId);
+          port.publish(frame);
+        } };
+      } };
+      return { ...host, repository: observed, calls: repository.calls };
+    },
     preparePlatform: async () => undefined,
     checkSite: options.checkSite ?? (async () => {
       await siteWait;
@@ -687,6 +724,16 @@ function fixture(
           emissionScopes.push(chain);
           emissions.push(value);
         },
+        updatePreparedAccount: async (binding, id, address, signal, guard, onCommitted) => {
+          assert(options.smartCreation); assert(!signal.aborted); guard();
+          assert.equal(binding.topic, session.binding.topic);
+          assert.equal(wireAdmissions.get(id)?.method, 'wallet_prepareSmartAccount');
+          preparedAccountUpdates.push(address);
+          const current = { ...session, namespaces: { ...session.namespaces, eip155: {
+            ...session.namespaces.eip155!, accounts: [`eip155:1:${address}`] } } };
+          if (creationUpdateFailure) { event({ type: 'session', session: current }); throw Error('Update acknowledgement lost'); }
+          onCommitted(current); guard(); beforeCreationGrant(); return current;
+        },
         pending: async (binding, id, guard) => {
           guard(); pendingReads++;
           const wire = wireAdmissions.get(id);
@@ -707,7 +754,9 @@ function fixture(
     },
   });
   return {
-    controller,
+    controller, creationRequests, preparedAccountUpdates, creationGrantPublications,
+    failCreationUpdate() { creationUpdateFailure = true; },
+    beforeCreationGrantWrite(callback: () => void) { beforeCreationGrant = callback; },
     controlCommits, externalUrls, readRequests, moduleInventoryReads, moduleChangeRequests, sentryRequests, sentryAssents, psbtRequests, psbtApprovals,
     setModuleMetadataUnavailable(value: boolean) { moduleMetadataUnavailable = value; },
     setModuleMetadataWait(value: Promise<void>) { moduleMetadataWait = value; },
@@ -1684,6 +1733,7 @@ async function connectedFixture(
     capabilities?: boolean;
     moduleInventory?: boolean;
     moduleChanges?: boolean;
+    smartCreation?: boolean;
     feeComparison?: EvmDappFeeComparison;
     minimumGasLimit?: string;
     batch?: boolean;
@@ -5087,4 +5137,118 @@ for (const freshness of ['unproven', undefined] as const) test(`dapp module Smar
     assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4200);
     assert.equal(f.moduleChangeRequests.length, 0); assert.equal(f.signatures.length, 0);
   } finally { await f.controller.dispose(); }
+});
+
+
+for (const existingGrant of [true, false]) test(`Smart creation connects one counterfactual account with existing grant=${existingGrant}`, async () => {
+  const f = await connectedFixture({ smartCreation: true });
+  try {
+    if (!existingGrant) {
+      // A protocol session can outlive its separately stored origin grant.
+      const permissions = (await f.repository).permissions(f.session.binding);
+      await permissions.exclusive(async () => {
+        const empty = { dapps: {}, pendingOrigins: [] };
+        await permissions.write(empty); permissions.publish(empty);
+      });
+    }
+    await messageRequest(f, 'wallet_prepareSmartAccount', [{ label: 'New dapp account', authenticator: { id: 'ecdsa' } }]);
+    const review = f.view.getSnapshot().preparationReview; assert(review, JSON.stringify(f.view.getSnapshot()));
+    assert.equal(review.requestedAuthenticatorId, 'ecdsa'); assert.equal(f.creationRequests.length, 0);
+    await f.view.approveSmartPreparation(review.id, review.revision, false);
+    assert.equal(f.creationRequests.length, 1); assert.equal(f.preparedAccountUpdates.length, 1);
+    assert.equal(f.view.getSnapshot().selectedAccountId, 'smart:60:7');
+    assert.equal(f.view.getSnapshot().sessions[0]?.accountLabel, 'New dapp account');
+    assert.equal(f.view.getSnapshot().preparationReview, null);
+    const response = f.responses.at(-1) as { id: number; result: { result: unknown } };
+    assert.equal(response.id, 10); assert.deepEqual(response.result.result, { address: '0x' + '77'.repeat(20), chainId: '0x1' });
+    assert.equal(f.signatures.length, 0); assert.equal(f.transactions.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart creation defaults to unavailable native P256 instead of silently choosing ECDSA', async () => {
+  const f = await connectedFixture({ smartCreation: true });
+  try {
+    await messageRequest(f, 'wallet_prepareSmartAccount', []);
+    const review = f.view.getSnapshot().preparationReview; assert(review);
+    assert.equal(review.requestedAuthenticatorId, 'p256-webauthn'); assert.equal(review.error, 'PREPARATION_UNAVAILABLE');
+    await assert.rejects(f.view.approveSmartPreparation(review.id, review.revision, false));
+    assert.equal(f.creationRequests.length, 0); assert.equal(f.preparedAccountUpdates.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart creation remote external-owner acknowledgement cannot grant trusted consent', async () => {
+  const f = await connectedFixture({ smartCreation: true });
+  try {
+    await messageRequest(f, 'wallet_prepareSmartAccount', [{ authenticator: { id: 'ecdsa', config: { owners: ['0x' + '99'.repeat(20)], threshold: 1 } }, externalOwnersAcknowledged: true }]);
+    const review = f.view.getSnapshot().preparationReview; assert(review);
+    assert.deepEqual(review.externalOwners, ['0x' + '99'.repeat(20)]);
+    await assert.rejects(f.view.approveSmartPreparation(review.id, review.revision, false));
+    assert.equal(f.creationRequests.length, 0); assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart creation refuses unproven restored requests without allocating an account', async () => {
+  const f = await connectedFixture({ smartCreation: true });
+  try {
+    f.event({ type: 'request', request: { freshness: 'unproven', id: 94, session: f.session, method: 'wallet_prepareSmartAccount',
+      chainId: 'eip155:1', params: [{ authenticator: { id: 'ecdsa' } }], verification: UNKNOWN, expiresAt: Date.now() + 60000 } });
+    await settle(); assert.equal(f.view.getSnapshot().preparationReview, null);
+    assert.equal(f.creationRequests.length, 0);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4001);
+  } finally { await f.controller.dispose(); }
+});
+
+test('Smart creation uncertain namespace update retires the original grant without reallocation', async () => {
+  const f = await connectedFixture({ smartCreation: true });
+  try {
+    f.failCreationUpdate();
+    await messageRequest(f, 'wallet_prepareSmartAccount', [{ authenticator: { id: 'ecdsa' } }]);
+    const review = f.view.getSnapshot().preparationReview; assert(review);
+    await assert.rejects(f.view.approveSmartPreparation(review.id, review.revision, false)); await settle();
+    assert.equal(f.creationRequests.length, 1); assert.equal(f.preparedAccountUpdates.length, 1);
+    assert.equal(f.view.getSnapshot().sessions.length, 0);
+    assert.equal(f.remoteDisconnects.length, 1);
+    await assert.rejects(f.view.approveSmartPreparation(review.id, review.revision, false));
+    assert.equal(f.creationRequests.length, 1); assert.equal(f.signatures.length, 0);
+  } finally { await f.controller.dispose(); }
+});
+
+
+for (const hardware of ['Ledger', 'Trezor'] as const) test(`Smart creation preserves the extension restriction for selected ${hardware}`, async () => {
+  const f = await connectedFixture({ smartCreation: true, hardware, accountId: `${hardware.toLowerCase()}:60:0` });
+  try {
+    await messageRequest(f, 'wallet_prepareSmartAccount', [{ authenticator: { id: 'ecdsa' } }]);
+    assert.equal(f.view.getSnapshot().preparationReview, null); assert.equal(f.creationRequests.length, 0);
+    assert.equal((f.responses.at(-1) as { result: { error: { code: number } } }).result.error.code, 4874);
+  } finally { await f.controller.dispose(); }
+});
+
+for (const boundary of ['Reject', 'lock', 'request expiry'] as const) test(`Smart creation ${boundary} during the held new-grant write cannot publish permission`, async () => {
+  const f = await connectedFixture({ smartCreation: true }), held = Promise.withResolvers<void>();
+  let rejecting: Promise<void> | undefined;
+  const visibleGrants: string[] = [];
+  const unsubscribe = f.view.subscribe(() => {
+    for (const session of f.view.getSnapshot().sessions) visibleGrants.push(session.accountLabel);
+  });
+  try {
+    f.beforeCreationGrantWrite(() => f.setStorageWait(held.promise));
+    await messageRequest(f, 'wallet_prepareSmartAccount', [{ label: 'Pending creation grant', authenticator: { id: 'ecdsa' } }]);
+    const review = f.view.getSnapshot().preparationReview; assert(review);
+    const approving = f.view.approveSmartPreparation(review.id, review.revision, false), rejected = assert.rejects(approving);
+    const permissions = (await f.repository).permissions(f.session.binding);
+    for (let turn = 0; turn < 30 && !permissions.read().pendingOrigins.includes(ORIGIN); turn++) await settle();
+    assert(permissions.read().pendingOrigins.includes(ORIGIN), 'The real shared grant commit must be waiting');
+    if (boundary === 'Reject') rejecting = f.view.rejectSmartPreparation(review.id);
+    else if (boundary === 'lock') f.lock();
+    else f.event({ type: 'request-expired', id: 10 });
+    await settle();
+    held.resolve(); await rejected; await rejecting; await settle();
+    assert.equal(permissions.read().dapps[ORIGIN], undefined);
+    assert(!permissions.read().pendingOrigins.includes(ORIGIN));
+    assert(!visibleGrants.includes('Pending creation grant'));
+    assert.deepEqual(f.creationGrantPublications, [], 'Even a locked UI must never hide an active grant publication');
+    assert.equal(f.creationRequests.length, 1); assert.equal(f.preparedAccountUpdates.length, 1);
+    assert.equal(f.responses.some(response => (response as { id: number; result: { result?: unknown } }).id === 10 &&
+      Object.hasOwn((response as { result: object }).result, 'result')), false);
+  } finally { held.resolve(); unsubscribe(); await rejecting; await f.controller.dispose(); }
 });

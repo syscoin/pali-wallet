@@ -17,7 +17,7 @@ let snapshot: NativeConnectionsSnapshot = {
   network: { id: 'ethereum', label: 'Ethereum', chainId: '1' },
   proposals: [],
   sessions: [],
-  signingReview: null, controlReview: null, sentryReview: null, psbtReview: null,
+  signingReview: null, preparationReview: null, controlReview: null, sentryReview: null, psbtReview: null,
   callsStatus: null,
   error: null,
 };

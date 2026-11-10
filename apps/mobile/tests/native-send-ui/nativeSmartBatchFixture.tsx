@@ -161,7 +161,7 @@ export function NativeSmartBatchFixture() {
         network: null,
         proposals: [],
         sessions: [],
-        controlReview: null, sentryReview: null, psbtReview: null, signingReview: current.current.review,
+        preparationReview: null, controlReview: null, sentryReview: null, psbtReview: null, signingReview: current.current.review,
         callsStatus: current.current.status,
         error: null,
       }),

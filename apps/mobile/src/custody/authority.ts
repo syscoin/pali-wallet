@@ -4,6 +4,9 @@ import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/se
 import type { NativeAccountRequest, NativeNetworkSelectionProof, NativeNetworkSelectionReceipt } from './accounts.ts';
 import type { NativeImportRequest, NativeUtxoImportDraft } from './importedAccounts.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
+import type { NativeSmartCreationAllocation, NativeSmartCreationRequest } from '../smartAccount/preparation.ts';
+import type { NativeConnectionSigningHost } from '../connections/host.ts';
+import { resolveSmartAccountPreparationTarget } from '../../../../source/shared/smartAccountPreparation.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { CustodyRuntimeError } from './types.ts';
 import type {
@@ -86,6 +89,80 @@ export class NativeCustodyAuthority {
       if (!runtime.accounts) throw new CustodyRuntimeError('NOT_READY');
       return runtime.accounts.reserve(request, expectedCatalogueRevision);
     }, expectedRevision);
+  }
+
+  /** Adopt only the allocation produced by this authority's live private host. */
+  allocateConnectionSmartAccount(input: NativeSmartCreationRequest, signal: AbortSignal,
+    assertRequestCurrent: () => void, onCommitted: (allocation: NativeSmartCreationAllocation) => void): Promise<NativeSmartCreationAllocation> {
+    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
+    const runtime = this.runtime;
+    if (!runtime || this.snapshot.phase !== 'ready' || !this.snapshot.account ||
+        !('openConnectionHost' in runtime) || typeof runtime.openConnectionHost !== 'function')
+      return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (!signal || signal.aborted || typeof onCommitted !== 'function' || typeof assertRequestCurrent !== 'function')
+      return Promise.reject(new CustodyOperationError('CANCELLED'));
+    const request = Object.freeze({ networkId: input.networkId, label: input.label, externalOwnersAcknowledged: input.externalOwnersAcknowledged,
+      target: resolveSmartAccountPreparationTarget(input.target, { slhDsaSupported: false }) });
+    const openHost = runtime.openConnectionHost as () => Promise<NativeConnectionSigningHost>;
+    let revision = this.revision, committed: NativeSmartCreationAllocation | undefined;
+    const current = () => {
+      this.checkIdle();
+      if (this.runtime !== runtime || this.revision !== revision || this.snapshot.phase !== 'ready' || signal.aborted)
+        throw new CustodyOperationError('CANCELLED');
+      if (this.lockFailed) throw new CustodyOperationError('UNAVAILABLE');
+      assertSynchronousEvmFeeGuard(assertRequestCurrent);
+    };
+    current();
+    let release!: () => void;
+    this.pending = new Promise<void>(resolve => { release = resolve; });
+    this.accountOperation = true;
+    return (async () => {
+      try {
+        await this.drainLocks(); current();
+        const host = await openHost.call(runtime); current();
+        const allocation = await host.allocateSmartAccount(request, signal, current, receipt => {
+          current(); receipt.assertCurrent();
+          if (committed && committed !== receipt) throw new CustodyOperationError('CANCELLED');
+          committed = receipt;
+          // The request records its durable account before either the runtime
+          // or the authority publishes the deliberate selection transition.
+          assertSynchronousEvmFeeGuard(() => onCommitted(receipt));
+        });
+        current();
+        if (!committed || allocation !== committed || allocation.networkId !== request.networkId ||
+            JSON.stringify(allocation.target) !== JSON.stringify(request.target)) throw new CustodyOperationError('UNAVAILABLE');
+        const assertSelection = () => {
+          current(); allocation.assertCurrent();
+          const catalogue = runtime.accounts?.getSnapshot();
+          const selected = catalogue?.accounts.find(account => account.id === catalogue.active.accountId);
+          if (!catalogue || catalogue.active.networkId !== allocation.networkId || catalogue.active.accountId !== allocation.account.id ||
+              selected?.type !== 'SmartAccount' || selected.index !== allocation.account.index || selected.address !== allocation.account.address ||
+              selected.smartAccount?.chainId !== allocation.chainId || this.selectedNetwork(runtime) !== allocation.networkId)
+            throw new CustodyOperationError('UNAVAILABLE');
+          return catalogue;
+        };
+        assertSelection();
+        await this.readState(true); assertSelection();
+        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), allocation.networkId, assertSelection().utxoNetworks);
+        assertSelection();
+        if (address !== allocation.account.address) throw new CustodyOperationError('UNAVAILABLE');
+        revision = ++this.revision;
+        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required',
+          account: Object.freeze({ network: allocation.networkId, address }), error: null });
+        current(); allocation.assertCurrent();
+        return allocation;
+      } catch (cause) {
+        // A commit may have succeeded even when its acknowledgement was lost.
+        // Keep the saved account and retire custody instead of exposing a stale
+        // ready address beside the newly selected private account.
+        this.lock();
+        try { await this.drainLocks(); } catch { /* Cleanup publishes quarantine. */ }
+        if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
+        throw new CustodyOperationError(cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED');
+      } finally {
+        this.accountOperation = false; this.pending = null; release();
+      }
+    })();
   }
 
   /** A connection request selects through the same owned context publication as account management. */
