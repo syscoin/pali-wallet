@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useLocalPasskeyFlow } from '../../hooks/useLocalPasskeyFlow';
@@ -10,32 +10,28 @@ import type { LocalPasskeyController } from '../../wallet/localPasskeyTypes';
 
 /** Optional local unlock; the ordinary password form remains available. */
 export function LocalPasskeyUnlock({
-  controller: supplied,
+  createController = createLocalPasskeyController,
   onUnlocked,
   disabled = false,
   onStart,
   onSettled,
 }: {
-  controller?: LocalPasskeyController;
+  createController?: () => LocalPasskeyController;
   disabled?: boolean;
   onSettled?(): void;
   onStart?(): boolean;
   onUnlocked(): void | Promise<void>;
 }) {
   const { t } = useTranslation();
-  const controller = useMemo(
-    () => supplied ?? createLocalPasskeyController(),
-    [supplied]
-  );
   const [enabled, setEnabled] = useState(false);
-  const flow = useLocalPasskeyFlow(controller, onUnlocked);
+  const flow = useLocalPasskeyFlow(createController, onUnlocked);
   const mounted = useRef(false);
   const attempt = useRef(0);
   useEffect(() => {
     let current = true;
     mounted.current = true;
     setEnabled(false);
-    void Promise.all([controller.status(), localPasskeySupport()])
+    void Promise.all([flow.status(), localPasskeySupport()])
       .then(([status, support]) => {
         if (current) setEnabled(status.enabled && support !== 'unsupported');
       })
@@ -46,7 +42,7 @@ export function LocalPasskeyUnlock({
       current = false;
       mounted.current = false;
     };
-  }, [controller]);
+  }, [flow.status]);
   const unlock = async () => {
     if (disabled || !enabled || flow.busy || onStart?.() === false) return;
     const current = ++attempt.current;

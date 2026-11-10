@@ -77,9 +77,9 @@ it('hides unsupported setup and unlock, retaining the ordinary password alternat
   const source = controller();
   render(
     <>
-      <LocalPasskeySettings controller={source} />
+      <LocalPasskeySettings createController={() => source} />
       <LocalPasskeyUnlock
-        controller={controller(true)}
+        createController={() => controller(true)}
         onUnlocked={jest.fn()}
       />
       <input aria-label="Ordinary password" />
@@ -104,7 +104,7 @@ it('clears the password on submission, blocks double submission, and allows disa
       resolve = done;
     })
   );
-  render(<LocalPasskeySettings controller={source} />);
+  render(<LocalPasskeySettings createController={() => source} />);
   const input = await screen.findByLabelText('localPasskey.password');
   fireEvent.change(input, { target: { value: 'current-password' } });
   fireEvent.click(screen.getByRole('button', { name: 'localPasskey.turnOff' }));
@@ -123,7 +123,9 @@ it('keeps fallback available after complete=false and never reports successful u
     operationId: id,
     success: false,
   });
-  render(<LocalPasskeyUnlock controller={source} onUnlocked={done} />);
+  render(
+    <LocalPasskeyUnlock createController={() => source} onUnlocked={done} />
+  );
   fireEvent.click(
     await screen.findByRole('button', { name: 'localPasskey.unlock' })
   );
@@ -148,7 +150,7 @@ it('cancels before the first enrollment reply and does not launch a late browser
       resolve = done;
     })
   );
-  render(<LocalPasskeySettings controller={source} />);
+  render(<LocalPasskeySettings createController={() => source} />);
   fireEvent.change(await screen.findByLabelText('localPasskey.password'), {
     target: { value: 'password' },
   });

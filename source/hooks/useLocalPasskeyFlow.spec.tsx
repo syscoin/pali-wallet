@@ -1,6 +1,8 @@
 /** @jest-environment jsdom */
 import { act, renderHook } from '@testing-library/react';
+import React, { StrictMode } from 'react';
 
+import { createLocalPasskeyController } from '../utils/localPasskeyController';
 import { runLocalPasskeyCeremony } from '../utils/passkey/localUnlockCeremony';
 
 import { useLocalPasskeyFlow } from './useLocalPasskeyFlow';
@@ -56,7 +58,8 @@ it('cancels a pending begin without an id, disposes on unmount, and retires a la
     begin = deferred<LocalPasskeyStep>(),
     done = jest.fn();
   source.beginUnlock.mockReturnValue(begin.promise);
-  const hook = renderHook(() => useLocalPasskeyFlow(source, done));
+  const create = () => source;
+  const hook = renderHook(() => useLocalPasskeyFlow(create, done));
   let pending!: Promise<boolean>;
   act(() => {
     pending = hook.result.current.unlock();
@@ -77,7 +80,8 @@ it('runs enrollment as create then get and completes exactly once', async () => 
   source.complete
     .mockResolvedValueOnce(prompt('get'))
     .mockResolvedValueOnce(complete);
-  const hook = renderHook(() => useLocalPasskeyFlow(source, done));
+  const create = () => source;
+  const hook = renderHook(() => useLocalPasskeyFlow(create, done));
   await act(async () => {
     expect(await hook.result.current.enroll('current-password')).toBe(true);
   });
@@ -94,7 +98,8 @@ it('blocks reentrant unlock and rejects complete=false without hiding password f
     begin = deferred<LocalPasskeyStep>(),
     done = jest.fn();
   source.beginUnlock.mockReturnValue(begin.promise);
-  const hook = renderHook(() => useLocalPasskeyFlow(source, done));
+  const create = () => source;
+  const hook = renderHook(() => useLocalPasskeyFlow(create, done));
   let pending!: Promise<boolean>;
   act(() => {
     pending = hook.result.current.unlock();
@@ -116,7 +121,8 @@ it('cancel aborts a held ceremony and prevents a late completion from reaching t
   const source = controller(),
     ceremony = deferred<Awaited<ReturnType<typeof runLocalPasskeyCeremony>>>();
   jest.mocked(runLocalPasskeyCeremony).mockReturnValue(ceremony.promise);
-  const hook = renderHook(() => useLocalPasskeyFlow(source));
+  const create = () => source;
+  const hook = renderHook(() => useLocalPasskeyFlow(create));
   let pending!: Promise<boolean>;
   await act(async () => {
     pending = hook.result.current.unlock();
@@ -139,14 +145,19 @@ it('disable uses the same cancellation lifetime and cannot update a replacement 
     disabling = deferred<void>(),
     done = jest.fn();
   source.disable.mockReturnValue(disabling.promise);
-  const hook = renderHook(({ current }) => useLocalPasskeyFlow(current, done), {
-    initialProps: { current: source },
+  const hook = renderHook(({ create }) => useLocalPasskeyFlow(create, done), {
+    initialProps: { create: () => source },
   });
   let pending!: Promise<boolean>;
   act(() => {
     pending = hook.result.current.disable('current-password');
   });
-  hook.rerender({ current: replacement });
+  const previous = hook.result.current;
+  hook.rerender({ create: () => replacement });
+  await expect(previous.unlock()).resolves.toBe(false);
+  await expect(previous.status()).rejects.toThrow();
+  previous.cancel();
+  expect(replacement.cancel).not.toHaveBeenCalled();
   await act(async () => {
     disabling.resolve();
     await pending;
@@ -155,3 +166,101 @@ it('disable uses the same cancellation lifetime and cannot update a replacement 
   expect(source.dispose).toHaveBeenCalledTimes(1);
   expect(hook.result.current.busy).toBe(false);
 });
+
+for (const action of ['enroll', 'unlock', 'disable'] as const) {
+  it(`StrictMode gives status and ${action} a fresh real controller after replay`, async () => {
+    const instances: { dispose: jest.Mock; source: LocalPasskeyController }[] =
+      [];
+    const connections: { disconnected: boolean }[] = [];
+    const originalConnect = Object.getOwnPropertyDescriptor(
+      chrome.runtime,
+      'connect'
+    );
+    Object.defineProperty(chrome.runtime, 'connect', {
+      configurable: true,
+      writable: true,
+      value: jest.fn(),
+    });
+    const connect = jest
+      .spyOn(chrome.runtime, 'connect')
+      .mockImplementation(() => {
+        const messages = new Set<(message: unknown) => void>();
+        const disconnections = new Set<() => void>();
+        const state = { disconnected: false };
+        connections.push(state);
+        let enrolling = false;
+        let assertions = 0;
+        return {
+          onMessage: {
+            addListener: (fn: (message: unknown) => void) => messages.add(fn),
+            removeListener: (fn: (message: unknown) => void) =>
+              messages.delete(fn),
+          },
+          onDisconnect: {
+            addListener: (fn: () => void) => disconnections.add(fn),
+            removeListener: (fn: () => void) => disconnections.delete(fn),
+          },
+          disconnect() {
+            state.disconnected = true;
+            for (const fn of [...disconnections]) fn();
+          },
+          postMessage(message: { id: number; method: string }) {
+            if (state.disconnected) throw Error('Disconnected test port');
+            let result: unknown;
+            if (message.method === 'status') result = { enabled: true };
+            else if (message.method === 'disable') result = null;
+            else if (message.method === 'beginEnrollment') {
+              enrolling = true;
+              result = prompt('create');
+            } else if (message.method === 'beginUnlock') result = prompt('get');
+            else
+              result =
+                enrolling && assertions++ === 0 ? prompt('get') : complete;
+            queueMicrotask(() => {
+              if (!state.disconnected)
+                for (const fn of [...messages]) fn({ id: message.id, result });
+            });
+          },
+        } as unknown as chrome.runtime.Port;
+      });
+    const create = jest.fn(() => {
+      const source = createLocalPasskeyController();
+      const dispose = jest.fn(() => source.dispose());
+      instances.push({ source, dispose });
+      return { ...source, dispose };
+    });
+    const done = jest.fn();
+    const hook = renderHook(() => useLocalPasskeyFlow(create, done), {
+      wrapper: ({ children }) => <StrictMode>{children}</StrictMode>,
+    });
+    try {
+      expect(create).toHaveBeenCalledTimes(2);
+      expect(instances[0].dispose).toHaveBeenCalledTimes(1);
+      expect(instances[1].dispose).not.toHaveBeenCalled();
+      await expect(instances[0].source.status()).rejects.toThrow();
+      await expect(hook.result.current.status()).resolves.toEqual({
+        enabled: true,
+      });
+      await act(async () => {
+        const result =
+          action === 'unlock'
+            ? await hook.result.current.unlock()
+            : action === 'enroll'
+            ? await hook.result.current.enroll('current-password')
+            : await hook.result.current.disable('current-password');
+        expect(result).toBe(true);
+      });
+      expect(done).toHaveBeenCalledTimes(1);
+      expect(done).toHaveBeenCalledWith(action);
+      expect(instances[1].dispose).not.toHaveBeenCalled();
+    } finally {
+      hook.unmount();
+      expect(instances[1].dispose).toHaveBeenCalledTimes(1);
+      expect(connections.every((value) => value.disconnected)).toBe(true);
+      connect.mockRestore();
+      if (originalConnect)
+        Object.defineProperty(chrome.runtime, 'connect', originalConnect);
+      else Reflect.deleteProperty(chrome.runtime, 'connect');
+    }
+  });
+}

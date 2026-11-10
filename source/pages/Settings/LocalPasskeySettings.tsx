@@ -1,5 +1,5 @@
 import { Input } from 'antd';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button, PageActionFooter } from '../../components';
@@ -14,22 +14,18 @@ import type { LocalPasskeyController } from '../../wallet/localPasskeyTypes';
 
 /** Local installation preference; independent of Smart-account passkeys. */
 export function LocalPasskeySettings({
-  controller: supplied,
+  createController = createLocalPasskeyController,
 }: {
-  controller?: LocalPasskeyController;
+  createController?: () => LocalPasskeyController;
 }) {
   const { t } = useTranslation();
-  const controller = useMemo(
-    () => supplied ?? createLocalPasskeyController(),
-    [supplied]
-  );
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [support, setSupport] = useState<LocalPasskeySupport | null>(null);
   const [password, setPassword] = useState('');
   const [readError, setReadError] = useState(false);
   const version = useRef(0);
   const submitting = useRef(false);
-  const flow = useLocalPasskeyFlow(controller, (action) => {
+  const flow = useLocalPasskeyFlow(createController, (action) => {
     setEnabled(action !== 'disable');
   });
   useEffect(() => {
@@ -39,7 +35,7 @@ export function LocalPasskeySettings({
     setSupport(null);
     setReadError(false);
     setPassword('');
-    void controller
+    void flow
       .status()
       .then((status) => {
         if (current && version.current === captured) setEnabled(status.enabled);
@@ -54,7 +50,7 @@ export function LocalPasskeySettings({
       current = false;
       version.current++;
     };
-  }, [controller]);
+  }, [flow.status]);
   const canEdit =
     enabled !== null &&
     (enabled || (support !== null && support !== 'unsupported'));

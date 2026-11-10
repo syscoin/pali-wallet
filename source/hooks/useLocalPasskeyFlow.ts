@@ -11,47 +11,80 @@ export type LocalPasskeyAction = 'enroll' | 'unlock' | 'disable';
 
 /** Owns one document's flow, including a begin request whose id has not arrived. */
 export function useLocalPasskeyFlow(
-  controller: LocalPasskeyController,
+  createController: () => LocalPasskeyController,
   onComplete?: (action: LocalPasskeyAction) => void | Promise<void>
 ) {
-  const owner = useRef({ mounted: false, sequence: 0, controller });
+  type Owner = {
+    controller: LocalPasskeyController;
+    createController: () => LocalPasskeyController;
+    mounted: boolean;
+    sequence: number;
+  };
+  const owner = useRef<Owner | null>(null);
   const active = useRef<{
     abort: AbortController;
     id?: string;
+    owner: Owner;
     source: LocalPasskeyController;
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const cancel = useCallback(() => {
+    const mounted = owner.current;
+    if (!mounted || mounted.createController !== createController) return;
     const current = active.current;
+    if (current && current.owner !== mounted) return;
     active.current = null;
-    owner.current.sequence++;
+    mounted.sequence++;
     current?.abort.abort();
     if (current) void current.source.cancel(current.id).catch(() => undefined);
-    if (owner.current.mounted) setBusy(false);
-  }, []);
+    if (mounted.mounted) setBusy(false);
+  }, [createController]);
   useEffect(() => {
-    const current = owner.current;
-    current.mounted = true;
-    current.controller = controller;
+    const current: Owner = {
+      mounted: true,
+      sequence: 0,
+      createController,
+      controller: createController(),
+    };
+    owner.current = current;
     setBusy(false);
     setError(false);
     return () => {
       current.mounted = false;
-      cancel();
-      void controller.dispose().catch(() => undefined);
+      current.sequence++;
+      const operation = active.current;
+      if (operation?.owner === current) {
+        active.current = null;
+        operation.abort.abort();
+        void current.controller.cancel(operation.id).catch(() => undefined);
+      }
+      if (owner.current === current) owner.current = null;
+      void current.controller.dispose().catch(() => undefined);
     };
-  }, [controller, cancel]);
+  }, [createController]);
+  const status = useCallback(async () => {
+    const current = owner.current;
+    if (!current?.mounted || current.createController !== createController)
+      throw localPasskeyError();
+    const value = await current.controller.status();
+    if (owner.current !== current || !current.mounted)
+      throw localPasskeyError();
+    return value;
+  }, [createController]);
 
   const run = async (kind: LocalPasskeyAction, password = '') => {
+    const mounted = owner.current;
     if (
-      !owner.current.mounted ||
-      owner.current.controller !== controller ||
+      !mounted?.mounted ||
+      mounted.createController !== createController ||
       active.current
     )
       return false;
-    const captured = owner.current.sequence;
+    const captured = mounted.sequence;
+    const controller = mounted.controller;
     const current = {
+      owner: mounted,
       abort: new AbortController(),
       id: undefined as string | undefined,
       source: controller,
@@ -62,9 +95,9 @@ export function useLocalPasskeyFlow(
     setError(false);
     const check = () => {
       if (
-        !owner.current.mounted ||
-        owner.current.controller !== controller ||
-        owner.current.sequence !== captured ||
+        !mounted.mounted ||
+        owner.current !== mounted ||
+        mounted.sequence !== captured ||
         active.current !== current ||
         current.abort.signal.aborted
       )
@@ -119,8 +152,9 @@ export function useLocalPasskeyFlow(
       return true;
     } catch {
       if (
-        owner.current.mounted &&
-        owner.current.sequence === captured &&
+        mounted.mounted &&
+        owner.current === mounted &&
+        mounted.sequence === captured &&
         active.current === current
       )
         setError(true);
@@ -131,7 +165,7 @@ export function useLocalPasskeyFlow(
       if (current.id) void controller.cancel(current.id).catch(() => undefined);
       if (active.current === current) {
         active.current = null;
-        if (owner.current.mounted) setBusy(false);
+        if (owner.current === mounted && mounted.mounted) setBusy(false);
       }
     }
   };
@@ -139,6 +173,7 @@ export function useLocalPasskeyFlow(
     busy,
     error,
     cancel,
+    status,
     enroll: (password: string) => run('enroll', password),
     unlock: () => run('unlock'),
     disable: (password: string) => run('disable', password),
