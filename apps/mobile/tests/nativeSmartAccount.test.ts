@@ -4358,7 +4358,9 @@ test('module management cancellation while saving a discovery record rolls back 
     assert.equal(writes, 1, 'revocation occurs during the authorized discovery update');
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
     assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 0);
-    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null, 'a revoked write quarantines its runtime even after SQL rollback');
+    await assert.rejects(f.runtime.session.readSelectedAddress(), /CLEANUP_FAILED|CANCELLED|NOT_READY/);
+    await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
     assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
   } finally { await f.close(); }
 });
