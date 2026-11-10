@@ -12,6 +12,8 @@ test('all-network Activity shows newest first, network badges and full accessibl
   await expect(rows.nth(0).getByText('Base', { exact: true })).toBeVisible();
   await expect(rows.nth(0).getByTestId('activity-network-icon-base')).toBeVisible();
   await expect(rows.nth(1).getByTestId('activity-network-icon-ethereum')).toBeVisible();
+  for (const tab of ['wallet', 'activity', 'tools', 'settings']) await expect(page.getByTestId(`main-tab-caption-${tab}`)).toBeInViewport();
+  await expect(page.getByRole('tab', { name: 'Activity', exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('button', { name: 'Back', exact: true })).toHaveCount(0);
   await page.screenshot({ path: '/tmp/pali-all-activity-390.png', fullPage: true });
 });
@@ -19,9 +21,11 @@ test('same transaction hash opens only its selected network child and Back retur
   await page.goto('/?all-networks=1');
   await page.getByTestId(`account-activity-row-base-${hash}`).click();
   await expect(page.getByRole('heading', { name: 'Transaction details' })).toBeVisible();
+  await expect(page.getByTestId('main-tab-caption-activity')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.__allActivityFixture.inspections())).toEqual(['base']);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
+  await expect(page.getByTestId('main-tab-caption-activity')).toBeInViewport();
   await expect(page.locator('[data-testid^="account-activity-row-"]')).toHaveCount(2);
 });
 test('concrete and direction filters stay scoped, and hidden balances do not leak through labels', async ({ page }) => {

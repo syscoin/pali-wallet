@@ -6,6 +6,8 @@ import { DEFAULT_ACTIVITY_VIEW } from '../../src/activity/types';
 import { getNativeNetwork } from '../../src/custody/networkContext';
 import { saveBalancePrivacy } from '../../src/platform/balancePrivacy';
 import { AllNetworksActivity } from '../../src/screens/AllNetworksActivity';
+import { RealAppShell } from '../../src/screens/RealAppShell';
+import { useRealShell } from '../../src/screens/useRealShell';
 import type { NotificationChoice } from '../../src/notifications/choices';
 
 const owner = `0x${'11'.repeat(20)}`, external = `0x${'22'.repeat(20)}`;
@@ -48,6 +50,9 @@ const controller = { getSnapshot: () => state, subscribe: (listener: () => void)
 declare global { interface Window { __allActivityFixture: { inspections(): string[]; hideBalances(value: boolean): Promise<void> } } }
 window.__allActivityFixture = { inspections: () => [...inspections], async hideBalances(value) { await saveBalancePrivacy(value); } };
 export function AllNetworksActivityFixture() {
-  return <SafeAreaProvider><AllNetworksActivity controller={controller} accountLabel="Public test account"
-    initialTarget={query.get('target') ? { networkId: query.get('target')!, hash } : undefined} /></SafeAreaProvider>;
+  const shell = useRealShell('activity-fixture', () => 'activity-fixture', () => {});
+  return <SafeAreaProvider><RealAppShell tab="activity" onTab={() => {}} immersive={shell.immersive}>
+    <AllNetworksActivity controller={controller} accountLabel="Public test account" navigation={shell.navigation}
+      initialTarget={query.get('target') ? { networkId: query.get('target')!, hash } : undefined} />
+  </RealAppShell></SafeAreaProvider>;
 }

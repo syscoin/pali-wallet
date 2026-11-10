@@ -2,6 +2,8 @@ import React, { useSyncExternalStore } from 'react';
 import { AccountPortfolioController } from '../../src/portfolio/accountPortfolio';
 import { createPortfolioFilter } from '../../src/portfolio/portfolioFilter';
 import { NativeAccountOverview } from '../../src/screens/NativeAccountOverview';
+import { RealAppShell } from '../../src/screens/RealAppShell';
+import { useRealShell } from '../../src/screens/useRealShell';
 import { getNativeNetwork } from '../../src/custody/networkContext';
 import type { CustodySnapshot } from '../../src/custody/types';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
@@ -34,8 +36,11 @@ declare global { interface Window { __accountPortfolio: { reads: string[]; asset
 window.__accountPortfolio = { reads, assets, prices, sends, nextAccount() { selected = 14; publish(); } };
 export function NativeAccountOverviewFixture() {
   useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
-  return <NativeAccountOverview controller={model} portfolio={{ source, reader, accountLabel: accounts[selected]!.label,
+  const shell = useRealShell('portfolio-fixture', () => 'portfolio-fixture', () => {});
+  return <RealAppShell tab="wallet" onTab={() => {}} immersive={shell.immersive}>
+    <NativeAccountOverview controller={model} portfolio={{ source, reader, accountLabel: accounts[selected]!.label, navigation: shell.navigation,
     onManageAccounts: window.__accountPortfolio.nextAccount, onExit() {}, onLock() {}, onViewRecovery() {}, onSend() {} }}
     selectNetwork={async (choice, check) => { check(); publish(choice.scope.network.id); check(); }}
-    send={async (choice, token, check) => { check(); sends.push(`${choice.scope.network.id}:${token?.symbol ?? choice.symbol}`); }} />;
+    send={async (choice, token, check) => { check(); sends.push(`${choice.scope.network.id}:${token?.symbol ?? choice.symbol}`); }} />
+  </RealAppShell>;
 }
