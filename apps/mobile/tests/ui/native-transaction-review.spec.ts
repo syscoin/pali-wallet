@@ -14,7 +14,7 @@ test('shows exact amounts and inspectable transaction details on a narrow screen
   await page.getByRole('button', { name: 'View transaction details', exact: true }).click();
   await expect(page.getByText(/"storageKeys"/)).toBeVisible();
   await expect(page.getByText(/"nonce": "3"/)).toBeVisible();
-  const approve = page.getByRole('button', { name: 'Confirm transaction', exact: true });
+  const approve = page.getByRole('button', { name: 'Confirm', exact: true });
   await approve.scrollIntoViewIfNeeded();
   await expect(approve).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('transaction-review-320-controls.png'), fullPage: true });
@@ -46,7 +46,7 @@ test('requires the requested account and renewed warning acknowledgement before 
   await page.goto(`${fixture}&switch=1&warning=1`);
   await expect(page.getByRole('checkbox', { name: 'I understand the address warning' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Switch account', exact: true }).click();
-  const approve = page.getByRole('button', { name: 'Confirm transaction', exact: true });
+  const approve = page.getByRole('button', { name: 'Confirm', exact: true });
   const acknowledgement = page.getByRole('checkbox', { name: 'I understand the address warning' });
   await expect(approve).toBeDisabled();
   await acknowledgement.click();
@@ -66,11 +66,11 @@ test('requires the requested account and renewed warning acknowledgement before 
 test('blocks incomplete and mismatched requests while keeping rejection available', async ({ page }) => {
   await page.goto(`${fixture}&preparing=1`);
   await expect(page.getByText('Preparing transaction…', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Confirm transaction', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled();
   await page.goto(`${fixture}&invalid-origin=1`);
   await expect(page.getByText('Website mismatch', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Confirm transaction', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Reject', exact: true }).click();
   expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls()))
     .toEqual([{ method: 'rejectRequest', args: ['transaction-1'] }]);
@@ -79,7 +79,7 @@ test('blocks incomplete and mismatched requests while keeping rejection availabl
 for (const state of ['broadcasting', 'uncertain']) {
   test(`offers Close after ${state} without another approval or rejection`, async ({ page }) => {
     await page.goto(`${fixture}&${state}=1`);
-    await expect(page.getByRole('button', { name: 'Confirm transaction', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Reject', exact: true })).toHaveCount(0);
     await expect(page.getByText('0x' + '6'.repeat(64), { exact: true })).toBeVisible();
     await expect(page.getByText(state === 'broadcasting' ? 'Sending transaction…' : 'The result could not be confirmed. Check Activity before trying again.', { exact: true })).toBeVisible();
@@ -100,7 +100,7 @@ test('shows the token authority and edits an allowance into a fresh transaction 
   await expect(page.getByText('Unlimited', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox', { name: 'New spending limit', exact: true })).toHaveCount(0);
   await page.screenshot({ path: test.info().outputPath('edited-allowance.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Confirm transaction', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click();
   expect(await page.evaluate(() => window.__nativeTransactionReviewFixture.calls()))
     .toEqual([
       { method: 'editApprovalAmount', args: ['transaction-1', 7, '1.5'] },
@@ -115,7 +115,7 @@ test('zero allowance remains a reviewed revocation request', async ({ page }) =>
   await page.getByRole('button', { name: 'Apply limit', exact: true }).click();
   await expect(page.getByText('Set allowance to zero', { exact: true })).toBeVisible();
   await expect(page.getByText('0.0 TOK', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Confirm transaction', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();
 });
 
 test('unknown approval and NFT token IDs never become verified editable ERC20 limits', async ({ page }) => {
@@ -134,7 +134,7 @@ test('unknown approval and NFT token IDs never become verified editable ERC20 li
 
 test('unapplied or invalid allowance edits block confirmation until discarded', async ({ page }) => {
   await page.goto(`${fixture}&approval=erc20`);
-  const confirm = page.getByRole('button', { name: 'Confirm transaction', exact: true });
+  const confirm = page.getByRole('button', { name: 'Confirm', exact: true });
   await page.getByRole('button', { name: 'Edit spending limit', exact: true }).click();
   await page.getByRole('textbox', { name: 'New spending limit', exact: true }).fill('1.5');
   await expect(confirm).toBeDisabled();
@@ -159,7 +159,7 @@ test('unapplied or invalid allowance edits block confirmation until discarded', 
 
 test('unrelated controller revisions preserve an allowance draft and its confirmation block', async ({ page }) => {
   await page.goto(`${fixture}&approval=erc20`);
-  const confirm = page.getByRole('button', { name: 'Confirm transaction', exact: true });
+  const confirm = page.getByRole('button', { name: 'Confirm', exact: true });
   await page.getByRole('button', { name: 'Edit spending limit', exact: true }).click();
   const input = page.getByRole('textbox', { name: 'New spending limit', exact: true });
   await input.fill('1.5');
@@ -222,7 +222,7 @@ test("fee choices remain reachable by keyboard and touch at 320px and require a 
     { method: "chooseTransactionFee", args: ["transaction-1", 7, "network"] },
   ]);
   await page
-    .getByRole("button", { name: "Confirm transaction", exact: true })
+    .getByRole("button", { name: "Confirm", exact: true })
     .click();
   expect(
     await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
@@ -245,7 +245,7 @@ test("adjusted fees expose only the app choice and hold both choice and Confirm 
     exact: true,
   });
   const confirm = page.getByRole("button", {
-    name: "Confirm transaction",
+    name: "Confirm",
     exact: true,
   });
   await expect(
@@ -301,7 +301,7 @@ test("an expired held fee choice cannot revive confirmation", async ({
     page.getByRole("button", { name: "Use dapp fee anyway", exact: true })
   ).toBeDisabled();
   await expect(
-    page.getByRole("button", { name: "Confirm transaction", exact: true })
+    page.getByRole("button", { name: "Confirm", exact: true })
   ).toBeDisabled();
   expect(
     await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())
@@ -320,7 +320,7 @@ test("the review deadline disables fee choices and Confirm before another comman
     exact: true,
   });
   const confirm = page.getByRole("button", {
-    name: "Confirm transaction",
+    name: "Confirm",
     exact: true,
   });
   await expect(appFee).toBeEnabled();
@@ -357,7 +357,7 @@ test("a requote that raises the requested choice keeps the adjustment visible wi
     page.getByRole("button", { name: "Use network suggestion", exact: true })
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Confirm transaction", exact: true })
+    page.getByRole("button", { name: "Confirm", exact: true })
   ).toBeEnabled();
   expect(
     await page.evaluate(() => window.__nativeTransactionReviewFixture.calls())

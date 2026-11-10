@@ -53,7 +53,7 @@ const modal = (state: LedgerState) => { assert(state.modal); return state.modal 
 
 for (const kind of ['message', 'transaction'] as const) test(`${kind} consent connects Ledger without automatically signing, then requires a fresh approval press`, async () => {
   const f = fixture(kind);
-  const approveTitle = kind === 'message' ? 'Sign message' : 'Confirm transaction';
+  const approveTitle = kind === 'message' ? 'Sign message' : 'Confirm';
   let values = f.render();
   const oldApprove = values.find(value => value.type === 'Button' && value.props.title === approveTitle)!;
   assert(oldApprove.props.disabled); oldApprove.props.onPress(); assert.deepEqual(f.approvals, []);

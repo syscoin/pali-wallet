@@ -142,7 +142,7 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     {ledger.showConnect && !submitted && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}
     <View style={s.actions}>
     <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="secondary" onPress={close} style={s.action} />
-    {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm transaction'}
+    {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm'}
       disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
         (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} style={s.action} />}
     </View>
