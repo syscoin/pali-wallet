@@ -10,7 +10,14 @@ import { clearTransactionNavigationState } from 'utils/navigationState';
 import Unlock from './Unlock';
 
 let mockQuery: any;
+let mockPasskey: any;
 jest.mock('./StartFreshWallet', () => ({ StartFreshWallet: () => null }));
+jest.mock('./LocalPasskeyUnlock', () => ({
+  LocalPasskeyUnlock: (props: any) => {
+    mockPasskey = props;
+    return null;
+  },
+}));
 let mockSubmit: (values: { password: string }) => Promise<unknown>;
 const mockNavigate = jest.fn();
 const mockAlert = { error: jest.fn() };
@@ -24,12 +31,18 @@ jest.mock('antd', () => {
   return {
     Form: MockForm,
     Input: {
-      Password: ({ placeholder, autoComplete, id }: any) => (
+      Password: ({
+        placeholder,
+        autoComplete,
+        id,
+        'aria-label': label,
+      }: any) => (
         <input
           type="password"
           placeholder={placeholder}
           autoComplete={autoComplete}
           id={id}
+          aria-label={label}
         />
       ),
     },
@@ -148,6 +161,23 @@ describe('Unlock authentication navigation', () => {
 
   it('identifies the unlock password as the current password for password managers', () => {
     expect(renderUnlock()).toContain('autoComplete="current-password"');
+    expect(renderUnlock()).toContain('aria-label="settings.enterYourPassword"');
+  });
+
+  it('uses the same fresh status and navigation after local passkey unlock', async () => {
+    jest.mocked(controllerEmitter).mockResolvedValueOnce(true);
+    renderUnlock();
+    expect(mockPasskey.onStart()).toBe(true);
+    expect(mockPasskey.onStart()).toBe(false);
+    await mockPasskey.onUnlocked();
+    expect(controllerEmitter).toHaveBeenCalledWith(
+      ['wallet', 'isUnlocked'],
+      [],
+      1800,
+      false
+    );
+    expect(mockNavigate).toHaveBeenCalledWith('/home');
+    mockPasskey.onSettled();
   });
 
   it('cleans only transaction state on external login completion after fresh unlock confirmation', async () => {

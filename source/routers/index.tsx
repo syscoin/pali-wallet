@@ -156,6 +156,9 @@ const EditAccount = lazy(() => import('pages/Settings/EditAccount'));
 const Advanced = lazy(() => import('pages/Settings/Advanced'));
 const Privacy = lazy(() => import('pages/Privacy'));
 const Languages = lazy(() => import('pages/Settings/Languages'));
+const LocalPasskeySettings = lazy(
+  () => import('pages/Settings/LocalPasskeySettings')
+);
 const ChainErrorPage = lazy(() =>
   import('pages/Chain/ChainErrorPage').then((m) => ({
     default: m.ChainErrorPage,
@@ -305,6 +308,10 @@ export const Router = () => {
             <Route path="/settings/remove-eth" element={<RemoveEth />} />
             <Route path="/settings/advanced" element={<Advanced />} />
             <Route path="/settings/languages" element={<Languages />} />
+            <Route
+              path="/settings/local-passkey"
+              element={<LocalPasskeySettings />}
+            />
             <Route path="/settings/currency" element={<Currency />} />
             <Route path="/settings/forget-wallet" element={<ForgetWallet />} />
             <Route path="/settings/seed" element={<Phrase />} />

@@ -21,6 +21,7 @@ const { dataSlice, hexlify } =
 
 import { jsonStorageEqual } from '../../../shared/jsonStorageEqual';
 import { isStrongWalletPassword } from '../../../shared/passwordPolicy';
+import { LOCAL_PASSKEY_STORAGE_KEY } from '../../../wallet/browserLocalPasskeyStorage';
 import { EVM_SIGNED_RECORD_PREFIX } from '../../../wallet/evmSignedRecords';
 import { UTXO_SIGNED_RECORD_PREFIX } from '../../../wallet/utxoSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
@@ -98,6 +99,7 @@ const resetTickets = new WeakMap<
 const resetOwnedKey = (key: string) =>
   key === 'sysweb3-vault' ||
   key === 'sysweb3-vault-keys' ||
+  key === LOCAL_PASSKEY_STORAGE_KEY ||
   key.startsWith('sysweb3-vault-') ||
   key.startsWith(EVM_SIGNED_RECORD_PREFIX) ||
   key.startsWith(UTXO_SIGNED_RECORD_PREFIX) ||

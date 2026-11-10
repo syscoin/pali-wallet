@@ -78,7 +78,7 @@ describe('fresh keyring creation persistence', () => {
       '../controllers/browserKeyringHost'
     );
     const keyring: any = new KeyringManager(
-      createBrowserKeyringHost(chrome.storage.local),
+      createBrowserKeyringHost(chrome.storage.local, null),
       {
         trezorHost: createOfflineTrezorHost(),
         captureEvmSubmission: () => {

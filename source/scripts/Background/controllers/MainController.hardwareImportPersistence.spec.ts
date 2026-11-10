@@ -270,7 +270,7 @@ describe.each(['Trezor', 'Ledger'] as const)(
         },
       } as any;
       manager = new KeyringManager(
-        createBrowserKeyringHost(chrome.storage.local),
+        createBrowserKeyringHost(chrome.storage.local, null),
         {
           trezorHost: createTrezorWebExtensionHost({
             manifest: {

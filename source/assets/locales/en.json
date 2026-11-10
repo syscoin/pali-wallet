@@ -1,4 +1,21 @@
 {
+  "localPasskey": {
+    "title": "Passkey unlock",
+    "description": "Unlock this Pali installation with a supported passkey. Your password and recovery phrase stay the same.",
+    "loading": "Loading…",
+    "enabled": "Enabled on this installation",
+    "disabled": "Not enabled",
+    "unavailable": "Passkey settings are unavailable.",
+    "unsupported": "Passkey encryption is unavailable in this browser. Use your password.",
+    "password": "Current wallet password",
+    "setUp": "Set up passkey unlock",
+    "turnOff": "Turn off passkey unlock",
+    "unlock": "Unlock with passkey",
+    "enrollFailed": "Setup was not completed. Check your password or try a passkey provider that supports PRF.",
+    "disableFailed": "Could not turn off passkey unlock. Check your current password and try again.",
+    "unlockFailed": "Passkey unlock was not completed. Try again or use your password.",
+    "localOnly": "Encrypted unlock data stays in this installation. Your provider may sync the passkey; this does not transfer your local wallet."
+  },
   "transactionDisplay": {
     "blockHash": "Block Hash",
     "blockNumber": "Block Number",

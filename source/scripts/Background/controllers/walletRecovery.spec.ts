@@ -154,6 +154,7 @@ const originalRecords = () => ({
 });
 const resetOwned = (key: string) =>
   key === 'sysweb3-vault' ||
+  key === 'pali-local-passkey-v1' ||
   key.startsWith('sysweb3-vault-') ||
   key === 'state' ||
   key.startsWith('state-') ||
@@ -1062,6 +1063,27 @@ describe('explicit seed recovery transaction', () => {
     );
   });
   describe('explicit locked-wallet reset', () => {
+    it('restores the local passkey wrapper on rollback and removes it on confirmed reset', async () => {
+      const key = 'pali-local-passkey-v1';
+      const wrapper = {
+        version: 1,
+        encrypted: 'synthetic local passkey wrapper',
+      };
+      mockRecords[key] = wrapper;
+      wallet.resetWalletState.mockImplementationOnce(async () => {
+        delete mockRecords[key];
+        throw new Error('reset interrupted');
+      });
+      await expect(submitLockedReset(await beginLockedReset())).rejects.toThrow(
+        'reset interrupted'
+      );
+      expect(mockRecords[key]).toEqual(wrapper);
+      expect(mockRecords[JOURNAL]).toBeUndefined();
+      await submitLockedReset(await beginLockedReset());
+      expect(mockRecords[key]).toBeUndefined();
+      expect(mockRecords).toEqual({ language: 'en' });
+    });
+
     it('issues a random confirmation ticket without reading a seed or writing wallet data', async () => {
       const seedValidation = jest.spyOn(wallet, 'isSeedValid');
       const before = structuredClone(mockRecords);
