@@ -1,8 +1,8 @@
 # Local passkey unlock review
 
-Source: `bcc7d3d9ea06fc9deadaff195138ebd7e2838726`.
+Source: `14320f73ba48e94574e471bd6a6521eb24a74a91`.
 
-These are actual production-extension renders from the offline local-passkey journey. The disposable public test wallet uses a Chromium virtual CTAP2.1 authenticator with PRF; it is not a physical authenticator or device qualification. The journey passed enrollment, same-wallet unlock, removal, and password fallback. No transaction was submitted.
+These are actual production-extension renders from the offline local-passkey journey. The disposable public test wallet uses a Chromium virtual CTAP2.1 authenticator with PRF; it is not a physical authenticator or device qualification. The journey passed enrollment, same-wallet unlock, removal, and password fallback. No transaction was submitted. The final pass includes the reviewed StrictMode controller-lifetime fix and the current mobile base.
 
 ## Settings at 320 pixels
 
