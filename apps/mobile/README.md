@@ -103,7 +103,7 @@ The [mobile lockfile](package-lock.json) pins the official npm releases below wi
 | `react-native-quick-crypto`  | 1.1.9   |
 | `react-native-nitro-modules` | 0.37.2  |
 
-Both hosts currently pin the reviewed Keyring 2.1.10 candidate archive from Sysweb3 #106 for mandatory owned hardware-message signing and Trezor envelope validation. Official npm adoption and removal of the explicit candidate archive remain pending publication. Qualification records bind the exact installed version and lockfile hash; the [shared-core audit](docs/shared-core-audit.md) tracks completion.
+Both hosts pin official Keyring 2.1.11 from Sysweb3 #107 for mandatory owned hardware-message signing and Trezor envelope validation. The registry tarball matches all 322 reviewed package files byte for byte; the temporary archive and its qualification-only support have been removed. Qualification records bind the exact installed version and lockfile hash; the [shared-core audit](docs/shared-core-audit.md) tracks completion.
 
 QuickCrypto uses its native scheduler. Crypto, Buffer and stream adapters support the native dependency graph. Unsupported Node transports fail closed. The lockfile also pins the reviewed tooling overrides, including `glob` 14.0.3 and `minimatch` 11.0.4.
 
