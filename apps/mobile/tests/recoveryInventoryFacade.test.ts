@@ -1,4 +1,5 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
+import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -51,7 +52,11 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     ? { presence: 'existing', backup: 'confirmed' } : { presence: 'empty', backup: 'unconfirmed' };
   let snapshotRead = async () => snapshot();
   const storage = {
-    keyringStorage: { set() { counts.writes++; assert.fail('inventory must not write'); } },
+    keyringStorage: {
+      async get() { assert.fail('inventory must not read privacy service settings'); },
+      async compareAndSetMany() { counts.writes++; assert.fail('inventory must not write privacy service settings'); },
+      set() { counts.writes++; assert.fail('inventory must not write'); },
+    },
     recovery: {
       async readSnapshot() { counts.snapshotReads++; return snapshotRead(); },
     },
@@ -78,6 +83,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   class PassiveController { readonly view = {}; dispose() {} }
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {

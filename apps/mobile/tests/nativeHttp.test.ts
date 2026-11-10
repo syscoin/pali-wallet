@@ -1,4 +1,5 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
+import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
@@ -332,6 +333,7 @@ test('native factory explicitly wires one owned transport to all network consume
   };
   const unexpectedFeature = () => assert.fail('unexpected feature operation in HTTP factory fixture');
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
+    './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {
