@@ -4,7 +4,7 @@ import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
 import { nativeSmartLedgerDevice } from './nativeSmartLedgerDevice.ts';
 import type { NativeSlhKey, NativeSlhTree } from '../src/crypto/slhDsaNativeExecution.ts';
 import type { SlhDsaExecutionHost } from '../../../source/wallet/slhDsaExecution.ts';
-import type { IKeyringAccountState } from '../../../source/types/network.ts';
+import type { IKeyringAccountState, SmartAccountInstalledModule } from '../../../source/types/network.ts';
 import type { NativeSlhPublicState, NativeSlhExecutionCapability } from '../src/smartAccount/slhDsaRuntime.ts';
 import { getSLHDSAKeyId, getSLHDSAStateStorageKey, SLH_DSA_SIGNATURE_LIMIT } from '../../../source/utils/slhDsa/constants.ts';
 import { prepareSmartAccountMessage, encodeSmartAccountMessageSignature } from '../../../source/utils/smartAccount/messageSigning.ts';
@@ -83,7 +83,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let recoveredOwner: string | undefined;
   let observedOwners: string[] | undefined;
   let observedThreshold = 1;
-  let composite: { threshold: number; ecdsaFirst: boolean } | undefined;
+  let composite: { threshold: number; ecdsaFirst: boolean; children?: string[] } | undefined;
+  const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
   const slhDerivations: number[] = [];
   let captureJournal: (() => ReturnType<EvmSignedRecords['captureSmartAccountPendingRecords']>) | undefined;
@@ -115,7 +116,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const target = request.params[0].toLowerCase();
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
-          result = builtIn ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          result = builtIn || customValidators.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
           if (smartTarget) {
             await smartCodeRead?.();
             if (deployed && interruptAfterReceipt) {
@@ -179,15 +180,18 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             result = paliSmartAccountInterface.encodeFunctionResult('supportsExecutionMode', [true]);
           } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('isModuleInstalled')!.selector)) {
             const args = paliSmartAccountInterface.decodeFunctionData('isModuleInstalled', data);
-            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || !!composite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
+            result = paliSmartAccountInterface.encodeFunctionResult('isModuleInstalled', [customValidators.get(args[1].toLowerCase())?.installed === true || args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() || !!observedSlh && args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase() || !!composite && (['composite', 'p256-webauthn'] as const).some(kind => args[1].toLowerCase() === getConfiguredAuthenticatorAddress(Number(network.chainId), kind).toLowerCase())]);
           } else if (to === smartAddress && data.startsWith(paliSmartAccountInterface.getFunction('activeValidator')!.selector)) {
             result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), composite ? 'composite' : observedSlh ? 'slh-dsa' : 'ecdsa')]);
+          } else if (customValidators.has(to)) {
+            const [type] = coder.decode(['uint256'], '0x' + data.slice(10));
+            result = coder.encode(['bool'], [type === 1n || customValidators.get(to)!.compatible]);
           } else if (observedSlh && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'slh-dsa').toLowerCase()) {
             result = paliSlhDsaValidatorInterface.encodeFunctionResult('authData', [[observedSlh.pkSeed, observedSlh.pkRoot]]);
           } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'composite').toLowerCase()) {
             const ecdsa = getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa'), passkey = getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn');
             result = data.startsWith(paliCompositeValidatorInterface.getFunction('childValidators')!.selector)
-              ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [composite.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa]])
+              ? paliCompositeValidatorInterface.encodeFunctionResult('childValidators', [composite.children ?? (composite.ecdsaFirst ? [ecdsa, passkey] : [passkey, ecdsa])])
               : paliCompositeValidatorInterface.encodeFunctionResult('threshold', [composite.threshold]);
           } else if (composite && to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'p256-webauthn').toLowerCase()) {
             result = paliP256WebAuthnValidatorInterface.encodeFunctionResult('authData', [[`0x${'01'.repeat(32)}`, `0x${'02'.repeat(32)}`, `0x${'03'.repeat(32)}`, `0x${'04'.repeat(32)}`, 32]]);
@@ -309,6 +313,8 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     externalOwner() { externalOwner = true; },
     recoveredOwner(address: string) { recoveredOwner = address; },
     observedEcdsaOwners(addresses: string[], threshold: number) { observedOwners = addresses; observedThreshold = threshold; },
+    customValidator(address: string, installed = false, compatible = true) { customValidators.set(address.toLowerCase(), { installed, compatible }); },
+    observedCompositeChildren(children: string[], threshold = 1) { composite = { threshold, ecdsaFirst: true, children }; },
     observedComposite(threshold = 1, ecdsaFirst = false) { composite = { threshold, ecdsaFirst }; },
     observedSlh(key: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'>) { observedSlh = { pkRoot: key.pkRoot, pkSeed: key.pkSeed }; },
     clearObservedSlh() { observedSlh = undefined; composite = undefined; },
@@ -3189,7 +3195,7 @@ test('an accepted local Smart Trezor signature cannot become resumable during pa
 });
 
 
-for(const action of ['guardian-policy','wallet-authenticator','slh-installation'] as const)test(`local Smart Trezor ${action} rebuilds with the original validated builder and durable records`,async()=>{
+for(const action of ['guardian-policy','wallet-authenticator','slh-installation','modules'] as const)test(`local Smart Trezor ${action} rebuilds with the original validated builder and durable records`,async()=>{
   const backend=action==='slh-installation'?slhSmartBackend():null;
   const {f,device,close}=await readyTrezorSmartOwner(backend?.capability??null),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
   let original:NativeSmartAccountOperation|undefined,resumed:NativeSmartAccountOperation|undefined;
@@ -3198,6 +3204,12 @@ for(const action of ['guardian-policy','wallet-authenticator','slh-installation'
     device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
     if(action==='guardian-policy')original=await f.runtime.openGuardianPolicy({action:'set',guardian:'0x'+'77'.repeat(20),delaySeconds:259200,acknowledgedPendingOperationId:null},new AbortController().signal,()=>undefined);
     else if(action==='wallet-authenticator')original=await f.runtime.openWalletAuthenticator(new AbortController().signal,()=>undefined);
+    else if(action==='modules'){
+      f.customValidator(CUSTOM_MODULE); const draft=customModuleDraft();
+      f.onSmartCodeRead(()=>{draft.address='0x9999999999999999999999999999999999999999';draft.initData='0x5678';});
+      original=await f.runtime.openSmartAccountModuleChange(draft,new AbortController().signal,()=>undefined);
+      f.onSmartCodeRead(()=>undefined);
+    }
     else{
       const signer=await f.runtime.openSlhDsaAccount(()=>undefined),key=await signer.prepareFresh(()=>undefined);
       original=await f.runtime.openSlhDsaInstallation(key.keyId,new AbortController().signal,()=>undefined);
@@ -3209,7 +3221,144 @@ for(const action of ['guardian-policy','wallet-authenticator','slh-installation'
     resumed=await f.runtime.resumeSmartAccountOperation(draft.id,new AbortController().signal,()=>undefined);await resumed.prepare();
     assert.equal(resumed.getSnapshot().phase,'authorize');assert(resumed.authorizationExpiresAt<=deadline);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
     assert.equal(device.signatures.length,1);assert.equal(f.submitted.length,0);
-    assert.equal(resumed.getSnapshot().intent.kind,action==='guardian-policy'?'guardian-policy':'authenticator');
+    assert.equal(resumed.getSnapshot().intent.kind,action==='guardian-policy'?'guardian-policy':action==='modules'?'modules':'authenticator');
+    if(action==='modules'){const intent=resumed.getSnapshot().intent;assert.equal(intent.kind,'modules');if(intent.kind!=='modules')throw Error('Wrong intent');assert.equal(intent.command.targetAddress,CUSTOM_MODULE);assert.equal(intent.command.draft.kind,'install-custom');if(intent.command.draft.kind==='install-custom')assert.equal(intent.command.draft.initData,'0x1234');}
     if(action==='slh-installation')assert.equal(backend!.actions.length,0,'restoring review does not use a private SLH signing capability');
   }finally{release.resolve();await original?.dispose();await resumed?.dispose();await close();}
+});
+
+const CUSTOM_MODULE = '0x7777777777777777777777777777777777777777';
+const customModuleDraft = () => ({ kind: 'install-custom' as const, address: CUSTOM_MODULE, name: 'Custom fixture', initData: '0x1234', riskAcknowledged: true as const });
+async function confirmModuleOperation(operation: NativeSmartAccountOperation) {
+  await operation.prepare();
+  assert.equal(operation.getSnapshot().phase, 'authorize', JSON.stringify(operation.getSnapshot()));
+  const authorizing = operation.authorize(operation.getSnapshot().revision);
+  for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+    await new Promise(resolve => setTimeout(resolve, 5));
+  assert(operation.getSnapshot().payerReview, JSON.stringify(operation.getSnapshot()));
+  operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+  await authorizing;
+  assert.equal(operation.getSnapshot().phase, 'complete', JSON.stringify(operation.getSnapshot()));
+}
+
+for (const delayed of [false, true]) test(`module management custom install survives restart and metadata-only retry (delayed=${delayed})`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
+    operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
+    const before = savedSmartAccount((await f.inspectRecovery()).record).smartAccount;
+    assert.equal(before.customModules?.length ?? 0, 0, 'opening a review does not persist abandoned discovery routes');
+    assert(!before.installedModules?.some((module: SmartAccountInstalledModule) => module.address === CUSTOM_MODULE));
+    f.onBroadcast(() => { if (!delayed) f.customValidator(CUSTOM_MODULE, true); });
+    await confirmModuleOperation(operation);
+    assert.equal(operation.getSnapshot().metadataRefresh, delayed ? 'failed' : 'complete');
+    if (delayed) {
+      f.customValidator(CUSTOM_MODULE, true); await operation.retryMetadata();
+      assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    }
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.[0]?.address, CUSTOM_MODULE);
+    await operation.dispose(); operation = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
+    assert.equal(observed.auth?.module, 'ecdsa');
+    assert.equal(observed.installedModules?.find(module => module.address === CUSTOM_MODULE)?.id, 'custom');
+    assert.equal(observed.customModules?.[0]?.initData, '0x1234');
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('module management rejects stale owner before signing and active-validator removal', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
+    await assert.rejects(f.runtime.openSmartAccountModuleChange({ kind: 'uninstall', address: getConfiguredAuthenticatorAddress(1, 'ecdsa') }, new AbortController().signal, () => undefined), /modules changed/);
+    operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
+    f.observedEcdsaOwners(['0x8888888888888888888888888888888888888888'], 1);
+    await operation.authorize(operation.getSnapshot().revision);
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('module management composite uses shared execution and reconciles its exact rule', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.fundedSmart();
+    const children = [getConfiguredAuthenticatorAddress(1, 'ecdsa')];
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'composite', children, threshold: 1 }, new AbortController().signal, () => undefined);
+    f.onBroadcast(() => f.observedCompositeChildren(children));
+    await confirmModuleOperation(operation);
+    assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
+    const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
+    assert.equal(observed.auth?.module, 'composite');
+    assert.equal(f.runtime.canSignSmartAccount(), true);
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('module management cancellation while saving a discovery record rolls back before commit', async () => {
+  let armed = false, writes = 0;
+  const lifetime = new AbortController();
+  const f = await fixture({ after(kind, sql) {
+    if (armed && kind === 'run' && sql.startsWith('UPDATE keyring_records') && ++writes === 1) {
+      armed = false; lifetime.abort();
+    }
+  } }, true);
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.customValidator(CUSTOM_MODULE);
+    const operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), lifetime.signal, () => undefined);
+    try {
+      await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
+      armed = true;
+      await operation.authorize(operation.getSnapshot().revision);
+      assert.equal(operation.getSnapshot().phase, 'failed');
+    } finally { await operation.dispose(); }
+    assert.equal(writes, 1, 'revocation occurs during the authorized discovery update');
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
+    assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 0);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
+  } finally { await f.close(); }
+});
+
+test('module management confirmed custom uninstall retires its discovery record', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
+    operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
+    f.onBroadcast(() => f.customValidator(CUSTOM_MODULE, true));
+    await confirmModuleOperation(operation); await operation.dispose(); operation = undefined;
+    operation = await f.runtime.openSmartAccountModuleChange({ kind: 'uninstall', address: CUSTOM_MODULE }, new AbortController().signal, () => undefined);
+    f.onBroadcast(() => f.customValidator(CUSTOM_MODULE, false));
+    await confirmModuleOperation(operation);
+    assert.equal(operation.getSnapshot().metadataRefresh, 'complete');
+    assert.equal(f.submitted.length, 2); assert.equal(f.signatures.length, 2);
+    const observed = await f.runtime.readSmartAccountModules(new AbortController().signal, () => undefined);
+    assert.equal(observed.customModules?.length, 0);
+    assert(!observed.installedModules?.some(module => module.address === CUSTOM_MODULE));
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('module management follows the extension self-target blacklist policy', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.customValidator(CUSTOM_MODULE); f.blockRecipient();
+    operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
+  } finally { await operation?.dispose(); await f.close(); }
 });

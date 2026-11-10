@@ -50,6 +50,7 @@ import {
   buildCompositeValidatorExecutions,
   buildCustomValidatorInstallExecutions,
   buildValidatorUninstallExecutions,
+  canRemoveValidatorModule,
   SmartAccountModuleCommandError,
 } from 'utils/smartAccount/moduleCommands';
 import { getSmartAccountActionErrorMessage } from 'utils/smartAccountErrors';
@@ -282,16 +283,6 @@ const SmartAccountHub = () => {
   const activeValidator = installedValidators.find(
     (module) => module.address.toLowerCase() === activeValidatorAddress
   );
-  const compositeChildren = new Set(
-    installedValidators
-      .filter((module) => module.id === 'composite')
-      .flatMap((module) =>
-        module.id === 'composite'
-          ? module.config.childValidators.map((child) => child.toLowerCase())
-          : []
-      )
-  );
-
   const marketplaceModules = useMemo(
     () =>
       getAvailablePaliModules(activeNetwork.chainId).filter(
@@ -475,7 +466,13 @@ const SmartAccountHub = () => {
         !scope ||
         uninstallJob.current ||
         !isCurrentScope(scope) ||
-        module !== confirmUninstall
+        module !== confirmUninstall ||
+        !metadata ||
+        !canRemoveValidatorModule(
+          metadata,
+          module.address,
+          'all-installed-composites'
+        )
       )
         return;
       const job = {};
@@ -561,6 +558,7 @@ const SmartAccountHub = () => {
       confirmUninstall,
       controllerEmitter,
       isCurrentScope,
+      metadata,
       refreshMetadata,
       submitExecutions,
       t,
@@ -1042,11 +1040,13 @@ const SmartAccountHub = () => {
             const isActive =
               isValidator &&
               module.address.toLowerCase() === activeValidatorAddress;
-            const isCompositeChild = compositeChildren.has(
-              module.address.toLowerCase()
-            );
             const uninstallBlocked =
-              !isValidator || isActive || isCompositeChild;
+              !metadata ||
+              !canRemoveValidatorModule(
+                metadata,
+                module.address,
+                'all-installed-composites'
+              );
             return (
               <li
                 key={`${module.id}:${module.address}`}

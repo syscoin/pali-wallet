@@ -1,3 +1,4 @@
+import type { NativeSmartModuleCommand } from './modules.ts';
 import { isSmartAccountPendingStateError } from '../../../../source/utils/smartAccount/pendingState.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import type { SmartAccountValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
@@ -31,6 +32,7 @@ export type NativeSmartAccountResolvedIntent =
       command: SmartAccountValidatorSwitch;
     }>
   | Readonly<{ kind: 'guardian-policy'; command: GuardianPolicyCommand }>
+  | Readonly<{ kind: 'modules'; command: NativeSmartModuleCommand }>
   | Readonly<{ kind: 'dapp-batch'; calls: readonly DappCall[] }>
   | Readonly<{
       kind: 'native-transfer';
@@ -191,7 +193,7 @@ export class NativeSmartAccountOperation {
     if(typeof host.background!=='function')throw new Error('Native operation background authority is required');
     if (
       (host.intent.kind === 'guardian-policy' ||
-        host.intent.kind === 'authenticator') &&
+        host.intent.kind === 'authenticator' || host.intent.kind === 'modules') &&
       typeof host.refreshMetadata !== 'function'
     )
       throw new Error('Smart account metadata reconciliation is required');
@@ -321,11 +323,11 @@ export class NativeSmartAccountOperation {
       const intent = result.intent;
       if (
         intent.kind === 'guardian-policy' ||
-        intent.kind === 'authenticator'
+        intent.kind === 'authenticator' || intent.kind === 'modules'
       ) {
         if (
           (this.host.intent.kind !== 'guardian-policy' &&
-            this.host.intent.kind !== 'authenticator') ||
+            this.host.intent.kind !== 'authenticator' && this.host.intent.kind !== 'modules') ||
           this.host.intent.kind !== intent.kind ||
           this.host.intent.command !== intent.command
         )
@@ -370,7 +372,7 @@ export class NativeSmartAccountOperation {
         if (
           requested.kind === 'dapp-batch' ||
           requested.kind === 'guardian-policy' ||
-          requested.kind === 'authenticator'
+          requested.kind === 'authenticator' || requested.kind === 'modules'
         )
           throw new Error('SMART_OPERATION_EXPIRED');
         const expected =
@@ -495,7 +497,7 @@ export class NativeSmartAccountOperation {
       });
       if (
         this.host.intent.kind === 'guardian-policy' ||
-        this.host.intent.kind === 'authenticator'
+        this.host.intent.kind === 'authenticator' || this.host.intent.kind === 'modules'
       )
         await this.retryMetadata();
     } catch (error) {
@@ -525,7 +527,7 @@ export class NativeSmartAccountOperation {
       this.lifetime.signal.aborted ||
       this.snapshot.phase !== 'complete' ||
       (this.host.intent.kind !== 'guardian-policy' &&
-        this.host.intent.kind !== 'authenticator') ||
+        this.host.intent.kind !== 'authenticator' && this.host.intent.kind !== 'modules') ||
       this.snapshot.metadataRefresh === 'refreshing' ||
       this.snapshot.metadataRefresh === 'complete'
     )

@@ -1883,6 +1883,24 @@
     }
   },
   "mobile": {
+    "smartAccountModules": {
+      "title": "Módulos",
+      "review": "Revisar alteração de módulo",
+      "authorize": "Autorizar alteração de módulo",
+      "authorizationHint": "Autorize a ação do módulo exibida acima. A próxima revisão confirma a conta pagadora e a taxa de envio.",
+      "submit": "Enviar a alteração de módulo autorizada",
+      "submitHint": "Esta transação envia a alteração de módulo que você autorizou.",
+      "confirm": "Confirmar alteração de módulo",
+      "preparing": "Preparando alteração de módulo…",
+      "confirmed": "Transação do módulo confirmada",
+      "confirmedHint": "A rede confirmou esta alteração de módulo.",
+      "refreshing": "Atualizando o status da conta…",
+      "statusUnavailable": "Status da conta indisponível",
+      "refreshHint": "A transação do módulo está confirmada. Atualize o status da conta para ver os módulos instalados.",
+      "refresh": "Atualizar status da conta",
+      "checkStatus": "Verificar status do módulo",
+      "unavailable": "Não foi possível preparar esta alteração de módulo. Atualize o status da conta e verifique as opções selecionadas."
+    },
     "settings": {
       "title": "Configurações",
       "securityTitle": "Segurança e backups",

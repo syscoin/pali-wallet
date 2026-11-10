@@ -23,6 +23,49 @@ const execution = (
   value: '0x0',
 });
 
+export type ValidatorModuleRemovalPolicy =
+  | 'all-installed-composites'
+  | 'active-composite';
+
+/** Preserve the host's existing composite-reference policy; malformed state fails closed. */
+export function canRemoveValidatorModule(
+  metadata: Pick<ISmartAccountMetadata, 'auth' | 'installedModules'>,
+  address: string,
+  policy: ValidatorModuleRemovalPolicy
+): boolean {
+  if (policy !== 'all-installed-composites' && policy !== 'active-composite')
+    return false;
+  try {
+    const target = getAddress(address);
+    if (!metadata.auth?.validator) return false;
+    const active = getAddress(metadata.auth.validator);
+    if (
+      target === '0x0000000000000000000000000000000000000000' ||
+      active === '0x0000000000000000000000000000000000000000' ||
+      target === active ||
+      !Array.isArray(metadata.installedModules)
+    )
+      return false;
+    const validators = metadata.installedModules.filter(
+      (module): module is SmartAccountValidatorModule =>
+        module.type === 'validator'
+    );
+    const addresses = validators.map((module) => getAddress(module.address));
+    if (!addresses.includes(target)) return false;
+    return validators.every((module, index) => {
+      if (module.id !== 'composite') return true;
+      if (!Array.isArray(module.config.childValidators)) return false;
+      const children = module.config.childValidators.map(getAddress);
+      return (
+        (policy === 'active-composite' && addresses[index] !== active) ||
+        !children.includes(target)
+      );
+    });
+  } catch {
+    return false;
+  }
+}
+
 /** Public calldata only. Preflight, consent, current-owner guards and submission stay in the host. */
 export function buildCustomValidatorInstallExecutions({
   accountAddress,
@@ -69,14 +112,17 @@ export function buildValidatorUninstallExecutions({
 }
 
 export class SmartAccountModuleCommandError extends Error {
+  readonly code:
+    | 'INVALID_COMPOSITE'
+    | 'COMPOSITE_LOCKOUT'
+    | 'COMPOSITE_UNAVAILABLE';
+
   constructor(
-    readonly code:
-      | 'INVALID_COMPOSITE'
-      | 'COMPOSITE_LOCKOUT'
-      | 'COMPOSITE_UNAVAILABLE'
+    code: 'INVALID_COMPOSITE' | 'COMPOSITE_LOCKOUT' | 'COMPOSITE_UNAVAILABLE'
   ) {
     super(code);
     this.name = 'SmartAccountModuleCommandError';
+    this.code = code;
   }
 }
 

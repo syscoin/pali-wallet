@@ -6,6 +6,7 @@ import {
   buildCompositeValidatorExecutions,
   buildCustomValidatorInstallExecutions,
   buildValidatorUninstallExecutions,
+  canRemoveValidatorModule,
   SmartAccountModuleCommandError,
 } from './moduleCommands';
 import { isPaliValidatorAlgorithmSupported } from './validatorSignability';
@@ -50,6 +51,112 @@ const decode = (calls: ReturnType<typeof build>) =>
     expect(call.value).toBe('0x0');
     return paliSmartAccountInterface.parseTransaction({ data: call.data })!;
   });
+
+describe('validator removal policy', () => {
+  const policies = ['all-installed-composites', 'active-composite'] as const;
+
+  it.each(policies)(
+    'allows only an installed inactive validator with %s',
+    (policy) => {
+      const value = metadata();
+      expect(canRemoveValidatorModule(value, address(2), policy)).toBe(true);
+      expect(canRemoveValidatorModule(value, address(1), policy)).toBe(false);
+      expect(canRemoveValidatorModule(value, address(9), policy)).toBe(false);
+      value.installedModules!.push({
+        address: address(9),
+        type: 'executor',
+        id: 'guardian-recovery',
+        config: { guardians: [address(1)], threshold: 1, delaySeconds: 1 },
+      });
+      expect(canRemoveValidatorModule(value, address(9), policy)).toBe(false);
+    }
+  );
+
+  it('preserves Hub protection of every installed composite and consent protection of only the active composite', () => {
+    const value = metadata();
+    value.installedModules!.push({
+      address: builtin,
+      type: 'validator',
+      id: 'composite',
+      config: { childValidators: [address(2)], threshold: 1 },
+    });
+    expect(
+      canRemoveValidatorModule(value, address(2), 'all-installed-composites')
+    ).toBe(false);
+    expect(
+      canRemoveValidatorModule(value, address(2), 'active-composite')
+    ).toBe(true);
+    value.auth = { module: 'composite', validator: builtin, data: '0x' };
+    expect(
+      canRemoveValidatorModule(value, address(2), 'active-composite')
+    ).toBe(false);
+    expect(canRemoveValidatorModule(value, builtin, 'active-composite')).toBe(
+      false
+    );
+    expect(
+      canRemoveValidatorModule(value, address(1), 'active-composite')
+    ).toBe(true);
+  });
+
+  it.each(policies)(
+    'normalizes addresses and refuses malformed removal inputs with %s',
+    (policy) => {
+      const value = metadata();
+      value.installedModules!.push(ecdsa(0xab));
+      expect(
+        canRemoveValidatorModule(
+          value,
+          `0x${address(0xab).slice(2).toUpperCase()}`,
+          policy
+        )
+      ).toBe(true);
+      expect(canRemoveValidatorModule(value, 'invalid', policy)).toBe(false);
+      expect(canRemoveValidatorModule(value, address(0), policy)).toBe(false);
+      expect(
+        canRemoveValidatorModule(
+          { ...value, auth: undefined },
+          address(2),
+          policy
+        )
+      ).toBe(false);
+      expect(
+        canRemoveValidatorModule(
+          { ...value, installedModules: undefined },
+          address(2),
+          policy
+        )
+      ).toBe(false);
+      value.auth!.validator = 'invalid';
+      expect(canRemoveValidatorModule(value, address(2), policy)).toBe(false);
+    }
+  );
+
+  it.each(policies)(
+    'refuses malformed composite references with %s',
+    (policy) => {
+      const value = metadata();
+      const composite: SmartAccountValidatorModule = {
+        address: builtin,
+        type: 'validator',
+        id: 'composite',
+        config: { childValidators: ['invalid'], threshold: 1 },
+      };
+      value.installedModules!.push(composite);
+      expect(canRemoveValidatorModule(value, address(2), policy)).toBe(false);
+      composite.config.childValidators = null as never;
+      expect(canRemoveValidatorModule(value, address(2), policy)).toBe(false);
+    }
+  );
+
+  it('requires an explicit recognized reference policy', () => {
+    expect(
+      canRemoveValidatorModule(metadata(), address(2), undefined as never)
+    ).toBe(false);
+    expect(
+      canRemoveValidatorModule(metadata(), address(2), 'unknown' as never)
+    ).toBe(false);
+  });
+});
 
 it('custom installation preserves install then restore-active-validator calldata for both callers', () => {
   const calls = buildCustomValidatorInstallExecutions({

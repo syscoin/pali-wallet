@@ -2,6 +2,7 @@ import { NativeNoteMaintenance } from './NativeNoteMaintenance';
 import { NativePrivacyControls } from './NativePrivacyControls';
 import { NativeEncryptionReviewScreen } from './NativeEncryptionReview';
 import { NativeSlhDsaManagementScreen } from './NativeSlhDsaManagement';
+import { NativeSmartAccountModulesScreen } from './NativeSmartAccountModules';
 import { NativeSentryHub } from './NativeSentryHub';
 import { NativeSentryReview } from './NativeSentryReview';
 import { NativePsbtReview } from './NativePsbtReview';
@@ -86,7 +87,7 @@ type SendTarget = Readonly<
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'note-maintenance' | 'privacy-settings' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'trezor' | 'smart-deploy' | 'smart-resume' | 'smart-authenticator' | 'slh-dsa' | 'sentry-keys';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-import' | 'note-deposit' | 'note-capacity' | 'note-maintenance' | 'privacy-settings' | 'restore-notes' | 'backup-notes' | 'connections' | 'device-unlock' | 'ledger' | 'trezor' | 'smart-deploy' | 'smart-resume' | 'smart-authenticator' | 'slh-dsa' | 'smart-modules' | 'sentry-keys';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null) {
@@ -173,6 +174,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [openSmartSend, setOpenSmartSend] = useState<Controllers['openSmartAccountSend'] | null>(null);
   const [canSignSmart, setCanSignSmart] = useState(false);
   const [canManageSlh, setCanManageSlh] = useState(false);
+  const [canManageModules, setCanManageModules] = useState(false);
+  const [openSmartAccountModules, setOpenSmartAccountModules] = useState<Controllers['openSmartAccountModules'] | null>(null);
   const [openSlhDsaManagement, setOpenSlhDsaManagement] = useState<Controllers['openSlhDsaManagement'] | null>(null);
   const [canUseWalletAuthenticator, setCanUseWalletAuthenticator] = useState(false);
   const [openWalletAuthenticator, setOpenWalletAuthenticator] = useState<Controllers['openWalletAuthenticator'] | null>(null);
@@ -387,6 +390,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     if (stage !== 'choose' || AppState.currentState !== 'active' || !current) return;
     const origin = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
     if (next === 'slh-dsa' && !local?.canManageSlhDsa()) return;
+    if (next === 'smart-modules' && !local?.canManageSmartAccountModules()) return;
     if (next === 'smart-authenticator' && !local?.canUseWalletAuthenticator()) return;
     if (next === 'sentry-keys') {
       if (!local?.sentry.available()) return;
@@ -443,9 +447,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const closeStage = () => {
     const origin = rootOrigin.current; rootOrigin.current = null;
     const current = readyContext();
-    if (stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'send' && selectedAccountType === 'SmartAccount') setCatalogue(controllers.current?.authority.getCatalogue() ?? null);
+    if (stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-modules' || stage === 'send' && selectedAccountType === 'SmartAccount') setCatalogue(controllers.current?.authority.getCatalogue() ?? null);
     const local = controllers.current;
-    setCanSignSmart(local?.canSignSmartAccount() === true); setCanManageSlh(local?.canManageSlhDsa() === true);
+    setCanSignSmart(local?.canSignSmartAccount() === true); setCanManageSlh(local?.canManageSlhDsa() === true); setCanManageModules(local?.canManageSmartAccountModules() === true);
     setCanUseWalletAuthenticator(local?.canUseWalletAuthenticator() === true);
     setSendDraft(null);
     setSmartResumeId(null);
@@ -473,7 +477,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         }
         closeStage(); return true;
       }
-      if ((stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'send' && canSendSmart) && snapshot.phase === 'ready') return false;
+      if ((stage === 'smart-authenticator' || stage === 'slh-dsa' || stage === 'smart-modules' || stage === 'smart-deploy' || stage === 'smart-resume' || stage === 'send' && canSendSmart) && snapshot.phase === 'ready') return false;
       if (sentryRoute || stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-maintenance' || stage === 'privacy-settings' || stage === 'note-inventory' || stage === 'note-import' || stage === 'note-deposit') && snapshot.phase === 'ready' ||
           stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'trezor' && trezorView && ['ready', 'authenticating'].includes(snapshot.phase) ||
@@ -500,7 +504,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' || current === 'smart-resume' ? 'choose' : current);
     }
     setCanRemoveWallet(false); setDeviceUnlockStatus(null);
-    setCanSignSmart(false); setCanManageSlh(false); setOpenSlhDsaManagement(null);
+    setCanSignSmart(false); setCanManageSlh(false); setOpenSlhDsaManagement(null); setCanManageModules(false); setOpenSmartAccountModules(null);
     setCanUseWalletAuthenticator(false); setOpenWalletAuthenticator(null); setSmartResumeId(null);
     setPublicSource(null); setBalanceReader(null); setRecipientResolver(undefined); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setGuardianRecoveryController(null); setRecoveryActivity(null); setResumeGuardianScope(null); setAccountView(null); setTrezorView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setOpenPrivateDeposit(null); setDepositActivity(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
@@ -519,6 +523,17 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           throw new Error('CANCELLED');
       };
       check(); const manager = await local.openSlhDsaManagement(signal, check); check(); return manager;
+    });
+    setOpenSmartAccountModules(() => async (signal: AbortSignal, assertView: () => void) => {
+      const origin = rootOrigin.current, address = local.authority.getSnapshot().account?.address;
+      const check = () => {
+        assertView();
+        if (!origin || origin.stage !== 'smart-modules' || !address || !mounted.current || controllers.current !== local ||
+            rootOrigin.current !== origin || epoch.current !== origin.epoch || AppState.currentState !== 'active' ||
+            readyContext()?.identity !== origin.identity || local.authority.getSnapshot().account?.address !== address)
+          throw new Error('CANCELLED');
+      };
+      check(); const manager = await local.openSmartAccountModules(signal, check); check(); return manager;
     });
     setOpenWalletAuthenticator(() => async (signal: AbortSignal, assertView: () => void) => {
       const origin = rootOrigin.current;
@@ -558,7 +573,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const update = (state: CustodySnapshot) => {
       if (!mounted.current || controllers.current !== local) return;
       setGuardianEpoch(epoch.current);
-      setCanSignSmart(local.canSignSmartAccount()); setCanManageSlh(local.canManageSlhDsa());
+      setCanSignSmart(local.canSignSmartAccount()); setCanManageSlh(local.canManageSlhDsa()); setCanManageModules(local.canManageSmartAccountModules());
       setCanUseWalletAuthenticator(local.canUseWalletAuthenticator());
       if (local.authentication) {
         void local.authority.getDeviceUnlockStatus().then((status) => {
@@ -599,10 +614,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       const nextCatalogue = local.authority.getCatalogue();
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       const origin = rootOrigin.current;
-      if ((origin?.stage === 'smart-authenticator' || origin?.stage === 'slh-dsa' || origin?.stage === 'smart-resume') && origin.identity !== custodyContext(state, nextCatalogue)?.identity) {
+      if ((origin?.stage === 'smart-authenticator' || origin?.stage === 'slh-dsa' || origin?.stage === 'smart-modules' || origin?.stage === 'smart-resume') && origin.identity !== custodyContext(state, nextCatalogue)?.identity) {
         rootOrigin.current = null;
         setSmartResumeId(null);
-        setStage((current) => current === 'smart-authenticator' || current === 'slh-dsa' || current === 'smart-resume' ? 'choose' : current);
+        setStage((current) => current === 'smart-authenticator' || current === 'slh-dsa' || current === 'smart-modules' || current === 'smart-resume' ? 'choose' : current);
       }
       if (origin?.stage === 'sentry-keys' && origin.context !== custodyContext(state, nextCatalogue)?.context) {
         rootOrigin.current = null; setSentryScope(null);
@@ -1162,6 +1177,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
   else if (snapshot.phase === 'ready' && stage === 'slh-dsa' && openSlhDsaManagement) return <NativeSlhDsaManagementScreen ledgerConnection={ledgerConnection ?? undefined} open={openSlhDsaManagement} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && stage === 'smart-modules' && openSmartAccountModules) return <NativeSmartAccountModulesScreen ledgerConnection={ledgerConnection ?? undefined} open={openSmartAccountModules} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && stage === 'smart-authenticator' && openWalletAuthenticator) return <NativeSmartAccountAuthenticator ledgerConnection={ledgerConnection ?? undefined}
     open={openWalletAuthenticator} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && stage === 'smart-deploy' && openSmartDeployment) return <NativeSmartAccountOperationRoute ledgerConnection={ledgerConnection ?? undefined}
@@ -1193,6 +1209,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     if (shell.tab === 'wallet') content = <NativePortfolio
     hardwareRequest={trezorView ? <NativeTrezorResumeNotice controller={trezorView} onResume={() => openStage('trezor')} /> : undefined}
     smartAccount={selectedCatalogueAccount?.smartAccount}
+    onManageSmartAccountModules={selectedCatalogueAccount?.smartAccount?.isDeployed && canManageModules && openSmartAccountModules ? () => openStage('smart-modules') : undefined}
     onManageSlhDsa={canManageSlh && openSlhDsaManagement ? () => openStage('slh-dsa') : undefined}
     onUseWalletAuthenticator={canUseWalletAuthenticator && openWalletAuthenticator ? () => openStage('smart-authenticator') : undefined}
     onDeploySmartAccount={selectedCatalogueAccount?.smartAccount && !selectedCatalogueAccount.smartAccount.isDeployed && openSmartDeployment ? () => openStage('smart-deploy') : undefined}

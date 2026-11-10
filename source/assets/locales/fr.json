@@ -1883,6 +1883,24 @@
     }
   },
   "mobile": {
+    "smartAccountModules": {
+      "title": "Modules",
+      "review": "Vérifier la modification du module",
+      "authorize": "Autoriser la modification du module",
+      "authorizationHint": "Autorisez l’action sur le module indiquée ci-dessus. La vérification suivante confirme le compte payeur et les frais de soumission.",
+      "submit": "Soumettre la modification du module autorisée",
+      "submitHint": "Cette transaction soumet la modification du module que vous avez autorisée.",
+      "confirm": "Confirmer la modification du module",
+      "preparing": "Préparation de la modification du module…",
+      "confirmed": "Transaction du module confirmée",
+      "confirmedHint": "Le réseau a confirmé cette modification du module.",
+      "refreshing": "Actualisation de l’état du compte…",
+      "statusUnavailable": "État du compte indisponible",
+      "refreshHint": "La transaction du module est confirmée. Actualisez l’état du compte pour voir les modules installés.",
+      "refresh": "Actualiser l’état du compte",
+      "checkStatus": "Vérifier l’état du module",
+      "unavailable": "Impossible de préparer cette modification du module. Actualisez l’état du compte et vérifiez les options sélectionnées."
+    },
     "settings": {
       "title": "Réglages",
       "securityTitle": "Sécurité et sauvegardes",

@@ -1883,6 +1883,24 @@
     }
   },
   "mobile": {
+    "smartAccountModules": {
+      "title": "Modules",
+      "review": "Review module change",
+      "authorize": "Authorize module change",
+      "authorizationHint": "Authorize the module action shown above. The next review confirms the paying account and submission fee.",
+      "submit": "Submit the authorized module change",
+      "submitHint": "This transaction submits the module change you authorized.",
+      "confirm": "Confirm module change",
+      "preparing": "Preparing module change…",
+      "confirmed": "Module transaction confirmed",
+      "confirmedHint": "The network confirmed this module change.",
+      "refreshing": "Refreshing account status…",
+      "statusUnavailable": "Account status unavailable",
+      "refreshHint": "The module transaction is confirmed. Refresh account status to see the installed modules.",
+      "refresh": "Refresh account status",
+      "checkStatus": "Check module status",
+      "unavailable": "Could not prepare this module change. Refresh account status and check your choices."
+    },
     "settings": {
       "title": "Settings",
       "securityTitle": "Security & backups",

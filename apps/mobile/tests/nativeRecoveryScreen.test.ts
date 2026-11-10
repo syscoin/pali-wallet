@@ -215,6 +215,8 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   let state = { phase: 'locked', revision: 1, presence: 'existing', backup: 'confirmed', account: null, error: null };
   const controllers = {
     canManageGuardianPolicy: () => false, canSignSmartAccount: () => false, canManageSlhDsa: () => false,
+    canManageSmartAccountModules: () => false,
+    async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
     guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
@@ -289,6 +291,8 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
   const publish = (patch: Partial<typeof state>) => { state = { ...state, ...patch }; observer(state); };
   const controllers = {
     canManageGuardianPolicy: () => false, canSignSmartAccount: () => false, canManageSlhDsa: () => false,
+    canManageSmartAccountModules: () => false,
+    async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
     guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
@@ -500,6 +504,8 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
       getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} };
     const bundle = {
       canManageGuardianPolicy: () => false, canSignSmartAccount: () => false, canManageSlhDsa: () => false,
+    canManageSmartAccountModules: () => false,
+    async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
     guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },

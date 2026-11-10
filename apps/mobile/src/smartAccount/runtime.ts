@@ -1,3 +1,5 @@
+import { assertNativeSmartModuleCommandCurrent } from './modules.ts';
+import { preflightCustomValidatorInstall } from '../../../../source/utils/smartAccount/custom.ts';
 import { buildSmartAccountUserOpSigningIntent } from '../../../../source/utils/smartAccount/userOperationHash.ts';
 import type { SmartAccountOwnerSigningIntent } from '../../../../source/utils/smartAccount/ownerSigningIntent.ts';
 import {
@@ -53,6 +55,7 @@ import {
 import type {
   IKeyringAccountState,
   ISmartAccountMetadata,
+  SmartAccountCustomModuleRecord,
 } from '../../../../source/types/network.ts';
 import type { NativePreparedConnectionTransaction } from '../connections/transactionRuntime.ts';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
@@ -104,6 +107,7 @@ export type NativeSmartOperationPorts = Readonly<{
     operation: SmartAccountActivityIdentity | undefined
   ): Promise<unknown>;
   markDeployed(guard: () => void): Promise<void>;
+  rememberCustomModule?(signal: AbortSignal, guard: () => void): Promise<SmartAccountCustomModuleRecord>;
   refreshMetadata(signal: AbortSignal, guard: () => void): Promise<void>;
   assertGuardianPolicy?(signal: AbortSignal, guard: () => void): Promise<void>;
   submitBatch?(
@@ -137,22 +141,36 @@ export function createNativeSmartOperation(
     typeof ports.assertGuardianPolicy !== 'function'
   )
     throw new Error('Guardian policy ownership is required');
+  if (intent.kind === 'modules' && intent.command.draft.kind === 'install-custom') {
+    if (typeof ports.rememberCustomModule !== 'function') throw new Error('Durable custom module discovery is required');
+    const draft = intent.command.draft;
+    // Probe the requested address during review, without persisting an abandoned draft.
+    metadata = { ...metadata, customModules: [...(metadata.customModules ?? []).filter(record => record.address.toLowerCase() !== draft.address.toLowerCase()),
+      { address: draft.address, name: draft.name, initData: draft.initData, moduleType: 1, compositeCompatible: false }] };
+  }
   const chainId = Number(ports.network.chainId);
   let issued: PreparedSmartAccountOperation | undefined;
   let pending: SmartAccountPendingState;
   const contextId = 'native-smart-account-operation';
   let policySignal: AbortSignal;
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
-  const assertValidatorSwitch = async (assertCurrent: () => void) => {
-    if (intent.kind !== 'authenticator') return;
-    const observed = await readSmartAccountValidatorMetadata({
-      account,
+  const assertValidatorSwitch = async (assertCurrent: () => void, preparedMetadata?: ISmartAccountMetadata) => {
+    if (intent.kind !== 'authenticator' && intent.kind !== 'modules') return;
+    const observed = preparedMetadata ?? await readSmartAccountValidatorMetadata({
+      account: intent.kind === 'modules' ? { ...account, smartAccount: metadata } : account,
       chainId,
       provider: pending.provider,
       assertCurrent,
     });
     assertCurrent();
-    assertSmartAccountValidatorSwitchCurrent(intent.command, observed);
+    if (intent.kind === 'modules') {
+      assertNativeSmartModuleCommandCurrent(intent.command, observed);
+      if (intent.command.draft.kind === 'install-custom') {
+        const preflight = await preflightCustomValidatorInstall(pending.provider, { address: intent.command.targetAddress, chainId, metadata: observed });
+        assertCurrent();
+        if (!preflight.ok) throw new Error('Custom validator preflight changed');
+      }
+    } else assertSmartAccountValidatorSwitchCurrent(intent.command, observed);
   };
   return new NativeSmartAccountOperation({ authorizationExpiresAt: ports.authorizationExpiresAt, background:ports.background,
     account: account.address,
@@ -177,7 +195,9 @@ export function createNativeSmartOperation(
       );
       const provider = pending.provider;
       await pending.verify();
-      if (intent.kind === 'dapp-batch') {
+      if (intent.kind === 'modules') {
+        await assertSmartAccountTargetsAllowed(getBlacklistTargetsForEvmCall({ to: account.address, data: '0x' }), ports.checkAddress, assertCurrent);
+      } else if (intent.kind === 'dapp-batch') {
         for (const call of createSmartAccountCallsExecutions(intent.calls))
           await assertSmartAccountTargetsAllowed(
             getBlacklistTargetsForEvmCall({ to: call.target, data: call.data }),
@@ -226,7 +246,7 @@ export function createNativeSmartOperation(
         assertCurrent();
         return { kind: 'already-deployed' };
       }
-      if (intent.kind === 'authenticator') {
+      if (intent.kind === 'authenticator' || intent.kind === 'modules') {
         if (state !== 'deployed')
           throw new Error('Smart account must be deployed');
         metadata = await readSmartAccountValidatorMetadata({
@@ -236,8 +256,9 @@ export function createNativeSmartOperation(
           assertCurrent,
         });
         assertCurrent();
-        assertSmartAccountValidatorSwitchCurrent(intent.command, metadata);
-        if (intent.command.executions.length === 0)
+        if (intent.kind === 'modules') await assertValidatorSwitch(assertCurrent, metadata);
+        else assertSmartAccountValidatorSwitchCurrent(intent.command, metadata);
+        if (intent.kind === 'authenticator' && intent.command.executions.length === 0)
           return { kind: 'already-configured' };
       } else if (
         intent.kind !== 'deploy' &&
@@ -262,7 +283,7 @@ export function createNativeSmartOperation(
         executions: { target: string; data: string; value: string }[]
       ) =>
         prepareSmartAccountOperation({
-          account: { ...account, smartAccount: metadata },
+          account: intent.kind === 'modules' ? { ...account, smartAccount: metadata } : account,
           chainId,
           provider,
           pending,
@@ -346,7 +367,7 @@ export function createNativeSmartOperation(
         };
       }
       issued = await prepare(
-        intent.kind === 'authenticator'
+        intent.kind === 'authenticator' || intent.kind === 'modules'
           ? intent.command.executions.map((execution) => ({ ...execution }))
           : intent.kind === 'guardian-policy'
           ? buildGuardianPolicyExecutions(intent.command)
@@ -413,6 +434,11 @@ export function createNativeSmartOperation(
             signal, metadata
           ),
       });
+      if (intent.kind === 'modules' && intent.command.draft.kind === 'install-custom') {
+        const record = await ports.rememberCustomModule!(signal, assertCurrent);
+        assertCurrent();
+        metadata = { ...metadata, customModules: [...(metadata.customModules ?? []).filter(entry => entry.address.toLowerCase() !== record.address.toLowerCase()), record] };
+      }
       return signature.signature;
     },
     async submit(
@@ -543,7 +569,7 @@ export function createNativeSmartOperation(
             waitForConfirmation:
               intent.kind === 'deploy' ||
               intent.kind === 'guardian-policy' ||
-              intent.kind === 'authenticator',
+              intent.kind === 'authenticator' || intent.kind === 'modules',
           },
           {
             chainId,

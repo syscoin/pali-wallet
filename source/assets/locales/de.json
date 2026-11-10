@@ -1883,6 +1883,24 @@
     }
   },
   "mobile": {
+    "smartAccountModules": {
+      "title": "Module",
+      "review": "Moduländerung prüfen",
+      "authorize": "Moduländerung autorisieren",
+      "authorizationHint": "Autorisieren Sie die oben angezeigte Modulaktion. In der nächsten Prüfung bestätigen Sie das zahlende Konto und die Gebühr für die Übermittlung.",
+      "submit": "Autorisierte Moduländerung übermitteln",
+      "submitHint": "Diese Transaktion übermittelt die von Ihnen autorisierte Moduländerung.",
+      "confirm": "Moduländerung bestätigen",
+      "preparing": "Moduländerung wird vorbereitet…",
+      "confirmed": "Modultransaktion bestätigt",
+      "confirmedHint": "Das Netzwerk hat diese Moduländerung bestätigt.",
+      "refreshing": "Kontostatus wird aktualisiert…",
+      "statusUnavailable": "Kontostatus nicht verfügbar",
+      "refreshHint": "Die Modultransaktion ist bestätigt. Aktualisieren Sie den Kontostatus, um die installierten Module zu sehen.",
+      "refresh": "Kontostatus aktualisieren",
+      "checkStatus": "Modulstatus prüfen",
+      "unavailable": "Diese Moduländerung konnte nicht vorbereitet werden. Aktualisieren Sie den Kontostatus und prüfen Sie Ihre Auswahl."
+    },
     "settings": {
       "title": "Einstellungen",
       "securityTitle": "Sicherheit und Backups",

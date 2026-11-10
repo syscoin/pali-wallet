@@ -40,6 +40,7 @@ import type {
   INetworkType,
   IKeyringAccountState,
   ISmartAccountMetadata,
+  SmartAccountCustomModuleRecord,
   KeyringAccountType as SharedAccountType,
 } from '../../../../source/types/network.ts';
 import { KeyringAccountType as SdkAccountType } from '@sidhujag/sysweb3-keyring/cjs/software.js';
@@ -118,6 +119,7 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'import-trezor'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'create-smart'; account: IKeyringAccountState }>
   | Readonly<{ kind: 'mark-smart-deployed'; id: string }>
+  | Readonly<{ kind: 'set-smart-module-record'; id: string; address: string; record: SmartAccountCustomModuleRecord | null }>
   | Readonly<{ kind: 'refresh-smart-metadata'; id: string; metadata: Pick<ISmartAccountMetadata,
     'auth' | 'availableModules' | 'isDeployed' | 'installedModules'> }>
   | Readonly<{ kind: 'store-guardian-recovery'; id: string; intent: NativeGuardianRecoveryIntent; expectedOperationHash: string | null }>
@@ -833,6 +835,24 @@ export class NativeWalletCatalogue {
             }
             guardianRecoveryIntents = guardianRecoveryIntents!.filter(intent => intent !== previous);
           }
+        } else if (mutation.kind === 'set-smart-module-record') {
+          if (selected.type !== 'SmartAccount' || mutation.id !== next.active.accountId ||
+              group.activeNetwork.kind !== 'ethereum' || !account.smartAccount ||
+              account.smartAccount.chainId !== Number(getNativeNetwork(next.active.networkId, catalogueEvmNetworks(next)).chainId)) return invalid();
+          const address = getAddress(mutation.address), module = mutation.record;
+          if ((module !== null && (!module || typeof module !== 'object')) || address === '0x0000000000000000000000000000000000000000') return invalid();
+          if (module && (Object.keys(module).some(key => !['address', 'moduleType', 'name', 'initData', 'compositeCompatible'].includes(key)) ||
+              getAddress(module.address) !== address || module.address !== address ||
+              module.moduleType !== 1 || typeof module.name !== 'string' || module.name.length > 120 ||
+              typeof module.initData !== 'string' || module.initData.length > 131074 || !/^0x(?:[a-f\d]{2})*$/i.test(module.initData) ||
+              typeof module.compositeCompatible !== 'boolean')) return invalid();
+          // This is a discovery record, never evidence of installation or signing authority.
+          // The host saves it after owner authorization, before any broadcast.
+          const customModules = [...(account.smartAccount.customModules ?? [])];
+          const index = customModules.findIndex(record => record.address.toLowerCase() === address.toLowerCase());
+          if (module) { if (index < 0) customModules.push(module); else customModules[index] = module; }
+          else if (index >= 0) customModules.splice(index, 1);
+          group.accounts.SmartAccount[selected.index] = { ...account, smartAccount: { ...account.smartAccount, customModules } };
         } else if (mutation.kind === 'mark-smart-deployed' || mutation.kind === 'refresh-smart-metadata') {
           if (selected.type !== 'SmartAccount' || mutation.id !== next.active.accountId ||
               group.activeNetwork.kind !== 'ethereum' || !account.smartAccount ||

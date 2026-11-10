@@ -382,6 +382,8 @@ export function createNativeWalletControllers() {
       async resumeSend(): Promise<never> {throw Error('Trezor is outside this fixture');}},
     canManageGuardianPolicy: () => false,
     canSignSmartAccount: () => false, canManageSlhDsa: () => false,
+    canManageSmartAccountModules: () => false,
+    async openSmartAccountModules() { throw Error('Modules are outside this fixture'); },
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
     async resetActivity(check: () => void) {
