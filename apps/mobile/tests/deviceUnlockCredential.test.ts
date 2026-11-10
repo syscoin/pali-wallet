@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
+import { createDeviceUnlockCredentialStore, isNativeDeviceUnlockRefusal } from '../src/storage/deviceUnlockCredential.ts';
+import { deviceUnlockUserRefusal, isDeviceUnlockUserRefusal } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 
 const scope = Object.freeze({ installationId: '11'.repeat(16), walletBindingId: '22'.repeat(32),
   pairFingerprint: '33'.repeat(32), enrollmentId: '44'.repeat(16) });
@@ -76,4 +77,30 @@ test('altered readback and native failures do not confirm enrollment or expose t
   f.failWith(Error('fixture platform diagnostic contains private data'));
   assert.equal(await f.store.available(), false);
   await assert.rejects(f.store.read(scope, current), unavailable);
+});
+
+test('only explicit native authentication errors are classified as retryable refusals', () => {
+  for (const [platform, code, message] of [
+    ['ios', 'ERR_KEY_CHAIN', 'User canceled the operation.'],
+    ['ios', 'ERR_KEY_CHAIN', 'Authentication failed. Provided passphrase/PIN is incorrect or there is no user authentication method configured for this device.'],
+    ['android', 'ERR_AUTHENTICATION', 'Could not authenticate the user: User canceled the authentication. Cancelled'],
+    ['android', 'ERR_AUTHENTICATION', 'Could not authenticate the user: Lockout. Try later'],
+  ]) assert.equal(isNativeDeviceUnlockRefusal(platform!, Object.assign(new Error(message), { code })), true);
+  for (const error of [
+    Object.assign(Error('User canceled the operation.'), { code: 'ERR_DECRYPT' }),
+    Object.assign(Error('Unable to decode the provided data.'), { code: 'ERR_KEY_CHAIN' }),
+    Object.assign(Error('I/O error.'), { code: 'ERR_KEY_CHAIN' }),
+    Object.assign(Error('Could not authenticate the user: Unknown error (code: 99). Unknown'), { code: 'ERR_AUTHENTICATION' }),
+    { get code(): never { return assert.fail('Must not execute error accessors'); } },
+  ]) {
+    assert.equal(isNativeDeviceUnlockRefusal('ios', error), false);
+    assert.equal(isNativeDeviceUnlockRefusal('android', error), false);
+  }
+});
+
+test('protected storage preserves only the private refusal brand, not a matching public message', async () => {
+  const f = fixture(); f.failWith(deviceUnlockUserRefusal());
+  await assert.rejects(f.store.read(scope, current), error => isDeviceUnlockUserRefusal(error));
+  f.failWith(Error('DEVICE_UNLOCK_UNAVAILABLE'));
+  await assert.rejects(f.store.read(scope, current), error => !isDeviceUnlockUserRefusal(error));
 });

@@ -105,6 +105,13 @@ export function createNativeSentryKeyManagement(ports: Ports) {
   let expiry: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
   let settingsOperation: AbortController | undefined;
+  let authentication: { signal: AbortSignal } | undefined;
+  async function authenticating<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
+    const owned = { signal };
+    authentication = owned;
+    try { return await work(); }
+    finally { if (authentication === owned) authentication = undefined; }
+  }
 
   function retire(approval = activeApproval) {
     if (approval !== activeApproval) return;
@@ -267,6 +274,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
   }
 
   return Object.freeze({
+    isAuthenticating: () => !disposed && !lifetime.aborted && !!authentication && !authentication.signal.aborted,
     getSettings(assertCurrent: () => void) {
       checkSettings(assertCurrent);
       return ports.run(async () => {
@@ -288,7 +296,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
         };
         try {
           assertCurrent();
-          await ports.authenticate(assertCurrent, operation.signal);
+          await authenticating(operation.signal, () => ports.authenticate(assertCurrent, operation.signal));
           assertCurrent();
           await ports.writeSettings(settings, assertCurrent);
           assertCurrent();
@@ -360,7 +368,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
         const owned = take('import', review);
         const assertCurrent = () => check(owned.approval);
         try {
-          const seed = await ports.readSeed(assertCurrent, owned.approval.controller.signal);
+          const seed = await authenticating(owned.approval.controller.signal, () => ports.readSeed(assertCurrent, owned.approval.controller.signal));
           assertCurrent();
           const entries = owned.keys.map(({ key, label, secret }) => ({
             label,
@@ -409,7 +417,7 @@ export function createNativeSentryKeyManagement(ports: Ports) {
         const owned = take('remove', review);
         const assertCurrent = () => check(owned.approval);
         try {
-          await ports.authenticate(assertCurrent, owned.approval.controller.signal);
+          await authenticating(owned.approval.controller.signal, () => ports.authenticate(assertCurrent, owned.approval.controller.signal));
           assertCurrent();
           const { key } = owned.review;
           const fresh = (await inventory(owned.approval)).find(

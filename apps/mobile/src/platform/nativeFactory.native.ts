@@ -446,6 +446,7 @@ export function createNativeWalletControllers() {
       catch (cause) { manager.dispose(); throw cause; }
       return Object.freeze<NativeSentryKeyManagement>({
         ...manager,
+        isAuthenticating: () => manager.isAuthenticating() && deviceUnlock.prompt.isActive(),
         confirmImport: (...args) => observeFailure(() => manager.confirmImport(...args)),
         confirmRemoval: (...args) => observeFailure(() => manager.confirmRemoval(...args)),
         saveSettings: (...args) => observeFailure(() => manager.saveSettings(...args)),

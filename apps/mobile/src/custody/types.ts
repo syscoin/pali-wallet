@@ -65,11 +65,15 @@ export type NativeOperationCredentialRequest = Readonly<{
   purpose: 'transaction' | 'message' | 'account-change' | 'secret-read' | 'private-reconciliation';
   biometricsEnabled: boolean;
 }>;
+export type NativeOperationCredentialVerification = Readonly<
+  { accepted: true } | { accepted: false; reason: 'INVALID_CREDENTIAL' | 'DEVICE_UNLOCK_UNAVAILABLE' | 'AUTH_THROTTLED' }
+>;
 export type NativeOperationCredentialRequester = (
   request: NativeOperationCredentialRequest,
   signal: AbortSignal,
-  assertCurrent: () => void
-) => Promise<NativeOperationCredential>;
+  assertCurrent: () => void,
+  verify: (credential: NativeOperationCredential, assertCurrent: () => void) => Promise<NativeOperationCredentialVerification>
+) => Promise<void>;
 declare const nativeOperationAuthorizationBrand: unique symbol;
 /** Private one-use capability; only its owning runtime can recognize a receipt. */
 export type NativeOperationAuthorization = Readonly<{ [nativeOperationAuthorizationBrand]: true }>;

@@ -30,6 +30,7 @@ async function holdSettings(stage: string) {
   heldSettingsStage = undefined;
 }
 const manager: NativeSentryKeyManagement = {
+  isAuthenticating: () => false,
   async getSettings(guard) {
     pendingSettings++;
     try {

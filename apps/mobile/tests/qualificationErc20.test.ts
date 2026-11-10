@@ -131,7 +131,7 @@ for (const scenario of ['import', 'generate'] as const)
       let initialized = false;
       let runtime!: KeyringRuntime;
       let storage!: SqliteWalletStorage;
-      const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+      const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
         ensureCryptoReady: async () => undefined,
         openStorage: async () => {
           storage = await SqliteWalletStorage.open(

@@ -321,9 +321,11 @@ const accountController: NativeAccountView = {
       accountAuthentication = abort;
       const check = () => { if (abort.signal.aborted || accountSnapshot !== captured || accountContext !== revision) throw Error('CANCELLED'); };
       try {
-        const credential = await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, abort.signal, check);
+        await nativeOperationAuthentication.request({ id: crypto.randomUUID(), purpose: 'account-change', biometricsEnabled: false }, abort.signal, check, async (credential, assertAttemptCurrent) => {
+          assertAttemptCurrent();
+          return credential.method === 'pin' && credential.pin === '123456' ? { accepted: true } : { accepted: false, reason: 'INVALID_CREDENTIAL' };
+        });
         check();
-        if (credential.method !== 'pin' || credential.pin !== '123456') throw Error('INVALID_CREDENTIAL');
       } finally { if (accountAuthentication === abort) accountAuthentication = undefined; }
     }
     accountRequests.push(request);
@@ -495,7 +497,7 @@ function Fixture() {
           <><NativeAccounts
             controller={accountController}
             onBack={() => undefined}
-          /><NativeOperationAuthentication /></>
+          /><NativeOperationAuthentication isProtectedPromptActive={() => false} /></>
         )
       ) : (
         <NativeSend

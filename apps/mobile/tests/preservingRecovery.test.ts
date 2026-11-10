@@ -44,6 +44,7 @@ import { createSentryKeyVault } from '../../../source/wallet/sentryKeyVault.ts';
 import { SENTRY_SLOT_KEYS } from '../src/storage/sentryKeyDomain.ts';
 import type { DeriveSentryPublicKey } from '../src/custody/sentryKeyManagement.ts';
 import { parseSentrySettingsStorageKey } from '../../../source/shared/sentrySettings.ts';
+import { OperationAuthentication, type OperationAuthenticationPrompt } from '../src/core/operationAuthentication.ts';
 
 const pinCredential = createTestPinCredentialPort();
 
@@ -87,6 +88,12 @@ async function fixture(
   let currentPin = OLD;
   let operationPin: string | undefined;
   let operationRequests = 0;
+  const operationBroker = new OperationAuthentication();
+  let refusedOperation = Promise.withResolvers<OperationAuthenticationPrompt>();
+  const detachOperationBroker = operationBroker.attach(prompt => {
+    if (prompt?.error) refusedOperation.resolve(prompt);
+    else if (prompt && !prompt.busy) queueMicrotask(() => prompt.confirm({ method: 'pin', pin: operationPin! }));
+  });
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pali-preserving-recovery-')
   );
@@ -123,7 +130,11 @@ async function fixture(
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { operationRequests++; check(); return { method: 'pin', pin: operationPin ?? currentPin }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (request, signal, check, verify) => {
+    operationRequests++; check();
+    if (operationPin !== undefined) return operationBroker.request(request, signal, check, verify);
+    const result = await verify({ method: 'pin', pin: currentPin }, check); if (!result.accepted) throw Error(result.reason);
+  }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: open,
     readUtxoAccount,
@@ -173,7 +184,8 @@ async function fixture(
     try { db.prepare(`INSERT OR REPLACE INTO ${table} VALUES (?, ?)`).run(key, encodeStorageValue(value)); } finally { db.close(); }
   };
   return { notes(profile: string, value: unknown, binding: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO private_note_records VALUES (?, ?, ?)').run(profile, binding, JSON.stringify(value)); } finally { db.close(); } },
-    setOperationPin(pin?: string) { operationPin = pin; },
+    setOperationPin(pin?: string) { operationPin = pin; refusedOperation = Promise.withResolvers<OperationAuthenticationPrompt>(); },
+    waitOperationRefusal: () => refusedOperation.promise,
     get operationRequests() { return operationRequests; },
     get owner() {
       return owner;
@@ -245,7 +257,7 @@ async function fixture(
       owner = await newOwner();
       return owner;
     },
-    async close() { hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
+    async close() { detachOperationBroker(); hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
 }
 function retained(
@@ -1080,7 +1092,7 @@ test('failure to capture the original pair still closes its lease and returns no
     await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
     assert.deepEqual(f.read(), before);
     // A failed retirement remains failed; a fresh owner must qualify a new lease.
-    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: OLD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
+    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: OLD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
     try { await replacement.initialize(); await replacement.unlock(OLD); assert.equal(replacement.getSnapshot().phase, 'ready'); }
     finally { await replacement.dispose(); }
   } finally { await recovery.dispose(); await f.close(); }
@@ -1538,9 +1550,11 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     assert.equal(firstCall.signal.aborted, false);
     assert(firstCall.bytes.every((byte) => byte === 0));
     f.setOperationPin(NEXT);
-    await assert.rejects(manager.confirmImport(firstReview), {
-      code: 'INVALID_CREDENTIAL',
-    });
+    const rejectedImport = assert.rejects(manager.confirmImport(firstReview), { code: 'CANCELLED' });
+    const refusedImport = await f.waitOperationRefusal();
+    assert.match(refusedImport.error!, /PIN not accepted/);
+    assert.equal(mainRow(), undefined);
+    refusedImport.cancel(); await rejectedImport;
     f.setOperationPin();
     assert.equal(firstCall.signal.aborted, true);
     assert.equal(mainRow(), undefined);
@@ -1549,8 +1563,7 @@ test('Sentry key management keeps approvals public and bound to the selected wal
     });
     const invalidReview = await manager.prepareImport(input, 'operator', 'bls-basic');
     const invalidCall = calls.at(-1)!;
-    const invalidPassword = 'é'.repeat(513);
-    assert(invalidPassword.length < 1024 && Buffer.byteLength(invalidPassword) > 1024);
+    const invalidPin = '000000';
     const erased: Uint8Array[] = [];
     const fill = Uint8Array.prototype.fill;
     const observeWipe = t.mock.method(Uint8Array.prototype, 'fill', function (
@@ -1562,10 +1575,11 @@ test('Sentry key management keeps approvals public and bound to the selected wal
       return fill.call(this, value, start, end);
     });
     try {
-      f.setOperationPin(invalidPassword);
-      await assert.rejects(manager.confirmImport(invalidReview), {
-        code: 'INVALID_CREDENTIAL',
-      });
+      f.setOperationPin(invalidPin);
+      const rejected = assert.rejects(manager.confirmImport(invalidReview), { code: 'CANCELLED' });
+      const refused = await f.waitOperationRefusal();
+      assert.match(refused.error!, /PIN not accepted/);
+      refused.cancel(); await rejected;
     } finally { f.setOperationPin(); observeWipe.mock.restore(); }
     assert.equal(invalidCall.signal.aborted, true);
     assert.equal(erased.length, 1);
@@ -1766,7 +1780,11 @@ test('Sentry public settings preserve each network through cold unlock and passw
         serviceUrl: network === 'syscoin' ? 'https://sysnode.info' : '', maxFeeSatoshis: '100000',
       });
       f.setOperationPin(NEXT);
-      await assert.rejects(manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard), { code: 'INVALID_CREDENTIAL' });
+      const rejected = assert.rejects(manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard), { code: 'CANCELLED' });
+      const refused = await f.waitOperationRefusal();
+      assert.match(refused.error!, /PIN not accepted/);
+      assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, network === 'syscoin' ? 0 : 1);
+      refused.cancel(); await rejected;
       f.setOperationPin();
       assert.equal(f.read().records.filter(({ key }) => parseSentrySettingsStorageKey(key)).length, network === 'syscoin' ? 0 : 1);
       await manager.saveSettings({ serviceUrl, maxFeeSatoshis: fee }, guard);

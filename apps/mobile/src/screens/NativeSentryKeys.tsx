@@ -32,7 +32,7 @@ type Step =
   | { kind: 'list' }
   | {
       kind: 'settings';
-      manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel'>;
+      manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel' | 'isAuthenticating'>;
       assertCurrent(): void;
     }
   | { kind: 'draft'; multiple: boolean }
@@ -165,7 +165,8 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
     (owner: Owner) =>
       ownerRef.current === owner &&
       !owner.lifetime.signal.aborted &&
-      AppState.currentState === 'active',
+      (AppState.currentState === 'active' ||
+        (AppState.currentState === 'inactive' && owner.manager?.isAuthenticating() === true)),
     []
   );
   const navigate = useCallback((owner: Owner, next: Step) => {
@@ -252,11 +253,13 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
       setStep({ kind: 'list' });
     };
     const change = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') hide();
+      if (state !== 'active' && !(state === 'inactive' && owner.manager?.isAuthenticating() === true)) hide();
     });
     const blur =
       Platform.OS === 'android'
-        ? AppState.addEventListener('blur', hide)
+        ? AppState.addEventListener('blur', () => {
+            if (owner.manager?.isAuthenticating() !== true) hide();
+          })
         : null;
     return () => {
       retire(owner);
@@ -551,6 +554,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                             getSettings: owner.manager.getSettings,
                             saveSettings: owner.manager.saveSettings,
                             cancel: owner.manager.cancel,
+                            isAuthenticating: owner.manager.isAuthenticating,
                           },
                           assertCurrent() {
                             if (!current(owner) || owner.step !== next)

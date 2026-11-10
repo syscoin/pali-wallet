@@ -51,6 +51,16 @@ type Operation = {
 };
 
 const unavailable = () => new Error('DEVICE_UNLOCK_UNAVAILABLE');
+const userRefusals = new WeakSet<object>();
+/** A trusted native adapter may classify only its platform's explicit user cancellation. */
+export function deviceUnlockUserRefusal(): Error {
+  const error = unavailable();
+  userRefusals.add(error);
+  return error;
+}
+export function isDeviceUnlockUserRefusal(error: unknown): error is Error {
+  return !!error && typeof error === 'object' && userRefusals.has(error);
+}
 const checked = (guard: Guard) => {
   const result: unknown = guard();
   if (result === undefined) return;
@@ -166,32 +176,28 @@ export function createDeviceUnlockEnrollment(
     sdkPort,
     /** The guard owns the unlocked session; this verifies presence without releasing its key. */
     async verifyPresence(guard: Guard): Promise<void> {
-      try {
-        await run('presence', guard, async (operation) => {
-          const { check } = operation;
-          let key: Uint8Array | null = null;
-          try {
-            if (!(await ports.credentials.available())) throw unavailable();
-            check();
-            const reference = await ports.enrollment.read();
-            check();
-            if (!reference?.enrollmentId) throw unavailable();
-            const scope = scopeOf(reference, reference.enrollmentId);
-            operation.scope = scope;
-            key = await ports.credentials.read(scope, check);
-            check();
-            if (!(key instanceof Uint8Array) || key.length !== 32)
-              throw unavailable();
-            const latest = await ports.enrollment.read();
-            check();
-            if (!same(latest, scope)) throw unavailable();
-          } finally {
-            if (key instanceof Uint8Array) key.fill(0);
-          }
-        });
-      } catch {
-        throw unavailable();
-      }
+      await run('presence', guard, async (operation) => {
+        const { check } = operation;
+        let key: Uint8Array | null = null;
+        try {
+          if (!(await ports.credentials.available())) throw unavailable();
+          check();
+          const reference = await ports.enrollment.read();
+          check();
+          if (!reference?.enrollmentId) throw unavailable();
+          const scope = scopeOf(reference, reference.enrollmentId);
+          operation.scope = scope;
+          key = await ports.credentials.read(scope, check);
+          check();
+          if (!(key instanceof Uint8Array) || key.length !== 32)
+            throw unavailable();
+          const latest = await ports.enrollment.read();
+          check();
+          if (!same(latest, scope)) throw unavailable();
+        } finally {
+          if (key instanceof Uint8Array) key.fill(0);
+        }
+      });
     },
     issue: (prove: (assertCurrent: Guard) => Promise<boolean>, guard: Guard) =>
       run('issue', guard, async (operation) => {

@@ -130,10 +130,11 @@ export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; 
 };
 
 export function NativeWalletScreen({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled }: NativeWalletProps) {
-  return <><NativeWalletContent {...{ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled }} /><NativeOperationAuthentication /></>;
+  const controllerRef = useRef<Controllers | null>(null);
+  return <><NativeWalletContent {...{ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef }} /><NativeOperationAuthentication isProtectedPromptActive={() => controllerRef.current?.authentication?.isActive() === true} /></>;
 }
 
-export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled }: NativeWalletProps) {
+export function NativeWalletContent({ onExit, accounts, initialAccountId, initialSetup, onSelectedNative, onWalletRemoved, incomingPairing, onPairingHandled, controllerRef: controllers }: NativeWalletProps & { controllerRef: React.MutableRefObject<Controllers | null> }) {
   const { t } = useNativeTranslation();
   const biometrics = useBiometricPresentation();
   const bridge = useRef(accounts);
@@ -142,7 +143,6 @@ export function NativeWalletContent({ onExit, accounts, initialAccountId, initia
   const requestedAccount = useRef(initialAccountId);
   const requestedSetup = useRef(initialSetup);
   useLayoutEffect(() => { if (incomingPairing) requestedAccount.current = undefined; }, [incomingPairing]);
-  const controllers = useRef<Controllers | null>(null);
   const screenToken = useRef<object>({});
   const detachSubscriptions = useRef<() => void>(() => undefined);
   const recoveryRef = useRef<NativeRecoveryFlow | null>(null);

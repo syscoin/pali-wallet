@@ -414,9 +414,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       return dependencies[name];
     },
   });
+  const controllerRef = { current: null };
   const render = () => {
     cursor = 0;
     const tree = module.exports.NativeWalletContent({
+      controllerRef,
       onExit() {
         exits++;
       },

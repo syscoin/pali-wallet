@@ -3,6 +3,8 @@ import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGu
 
 export type OperationAuthenticationPrompt = Readonly<{
   request: NativeOperationCredentialRequest;
+  busy: boolean;
+  error?: string;
   confirm(credential: NativeOperationCredential): void;
   cancel(): void;
 }>;
@@ -26,7 +28,7 @@ function captureCredential(value: unknown, biometricsEnabled: boolean): NativeOp
 export class OperationAuthentication {
   private readonly now: () => number;
   private host: Readonly<{ show(prompt: OperationAuthenticationPrompt | null): void }> | null = null;
-  private pending: Readonly<{ cancel(): void }> | null = null;
+  private pending: Readonly<{ cancel(): void; isVerifying(): boolean }> | null = null;
 
   constructor(now: () => number = () => performance.now()) { this.now = now; }
 
@@ -42,8 +44,9 @@ export class OperationAuthentication {
   }
 
   cancel = (): void => { this.pending?.cancel(); };
+  isVerifying = (): boolean => this.pending?.isVerifying() === true;
 
-  request: NativeOperationCredentialRequester = (request, signal, assertCurrent) => {
+  request: NativeOperationCredentialRequester = (request, signal, assertCurrent, verify) => {
     try { assertSynchronousEvmFeeGuard(assertCurrent); } catch { return Promise.reject(new Error('CANCELLED')); }
     const host = this.host;
     if (!host || signal.aborted) return Promise.reject(new Error('CANCELLED'));
@@ -51,23 +54,21 @@ export class OperationAuthentication {
     const metadata = Object.freeze({ ...request });
     const started = this.now();
     if (!Number.isFinite(started)) return Promise.reject(new Error('CANCELLED'));
-    return new Promise((resolve, reject) => {
+    return new Promise<void>((resolve, reject) => {
       let settled = false;
+      let verifying = false;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const active = () => {
         const now = this.now();
         if (settled || this.host !== host || this.pending !== pending || signal.aborted || !Number.isFinite(now) || now < started || now - started >= 90_000) throw new Error('CANCELLED');
         assertSynchronousEvmFeeGuard(assertCurrent);
       };
-      const finish = (credential?: NativeOperationCredential, explicitCancel = false) => {
+      const finish = (failure?: unknown, explicitCancel = false) => {
         if (settled) return;
-        let failure: unknown;
-        let admitted: NativeOperationCredential | undefined;
         let canPreserve = false;
         try {
           active();
           if (explicitCancel) { failure = new Error('CANCELLED'); canPreserve = true; }
-          else admitted = captureCredential(credential, metadata.biometricsEnabled);
         } catch (error) { failure = error; }
         settled = true;
         clearTimeout(timer); signal.removeEventListener('abort', cancel);
@@ -78,17 +79,45 @@ export class OperationAuthentication {
           assertSynchronousEvmFeeGuard(assertCurrent);
         } catch (error) { failure = error; canPreserve = false; }
         if (canPreserve && failure && typeof failure === 'object') explicitCancellations.add(failure);
-        if (failure || !admitted) reject(failure ?? new Error('CANCELLED'));
-        else resolve(admitted);
+        if (failure) reject(failure);
+        else resolve();
       };
-      const cancel = () => finish();
-      const pending = { cancel };
+      const cancel = () => finish(new Error('CANCELLED'));
+      const pending = { cancel, isVerifying: () => !settled && verifying };
+      const show = (busy: boolean, error?: string) => host.show(Object.freeze({
+        request: metadata, busy, error,
+        confirm: (credential: NativeOperationCredential) => { void confirm(credential); },
+        cancel: () => finish(undefined, true),
+      }));
+      const confirm = async (value: NativeOperationCredential | null) => {
+        if (settled || verifying) return;
+        let credential: NativeOperationCredential | null = null;
+        try {
+          active();
+          credential = captureCredential(value, metadata.biometricsEnabled);
+          value = null;
+          verifying = true;
+          show(true);
+          active();
+          const result = await verify(credential, active);
+          active();
+          if (result.accepted === true) { finish(); return; }
+          const error = result.reason === 'INVALID_CREDENTIAL' ? 'PIN not accepted. Try again.'
+            : result.reason === 'DEVICE_UNLOCK_UNAVAILABLE' ? 'Authentication was not completed. Enter your PIN or try again.'
+              : result.reason === 'AUTH_THROTTLED' ? 'Too many attempts. Wait before trying again.' : null;
+          if (!error) throw new Error('CANCELLED');
+          verifying = false;
+          show(false, error);
+        } catch (error) {
+          finish(error);
+        } finally { credential = null; }
+      };
       this.pending = pending;
       signal.addEventListener('abort', cancel, { once: true });
       timer = setTimeout(cancel, 90_000);
       try {
         active();
-        host.show(Object.freeze({ request: metadata, confirm: (credential: NativeOperationCredential) => finish(credential), cancel: () => finish(undefined, true) }));
+        show(false);
       } catch { cancel(); }
     });
   };

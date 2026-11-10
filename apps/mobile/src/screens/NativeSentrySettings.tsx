@@ -13,7 +13,7 @@ import { Button, colors, Header, Screen, styles, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 type Props = {
-  manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel'>;
+  manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings' | 'cancel' | 'isAuthenticating'>;
   assertCurrent(): void;
   networkLabel: string;
   onBack(): void;
@@ -53,7 +53,7 @@ export function NativeSentrySettings({
     });
     const check = () => {
       assertCurrent();
-      if (!current.live || AppState.currentState !== 'active')
+      if (!current.live || (AppState.currentState !== 'active' && !(AppState.currentState === 'inactive' && manager.isAuthenticating())))
         throw new Error('CANCELLED');
     };
     current.pending = Promise.resolve()
@@ -118,7 +118,7 @@ export function NativeSentrySettings({
       if (
         !current.live ||
         current.request !== request ||
-        AppState.currentState !== 'active'
+        (AppState.currentState !== 'active' && !(AppState.currentState === 'inactive' && manager.isAuthenticating()))
       )
         throw new Error('CANCELLED');
     };

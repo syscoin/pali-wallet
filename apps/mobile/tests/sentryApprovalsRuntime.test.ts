@@ -75,7 +75,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
   };
   let signatures = 0,
     posts = 0;
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: () =>
@@ -208,7 +208,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
   let funding: InstanceType<typeof bitcoin.Transaction>, address = '', xpub = '', posts = 0, roleSignatures = 0;
   let held: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>>; signal?: AbortSignal } | undefined;
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Ambient transport forbidden'); });
-  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check, verify) => { check(); const result = await verify({ method: 'pin', pin: PASSWORD }, check); if (!result.accepted) throw Error(result.reason); }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
     openStorage: () => SqliteWalletStorage.open(connection, digest, INSTALLATION, true),
     deriveSentryPublicKey: createSentryClassicalExecutor(deriveSentryClassicalPublicKey),
     runSentryCrypto: createSentryCryptoExecutor(async () => async (job, check) => {
