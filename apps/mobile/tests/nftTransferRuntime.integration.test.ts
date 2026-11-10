@@ -96,7 +96,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
   let authority: NativeCustodyAuthority | undefined;
   let held: { entered: PromiseWithResolvers<string>; release: PromiseWithResolvers<void> } | undefined;
   let heldRegistryWrite: { entered: PromiseWithResolvers<void>; release: PromiseWithResolvers<void> } | undefined;
-  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() { assert.ok(globalThis.crypto.subtle); },
     async openStorage() {
       const fresh = !existsSync(file);

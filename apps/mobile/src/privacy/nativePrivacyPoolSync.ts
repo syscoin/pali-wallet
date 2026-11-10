@@ -202,9 +202,11 @@ export function createNativePrivacyPoolSync(
   const storage = createSessionCache(poolId, checkRun);
   let closed = false;
   let continuation = false;
+  let interrupting = false;
   let pending: Promise<PrivacySyncStatus> | undefined;
   let teardown: Promise<void> | undefined;
   let occupied: object | undefined;
+  let physicalDrain: Promise<void> = Promise.resolve();
   let run: Run | undefined;
 
   function checkOwner() {
@@ -263,12 +265,16 @@ export function createNativePrivacyPoolSync(
     }
     let draining: Promise<void> | undefined;
     let started = false;
-    const release = () =>
-      (draining ??= Promise.resolve()
-        .then(() => handle.release())
-        .then(() => {
+    const release = () => {
+      if (!draining) {
+        draining = Promise.resolve().then(() => handle.release()).then(() => {
           if (occupied === slot) occupied = undefined;
-        }));
+        });
+        physicalDrain = draining;
+        void draining.catch(() => undefined);
+      }
+      return draining;
+    };
     return {
       release,
       async start(
@@ -493,7 +499,7 @@ export function createNativePrivacyPoolSync(
       return storage.status();
     } catch (error) {
       // Retire interrupted work and revoke leases before a new request can start.
-      if (!closed) await controller.clear(poolId);
+      if (!closed && !interrupting) await controller.clear(poolId);
       throw error;
     } finally {
       clearTimeout(timer);
@@ -506,11 +512,10 @@ export function createNativePrivacyPoolSync(
     if (teardown) return teardown;
     closed = true;
     lifetime.removeEventListener('abort', onAbort);
-    // clear() invalidates proof leases synchronously. A held physical drain
-    // still occupies the host slot even after logical disposal completes.
+    // Revoke proof leases first, then join the actual native slot release.
     const clearing = controller.clear(poolId);
     teardown = Promise.all([clearing, pending?.catch(() => undefined)]).then(
-      () => undefined
+      () => physicalDrain
     );
     run?.abort.abort();
     return teardown;
@@ -540,9 +545,26 @@ export function createNativePrivacyPoolSync(
       checkReadable();
       return storage.status();
     },
+    async pause() {
+      checkOwner(); if (interrupting) throw unavailable(); interrupting = true;
+      try {
+        const pausing = controller.pause(poolId); run?.abort.abort();
+        await Promise.all([pausing, pending?.catch(() => undefined)]); await physicalDrain;
+        checkOwner(); return storage.status();
+      } finally { interrupting = false; }
+    },
+    async clear() {
+      checkOwner(); if (interrupting) throw unavailable(); interrupting = true;
+      try {
+        const clearing = controller.clear(poolId); run?.abort.abort();
+        await Promise.all([clearing, pending?.catch(() => undefined)]); await physicalDrain;
+        checkOwner(); return storage.status();
+      } finally { interrupting = false; }
+    },
     refresh() {
       try {
         checkOwner();
+        if (interrupting) throw unavailable();
       } catch (error) {
         return Promise.reject(error);
       }

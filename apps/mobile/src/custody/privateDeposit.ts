@@ -208,3 +208,5 @@ export class NativePrivateDeposit {
     }, [() => this.host.transactions.close(), () => this.host.close()]);
   }
 }
+
+export type NativePrivateDepositView = Pick<NativePrivateDeposit, 'getSnapshot' | 'subscribe' | 'prepare' | 'confirm' | 'refresh' | 'dispose'>;

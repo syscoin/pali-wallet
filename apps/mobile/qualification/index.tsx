@@ -502,7 +502,7 @@ function QualificationApp() {
           import('bip39'),
         ]);
         const qualificationSlhExecution = null;
-        const factory = createKeyringRuntimeFactory({ slhExecution: qualificationSlhExecution, readEvmRetirement: null,
+        const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: qualificationSlhExecution, readEvmRetirement: null,
           ensureCryptoReady: async () => {
             await ensureNativeCryptoReady();
           },

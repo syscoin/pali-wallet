@@ -60,7 +60,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     Object.defineProperty(response, 'url', { value: url });
     return response;
   });
-  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
     openStorage: () => SqliteWalletStorage.open(connection, digest, INSTALLATION, true),
     async utxoFetch() { throw Error('Activity does not use signing transport'); },
     async readUtxoBalance() { throw Error('Activity does not fetch balances'); },

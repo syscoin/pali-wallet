@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { URL as NodeURL } from 'node:url';
-import { runInNewContext } from 'node:vm';
-import ts from 'typescript';
 import {
   createPrivacyServiceSettings,
   DEFAULT_PRIVACY_SERVICE_ORIGIN,
@@ -179,75 +175,25 @@ test('a settings read held across a selected-origin change cannot publish an old
   assert.equal((await settings.capture()).origin, 'http://localhost:8800');
 });
 
-test('native settings use the shared policy and noninteractive device-only SecureStore preference', async () => {
-  let saved: string | null = null;
-  let available = true;
-  const calls: { key: string; options: Record<string, unknown> }[] = [];
-  const secureStore = {
-    WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'device-only',
-    async isAvailableAsync() {
-      return available;
-    },
-    async getItemAsync(key: string, options: Record<string, unknown>) {
-      calls.push({ key, options });
-      return saved;
-    },
-    async setItemAsync(
-      key: string,
-      value: string,
-      options: Record<string, unknown>
-    ) {
-      calls.push({ key, options });
-      saved = value;
-    },
-  };
-  const module = {
-    exports: {} as {
-      nativePrivacyServiceSettings: ReturnType<
-        typeof createPrivacyServiceSettings
-      >;
-    },
-  };
-  const path = new NodeURL(
-    '../src/platform/privacyServiceSettings.native.ts',
-    import.meta.url
-  );
-  const compiled = ts.transpileModule(readFileSync(path, 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS },
-  });
-  runInNewContext(compiled.outputText, {
-    module,
-    exports: module.exports,
-    require(name: string) {
-      if (name === 'expo-secure-store') return secureStore;
-      assert.equal(name, '../../../../source/shared/privacyServiceOrigin.ts');
-      return { createPrivacyServiceSettings };
+test('native settings use shared policy with a required synchronous guarded CAS commit', async () => {
+  const { createNativePrivacyServiceSettings } = await import('../src/platform/privacyServiceSettings.native.ts');
+  let saved: unknown, live = true, calls = 0;
+  const gate = Promise.withResolvers<void>(), entered = Promise.withResolvers<void>();
+  const settings = createNativePrivacyServiceSettings({
+    async get(key) { assert.equal(key, PRIVACY_SERVICE_ORIGIN_STORAGE_KEY); return saved; },
+    async compareAndSetMany(changes, check) {
+      calls++; check(); entered.resolve(); await gate.promise; check();
+      assert.equal(changes[0]!.expected, saved); saved = changes[0]!.value; return true;
     },
   });
-  const settings = module.exports.nativePrivacyServiceSettings;
-  assert.equal(await settings.getOrigin(), DEFAULT_PRIVACY_SERVICE_ORIGIN);
-  await settings.changeOrigin('https://native.example', async () => undefined);
-  assert.equal((await settings.capture()).origin, 'https://native.example');
-  for (const { key, options } of calls) {
-    assert.equal(key, PRIVACY_SERVICE_ORIGIN_STORAGE_KEY);
-    assert.equal(
-      options.keychainService,
-      'org.pali.mobile.privacy-preferences'
-    );
-    assert.equal(options.keychainAccessible, 'device-only');
-    assert.equal(options.requireAuthentication, false);
-    assert.equal(Object.isFrozen(options), true);
-  }
-  available = false;
-  const count = calls.length;
-  await assert.rejects(
-    settings.getOrigin(),
-    /privacy_service_storage_unavailable/
-  );
-  await assert.rejects(
-    settings.changeOrigin('https://other.example', async () => undefined),
-    /privacy_service_storage_unavailable/
-  );
-  assert.equal(calls.length, count);
-  assert.equal(saved, 'https://native.example');
+  const guard = () => { if (!live) throw Error('owner changed'); };
+  const initial = await settings.getOrigin();
+  const first = settings.changeOrigin('https://native.example', async () => undefined, initial, guard);
+  const refused = assert.rejects(first, /owner changed/); await entered.promise;
+  live = false; gate.resolve(); await refused; assert.equal(saved, undefined);
+  live = true;
+  await settings.changeOrigin('https://native.example', async () => undefined, initial, guard);
+  assert.equal((await settings.capture()).origin, 'https://native.example'); assert.equal(calls, 2);
+  await assert.rejects(settings.changeOrigin('http://remote.example', async () => undefined, 'https://native.example', guard));
+  assert.equal(calls, 2);
 });

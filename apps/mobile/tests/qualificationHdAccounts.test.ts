@@ -53,7 +53,7 @@ for (const scenario of ['import', 'generate'] as const) {
     let initialized = false;
     let runtime!: KeyringRuntime;
     let physicalStorage!: SqliteWalletStorage;
-    const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
+    const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
       ensureCryptoReady: async () => undefined,
       openStorage: async () => {
         physicalStorage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);

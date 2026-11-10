@@ -18,7 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { PRIVACY_POOLS } from '../../../../source/utils/privacy/registry';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types';
-import type { NativePrivateDeposit as DepositController } from '../custody/privateDeposit';
+import type { NativePrivateDepositView as DepositController } from '../custody/privateDeposit';
 import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { recordIdleActivity } from '../platform/security';

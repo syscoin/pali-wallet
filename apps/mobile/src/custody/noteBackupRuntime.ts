@@ -1,3 +1,4 @@
+import { NativeOperationDrain } from './operationDrain.ts';
 import type { IPrivacyWithdrawalAttempt } from '../../../../source/utils/privacy/withdrawalTransactionTypes.ts';
 import type { IPrivacyDepositAttempt } from '../../../../source/utils/privacy/transactionTypes.ts';
 import { generateClassicNote, identifyClassicNote } from '../../../../source/utils/privacy/note.ts';
@@ -17,9 +18,16 @@ import {
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
 import { WalletStorageError, type OpenWalletStorage } from '../storage/types.ts';
 import type { NativePrivateWithdrawalView } from './privateWithdrawal.ts';
+import type { NativeNoteMaintenanceProofs } from './noteMaintenance.ts';
 
 /** Internal file authority. Exported bytes go only to the trusted file adapter. */
 export type NativeNoteBackupRuntime = Readonly<Omit<INoteBackupService, 'dispose'>>;
+export type NativeNoteMaintenanceRuntime = Readonly<{
+  dispose(): Promise<void>;
+  getNotes(assertCurrent: () => void): ReturnType<IPrivateVaultController['getNotes']>;
+  clearCompletedNote(id: string, assertCurrent: () => void): ReturnType<IPrivateVaultController['clearCompletedNotes']>;
+  recoverFailedWithdrawal(id: string, password: string, assertCurrent: () => void): Promise<void>;
+}>;
 export type NativeNoteCapacityRuntime = Readonly<Pick<IPrivateVaultController, 'getCapacity' | 'setCapacity'>>;
 export type NativeSavedNote = Readonly<{
   amount: string;
@@ -84,10 +92,11 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     return scope;
   };
   const mutex = new AsyncMutex();
-  const createVault = (readNote: IPrivacyNoteReader) => createPrivateVaultController({
+  const createVault = (readNote: IPrivacyNoteReader, maintenance: NativeNoteMaintenanceProofs | null) => createPrivateVaultController({
     captureSession,
     authenticate: ports.authenticate,
     readNote,
+    ...(maintenance === null ? {} : maintenance),
   }, {
     identify: identifyClassicNote,
     generate: generateClassicNote,
@@ -122,7 +131,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     },
   });
   // Inventory and encrypted backups read local records without network work.
-  const vault = createVault(async () => ({ phase: 'waiting' }));
+  const vault = createVault(async () => ({ phase: 'waiting' }), null);
   const service = createNoteBackupService({
     captureSession,
     crypto,
@@ -140,7 +149,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   });
   return {
     openDeposit(session: IPrivateVaultSession, acknowledgementSession: IPrivateVaultSession, readNote: IPrivacyNoteReader) {
-      const operational = createVault(readNote);
+      const operational = createVault(readNote, null);
       return Object.freeze({
         prepareNote: (poolId: Parameters<typeof operational.prepareDepositNote>[0], noteId?: string) =>
           ports.run(() => operational.prepareDepositNote(poolId, noteId, session)),
@@ -156,7 +165,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       });
     },
     openWithdrawal(session: IPrivateVaultSession, acknowledgementSession: IPrivateVaultSession, readNote: IPrivacyNoteReader) {
-      const operational = createVault(readNote);
+      const operational = createVault(readNote, null);
       return Object.freeze({
         withNote: <T>(noteId: string, use: (note: string, poolId: PrivacyPoolId) => Promise<T>) =>
           ports.run(() => operational.withWithdrawalNote(noteId, session, use)),
@@ -175,21 +184,21 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       });
     },
     authorizeDepositReplay(session: IPrivateVaultSession, attempt: IPrivacyDepositAttempt, readNote: IPrivacyNoteReader) {
-      return createVault(readNote).authorizeDepositReplay(attempt, session);
+      return createVault(readNote, null).authorizeDepositReplay(attempt, session);
     },
     authorizeWithdrawalReplay(session: IPrivateVaultSession, attempt: Extract<IPrivacyWithdrawalAttempt, { mode: 'direct' }>, readNote: IPrivacyNoteReader) {
-      return createVault(readNote).authorizeWithdrawalReplay(attempt, session);
+      return createVault(readNote, null).authorizeWithdrawalReplay(attempt, session);
     },
     invalidate() { resumeInventory?.(); invalidate?.(); },
     dispose() { resumeInventory?.(); service.dispose(); },
     importNote(session: IPrivateVaultSession, note: string, readNote: IPrivacyNoteReader, assertCurrent: () => void) {
       const selected = ownedSession(session, assertCurrent);
       selected.assertCurrent();
-      const importer = createVault(readNote);
+      const importer = createVault(readNote, null);
       return ports.run(() => withSession(selected, () => importer.importNote(note)));
     },
     readNoteStatus(session: IPrivateVaultSession, noteId: string, readNote: IPrivacyNoteReader) {
-      return ports.run(() => createVault(readNote).readNoteStatus(noteId, session));
+      return ports.run(() => createVault(readNote, null).readNoteStatus(noteId, session));
     },
     async readInventory(session: IPrivateVaultSession, readStatus: ((id: string, poolId: PrivacyPoolId, guard: () => void) => Promise<IPrivateNoteStatus>) | null,
       openWithdrawal: ((id: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void) => Promise<NativePrivateWithdrawalView>) | null): Promise<NativeNoteInventory> {
@@ -236,6 +245,34 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
           selected.assertCurrent();
           return secret;
         },
+      });
+    },
+    bindMaintenance(session: IPrivateVaultSession, proofs: NativeNoteMaintenanceProofs): NativeNoteMaintenanceRuntime {
+      session.assertCurrent();
+      if (typeof proofs?.prepareCompletionProof !== 'function' || typeof proofs?.prepareWithdrawalRecovery !== 'function')
+        throw new Error('privacy_vault_unavailable');
+      const operational = createVault(async () => ({ phase: 'waiting' }), Object.freeze({
+        prepareCompletionProof: proofs.prepareCompletionProof.bind(proofs),
+        prepareWithdrawalRecovery: proofs.prepareWithdrawalRecovery.bind(proofs),
+      }));
+      let closed = false;
+      const drain = new NativeOperationDrain();
+      const run = async <T>(assertCurrent: () => void, operation: () => Promise<T>) => {
+        const owner = ownedSession(session, () => {
+          if (closed) throw Error('privacy_vault_session_changed');
+          return assertCurrent();
+        });
+        owner.assertCurrent(); const finish = drain.begin();
+        try {
+          const result = await ports.run(() => withSession(owner, operation));
+          owner.assertCurrent(); return result;
+        } finally { finish(); }
+      };
+      return Object.freeze({
+        dispose: () => drain.close(() => { closed = true; }, []),
+        getNotes: (guard) => run(guard, operational.getNotes),
+        clearCompletedNote: (id, guard) => run(guard, () => operational.clearCompletedNotes([id])),
+        recoverFailedWithdrawal: (id, password, guard) => run(guard, () => operational.recoverFailedWithdrawal(id, password)),
       });
     },
     bindCapacity(session: IPrivateVaultSession): NativeNoteCapacityRuntime {

@@ -28,7 +28,7 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
     async write(name, value) { protectedItems.set(name, value); },
     async remove(name) { protectedItems.delete(name); },
   });
-  const factory = createKeyringRuntimeFactory({ slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null,
     ensureCryptoReady: async () => undefined, readEvmRetirement: null,
     trezorSessions,
     async openStorage() {

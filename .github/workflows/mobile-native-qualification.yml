@@ -75,6 +75,8 @@ on:
       - 'source/utils/privacy/relayJobs.ts'
       - 'source/utils/privacy/relayers.ts'
       - 'source/utils/privacy/snapshotValidation.ts'
+      - 'source/utils/privacy/spentCompletion.ts'
+      - 'source/utils/privacy/withdrawalRecovery.ts'
       - 'source/utils/privacy/trustedSnapshot.ts'
       - 'source/utils/privacy/transactionTypes.ts'
       - 'source/utils/privacy/types.ts'
