@@ -160,10 +160,17 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     expect(
       deps.sendAndSaveEthTransaction.mock.calls.map(([params]) => params.nonce)
     ).toEqual([0, 1]);
-    expect(deps.sendAndSaveEthTransaction.mock.calls[0][0]).toMatchObject({
+    expect(deps.sendAndSaveEthTransaction.mock.calls[0][0]).toEqual({
       chainId: 1,
       from: state.vault.accounts.HDAccount[0].address,
+      nonce: 0,
+      data: '0x01',
+      to: PALI_CREATE2_DEPLOYER_ADDRESS,
+      value: '0x0',
     });
+    expect(
+      Object.isFrozen(deps.sendAndSaveEthTransaction.mock.calls[0][0])
+    ).toBe(true);
   });
 
   it('shares one deployment flight across concurrent callers', async () => {
@@ -418,6 +425,25 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       controller.deploySmartAccountInfrastructure()
     ).resolves.toMatchObject({ pending: { transactionHash: hash(1) } });
     expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('keeps unknown unscoped history pending before catalogue filtering without probing it', async () => {
+    state.vault.accountTransactions.HDAccount[0].ethereum[1] = [
+      {
+        smartAccountInfrastructureDeployment: true,
+        smartAccountInfrastructureId: 'future-contract',
+        hash: hash(1),
+      },
+    ];
+    codes[implementation] = codes[factory] = '0x11';
+    await expect(
+      controller.deploySmartAccountInfrastructure()
+    ).resolves.toMatchObject({
+      pending: { contractId: 'future-contract', transactionHash: hash(1) },
+    });
+    expect(provider.getTransactionReceipt).not.toHaveBeenCalled();
+    expect(provider.send).not.toHaveBeenCalled();
     expect(deps.sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 

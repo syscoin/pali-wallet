@@ -2247,6 +2247,21 @@
       "publicTitle": "Public address tools",
       "publicBody": "These tools manage saved public addresses. They cannot sign transactions or recover their wallets.",
       "receiveHint": "Receive and any supported testnet faucet are available on Wallet."
+    },
+    "infrastructure": {
+      "refresh": "刷新",
+      "reviewNext": "审核下一次部署",
+      "codePresent": "已部署",
+      "codeMissing": "未部署",
+      "create2Deployer": "CREATE2 部署器",
+      "feePayer": "手续费支付账户",
+      "maximumTotal": "最高总费用",
+      "pending": "有一项部署正在等待确认。请刷新状态后再继续。",
+      "unknown": "交易可能已到达网络。请刷新状态后再继续。",
+      "reviewExpired": "审核已过期。请重新审核当前手续费。",
+      "unavailable": "设置暂不可用。请刷新状态后重试。",
+      "cancelled": "钱包已更改或锁定。请重新打开设置。",
+      "reviewOptional": "审核可选部署"
     }
   }
 }

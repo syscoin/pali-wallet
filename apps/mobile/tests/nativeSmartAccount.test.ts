@@ -39,14 +39,14 @@ import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDe
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
-import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { inspectRecoveryCatalogue, NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeInfrastructurePending } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
 import { createGuardianRecoveryFixture } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
 import { importedKeyIdentity } from '../src/custody/importedAccounts.ts';
 import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliCompositeValidatorInterface, paliP256WebAuthnValidatorInterface, paliSlhDsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface, paliGuardianRecoveryModuleInterface } from '../../../source/utils/smartAccount/contracts.ts';
-import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
+import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID, PALI_CREATE2_DEPLOYER_ADDRESS, type PaliInfrastructureContractId } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
 
@@ -68,6 +68,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
   const submitted: string[] = [];
   const payerSignatures: string[] = [];
+  const infrastructureBroadcasts: { rawTransaction: string; pending: NativeInfrastructurePending }[] = [];
+  const missingInfrastructure = new Set<string>();
+  let failInfrastructureBroadcast = false;
+  let initialEoaNonce = 0;
+  let physicalStorageCloses = 0;
   const spendabilityReads = { native: 0, deposit: 0 };
   let deployed = false;
   let deployedCode = '0x01';
@@ -97,12 +102,16 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
   const slhDerivations: number[] = [];
   let captureJournal: (() => ReturnType<EvmSignedRecords['captureSmartAccountPendingRecords']>) | undefined;
+  let readPreparedRecord: ((chainId: string, from: string, hash: string) => Promise<string | null>) | undefined;
   let mutateSelectedSmart: ((mutate: (account: IKeyringAccountState) => void) => void) | undefined;
   let mutateLedgerOwner: ((index: number, mutate: (account: IKeyringAccountState) => void) => void) | undefined;
   let installSlh: (() => void) | undefined;
   let replaceSoftwareOwner: ((type: 'HDAccount' | 'Imported', id: number) => void) | undefined;
   const openStorage = async () => {
-    storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, !initialized);
+    const connection = nodeConnection(file, hooks).connection;
+    const close = connection.closeAsync.bind(connection);
+    connection.closeAsync = async () => { physicalStorageCloses++; await close(); };
+    storage = await SqliteWalletStorage.open(connection, digest, INSTALLATION, !initialized);
     initialized = true;
     return storage;
   };
@@ -126,6 +135,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const builtIn = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.some(address => address.toLowerCase() === target);
           const smartTarget = runtime.catalogue.getSnapshot()?.accounts.some(account => account.type === 'SmartAccount' && account.address.toLowerCase() === target);
           result = builtIn || customValidators.has(target) ? '0x01' : deployed && smartTarget && (!deployedByBroadcast || request.params[1] === 'pending' || readReceipts) ? deployedCode : '0x';
+          if (missingInfrastructure.has(target)) result = '0x';
           if (smartGuardianMetadata && smartGuardianMetadata.address.toLowerCase() === target && !smartGuardianMetadata.deployed) result = '0x';
           if (smartTarget) {
             await smartCodeRead?.();
@@ -135,7 +145,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             }
           }
         }
-        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(request.params[1] === 'pending' || readReceipts ? submitted.length : 0).toString(16)}`;
+        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${(initialEoaNonce + (request.params[1] === 'pending' || readReceipts ? submitted.length : 0)).toString(16)}`;
         else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : payerBalance;
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
@@ -176,10 +186,22 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const saved = await storage.signedRecords.read(identity.profileId);
           assert(saved);
           assert.equal(inspectEvmSignedBundle(saved, identity.profileId).transactions, submitted.length + 1);
+          if (Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase()) {
+            const signed = Transaction.from(request.params[0]);
+            assert(readPreparedRecord);
+            assert.equal(await readPreparedRecord(network.chainId, signed.from!, signed.hash!), request.params[0],
+              'the actual SDK must retain these exact signed bytes before the broadcast transport runs');
+            const record = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { infrastructurePending?: readonly NativeInfrastructurePending[] };
+            const pending = record.infrastructurePending?.find(entry => entry.chainId === network.chainId);
+            assert(pending, 'infrastructure reservation must be durable before broadcasting');
+            infrastructureBroadcasts.push({ rawTransaction: request.params[0], pending: structuredClone(pending) });
+          }
           submitted.push(request.params[0]);
           if (Transaction.from(request.params[0]).to === getPaliEntryPointAddress(Number(network.chainId))) { if (!deployed) deployedByBroadcast = true; deployed = true; }
           result = Transaction.from(request.params[0]).hash;
           afterBroadcast?.();
+          if (failInfrastructureBroadcast && Transaction.from(request.params[0]).to?.toLowerCase() === PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase())
+            throw Error('connection lost after infrastructure submission');
         }
         else if (request.method === 'eth_call') {
           const to = request.params[0].to.toLowerCase();
@@ -295,6 +317,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             return signature;
           };
           const signPrepared = this.signPreparedEvmTransaction.bind(this);
+          readPreparedRecord = async (chainId, from, hash) => {
+            const entry = await new EvmSignedRecords(storage.signedRecords).readExact(
+              { keyring: this, assertCurrent: () => { assert(this.isUnlocked()); } }, chainId, from, hash);
+            return entry?.rawTransaction ?? null;
+          };
           this.signPreparedEvmTransaction = (...input: Parameters<typeof signPrepared>) => {
             const signed = signPrepared(...input);
             payerSignatures.push(signed.rawTransaction);
@@ -324,7 +351,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
-    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders,
+    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, get physicalStorageCloses() { return physicalStorageCloses; }, calls, submitted, signatures, payerSignatures, spendabilityReads, estimatedSenders, infrastructureBroadcasts,
+    infrastructureCode(id: PaliInfrastructureContractId, present: boolean) {
+      const address = PALI_INFRASTRUCTURE_METADATA_BY_ID[id].address.toLowerCase();
+      if (present) missingInfrastructure.delete(address); else missingInfrastructure.add(address);
+    },
+    infrastructureResponseLost() { failInfrastructureBroadcast = true; },
+    initialEoaNonce(value: number) { assert(Number.isSafeInteger(value) && value >= 0); initialEoaNonce = value; },
     smartGuardian(address: string, owners: string[], options: { compositeThreshold?: number; threshold?: number; deployed?: boolean } = {}) {
       smartGuardianMetadata = { address, owners: [...owners], threshold: options.threshold ?? 1, compositeThreshold: options.compositeThreshold, deployed: options.deployed ?? true };
     },
@@ -400,6 +433,175 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
 }
+
+for (const uncertain of [false, true]) test(`native infrastructure private SDK reserves the reviewed nonce and reconciles after reopen without duplicate submission (${uncertain})`, async () => {
+  const f = await fixture({}, true);
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.initialEoaNonce(7);
+    f.infrastructureCode('ecdsaValidator', false); f.infrastructureCode('factory', false);
+    f.holdReceipts();
+    if (uncertain) f.infrastructureResponseLost();
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert.deepEqual(controller.getSnapshot().status!.observation.missing, ['ecdsaValidator', 'factory']);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!;
+    assert(review, JSON.stringify(controller.getSnapshot()));
+    assert.equal(review.contract.id, 'ecdsaValidator'); assert.equal(Number(review.transaction.nonce), 7);
+    const contracts = await import('../../../source/utils/smartAccount/deployment.ts');
+    const contract = contracts.getPaliInfrastructureContracts(1).find(contract => contract.id === 'ecdsaValidator')!;
+    assert.equal(review.transaction.data, contract.deployCalldata);
+    assert.equal(review.transaction.to!.toLowerCase(), PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase());
+    assert.equal(BigInt(review.transaction.value), 0n);
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    const before = f.runtime.catalogue.getSnapshot()!;
+    const payer = before.accounts.find(account => account.id === before.active.accountId)!;
+    f.onBroadcast(() => {
+      const current = f.runtime.catalogue.getSnapshot()!;
+      assert.equal(current.accounts.find(account => account.id === current.active.accountId), payer,
+        'a pending-only reservation must preserve the captured SDK selected-context object');
+    });
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, uncertain ? 'unknown' : 'pending', JSON.stringify(controller.getSnapshot()));
+    assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 1);
+    assert.equal(f.infrastructureBroadcasts.length, 1);
+    const raw = Transaction.from(f.submitted[0]);
+    const captured = f.infrastructureBroadcasts[0]!;
+    assert.equal(captured.rawTransaction, f.payerSignatures[0]);
+    assert.equal(raw.from!.toLowerCase(), payer.address.toLowerCase()); assert.equal(raw.nonce, Number(review.transaction.nonce));
+    assert.equal(raw.to!.toLowerCase(), PALI_CREATE2_DEPLOYER_ADDRESS.toLowerCase()); assert.equal(raw.data, review.transaction.data);
+    assert.equal(captured.pending.entry.nonce, raw.nonce); assert.equal(captured.pending.entry.contractId, review.contract.id);
+    assert.equal(captured.pending.entry.payerAddress.toLowerCase(), raw.from!.toLowerCase());
+    assert.equal(captured.pending.entry.transactionHash, undefined, 'hash acknowledgement follows the existing submit boundary');
+    const stored = (await f.inspectRecovery()).record as { infrastructurePending: readonly NativeInfrastructurePending[] };
+    assert.equal(stored.infrastructurePending[0]!.entry.transactionHash, raw.hash);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    controller.dispose(); controller = undefined;
+    f.onBroadcast(() => undefined);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().status!.pending!.transactionHash, raw.hash);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    const receiptReads = f.calls.filter(method => method === 'eth_getTransactionReceipt').length;
+    f.showReceipts();
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert(f.calls.filter(method => method === 'eth_getTransactionReceipt').length > receiptReads);
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    f.infrastructureCode('ecdsaValidator', true);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().feeReview!.contract.id, 'factory');
+    assert.equal(Number(controller.getSnapshot().feeReview!.transaction.nonce), 8);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    f.infrastructureCode('factory', true);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'complete', JSON.stringify(controller.getSnapshot()));
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+test('native infrastructure private SDK retains a broadcast reservation when its route retires before acknowledgement', async () => {
+  const f = await fixture({}, true), lifetime = new AbortController();
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.initialEoaNonce(9); f.infrastructureCode('factory', false); f.holdReceipts();
+    controller = await f.runtime.openSmartInfrastructure(lifetime.signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review, JSON.stringify(controller.getSnapshot()));
+    f.onBroadcast(() => lifetime.abort());
+    await controller.confirm(review.id);
+    assert.equal(f.submitted.length, 1); assert.equal(f.payerSignatures.length, 1);
+    const reserved = ((await f.inspectRecovery()).record as { infrastructurePending: readonly NativeInfrastructurePending[] }).infrastructurePending[0]!;
+    assert.equal(reserved.entry.nonce, 9); assert.equal(reserved.entry.transactionHash, undefined);
+    controller.dispose(); controller = undefined; f.onBroadcast(() => undefined);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+    f.showReceipts(); await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    assert.equal(f.payerSignatures.length, 1); assert.equal(f.submitted.length, 1);
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+test('native infrastructure private SDK clears a durable unsent reservation when shared fee refresh rejects before signing', async () => {
+  let armed = false, journalWrites = 0;
+  const f = await fixture({ after(kind, sql) {
+    if (armed && kind === 'run' && sql.startsWith('UPDATE keyring_records')) journalWrites++;
+  } }, true);
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.infrastructureCode('factory', false);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review, JSON.stringify(controller.getSnapshot()));
+    f.gasSponsored(); // An ordinary EOA has no Smart-account sponsorship route.
+    armed = true;
+    await controller.confirm(review.id);
+    armed = false;
+    assert.equal(controller.getSnapshot().phase, 'failed', 'successful private unsent cleanup must not publish phantom broadcast uncertainty');
+    assert.equal(journalWrites, 2, 'reserve and exact unsent clear must both commit through the catalogue');
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert.equal(controller.getSnapshot().status!.pending, null);
+  } finally { controller?.dispose(); await f.close(); }
+});
+
+test('native infrastructure private SDK drains admitted unsigned cleanup after route retirement before physical storage close', async () => {
+  const lifetime = new AbortController();
+  let armed = false, retiredAfterReserve = false, beforeRevision = -1;
+  const cleanup = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture({ before: async (kind, sql) => {
+    if (retiredAfterReserve && kind === 'run' && sql.startsWith('UPDATE keyring_records')) {
+      cleanup.resolve(); await release.promise;
+    }
+  } }, true);
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  let confirmation: Promise<void> | undefined, closing: Promise<void> | undefined;
+  try {
+    f.infrastructureCode('factory', false);
+    controller = await f.runtime.openSmartInfrastructure(lifetime.signal, () => {
+      if (armed && (f.runtime.catalogue.getSnapshot()?.revision ?? -1) > beforeRevision) {
+        armed = false; retiredAfterReserve = true; lifetime.abort();
+      }
+    });
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review, JSON.stringify(controller.getSnapshot()));
+    beforeRevision = f.runtime.catalogue.getSnapshot()!.revision;
+    const closes = f.physicalStorageCloses;
+    armed = true;
+    confirmation = controller.confirm(review.id);
+    await Promise.race([cleanup.promise, confirmation.then(() => { throw Error('confirmation settled without exact unsigned cleanup'); })]);
+    let closeSettled = false;
+    closing = f.owner.dispose().then(() => { closeSettled = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(closeSettled, false, 'physical close must join the entire admitted confirmation span');
+    assert.equal(f.physicalStorageCloses, closes);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null, 'cleanup must not revive the locked source');
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    release.resolve(); await confirmation; await closing;
+    assert.equal(f.physicalStorageCloses, closes + 1);
+    controller = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(((await f.inspectRecovery()).record as { infrastructurePending: unknown[] }).infrastructurePending, []);
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally {
+    release.resolve(); await confirmation?.catch(() => undefined); await closing?.catch(() => undefined);
+    controller?.dispose(); await f.close();
+  }
+});
 
 test('creation allocation saves the canonical bootstrap before publication without a password or signing operation', async () => {
   const f = await fixture({}, true), lifetime = new AbortController();

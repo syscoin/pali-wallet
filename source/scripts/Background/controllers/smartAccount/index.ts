@@ -76,7 +76,6 @@ import {
 } from 'utils/smartAccount';
 import { deriveDefaultSmartAccount } from 'utils/smartAccount/bootstrap';
 import {
-  PALI_CREATE2_DEPLOYER_ADDRESS,
   getPaliInfrastructureContracts,
   type PaliInfrastructureContractId,
 } from 'utils/smartAccount/deployment';
@@ -116,6 +115,11 @@ import {
   type GuardianRecoveryObservation,
 } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
+import {
+  buildInfrastructureDeploymentCommand,
+  settleInfrastructurePending,
+  validInfrastructureReceipt,
+} from 'utils/smartAccount/infrastructureActions';
 import {
   assertSmartAccountInfrastructureReady,
   projectSmartAccountInfrastructureObservation,
@@ -622,15 +626,6 @@ class SmartAccountController {
     return pending;
   }
 
-  private validInfrastructureReceipt(receipt: any, hash: string): boolean {
-    return Boolean(
-      receipt &&
-        [0, 1, '0x0', '0x1'].includes(receipt.status) &&
-        (receipt.hash || receipt.transactionHash)?.toLowerCase() ===
-          hash.toLowerCase()
-    );
-  }
-
   private async readInfrastructureStatus(
     context: ReturnType<SmartAccountController['infrastructureContext']>,
     assertCurrent: () => void
@@ -705,56 +700,38 @@ class SmartAccountController {
     let pending: InfrastructurePending | undefined;
     let journalCleared = false;
     for (const candidate of candidates) {
-      if (candidate.rpcUrl === undefined) {
-        // Legacy chain-only records have no trustworthy fork identity. Surface
-        // them as pending without probing or settling them on an arbitrary RPC.
-        pending = candidate;
-        break;
-      }
-      if (candidate.rpcUrl !== context.url) {
-        // An endpoint alias may serve the same chain. Keep admission closed, but
-        // never use this endpoint's state to settle another RPC's submission.
-        pending = candidate;
-        break;
-      }
+      // Preserve legacy/other-RPC admission before skipping unknown history IDs.
+      // An unknown durable journal has already failed the catalogue check above.
       if (
+        candidate.rpcUrl === context.url &&
         !status.contracts.some(
           (contract) => contract.id === candidate.contractId
         )
       )
         continue;
-      let settled = !status.missing.includes(candidate.contractId);
-      if (!settled && candidate.transactionHash) {
-        const receipt = await withinDeadline(
-          () =>
-            context.provider.getTransactionReceipt(candidate.transactionHash),
-          1800
-        );
-        if (
-          receipt &&
-          !this.validInfrastructureReceipt(receipt, candidate.transactionHash)
-        )
-          throw new Error(DEPLOYMENT_RECEIPT_ERROR);
-        settled = Boolean(receipt);
-      }
-      if (!settled && candidate.payerAddress && candidate.nonce !== undefined) {
-        const latestNonce = await withinDeadline(
-          () =>
-            context.provider.send('eth_getTransactionCount', [
-              candidate.payerAddress,
-              'latest',
-            ]),
-          1800
-        );
-        if (
-          typeof latestNonce !== 'string' ||
-          !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(latestNonce) ||
-          !Number.isSafeInteger(Number(latestNonce))
-        )
-          throw new Error(DEPLOYMENT_NONCE_ERROR);
-        settled = Number(latestNonce) > candidate.nonce;
-      }
-      if (!settled) {
+      const settlement = await settleInfrastructurePending({
+        context,
+        status,
+        entry: candidate,
+        ports: {
+          readReceipt: (hash) =>
+            withinDeadline(
+              () => context.provider.getTransactionReceipt(hash),
+              1800
+            ),
+          readLatestNonce: (address) =>
+            withinDeadline(
+              () =>
+                context.provider.send('eth_getTransactionCount', [
+                  address,
+                  'latest',
+                ]),
+              1800
+            ),
+        },
+      });
+      assertCurrent();
+      if (settlement === 'pending') {
         pending = candidate;
         break;
       }
@@ -899,6 +876,12 @@ class SmartAccountController {
         if (!Number.isSafeInteger(parsedNonce) || parsedNonce < 0)
           throw new Error(DEPLOYMENT_NONCE_ERROR);
         const nonce = Math.max(nextNonce, parsedNonce);
+        const command = buildInfrastructureDeploymentCommand({
+          contract,
+          chainId: context.chainId,
+          from: context.address,
+          nonce,
+        });
         const reservation: InfrastructurePending = {
           contractId: contract.id,
           attemptId: randomBytes32Hex(),
@@ -935,14 +918,7 @@ class SmartAccountController {
         try {
           this.assertInfrastructureContext(context);
           response = await this.deps.sendAndSaveEthTransaction(
-            {
-              chainId: context.chainId,
-              from: context.address,
-              nonce,
-              data: contract.deployCalldata,
-              to: PALI_CREATE2_DEPLOYER_ADDRESS,
-              value: '0x0',
-            },
+            command,
             false,
             context.account,
             {
@@ -1061,10 +1037,7 @@ class SmartAccountController {
             context.provider.getTransactionReceipt(response.hash),
             Math.max(1, Math.min(1800, deadline - Date.now()))
           ).catch(() => null);
-          if (
-            receipt &&
-            !this.validInfrastructureReceipt(receipt, response.hash)
-          )
+          if (receipt && !validInfrastructureReceipt(receipt, response.hash))
             throw new Error(DEPLOYMENT_RECEIPT_ERROR);
           if (receipt) break;
           if (Date.now() >= deadline) return { deployed, skipped, pending };

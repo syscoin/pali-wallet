@@ -38,7 +38,7 @@ async function main() {
   const deployment = evaluate(
     'source/utils/smartAccount/deployment.ts',
     (name) => {
-      if (name !== 'utils/ethersV6Compat')
+      if (name !== '../ethersV6Compat.ts')
         throw new Error(`Unexpected deployment dependency: ${name}`);
       return compat;
     }

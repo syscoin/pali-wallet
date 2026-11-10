@@ -260,13 +260,34 @@ export class EvmTransferReadRpc {
       await this.checkSmartAccountInfrastructure(read);
     }, 'smart-account');
   }
-  private async checkSmartAccountInfrastructure(read: Reader): Promise<void> {
-    const { assertSmartAccountInfrastructureReady, projectSmartAccountInfrastructureObservation,
+  private async observeSmartAccountInfrastructure(read: Reader) {
+    const { projectSmartAccountInfrastructureObservation,
       SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
     const codes = await Promise.all(SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES.map(address => read('eth_getCode', [address, 'latest'])));
     const status = projectSmartAccountInfrastructureObservation(Number(this.network.chainId), codes);
     if (!status) return rejectRead('INVALID_RESPONSE');
-    assertSmartAccountInfrastructureReady(status);
+    return status;
+  }
+  private async checkSmartAccountInfrastructure(read: Reader): Promise<void> {
+    const { assertSmartAccountInfrastructureReady } = await import('../../../../source/utils/smartAccount/infrastructureObservation.ts');
+    assertSmartAccountInfrastructureReady(await this.observeSmartAccountInfrastructure(read));
+  }
+  readSmartAccountInfrastructureStatus(signal: AbortSignal, guard: () => void) {
+    return this.operation(signal, guard, async read => {
+      await this.checkChain(read);
+      const result = await this.observeSmartAccountInfrastructure(read);
+      await this.checkChain(read);
+      return result;
+    }, 'smart-account');
+  }
+  infrastructureAttemptRead(method: 'eth_getTransactionReceipt' | 'eth_getTransactionCount', params: readonly unknown[], signal: AbortSignal, guard: () => void) {
+    if (!['eth_getTransactionReceipt', 'eth_getTransactionCount'].includes(method)) return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    return this.operation(signal, guard, async read => {
+      await this.checkChain(read);
+      const result = await read(method, params);
+      await this.checkChain(read);
+      return result;
+    }, 'smart-account');
   }
   prepareSmartAccount(accountIndex: number, managementAddress: string, signal: AbortSignal, guard: () => void) {
     return this.operation(signal, guard, async (read) => {

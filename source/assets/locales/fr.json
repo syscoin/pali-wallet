@@ -2247,6 +2247,21 @@
       "publicTitle": "Public address tools",
       "publicBody": "These tools manage saved public addresses. They cannot sign transactions or recover their wallets.",
       "receiveHint": "Receive and any supported testnet faucet are available on Wallet."
+    },
+    "infrastructure": {
+      "refresh": "Actualiser",
+      "reviewNext": "Examiner le prochain déploiement",
+      "codePresent": "Déployé",
+      "codeMissing": "Non déployé",
+      "create2Deployer": "Déployeur CREATE2",
+      "feePayer": "Payeur des frais",
+      "maximumTotal": "Coût total maximal",
+      "pending": "Un déploiement est en attente. Actualisez son état avant de continuer.",
+      "unknown": "La transaction a peut-être atteint le réseau. Actualisez son état avant de continuer.",
+      "reviewExpired": "La vérification a expiré. Vérifiez à nouveau les frais actuels.",
+      "unavailable": "La configuration est indisponible. Actualisez son état avant de réessayer.",
+      "cancelled": "Le portefeuille a changé ou a été verrouillé. Rouvrez la configuration.",
+      "reviewOptional": "Examiner le déploiement facultatif"
     }
   }
 }
