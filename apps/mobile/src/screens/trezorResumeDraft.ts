@@ -8,7 +8,7 @@ import type { NativeTrezorResumeIntent } from '../custody/trezorAccounts.ts';
 
 /** Refill a fresh form only. None of these values authorize a transaction. */
 export function trezorResumeDraft(value: NativeTrezorResumeIntent) {
-  if (value.kind === 'external-psbt') throw Error('External PSBT resume requires its original pending request');
+  if (value.kind === 'external-psbt' || value.kind === 'external-signing') throw Error('External signing resume requires its original pending request');
   if (value.kind === 'utxo')
     return {
       kind: 'utxo' as const,

@@ -17,6 +17,7 @@ export type NativeTrezorResumeIntent = Readonly<{
       }>;
     }>
   | Readonly<{ kind: 'external-psbt' }>
+  | Readonly<{ kind: 'external-signing' }>
   | Readonly<{
       kind: 'utxo';
       recipient: string;
@@ -29,7 +30,7 @@ export type NativeTrezorResumeIntent = Readonly<{
 
 export type NativeTrezorSnapshot = Readonly<{
   phase: 'idle' | 'opening' | 'waiting' | 'resume' | 'importing' | 'error';
-  operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | null;
+  operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | null;
   networkLabel: string;
   accountLabel: string;
   address: string | null;

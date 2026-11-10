@@ -1,3 +1,4 @@
+import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
@@ -593,14 +594,14 @@ test('Ledger dapp host signs messages and journals the reviewed transaction befo
     for (const method of ['personal_sign', 'eth_signTypedData_v3', 'eth_signTypedData_v4'] as const) {
       const request = readDappMessageRequest(method, method === 'personal_sign' ? ['0x6162', deviceWallet.address] : [deviceWallet.address, typed], deviceWallet.address)!;
       const input = approveHardwareDappRequest(f.owner, host, request);
-      try { assert.match(await host.signMessage(input), /^0x[0-9a-f]{130}$/i); }
+      try { assert.match(await host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), /^0x[0-9a-f]{130}$/i); }
       finally { input.approval.dispose(); }
     }
     assert.equal(f.messageCount, 3);
     const request = readDappMessageRequest('personal_sign', ['0x6162', deviceWallet.address], deviceWallet.address)!;
     const input = approveHardwareDappRequest(f.owner, host, request);
     try {
-      const review = await host.prepareTransaction({ ...input, transaction: { from: deviceWallet.address,
+      const review = await host.prepareTransaction({ handoff: nonSuiteSigningHandoff, ...input, transaction: { from: deviceWallet.address,
         to: '0x' + '22'.repeat(20), data: '0x6000' } }, () => undefined);
       assert(!('operation' in review));
       assert.equal(f.signedCount, 0, 'review performs no device signing');
@@ -635,7 +636,7 @@ test('Ledger dapp request retirement drains its device and withholds a held sign
     const input = approveHardwareDappRequest(f.owner, host, request);
     const disposedBefore = f.disposedCount;
     f.holdSignature(async () => { entered.resolve(); await release.promise; });
-    const work = host.signMessage(input), rejected = assert.rejects(work);
+    const work = host.signMessage({ ...input, handoff: nonSuiteSigningHandoff }), rejected = assert.rejects(work);
     await entered.promise;
     input.approval.retire();
     release.resolve();

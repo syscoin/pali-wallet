@@ -146,7 +146,7 @@ export function NativeTrezor({
           />
           <Text style={styles.muted}>
             {resume && snapshot.operation !== 'import'
-              ? 'Review your transaction again before continuing.'
+              ? 'Review the request again before continuing.'
               : 'Connect your Trezor in Trezor Suite, then return to Pali to continue.'}
           </Text>
           {feedback ? (

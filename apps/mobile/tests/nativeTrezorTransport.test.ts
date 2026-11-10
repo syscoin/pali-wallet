@@ -38,6 +38,8 @@ const response = {
 
 function fixture(
   config: {
+    workflow?: 'import' | 'send';
+    kind?: 'evm' | 'utxo';
     changeURL?: (url: URL) => void;
     opening?: Promise<unknown>;
     loading?: Promise<void>;
@@ -112,11 +114,16 @@ function fixture(
       if (config.opening) await config.opening;
     },
   });
+  const binding: NativeTrezorHandoffOwner = config.workflow === 'send' ? {
+    ...owner(), accountId: config.kind === 'utxo' ? 'trezor:0:0' : 'trezor:60:0',
+    accountIndex: 0, accountAddress: response.payload.address,
+    network: config.kind === 'utxo' ? { ...owner().network, id: 'bitcoin', kind: 'utxo', chainId: '0', slip44: 0 } : owner().network,
+  } : owner();
   const generation = sessions.advanceSessionGeneration();
   const start = (assertCurrent = guard) =>
     sessions.start({
-      owner: owner(),
-      workflow: 'import',
+      owner: binding,
+      workflow: config.workflow ?? 'import',
       expiresAt: 91_000,
       sessionGeneration: generation,
       beforeSuiteOpen: config.beforeSuiteOpen,
@@ -129,6 +136,7 @@ function fixture(
   };
   return {
     sessions,
+    binding,
     start,
     urls,
     callback,
@@ -500,7 +508,7 @@ test('a throwing vendor cancel still attempts disposal and fails closed', async 
   await assert.rejects(f.sessions.dispose(), /cancel failed/);
 });
 
-test('unsupported signing methods and secret parameters cannot load Connect', async () => {
+test('import workflows and secret parameters cannot load a signing client', async () => {
   const f = fixture(),
     session = f.start();
   await session.host.init(guard);
@@ -510,7 +518,7 @@ test('unsupported signing methods and secret parameters cannot load Connect', as
         path: addressRequest.path,
         message: 'message',
       }),
-    /unavailable/
+    /INVALID/
   );
   assert.throws(() =>
     session.host.ethereumGetAddress(guard, {
@@ -624,3 +632,72 @@ test('an invalid Suite dispatch never reaches the intentional-background marker'
   const session = f.start(); await session.host.init(guard); await assert.rejects(session.host.ethereumGetAddress(guard, addressRequest));
   assert.equal(markers, 0); assert.equal(f.urls.length, 0); await f.sessions.dispose();
 });
+
+
+const messageCases = [
+  { method: 'ethereumSignMessage', kind: 'evm', params: { path: addressRequest.path, message: '6162', hex: true } },
+  { method: 'ethereumSignTypedData', kind: 'evm', params: {
+    path: addressRequest.path, data: {
+      types: { EIP712Domain: [], Notice: [{ name: 'text', type: 'string' }] },
+      primaryType: 'Notice', domain: {}, message: { text: 'Reviewed message' },
+    }, metamask_v4_compat: true, domain_separator_hash: 'ab'.repeat(32), message_hash: 'cd'.repeat(32),
+  } },
+  { method: 'signMessage', kind: 'utxo', params: { path: "m/84'/0'/0'", coin: 'btc', message: 'Reviewed message' } },
+] as const;
+
+for (const { method, kind, params } of messageCases) {
+  test(`native ${method} replays the exact Suite callback through a fresh owned SDK without reopening Suite`, async () => {
+    const f = fixture({ workflow: 'send', kind });
+    const session = f.start(), connection = createTrezorConnection(session.host);
+    const authority = () => ({ signal: new AbortController().signal, assertCurrent: guard });
+    const invoke = (sdk: ReturnType<typeof createTrezorConnection>) => sdk.withOwnedSigning(authority(), async owned => {
+      await owned.init();
+      return Reflect.apply(owned[method], owned, [params]);
+    });
+    try {
+      const result = invoke(connection), rejected = assert.rejects(result, /cancelled|CANCELLED/);
+      await tick(); assert.equal(f.urls.length, 1);
+      const wire = new URL(f.urls[0]!);
+      assert.equal(wire.searchParams.get('method'), method);
+      assert.deepEqual(JSON.parse(wire.searchParams.get('params')!), params);
+      const retirement = session.retire(() => connection.retire().then(() => undefined));
+      await rejected; await retirement;
+      const signed = { success: true, payload: { address: response.payload.address, signature: 'ab'.repeat(65) } };
+      const callback = f.callback(0, signed), wrong = new URL(callback);
+      wrong.searchParams.set('id', 'wrong-device-request');
+      assert.equal(f.sessions.receiveCallback(wrong.toString()), false);
+      assert.equal(f.sessions.receiveCallback(callback), true);
+      assert.equal(f.sessions.getSnapshot()?.phase, 'response-ready');
+      const resumed = f.sessions.resume({ job: session.job, owner: f.binding,
+        sessionGeneration: f.sessions.advanceSessionGeneration(), accepted: true, assertCurrent: guard });
+      const fresh = createTrezorConnection(resumed.host);
+      assert.deepEqual(JSON.parse(JSON.stringify(await invoke(fresh))), signed);
+      assert.equal(f.urls.length, 1); assert.equal(f.counts().loads, 1);
+      await fresh.retire(); await resumed.finish();
+      assert.equal(f.sessions.getSnapshot(), null);
+      assert.equal(f.sessions.receiveCallback(callback), false);
+    } finally { await f.sessions.dispose(); }
+  });
+
+  test(`native ${method} mismatch cannot reuse a response and explicit cancellation discards its transcript`, async () => {
+    const f = fixture({ workflow: 'send', kind }), session = f.start();
+    try {
+      await session.host.init(guard);
+      const original = Reflect.apply(session.host[method], session.host, [guard, params]);
+      const rejected = assert.rejects(original);
+      await tick();
+      await session.retire(async () => undefined); await rejected;
+      const callback = f.callback(0, { success: true, payload: { signature: 'ab'.repeat(65) } });
+      assert.equal(f.sessions.receiveCallback(callback), true);
+      const resumed = f.sessions.resume({ job: session.job, owner: f.binding,
+        sessionGeneration: f.sessions.advanceSessionGeneration(), accepted: true, assertCurrent: guard });
+      await resumed.host.init(guard);
+      assert.throws(() => Reflect.apply(resumed.host[method], resumed.host, [guard, { ...params, path: "m/44'/60'/0'/0/1" }]), /CANCELLED/);
+      assert.equal(f.urls.length, 1);
+      await resumed.cancel();
+      assert.equal(f.sessions.getSnapshot(), null);
+      assert.equal(f.sessions.receiveCallback(callback), false);
+      assert.throws(() => Reflect.apply(resumed.host[method], resumed.host, [guard, params]), /cancelled|CANCELLED/);
+    } finally { await f.sessions.dispose(); }
+  });
+}

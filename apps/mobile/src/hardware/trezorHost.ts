@@ -263,9 +263,6 @@ export function createNativeTrezorHost(options: NativeTrezorHostOptions): {
   };
   const methods = {
     ...calls,
-    signMessage: unsupported,
-    ethereumSignMessage: unsupported,
-    ethereumSignTypedData: unsupported,
     verifyMessage: unsupported,
     ethereumVerifyMessage: unsupported,
   } as TrezorHostCalls;

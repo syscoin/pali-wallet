@@ -6,6 +6,7 @@ import {
   type NativeTrezorHandoffOwner,
   type NativeTrezorHandoffInvocation,
   type NativeTrezorHandoffCall,
+  type NativeTrezorHandoffMethod,
 } from '../src/hardware/trezorHandoff.ts';
 
 const guard = () => undefined;
@@ -43,7 +44,8 @@ const deferred = () => {
 };
 function setup(
   workflow: 'import' | 'send' = 'import',
-  retireTransport: () => void | Promise<void> = guard
+  retireTransport: () => void | Promise<void> = guard,
+  kind: 'evm' | 'utxo' = 'evm'
 ) {
   let now = 1000,
     randomCalls = 0;
@@ -52,7 +54,8 @@ function setup(
     retireTransport,
     randomBytes: (length) => new Uint8Array(length).fill(++randomCalls),
   });
-  const binding = owner();
+  const binding = kind === 'utxo' ? { ...owner(), accountId: 'trezor:0:0',
+    network: { ...owner().network, id: 'bitcoin', kind: 'utxo' as const, chainId: '0', slip44: 0 } } : owner();
   const tokens = coordinator.begin(binding, workflow, 91_000, admission());
   const call = (
     invocation: NativeTrezorHandoffInvocation = tokens.invocation,
@@ -377,7 +380,7 @@ test('Connect failure envelopes retain error codes and complete without a fabric
   await f.coordinator.cancel(f.job);
 });
 
-test('only transaction signing is available, only for send, and only once', async () => {
+test('all supported signing methods are forbidden during import; signing ends a send transcript', async () => {
   const f = setup();
   for (const method of [
     'ethereumSignMessage',
@@ -757,3 +760,23 @@ test('a retired zero-step job requires a fresh explicit owner before its first d
   await f.coordinator.finish(fresh, guard);
   await f.coordinator.dispose();
 });
+
+for (const [method, kind] of [
+  ['ethereumSignMessage', 'evm'], ['ethereumSignTypedData', 'evm'], ['signMessage', 'utxo'],
+] as const) {
+  test(`${method} is one terminal signing step and cannot cross network families`, async () => {
+    const f = setup('send', guard, kind);
+    try {
+      const call = f.coordinator.request(f.invocation, method, { path: 'reviewed-path', message: 'reviewed' }, guard);
+      f.coordinator.bindRequestId(f.invocation, 'request-1', guard);
+      assert.equal(f.coordinator.receiveCallback(f.callback(call, { success: true, payload: { signature: 'ab'.repeat(65) } })), true);
+      await call.result;
+      for (const next of [method, 'getFeatures'] as NativeTrezorHandoffMethod[])
+        assert.throws(() => f.coordinator.request(f.invocation, next, {}, guard), /LIMIT/);
+      await f.coordinator.finish(f.invocation, guard);
+      const wrongFamily = f.coordinator.begin({ ...f.binding, network: { ...f.binding.network,
+        kind: kind === 'evm' ? 'utxo' : 'evm' } }, 'send', 91_000, admission(2));
+      assert.throws(() => f.coordinator.request(wrongFamily.invocation, method, {}, guard), /INVALID/);
+    } finally { await f.coordinator.dispose(); }
+  });
+}

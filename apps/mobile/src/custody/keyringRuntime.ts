@@ -300,9 +300,8 @@ export interface KeyringRuntime extends CustodyRuntime {
   canSignSmartAccount(): boolean;
   canManageSlhDsa(): boolean;
   openSlhDsaInstallation(keyId: string, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
-  cancelConnectionPsbtHandoff(job: object): Promise<void>;
   prepareConnectionPsbt(request: import('../connections/psbtRequests.ts').NativePsbtRequest,
-    signal: AbortSignal, assertCurrent: () => void, handoff: import('../connections/psbtRequests.ts').NativePsbtHandoff): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
+    signal: AbortSignal, assertCurrent: () => void, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff): Promise<import('../../../../source/wallet/psbtApprovals.ts').PreparedPsbtApproval>;
   readConnectionUtxoPublic(method: 'getChangeAddress' | 'getCurrentAddressPubkey' | 'getBip32Path',
     owner: Readonly<{ accountId: string; xpub: string }>, isChangeAddress: boolean,
     signal: AbortSignal, assertCurrent: () => void): Promise<string>;
@@ -483,7 +482,7 @@ export function createKeyringRuntimeFactory(
           label: string;
           networkLabel: string;
           accountLabel: string;
-          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt';
+          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing';
           resume?: NativeTrezorResumeIntent;
           accepted: boolean;
         } | undefined;
@@ -1156,7 +1155,7 @@ export function createKeyringRuntimeFactory(
           return pending;
         };
         const openTrezorAttempt = async (captured: number, check: () => void,
-          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt', label: string, resume: NativeTrezorResumeIntent | undefined,
+          operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing', label: string, resume: NativeTrezorResumeIntent | undefined,
           transferred: (source: IndexedKeyring, target: IndexedKeyring, session: NativeTrezorSession) => void,
           beforeSuiteOpen?: (expiresAt: number, job: object) => (opened: boolean) => void) => {
           const sessions = dependencies.trezorSessions;
@@ -4014,10 +4013,10 @@ export function createKeyringRuntimeFactory(
             assertOwner();
             type DappRingBinding = ReturnType<typeof createOwnedKeyringTransfer<IndexedKeyring, NativeTrezorSession>>;
             const hardwareDappSigner = (selected: NativeCatalogueAccount, network: NativeNetworkRegistration,
-              approval: ReturnType<typeof createDappSigningApproval>, check: () => void, binding: DappRingBinding) => {
+              approval: ReturnType<typeof createDappSigningApproval>, check: () => void, binding: DappRingBinding, handoff: import('../connections/signingHandoff.ts').NativeSigningHandoff) => {
               if (selected.type !== 'Ledger' && selected.type !== 'Trezor') return null;
               const account: NativeHardwareDappAccount = {id: selected.id, index: selected.index, type: selected.type, address: selected.address};
-              const signer = createNativeHardwareDappSigning({account, network, signal: approval.signal, assertCurrent: check,
+              const signer = createNativeHardwareDappSigning({account, network, signal: approval.signal, assertCurrent: check, beforeSignature: handoff.beforeSignature,
                 async withSession(requested, assertSigningCurrent, operation) {
                   checkGuard(assertSigningCurrent);
                   if (requested.id !== selected.id || requested.index !== selected.index || requested.type !== selected.type ||
@@ -4029,18 +4028,19 @@ export function createKeyringRuntimeFactory(
                       connected: () => ledger.isConnected(), current: () => ledgerTransport, retire: retireLedger,
                     }, () => operation({kind: 'Ledger', signer, transactions: ring.ethereumTransaction}));
                   }
-                  if (pendingTrezor || trezorSession) throw new KeyringRuntimeError('NOT_READY');
+                  if (trezorSession) throw new KeyringRuntimeError('NOT_READY');
                   const captured = generation, admittedEpoch = trezorEpoch;
                   let owned: NativeTrezorSession | undefined, retirement: Promise<void> | undefined;
                   const stillOwned = () => owned !== undefined && (pendingTrezor?.job === owned.job || trezorSession === owned);
                   const guard = () => {current(captured); checkGuard(assertSigningCurrent); if (trezorEpoch !== admittedEpoch) throw new KeyringRuntimeError('CANCELLED');};
                   const retire = () => {
                     if (!owned) return;
-                    retirement ??= pendingTrezor?.job === owned.job || trezorSession === owned ? cancelTrezor() : owned.cancel();
-                    void retirement.catch(() => undefined);
+                    retirement ??= pendingTrezor?.job === owned.job || trezorSession === owned ? (handoff.isSuspended() ? retireTrezor() : cancelTrezor()) : owned.cancel();
+                    void retirement?.catch(() => undefined);
                   };
                   try {
-                    const opened = await openTrezorAttempt(captured, guard, 'send', selected.label, undefined, binding.transferred);
+                    const resume: NativeTrezorResumeIntent = Object.freeze({ kind: 'external-signing', id: handoff.id, accountId: selected.id, networkId: network.id });
+                    const opened = await openTrezorAttempt(captured, guard, 'external-signing', selected.label, resume, binding.transferred, handoff.beforeSuiteOpen);
                     owned = opened.session;
                     approval.signal.addEventListener('abort', retire, {once: true});
                     guard();
@@ -4049,7 +4049,7 @@ export function createKeyringRuntimeFactory(
                     guard(); await finishTrezor(owned, guard); guard();
                     return result;
                   } catch (error) {
-                    await failTrezor(captured, admittedEpoch, error);
+                    if (!handoff.isSuspended()) await failTrezor(captured, admittedEpoch, error);
                     throw error;
                   } finally {
                     approval.signal.removeEventListener('abort', retire);
@@ -4061,7 +4061,7 @@ export function createKeyringRuntimeFactory(
               return {...signer, keyring: () => binding.current()};
             };
             const captureTransaction = (
-              input: Parameters<NativeConnectionSigningHost['prepareTransaction']>[0],
+              input: Omit<Parameters<NativeConnectionSigningHost['prepareTransaction']>[0], 'handoff'>,
               assertRequestCurrent: () => void
             ) => {
               assertOwner();
@@ -4436,7 +4436,7 @@ export function createKeyringRuntimeFactory(
                   check,
                   undefined,
                   NATIVE_EVM_FEE_FUNDING,
-                  { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding)
+                  { kind: 'estimate' }, hardwareDappSigner(selected, network, approval, check, binding, input.handoff)
                 );
               },
               encryptionSdk(input) {
@@ -4521,7 +4521,7 @@ export function createKeyringRuntimeFactory(
                       throw new KeyringRuntimeError('CANCELLED');
                   };
                   guard();
-                  const hardware = hardwareDappSigner(selected, network, approval, guard, binding);
+                  const hardware = hardwareDappSigner(selected, network, approval, guard, binding, input.handoff);
                   if (hardware) {
                     const signature = await hardware.signMessage(request);
                     guard(); return signature;
@@ -4625,6 +4625,10 @@ export function createKeyringRuntimeFactory(
                     throw new KeyringRuntimeError('OPERATION_FAILED');
                   return signature;
                 });
+              },
+              registration() { assertOwner(); if (!catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); return getNativeNetwork(catalogueSnapshot.active.networkId, catalogueSnapshot.networks); },
+              async cancelSigningHandoff(job) {
+                if ((pendingTrezor?.operation === 'external-psbt' || pendingTrezor?.operation === 'external-signing') && pendingTrezor.job === job) await cancelTrezor();
               },
               context() {
                 assertOwner();
@@ -5035,9 +5039,6 @@ export function createKeyringRuntimeFactory(
             }
             const lifetime = (contextReadLifetime ??= new AbortController()).signal;
             return openSentryApprovals(lifetime, () => current(captured));
-          },
-          async cancelConnectionPsbtHandoff(job) {
-            if (pendingTrezor?.operation === 'external-psbt' && pendingTrezor.job === job) await cancelTrezor();
           },
           async prepareConnectionPsbt(request, signal, assertOwner, handoff) {
             const captured = generation, snapshot = catalogueSnapshot, admittedTrezorEpoch = trezorEpoch;

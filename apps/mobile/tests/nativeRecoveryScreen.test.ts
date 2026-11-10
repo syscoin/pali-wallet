@@ -19,10 +19,10 @@ import type { NativeConnectionsView } from '../src/connections/types.ts';
 
 function psbtLifecycle(events: string[] = []) {
   return {
-    backgroundPsbt() { events.push('psbt-background'); },
-    async cancelPsbtHandoff() { events.push('psbt-cancel'); },
-    async resumePsbt() { throw Error('PSBT resume is outside this fixture'); },
-  } satisfies Pick<NativeConnectionsView, 'backgroundPsbt' | 'cancelPsbtHandoff' | 'resumePsbt'>;
+    backgroundSigning() { events.push('psbt-background'); },
+    async cancelSigningHandoff() { events.push('psbt-cancel'); },
+    async resumeSigning() { throw Error('PSBT resume is outside this fixture'); },
+  } satisfies Pick<NativeConnectionsView, 'backgroundSigning' | 'cancelSigningHandoff' | 'resumeSigning'>;
 }
 
 type Element = { type: unknown; props: Record<string, unknown>; children: unknown[] };
