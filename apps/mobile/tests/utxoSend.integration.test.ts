@@ -37,6 +37,7 @@ import { getUtxoNetwork, getUtxoSdkNetwork, projectUtxoRegistration, utxoRegistr
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { NATIVE_PUBLIC_SESSION_KEY } from '../src/custody/publicSession.ts';
 import { HdKeyExportFlow, keyExportRegistrationHash } from '../src/custody/hdKeyExport.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -849,6 +850,14 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     return runtime;
   } });
   let owner = newOwner();
+  const reopenQuarantinedOwner = async () => {
+    assert.equal(owner.getSnapshot().phase, 'unavailable');
+    await assert.rejects(owner.unlock(password), { code: 'NOT_READY' });
+    await assert.rejects(owner.dispose(), { code: 'CLEANUP_FAILED' });
+    owner = newOwner();
+    await owner.initialize();
+    await owner.unlock(password);
+  };
   const current = () => undefined;
   const selectNetwork = () => owner.selectNetwork(network.id, owner.getSnapshot().revision, owner.getCatalogue()!.revision, () => {});
   const selectAccount = (id: string) => owner.manageAccounts({ kind: 'select', id }, owner.getSnapshot().revision, owner.getCatalogue()!.revision);
@@ -897,7 +906,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     release.resolve();
     await rejected;
     assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), oldCatalogue);
-    await owner.unlock(password);
+    await reopenQuarantinedOwner();
+    assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), oldCatalogue);
     const beforeAdd = calls.length;
     await owner.addUtxoNetwork({ endpoint, name: registration.name, explorer: '' },
       owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal);
@@ -916,7 +926,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       owner.getCatalogue()!.revision), { code: 'CANCELLED' });
     const removalEntered = Promise.withResolvers<void>(), releaseRemoval = Promise.withResolvers<void>();
     holdCatalogueUpdate = () => { removalEntered.resolve(); return releaseRemoval.promise; };
-    const interrupted = assert.rejects(removeNetwork(unused.id), { code: 'CANCELLED' });
+    const interrupted = assert.rejects(removeNetwork(unused.id), { code: 'UNAVAILABLE' });
     try {
       await Promise.race([removalEntered.promise, interrupted.then(() => { throw new Error('Removal did not reach SQLite'); })]);
       owner.lock();
@@ -925,7 +935,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     }
     await interrupted;
     assert.deepEqual((await storage.recovery.readSnapshot()).records, beforeRemoval.records);
-    await owner.unlock(password);
+    await reopenQuarantinedOwner();
+    assert.deepEqual((await storage.recovery.readSnapshot()).records, beforeRemoval.records);
     await removeNetwork(unused.id);
     assert.equal(calls.length, beforeRemovalRequests);
     await owner.dispose();
@@ -940,8 +951,13 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       networks: beforeRemovalCatalogue.networks.filter(({ id }) => id !== unused.id),
       revision: beforeRemovalCatalogue.revision + 1,
     });
-    const withoutCatalogue = (snapshot: typeof beforeRemoval) => snapshot.records.filter(({ key }) => key !== WALLET_CATALOGUE_KEY);
-    assert.deepEqual(withoutCatalogue(afterRemoval), withoutCatalogue(beforeRemoval));
+    // The successful removal replaces its authenticated public checkpoint too;
+    // the fresh unlock above verifies it against the resulting catalogue.
+    const withoutCatalogueCheckpoint = (snapshot: typeof beforeRemoval) => snapshot.records.filter(({ key }) =>
+      key !== WALLET_CATALOGUE_KEY && key !== NATIVE_PUBLIC_SESSION_KEY);
+    assert.deepEqual(withoutCatalogueCheckpoint(afterRemoval), withoutCatalogueCheckpoint(beforeRemoval));
+    assert.notDeepEqual(afterRemoval.records.find(({ key }) => key === NATIVE_PUBLIC_SESSION_KEY),
+      beforeRemoval.records.find(({ key }) => key === NATIVE_PUBLIC_SESSION_KEY));
 
     await owner.addUtxoNetwork({ endpoint, name: registration.name, explorer: '' },
       owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal);
@@ -1081,7 +1097,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             const release = Promise.withResolvers<void>();
             holdCatalogueUpdate = () => { updated.resolve(); return release.promise; };
             const pending = submit(secret, undefined, address);
-            const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+            const rejected = assert.rejects(pending, { code: 'UNAVAILABLE' });
             try {
               await Promise.race([updated.promise, pending]);
               assert.equal(holdCatalogueUpdate, undefined);
@@ -1089,7 +1105,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             } finally { release.resolve(); }
             await rejected;
             assert.equal(JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY)), before);
-            await owner.unlock(password);
+            await reopenQuarantinedOwner();
+            assert.equal(JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY)), before);
           }
         }
         await submit(secret, script, address);
@@ -1275,7 +1292,10 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           }
           await aborted;
           assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), catalogueBytes);
-          await owner.unlock(password);
+          await reopenQuarantinedOwner();
+          assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), catalogueBytes);
+          assert.equal((await storage.recovery.readSnapshot()).records
+            .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value, journalBytes);
 
           const beforeSave = routes.length;
           await replaceEndpoint(new AbortController().signal);

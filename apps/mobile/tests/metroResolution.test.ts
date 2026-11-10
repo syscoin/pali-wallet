@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, URL as NodeURL } from 'node:url';
@@ -16,6 +16,7 @@ function resolver(relative: string) {
     __dirname: path.dirname(file), module,
     require(name: string) {
       if (name === 'path' || name === 'node:path') return path;
+      if (name === 'node:fs') return { realpathSync };
       assert.equal(name, 'expo/metro-config');
       return { getDefaultConfig: () => ({ resolver: {} }) };
     },
@@ -66,4 +67,5 @@ test('watch fixture retains scoped host aliases and normal non-renderer dependen
   assert.equal(dispatch(path.join(repository,'source/utils/shared.ts'),'@noble/curves').origin,path.join(mobileRoot,'package.json'));
   assert.equal(dispatch(path.join(mobileRoot,'src/screens/NativeWallet.native.tsx'),'../platform/nativeFactory').filePath,path.join(mobileRoot,'tests/native-watch-ui/nativeFactory.ts'));
   assert.equal(dispatch(path.join(mobileRoot,'src/screens/NativeWallet.native.tsx'),'../platform/security').filePath,path.join(mobileRoot,'tests/native-watch-ui/security.ts'));
+  assert.equal(dispatch(path.join(mobileRoot,'src/screens/NativeWallet.native.tsx'),'../platform/portfolioFilter').filePath,path.join(mobileRoot,'tests/native-watch-ui/portfolioFilter.ts'));
 });

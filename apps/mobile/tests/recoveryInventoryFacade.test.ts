@@ -86,6 +86,10 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const pinCredential = createTestPinCredentialPort();
   const dependencies: Record<string, unknown> = {
+    '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
+    '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
+    '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
+    '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
