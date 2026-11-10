@@ -3,7 +3,7 @@ import test from 'node:test';
 import { AccountActivityController } from '../src/activity/accountActivity.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW } from '../src/activity/types.ts';
 import { decodeActivityPage } from '../src/activity/explorerReader.ts';
-import { getNativeNetwork } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, getNativeNetwork, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import type { NotificationChoice } from '../src/notifications/choices.ts';
 
 const owner = '0x1111111111111111111111111111111111111111';
@@ -134,5 +134,79 @@ test('snapshot access during owner change cannot expose the previous account bef
   });
   await tick();
   assert(f.model.getSnapshot().rows.every(row => row.choice.scope.accountId === 'hd:60:1'));
+  stop();
+});
+
+function pendingNetworksFixture(registrations: readonly NativeNetworkRegistration[]) {
+  const choices: NotificationChoice[] = registrations.map(network => ({ label: 'Account', networkName: network.name, symbol: network.symbol,
+    scope: { id: 'native:hd:60:0:' + network.id, accountId: 'hd:60:0', accountType: 'HDAccount', accountAddress: owner, network, guardian: false } }));
+  const source = { getSnapshot: () => ({ phase: 'ready', revision: 1, account: { address: owner, network: registrations[0]!.id } }) as any,
+    getCatalogue: () => ({ active: { accountId: 'hd:60:0', networkId: registrations[0]!.id }, revision: 1 }) as any,
+    subscribe: () => () => {} };
+  let release!: () => void, active = 0, maximum = 0;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const calls: { kind: string; network: string; signal: AbortSignal }[] = [];
+  const read = async (kind: string, network: string, signal: AbortSignal, guard: () => void) => {
+    guard(); calls.push({ kind, network, signal }); maximum = Math.max(maximum, ++active);
+    try { await held; guard(); } finally { active--; }
+  };
+  const model = new AccountActivityController({ source, choices: () => choices,
+    filter: { async load() { return 'all'; }, async save() {} },
+    runtime: (scope, check) => ({
+      async load(guard) {
+        check(); guard(); const network = scope.network as NativeNetworkRegistration;
+        const activity = createActivityScope('b'.repeat(64), scope.accountId, owner, network);
+        return { scope: activity, saved: { archived: [], candidates: [], truncated: false, view: DEFAULT_ACTIVITY_VIEW },
+          locals: [1, 2].map(index => ({ walletFingerprint: 'b'.repeat(64), accountId: scope.accountId, address: owner,
+            networkId: network.id, registrationHash: network.registrationHash, chainId: network.chainId,
+            hash: '0x' + index.toString(16).padStart(64, '0'), phase: 'submitted' as const, nonce: index,
+            createdAt: 1700000000000, recipient: outsider, amountUnits: '1', maximumFeeUnits: '21000' })) };
+      },
+      async observeLocal(_record, guard, signal) {
+        await read('local', scope.network.id, signal, guard);
+        return { status: 'missing' as const, latestNonce: '0' };
+      },
+      async saveCache(_scope, _rows, guard) { check(); guard(); },
+      async saveView(_scope, _view, guard) { check(); guard(); },
+    }),
+    explorer: { async page(scope, _feed, _page, signal, guard) { await read('page', scope.network.id, signal, guard); return []; } },
+    receipts: { async read(_hash, _owner, signal, guard, network) { await read('receipt', network!.id, signal, guard); return null; } },
+  });
+  return { model, calls, release, maximum: () => maximum };
+}
+
+const customNetworks = Array.from({ length: 16 }, (_, index) => createNativeNetwork({ id: 'custom:' + index,
+  name: 'Custom ' + index, chainId: String(800000 + index), kind: 'evm', slip44: 60,
+  rpcUrl: `https://network-${index}.example/rpc`, symbol: 'ETH', decimals: 18, testnet: true }));
+
+test('sixteen networks with two pending transactions share a maximum of four public reads', async () => {
+  const f = pendingNetworksFixture(customNetworks), stop = f.model.connect();
+  await tick(); assert.equal(f.calls.length, 4); assert.equal(f.maximum(), 4);
+  f.release(); await tick();
+  assert.equal(f.calls.length, 32); assert.equal(f.maximum(), 4);
+  stop();
+});
+
+test('switching networks aborts queued old reads and keeps active slots until their reads settle', async () => {
+  const f = pendingNetworksFixture(customNetworks), stop = f.model.connect();
+  await tick(); const old = [...f.calls]; assert.equal(old.length, 4);
+  const selected = customNetworks[15]!.id;
+  await f.model.selectFilter(selected); await tick();
+  assert(old.every(call => call.signal.aborted)); assert.equal(f.calls.length, 4);
+  f.release(); await tick();
+  assert.equal(f.calls.length, 6);
+  assert(f.calls.slice(4).every(call => call.network === selected));
+  assert.equal(f.maximum(), 4);
+  stop();
+});
+
+test('explorer pages, retained observations and detail receipts consume the same account budget', async () => {
+  const f = pendingNetworksFixture([networks[0]!]), stop = f.model.connect();
+  await tick(); assert.equal(f.calls.length, 3);
+  for (const row of f.model.getSnapshot().rows) row.controller.inspect(row.row.hash);
+  await tick(); assert.equal(f.calls.length, 4); assert.equal(f.maximum(), 4);
+  f.release(); await tick();
+  assert.deepEqual(new Set(f.calls.map(call => call.kind)), new Set(['local', 'page', 'receipt']));
+  assert.equal(f.maximum(), 4);
   stop();
 });

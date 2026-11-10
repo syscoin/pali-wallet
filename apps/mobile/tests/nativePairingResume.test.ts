@@ -396,6 +396,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     },
     './NativeSend': { NativeSend: 'NativeSend' },
     './NativeActivity': { NativeActivityScreen: 'NativeActivityScreen' },
+    './AllNetworksActivity': { AllNetworksActivity: 'AllNetworksActivity' },
     './RealTools': { RealTools: 'RealTools' },
   });
   const module = {
@@ -790,9 +791,10 @@ test('saved recovery transaction handoff selects its payer and returns to the ve
     const initial = find(f.render(), node => node.type === 'RealTools')!.props.guardianRecovery;
     const hash = '0x' + 'aa'.repeat(32);
     await initial.recovery.onActivity('hd:60:1', 1, hash);
-    const activity = find(f.render(), node => node.type === 'NativeActivityScreen');
+    const activity = find(f.render(), node => node.type === 'AllNetworksActivity');
     assert(activity);
-    assert.equal(activity.props.initialHash, hash);
+    assert.equal(activity.props.initialTarget.networkId, 'ethereum');
+    assert.equal(activity.props.initialTarget.hash, hash);
     const back = find(f.render(), node => node.props.title === 'Return to recovery');
     assert(back);
     back.props.onPress(); await settle();

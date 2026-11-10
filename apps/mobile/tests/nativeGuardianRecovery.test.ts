@@ -9,6 +9,7 @@ import test from 'node:test';
 import ts from 'typescript';
 import { createTrezorSessions } from '../src/hardware/trezorSessions.ts';
 import { CustodyOperationError } from '../src/custody/authority.ts';
+import * as privateAuthentication from '../src/custody/privateAuthentication.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
@@ -86,6 +87,11 @@ async function fixture(smart = true) {
   security.custodyIdle.begin({}, () => undefined);
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    '../notifications/service': { nativeActivityNotifications: { replaceAccountTypes: unexpectedFeature, disableOwner: unexpectedFeature } },
+    '../notifications/choices': { nativeNotificationChoices: unexpectedFeature },
+    '../custody/accountIdentity': { parseNativeAccountId: unexpectedFeature },
+    '../custody/privateAuthentication.ts': privateAuthentication,
+    '../portfolio/scopedPortfolioAssets.ts': { createScopedPortfolioAssetReader: unexpectedFeature },
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },

@@ -1,6 +1,6 @@
 # Pali mobile screen review — 10 November 2026
 
-Latest flow updates: [recovery, shared authentication and decoded asset reviews](#current-flow-updates) · [contact sheet](flow-updates/contact-sheet.png) · [per-frame provenance](flow-updates/manifest.json).
+Latest flow updates: [selected account, Send, Activity and alerts](#selected-account-send-activity-and-alert-updates) · [recovery, shared authentication and decoded asset reviews](#current-flow-updates) · [contact sheet](flow-updates/contact-sheet.png) · [per-frame provenance](flow-updates/manifest.json).
 
 The 32 reference screens below compare the supplied PDF with **actual implemented React Native components**. Home, Send, Receive and Activity also include video stills. Each screen includes a narrow 320px capture.
 
@@ -8,7 +8,7 @@ Original comparison source: `04466c2e9498dfd250ac575e393db72fceec0e1f`. These ar
 
 The update implements six-digit PIN creation/confirmation, optional native biometric entry, locked and recovery flows, operation-bound send authorization, and ordered-word backup verification. Native prompt behavior requires its own qualification. The shared SDK candidate and its pending release are documented in `vendor/sysweb3-operation/REVIEWED-CANDIDATE.json`.
 
-Remaining gaps are stated per screen. In particular, background activity notifications are not implemented by this gallery, and page 28 shows the browser camera fallback rather than a fabricated camera state.
+Remaining gaps are stated per screen. Native background notification delivery is not qualified by these browser captures, and page 28 shows the browser camera fallback rather than a fabricated camera state.
 
 [All-screen contact sheet](contact-sheet.png) · [Capture manifest](manifest.json) · [Additional implemented screens](extras/README.md)
 
@@ -24,7 +24,7 @@ Conditional states: [PIN-only send authorization](actual/actual-13-pin.png) · [
 | 06 | [Confirm restored wallet](06-confirm-restored-wallet.png) | [320px](actual/actual-06-320.png) | implemented |
 | 07 | [Locked](07-locked.png) | [320px](actual/actual-07-320.png) | implemented |
 | 08 | [Recover access](08-recover-access.png) | [320px](actual/actual-08-320.png) | implemented |
-| 09 | [Wallet Home](09-wallet-home.png) | [320px](actual/actual-09-320.png) | adapted |
+| 09 | [Wallet Home](09-wallet-home.png) | [320px](actual/actual-09-320.png) | implemented |
 | 10 | [Choose Send network](10-choose-send-network.png) | [320px](actual/actual-10-320.png) | implemented |
 | 11 | [Send details](11-send-details.png) | [320px](actual/actual-11-320.png) | implemented |
 | 12 | [Review Send](12-review-send.png) | [320px](actual/actual-12-320.png) | adapted |
@@ -33,7 +33,7 @@ Conditional states: [PIN-only send authorization](actual/actual-13-pin.png) · [
 | 15 | [Choose Receive network](15-choose-receive-network.png) | [320px](actual/actual-15-320.png) | implemented |
 | 16 | [Receive backup warning](16-receive-backup-warning.png) | [320px](actual/actual-16-320.png) | implemented |
 | 17 | [Receive](17-receive.png) | [320px](actual/actual-17-320.png) | implemented |
-| 18 | [Activity](18-activity.png) | [320px](actual/actual-18-320.png) | adapted |
+| 18 | [Activity](18-activity.png) | [320px](actual/actual-18-320.png) | implemented |
 | 19 | [Transaction details](19-transaction-details.png) | [320px](actual/actual-19-320.png) | adapted |
 | 20 | [Backup introduction](20-backup-introduction.png) | [320px](actual/actual-20-320.png) | implemented |
 | 21 | [Recovery phrase](21-recovery-phrase.png) | [320px](actual/actual-21-320.png) | implemented |
@@ -158,26 +158,26 @@ Component: `NativeRecovery`
 <details>
 <summary>09. Wallet Home</summary>
 
-Pali branding without a root Back arrow; compact amount with exact accessible value and asset detail; Send/Receive, asset list, and Import token. Balance follows the selected network.
+The selected EVM account across its added networks. Account and network-filter controls are separate. Concrete filters restore before reads and never fetch sibling accounts or hidden networks; UTXO retains its own network view.
 
 ![Wallet Home: reference and implementation](09-wallet-home.png)
 
 [Actual 390px](actual/actual-09.png) · [Actual 320px](actual/actual-09-320.png)
 
-Component: `NativePortfolio + NativeTokens + RealAppShell`
+Component: `NativeAccountOverview + AccountPortfolioController + RealAppShell`
 
 </details>
 
 <details>
 <summary>10. Choose Send network</summary>
 
-Contextual shared catalogue picker. Cancel restores the unsigned draft; a real network change discards authorization and incompatible fields.
+All networks opens the compact network-only Send from sheet with known native balances. A concrete network and UTXO Send enter directly. The fixed-network form has a searchable saved-asset picker; asset changes preserve only the same-network recipient and clear amount/review.
 
 ![Choose Send network: reference and implementation](10-choose-send-network.png)
 
 [Actual 390px](actual/actual-10.png) · [Actual 320px](actual/actual-10-320.png)
 
-Component: `NativeNetworks`
+Component: `NetworkSourceSheet`
 
 </details>
 
@@ -275,13 +275,13 @@ Component: `NativePortfolio`
 <details>
 <summary>18. Activity</summary>
 
-Approved compact header and filter layout with dated transaction rows. Full values and identifiers remain available in details.
+Activity follows the selected account and network filter. All merges added EVM networks newest first with network badges; every detail remains bound to its original network and transaction.
 
 ![Activity: reference and implementation](18-activity.png)
 
 [Actual 390px](actual/actual-18.png) · [Actual 320px](actual/actual-18-320.png)
 
-Component: `NativeActivityScreen + ActivityListRow`
+Component: `AllNetworksActivity + AccountActivityController + RealAppShell`
 
 </details>
 
@@ -1686,3 +1686,193 @@ Source: `a7c370a22656574043007ccc8d15fe2af342351a` · 320px.
 
 <!-- current-flow-updates:end -->
 
+
+<!-- selected-account-overview-updates:start -->
+
+## Selected account, Send, Activity and alert updates
+
+Source: `b85f64614c047f7778345097b0c3d983479db1e3`. [Per-frame and exported-bundle provenance](account-updates/manifest.json). Primary implementation panels 09, 10 and 18 above are current; their original PDF/video reference panels are preserved.
+
+Actual React Native Web components with synthetic public fixtures. External network blocked. Native-device, funded-transaction, hardware and OS notification delivery qualification are separate.
+
+<details>
+<summary>Account 1 · All added EVM networks — 390px</summary>
+
+![Account 1 · All added EVM networks](account-updates/overview-all-390.png)
+
+Open account 1 → No saved filter: All networks.
+
+</details>
+
+<details>
+<summary>Network-only Send from — 390px</summary>
+
+![Network-only Send from](account-updates/send-from-390.png)
+
+All networks → Tap Send.
+
+</details>
+
+<details>
+<summary>Account 1 · Ethereum only — 390px</summary>
+
+![Account 1 · Ethereum only](account-updates/overview-ethereum-390.png)
+
+Choose Ethereum filter; no hidden-network or sibling-account reads.
+
+</details>
+
+<details>
+<summary>Account 15 · same Ethereum filter — 390px</summary>
+
+![Account 15 · same Ethereum filter](account-updates/overview-account15-390.png)
+
+Choose another account → Retain Ethereum filter.
+
+</details>
+
+<details>
+<summary>Search saved assets on Ethereum — 390px</summary>
+
+![Search saved assets on Ethereum](account-updates/asset-picker-390.png)
+
+Known Ethereum send form → Open asset picker → Search USDC.
+
+</details>
+
+<details>
+<summary>Selected-account activity across networks — 390px</summary>
+
+![Selected-account activity across networks](account-updates/activity-all-390.png)
+
+All networks activity → Newest first with exact network badges.
+
+</details>
+
+<details>
+<summary>Activity network filter — 390px</summary>
+
+![Activity network filter](account-updates/activity-network-picker-390.png)
+
+Open the Activity network filter → Packaged network logos beside each added network.
+
+</details>
+
+<details>
+<summary>Ethereum activity only — 390px</summary>
+
+![Ethereum activity only](account-updates/activity-ethereum-390.png)
+
+Choose Ethereum → Selected filter and activity badges keep network logos.
+
+</details>
+
+<details>
+<summary>Explicit activity alert enrollment — 390px</summary>
+
+![Explicit activity alert enrollment](account-updates/notifications-all-390.png)
+
+Settings → Activity alerts.
+
+</details>
+
+<details>
+<summary>Search alert enrollment — 390px</summary>
+
+![Search alert enrollment](account-updates/notifications-filtered-390.png)
+
+Search Ethereum → No permission request until enabling a row.
+
+</details>
+
+<details>
+<summary>Account 1 · All added EVM networks — 320px</summary>
+
+![Account 1 · All added EVM networks](account-updates/overview-all-320.png)
+
+Open account 1 → No saved filter: All networks.
+
+</details>
+
+<details>
+<summary>Network-only Send from — 320px</summary>
+
+![Network-only Send from](account-updates/send-from-320.png)
+
+All networks → Tap Send.
+
+</details>
+
+<details>
+<summary>Account 1 · Ethereum only — 320px</summary>
+
+![Account 1 · Ethereum only](account-updates/overview-ethereum-320.png)
+
+Choose Ethereum filter; no hidden-network or sibling-account reads.
+
+</details>
+
+<details>
+<summary>Account 15 · same Ethereum filter — 320px</summary>
+
+![Account 15 · same Ethereum filter](account-updates/overview-account15-320.png)
+
+Choose another account → Retain Ethereum filter.
+
+</details>
+
+<details>
+<summary>Search saved assets on Ethereum — 320px</summary>
+
+![Search saved assets on Ethereum](account-updates/asset-picker-320.png)
+
+Known Ethereum send form → Open asset picker → Search USDC.
+
+</details>
+
+<details>
+<summary>Selected-account activity across networks — 320px</summary>
+
+![Selected-account activity across networks](account-updates/activity-all-320.png)
+
+All networks activity → Newest first with exact network badges.
+
+</details>
+
+<details>
+<summary>Activity network filter — 320px</summary>
+
+![Activity network filter](account-updates/activity-network-picker-320.png)
+
+Open the Activity network filter → Packaged network logos beside each added network.
+
+</details>
+
+<details>
+<summary>Ethereum activity only — 320px</summary>
+
+![Ethereum activity only](account-updates/activity-ethereum-320.png)
+
+Choose Ethereum → Selected filter and activity badges keep network logos.
+
+</details>
+
+<details>
+<summary>Explicit activity alert enrollment — 320px</summary>
+
+![Explicit activity alert enrollment](account-updates/notifications-all-320.png)
+
+Settings → Activity alerts.
+
+</details>
+
+<details>
+<summary>Search alert enrollment — 320px</summary>
+
+![Search alert enrollment](account-updates/notifications-filtered-320.png)
+
+Search Ethereum → No permission request until enabling a row.
+
+</details>
+
+<!-- selected-account-overview-updates:end -->

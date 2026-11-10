@@ -1,0 +1,398 @@
+{
+  "schema_version": 1,
+  "source_revision": "b85f64614c047f7778345097b0c3d983479db1e3",
+  "source_files": {
+    "apps/mobile/src/screens/NativeAccountOverview.tsx": "e4b81d25d93f6a195043ed1e0abdab8fcdfccc526b4aa3a8abb33aa8d0fc3eb8",
+    "apps/mobile/src/portfolio/accountPortfolio.ts": "fbb4bed9ff6c1d30142eef8f8efb76d42af216ed41dc8c31d5d130936c2a18ee",
+    "apps/mobile/src/portfolio/portfolioFilter.ts": "2b9736ad95800bd678f6bdb88a52495c6e772fa3c6b4c899191a8340738f4768",
+    "apps/mobile/src/platform/portfolioFilter.ts": "bfe07c402239fecab22204178c4d4e60e96afab8981856e5db28682a60dd70ed",
+    "apps/mobile/src/screens/NativeWallet.native.tsx": "38fc6a571621c829b3e7e831f67a0c259caa4f7e4088ede92544b53292c9b595",
+    "apps/mobile/src/screens/NativePortfolio.tsx": "7712de17f09630eff2f30659f74081f3311d58fe9bb6daef83b5e3af5ee40872",
+    "apps/mobile/src/screens/NativeTokens.tsx": "a9f87d7e4817c107cd869ca7892dcd054db0a51a9cf523dd02da24a174213a86",
+    "apps/mobile/src/screens/NetworkSourceSheet.tsx": "49e89178eb43489c544dacddb48222b52f4cde0f1271e17dfdac1d3a866f25d5",
+    "apps/mobile/src/screens/SendAssetSelector.tsx": "c7fbbda8fbcb50d93f5002b4baa76d2409b464537fffad6b6fa8410da8c24aaa",
+    "apps/mobile/src/screens/NativeSend.tsx": "c6222e10c1a088abb1f383cbf8014bfeb1941fb5861037892981ddf7502abb14",
+    "apps/mobile/src/screens/NativeSmartAccountSend.tsx": "382420397e69f83126869f80655e8f48bd431717efb6537e4d902f968e16e634",
+    "apps/mobile/src/screens/ActivityNotifications.tsx": "0b5a34fc029d58d26d4f798320b0bc80ddb68787df323efcd5452e9a007d50d1",
+    "apps/mobile/src/screens/AllNetworksActivity.tsx": "593d45dcc9a15bc977ee6e91fcef0d6e0b872d2fade52a9e6a3429b90330b58e",
+    "apps/mobile/src/screens/ActivityListRow.tsx": "aa3b0269025b88c12bebaa6e92e05ce4f8cea5a812e375618e665df068843bce",
+    "apps/mobile/src/activity/accountActivity.ts": "d352d7f88fb2a1bc269cb7d81bdf3e7bf562d75e04cfc6ed34ea3dda2393a0d8",
+    "apps/mobile/tests/native-send-ui/nativeAccountOverviewFixture.tsx": "4ad772323d68cf91d99ceab468fbfe86bbd7eb08b0f0761c7d00ea227880d761",
+    "apps/mobile/tests/native-activity-ui/allNetworksFixture.tsx": "7b082de7c2ecf382b7368bf3b1fbfa9ae1f1435be7ce74c9b43f9fd8387a5b5e",
+    "apps/mobile/tests/native-activity-ui/entry.tsx": "5f7fafc288e1c232262447900fde01012c0e5ccaba48d08adeb23f55601fb140",
+    "apps/mobile/tests/native-send-ui/entry.tsx": "51d233898ab5d0b27d52dd01d6de106d7f4f9fb52d2c7726bae8abc2d069270d",
+    "apps/mobile/tests/native-send-ui/fixturePlatform.ts": "a295dd5a05b2769b16a87b72bc717637a8e211c7263d299e1a30c1b26ab97a70",
+    "apps/mobile/src/ui.tsx": "b67005113e5e8566bd695cfc217476d7e9a2d15cbdc0eed76beb0f956a6764e4",
+    "apps/mobile/src/custody/networkContext.ts": "58a4a5c4b312ec3d584cc7b981d893c6f9f2b6397ab9e6449df8ec80c8e40406",
+    "apps/mobile/src/platform/localization.ts": "61eb96d52bdf979892c924aeb0574419c07d0ebc4f36053c9c04635a4d040a03",
+    "apps/mobile/src/platform/balancePrivacy.ts": "810b190cf1f6f2b2ac1cbee019fd2512c7d32c5d8ee07a2bea5c0949d67e68ec",
+    "apps/mobile/package.json": "8da20b8a79eba7663696eeb3269c9d264baeab7e4866e6aa07d0d87288988c04",
+    "apps/mobile/package-lock.json": "151c92fe8152637529b19ba0cae58722505f9c9df9916e967456d48092486f53",
+    "apps/mobile/src/screens/RealAppShell.tsx": "56c522a55996f3d7a31334f8637f45a84291c763b29cb4f3212e12ae3e5fcba0",
+    "apps/mobile/src/screens/useRealShell.ts": "d92c417d08f6bc412e0f2184de1be3b0fa1cb996c783a003569dc7cfe98b8a42"
+  },
+  "web_exports": {
+    "/private/tmp/pali-fullshell-b85f646/main": {
+      "index.html": "9c9eedbcf904ca94d9cd570d7cee062d2cef4393b89197b83fae4a5c58bf5d80",
+      "metadata.json": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991",
+      "assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/apps/mobile/assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8",
+      "assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0",
+      "_expo/static/js/web/de-b48778630a573558bae0ecc48b397411.js": "d19904cffaa39b8e50bcae5f6d1ab472009622ce2a65886cd6441b3957a87c9d",
+      "_expo/static/js/web/pt-ca6dc0075acdd92fe56b52f850bc2108.js": "1b556165e0c2455130505394a1d1691661fc462364e770c425c69f040029c7a6",
+      "_expo/static/js/web/entry-89f03491957a4d0f87878760287e2664.js": "28012eea0b5c9b8be39ff608ba93386fdc89eea6829fdf93465ec57ab024c3b0",
+      "_expo/static/js/web/guardianStatus-a622c9ca3b3ca0d83a306e7d1ea91484.js": "96fbd7392aa38c07579744ab8ca1b6eea33e688bdab472dfb86858df957f985b",
+      "_expo/static/js/web/zh-f64641d2c7df12a5658a561d4c9de8bf.js": "bd2c4c83f0f8b8706960472b027c047193d866218d4dba44cf65a4b4312661e0",
+      "_expo/static/js/web/ru-33def97c0bc9f3492705b1ad003ea083.js": "10cc7f584500001664563ecab5a94ec2c6c6fb352abdf24432a8be4fc3453f82",
+      "_expo/static/js/web/fr-38f6f614648a76546c47fb6b474afe15.js": "74422c129769acf5c5b1b899fec3812179ba2e36a9a90de3de37919e440ee00d",
+      "_expo/static/js/web/es-3fd2a2d2a28afbcc72f37a3263c7df15.js": "2556ee21f3fb4498e8736d1f1d902e690d3c8e6d9d958b6005565ec5144be575",
+      "_expo/static/js/web/ja-ee3719ed180ebb44921a43c095f18193.js": "048d49376f7cf40576f2c73601422af9ce6037bfd58759214cb6480f5dd33445",
+      "_expo/static/js/web/bootstrap-39dac9c25d191302b1669a077eb788f4.js": "985ecac5f06cfca1e8afb13d49e1ff04a295db60d362357413efb52cd85acc80",
+      "_expo/static/js/web/ko-cacf988ebcb2b959df18390f625d92b4.js": "52978adde71a1e2b96d0d8465fdfe839cccbf4d0f3bc1bbc5f75d10f405de163"
+    },
+    "/private/tmp/pali-fullshell-b85f646/notifications": {
+      "index.html": "c747aaa395a3cec2953b780b9d9b5b9715e8c4cec9c59ce4d54ae906734db80e",
+      "metadata.json": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991",
+      "assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/apps/mobile/assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8",
+      "assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0",
+      "_expo/static/js/web/pt-e432a223fed7a03d8c1c9e94c1cd8a64.js": "4dbed8b272d4dc3f2b33cff1800370c2e87a53354795c7161e8599f1b3de3087",
+      "_expo/static/js/web/entry-c2050fc23937d03addeb38ea6ae36074.js": "efc6e38c6b7aa329372c4256f2b5dae69c153d16ad4969be8119c6ce13f9c4ab",
+      "_expo/static/js/web/de-08f3e16f1397322460ffcfef43344cc3.js": "5a00d307620e549aa2745ba384b75edd7d35c632997b8e221e3ae153dcd4e336",
+      "_expo/static/js/web/ru-f9ec31dc70a29c99651ac7dc7bc113df.js": "c4384d3286366eb4e8202272ce998115709967ccb0065143b2cfb289143ef87a",
+      "_expo/static/js/web/ko-e30746e72d0249d536308117bb80c35a.js": "7a5e02200de305e272ecdfc121cab3866bd4426a910186d9c0f2f6ef005b748b",
+      "_expo/static/js/web/ja-09c5dce58213b893bc4b2f66ab0a77e2.js": "32f3071db18c69ec48b42ac14d7b6088fc3156961c6377072d9076cdf35f861e",
+      "_expo/static/js/web/fr-fb78fa2d59a0d1b88711ef747b7433c0.js": "e9eb9c7826301ce18993995a25cf3eb714a63b48960189c1883e3bebf37fc7e3",
+      "_expo/static/js/web/es-f585e48811a4ce36328c64edc01e60cf.js": "08a8eb175e904b08dc00263a7e888bd7d62b0bde39c52fe5debedc43d826af24",
+      "_expo/static/js/web/zh-ea3a11e7e35dd1efc090068d9fadc9cb.js": "b6baa2067f2505df752f357edf560b48aec0a12f5a4e4fbb7eea991cf2977c02"
+    },
+    "/private/tmp/pali-fullshell-b85f646/activity": {
+      "index.html": "3dc613ca55e39c4db341d33eac483888d35d4c9cc5453180ec44e2856236ab27",
+      "metadata.json": "aa5f19cc84d41c0f8c70ececb2bc82e863227ea1e121632aca879eb616056991",
+      "assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/apps/mobile/assets/syscoin.273afd4550524f4b1a8081891c8b8e95.png": "14b4e6b95e387c6d15ef78122b1873a00c1982c0fc4dcad78a8e9b739be41ac8",
+      "assets/___Users/sidhujag/.codex/worktrees/pali-note-files/pali-wallet/source/assets/all_assets/favicon-128.6e0361050f19039ff2c3501a342f55f4.png": "bd3b402a0629b5c7ce098a7773f289b1fb89b1c40a1519f0774f89b86eb607d0",
+      "_expo/static/js/web/es-d15610ca57c9e4212b15b635ff783362.js": "73bf81f3ed26885019b94cb8907aee2ccf5de0165d48df7249c65ee14d2df4b8",
+      "_expo/static/js/web/de-722944eab890cbbc39f2025143d1fbde.js": "f1c0b1ce72013856b26f55509cc78a12c217838770fe2f9d8cf128208879d7ed",
+      "_expo/static/js/web/zh-3b315ace53d51de3a3e41496389f1358.js": "eba2d4f56c64b2eb7c784024e507bd13a0e44b7428fddd2dfbbf7477118fd0ee",
+      "_expo/static/js/web/entry-916e8307de9b2fc09d31d7f5d5299478.js": "14e1120f87363712ae403255db3ae99a4769d031a13a9995958a247996c3d07e",
+      "_expo/static/js/web/ja-07dad98d10308d7f7193fabcd5c5d277.js": "8c6f731db32dbadff79cdd3d2f102a04b4cd86fd232dd0f93c5d1711be35fcc2",
+      "_expo/static/js/web/fr-a2c21bda4d67a4969432c9999cae7aa9.js": "a76b2f5bd886e489d0186af76c4d3a78c77a284a9f735a778660ab0930645b79",
+      "_expo/static/js/web/pt-cdc7bea50001aef3685dfa0a8eedfc43.js": "97462abcb660be18de5f6e6d140feef7cb2ed12d8371f2f700718539c91de338",
+      "_expo/static/js/web/ru-50dd4b90f00ebf5077ddcfb2b1fc5618.js": "0f605a060ba7155212b60bcd7435a558334f09730bd66395a07929191eba0b7b",
+      "_expo/static/js/web/ko-8fda7b2cd7cdb99bbd4df2f8bec73ef8.js": "8a0d84a05822a1179885876d789eda15aa90bb8eed4ca18c1270d2e86ddba2fd"
+    }
+  },
+  "web_export_build_revisions": {
+    "/private/tmp/pali-fullshell-b85f646/main": "b85f64614c047f7778345097b0c3d983479db1e3",
+    "/private/tmp/pali-fullshell-b85f646/notifications": "b85f64614c047f7778345097b0c3d983479db1e3",
+    "/private/tmp/pali-fullshell-b85f646/activity": "b85f64614c047f7778345097b0c3d983479db1e3"
+  },
+  "provenance": "Actual React Native Web components with synthetic public fixtures. External network blocked. Native-device, funded-transaction, hardware and OS notification delivery qualification are separate.",
+  "frames": [
+    {
+      "file": "overview-all-390.png",
+      "id": "overview-all",
+      "title": "Account 1 \u00b7 All added EVM networks",
+      "component": "NativeAccountOverview",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "Open account 1",
+        "No saved filter: All networks"
+      ],
+      "capturedAt": "2026-11-10T23:02:09.354Z",
+      "sha256": "39ae8531d53064df2a05b3030d796e28d8a5bfe72b7daeda5c6ba7c8d3a1663c"
+    },
+    {
+      "file": "send-from-390.png",
+      "id": "send-from",
+      "title": "Network-only Send from",
+      "component": "NetworkSourceSheet",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "All networks",
+        "Tap Send"
+      ],
+      "capturedAt": "2026-11-10T23:02:09.488Z",
+      "sha256": "a0085079e4fe75e991e61be2da6bfa8f8fc540f481f36e1fe4761bf426cb70bd"
+    },
+    {
+      "file": "overview-ethereum-390.png",
+      "id": "overview-ethereum",
+      "title": "Account 1 \u00b7 Ethereum only",
+      "component": "NativeAccountOverview",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "Choose Ethereum filter; no hidden-network or sibling-account reads"
+      ],
+      "capturedAt": "2026-11-10T23:02:09.837Z",
+      "sha256": "823ec8c9e49ceaac70e408c543c1989f566f936f00355f0e1edbdf8b1dcf64f9"
+    },
+    {
+      "file": "overview-account15-390.png",
+      "id": "overview-account15",
+      "title": "Account 15 \u00b7 same Ethereum filter",
+      "component": "NativeAccountOverview",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "Choose another account",
+        "Retain Ethereum filter"
+      ],
+      "capturedAt": "2026-11-10T23:02:09.862Z",
+      "sha256": "b7eaa04475a01b1ee84fd5b9186a84f4c430148d78c57208d98ed6fab849d06d"
+    },
+    {
+      "file": "asset-picker-390.png",
+      "id": "asset-picker",
+      "title": "Search saved assets on Ethereum",
+      "component": "SendAssetSelector",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4179/?send-assets=1",
+      "steps": [
+        "Known Ethereum send form",
+        "Open asset picker",
+        "Search USDC"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.112Z",
+      "sha256": "e838aea280ea5ba1d365782519b1b410dcda5033d8407bbf3bc1b23997a75290"
+    },
+    {
+      "file": "activity-all-390.png",
+      "id": "activity-all",
+      "title": "Selected-account activity across networks",
+      "component": "AllNetworksActivity",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "All networks activity",
+        "Newest first with exact network badges"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.261Z",
+      "sha256": "cbf82152a47d8b11caa4244a26cdf4bc9258e47f0794aff77dacd71ec58dc074"
+    },
+    {
+      "file": "activity-network-picker-390.png",
+      "id": "activity-network-picker",
+      "title": "Activity network filter",
+      "component": "NetworkSourceSheet",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Open the Activity network filter",
+        "Packaged network logos beside each added network"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.296Z",
+      "sha256": "e6a54a6c30d85b7501ed393491da634ae2d4245fd196e8fdad5dac79bc155021"
+    },
+    {
+      "file": "activity-ethereum-390.png",
+      "id": "activity-ethereum",
+      "title": "Ethereum activity only",
+      "component": "AllNetworksActivity",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Choose Ethereum",
+        "Selected filter and activity badges keep network logos"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.327Z",
+      "sha256": "97328cf810b8726cfffcf4c0b166b9dacd85dbe99888db5f9f8dc83e23abaf6b"
+    },
+    {
+      "file": "notifications-all-390.png",
+      "id": "notifications-all",
+      "title": "Explicit activity alert enrollment",
+      "component": "ActivityNotifications",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Settings",
+        "Activity alerts"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.387Z",
+      "sha256": "03d226c0027ee4d561488214b13c7d81f71c7ce45b77c5d23354058ecd143c7f"
+    },
+    {
+      "file": "notifications-filtered-390.png",
+      "id": "notifications-filtered",
+      "title": "Search alert enrollment",
+      "component": "ActivityNotifications",
+      "width": 390,
+      "height": 844,
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Search Ethereum",
+        "No permission request until enabling a row"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.403Z",
+      "sha256": "3bf84af117f917bde7d555ac54b6932dbe7743af8a5bf0a9a6b07bf828cec08e"
+    },
+    {
+      "file": "overview-all-320.png",
+      "id": "overview-all",
+      "title": "Account 1 \u00b7 All added EVM networks",
+      "component": "NativeAccountOverview",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "Open account 1",
+        "No saved filter: All networks"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.828Z",
+      "sha256": "c71c17751190da40ac8de6e7f21c971a531198634deefca1cef86ff939cea310"
+    },
+    {
+      "file": "send-from-320.png",
+      "id": "send-from",
+      "title": "Network-only Send from",
+      "component": "NetworkSourceSheet",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "All networks",
+        "Tap Send"
+      ],
+      "capturedAt": "2026-11-10T23:02:10.951Z",
+      "sha256": "c6b7814344d13c214a52a99d8b0d5f42e4972520be171b01fbc32c793f9e61a2"
+    },
+    {
+      "file": "overview-ethereum-320.png",
+      "id": "overview-ethereum",
+      "title": "Account 1 \u00b7 Ethereum only",
+      "component": "NativeAccountOverview",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "Choose Ethereum filter; no hidden-network or sibling-account reads"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.310Z",
+      "sha256": "ab0d92c8e16f5170fdd6bfb24cdb6fda6424f735fcedffca8172c0d30dcedd3a"
+    },
+    {
+      "file": "overview-account15-320.png",
+      "id": "overview-account15",
+      "title": "Account 15 \u00b7 same Ethereum filter",
+      "component": "NativeAccountOverview",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?account-portfolio",
+      "steps": [
+        "Choose another account",
+        "Retain Ethereum filter"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.343Z",
+      "sha256": "06eb86a2d34593ec5ad76bd2893f59100c621304b4a3ac06175311f864772566"
+    },
+    {
+      "file": "asset-picker-320.png",
+      "id": "asset-picker",
+      "title": "Search saved assets on Ethereum",
+      "component": "SendAssetSelector",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4179/?send-assets=1",
+      "steps": [
+        "Known Ethereum send form",
+        "Open asset picker",
+        "Search USDC"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.594Z",
+      "sha256": "67e8595a59266c45bd484d4437e962e66c717c59abe766c86864371690c14c46"
+    },
+    {
+      "file": "activity-all-320.png",
+      "id": "activity-all",
+      "title": "Selected-account activity across networks",
+      "component": "AllNetworksActivity",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "All networks activity",
+        "Newest first with exact network badges"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.734Z",
+      "sha256": "0993b330a7d71675d99112f6e054ae91fc0c718af30a8ba75986167a031eb86a"
+    },
+    {
+      "file": "activity-network-picker-320.png",
+      "id": "activity-network-picker",
+      "title": "Activity network filter",
+      "component": "NetworkSourceSheet",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Open the Activity network filter",
+        "Packaged network logos beside each added network"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.769Z",
+      "sha256": "afe86227a11afd71cb5adda40f066a775ab28d03646d2a94a5cefdc54f943973"
+    },
+    {
+      "file": "activity-ethereum-320.png",
+      "id": "activity-ethereum",
+      "title": "Ethereum activity only",
+      "component": "AllNetworksActivity",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4181/?all-networks=1",
+      "steps": [
+        "Choose Ethereum",
+        "Selected filter and activity badges keep network logos"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.801Z",
+      "sha256": "08a5f4cbdbdd41be92dbc5b8dfa27199c5fef95eb5c55c405db6c550a270a9f2"
+    },
+    {
+      "file": "notifications-all-320.png",
+      "id": "notifications-all",
+      "title": "Explicit activity alert enrollment",
+      "component": "ActivityNotifications",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Settings",
+        "Activity alerts"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.861Z",
+      "sha256": "5ad42b0d7432271a9f60ba5b94be6b7c69a9b3e7c8051168339e76b15c84ac5d"
+    },
+    {
+      "file": "notifications-filtered-320.png",
+      "id": "notifications-filtered",
+      "title": "Search alert enrollment",
+      "component": "ActivityNotifications",
+      "width": 320,
+      "height": 740,
+      "url": "http://127.0.0.1:4180/",
+      "steps": [
+        "Search Ethereum",
+        "No permission request until enabling a row"
+      ],
+      "capturedAt": "2026-11-10T23:02:11.876Z",
+      "sha256": "06ebe8e594a7f44f4d64762b5f1363789f6facc1fb9e34980ee9e08f6eb876dc"
+    }
+  ],
+  "fixture_sources": {
+    "account-updates/fixture-sources/notifications-entry.tsx": "f382893dbb46821f521467b76381ad25f1a82cd8afb79ff444450c4e81199c13",
+    "account-updates/fixture-sources/notifications-service.ts": "5407577937f4ba7499e9fb76e420224af87fae2c4e40f6b8851b51862df999a2",
+    "account-updates/fixture-sources/main-entry.js": "f0ad9b7c6cac6b62204522fff6c344bc526d51a76381cdba8de96712f17a51ef",
+    "account-updates/fixture-sources/activity-entry.tsx": "be5748ea4ba18671b5fe5d3f7cfdd8526773690e987d1a91419248f6adfa5c04"
+  },
+  "fixture_note": "Notification service is a synthetic local adapter with a seeded checked row; it does not request or prove OS permission. Entrypoints import the exact committed production components. Overview and Activity include production RealAppShell and useRealShell; tab actions are inert in these public presentation fixtures."
+}

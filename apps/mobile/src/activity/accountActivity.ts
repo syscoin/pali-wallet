@@ -1,6 +1,7 @@
 import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory.ts';
 import { NativeActivity, type ActivityRow, type NativeActivityRuntime, type ActivityExplorerPort, type ActivityReceiptPort } from './nativeActivity.ts';
 import { DEFAULT_ACTIVITY_VIEW, type ActivityViewState } from './types.ts';
+import { ActivityReadConcurrency } from './readConcurrency.ts';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio.ts';
 import type { NotificationChoice } from '../notifications/choices.ts';
 import type { NativeNotificationScope } from '../notifications/types.ts';
@@ -30,8 +31,8 @@ type Ports = {
   choices(): readonly NotificationChoice[];
   filter: { load(): Promise<string>; save(value: string): Promise<void> };
   runtime(scope: NativeNotificationScope, assertCurrent: () => void): NativeActivityRuntime | undefined;
-  explorer?: ActivityExplorerPort;
-  receipts?: ActivityReceiptPort;
+  explorer: ActivityExplorerPort;
+  receipts: ActivityReceiptPort;
 };
 const scopeKey = (choice: NotificationChoice) => JSON.stringify(choice.scope);
 const initial = (): AccountActivitySnapshot => Object.freeze({
@@ -61,6 +62,7 @@ export class AccountActivityController {
   private filterIntent = 0;
   private pendingFilter: number | null = null;
   private signature = '';
+  private readonly reads = new ActivityReadConcurrency();
   private readonly ports: Ports;
   constructor(ports: Ports) { this.ports = ports; }
   getSnapshot = () => {
@@ -145,8 +147,32 @@ export class AccountActivityController {
       };
       let runtime: NativeActivityRuntime | undefined;
       try { check(); runtime = this.ports.runtime(choice.scope, check); } catch { /* A revoked scope remains unavailable. */ }
+      const guarded = (guard: () => void) => () => { check(); guard(); };
+      if (runtime?.observeLocal) {
+        const target = runtime;
+        runtime = { ...target,
+          load: target.load.bind(target), saveCache: target.saveCache.bind(target), saveView: target.saveView.bind(target),
+          ...(target.forScope ? { forScope: target.forScope.bind(target) } : {}),
+          ...(target.loadSavedPending ? { loadSavedPending: target.loadSavedPending.bind(target) } : {}),
+          observeLocal: (record, guard, signal) => {
+            const current = guarded(guard);
+            return this.reads.run(signal, current, () => target.observeLocal!(record, current, signal));
+          },
+        };
+      }
+      const { explorer, receipts } = this.ports;
       const source = { getSnapshot: () => this.ports.source.getSnapshot(), subscribe: () => () => undefined };
-      const controller = new NativeActivity(source, () => runtime, this.ports.explorer, this.ports.receipts);
+      const controller = new NativeActivity(source, () => runtime, {
+        page: (scope, feed, page, signal, guard) => {
+          const current = guarded(guard);
+          return this.reads.run(signal, current, () => explorer.page(scope, feed, page, signal, current));
+        },
+      }, {
+        read: (hash, owner, signal, guard, network) => {
+          const current = guarded(guard);
+          return this.reads.run(signal, current, () => receipts.read(hash, owner, signal, current, network));
+        },
+      });
       const key = scopeKey(choice);
       const child: Child = { choice, controller, stop: () => undefined, unsubscribe: () => undefined };
       this.children.set(key, child);

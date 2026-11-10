@@ -192,10 +192,10 @@
     },
     {
       "page": 9,
-      "component": "NativePortfolio + NativeTokens + RealAppShell",
-      "status": "adapted",
+      "component": "NativeAccountOverview + AccountPortfolioController + RealAppShell",
+      "status": "implemented",
       "actual_label": "Wallet home",
-      "note": "Pali branding without a root Back arrow; compact amount with exact accessible value and asset detail; Send/Receive, asset list, and Import token. Balance follows the selected network.",
+      "note": "The selected EVM account across its added networks. Account and network-filter controls are separate. Concrete filters restore before reads and never fetch sibling accounts or hidden networks; UTXO retains its own network view.",
       "video": {
         "file": "video-0.png",
         "label": "0.0 s - Wallet home"
@@ -204,41 +204,55 @@
       "comparison": "09-wallet-home.png",
       "comparison_size": [
         1196,
-        1159
+        1400
       ],
       "actual": "actual/actual-09.png",
       "actual_size": [
         390,
         844
       ],
-      "actual_sha256": "b7419e59f9e84efd28322ad194ab616cdc9789854d6e4fbfb2cb0249aeb2a770",
+      "actual_sha256": "39ae8531d53064df2a05b3030d796e28d8a5bfe72b7daeda5c6ba7c8d3a1663c",
       "reference": "PDF reference embedded in comparison image",
       "video_source": "video-0.png",
       "narrow_actual": "actual/actual-09-320.png",
-      "comparison_sha256": "ec621c8386ab4f12a5ecb024d0da59f8c36344768c9ed0ba57bf126546585ca6"
+      "comparison_sha256": "eeaf93b4a19dcfc77b515a5cb5f82b44bfd48910610eb4c4e08b02b8c91cf2a1",
+      "previous_implementation": {
+        "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
+        "actual_sha256": "b7419e59f9e84efd28322ad194ab616cdc9789854d6e4fbfb2cb0249aeb2a770",
+        "comparison_sha256": "ec621c8386ab4f12a5ecb024d0da59f8c36344768c9ed0ba57bf126546585ca6"
+      },
+      "source_commit": "b85f64614c047f7778345097b0c3d983479db1e3",
+      "narrow_actual_sha256": "c71c17751190da40ac8de6e7f21c971a531198634deefca1cef86ff939cea310"
     },
     {
       "page": 10,
-      "component": "NativeNetworks",
+      "component": "NetworkSourceSheet",
       "status": "implemented",
       "actual_label": "Choose send network",
-      "note": "Contextual shared catalogue picker. Cancel restores the unsigned draft; a real network change discards authorization and incompatible fields.",
+      "note": "All networks opens the compact network-only Send from sheet with known native balances. A concrete network and UTXO Send enter directly. The fixed-network form has a searchable saved-asset picker; asset changes preserve only the same-network recipient and clear amount/review.",
       "title": "Choose Send network",
       "comparison": "10-choose-send-network.png",
       "comparison_size": [
         852,
-        1159
+        1400
       ],
       "actual": "actual/actual-10.png",
       "actual_size": [
         390,
         844
       ],
-      "actual_sha256": "91d80cfd6b3a0f9d204dc8b1f320397be44a1ab7b639cdea762b976432745207",
+      "actual_sha256": "a0085079e4fe75e991e61be2da6bfa8f8fc540f481f36e1fe4761bf426cb70bd",
       "reference": "PDF reference embedded in comparison image",
       "video_source": null,
       "narrow_actual": "actual/actual-10-320.png",
-      "comparison_sha256": "adb403dec986030260e5990fb0ffd2ee85eece15b8f1eb5e9b427eb97ff908bc"
+      "comparison_sha256": "86860c26646f78a081a53615d91d77f29fa44bd3346e4729adcf133a4d01f09a",
+      "previous_implementation": {
+        "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
+        "actual_sha256": "91d80cfd6b3a0f9d204dc8b1f320397be44a1ab7b639cdea762b976432745207",
+        "comparison_sha256": "adb403dec986030260e5990fb0ffd2ee85eece15b8f1eb5e9b427eb97ff908bc"
+      },
+      "source_commit": "b85f64614c047f7778345097b0c3d983479db1e3",
+      "narrow_actual_sha256": "c6b7814344d13c214a52a99d8b0d5f42e4972520be171b01fbc32c793f9e61a2"
     },
     {
       "page": 11,
@@ -411,10 +425,10 @@
     },
     {
       "page": 18,
-      "component": "NativeActivityScreen + ActivityListRow",
-      "status": "adapted",
+      "component": "AllNetworksActivity + AccountActivityController + RealAppShell",
+      "status": "implemented",
       "actual_label": "Activity",
-      "note": "Approved compact header and filter layout with dated transaction rows. Full values and identifiers remain available in details.",
+      "note": "Activity follows the selected account and network filter. All merges added EVM networks newest first with network badges; every detail remains bound to its original network and transaction.",
       "video": {
         "file": "video-11.png",
         "label": "36.7 s - Activity"
@@ -423,18 +437,25 @@
       "comparison": "18-activity.png",
       "comparison_size": [
         1196,
-        1134
+        1400
       ],
       "actual": "actual/actual-18.png",
       "actual_size": [
         390,
         844
       ],
-      "actual_sha256": "5c0383beccd5004d03b1e06cd855964b28cd4c0d933df0a3a80f2f2303da1d85",
+      "actual_sha256": "cbf82152a47d8b11caa4244a26cdf4bc9258e47f0794aff77dacd71ec58dc074",
       "reference": "PDF reference embedded in comparison image",
       "video_source": "video-11.png",
       "narrow_actual": "actual/actual-18-320.png",
-      "comparison_sha256": "1160b091129e66aaab7fa8b838fac580b807eeec807b53cc5706d4f0b83c78da"
+      "comparison_sha256": "31cec1b9a6cce88fb42a1922f38592beacdb1cbd5e3ac8cde7b661acc7187f61",
+      "previous_implementation": {
+        "source_commit": "04466c2e9498dfd250ac575e393db72fceec0e1f",
+        "actual_sha256": "5c0383beccd5004d03b1e06cd855964b28cd4c0d933df0a3a80f2f2303da1d85",
+        "comparison_sha256": "1160b091129e66aaab7fa8b838fac580b807eeec807b53cc5706d4f0b83c78da"
+      },
+      "source_commit": "b85f64614c047f7778345097b0c3d983479db1e3",
+      "narrow_actual_sha256": "0993b330a7d71675d99112f6e054ae91fc0c718af30a8ba75986167a031eb86a"
     },
     {
       "page": 19,
@@ -770,5 +791,7 @@
       "send": "a7c370a22656574043007ccc8d15fe2af342351a"
     },
     "frames": 65
-  }
+  },
+  "current_account_updates": "account-updates/manifest.json",
+  "contact_sheet_sha256": "b501b7384cfd0ddb5d4bc6aeb4c19d9d4fb02f8092646fdd0867fcc98741c4bd"
 }
