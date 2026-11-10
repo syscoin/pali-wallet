@@ -30,6 +30,23 @@ import { readDappMessageRequest, type DappMessageRequest } from '../../../source
 import { encrypt, recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
 const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
+// Custody revokes synchronously; quarantine is published after cleanup drains.
+async function expectUnavailable(authority: NativeCustodyAuthority, action: () => Promise<unknown>): Promise<void> {
+  let resolve!: () => void, reject!: (error: Error) => void;
+  const unavailable = new Promise<void>((done, failed) => { resolve = done; reject = failed; });
+  void unavailable.catch(() => undefined);
+  const unsubscribe = authority.subscribe(snapshot => { if (snapshot.phase === 'unavailable') resolve(); });
+  const timer = setTimeout(() => reject(Error('Custody did not publish quarantine')), 2000);
+  try {
+    await action();
+    if (authority.getSnapshot().phase === 'unavailable') resolve();
+    await unavailable;
+  } finally {
+    clearTimeout(timer);
+    unsubscribe();
+  }
+}
+
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
 const ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
@@ -1766,7 +1783,7 @@ test('ambiguous signed-record acknowledgement quarantines authority and reopenin
   try {
     const review = await prepareAccountTransfer(transfers);
     f.disk.loseCasAcknowledgement();
-    await assert.rejects(transfers.confirm(review));
+    await expectUnavailable(f.authority, () => assert.rejects(transfers.confirm(review)));
     assert.equal(f.authority.getSnapshot().phase, 'unavailable');
     await assert.rejects(f.authority.unlock(PASSWORD), /NOT_READY/);
     await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CLEANUP_FAILED/);

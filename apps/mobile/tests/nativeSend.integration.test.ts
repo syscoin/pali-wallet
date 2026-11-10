@@ -22,6 +22,23 @@ import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
+// Custody revokes synchronously; quarantine is published after cleanup drains.
+async function expectUnavailable(authority: NativeCustodyAuthority, action: () => Promise<unknown>): Promise<void> {
+  let resolve!: () => void, reject!: (error: Error) => void;
+  const unavailable = new Promise<void>((done, failed) => { resolve = done; reject = failed; });
+  void unavailable.catch(() => undefined);
+  const unsubscribe = authority.subscribe(snapshot => { if (snapshot.phase === 'unavailable') resolve(); });
+  const timer = setTimeout(() => reject(Error('Custody did not publish quarantine')), 2000);
+  try {
+    await action();
+    if (authority.getSnapshot().phase === 'unavailable') resolve();
+    await unavailable;
+  } finally {
+    clearTimeout(timer);
+    unsubscribe();
+  }
+}
+
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Public native transfer fixture password 1!';
@@ -1230,8 +1247,10 @@ for (const phase of ['signed', 'submitted'] as const) {
         before,
         'Back after signing does not itself lock custody'
       );
-      hold.finish();
-      await rejected;
+      await expectUnavailable(f.authority, async () => {
+        hold!.finish();
+        await rejected;
+      });
       pending = undefined;
       assert.equal(f.authority.getSnapshot().phase, 'unavailable');
       assert.equal(f.authority.getSnapshot().error, 'UNAVAILABLE');
