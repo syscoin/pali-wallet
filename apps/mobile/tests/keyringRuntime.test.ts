@@ -3589,7 +3589,9 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
 });
 
-test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature', async () => {
+for (const authentication of ['pin-retry', 'missing-biometrics'] as const) test(authentication === 'pin-retry'
+  ? 'Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature'
+  : 'Trezor missing biometric adapter retires a resumed UTXO review before a device signature', async () => {
   const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
     import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
     import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3699,9 +3701,17 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     assert.equal(freshReview.transactionOptions.rbf, false);
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
     const beforeAuthentication = methods.filter(method => method === 'signTransaction').length;
-    await assert.rejects(fresh.confirm(freshReview, { method: 'biometric' }), /DEVICE_UNLOCK_UNAVAILABLE/);
+    if (authentication === 'missing-biometrics') {
+      await assert.rejects(fresh.confirm(freshReview, { method: 'biometric' }), /DEVICE_UNLOCK_UNAVAILABLE/);
+      await assert.rejects(fresh.confirm(freshReview, { method: 'pin', pin: PASSWORD }), /NOT_READY/);
+      await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
+      assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication);
+      assert.equal(broadcasts, 0);
+      return;
+    }
+    await assert.rejects(fresh.confirm(freshReview, { method: 'pin', pin: '000000' }), /INVALID_CREDENTIAL/);
     assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication,
-      'declined authentication must preserve this reviewed operation without reaching Trezor');
+      'a rejected PIN must preserve this reviewed operation without reaching Trezor');
     await fresh.confirm(freshReview, { method: 'pin', pin: PASSWORD });
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
     assert.equal(broadcasts, 1);
