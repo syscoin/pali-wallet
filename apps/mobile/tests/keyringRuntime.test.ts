@@ -591,9 +591,6 @@ test('backup uses fresh SDK authentication and a wallet-bound storage receipt', 
 
 async function controlledSdk() {
   const sdk = await loadNativeKeyringSdk();
-  let entered = () => {};
-  let release = Promise.resolve();
-  let holding = false;
   let unlockCalls = 0;
   let hydrations = 0;
   class ControlledKeyring extends sdk.HostKeyring {
@@ -606,7 +603,6 @@ async function controlledSdk() {
       options: import('@sidhujag/sysweb3-keyring/cjs/software.js').SecretOperationOptions, work: (secret: string) => T | Promise<T>): Promise<T> {
       return super.withSecretOperation(credential, options, async secret => {
         unlockCalls++;
-        if (holding) { entered(); await release; }
         return work(secret);
       });
     }
@@ -615,13 +611,7 @@ async function controlledSdk() {
     loadSdk: async () => ({ ...sdk, HostKeyring: ControlledKeyring }),
     get hydrations() { return hydrations; },
     get unlockCalls() { return unlockCalls; },
-    hold() {
-      holding = true;
-      const started = new Promise<void>((resolve) => { entered = resolve; });
-      let finish!: () => void;
-      release = new Promise<void>((resolve) => { finish = resolve; });
-      return { started, finish: () => { holding = false; finish(); } };
-    },
+
   };
 }
 
@@ -652,7 +642,7 @@ test('lifecycle cancellation still records each explicit wrong-PIN failure and r
   } finally { await runtime.storage.close(); }
 });
 
-test('cancelled successful authentication neither clears failures nor hydrates an account', async () => {
+test('cancelled successful authentication neither clears failures nor hydrates an account', { timeout: 10000 }, async () => {
   const controlled = await controlledSdk();
   const disk = memoryDisk(controlled.loadSdk);
   const runtime = await disk.factory.open();
@@ -663,7 +653,9 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     assert.equal((await runtime.session.unlock('000000')).authenticated, false);
     assert.equal(disk.failures, 1);
     const hydrated = controlled.hydrations;
-    const hold = controlled.hold();
+    // Public unlock never enters an SDK secret operation. Interrupt the actual
+    // protected PIN read instead of waiting for a signing-root decryption.
+    const hold = disk.holdPinRead();
     const pending = runtime.session.unlock(PASSWORD);
     await hold.started;
     await runtime.session.lock();
@@ -673,6 +665,7 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     assert.equal(disk.failureWrites, before.failures + 2);
     assert.equal(disk.successWrites, before.successes);
     assert.equal(controlled.hydrations, hydrated);
+    assert.equal(controlled.unlockCalls, 0);
     await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); }
 });
@@ -722,8 +715,8 @@ test('an incomplete canonical account record is refused unchanged before account
     disk.records.delete(WALLET_CATALOGUE_KEY);
     const incomplete = JSON.stringify([...disk.records]);
     runtime = await disk.factory.open() as KeyringRuntime;
-    await assert.rejects(runtime.session.unlock('000000'), /OPERATION_FAILED/);
-    await assert.rejects(runtime.session.unlock(PASSWORD), /OPERATION_FAILED/);
+    await assert.rejects(runtime.session.unlock('000000'), /NOT_READY/);
+    await assert.rejects(runtime.session.unlock(PASSWORD), /NOT_READY/);
     assert.equal(disk.failureWrites, initialChecks, 'invalid record admission precedes any additional PIN check');
     assert.equal(runtime.catalogue.getSnapshot(), null);
     assert.equal(JSON.stringify([...disk.records]), incomplete);
@@ -2667,20 +2660,17 @@ test('imported credential rejection shares persistent throttle after lifecycle c
   } finally { hold.finish(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('full imported account restoration performs one unlock and stops at a revoked record read', async () => {
+test('imported account public restore decrypts no signing keys and stops at a revoked PIN read', { timeout: 10000 }, async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
     await importTestKey(f); await importTestKey(f, '0x' + '2'.padStart(64, '0'));
     f.authority.lock(); const before = sdk.unlocks;
-    await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 1);
+    await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 0);
     assert.equal(sdk.exports, 0, 'complete encrypted SDK maps avoid per-account key exports');
     const importedBefore = sdk.imports;
-    f.authority.lock(); const entered = deferredAccount(), release = deferredAccount();
-    f.disk.onRecord(async (kind, key) => {
-      if (kind === 'get' && key === WALLET_CATALOGUE_KEY) { entered.resolve(); await release.promise; }
-    });
-    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await entered.promise;
-    f.authority.lock(); f.disk.onRecord(); release.resolve(); await assert.rejects(pending, /CANCELLED/);
+    f.authority.lock(); const held = f.disk.holdPinRead();
+    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await held.started;
+    f.authority.lock(); held.finish(); await assert.rejects(pending, /CANCELLED/);
     assert.equal(sdk.imports, importedBefore, 'restore never reimports saved scalars');
     assert.equal(f.authority.getSnapshot().account, null); assert.equal(f.runtime.catalogue.getSnapshot(), null);
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
@@ -3599,7 +3589,9 @@ test('Trezor runtime replays saved UTXO bytes without Suite or a new signature',
   } finally { await owner.dispose(); await fixture.sessions.dispose(); }
 });
 
-test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature', async () => {
+for (const authentication of ['pin-retry', 'missing-biometrics'] as const) test(authentication === 'pin-retry'
+  ? 'Trezor runtime resumes a zero-step UTXO draft only through a fresh review and device signature'
+  : 'Trezor missing biometric adapter retires a resumed UTXO review before a device signature', async () => {
   const [{ createTrezorSessions }, { getUtxoNetwork }, { getNetworkConfig }, { utils }, { metadata }] = await Promise.all([
     import('../src/hardware/trezorSessions.ts'), import('../src/core/utxoNetworks.ts'), import('@sidhujag/sysweb3-network'),
     import('syscoinjs-lib'), import('./publicWatchFixtures.ts'),
@@ -3709,9 +3701,17 @@ test('Trezor runtime resumes a zero-step UTXO draft only through a fresh review 
     assert.equal(freshReview.transactionOptions.rbf, false);
     assert.notEqual(freshReview, review); assert.equal(methods.length, callCount); assert.equal(broadcasts, 0);
     const beforeAuthentication = methods.filter(method => method === 'signTransaction').length;
-    await assert.rejects(fresh.confirm(freshReview, { method: 'biometric' }), /DEVICE_UNLOCK_UNAVAILABLE/);
+    if (authentication === 'missing-biometrics') {
+      await assert.rejects(fresh.confirm(freshReview, { method: 'biometric' }), /DEVICE_UNLOCK_UNAVAILABLE/);
+      await assert.rejects(fresh.confirm(freshReview, { method: 'pin', pin: PASSWORD }), /NOT_READY/);
+      await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
+      assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication);
+      assert.equal(broadcasts, 0);
+      return;
+    }
+    await assert.rejects(fresh.confirm(freshReview, { method: 'pin', pin: '000000' }), /INVALID_CREDENTIAL/);
     assert.equal(methods.filter(method => method === 'signTransaction').length, beforeAuthentication,
-      'declined authentication must preserve this reviewed operation without reaching Trezor');
+      'a rejected PIN must preserve this reviewed operation without reaching Trezor');
     await fresh.confirm(freshReview, { method: 'pin', pin: PASSWORD });
     assert.equal(methods.filter(method => method === 'signTransaction').length, 1);
     assert.equal(broadcasts, 1);
