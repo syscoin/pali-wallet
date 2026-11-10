@@ -2247,6 +2247,21 @@
       "publicTitle": "Public address tools",
       "publicBody": "These tools manage saved public addresses. They cannot sign transactions or recover their wallets.",
       "receiveHint": "Receive and any supported testnet faucet are available on Wallet."
+    },
+    "infrastructure": {
+      "refresh": "Actualizar",
+      "reviewNext": "Revisar el siguiente despliegue",
+      "codePresent": "Desplegado",
+      "codeMissing": "Sin desplegar",
+      "create2Deployer": "Desplegador CREATE2",
+      "feePayer": "Pagador de comisiones",
+      "maximumTotal": "Coste total máximo",
+      "pending": "Hay un despliegue pendiente. Actualiza su estado antes de continuar.",
+      "unknown": "La transacción puede haber llegado a la red. Actualiza su estado antes de continuar.",
+      "reviewExpired": "La revisión ha caducado. Revisa de nuevo la comisión actual.",
+      "unavailable": "La configuración no está disponible. Actualiza su estado antes de intentarlo de nuevo.",
+      "cancelled": "La cartera ha cambiado o se ha bloqueado. Abre de nuevo la configuración.",
+      "complete": "La configuración de la cuenta inteligente está desplegada."
     }
   }
 }

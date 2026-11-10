@@ -1,3 +1,5 @@
+import { createNativeInfrastructure } from './nativeInfrastructure.ts';
+import type { NativeInfrastructureController } from '../smartAccount/infrastructure.ts';
 import { getSmartAccountModulesProjection } from '../../../../source/shared/smartAccountModules.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../../source/shared/smartAccountModuleRequest.ts';
 import { resolveSmartAccountPreparationTarget } from '../../../../source/shared/smartAccountPreparation.ts';
@@ -64,6 +66,7 @@ import {
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/wallet/evmSignedRecords.ts';
 import type {
   NativeGuardianRecoveryIntent,
+  NativeInfrastructurePending,
   CatalogueMutation,
   NativeWalletCatalogueSnapshot,
   NativeCatalogueAccount,
@@ -333,6 +336,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   openSmartAccountSend(recipient: string, amount: NativeSmartAccountAmount, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   refreshSmartAccountMetadata(signal: AbortSignal, assertCurrent: () => void): Promise<GuardianRecoveryObservation | null>;
   getGuardianRecoveryIntent(): NativeGuardianRecoveryIntent | null;
+  openSmartInfrastructure(signal: AbortSignal, assertCurrent: () => void): Promise<NativeInfrastructureController>;
   openGuardianRecovery(draft: NativeGuardianRecoveryDraft, signal: AbortSignal, assertCurrent: () => void): Promise<NativeGuardianRecoveryController>;
   openGuardianPolicy(draft: NativeGuardianPolicyDraft, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
   canManageGuardianPolicy(): boolean;
@@ -427,6 +431,8 @@ export function createKeyringRuntimeFactory(
     async open(): Promise<KeyringRuntime> {
       await dependencies.ensureCryptoReady();
       const storage = await dependencies.openStorage();
+      let storageRetired = false;
+      let infrastructureSettlementFault = false;
       try {
         const sdk = await (dependencies.loadSdk?.() ?? loadNativeKeyringSdk());
         if (typeof sdk.captureEvmSubmission !== 'function' || typeof sdk.submitSignedEvmTransaction !== 'function') throw new Error('Shared EVM submission SDK is required');
@@ -583,6 +589,7 @@ export function createKeyringRuntimeFactory(
             : retirement ?? Promise.resolve();
         };
         const catalogue = new NativeWalletCatalogue(storage.keyringStorage);
+        const infrastructure = createNativeInfrastructure();
         const tokens = new NativeTokenRegistry(storage.keyringStorage);
         const activityHistory = new NativeActivityHistory(storage.keyringStorage);
         const signedRecords = new EvmSignedRecords(storage.signedRecords, Date.now, () => { void lock().catch(() => undefined); });
@@ -738,7 +745,7 @@ export function createKeyringRuntimeFactory(
           noteBackups?.dispose();
           void (async () => {
             const [, revoked, trezorRetired, slhRetired, privacyRetired] = await Promise.allSettled([work, revocation, trezorRetirement, slhRetirement, privacyRetirement, ...pendingSubmissions]);
-            let failed = privacyRetired?.status !== 'fulfilled' || trezorRetired?.status !== 'fulfilled' || slhRetired?.status !== 'fulfilled';
+            let failed = privacyRetired?.status !== 'fulfilled' || trezorRetired?.status !== 'fulfilled' || slhRetired?.status !== 'fulfilled' || infrastructureSettlementFault;
             try { await keyring.lockWallet(); } catch { failed = true; }
             if (capturePair && !failed) {
               try {
@@ -757,6 +764,7 @@ export function createKeyringRuntimeFactory(
                 try { await opened[0].value.dispose(); } catch { failed = true; }
               }
             }
+            storageRetired = true;
             try { await storage.close(); } catch { failed = true; }
             if (failed) throw new KeyringRuntimeError('CLEANUP_FAILED');
           })().then(resolveClose, () => rejectClose(new KeyringRuntimeError('CLEANUP_FAILED')));
@@ -3526,6 +3534,122 @@ export function createKeyringRuntimeFactory(
             ) ?? null
           );
         };
+        const openSmartInfrastructure = async (signal: AbortSignal, assertOwner: () => void) => {
+          const captured = generation, ring = keyring;
+          let snapshot = catalogueSnapshot;
+          const selected = selectedAccount();
+          if (!snapshot || selected.slip44 !== 60 || (selected.type !== 'HDAccount' && selected.type !== 'Imported'))
+            throw new KeyringRuntimeError('NOT_READY');
+          const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+          let payer = state.accounts[selected.type][selected.index];
+          if (!payer) throw new KeyringRuntimeError('NOT_READY');
+          const identity = Object.freeze({ id: selected.id, label: selected.label, address: payer.address, xpub: payer.xpub });
+          const check = () => {
+            checkGuard(assertOwner); current(captured);
+            if (signal.aborted || !ring.isUnlocked() || keyring !== ring || catalogueSnapshot !== snapshot ||
+                selectedAccount() !== selected || state.accounts[selected.type][selected.index] !== payer || !payer ||
+                payer.address !== identity.address || payer.xpub !== identity.xpub ||
+                state.activeNetwork.slip44 !== 60 || state.activeNetwork.chainId !== Number(network.chainId) || state.activeNetwork.url !== network.rpcUrl)
+              throw new KeyringRuntimeError('CANCELLED');
+          };
+          check();
+          const walletFingerprint = await dataBinding(captured, check);
+          check();
+          const recovery = storage.recovery, pairFingerprint = verifiedIdentity?.pairFingerprint;
+          if (!recovery || !pairFingerprint) throw new KeyringRuntimeError('NOT_READY');
+          let preparedAttemptId: string | undefined;
+          let admission: { attemptId: string; pending: NativeInfrastructurePending | null } | null = null;
+          const rpc = new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch });
+          return infrastructure.open({
+            network, payer: identity, assertCurrent: check,
+            admit<T>(work: () => Promise<T>): Promise<T> {
+              check();
+              if (admission || !preparedAttemptId || storageRetired) return Promise.reject(new KeyringRuntimeError('BUSY'));
+              const admitted = { attemptId: preparedAttemptId, pending: null as NativeInfrastructurePending | null };
+              admission = admitted;
+              const tracked = Promise.resolve().then(work).finally(() => {
+                if (admission === admitted) admission = null;
+                pendingSubmissions.delete(tracked);
+              });
+              pendingSubmissions.add(tracked);
+              return tracked;
+            },
+            async settleUnsent(attemptId) {
+              const admitted = admission;
+              if (!admitted || admitted.attemptId !== attemptId) throw new KeyringRuntimeError('CANCELLED');
+              const prior = active;
+              if (prior) await Promise.allSettled([prior]);
+              if (active || reserved) throw new KeyringRuntimeError('BUSY');
+              const token = {}; reserved = token;
+              const storageOwner = () => {
+                if (storageRetired || requiresReopen() || reserved !== token || active || admission !== admitted)
+                  throw new KeyringRuntimeError('CLEANUP_FAILED');
+                const record = catalogue.privateRecords;
+                const registered = catalogueEvmNetworks(record).find(candidate => candidate.id === network.id);
+                const account = record.groups.find(group => group.activeNetwork.kind === 'ethereum' && group.activeNetwork.slip44 === 60)?.accounts[selected.type]?.[selected.index];
+                if (record.walletFingerprint !== walletFingerprint || !registered || registered.registrationHash !== network.registrationHash ||
+                    registered.chainId !== network.chainId || registered.rpcUrl !== network.rpcUrl ||
+                    !account?.xprv || account.address !== identity.address || account.xpub !== identity.xpub)
+                  throw new KeyringRuntimeError('CANCELLED');
+                return record;
+              };
+              try {
+                storageOwner();
+                const actual = await recovery.readIdentity();
+                const record = storageOwner();
+                if (!actual || actual.walletBindingId !== walletFingerprint || actual.pairFingerprint !== pairFingerprint)
+                  throw new KeyringRuntimeError('CANCELLED');
+                const pending = record.infrastructurePending?.find(entry => entry.chainId === network.chainId);
+                if (!pending) return;
+                if (!admitted.pending || pending.entry.attemptId !== attemptId ||
+                    encodeStorageValue(pending) !== encodeStorageValue(admitted.pending)) throw new KeyringRuntimeError('CANCELLED');
+                const before = catalogueSnapshot;
+                const next = await catalogue.mutate(record.revision, { kind: 'set-infrastructure-pending', chainId: network.chainId, expectedAttemptId: attemptId, pending: null }, () => { storageOwner(); });
+                storageOwner();
+                if (before !== null && !closed && keyring.isUnlocked()) {
+                  if (catalogueSnapshot !== before || JSON.stringify({ ...next, revision: 0 }) !== JSON.stringify({ ...before, revision: 0 }))
+                    throw new KeyringRuntimeError('CANCELLED');
+                  // Only pending metadata changed: retain live SDK/public identities, never revive a locked view.
+                  const adopted = Object.freeze({ ...next, accounts: before.accounts, networks: before.networks, utxoNetworks: before.utxoNetworks, active: before.active });
+                  catalogueSnapshot = adopted;
+                  if (snapshot === before && generation === captured && keyring === ring && !signal.aborted) snapshot = adopted;
+                }
+              } catch (error) {
+                if (requiresReopen()) { infrastructureSettlementFault = true; privateDomainStorageFault = 'reopen'; }
+                throw error;
+              } finally { if (reserved === token) reserved = null; }
+            },
+            pending() { check(); return catalogue.privateRecords.infrastructurePending?.find(entry => entry.chainId === network.chainId); },
+            async commit(pending, expectedAttemptId) {
+              await run(async ownerGeneration => {
+                check(); if (ownerGeneration !== captured) throw new KeyringRuntimeError('CANCELLED');
+                if (pending !== null && expectedAttemptId === null) {
+                  if (!admission || pending.entry.attemptId !== admission.attemptId) throw new KeyringRuntimeError('CANCELLED');
+                  admission.pending = pending;
+                }
+                const before = snapshot!;
+                const next = await catalogue.mutate(before.revision, { kind: 'set-infrastructure-pending', chainId: network.chainId, expectedAttemptId, pending }, check);
+                check();
+                // This private metadata commit may advance revision, never public signing identity.
+                if (JSON.stringify({ ...next, revision: 0 }) !== JSON.stringify({ ...before, revision: 0 }))
+                  throw new KeyringRuntimeError('CANCELLED');
+                const adopted = Object.freeze({ ...next, accounts: before.accounts, networks: before.networks, utxoNetworks: before.utxoNetworks, active: before.active });
+                publishAccounts(adopted); snapshot = adopted; payer = state.accounts[selected.type][selected.index];
+                check();
+              });
+            },
+            observe: requestSignal => rpc.readSmartAccountInfrastructureStatus(requestSignal, check),
+            readReceipt: (hash, requestSignal) => rpc.infrastructureAttemptRead('eth_getTransactionReceipt', [hash], requestSignal, check),
+            readLatestNonce: (address, requestSignal) => rpc.infrastructureAttemptRead('eth_getTransactionCount', [address, 'latest'], requestSignal, check),
+            prepare: (request, requestSignal, validateAuthority, deployment) => prepareOwnedEvmTransaction(request, selected, selected, requestSignal, check,
+              { smartAccountInfrastructureDeployment: true, smartAccountInfrastructureId: deployment.contractId, smartAccountInfrastructureAttemptId: deployment.attemptId, smartAccountInfrastructureRpcUrl: network.rpcUrl }, NATIVE_EVM_FEE_FUNDING, { kind: 'estimate' }, null, validateAuthority),
+            randomId() {
+              preparedAttemptId = `0x${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')}`;
+              return preparedAttemptId;
+            },
+            submissionFailure: error => sdk.evmSubmissionFailure(error),
+          }, signal);
+        };
         const openGuardianRecovery = async (
           draft: NativeGuardianRecoveryDraft,
           parentSignal: AbortSignal,
@@ -4515,6 +4639,7 @@ export function createKeyringRuntimeFactory(
           ledger,
           trezor,
           getGuardianRecoveryIntent,
+          openSmartInfrastructure,
           openGuardianRecovery,
           canManageGuardianPolicy,
           inspectGuardianRemoval,
@@ -6568,6 +6693,7 @@ export function createKeyringRuntimeFactory(
           },
         };
       } catch {
+        storageRetired = true;
         try { await storage.close(); } catch { /* the factory remains unavailable */ }
         throw new Error('UNAVAILABLE');
       }

@@ -48,8 +48,8 @@ function ResetActivity({ accountLabel, target, onBack }: {
   </Screen></SafeAreaView>;
 }
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, activityReset, onLock, onBack, navigation }: {
-  accountLabel: string; watchOnly: boolean; navigation: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onLock(): void; onBack(): void;
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onInfrastructure, activityReset, onLock, onBack, navigation }: {
+  accountLabel: string; watchOnly: boolean; navigation: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
   activityReset?: ActivityResetTarget;
 }) {
   const { t } = useNativeTranslation();
@@ -70,6 +70,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
     <Header title={t('mobile.settings.title')} subtitle={accountLabel} onBack={onBack} />
     {onSecurity && <Card><Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} last /></Card>}
     {onAutoLock && <Card><Row title={t('mobile.settings.autoLockTitle')} subtitle={t('mobile.settings.autoLockSubtitle')} icon="lock" onPress={onAutoLock} last /></Card>}
+    {onInfrastructure && <Card><Row title={t('settings.smartAccountInfrastructure')} subtitle={t('settings.smartAccountInfrastructureCheckStatus')} icon="shield" onPress={onInfrastructure} last /></Card>}
     {activityReset && <Card><Row title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} icon="activity" onPress={() => setOpened({ leaf: 'activity', scope: activityReset.scope })} last /></Card>}
     {watchOnly && <Notice title={t('mobile.settings.watchTitle')} body={t('mobile.settings.watchBody')} />}
     <Notice title={t('mobile.settings.deviceTitle')} body={t('mobile.settings.deviceBody')} />

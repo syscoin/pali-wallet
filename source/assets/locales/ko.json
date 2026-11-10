@@ -2247,6 +2247,21 @@
       "publicTitle": "Public address tools",
       "publicBody": "These tools manage saved public addresses. They cannot sign transactions or recover their wallets.",
       "receiveHint": "Receive and any supported testnet faucet are available on Wallet."
+    },
+    "infrastructure": {
+      "refresh": "새로 고침",
+      "reviewNext": "다음 배포 검토",
+      "codePresent": "배포됨",
+      "codeMissing": "배포되지 않음",
+      "create2Deployer": "CREATE2 배포자",
+      "feePayer": "수수료 지불 계정",
+      "maximumTotal": "최대 총비용",
+      "pending": "배포가 대기 중입니다. 계속하기 전에 상태를 새로 고치세요.",
+      "unknown": "트랜잭션이 네트워크에 도달했을 수 있습니다. 계속하기 전에 상태를 새로 고치세요.",
+      "reviewExpired": "검토가 만료되었습니다. 현재 수수료를 다시 확인하세요.",
+      "unavailable": "설정을 사용할 수 없습니다. 다시 시도하기 전에 상태를 새로 고치세요.",
+      "cancelled": "지갑이 변경되었거나 잠겼습니다. 설정을 다시 여세요.",
+      "complete": "스마트 계정 설정이 배포되었습니다."
     }
   }
 }

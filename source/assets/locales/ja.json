@@ -2247,6 +2247,21 @@
       "publicTitle": "Public address tools",
       "publicBody": "These tools manage saved public addresses. They cannot sign transactions or recover their wallets.",
       "receiveHint": "Receive and any supported testnet faucet are available on Wallet."
+    },
+    "infrastructure": {
+      "refresh": "更新",
+      "reviewNext": "次のデプロイを確認",
+      "codePresent": "デプロイ済み",
+      "codeMissing": "未デプロイ",
+      "create2Deployer": "CREATE2 デプロイヤー",
+      "feePayer": "手数料の支払元",
+      "maximumTotal": "合計費用の上限",
+      "pending": "デプロイは保留中です。状態を更新してから続行してください。",
+      "unknown": "トランザクションはネットワークに到達した可能性があります。状態を更新してから続行してください。",
+      "reviewExpired": "確認の有効期限が切れました。最新の手数料を再確認してください。",
+      "unavailable": "設定を利用できません。状態を更新してから再試行してください。",
+      "cancelled": "ウォレットが変更またはロックされました。設定を開き直してください。",
+      "complete": "スマートアカウントの設定がデプロイされました。"
     }
   }
 }

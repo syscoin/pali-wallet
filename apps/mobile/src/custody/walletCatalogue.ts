@@ -18,6 +18,8 @@ import { requireSmartAccountAddressIdentity } from '../../../../source/utils/sma
 import { encodeEcdsaValidatorInitData, getConfiguredAuthenticatorAddress, type PaliRecoveryTarget } from '../../../../source/utils/smartAccount/account.ts';
 import type { SmartAccountGuardianRecoveryOperation } from '../../../../source/utils/smartAccount/recovery.ts';
 import { captureGuardianRecoveryIntent } from '../../../../source/utils/smartAccount/guardianRecoveryIntent.ts';
+import { parseInfrastructureJournalEntry, type InfrastructureJournalEntry } from '../../../../source/wallet/infrastructureJournal.ts';
+import { PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { nativeAccountId, parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
 import {
   assertImportedRecoveryAccount,
@@ -102,6 +104,18 @@ export type NativeGuardianRecoveryIntent = Readonly<{
   replacement: NativeGuardianRecoveryAccountRef;
   payer: NativeGuardianRecoveryAccountRef;
 }>;
+export type NativeInfrastructurePending = Readonly<{
+  chainId: string;
+  networkId: EvmNetworkId;
+  registrationHash: string;
+  payer: NativeGuardianRecoveryAccountRef;
+  entry: Readonly<InfrastructureJournalEntry & {
+    attemptId: string;
+    nonce: number;
+    payerAddress: string;
+    rpcUrl: string;
+  }>;
+}>;
 type SmartAccountObservedMetadata = Pick<ISmartAccountMetadata,
   'auth' | 'availableModules' | 'isDeployed' | 'installedModules'>;
 export type NativeAccountRecord = Readonly<{
@@ -113,6 +127,7 @@ export type NativeAccountRecord = Readonly<{
   networks: readonly SavedNetwork[];
   active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
   guardianRecoveryIntents?: readonly NativeGuardianRecoveryIntent[];
+  infrastructurePending?: readonly NativeInfrastructurePending[];
 }>;
 export type CatalogueMutation =
   | Readonly<{ kind: 'create'; account: IKeyringAccountState }>
@@ -126,6 +141,7 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'store-guardian-recovery'; id: string; intent: NativeGuardianRecoveryIntent; expectedOperationHash: string | null }>
   | Readonly<{ kind: 'retire-guardian-recovery'; id: string; operationHash: string }>
   | Readonly<{ kind: 'complete-guardian-recovery'; id: string; operationHash: string; metadata: SmartAccountObservedMetadata }>
+  | Readonly<{ kind: 'set-infrastructure-pending'; chainId: string; expectedAttemptId: string | null; pending: NativeInfrastructurePending | null }>
   | Readonly<{
       kind: 'import';
       account: IKeyringAccountState;
@@ -248,6 +264,23 @@ function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRec
       target.auth.data.toLowerCase() !== encodeEcdsaValidatorInitData([replacement.address], 1).toLowerCase()) return invalid();
   return Object.freeze({ accountId: identity.id, operation, target, guardian, replacement, payer });
 }
+function snapshotInfrastructurePending(value: unknown, record: NativeAccountRecord): NativeInfrastructurePending {
+  const raw = object(value, ['chainId', 'networkId', 'registrationHash', 'payer', 'entry']);
+  if (typeof raw.chainId !== 'string' || typeof raw.networkId !== 'string') return invalid();
+  const network = catalogueEvmNetworks(record).find(network => network.id === raw.networkId);
+  if (!network || network.chainId !== raw.chainId || network.registrationHash !== raw.registrationHash) return invalid();
+  const fields = object(raw.entry, ['attemptId', 'contractId', 'nonce', 'payerAddress', 'rpcUrl',
+    ...(Object.prototype.hasOwnProperty.call(raw.entry, 'transactionHash') ? ['transactionHash'] : [])]);
+  const entry = parseInfrastructureJournalEntry(fields, true);
+  if (!entry?.attemptId || entry.nonce === undefined || !entry.payerAddress || entry.rpcUrl !== network.rpcUrl ||
+      !Object.hasOwn(PALI_INFRASTRUCTURE_METADATA_BY_ID, entry.contractId)) return invalid();
+  const payer = recoveryAccountReference(raw.payer, record, 'software', Number(network.chainId));
+  if (getAddress(entry.payerAddress) !== payer.address) return invalid();
+  return Object.freeze({ chainId: network.chainId, networkId: network.id, registrationHash: network.registrationHash, payer,
+    entry: Object.freeze({ attemptId: entry.attemptId.toLowerCase(), contractId: entry.contractId, nonce: entry.nonce,
+      payerAddress: payer.address, rpcUrl: network.rpcUrl,
+      ...(entry.transactionHash === undefined ? {} : { transactionHash: entry.transactionHash.toLowerCase() }) }) });
+}
 export function catalogueEvmNetworks(record: NativeAccountRecord): readonly NativeNetworkRegistration[] {
   return record.networks.filter((network) => network.kind === 'evm');
 }
@@ -316,6 +349,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     'networks',
     'active',
     ...(Object.prototype.hasOwnProperty.call(captured, 'guardianRecoveryIntents') ? ['guardianRecoveryIntents'] : []),
+    ...(Object.prototype.hasOwnProperty.call(captured, 'infrastructurePending') ? ['infrastructurePending'] : []),
   ]);
   if (
     raw.version !== 1 ||
@@ -478,6 +512,16 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
       if (scopes.has(scope)) return invalid();
       scopes.add(scope);
       return intent;
+    }));
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'infrastructurePending')) {
+    if (!Array.isArray(raw.infrastructurePending) || raw.infrastructurePending.length > catalogueEvmNetworks(record).length) return invalid();
+    const chains = new Set<string>();
+    record.infrastructurePending = Object.freeze(raw.infrastructurePending.map((value: unknown) => {
+      const pending = snapshotInfrastructurePending(value, record);
+      if (chains.has(pending.chainId)) return invalid();
+      chains.add(pending.chainId);
+      return pending;
     }));
   }
   const active = object(raw.active, ['accountId', 'networkId']) as NativeAccountRecord['active'];
@@ -716,8 +760,29 @@ export class NativeWalletCatalogue {
         networks = [...next.networks],
         recovery = [...next.recovery],
         groups = [...next.groups],
-        guardianRecoveryIntents = next.guardianRecoveryIntents ? [...next.guardianRecoveryIntents] : undefined;
-      if (mutation.kind === 'create' || mutation.kind === 'create-smart' || mutation.kind === 'import' || mutation.kind === 'import-ledger' || mutation.kind === 'import-trezor') {
+        guardianRecoveryIntents = next.guardianRecoveryIntents ? [...next.guardianRecoveryIntents] : undefined,
+        infrastructurePending = next.infrastructurePending ? [...next.infrastructurePending] : undefined;
+      if (mutation.kind === 'set-infrastructure-pending') {
+        object(mutation, ['kind', 'chainId', 'expectedAttemptId', 'pending']);
+        if (typeof mutation.chainId !== 'string' || !/^[1-9][0-9]{0,15}$/.test(mutation.chainId) ||
+            (mutation.expectedAttemptId !== null && (typeof mutation.expectedAttemptId !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(mutation.expectedAttemptId)))) return invalid();
+        const previous = infrastructurePending?.find(pending => pending.chainId === mutation.chainId);
+        if ((previous?.entry.attemptId ?? null) !== (mutation.expectedAttemptId?.toLowerCase() ?? null)) return changed();
+        if (mutation.pending === null) {
+          if (!previous) return changed();
+          infrastructurePending = infrastructurePending!.filter(pending => pending !== previous);
+        } else {
+          const pending = snapshotInfrastructurePending(mutation.pending, next);
+          if (pending.chainId !== mutation.chainId) return invalid();
+          if (previous) {
+            const { transactionHash: previousHash, ...previousEntry } = previous.entry;
+            const { transactionHash: nextHash, ...nextEntry } = pending.entry;
+            if (encodeStorageValue({ ...previous, entry: previousEntry }) !== encodeStorageValue({ ...pending, entry: nextEntry }) ||
+                (previousHash !== undefined && nextHash !== previousHash)) return changed();
+            infrastructurePending = infrastructurePending!.map(entry => entry === previous ? pending : entry);
+          } else infrastructurePending = [...(infrastructurePending ?? []), pending];
+        }
+      } else if (mutation.kind === 'create' || mutation.kind === 'create-smart' || mutation.kind === 'import' || mutation.kind === 'import-ledger' || mutation.kind === 'import-trezor') {
         const type =
           mutation.kind === 'create' ? KeyringAccountType.HDAccount
             : mutation.kind === 'create-smart' ? KeyringAccountType.SmartAccount : mutation.kind === 'import-ledger' ? KeyringAccountType.Ledger : mutation.kind === 'import-trezor' ? KeyringAccountType.Trezor : KeyringAccountType.Imported;
@@ -753,7 +818,8 @@ export class NativeWalletCatalogue {
               network.kind === 'evm' && network.id !== registration.id &&
               network.chainId === registration.chainId
           ) ||
-          (!same && networks.length >= 256)
+          (!same && networks.length >= 256) ||
+          infrastructurePending?.some(pending => pending.networkId === registration.id && pending.registrationHash !== registration.registrationHash)
         )
           return invalid();
         networks = [
@@ -784,7 +850,7 @@ export class NativeWalletCatalogue {
           return invalid();
         networks = networks.filter(({ id }) => id !== saved.id);
       } else if (mutation.kind === 'remove-network') {
-        if (mutation.id === active.networkId || catalogueEvmNetworks(next).length <= 1)
+        if (mutation.id === active.networkId || catalogueEvmNetworks(next).length <= 1 || infrastructurePending?.some(pending => pending.networkId === mutation.id))
           return invalid();
         getNativeNetwork(mutation.id, catalogueEvmNetworks(next));
         networks = networks.filter((network) => network.id !== mutation.id);
@@ -886,7 +952,8 @@ export class NativeWalletCatalogue {
             active.accountId === mutation.id ||
             projection(record).accounts.length <= 1 ||
             guardianRecoveryIntents?.some(intent => intent.accountId === mutation.id ||
-              intent.guardian.id === mutation.id || intent.replacement.id === mutation.id || intent.payer.id === mutation.id)
+              intent.guardian.id === mutation.id || intent.replacement.id === mutation.id || intent.payer.id === mutation.id) ||
+            infrastructurePending?.some(pending => pending.payer.id === mutation.id)
           )
             throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
           removeAccountRecord(
@@ -906,7 +973,8 @@ export class NativeWalletCatalogue {
       }
       const validated = decode(
         { ...next, revision: next.revision + 1, active, networks, recovery, groups,
-          ...(guardianRecoveryIntents === undefined ? {} : { guardianRecoveryIntents }) },
+          ...(guardianRecoveryIntents === undefined ? {} : { guardianRecoveryIntents }),
+          ...(infrastructurePending === undefined ? {} : { infrastructurePending }) },
         this.root.walletFingerprint
       );
       guard();

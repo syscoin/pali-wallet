@@ -2247,6 +2247,21 @@
       "publicTitle": "Public address tools",
       "publicBody": "These tools manage saved public addresses. They cannot sign transactions or recover their wallets.",
       "receiveHint": "Receive and any supported testnet faucet are available on Wallet."
+    },
+    "infrastructure": {
+      "refresh": "Aktualisieren",
+      "reviewNext": "Nächste Bereitstellung prüfen",
+      "codePresent": "Bereitgestellt",
+      "codeMissing": "Nicht bereitgestellt",
+      "create2Deployer": "CREATE2-Bereitsteller",
+      "feePayer": "Gebührenzahler",
+      "maximumTotal": "Maximale Gesamtkosten",
+      "pending": "Eine Bereitstellung ist ausstehend. Aktualisieren Sie den Status, bevor Sie fortfahren.",
+      "unknown": "Die Transaktion könnte das Netzwerk erreicht haben. Aktualisieren Sie den Status, bevor Sie fortfahren.",
+      "reviewExpired": "Die Prüfung ist abgelaufen. Prüfen Sie die aktuellen Gebühren erneut.",
+      "unavailable": "Die Einrichtung ist nicht verfügbar. Aktualisieren Sie den Status, bevor Sie es erneut versuchen.",
+      "cancelled": "Das Wallet wurde geändert oder gesperrt. Öffnen Sie die Einrichtung erneut.",
+      "complete": "Die Einrichtung des Smart Accounts ist bereitgestellt."
     }
   }
 }
