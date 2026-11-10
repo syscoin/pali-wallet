@@ -1,4 +1,21 @@
 {
+  "localPasskey": {
+    "title": "Déverrouillage par clé d’accès",
+    "description": "Déverrouillez cette installation de Pali avec une clé d’accès compatible. Votre mot de passe et votre phrase de récupération restent inchangés.",
+    "loading": "Chargement…",
+    "enabled": "Activé sur cette installation",
+    "disabled": "Non activé",
+    "unavailable": "Les paramètres de clé d’accès sont indisponibles.",
+    "unsupported": "Le chiffrement par clé d’accès est indisponible dans ce navigateur. Utilisez votre mot de passe.",
+    "password": "Mot de passe actuel du portefeuille",
+    "setUp": "Configurer le déverrouillage par clé d’accès",
+    "turnOff": "Désactiver le déverrouillage par clé d’accès",
+    "unlock": "Déverrouiller avec une clé d’accès",
+    "enrollFailed": "La configuration n’a pas abouti. Vérifiez votre mot de passe ou essayez un fournisseur de clés d’accès compatible avec PRF.",
+    "disableFailed": "Impossible de désactiver le déverrouillage par clé d’accès. Vérifiez votre mot de passe actuel et réessayez.",
+    "unlockFailed": "Le déverrouillage par clé d’accès n’a pas abouti. Réessayez ou utilisez votre mot de passe.",
+    "localOnly": "Les données de déverrouillage chiffrées restent dans cette installation. Votre fournisseur peut synchroniser la clé d’accès ; cela ne transfère pas votre portefeuille local."
+  },
   "transactionDisplay": {
     "blockHash": "Hash du bloc",
     "blockNumber": "Numéro du bloc",

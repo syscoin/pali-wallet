@@ -1,4 +1,21 @@
 {
+  "localPasskey": {
+    "title": "Desbloqueio com chave de acesso",
+    "description": "Desbloqueie esta instalação do Pali com uma chave de acesso compatível. Sua senha e frase de recuperação permanecem iguais.",
+    "loading": "Carregando…",
+    "enabled": "Ativado nesta instalação",
+    "disabled": "Não ativado",
+    "unavailable": "As configurações de chave de acesso estão indisponíveis.",
+    "unsupported": "A criptografia com chave de acesso não está disponível neste navegador. Use sua senha.",
+    "password": "Senha atual da carteira",
+    "setUp": "Configurar desbloqueio com chave de acesso",
+    "turnOff": "Desativar desbloqueio com chave de acesso",
+    "unlock": "Desbloquear com chave de acesso",
+    "enrollFailed": "A configuração não foi concluída. Confira sua senha ou tente um provedor de chaves de acesso compatível com PRF.",
+    "disableFailed": "Não foi possível desativar o desbloqueio com chave de acesso. Confira sua senha atual e tente novamente.",
+    "unlockFailed": "O desbloqueio com chave de acesso não foi concluído. Tente novamente ou use sua senha.",
+    "localOnly": "Os dados criptografados de desbloqueio ficam nesta instalação. Seu provedor pode sincronizar a chave de acesso; isso não transfere sua carteira local."
+  },
   "transactionDisplay": {
     "blockHash": "Hash do bloco",
     "blockNumber": "Número do bloco",

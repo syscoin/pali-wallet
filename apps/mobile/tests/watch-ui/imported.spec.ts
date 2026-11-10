@@ -1,4 +1,4 @@
-import { enterPin, pinField, fillPinField } from '../ui/operationAuthentication';
+import { enterPin } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { nativeAccountName, watchAccountName } from '../accountControlNames';
 import { BITCOIN_BIP84_ADDRESS, BITCOIN_BIP84_KEY, BITCOIN_WIF_ADDRESS, BITCOIN_WIF_KEY } from '../native-watch-ui/utxoImportVectors';
@@ -18,11 +18,13 @@ async function openWallet(page: Page, query = '') {
   await unlock(page);
 }
 async function manage(page: Page) {
+  await page.getByRole('tab', { name: 'Wallet', exact: true }).click();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Manage wallet accounts', exact: true }).click();
 }
 async function openImport(page: Page) {
   await manage(page);
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
 }
 async function preview(page: Page, key = KEY, name = NAME) {
@@ -30,11 +32,14 @@ async function preview(page: Page, key = KEY, name = NAME) {
   await page.getByRole('textbox', { name: 'EVM private key', exact: true }).fill(key);
   await page.getByRole('button', { name: 'Review address', exact: true }).click();
 }
-async function submit(page: Page, password = '123456') {
+async function confirmImport(page: Page) {
   await page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true }).check();
   await expect(page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true })).toHaveAttribute('aria-checked', 'true');
-  await fillPinField(pinField(page, 'Confirm wallet PIN'), password);
   await page.getByRole('button', { name: 'Import account', exact: true }).click();
+}
+async function submit(page: Page, pin = '123456') {
+  await confirmImport(page);
+  await enterPin(page, pin);
 }
 async function imported(page: Page) {
   await expect(page.getByText(`${NAME} · Ethereum`, { exact: true })).toBeVisible();
@@ -71,11 +76,15 @@ test('private-key import reviews full address, then selects the account with rec
   await page.getByRole('button', { name: 'Review transfer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Confirm and send', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Review transfer', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('tab', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Security & backups', exact: false }).click();
-  await expect(page.getByText('Imported key needs a separate backup', { exact: true })).toBeVisible();
+  await expect(page.getByText('Backed up', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
-  await fillPinField(pinField(page, 'Confirm your wallet PIN'), '123456');
+  await expect(page.getByText(/It does not back up the rest of your wallet/)).toBeVisible();
   await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(page.getByText(KEY, { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   const keyScreenshot = info.outputPath('imported-key-public-fixture.png');
@@ -86,19 +95,20 @@ test('private-key import reviews full address, then selects the account with rec
   expect((await page.evaluate(() => window.__watchFixture.audit())).broadcasts).toBe(0);
 });
 
-test('Bitcoin WIF import and password-confirmed key backup stay readable at 320px', async ({ page }, info) => {
+test('Bitcoin WIF import and PIN-confirmed key backup stay readable at 320px', async ({ page }, info) => {
   const fixtureKey = BITCOIN_WIF_KEY;
   const fixtureAddress = BITCOIN_WIF_ADDRESS;
   await page.setViewportSize({ width: 320, height: 740 });
   await openWallet(page, '?wif-fixture=1');
+  await page.getByRole('tab', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Security & backups', exact: false }).click();
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
   await expect(page.getByText('Bitcoin · SegWit', { exact: true })).toBeVisible();
   await expect(page.getByText(/can spend from every address in this account/)).toBeVisible();
   const extendedKey = page.getByText(`zprv${'A'.repeat(107)}`, { exact: true });
   await expect(extendedKey).toHaveCount(0);
-  await fillPinField(pinField(page, 'Confirm your wallet PIN'), '123456');
   await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(extendedKey).toBeVisible();
   await expect(page.getByRole('button', { name: /Copy|Share/ })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
@@ -107,6 +117,7 @@ test('Bitcoin WIF import and password-confirmed key backup stay readable at 320p
   await expect(extendedKey).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('tab', { name: 'Wallet', exact: true }).click();
   await openImport(page);
   const keyField = page.getByRole('textbox', { name: 'UTXO private key', exact: true });
   await expect(keyField).toHaveAttribute('type', 'password');
@@ -131,25 +142,25 @@ test('Bitcoin WIF import and password-confirmed key backup stay readable at 320p
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
   await expect(page.getByTestId('native-receive-address')).toHaveText(fixtureAddress);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('tab', { name: 'Settings', exact: true }).click();
   await page.getByRole('button', { name: 'Security & backups', exact: false }).click();
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
   await expect(page.getByText(fixtureAddress, { exact: true })).toBeVisible();
   await expect(page.getByText('Bitcoin · Legacy', { exact: true })).toBeVisible();
   await expect(page.getByText(/select the network and address type shown above/)).toBeVisible();
   const reveal = page.getByRole('button', { name: 'Reveal private key', exact: true });
-  await expect(reveal).toBeDisabled();
+  await expect(reveal).toBeEnabled();
   await expect(page.getByText(fixtureKey, { exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath('wif-reveal-auth-320.png'), fullPage: true });
-  const confirm = pinField(page, 'Confirm your wallet PIN');
-  await fillPinField(confirm, '123456');
   await reveal.click();
+  await enterPin(page, '123456');
   await expect(page.getByText(fixtureKey, { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   await expect(page.getByRole('button', { name: /Copy|Share/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Hide private key', exact: true }).click();
   await expect(page.getByText(fixtureKey, { exact: true })).toHaveCount(0);
-  await expect(confirm).toHaveText('Enter PIN');
-  await expect(reveal).toBeDisabled();
+  await expect(page.getByRole('heading', { name: 'Unlock private information', exact: true })).toHaveCount(0);
+  await expect(reveal).toBeEnabled();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await openImport(page);
@@ -191,6 +202,7 @@ test('Bitcoin BIP84 import clears stale WIF script choices at 320px', async ({ p
 
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(0);
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await expect(keyField).toHaveValue('');
   await expect(page.getByRole('radio', { name: 'SegWit', exact: true })).toHaveAttribute('aria-checked', 'true');
@@ -201,11 +213,11 @@ test('Bitcoin BIP84 import clears stale WIF script choices at 320px', async ({ p
 
   const confirm = page.getByRole('button', { name: 'Import account', exact: true });
   await expect(confirm).toBeDisabled();
-  await fillPinField(pinField(page, 'Confirm wallet PIN'), '123456');
-  await expect(confirm).toBeDisabled();
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toHaveCount(0);
   await page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true }).check();
   await expect(confirm).toBeEnabled();
   await confirm.click();
+  await enterPin(page, '123456');
   await expect(page.getByText(`${name} · Bitcoin`, { exact: true })).toBeVisible();
   const catalogue = await page.evaluate(() => window.__watchFixture.catalogue());
   expect(catalogue.active.accountId).toBe('imported:0:0');
@@ -228,7 +240,7 @@ test('malformed keys and oversized valid prefixes never reach import', async ({ 
 
 test('duplicate imported key keeps the existing account and shows a useful safe error', async ({ page }) => {
   await openWallet(page); await openImport(page); await preview(page); await submit(page); await imported(page);
-  await openImport(page); await preview(page, KEY, 'Duplicate'); await submit(page);
+  await openImport(page); await preview(page, KEY, 'Duplicate'); await confirmImport(page);
   await expect(page.getByText('This address is already a wallet account. Select that account instead.', { exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'EVM private key', exact: true })).toHaveValue('');
   const audit = await page.evaluate(() => window.__watchFixture.audit());
@@ -236,32 +248,50 @@ test('duplicate imported key keeps the existing account and shows a useful safe 
   expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
 });
 
-for (const failure of ['password', 'throttle'] as const) {
-  test(`import ${failure} rejection clears input and preserves typed lock feedback`, async ({ page }) => {
-    await openWallet(page); await openImport(page); await preview(page);
-    if (failure === 'throttle') await page.evaluate(() => window.__watchFixture.importFailure('AUTH_THROTTLED'));
-    await submit(page, failure === 'password' ? '000000' : '123456');
-    await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
-    await expect(page.getByText(failure === 'password' ? 'That PIN is incorrect. Unlock your wallet to try again.' :
-      'Too many incorrect PINs. Wait a few minutes before trying again.', { exact: true })).toBeVisible();
-    await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
-    expect((await page.evaluate(() => window.__watchFixture.audit())).imports).toBe(0);
-    expect(await page.content()).not.toContain(KEY);
-  });
-}
+test('incorrect import PIN retries in the same prompt without importing or locking', async ({ page }) => {
+  await openWallet(page); await openImport(page); await preview(page);
+  await submit(page, '000000');
+  await expect(page.getByText('PIN not accepted. Try again.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toHaveCount(0);
+  expect((await page.evaluate(() => window.__watchFixture.audit())).imports).toBe(0);
+  expect(await page.content()).not.toContain(KEY);
+  await enterPin(page, '123456'); await imported(page);
+  expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(1);
+  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
+});
+
+test('unbranded post-proof import failure locks and preserves typed feedback', async ({ page }) => {
+  await openWallet(page); await openImport(page); await preview(page);
+  await page.evaluate(() => window.__watchFixture.importFailure('AUTH_THROTTLED'));
+  await submit(page);
+  await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+  await expect(page.getByText('Too many incorrect PINs. Wait a few minutes before trying again.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
+  expect((await page.evaluate(() => window.__watchFixture.audit())).imports).toBe(0);
+  expect(await page.content()).not.toContain(KEY);
+});
 
 for (const departure of ['back', 'background', 'inactive', 'blur', 'new-unlock'] as const) {
   test(`pending import clears secrets and cannot publish after ${departure}`, async ({ page }) => {
     await openWallet(page, departure === 'blur' ? '?android=1' : ''); await openImport(page); await preview(page);
     await page.evaluate(() => window.__watchFixture.delayImport(true));
-    await submit(page, departure === 'new-unlock' ? '000000' : '123456');
+    await submit(page);
     await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().importAttempts)).toBe(1);
-    await expect(pinField(page, 'Confirm wallet PIN')).toHaveText('Enter PIN');
+    await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toHaveCount(0);
     expect(await page.content()).not.toContain(KEY);
-    if (departure === 'back') await page.getByRole('button', { name: 'Back', exact: true }).click();
-    else await page.evaluate((event) => { if (event === 'blur') window.__watchFixture.blur(); else window.__watchFixture.lifecycle(event === 'new-unlock' ? 'background' : event); }, departure);
-    await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+    if (departure === 'back') {
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await expect(page.getByRole('heading', { name: 'Accounts', exact: true })).toBeVisible();
+    } else {
+      await page.evaluate((event) => { if (event === 'blur') window.__watchFixture.blur(); else window.__watchFixture.lifecycle(event === 'new-unlock' ? 'background' : event); }, departure);
+      await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+    }
     await page.evaluate(() => { window.__watchFixture.lifecycle('active'); window.__watchFixture.releaseImport(); });
+    if (departure === 'back') {
+      await expect.poll(() => page.evaluate(() => window.__watchFixture.nativePhase())).toBe('locked');
+      await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+    }
     if (departure === 'new-unlock') { await unlock(page); await expect(page.getByText('Account 1 · Ethereum', { exact: true })).toBeVisible(); }
     expect((await page.evaluate(() => window.__watchFixture.audit())).imports).toBe(0);
     expect(await page.evaluate(() => window.__watchFixture.catalogue().accounts.some((account) => account.type === 'Imported'))).toBe(false);
@@ -274,14 +304,14 @@ test('imported removal requires its own backup warning and reimport reuses the S
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: nativeAccountName('Account 1', 'Recovery phrase account', HD_ADDRESS) }).click();
   await manage(page);
-  const card = page.locator('div').filter({ has: page.getByRole('button', { name: `Select ${NAME}`, exact: true }) }).filter({ has: page.getByRole('button', { name: 'Remove', exact: true }) }).last();
-  await card.getByRole('button', { name: 'Remove', exact: true }).click();
+  await page.getByRole('button', { name: `Remove ${NAME}`, exact: true }).click();
   await expect(page.getByText(/Your recovery phrase cannot restore it/)).toBeVisible();
-  await fillPinField(pinField(page, 'Confirm wallet PIN'), '123456');
   await expect(page.getByRole('button', { name: 'Remove from this device', exact: true })).toBeDisabled();
   await page.getByRole('checkbox', { name: 'I have the original private key backed up', exact: true }).check();
   await page.getByRole('button', { name: 'Remove from this device', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(page.getByRole('button', { name: `Select ${NAME}`, exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await preview(page); await submit(page);
   await expect(page.getByText(`${NAME} · Ethereum`, { exact: true })).toBeVisible();
@@ -311,26 +341,31 @@ test('a shared-address watch remains public and separate from its imported key a
 test('leaving a review and opening a new import clears every entered secret and acknowledgement', async ({ page }) => {
   await openWallet(page); await openImport(page); await preview(page);
   await page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true }).check();
-  await fillPinField(pinField(page, 'Confirm wallet PIN'), '123456');
+  await expect(page.getByRole('heading', { name: 'Authorize change', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'EVM private key', exact: true })).toHaveValue('');
   await expect(page.getByRole('textbox', { name: 'Account name', exact: true })).toHaveValue('');
   await expect(page.getByRole('button', { name: 'Review address', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '••••••', exact: true })).toHaveCount(0);
   expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(0);
+  await preview(page);
+  await expect(page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true })).toHaveAttribute('aria-checked', 'false');
 });
 
 test('native account creation and import remain available beyond twenty accounts', async ({ page }) => {
   await openWallet(page, '?account-limit=1'); await manage(page);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().accounts.length)).toBe(20);
-  await expect(page.getByRole('button', { name: 'Import private key', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Add account', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Account twenty-one');
-  await fillPinField(pinField(page, 'Confirm wallet PIN'), '123456');
+  await expect(page.getByRole('button', { name: 'Import private key', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Account twenty-one');
+  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await enterPin(page, '123456');
   await expect.poll(() => page.evaluate(() => window.__watchFixture.catalogue().accounts.length)).toBe(21);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.accountId)).toBe('hd:60:20');
+  await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await preview(page); await submit(page); await imported(page);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().accounts.length)).toBe(22);

@@ -380,6 +380,8 @@ Actions: Initial state.
 
 ## 32-sentry-consent — Sentry request approval
 
+Source: `a7c370a22656574043007ccc8d15fe2af342351a`; updated current review, with authorization in the shared prompt.
+
 Component: NativeSentryReview.
 
 Route: http://127.0.0.1:4291/?sentry-consent=1
@@ -537,6 +539,8 @@ Actions: Unlock synthetic wallet → Settings → Help & about.
 ![Help and about at 320px](44-help-about-320.png)
 
 ## 45-private-key-auth — Private-key reveal authorization
+
+Source: `ab9c46267ab1cb8124d8a17f7d5ba2b6cb95a065`; updated current review, with authorization in the shared prompt.
 
 Component: NativeSecurity.
 

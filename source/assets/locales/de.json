@@ -1,4 +1,21 @@
 {
+  "localPasskey": {
+    "title": "Mit Passkey entsperren",
+    "description": "Entsperre diese Pali-Installation mit einem unterstützten Passkey. Dein Passwort und deine Wiederherstellungsphrase bleiben unverändert.",
+    "loading": "Wird geladen…",
+    "enabled": "In dieser Installation aktiviert",
+    "disabled": "Nicht aktiviert",
+    "unavailable": "Die Passkey-Einstellungen sind nicht verfügbar.",
+    "unsupported": "Passkey-Verschlüsselung ist in diesem Browser nicht verfügbar. Verwende dein Passwort.",
+    "password": "Aktuelles Wallet-Passwort",
+    "setUp": "Entsperren mit Passkey einrichten",
+    "turnOff": "Entsperren mit Passkey deaktivieren",
+    "unlock": "Mit Passkey entsperren",
+    "enrollFailed": "Die Einrichtung wurde nicht abgeschlossen. Prüfe dein Passwort oder versuche einen Passkey-Anbieter mit PRF-Unterstützung.",
+    "disableFailed": "Entsperren mit Passkey konnte nicht deaktiviert werden. Prüfe dein aktuelles Passwort und versuche es erneut.",
+    "unlockFailed": "Entsperren mit Passkey wurde nicht abgeschlossen. Versuche es erneut oder verwende dein Passwort.",
+    "localOnly": "Die verschlüsselten Entsperrdaten bleiben in dieser Installation. Dein Anbieter kann den Passkey synchronisieren; dabei wird deine lokale Wallet nicht übertragen."
+  },
   "transactionDisplay": {
     "blockHash": "Block-Hash",
     "blockNumber": "Blocknummer",

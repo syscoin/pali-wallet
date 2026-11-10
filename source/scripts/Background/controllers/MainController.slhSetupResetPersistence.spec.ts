@@ -219,13 +219,16 @@ beforeEach(async () => {
     } as any)
   );
   store.dispatch(setActiveSlip44(60));
-  manager = new KeyringManager(createBrowserKeyringHost(chrome.storage.local), {
-    trezorHost: createOfflineTrezorHost(),
-    captureEvmSubmission: () => {
-      throw new Error('EVM submission is outside this fixture');
-    },
-    hardwareManager: new HardwareWalletManager(),
-  });
+  manager = new KeyringManager(
+    createBrowserKeyringHost(chrome.storage.local, null),
+    {
+      trezorHost: createOfflineTrezorHost(),
+      captureEvmSubmission: () => {
+        throw new Error('EVM submission is outside this fixture');
+      },
+      hardwareManager: new HardwareWalletManager(),
+    }
+  );
   manager.setVaultStateGetter(() => store.getState().vault as any);
   const account = await manager.initializeWalletSecurely(PHRASE, PASSWORD);
   store.dispatch(

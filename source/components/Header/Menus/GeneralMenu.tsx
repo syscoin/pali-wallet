@@ -272,6 +272,19 @@ export const GeneralMenu: React.FC<IGeneralMenuProps> = ({
                   </Menu.Item>
 
                   <Menu.Item>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleSettingsNavigation('/settings/local-passkey')
+                      }
+                      className={MENU_ACTION_CLASS_NAME}
+                    >
+                      <LockIconSvg className="text-brand-white" />
+                      <span>{t('localPasskey.title')}</span>
+                    </button>
+                  </Menu.Item>
+
+                  <Menu.Item>
                     <li
                       onClick={() =>
                         handleSettingsNavigation('/settings/forget-wallet')

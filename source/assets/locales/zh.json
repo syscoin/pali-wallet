@@ -1,4 +1,21 @@
 {
+  "localPasskey": {
+    "title": "通行密钥解锁",
+    "description": "使用受支持的通行密钥解锁此 Pali 安装。你的密码和恢复助记词保持不变。",
+    "loading": "正在加载…",
+    "enabled": "已在此安装中启用",
+    "disabled": "未启用",
+    "unavailable": "通行密钥设置不可用。",
+    "unsupported": "此浏览器不支持通行密钥加密。请使用密码。",
+    "password": "当前钱包密码",
+    "setUp": "设置通行密钥解锁",
+    "turnOff": "关闭通行密钥解锁",
+    "unlock": "使用通行密钥解锁",
+    "enrollFailed": "设置未完成。请检查密码，或尝试支持 PRF 的通行密钥提供商。",
+    "disableFailed": "无法关闭通行密钥解锁。请检查当前密码后重试。",
+    "unlockFailed": "通行密钥解锁未完成。请重试或使用密码。",
+    "localOnly": "加密的解锁数据保留在此安装中。提供商可能会同步通行密钥，但这不会转移你的本地钱包。"
+  },
   "transactionDisplay": {
     "blockHash": "区块哈希",
     "blockNumber": "区块编号",

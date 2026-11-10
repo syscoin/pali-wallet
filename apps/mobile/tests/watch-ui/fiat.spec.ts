@@ -17,11 +17,11 @@ test('display currency saves explicitly and quotes never relabel the exact balan
   await button('Accounts').click();
   await button('Open wallet').click();
   await enterPin(page, '123456');
-  await button('Unlock wallet').click();
   const quote = page.getByTestId('native-portfolio-quote');
   await expect(quote).toHaveText(/^≈ .+ USD$/);
   const exact = await page.getByTestId('native-portfolio-balance').textContent();
-  expect(exact).toBe('18.446744073709551616');
+  expect(exact).toBe('≈18.446744');
+  await expect(page.getByLabel('Ethereum balance 18.446744073709551616 ETH', { exact: true })).toBeVisible();
   expect(await page.getByTestId('native-portfolio-balance').evaluate((node) => node.getBoundingClientRect().height <= Number.parseFloat(getComputedStyle(node).lineHeight) + 1)).toBe(true);
   const openCurrency = async () => { await tab('Settings').click(); await button(/^Display currency/).click(); };
   await openCurrency();
@@ -68,8 +68,8 @@ test('a held watch-only quote preserves Receive geometry at large text', async (
   await receive.scrollIntoViewIfNeeded();
   const before = await receive.boundingBox();
   await page.evaluate(() => window.__watchFixture.releaseQuote());
-  await expect(quote).toHaveText('≈ 250 USD');
-  await expect(quote).toHaveAttribute('aria-label', '≈ 250 USD');
+  await expect(quote).toHaveText('≈ 250.00 USD');
+  await expect(quote).toHaveAttribute('aria-label', '≈ 250.00 USD');
   const after = await receive.boundingBox();
   expect(before).not.toBeNull();
   expect(after).not.toBeNull();

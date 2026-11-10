@@ -38,6 +38,7 @@ import {
   transactionApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+import { installLocalPasskeyControllerPorts } from './localPasskeyControllerPort';
 import {
   requireMessageSignApproval,
   runBoundEncryptionApproval,
@@ -222,6 +223,7 @@ export const controllerErrorResponse = (
 
 let controllerPortListener: ((port: chrome.runtime.Port) => void) | undefined;
 const controllerPortRetirements = new Set<() => void>();
+let disposeLocalPasskeyPorts: (() => void) | undefined;
 let controllerMessageListener:
   | Parameters<typeof chrome.runtime.onMessage.addListener>[0]
   | undefined;
@@ -229,6 +231,10 @@ let controllerMessageListener:
 export const handleMasterControllerResponses = (
   MasterControllerInstance: IMasterController
 ) => {
+  disposeLocalPasskeyPorts?.();
+  disposeLocalPasskeyPorts = installLocalPasskeyControllerPorts((authority) =>
+    MasterControllerInstance.wallet.createLocalPasskeyController(authority)
+  );
   if (controllerMessageListener) {
     chrome.runtime.onMessage.removeListener(controllerMessageListener);
   }

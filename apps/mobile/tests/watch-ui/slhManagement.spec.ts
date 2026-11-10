@@ -78,13 +78,14 @@ test('SLH loading, failure and closing keep a reachable footer and drain before 
   await page.evaluate(() => window.__slhManagementFixture.release()); await expect(page.getByText('Public fixture closed',{exact:true})).toBeVisible();
 });
 test('exact SLH target review and uncertain submission preserve public binding at large text', async ({page},info) => {
-  await page.goto('/?slh-fixture=review&android&font-scale=1.6'); await expect(page.getByRole('button',{name:'Authorize authenticator change',exact:true})).toBeVisible(); await largeText(page);
+  await page.goto('/?slh-fixture=review&android&font-scale=1.6'); await expect(page.getByRole('button',{name:'Authorize approval change',exact:true})).toBeVisible(); await largeText(page);
+  await page.getByRole('button',{name:'View approval details',exact:true}).click();
   await expect(page.getByText(`0x${'44'.repeat(16)}${'00'.repeat(16)}`,{exact:true})).toBeVisible();
   await expect(page.getByText(`0x${'33'.repeat(16)}${'00'.repeat(16)}`,{exact:true})).toBeVisible();
   await page.getByText(`0x${'33'.repeat(16)}${'00'.repeat(16)}`,{exact:true}).scrollIntoViewIfNeeded();
   await page.screenshot({path:info.outputPath('slh-review-target-320-large.png'),fullPage:true});
   await expect(page.getByText(/Pali wallet already configured/)).toHaveCount(0);
-  const authorize = page.getByRole('button',{name:'Authorize authenticator change',exact:true}); await reachable(authorize,page);
+  const authorize = page.getByRole('button',{name:'Authorize approval change',exact:true}); await reachable(authorize,page);
   await page.screenshot({path:info.outputPath('slh-review-320-large.png'),fullPage:true}); await authorize.click();
   await expect(page.getByText(`0x${'ab'.repeat(32)}`,{exact:true})).toBeVisible();
   await expect(page.getByText('Check authenticator status',{exact:true})).toBeVisible(); await expect(authorize).toHaveCount(0);

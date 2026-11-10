@@ -142,6 +142,7 @@ const destinations = [
   ['privacy.title', '/privacy'],
   ['sentry.sentryOperators', '/settings/sentry'],
   ['generalMenu.walletSeedPhrase', '/settings/seed'],
+  ['localPasskey.title', '/settings/local-passkey'],
   ['generalMenu.forget', '/settings/forget-wallet'],
   ['Languages', '/settings/languages'],
   ['generalMenu.currency', '/settings/currency'],
