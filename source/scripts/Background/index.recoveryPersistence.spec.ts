@@ -269,6 +269,7 @@ describe('trusted startup retries and committed wallet recovery', () => {
           addListener: (listener: any) => messageListeners.add(listener),
           removeListener: (listener: any) => messageListeners.delete(listener),
         },
+        onConnect: event(),
         onSuspend: event(),
         onStartup: event(),
       },
