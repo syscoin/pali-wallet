@@ -250,7 +250,7 @@ export function createNativeSmartOperation(
         if (state !== 'deployed')
           throw new Error('Smart account must be deployed');
         metadata = await readSmartAccountValidatorMetadata({
-          account,
+          account: intent.kind === 'modules' ? { ...account, smartAccount: metadata } : account,
           chainId,
           provider,
           assertCurrent,

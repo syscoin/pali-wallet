@@ -3363,6 +3363,50 @@ test('module management follows the extension self-target blacklist policy', asy
   } finally { await operation?.dispose(); await f.close(); }
 });
 
+for (const boundary of ['before-review', 'before-sign'] as const) test(`custom validator installed by another client is refused ${boundary} without prompting an owner`, async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
+    operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0);
+    if (boundary === 'before-review') f.customValidator(CUSTOM_MODULE, true);
+    await operation.prepare();
+    if (boundary === 'before-sign') {
+      assert.equal(operation.getSnapshot().phase, 'authorize');
+      f.customValidator(CUSTOM_MODULE, true);
+      const work = operation.authorize(operation.getSnapshot().revision);
+      for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+        await new Promise(resolve => setTimeout(resolve, 5));
+      if (operation.getSnapshot().payerReview) operation.cancel();
+      await work;
+    }
+    assert.equal(operation.getSnapshot().phase, 'failed', 'an already-installed target must be rejected at the current boundary');
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(savedSmartAccount((await f.inspectRecovery()).record).smartAccount.customModules?.length ?? 0, 0, 'an early rejection must not persist a discovery record');
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
+test('a custom installation during payer review is refused before wire submission', async () => {
+  const f = await fixture({}, true);
+  let operation: NativeSmartAccountOperation | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Modules', password: PASSWORD });
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.customValidator(CUSTOM_MODULE);
+    operation = await f.runtime.openSmartAccountModuleChange(customModuleDraft(), new AbortController().signal, () => undefined);
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase, 'authorize');
+    const work = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; i++)
+      await new Promise(resolve => setTimeout(resolve, 5));
+    assert(operation.getSnapshot().payerReview);
+    f.customValidator(CUSTOM_MODULE, true);
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await work;
+    assert.equal(operation.getSnapshot().phase, 'failed');
+    assert.equal(f.signatures.length, 1); assert.equal(f.submitted.length, 0);
+  } finally { await operation?.dispose(); await f.close(); }
+});
+
 for (const kind of ['exact', 'maximum'] as const) test(`ordinary Smart ${kind} send prepares and signs with freshly hydrated composite metadata`, async () => {
   const f = await fixture({}, true);
   let operation: NativeSmartAccountOperation | undefined;
