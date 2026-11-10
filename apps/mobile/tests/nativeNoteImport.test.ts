@@ -22,6 +22,8 @@ function fixture() {
       if (!current) throw new Error('privacy_cancelled');
       return { poolId: 'eth-1', phase: status };
     },
+    async pause() { return { poolId: 'eth-1', phase: 'paused' }; },
+    async clear() { return { poolId: 'eth-1', phase: 'idle' }; },
     async refresh() {
       calls.push('refresh');
       await hold?.promise;

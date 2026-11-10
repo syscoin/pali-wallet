@@ -63,7 +63,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
       return result;
     }
   }
-  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     openPrivacyPool,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -693,6 +693,8 @@ function verifiedPool(assertCurrent = () => undefined): ReturnType<typeof create
   return {
     getStatus: () => { assertCurrent(); return { poolId: 'eth-1', phase: 'ready' }; },
     refresh: async () => ({ poolId: 'eth-1', phase: 'ready' }),
+    pause: async () => ({ poolId: 'eth-1', phase: 'paused' }),
+    clear: async () => ({ poolId: 'eth-1', phase: 'idle' }),
     readNote: async () => ({ phase: 'verified', blockNumber: 10 }),
     readSnapshot: async () => { throw new Error('Unused snapshot reader'); },
     dispose: async () => undefined,

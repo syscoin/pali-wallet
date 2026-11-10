@@ -22,6 +22,23 @@ import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
+// Custody revokes synchronously; quarantine is published after cleanup drains.
+async function expectUnavailable(authority: NativeCustodyAuthority, action: () => Promise<unknown>): Promise<void> {
+  let resolve!: () => void, reject!: (error: Error) => void;
+  const unavailable = new Promise<void>((done, failed) => { resolve = done; reject = failed; });
+  void unavailable.catch(() => undefined);
+  const unsubscribe = authority.subscribe(snapshot => { if (snapshot.phase === 'unavailable') resolve(); });
+  const timer = setTimeout(() => reject(Error('Custody did not publish quarantine')), 2000);
+  try {
+    await action();
+    if (authority.getSnapshot().phase === 'unavailable') resolve();
+    await unavailable;
+  } finally {
+    clearTimeout(timer);
+    unsubscribe();
+  }
+}
+
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Public native transfer fixture password 1!';
@@ -45,7 +62,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
   let authority: NativeCustodyAuthority | undefined;
   let transfers: NativeTransfers | undefined;
   const submitted: string[] = [];
-  const factory = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() {
       assert.ok(globalThis.crypto.subtle);
     },
@@ -253,7 +270,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       return super.signPreparedEvmTransaction(...args);
     }
   }
-  const base = createKeyringRuntimeFactory({ slhExecution: null, readEvmRetirement: null,
+  const base = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     async observeActivity(_network, expected, signal, guard) {
       guard();
       const result = await rpc.observation(
@@ -1230,8 +1247,10 @@ for (const phase of ['signed', 'submitted'] as const) {
         before,
         'Back after signing does not itself lock custody'
       );
-      hold.finish();
-      await rejected;
+      await expectUnavailable(f.authority, async () => {
+        hold!.finish();
+        await rejected;
+      });
       pending = undefined;
       assert.equal(f.authority.getSnapshot().phase, 'unavailable');
       assert.equal(f.authority.getSnapshot().error, 'UNAVAILABLE');

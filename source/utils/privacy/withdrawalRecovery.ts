@@ -1,6 +1,6 @@
 import { AbiCoder, Interface, keccak256 } from 'ethers';
 
-import { FIELD_SIZE } from './merkle';
+import { FIELD_SIZE } from './merkle.ts';
 import type {
   IPrivacyWithdrawalJournal,
   IPrivacyWithdrawalRecoveryReceipt,
@@ -79,6 +79,7 @@ export async function prepareWithdrawalRecovery(
     )
       return invalid();
     const transactionHash = lower(w.transactionHash);
+    const nonce = w.nonce!;
     const run = async (evidence?: IPrivacyWithdrawalRecoveryReceipt) => {
       const deadline = Date.now() + 15000;
       const read = async (method: string, params: unknown[]) => {
@@ -149,7 +150,7 @@ export async function prepareWithdrawalRecovery(
         lower(tx.hash) !== transactionHash ||
         lower(tx.from) !== lower(w.from) ||
         lower(tx.to) !== pool ||
-        quantity(tx.nonce) !== BigInt(w.nonce) ||
+        quantity(tx.nonce) !== BigInt(nonce) ||
         quantity(tx.value) !== BigInt(0) ||
         lower(tx.blockHash) !== lower(receipt.blockHash) ||
         tx.blockNumber !== receipt.blockNumber ||
@@ -196,7 +197,7 @@ export async function prepareWithdrawalRecovery(
       for (const [method, value] of [
         ['isKnownRoot', root],
         ['isSpent', nullifier],
-      ]) {
+      ] as const) {
         const result = await read('eth_call', [
           { to: pool, data: ABI.encodeFunctionData(method, [value]) },
           blockNumber,

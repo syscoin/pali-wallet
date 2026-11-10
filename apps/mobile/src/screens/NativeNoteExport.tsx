@@ -21,7 +21,7 @@ type Props = {
   onBack(): void;
 };
 
-export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, onInventory, onImport, onDeposit }: { onBack(): void; onExport(): void; onRestore(): void; onCapacity?(): void; onInventory?(): void; onImport?(): void; onDeposit?(): void }) {
+export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, onInventory, onImport, onDeposit, onMaintenance, onPrivacySettings }: { onBack(): void; onExport(): void; onRestore(): void; onCapacity?(): void; onInventory?(): void; onImport?(): void; onDeposit?(): void; onMaintenance?(): void; onPrivacySettings?(): void }) {
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><Screen>
     <Header title="Private notes" onBack={onBack} />
     <Card>
@@ -29,8 +29,10 @@ export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity, o
       {onInventory && <Row title="Saved notes" subtitle="View notes stored on this device" icon="wallet" onPress={onInventory} />}
       {onImport && <Row title="Import one note" subtitle="Restore a raw private note" icon="plus" onPress={onImport} />}
       <Row title="Back up private notes" subtitle="Save an encrypted copy" icon="lock" onPress={onExport} />
-      <Row title="Restore note backup" subtitle="Add notes from an encrypted file" icon="wallet" onPress={onRestore} last={!onCapacity} />
-      {onCapacity && <Row title="Note capacity" subtitle="Change the saved note limit" onPress={onCapacity} last />}
+      <Row title="Restore note backup" subtitle="Add notes from an encrypted file" icon="wallet" onPress={onRestore} last={!onCapacity && !onMaintenance && !onPrivacySettings} />
+      {onCapacity && <Row title="Note capacity" subtitle="Change the saved note limit" onPress={onCapacity} last={!onMaintenance && !onPrivacySettings} />}
+      {onMaintenance && <Row title="Manage completed notes" subtitle="Clear completed notes or recover a failed withdrawal" onPress={onMaintenance} last={!onPrivacySettings} />}
+      {onPrivacySettings && <Row title="Privacy service" subtitle="Service origin and public pool data" onPress={onPrivacySettings} last />}
     </Card>
   </Screen></SafeAreaView>;
 }

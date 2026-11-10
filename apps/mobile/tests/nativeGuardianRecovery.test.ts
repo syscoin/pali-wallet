@@ -1,4 +1,5 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
+import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
@@ -84,6 +85,7 @@ async function fixture(smart = true) {
   security.custodyIdle.begin({}, () => undefined);
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
   const dependencies: Record<string, unknown> = {
+    './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
     'react-native': { Linking: { openURL: unexpectedFeature } },
     '../crypto/sentryCrypto.native': {

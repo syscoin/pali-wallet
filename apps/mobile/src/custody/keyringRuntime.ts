@@ -1,3 +1,7 @@
+import { createNativePrivacyControls, type NativePrivacyControls, type NativePrivacyServiceSettingsPort } from '../privacy/privacyControls.ts';
+import { createNativePrivacyLifecycle } from '../privacy/privacyLifecycle.ts';
+import { createNativeNoteMaintenanceProofs } from './noteMaintenance.ts';
+import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
 import { signSmartAccountOwnerIntent, type SmartAccountOwnerSigningSdk } from '../../../../source/utils/smartAccount/ownerSigning.ts';
 import { supportsDappEncryptionAccount } from '../../../../source/shared/dappEncryptionRequest.ts';
 import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
@@ -12,7 +16,7 @@ import { capturePrivateWithdrawalAttempt, privateWithdrawalUnsignedBytes } from 
 import type { IPrivacyWithdrawalsHost } from '../../../../source/utils/privacy/withdrawTypes.ts';
 import type { EvmGasPolicy } from '../../../../source/shared/evmDappPreparation.ts';
 import { openOwnedPrivatePool } from './ownedPrivatePool.ts';
-import { NativePrivateDeposit } from './privateDeposit.ts';
+import { NativePrivateDeposit, type NativePrivateDepositView } from './privateDeposit.ts';
 import { createPrivacyTransactionsController } from '../../../../source/wallet/privacyTransactions.ts';
 import { capturePrivateDepositAttempt, privateDepositUnsignedBytes } from '../../../../source/utils/privacy/depositMetadata.ts';
 import type { IPrivacyDepositAttempt, IPrivacyDepositSession } from '../../../../source/utils/privacy/transactionTypes.ts';
@@ -166,7 +170,6 @@ import { importAccountWithRecovery } from '../../../../source/wallet/importedAcc
 import type { NativeImportRuntime } from './importedAccounts.ts';
 import { stageInitialWallet, type RecoveryAccountGroup } from '../../../../source/wallet/accountRecovery.ts';
 import type { IPrivateVaultSession } from '../../../../source/wallet/privateVault.ts';
-import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
 import { createNativeNoteImport, type NativeNoteImportRuntime } from './noteImport.ts';
 import type { createNativePrivacyPoolSync } from '../privacy/nativePrivacyPoolSync.ts';
 import type { PrivacyPoolId } from '../../../../source/utils/privacy/types.ts';
@@ -215,6 +218,7 @@ class TrezorReviewChangedError extends Error {
 export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
   slhExecution: NativeSlhExecutionCapability | null;
+  privacyServiceSettings: NativePrivacyServiceSettingsPort | null;
   checkSmartAccountAddress?: (address: string) => Promise<IBlacklistCheckResult>;
   connectionFetch?: typeof walletFetch;
   openStorage(): Promise<OpenWalletStorage>;
@@ -344,10 +348,12 @@ export interface KeyringRuntime extends CustodyRuntime {
   openConnectionSentryApprovals(): Promise<NativeSentryApprovals>;
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
+  openPrivacyControls?(signal: AbortSignal, assertCurrent: () => void): Promise<NativePrivacyControls>;
+  openNoteMaintenance?(signal: AbortSignal, assertCurrent: () => void): Promise<NativeNoteMaintenanceRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
   readNoteInventory?(assertCurrent: () => void): Promise<NativeNoteInventory>;
   openNoteImport?(assertCurrent: () => void): Promise<NativeNoteImportRuntime>;
-  openPrivateDeposit?(signal: AbortSignal, assertCurrent: () => void): Promise<NativePrivateDeposit>;
+  openPrivateDeposit?(signal: AbortSignal, assertCurrent: () => void): Promise<NativePrivateDepositView>;
   /** Internal removal authorization. The protected snapshot never reaches a screen. */
   authorizeWalletRemoval?(password: string, assertCurrent: () => void, beforeSnapshot: (assertCurrent: () => void) => Promise<void>): Promise<Readonly<{
     snapshot: RecoveryStorageSnapshot;
@@ -569,6 +575,11 @@ export function createKeyringRuntimeFactory(
         };
         type NoteRuntime = ReturnType<typeof import('./noteBackupRuntime.ts').createNativeNoteBackupRuntime>;
         let noteBackups: NoteRuntime | undefined;
+        const privacyLifecycle = createNativePrivacyLifecycle();
+        const openPrivacyPool: KeyringRuntimeDependencies['openPrivacyPool'] = dependencies.openPrivacyPool
+          ? (network, poolId, signal, guard) => privacyLifecycle.open(signal, guard,
+              (ownerSignal, check) => dependencies.openPrivacyPool!(network, poolId, ownerSignal, check), pool => pool.dispose(), (pool, dispose) => Object.freeze({ ...pool, dispose }))
+          : undefined;
         let privateDomainStorageFault: 'unreported' | 'reopen' | undefined;
         const requirePrivateDomainReopen = () => { privateDomainStorageFault ??= 'unreported'; };
         let slhDsa: NativeSlhDsaRuntime | undefined;
@@ -627,13 +638,19 @@ export function createKeyringRuntimeFactory(
           if (dependencies.assertActive) { try { checkGuard(dependencies.assertActive); } catch { throw new KeyringRuntimeError('CANCELLED'); } }
           if (requiresReopen()) throw new KeyringRuntimeError('CLEANUP_FAILED');
         };
-        const lock = (): Promise<void> => {
+        const revokeCustody = (privacy: 'join' | 'revoke'): Promise<void> => {
           generation++;
           // Invoke the SDK now: its secret buffers are retired synchronously.
           const pending = keyring.lockWallet();
+          // A storage-fault ACK finalizer must finish classifying its retained
+          // submission before its view is disposed. Generation revocation still
+          // refuses new work and every guarded persistence commit immediately.
+          const revocation = privacy === 'join'
+            ? Promise.all([pending, privacyLifecycle.invalidate()])
+            : pending;
           const ledgerRetirement = retireLedger(), trezorRetirement = retireTrezor();
           const hardwareCleanup = trezorRetirement ? Promise.all([ledgerRetirement, trezorRetirement]) : ledgerRetirement;
-          const retired = hardwareCleanup ? Promise.all([pending, hardwareCleanup]) : pending;
+          const retired = hardwareCleanup ? Promise.all([revocation, hardwareCleanup]) : revocation;
           state.accounts = initialState().accounts;
           catalogueSnapshot = null;
           authenticatedPair = null; verifiedIdentity = null;
@@ -655,6 +672,7 @@ export function createKeyringRuntimeFactory(
             });
           });
         };
+        const lock = () => revokeCustody('join');
         const closeRuntime = (capturePair: boolean, beforeClose?: () => Promise<void>): Promise<void> => {
           if (closing) return closing;
           let resolveClose!: () => void, rejectClose!: (error: KeyringRuntimeError) => void;
@@ -671,10 +689,13 @@ export function createKeyringRuntimeFactory(
           const work = active;
           let revocation: Promise<void>;
           try { revocation = lock(); } catch { revocation = Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED')); }
+          // Reuse the drain installed by lock. Its physical result is distinct
+          // from lock's deliberate rejection of an already-quarantined store.
+          const privacyRetirement = privacyLifecycle.invalidate();
           noteBackups?.dispose();
           void (async () => {
-            const [, revoked, trezorRetired, slhRetired] = await Promise.allSettled([work, revocation, trezorRetirement, slhRetirement, ...pendingSubmissions]);
-            let failed = trezorRetired?.status !== 'fulfilled' || slhRetired?.status !== 'fulfilled';
+            const [, revoked, trezorRetired, slhRetired, privacyRetired] = await Promise.allSettled([work, revocation, trezorRetirement, slhRetirement, privacyRetirement, ...pendingSubmissions]);
+            let failed = privacyRetired?.status !== 'fulfilled' || trezorRetired?.status !== 'fulfilled' || slhRetired?.status !== 'fulfilled';
             try { await keyring.lockWallet(); } catch { failed = true; }
             if (capturePair && !failed) {
               try {
@@ -1248,7 +1269,7 @@ export function createKeyringRuntimeFactory(
         const finalizePrivateDomain = async () => {
           if (privateDomainStorageFault === 'unreported') {
             privateDomainStorageFault = 'reopen';
-            try { await lock(); } catch { /* The owner remains quarantined. */ }
+            try { await revokeCustody('revoke'); } catch { /* The owner remains quarantined. */ }
           }
         };
         const runPrivateDomain = async <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
@@ -1723,10 +1744,39 @@ export function createKeyringRuntimeFactory(
           openNotes(assertOwner, (notes, session) => notes.bind(session));
         const openNoteCapacity: NonNullable<KeyringRuntime['openNoteCapacity']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => notes.bindCapacity(session));
+        const openPrivacyControls: NonNullable<KeyringRuntime['openPrivacyControls']> = (signal, assertOwner) =>
+          openNotes(assertOwner, (_notes, session) => {
+            const captured = generation, snapshot = catalogueSnapshot, selected = selectedAccount();
+            const network = snapshot && getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+            const settings = dependencies.privacyServiceSettings;
+            if (!network || network.chainId !== '1' || !settings || !openPrivacyPool) throw new KeyringRuntimeError('NOT_READY');
+            const check = () => {
+              current(captured); session.assertCurrent(); checkGuard(assertOwner);
+              if (signal.aborted || catalogueSnapshot !== snapshot || selectedAccount() !== selected) throw new KeyringRuntimeError('CANCELLED');
+            };
+            return createNativePrivacyControls({ settings, signal, assertCurrent: check, invalidate: () => privacyLifecycle.invalidate(),
+              openPool: (poolId, ownerSignal, guard) => openPrivacyPool(network, poolId, ownerSignal, guard) });
+          });
+        const openNoteMaintenanceUnowned: NonNullable<KeyringRuntime['openNoteMaintenance']> = (signal, assertOwner) =>
+          openNotes(assertOwner, (notes, session) => {
+            const captured = generation, snapshot = catalogueSnapshot, selected = selectedAccount();
+            const network = snapshot && getNativeNetwork(snapshot.active.networkId, snapshot.networks);
+            if (!network || network.chainId !== '1') throw new KeyringRuntimeError('NOT_READY');
+            const check = () => {
+              current(captured); session.assertCurrent(); checkGuard(assertOwner);
+              if (signal.aborted || catalogueSnapshot !== snapshot || selectedAccount() !== selected) throw new KeyringRuntimeError('CANCELLED');
+            };
+            check();
+            const proofs = createNativeNoteMaintenanceProofs({ network, signal, assertCurrent: check,
+              rpc: new EvmTransferReadRpc(network, { fetch: dependencies.connectionFetch ?? walletFetch }) });
+            return notes.bindMaintenance(session, proofs);
+          });
+        const openNoteMaintenance: NonNullable<KeyringRuntime['openNoteMaintenance']> = (signal, guard) =>
+          privacyLifecycle.open(signal, guard, (ownerSignal, check) => openNoteMaintenanceUnowned(ownerSignal, check), view => view.dispose(), (view, dispose) => Object.freeze({ ...view, dispose }));
         const readNoteInventory: NonNullable<KeyringRuntime['readNoteInventory']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => {
             const network = catalogueSnapshot?.networks.find(item => item.id === catalogueSnapshot!.active.networkId);
-            const openPool = dependencies.openPrivacyPool;
+            const openPool = openPrivacyPool;
             const selected = selectedAccount();
             const account = state.accounts[selected.type][selected.index];
             return notes.readInventory(session, network?.chainId === '1' && openPool ? async (id, poolId, guard) => {
@@ -1739,7 +1789,7 @@ export function createKeyringRuntimeFactory(
               ? (id, poolId, restored, signal, guard) => openPrivateWithdrawal(id, poolId, restored, signal, guard)
               : null);
           });
-        const openPrivateWithdrawal = async (
+        const openPrivateWithdrawalUnowned = async (
           noteId: string,
           poolId: PrivacyPoolId,
           restored: boolean,
@@ -1755,7 +1805,7 @@ export function createKeyringRuntimeFactory(
               snapshot!.active.networkId,
               snapshot!.networks
             );
-            const openPool = dependencies.openPrivacyPool;
+            const openPool = openPrivacyPool;
             const openServices = dependencies.openPrivacyWithdrawal;
             const account = state.accounts[selected.type][selected.index];
             if (network.chainId !== '1' || !openPool || !openServices || !supportsPrivateWithdrawal(selected.type, account))
@@ -2023,7 +2073,12 @@ export function createKeyringRuntimeFactory(
             throw error;
           }
         };
-        const openPrivateDeposit: NonNullable<KeyringRuntime['openPrivateDeposit']> = (
+        const openPrivateWithdrawal = (noteId: string, poolId: PrivacyPoolId, restored: boolean, signal: AbortSignal, guard: () => void) =>
+          privacyLifecycle.open(signal, guard, (ownerSignal, check) => openPrivateWithdrawalUnowned(noteId, poolId, restored, ownerSignal, check), view => view.dispose(), (view, dispose) => Object.freeze({
+            getSnapshot: view.getSnapshot.bind(view), subscribe: view.subscribe.bind(view), prepare: view.prepare.bind(view),
+            confirm: view.confirm.bind(view), refresh: view.refresh.bind(view), loadRelayers: view.loadRelayers.bind(view),
+            reviewRestored: view.reviewRestored.bind(view), dispose }));
+        const openPrivateDepositUnowned: NonNullable<KeyringRuntime['openPrivateDeposit']> = (
           signal,
           assertOwner
         ) =>
@@ -2034,7 +2089,7 @@ export function createKeyringRuntimeFactory(
               snapshot = catalogueSnapshot;
             const network = getNativeNetwork(snapshot!.active.networkId, snapshot!.networks);
             const account = state.accounts[selected.type][selected.index];
-            const openPool = dependencies.openPrivacyPool;
+            const openPool = openPrivacyPool;
             if (
               !openPool ||
               network.chainId !== '1' ||
@@ -2216,9 +2271,13 @@ export function createKeyringRuntimeFactory(
             signal.addEventListener('abort', abort, { once: true });
             return model;
           });
+        const openPrivateDeposit: NonNullable<KeyringRuntime['openPrivateDeposit']> = (signal, guard) =>
+          privacyLifecycle.open(signal, guard, (ownerSignal, check) => openPrivateDepositUnowned(ownerSignal, check), view => view.dispose(), (view, dispose) => Object.freeze({
+            getSnapshot: view.getSnapshot.bind(view), subscribe: view.subscribe.bind(view), prepare: view.prepare.bind(view),
+            confirm: view.confirm.bind(view), refresh: view.refresh.bind(view), dispose }));
         const openNoteImport: NonNullable<KeyringRuntime['openNoteImport']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => {
-            const openPool = dependencies.openPrivacyPool;
+            const openPool = openPrivacyPool;
             if (!openPool || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
             const network = catalogueSnapshot.networks.find((entry) => entry.id === catalogueSnapshot!.active.networkId);
             if (!network) throw new Error('privacy_wrong_chain');
@@ -4722,7 +4781,8 @@ export function createKeyringRuntimeFactory(
             catch (error) { revokeGeneration(); return task.then(() => { throw error; }); }
             return task;
           },
-          ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory,
+          ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, openNoteMaintenance,
+            ...(dependencies.privacyServiceSettings && openPrivacyPool ? { openPrivacyControls } : {}), readNoteInventory,
             ...(dependencies.openPrivacyPool ? { openNoteImport, openPrivateDeposit } : {}) } : {}),
           ...(storage.sentryNodes && dependencies.utxoFetch ? { getSentryKeyNetwork, openSentryNodeManagement } : {}),
           ...(storage.sentryNodes && storage.sentryKeys && dependencies.utxoFetch && typeof dependencies.runSentryCrypto === 'function'
@@ -5425,7 +5485,7 @@ export function createKeyringRuntimeFactory(
                 };
                 if (!noteBackups) await openNotes(checkPool, () => undefined);
                 checkPool();
-                const openPool = dependencies.openPrivacyPool;
+                const openPool = openPrivacyPool;
                 if (!openPool) throw new KeyringRuntimeError('NOT_READY');
                 if (owner.pool && owner.pool.poolId !== input.attempt.poolId)
                   throw new KeyringRuntimeError('CANCELLED');

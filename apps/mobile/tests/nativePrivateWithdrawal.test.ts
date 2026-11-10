@@ -23,6 +23,10 @@ import type { createNativePrivacyPoolSync } from '../src/privacy/nativePrivacyPo
 import type { IPrivateNoteStatus } from '../../../source/utils/privacy/privateVaultTypes.ts';
 import { PRIVACY_RELAYER_SOURCE } from '../../../source/utils/privacy/relayers.ts';
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
+import { identifyClassicNote } from '../../../source/utils/privacy/note.ts';
+import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
+import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
+import { PRIVACY_SERVICE_ORIGIN_STORAGE_KEY } from '../../../source/shared/privacyServiceOrigin.ts';
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import { readPrivateVaultBundle } from '../../../source/wallet/privateVaultInspection.ts';
 
@@ -34,6 +38,7 @@ const noop = () => undefined;
 const depositAbi = new Interface([
   'function deposit(bytes32) payable',
   'function withdraw(bytes,bytes32,bytes32,address,address,uint256,uint256)',
+  'event Withdrawal(address to, bytes32 nullifierHash, address indexed relayer, uint256 fee)',
 ]);
 const RECIPIENT = '0x' + '12'.repeat(20);
 
@@ -42,6 +47,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   const file = path.join(directory, 'wallet.sqlite');
   let storage!: SqliteWalletStorage;
   let initialized = false;
+  let privacySettings: ReturnType<typeof createNativePrivacyServiceSettings>;
   let runtime!: KeyringRuntime;
   let keyring!: InstanceType<typeof sdk.HostKeyring>;
   let privateState!: () => {
@@ -67,6 +73,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let beforeResponse: () => Promise<void> = async () => undefined;
   let lost = false;
   let failPoolDispose = false;
+  let completionReads = false, completionReverted = false;
   let noteStatus: IPrivateNoteStatus = { phase: 'waiting' };
   const posted: string[] = [];
   const relayedPosts: unknown[] = [];
@@ -94,6 +101,15 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         gasLimit: '0x1c9c380',
         baseFeePerGas: '0x2',
       };
+    else if (completionReads && (method === 'eth_getTransactionReceipt' || method === 'eth_getTransactionByHash')) {
+      const transaction = posted.map(raw => Transaction.from(raw)).find(tx => tx.hash === params[0]);
+      assert(transaction);
+      const shared = { to: transaction.to, value: '0x' + transaction.value.toString(16), chainId: '0x1', input: transaction.data, hash: transaction.hash, blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32), from: transaction.from, nonce: '0x' + transaction.nonce.toString(16) };
+      const action = depositAbi.parseTransaction({ data: transaction.data })!;
+      const event = action.name === 'withdraw' ? depositAbi.encodeEventLog(depositAbi.getEvent('Withdrawal')!, [action.args[3], action.args[2], action.args[4], action.args[5]]) : null;
+      result = method === 'eth_getTransactionByHash' ? shared : { transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, status: completionReverted && action.name === 'withdraw' ? '0x0' : '0x1', logs: event ? [{ address: transaction.to, transactionHash: transaction.hash, blockHash: shared.blockHash, blockNumber: shared.blockNumber, removed: false, ...event }] : [] };
+    }
+    else if (completionReads && method === 'eth_call') result = '0x' + '00'.repeat(32);
     else if (method === 'eth_getTransactionCount')
       result = '0x' + nonce.toString(16);
     else if (method === 'eth_getBalance') result = '0x56bc75e2d63100000';
@@ -137,7 +153,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  const factory = createKeyringRuntimeFactory({ slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -262,6 +278,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         !initialized
       );
       initialized = true;
+      privacySettings = createNativePrivacyServiceSettings(storage.keyringStorage);
       return storage;
     },
   });
@@ -274,6 +291,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     get storage() {
       return storage;
     },
+    enableCompletionReads(reverted = false) { completionReads = true; completionReverted = reverted; },
     markUnsupported(
       flag: 'isLedgerWallet' | 'isTrezorWallet' | 'isSmartAccount'
     ) {
@@ -864,4 +882,199 @@ test('deposit cancellation immediately after reservation commit clears only its 
     assert.equal(f.posted.length, 0);
     assert.equal((await f.privateNotes())[0]!.deposit, undefined);
   } finally { await f.close(); }
+});
+
+
+test('native maintenance clears only shared-verified completed notes and preserves unspent notes and custody', async () => {
+  const f = await fixture(); const route = new AbortController();
+  try {
+    const inventory = await f.seed();
+    await f.restore();
+    const withdrawalRoute = new AbortController();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop);
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    await model.confirm(model.getSnapshot().review!.intentId);
+    assert.equal(model.getSnapshot().phase, 'submitted');
+    withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads();
+    const before = await f.privateNotes(); assert.equal(before.length, 2);
+    const completed = before.find(note => note.withdrawal)!, unspent = before.find(note => !note.withdrawal)!;
+    assert(identifyClassicNote(completed.note).nullifierHash);
+    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop);
+    const localReads = f.rpcMethods.length;
+    const notes = await maintenance.getNotes(noop); assert.equal(notes.notes.length, 2);
+    assert.equal(f.rpcMethods.length, localReads, 'opening inventory performs no note-specific RPC');
+    assert.deepEqual(await maintenance.clearCompletedNote(unspent.id, noop), { removed: [], unresolved: [unspent.id] });
+    assert.deepEqual(await maintenance.clearCompletedNote(completed.id, noop), { removed: [completed.id], unresolved: [] });
+    assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
+    assert(f.runtime.catalogue.getSnapshot());
+    assert.equal(f.posted.length, 2, 'maintenance does not sign or broadcast');
+    route.abort(); await maintenance.dispose();
+    await f.runtime.session.lock(); await f.runtime.session.unlock(PASSWORD);
+    assert.deepEqual((await f.privateNotes()).map(note => note.id), [unspent.id]);
+  } finally { route.abort(); await f.close(); }
+});
+
+for (const cancel of ['route', 'lock'] as const) test(`native maintenance rolls back a completed-note removal when ${cancel} revokes SQL authority`, async () => {
+  let hold = false;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture({ async before(kind, sql) {
+    if (hold && kind === 'run' && sql.startsWith('INSERT INTO private_note_records')) { entered.resolve(); await release.promise; }
+  } });
+  const route = new AbortController();
+  try {
+    const inventory = await f.seed(); const withdrawalRoute = new AbortController();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop);
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
+    withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads();
+    const [note] = await f.privateNotes(); assert(note);
+    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop); hold = true;
+    const removed = assert.rejects(maintenance.clearCompletedNote(note.id, noop)); await entered.promise;
+    let retired: Promise<void>;
+    if (cancel === 'lock') retired = f.runtime.session.lock();
+    else { route.abort(); retired = maintenance.dispose(); }
+    release.resolve(); await removed; await retired; hold = false;
+    if (cancel === 'lock') await f.runtime.session.unlock(PASSWORD);
+    assert.deepEqual((await f.privateNotes()).map(saved => saved.id), [note.id]);
+    route.abort(); await maintenance.dispose(); await f.reopen();
+    assert.deepEqual((await f.privateNotes()).map(saved => saved.id), [note.id]);
+  } finally { hold = false; release.resolve(); route.abort(); await f.close(); }
+});
+
+
+test('native service-origin changes are guarded in the real protected SQL transaction and retain every note', async () => {
+  let hold = false;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture({ async before(kind, sql) {
+    if (hold && kind === 'run' && sql.startsWith('INSERT INTO keyring_records')) { entered.resolve(); await release.promise; }
+  } });
+  const route = new AbortController();
+  try {
+    await f.seed(); const before = await f.privateNotes();
+    const controls = await f.runtime.openPrivacyControls!(route.signal, noop), origin = await controls.getOrigin();
+    hold = true; const change = assert.rejects(controls.changeOrigin('https://private.example', origin));
+    await entered.promise; const locked = f.runtime.session.lock(); release.resolve(); await change; await locked; hold = false;
+    await f.runtime.session.unlock(PASSWORD);
+    assert.equal(await f.storage.keyringStorage.get(PRIVACY_SERVICE_ORIGIN_STORAGE_KEY), undefined);
+    assert.deepEqual(await f.privateNotes(), before);
+    const next = await f.runtime.openPrivacyControls!(route.signal, noop);
+    assert.equal(await next.changeOrigin('https://private.example', await next.getOrigin()), 'https://private.example');
+    await next.clearPublicData(); assert.deepEqual(await f.privateNotes(), before);
+    route.abort(); await f.reopen();
+    const fresh = await f.runtime.openPrivacyControls!(new AbortController().signal, noop);
+    assert.equal(await fresh.getOrigin(), 'https://private.example'); assert.deepEqual(await f.privateNotes(), before);
+  } finally { hold = false; release.resolve(); route.abort(); await f.close(); }
+});
+
+
+test('native failed-withdrawal recovery authenticates, preserves the original journal and never resubmits', async () => {
+  const f = await fixture(); const route = new AbortController();
+  try {
+    const inventory = await f.seed(), withdrawalRoute = new AbortController();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, withdrawalRoute.signal, noop);
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' }); await model.confirm(model.getSnapshot().review!.intentId);
+    withdrawalRoute.abort(); await model.dispose(); f.enableCompletionReads(true);
+    const [before] = await f.privateNotes(); assert(before?.withdrawal);
+    const maintenance = await f.runtime.openNoteMaintenance!(route.signal, noop);
+    assert((await maintenance.getNotes(noop)).notes[0]!.withdrawal?.canCheckRecovery);
+    await assert.rejects(maintenance.recoverFailedWithdrawal(before.id, PASSWORD + 'wrong', noop));
+    assert.equal((await f.privateNotes())[0]!.withdrawal?.recovery, undefined);
+    await maintenance.recoverFailedWithdrawal(before.id, PASSWORD, noop);
+    const [after] = await f.privateNotes(); assert(after?.withdrawal?.recovery);
+    assert.equal(after.note, before.note); assert.equal(after.withdrawal.transactionHash, before.withdrawal.transactionHash);
+    assert.equal(after.withdrawal.proofHash, before.withdrawal.proofHash); assert.equal(f.posted.length, 2);
+    assert.equal((await maintenance.getNotes(noop)).notes[0]!.withdrawal?.canCheckRecovery, undefined);
+    route.abort(); await maintenance.dispose(); await f.reopen();
+    assert.deepEqual((await f.privateNotes())[0]!.withdrawal?.recovery, after.withdrawal.recovery);
+  } finally { route.abort(); await f.close(); }
+});
+
+test('a service-origin change preserves unknown recovery after an unacknowledged financial handoff', async () => {
+  const f = await fixture(), route = new AbortController(), settingsRoute = new AbortController();
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  try {
+    const inventory = await f.seed();
+    const settings = await f.runtime.openPrivacyControls!(settingsRoute.signal, noop), origin = await settings.getOrigin();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop);
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    f.beforeResponse(async () => { entered.resolve(); await release.promise; });
+    const sending = model.confirm(model.getSnapshot().review!.intentId); await entered.promise;
+    const changing = settings.changeOrigin('https://private.example', origin); let changed = false;
+    void changing.then(() => { changed = true; });
+    await new Promise<void>(resolve => setImmediate(resolve)); await changing; assert.equal(changed, true);
+    const [note] = await f.privateNotes(); assert.equal(note?.withdrawal?.phase, 'unknown');
+    const saved = await f.storage.signedRecords.read((await f.storage.recovery.readIdentity())!.root!.profileId);
+    assert(saved); assert(JSON.parse(saved).entries.some((entry: { hash: string }) => entry.hash === Transaction.from(f.posted[1]!).hash));
+    release.resolve(); await sending; assert.equal((await f.privateNotes())[0]!.withdrawal?.phase, 'unknown');
+    assert.equal(f.posted.length, 2); assert.equal(await settings.getOrigin(), 'https://private.example');
+    route.abort(); settingsRoute.abort(); await model.dispose();
+  } finally { release.resolve(); route.abort(); settingsRoute.abort(); await f.close(); }
+});
+
+
+test('a service-origin change waits for durable recording of an already verified financial acknowledgement', async () => {
+  let holding = false;
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  const f = await fixture({ async before(kind, sql) {
+    if (holding && kind === 'run' && sql.startsWith('INSERT INTO private_note_records')) { entered.resolve(); await release.promise; }
+  } });
+  const route = new AbortController(), settingsRoute = new AbortController();
+  try {
+    const inventory = await f.seed();
+    const settings = await f.runtime.openPrivacyControls!(settingsRoute.signal, noop), origin = await settings.getOrigin();
+    const model = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop);
+    await model.prepare({ recipient: RECIPIENT, mode: 'direct' });
+    f.beforeResponse(async () => { holding = true; });
+    const sending = model.confirm(model.getSnapshot().review!.intentId); await entered.promise;
+    const changing = settings.changeOrigin('https://private.example', origin); let changed = false;
+    void changing.then(() => { changed = true; });
+    await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(changed, false);
+    release.resolve(); await sending; await changing; holding = false;
+    const [note] = await f.privateNotes(); assert.equal(note?.withdrawal?.phase, 'submitted');
+    assert.equal(note.withdrawal.transactionHash, Transaction.from(f.posted[1]!).hash); assert.equal(f.posted.length, 2);
+    route.abort(); settingsRoute.abort(); await model.dispose();
+  } finally { holding = false; release.resolve(); route.abort(); settingsRoute.abort(); await f.close(); }
+});
+
+
+for (const fault of ['release', 'quarantine-and-release'] as const) for (const retirement of ['close', 'recovery'] as const) test(`native ${retirement} retirement rejects ${fault} failure and never admits a recovery snapshot`, async () => {
+  let failRead = false;
+  const f = await fixture({ before(kind, sql) {
+    if (failRead && kind === 'all' && sql.startsWith("SELECT 'note' AS source")) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
+  } });
+  const route = new AbortController();
+  let recoveryOpens = 0, proof: unknown;
+  const recovery = new NativeRecoveryCoordinator({
+    owner: {
+      getSnapshot: () => ({ phase: 'locked', revision: 1, presence: 'existing', backup: 'unconfirmed', account: null, error: null }),
+      retireForRecovery: () => f.runtime.storage.retireForRecovery!(),
+    },
+    retireControllers: async () => undefined,
+    ensureCryptoReady: async () => undefined,
+    async openStorage() { recoveryOpens++; return f.storage; },
+  });
+  try {
+    if (fault === 'quarantine-and-release') {
+      const inventory = await f.seed();
+      const withdrawal = await inventory.openWithdrawal!(inventory.notes[0]!, route.signal, noop);
+      await withdrawal.prepare({ recipient: RECIPIENT, mode: 'direct' });
+      f.beforeResponse(async () => { failRead = true; });
+      await withdrawal.confirm(withdrawal.getSnapshot().review!.intentId);
+      assert.equal(f.runtime.catalogue.getSnapshot(), null, 'the store is already quarantined');
+      assert.equal(withdrawal.getSnapshot().phase, 'unknown'); failRead = false;
+      assert((await f.storage.notes!.read())[0]?.value, 'quarantine preserves the encrypted note row');
+    } else {
+      const controls = await f.runtime.openPrivacyControls!(route.signal, noop);
+      await controls.openPool('eth-1', route.signal, noop);
+    }
+    const previousDisposals = f.disposed; f.failPoolCleanup();
+    if (retirement === 'close') await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });
+    await assert.rejects(recovery.prepare(PHRASE, PASSWORD + 'new', noop).then(value => { proof = value; }), { code: 'UNAVAILABLE' });
+    assert.equal(proof, undefined); assert.equal(recoveryOpens, 0, 'failed retirement never grants a new storage/snapshot lease');
+    await assert.rejects(f.runtime.storage.retireForRecovery!(), { code: 'CLEANUP_FAILED' });
+    await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });
+    await assert.rejects(f.storage.readState(), { code: 'STORAGE_CLOSED' });
+    await assert.rejects(f.runtime.session.unlock(PASSWORD));
+    assert.equal(f.disposed, previousDisposals + 1, 'failed exact cleanup is not repeated or hidden');
+    assert.equal(f.posted.length, fault === 'release' ? 0 : 2);
+  } finally { failRead = false; route.abort(); await recovery.dispose(); await f.close(); }
 });

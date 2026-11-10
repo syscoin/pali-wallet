@@ -749,7 +749,7 @@ test('a failed exact release does not admit another snapshot or any anchor', asy
     message: 'privacy_verification_pending',
   });
   assert.equal(reservations, 1);
-  await sync.dispose();
+  await assert.rejects(sync.dispose(), /Release unconfirmed/);
 });
 
 test('an elapsed owner cannot publish the verified cache after the final RPC decoded', async (context) => {
@@ -778,4 +778,28 @@ test('an elapsed owner cannot publish the verified cache after the final RPC dec
     message: 'privacy_verification_pending',
   });
   await sync.dispose();
+});
+
+
+test('native public-data pause waits for a held physical drain and clear invalidates ready readers', async () => {
+  const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let held = true;
+  const provider = fixture(snapshot(), { async release(kind) { if (held && kind === 'snapshot') { entered.resolve(); await release.promise; } } });
+  const { sync } = create(provider.transport);
+  try {
+    const reading = assert.rejects(sync.refresh(), /privacy_cancelled/); await entered.promise;
+    let paused = false; const pausing = sync.pause().then(status => { paused = true; return status; });
+    await assert.rejects(sync.refresh(), /privacy_verification_pending/);
+    await assert.rejects(sync.clear(), /privacy_verification_pending/);
+    await new Promise<void>(resolve => setImmediate(resolve)); assert.equal(paused, false);
+    held = false; release.resolve(); await reading; assert.equal((await pausing).phase, 'paused');
+    const count = provider.requests.length; assert.equal((await sync.getStatus()).phase, 'paused');
+    assert.equal(provider.requests.length, count, 'pause never restarts public reads');
+    assert.equal((await sync.refresh()).phase, 'ready');
+    await sync.readSnapshot(poolId);
+    assert.equal((await sync.clear()).phase, 'idle');
+    await assert.rejects(sync.readSnapshot(poolId));
+    const cleared = provider.requests.length; assert.equal((await sync.getStatus()).phase, 'idle');
+    assert.equal(provider.requests.length, cleared, 'clear does not start another sync');
+  } finally { release.resolve(); await sync.dispose(); }
 });

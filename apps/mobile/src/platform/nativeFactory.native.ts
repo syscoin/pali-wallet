@@ -1,3 +1,6 @@
+import { createNativePrivacyServiceSettings } from './privacyServiceSettings.native';
+import type { NativePrivacyControls } from '../privacy/privacyControls';
+import type { NativeNoteMaintenanceRuntime , NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime';
 import type { NativeSlhDsaManagement } from '../smartAccount/slhDsaManagement';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard';
 import { NativeLedgerAccounts } from '../custody/ledgerAccounts.ts';
@@ -50,7 +53,6 @@ import { NativeRecoveryCoordinator } from '../custody/recovery.ts';
 import { NativeWalletRemoval } from '../custody/walletRemoval.ts';
 import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
 import type { OpenWalletStorage } from '../storage/types.ts';
-import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
 import type { NativeNoteImportRuntime } from '../custody/noteImport.ts';
 import type { NativeUtxoSend } from '../custody/utxoSend.ts';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement.ts';
@@ -70,10 +72,19 @@ function custodyGuard() {
   return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
 }
 function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard(), deviceUnlock = createNativeDeviceUnlockCapability(), trezorSessions?: NativeTrezorSessions) {
+  let privacySettings: ReturnType<typeof createNativePrivacyServiceSettings> | undefined;
+  const getPrivacySettings = () => {
+    if (!privacySettings) throw new CustodyOperationError('CANCELLED');
+    return privacySettings;
+  };
   const scopedUtxoReader = (network: UtxoNetwork) => createUtxoBalanceReader({
     fetch: isCustomUtxoNetworkId(network.id) ? exactUtxoResponseFetch(walletFetch) : walletFetch,
   });
   return createKeyringRuntimeFactory({
+    privacyServiceSettings: {
+      getOrigin: () => getPrivacySettings().getOrigin(),
+      changeOrigin: (value, invalidate, expected, guard) => getPrivacySettings().changeOrigin(value, invalidate, expected, guard),
+    },
     // Full native SLH primitive/cache qualification is required before activation.
     slhExecution: null,
     assertActive,
@@ -88,28 +99,28 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     },
     async openPrivacyPool(network, poolId, lifetime, assertCurrent) {
       const [{ createNativePrivacyPoolSync }, { createNativePublicSnapshotTransport },
-        { createNativePublicMerkleExecutor }, { nativePrivacyServiceSettings }] = await Promise.all([
+        { createNativePublicMerkleExecutor }] = await Promise.all([
         import('../privacy/nativePrivacyPoolSync.ts'), import('../privacy/publicSnapshotNative.native.ts'),
-        import('../crypto/native'), import('./privacyServiceSettings.native.ts'),
+        import('../crypto/native'),
       ]);
       assertCurrent();
-      const service = await nativePrivacyServiceSettings.capture();
+      const settings = getPrivacySettings();
+      const service = await settings.capture();
       assertCurrent();
       return createNativePrivacyPoolSync({ network, poolId, lifetime,
         service: { origin: service.origin, assertCurrent() { service.assertCurrent(); assertCurrent(); } },
         transport: createNativePublicSnapshotTransport(), executeMerkleBatch: createNativePublicMerkleExecutor() });
     },
     async openPrivacyWithdrawal(signal, assertCurrent) {
-      const [{ provePrivacyWithdrawal }, { runNativePrivacyProof }, { createPrivacyRelayerClient },
-        { nativePrivacyServiceSettings }] = await Promise.all([
+      const [{ provePrivacyWithdrawal }, { runNativePrivacyProof }, { createPrivacyRelayerClient }] = await Promise.all([
         import('../../../../source/utils/privacy/withdrawal.ts'),
         import('../../modules/pali-private-prover'),
         import('../../../../source/utils/privacy/relayers.ts'),
-        import('./privacyServiceSettings.native.ts'),
       ]);
       assertCurrent();
       if (signal.aborted) throw new CustodyOperationError('CANCELLED');
-      const service = await nativePrivacyServiceSettings.capture();
+      const settings = getPrivacySettings();
+      const service = await settings.capture();
       const check = () => {
         assertCurrent();
         service.assertCurrent();
@@ -125,9 +136,9 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
         relayers: createPrivacyRelayerClient({
           fetcher: walletFetch as typeof fetch,
           getDirectoryUrl: async () => { check(); return `${service.origin}/api/privacy/v1/relayers`; },
-          getServiceRevision: nativePrivacyServiceSettings.getRevision,
+          getServiceRevision: settings.getRevision,
           assertServiceCurrent: (revision) => {
-            nativePrivacyServiceSettings.assertStable(revision);
+            settings.assertStable(revision);
             check();
           },
         }),
@@ -155,6 +166,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
     openStorage: async () => {
       const storage = await openStorage();
+      privacySettings = createNativePrivacyServiceSettings(storage.keyringStorage);
       onStorageOpened?.(storage);
       return storage;
     },
@@ -559,6 +571,22 @@ export function createNativeWalletControllers() {
     const send = await observeFailure(() => open(assertCurrent));
     return Object.freeze<NativeUtxoSend>({ ...send, confirm: (view) => observeFailure(() => send.confirm(view)) });
   };
+  const openNoteMaintenance = async (signal: AbortSignal, assertOwner: () => void): Promise<NativeNoteMaintenanceRuntime> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    if (!selected.openNoteMaintenance) throw new CustodyOperationError('NOT_READY');
+    const value = await observeFailure(() => selected.openNoteMaintenance!(signal, assertCurrent));
+    return Object.freeze({
+      dispose: value.dispose,
+      getNotes: guard => observeFailure(() => value.getNotes(guard)),
+      clearCompletedNote: (id, guard) => observeFailure(() => value.clearCompletedNote(id, guard)),
+      recoverFailedWithdrawal: (id, password, guard) => observeFailure(() => value.recoverFailedWithdrawal(id, password, guard)),
+    });
+  };
+  const openPrivacyControls = async (signal: AbortSignal, assertOwner: () => void): Promise<NativePrivacyControls> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    if (!selected.openPrivacyControls) throw new CustodyOperationError('NOT_READY');
+    return observeFailure(() => selected.openPrivacyControls!(signal, assertCurrent));
+  };
   const openNoteCapacity = async (assertOwner: () => void): Promise<NativeNoteCapacityRuntime> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const open = selected.openNoteCapacity;
@@ -630,6 +658,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, sentry, recipientResolver, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, sentry, recipientResolver, openSlhDsaManagement, canManageSlhDsa: () => runtime?.canManageSlhDsa() === true, canSignSmartAccount: () => runtime?.canSignSmartAccount() === true, guardianRecovery, authentication: deviceUnlock.prompt, ledger, ledgerConnection, trezor, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, openGuardianPolicy, inspectGuardianRemoval, canManageGuardianPolicy: () => runtime?.canManageGuardianPolicy() === true, canUseWalletAuthenticator: () => runtime?.canUseWalletAuthenticator() === true, openWalletAuthenticator, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, openNoteMaintenance, openPrivacyControls, readNoteInventory, openNoteImport, openPrivateDeposit, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

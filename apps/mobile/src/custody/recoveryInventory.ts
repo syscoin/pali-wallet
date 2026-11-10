@@ -1,3 +1,4 @@
+import { PRIVACY_SERVICE_ORIGIN_STORAGE_KEY, normalizePrivacyServiceOrigin } from '../../../../source/shared/privacyServiceOrigin.ts';
 import { captureSLHDSAEncryptedStateEnvelope, parseSLHDSAStateStorageKey } from '../../../../source/wallet/slhDsaState.ts';
 import { captureSLHDSAProfileStateEnvelope } from '../../../../source/wallet/slhDsaStateCrypto.ts';
 import { normalizeSentryServiceSettings, parseSentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
@@ -42,6 +43,11 @@ export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['reco
       const state = captureSLHDSAEncryptedStateEnvelope(decodeStorageValue(value), slhKeyId);
       const encrypted = captureSLHDSAProfileStateEnvelope(state.cipherText, slhKeyId);
       if (profileId === null || encrypted.profileId !== profileId) throw new Error('NATIVE_STORAGE_INVALID_SLH_PROFILE');
+      continue;
+    }
+    if (key === PRIVACY_SERVICE_ORIGIN_STORAGE_KEY) {
+      const origin = decodeStorageValue(value);
+      if (typeof origin !== 'string' || normalizePrivacyServiceOrigin(origin) !== origin) throw Error('NATIVE_STORAGE_INVALID_PRIVACY_SERVICE');
       continue;
     }
     if (parseSentrySettingsStorageKey(key)) {
