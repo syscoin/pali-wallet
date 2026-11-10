@@ -49,6 +49,11 @@ type NativeNoteBackupPorts = Readonly<{
   requireReopen(): void;
   run<T>(operation: () => Promise<T>): Promise<T>;
 }>;
+type NativeNoteAcknowledgement = Readonly<{
+  session: IPrivateVaultSession;
+  retain(): void;
+  settle(): void;
+}>;
 
 export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   let capture: IPrivateVaultSession | undefined;
@@ -148,7 +153,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     vault,
   });
   return {
-    openDeposit(session: IPrivateVaultSession, acknowledgementSession: IPrivateVaultSession, readNote: IPrivacyNoteReader) {
+    openDeposit(session: IPrivateVaultSession, acknowledgement: NativeNoteAcknowledgement, readNote: IPrivacyNoteReader) {
       const operational = createVault(readNote, null);
       return Object.freeze({
         prepareNote: (poolId: Parameters<typeof operational.prepareDepositNote>[0], noteId?: string) =>
@@ -156,26 +161,26 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
         withCommitment: <T>(noteId: string, use: (commitment: string) => T) =>
           ports.run(() => operational.withDepositCommitment(noteId, session, use)),
         reserve: (attempt: IPrivacyDepositAttempt, onFence: (guard: () => void) => void) =>
-          ports.run(() => operational.reserveDepositAttempt(attempt, session, onFence)),
+          ports.run(() => operational.reserveDepositAttempt(attempt, session, guard => { acknowledgement.retain(); onFence(guard); })),
         recordBroadcast: (attempt: IPrivacyDepositAttempt, hash: string) =>
-          operational.recordDepositBroadcast(attempt, hash, acknowledgementSession),
+          operational.recordDepositBroadcast(attempt, hash, acknowledgement.session).finally(acknowledgement.settle),
         recordNotBroadcast: (attempt: IPrivacyDepositAttempt) =>
-          operational.clearUnbroadcastDepositAttempt(attempt, acknowledgementSession),
+          operational.clearUnbroadcastDepositAttempt(attempt, acknowledgement.session).finally(acknowledgement.settle),
         readStatus: (noteId: string) => ports.run(() => operational.readNoteStatus(noteId, session)),
       });
     },
-    openWithdrawal(session: IPrivateVaultSession, acknowledgementSession: IPrivateVaultSession, readNote: IPrivacyNoteReader) {
+    openWithdrawal(session: IPrivateVaultSession, acknowledgement: NativeNoteAcknowledgement, readNote: IPrivacyNoteReader) {
       const operational = createVault(readNote, null);
       return Object.freeze({
         withNote: <T>(noteId: string, use: (note: string, poolId: PrivacyPoolId) => Promise<T>) =>
           ports.run(() => operational.withWithdrawalNote(noteId, session, use)),
         getAttempt: (noteId: string) => ports.run(() => operational.getWithdrawalAttempt(noteId, session)),
         reserve: (attempt: IPrivacyWithdrawalAttempt, onFence: (guard: () => void) => void) =>
-          ports.run(() => operational.reserveWithdrawalAttempt(attempt, session, (identity) => onFence(identity.assertRestoreCurrent))),
-        recordSubmission: (attempt: IPrivacyWithdrawalAttempt, acknowledgement: Parameters<typeof operational.recordWithdrawalSubmission>[1]) =>
-          operational.recordWithdrawalSubmission(attempt, acknowledgement, acknowledgementSession),
+          ports.run(() => operational.reserveWithdrawalAttempt(attempt, session, identity => { acknowledgement.retain(); onFence(identity.assertRestoreCurrent); })),
+        recordSubmission: (attempt: IPrivacyWithdrawalAttempt, response: Parameters<typeof operational.recordWithdrawalSubmission>[1]) =>
+          operational.recordWithdrawalSubmission(attempt, response, acknowledgement.session).finally(acknowledgement.settle),
         recordNotBroadcast: (attempt: IPrivacyWithdrawalAttempt) =>
-          operational.clearUnbroadcastWithdrawalAttempt(attempt, acknowledgementSession),
+          operational.clearUnbroadcastWithdrawalAttempt(attempt, acknowledgement.session).finally(acknowledgement.settle),
         recordJobStatus: (noteId: string, attemptHash: string, acknowledgement: Parameters<typeof operational.recordWithdrawalJobStatus>[2]) =>
           ports.run(() => operational.recordWithdrawalJobStatus(noteId, attemptHash, acknowledgement, session)),
         readStatus: (noteId: string) => ports.run(() => operational.readNoteStatus(noteId, session)),

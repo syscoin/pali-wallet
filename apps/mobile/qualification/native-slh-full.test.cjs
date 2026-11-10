@@ -29,7 +29,7 @@ const signed = (count, fallback = false) => ({
   mutatedSignatureRefused: true,
   mutatedActionRefused: true,
   native: {
-    loads: fallback ? 0 : 1,
+    loads: 1,
     setups: 0,
     prelude: 1,
     fors: fallback ? 0 : 6,
@@ -95,6 +95,9 @@ test('full SLH public evidence requires exact profile, native FORS/finish/fallba
     },
     (r) => {
       r.healthy.native.loads = 0;
+    },
+    (r) => {
+      r.fallback.native.loads = 0;
     },
     (r) => {
       r.healthy.native.fors = 5;

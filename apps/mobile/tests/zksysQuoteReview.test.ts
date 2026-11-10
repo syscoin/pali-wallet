@@ -1,3 +1,5 @@
+import { unsignedTransferBytes } from '../src/custody/evmFeeContracts.ts';
+import { createTestOperationAuthorizer } from './fixtures/operationAuthorization.ts';
 import { emptyNoncePlanner } from './noncePlannerFixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -29,7 +31,10 @@ function fixture() {
       locks++;
     },
   };
+  const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
   const runtime = {
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
     async authenticateOperation(_credential: unknown, check: () => void) { check(); },
     async journal() {
       return {
@@ -124,7 +129,7 @@ for (const kind of ['base-fee', 'nonce'] as const) {
       if (kind === 'base-fee') f.setBaseFee('0x12c');
       else f.setNonce('0x1');
       await assert.rejects(
-        f.controller.confirm(review.id, { method: 'password', password: 'public-password' }),
+        f.controller.confirm(review.id, { method: 'pin', pin: '123456' }),
         { code: 'EXPIRED' }
       );
       const state = f.controller.getSnapshot();
@@ -161,7 +166,7 @@ for (const kind of ['base-fee', 'nonce'] as const) {
       if (kind === 'base-fee') f.setBaseFee('0xnot-a-quantity');
       else f.setNonce('0xnot-a-quantity');
       await assert.rejects(
-        f.controller.confirm(review.id, { method: 'password', password: 'public-password' }),
+        f.controller.confirm(review.id, { method: 'pin', pin: '123456' }),
         { code: 'FAILED' }
       );
       const state = f.controller.getSnapshot();

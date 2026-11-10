@@ -48,6 +48,7 @@ const unavailable = async (): Promise<never> => { throw Error('Unplanned wallet-
 
 function storagePort(read: () => RecoveryStorageSnapshot, removal?: OpenWalletStorage['removal']): OpenWalletStorage {
   return {
+    pin: { installationId: installation, read: unavailable, beginAttempt: unavailable, completeAttempt: unavailable, replace: unavailable },
     keyringStorage: { get: unavailable, set: unavailable, deleteItem: unavailable, createManyIfAbsent: unavailable, compareAndSet: unavailable, compareAndSetMany: unavailable },
     signedRecords: { read: unavailable, compareAndSet: unavailable },
     authGuard: { checkAllowed: unavailable, recordFailure: unavailable, recordSuccess: unavailable },

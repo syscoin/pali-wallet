@@ -1,12 +1,13 @@
 import type { NativeCustodyAuthority } from './authority.ts';
 import { KeyringRuntimeError, type KeyringRuntime } from './keyringRuntime.ts';
+import type { NativeOperationCredential } from './types.ts';
 
 export type SeedBackupPresentation = Readonly<{
   id: string;
   words: readonly string[];
 }>;
 
-type PresentationOwner = Readonly<{ id: string; revision: number; fingerprint: string; runtime: KeyringRuntime['backup'] }>;
+type PresentationOwner = { id: string; revision: number; fingerprint: string; runtime: KeyringRuntime['backup']; words: readonly string[]; attempts: number };
 
 /** Secret presentation is short-lived and never part of a public snapshot. */
 export class SeedBackupFlow {
@@ -48,7 +49,7 @@ export class SeedBackupFlow {
     this.cancelling = false;
   }
 
-  async begin(password: string): Promise<SeedBackupPresentation> {
+  async begin(password: NativeOperationCredential | string): Promise<SeedBackupPresentation> {
     if (this.disposed) throw new Error('BACKUP_EXPIRED');
     if (this.busy) throw new Error('BUSY');
     const state = this.authority.getSnapshot();
@@ -72,21 +73,22 @@ export class SeedBackupFlow {
       const id = globalThis.crypto.randomUUID();
       current();
       const presentation = Object.freeze({ id, words: Object.freeze([...words]) });
-      this.presentation = { id, fingerprint, revision: state.revision, runtime };
+      this.presentation = { id, fingerprint, revision: state.revision, runtime, words: presentation.words, attempts: 0 };
       return presentation;
     } catch (error) {
       this.cancel();
-      this.authority.lock();
+      const refusal = error instanceof KeyringRuntimeError &&
+        (error.code === 'INVALID_CREDENTIAL' || error.code === 'AUTH_THROTTLED' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE');
+      if (!refusal) this.authority.lock();
       if (error instanceof Error && error.message === 'CANCELLED') throw new Error('CANCELLED');
-      if (error instanceof KeyringRuntimeError &&
-        (error.code === 'INVALID_CREDENTIAL' || error.code === 'AUTH_THROTTLED'))
+      if (refusal)
         throw new Error(error.code);
       throw new Error('BACKUP_UNAVAILABLE');
     } finally { this.busy = false; }
   }
 
-  /** Save the user's acknowledgement, not proof that they know the phrase. */
-  async acknowledge(id: string): Promise<void> {
+  /** Verify every supplied word before marking this protected presentation backed up. */
+  async confirm(id: string, answers: readonly string[]): Promise<void> {
     if (this.disposed) throw new Error('BACKUP_EXPIRED');
     if (this.busy) throw new Error('BUSY');
     const presentation = this.presentation;
@@ -94,6 +96,15 @@ export class SeedBackupFlow {
     const runtime = this.runtime();
     if (!presentation || !runtime || presentation.runtime !== runtime || presentation.id !== id || presentation.revision !== state.revision ||
       !['ready', 'backup-required'].includes(state.phase)) throw new Error('BACKUP_EXPIRED');
+    const matches = Array.isArray(answers) && answers.length === presentation.words.length &&
+      presentation.words.every((word, index) => {
+        const slot = Object.getOwnPropertyDescriptor(answers, String(index));
+        return slot && 'value' in slot && typeof slot.value === 'string' && slot.value.trim().toLowerCase() === word;
+      });
+    if (!matches) {
+      if (++presentation.attempts >= 5) { this.cancel(); this.authority.lock(); throw new Error('BACKUP_EXPIRED'); }
+      throw new Error('BACKUP_WORDS_MISMATCH');
+    }
     this.busy = true;
     const operation = this.operation;
     const current = () => {

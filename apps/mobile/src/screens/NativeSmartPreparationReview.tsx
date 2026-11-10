@@ -58,7 +58,10 @@ export function NativeSmartPreparationReview({ review, controller }: { review: R
     retryMetadata={() => { if (isCurrent() && !blocked) void controller.retrySmartPreparationMetadata(review.id, review.revision).catch(() => undefined); }}
     before={<>{site}{error}{retry}</>} />;
   const authenticator = t(review.requestedAuthenticatorId === 'ecdsa' ? 'settings.ecdsaAuthenticator' : review.requestedAuthenticatorId === 'p256-webauthn' ? 'settings.passkeyAuthenticator' : review.requestedAuthenticatorId === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : 'settings.unavailable');
-  return <SafeAreaView style={s.safe} edges={['top', 'bottom']}><Screen key={review.id}>
+  return <SafeAreaView style={s.safe} edges={['top', 'bottom']}><Screen key={review.id} footer={<>
+    <Button title={t(review.canRetry ? 'settings.smartAccountMetadataRetry' : 'buttons.confirm')} disabled={blocked || !!review.error && !review.canRetry || !!review.externalOwners.length && !assent} onPress={approve} />
+    <Button title={t('buttons.reject')} variant="secondary" onPress={reject} />
+  </>}>
     <Header title={t('connections.prepareSmartAccountTitle')} onBack={reject} />
     {site}
     <Card style={s.card}>
@@ -77,8 +80,7 @@ export function NativeSmartPreparationReview({ review, controller }: { review: R
     </Card>}
     {error}
     {review.busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('buttons.loading')} />}
-    <Button title={t(review.canRetry ? 'settings.smartAccountMetadataRetry' : 'buttons.confirm')} disabled={blocked || !!review.error && !review.canRetry || !!review.externalOwners.length && !assent} onPress={approve} />
-    <Button title={t('buttons.reject')} variant="secondary" onPress={reject} />
+
   </Screen></SafeAreaView>;
 }
 const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, muted: { color: colors.muted }, address: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, choice: { flexDirection: 'row', alignItems: 'center', gap: 12 }, choiceText: { flex: 1 } });

@@ -34,9 +34,9 @@ export function TransactionDetails({ transaction }: { transaction: object }) {
     {pages > 1 && <>
       <Text style={s.muted}>Page {page + 1} of {pages}</Text>
       <View style={s.pagination}>
-        <Button title="Previous page" variant="quiet" size="compact" disabled={page === 0}
+        <Button title="Previous page" icon="arrow-left" variant="secondary" size="compact" disabled={page === 0}
           onPress={() => setPage(page - 1)} style={s.pageButton} />
-        <Button title="Next page" variant="quiet" size="compact" disabled={page + 1 === pages}
+        <Button title="Next page" icon="arrow-right" variant="secondary" size="compact" disabled={page + 1 === pages}
           onPress={() => setPage(page + 1)} style={s.pageButton} />
       </View>
     </>}
@@ -186,14 +186,14 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
           </Text>
           <Button
             title="Use dapp fee anyway"
-            variant="quiet" size="compact"
+            variant="secondary" size="compact"
             disabled={feeChoicesDisabled}
             onPress={() => chooseFee('dapp')}
           />
           {comparison.recommendationOnly && (
             <Button
               title="Use network suggestion"
-              variant="quiet" size="compact"
+              variant="secondary" size="compact"
               disabled={feeChoicesDisabled}
               onPress={() => chooseFee('network')}
             />

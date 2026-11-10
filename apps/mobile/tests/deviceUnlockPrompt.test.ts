@@ -9,36 +9,28 @@ function fixture() {
   return { prompt, listeners, emit(value: string) { if (value !== 'blur' && value !== 'focus') state = value; for (const listener of listeners) listener(value); } };
 }
 
-test('a protected result waits for foreground after the OS prompt', async () => {
+test('a protected result returned before foreground is discarded without waiting', async () => {
   const f = fixture();
   let finish!: (value: string) => void;
   const operation = f.prompt.run(() => new Promise<string>(resolve => { finish = resolve; }));
   assert.equal(f.prompt.isActive(), true);
   f.emit('inactive');
   finish('protected result');
-  let settled = false; void operation.then(() => { settled = true; });
-  await Promise.resolve(); await Promise.resolve();
-  assert.equal(settled, false);
+  await assert.rejects(operation, /DEVICE_UNLOCK_UNAVAILABLE/);
   f.emit('active');
-  assert.equal(await operation, 'protected result');
   assert.equal(f.prompt.isActive(), false);
   assert.equal(f.listeners.size, 0);
 });
 
-test('Android blur withholds an available credential until focus returns', async () => {
+test('Android blur discards and clears an available credential instead of retaining it', async () => {
   const f = fixture();
-  let finish!: () => void;
-  const operation = f.prompt.run(() => new Promise<void>(resolve => { finish = resolve; }));
-  f.emit('blur'); finish();
-  let settled = false; void operation.then(() => { settled = true; });
-  await Promise.resolve(); await Promise.resolve();
-  assert.equal(settled, false);
-  f.emit('focus'); f.emit('blur');
-  await Promise.resolve(); await Promise.resolve();
-  assert.equal(settled, false);
+  let finish!: (result: Uint8Array) => void;
+  const bytes = new Uint8Array([1, 2, 3]);
+  const operation = f.prompt.run(() => new Promise<Uint8Array>(resolve => { finish = resolve; }));
+  f.emit('blur'); finish(bytes);
+  await assert.rejects(operation, /DEVICE_UNLOCK_UNAVAILABLE/);
+  assert.deepEqual([...bytes], [0, 0, 0]);
   f.emit('focus');
-  await operation;
-  assert.equal(settled, true);
   assert.equal(f.listeners.size, 0);
 });
 
@@ -56,11 +48,13 @@ test('real background and explicit cancellation refuse a late protected result',
   }
 });
 
-test('a cancelled foreground wait drains and the next independent attempt can run', async () => {
+test('cancellation drains the native operation before a new independent attempt can run', async () => {
   const f = fixture();
-  const result = f.prompt.run(async () => { f.emit('inactive'); return 'old'; });
-  await Promise.resolve();
+  let finish!: (result: string) => void;
+  const result = f.prompt.run(() => new Promise<string>(resolve => { finish = resolve; }));
   f.prompt.cancel();
+  await assert.rejects(f.prompt.run(async () => 'too early'), /DEVICE_UNLOCK_UNAVAILABLE/);
+  finish('old');
   await assert.rejects(result, /DEVICE_UNLOCK_UNAVAILABLE/);
   f.emit('active');
   assert.equal(await f.prompt.run(async () => 'new'), 'new');

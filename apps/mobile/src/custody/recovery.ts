@@ -4,7 +4,7 @@ import { getSLHDSAKeyId } from '../../../../source/utils/slhDsa/constants.ts';
 import { normalizeSLHDSAPublicKeyField } from '../../../../source/utils/slhDsa/hex.ts';
 import { decodeStorageValue } from '../storage/json.ts';
 import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
-import { isNativeNewPassword } from './password.ts';
+import { createNativePinVault, isNativePin, type NativePinCredentialPort } from './pinVault.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type RecoveryWritePlan } from '../storage/types.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
@@ -16,6 +16,7 @@ import { recoveryVerificationRecords,
   WALLET_CATALOGUE_KEY,
   type NativeAccountRecord } from './walletCatalogue.ts';
 import { stageAccountRecovery } from '../../../../source/wallet/accountRecovery.ts';
+import { createPrivateVaultSession } from '../../../../source/wallet/privateVaultInspection.ts';
 import { createSentryKeyVault, sentryKeyVaultStorageKey } from '../../../../source/wallet/sentryKeyVault.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 
@@ -29,6 +30,7 @@ declare const proofBrand: unique symbol;
 export type RecoveryProof = Readonly<{ [proofBrand]: true }>;
 type Ready = { proof: RecoveryProof; storage: OpenWalletStorage; plan: RecoveryWritePlan; before: RecoveryStorageSnapshot; after: RecoveryStorageSnapshot; generation: number; deadline: number; guard: () => void };
 type Dependencies = Readonly<{
+  pinCredential: NativePinCredentialPort | null;
   owner: Pick<NativeCustodyAuthority, 'getSnapshot' | 'retireForRecovery'>;
   retireControllers(): Promise<void>;
   ensureCryptoReady(): Promise<void>;
@@ -141,7 +143,7 @@ export class NativeRecoveryCoordinator {
       if (this.disposed || this.completed || this.unavailable || (this.retired && this.ownedPair === null) || (!this.retired && owner.phase !== 'locked')) return reject('NOT_READY');
     } catch { return reject('UNAVAILABLE'); }
     if (typeof phrase !== 'string' || !phrase.isWellFormed() || phrase.length > 4096 ||
-        !isNativeNewPassword(password) || typeof assertCurrent !== 'function')
+        !isNativePin(password) || typeof assertCurrent !== 'function')
       return reject('INVALID_INPUT');
     const normalized = phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ');
     const generation = ++this.generation;
@@ -167,7 +169,9 @@ export class NativeRecoveryCoordinator {
         check(); await this.dependencies.ensureCryptoReady(); check();
         storage ??= await this.dependencies.openStorage(); check();
         const port = storage.recovery;
-        if (!port?.prepareReplacement || !port.plannedSnapshot || !port.commitReplacement || !port.recordFailureForPair) return fail('UNAVAILABLE');
+        if (!port?.prepareReplacement || !port.plannedSnapshot || !port.commitReplacement || !port.recordFailureForPair || !port.fingerprintPair || !this.dependencies.pinCredential) return fail('UNAVAILABLE');
+        const pinVault = createNativePinVault(storage.pin, this.dependencies.pinCredential);
+        const secret = pinVault.createSecret();
         const before = await port.readSnapshot(); check();
         if (this.ownedPair !== before.identity?.pairFingerprint) return fail('STATE_CHANGED');
         if (!before.identity || inspectRecoveryInventory(before).status !== 'needs-matching-phrase-verification') return fail('INVALID_SAVED_DATA');
@@ -182,7 +186,7 @@ export class NativeRecoveryCoordinator {
             groups: records.groups,
             imported: records.recovery,
             phrase: normalized,
-            password,
+            password: secret,
           },
           {
             assertCurrent: check,
@@ -244,7 +248,7 @@ export class NativeRecoveryCoordinator {
                 const { readPrivateVaultBundle } = await import('../../../../source/wallet/privateVaultInspection.ts'); check();
           for (const row of before.notes) {
             if (row.walletBindingId !== before.identity!.walletBindingId || row.profileId !== profileId) return fail('INVALID_SAVED_DATA');
-            try { await readPrivateVaultBundle(JSON.parse(row.value), { keyring, generation, assertCurrent: check }); check(); }
+            try { await readPrivateVaultBundle(JSON.parse(row.value), createPrivateVaultSession({ keyring, generation, assertCurrent: check })); check(); }
             catch { check(); return fail('INVALID_SAVED_DATA'); }
           }
         }
@@ -262,8 +266,10 @@ export class NativeRecoveryCoordinator {
           before.identity.walletBindingId,
           staged.groups
         );
+        const fingerprint = await port.fingerprintPair(staged.pair); check();
+        const pin = await pinVault.stage(password, { walletBindingId: before.identity.walletBindingId, pairFingerprint: fingerprint }, secret, check);
         const plan = await port.prepareReplacement(before,
-          { ...staged.pair, accountRecords }, root); check();
+          { ...staged.pair, accountRecords, pin }, root); check();
         const after = port.plannedSnapshot(plan);
         const proof = Object.freeze({}) as RecoveryProof;
         const ready: Ready = { proof, storage, plan, before, after, generation, deadline, guard: assertCurrent };

@@ -18,9 +18,9 @@ const TABS = [
   { id: 'settings', icon: 'settings' },
 ] as const;
 
-export function UnavailableActivity({ accountLabel, watchOnly, onBack }: { accountLabel: string; watchOnly: boolean; onBack(): void }) {
+export function UnavailableActivity({ accountLabel, watchOnly }: { accountLabel: string; watchOnly: boolean; onBack(): void }) {
   const { t } = useNativeTranslation();
-  return <SafeAreaView edges={['top']} style={s.shell}><Screen><Header title={t('mobile.navigation.activity')} subtitle={accountLabel} onBack={onBack} />
+  return <SafeAreaView edges={['top']} style={s.shell}><Screen><Header title={t('mobile.navigation.activity')} subtitle={accountLabel} />
     <Notice title={t('mobile.activity.unavailableTitle')}
       body={watchOnly ? t('mobile.activity.watchUnavailable') : t('mobile.activity.unavailable')} />
   </Screen></SafeAreaView>;

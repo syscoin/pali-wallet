@@ -558,6 +558,31 @@ export class NativeCustodyAuthority {
     return this.authenticate(enabled ? 'enroll-device' : 'disable-device', password, undefined, assertCurrent);
   }
 
+  async getAuthenticationStatus(): Promise<Readonly<{ pinConfigured: boolean; biometricsAvailable: boolean; biometricsEnabled: boolean }> | null> {
+    const runtime = this.runtime, revision = this.revision;
+    if (!runtime?.security || this.snapshot.phase === 'disposed') return null;
+    const result = await runtime.security.authenticationStatus();
+    if (runtime !== this.runtime || revision !== this.revision || this.getSnapshot().phase === 'disposed') throw new CustodyOperationError('CANCELLED');
+    return result;
+  }
+
+  changePin(currentPin: string, nextPin: string, assertOwner: () => void): Promise<void> {
+    const runtime = this.runtime, revision = this.revision;
+    if (!runtime?.security || !['ready', 'backup-required'].includes(this.snapshot.phase)) return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
+    const check = () => {
+      this.checkIdle();
+      if (runtime !== this.runtime || revision !== this.revision || !['ready', 'backup-required'].includes(this.snapshot.phase)) throw new CustodyOperationError('CANCELLED');
+      assertSynchronousEvmFeeGuard(assertOwner);
+    };
+    let release!: () => void;
+    this.pending = new Promise<void>(resolve => { release = resolve; });
+    return (async () => {
+      try { check(); await runtime.security!.changePin(currentPin, nextPin, check); check(); }
+      finally { this.pending = null; release(); }
+    })();
+  }
+
   /** Refresh wallet-bound setup metadata only while the same session is live. */
   refreshAuthenticatedMetadata(): Promise<void> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));

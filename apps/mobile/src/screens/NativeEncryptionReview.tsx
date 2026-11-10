@@ -56,7 +56,10 @@ export function NativeEncryptionReviewScreen({ review, controller }: {
   };
   const decrypt = review.method === 'eth_decrypt';
   const plaintext = previewScope === scope ? preview : null;
-  return <SafeAreaView edges={['top']} style={s.container}><Screen>
+  return <SafeAreaView edges={['top', 'bottom']} style={s.container}><Screen footer={<>
+    {!review.dispatched && <Button title={review.needsAccountSwitch ? t('connections.switchAccount') : t('buttons.confirm')} disabled={review.busy || !!review.error} onPress={() => { void perform('approve'); }} />}
+    <Button title={t('buttons.cancel')} variant="secondary" onPress={reject} />
+  </>}>
     <Header title={t(decrypt ? 'send.decrypt' : 'send.encryptKey')} onBack={reject} />
     <Card style={s.card}>
       <Text style={s.app}>{review.appName}</Text>
@@ -74,12 +77,11 @@ export function NativeEncryptionReviewScreen({ review, controller }: {
         <Button title={t('transactions.decryptMessage')} variant="secondary" disabled={review.busy || review.dispatched || !!review.error || review.needsAccountSwitch} onPress={() => { void perform('preview'); }} />
       </> : <>
         <Text selectable style={s.plaintext}>{plaintext}</Text>
-        <Button title={t('transactions.copyMessage')} variant="quiet" onPress={() => { void perform('copy'); }} />
+        <Button title={t('transactions.copyMessage')} icon="copy" variant="secondary" onPress={() => { void perform('copy'); }} />
       </>}
     </Card>}
     {(error || review.error) && <Notice title={t(decrypt ? 'send.decrypt' : 'send.encryptKey')} body={error ?? t(review.error === 'BLOCKED_SITE' ? 'mobile.connections.blocked' : review.error === 'SITE_MISMATCH' ? 'mobile.connections.mismatch' : review.error === 'DELIVERY_UNCERTAIN' ? 'mobile.connections.deliveryUncertain' : 'mobile.connections.unavailable')} />}
-    {!review.dispatched && <Button title={review.needsAccountSwitch ? t('connections.switchAccount') : t('buttons.confirm')} disabled={review.busy || !!review.error} onPress={() => { void perform('approve'); }} />}
-    <Button title={t('buttons.cancel')} variant="secondary" onPress={reject} />
+
   </Screen></SafeAreaView>;
 }
 

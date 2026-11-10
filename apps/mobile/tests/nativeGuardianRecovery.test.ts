@@ -109,6 +109,12 @@ async function fixture(smart = true) {
     },
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
+    './pinCredential.native': {
+      createNativePinCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
+    },
+    './operationAuthentication': {
+      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
+    },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability: () => ({
         credentials: {},

@@ -260,6 +260,8 @@ export async function qualifyNativeErc20Transfer(
   };
   const wrapped: NativeTransferRuntime = {
     authenticateOperation: (...args) => transfer.authenticateOperation(...args),
+    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
     token: (contract, assertCurrent) => {
@@ -443,7 +445,7 @@ export async function qualifyNativeErc20Transfer(
               review.totalUnits === '180000' &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, { method: 'password', password: password });
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(
             controller.getSnapshot().phase === 'unknown' &&
@@ -474,7 +476,7 @@ export async function qualifyNativeErc20Transfer(
               review.amountUnits === amountUnits &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, { method: 'password', password: password });
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(
             controller.getSnapshot().phase === 'pending' &&

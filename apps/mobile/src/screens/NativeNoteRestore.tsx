@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { INoteBackupPreview, INoteBackupConfirmation } from '../../../../source/wallet/noteBackupService';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 export type NativeNoteRestoreStep =
   | { phase: 'select' }
@@ -43,8 +44,8 @@ export function NativeNoteRestore({ step, busy, error, onChoose, onOpen, onResto
       detail="Enter the password you set when saving this file." busy={busy} onSubmit={onOpen} feedback={feedback} />;
   } else if (step.phase === 'review') {
     const { preview } = step;
-    content = <PasswordStep key={preview.id} header={header} label="Wallet password" button="Restore notes"
-      detail="Confirm your wallet password to add these notes." busy={busy} onSubmit={password => onRestore(preview.id, password)} feedback={feedback}>
+    content = <PasswordStep key={preview.id} walletPin header={header} label="Wallet PIN" button="Restore notes"
+      detail="Confirm your wallet PIN to add these notes." busy={busy} onSubmit={password => onRestore(preview.id, password)} feedback={feedback}>
       <Card style={s.counts}>
         <Count label="New notes" count={preview.added} />
         <Count label="Already in this wallet" count={preview.duplicates} />
@@ -68,9 +69,9 @@ export function NativeNoteRestore({ step, busy, error, onChoose, onOpen, onResto
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>{content}</SafeAreaView>;
 }
 
-function PasswordStep({ header, label, button, detail, busy, onSubmit, feedback, children }: {
+function PasswordStep({ header, label, button, detail, busy, onSubmit, feedback, children, walletPin = false }: {
   header: React.ReactNode; label: string; button: string; detail: string; busy: boolean;
-  onSubmit(value: string): void; feedback: React.ReactNode; children?: React.ReactNode;
+  onSubmit(value: string): void; feedback: React.ReactNode; children?: React.ReactNode; walletPin?: boolean;
 }) {
   const [value, setValue] = useState('');
   const entered = useRef('');
@@ -89,12 +90,13 @@ function PasswordStep({ header, label, button, detail, busy, onSubmit, feedback,
     onSubmit(password);
   };
   const disabled = busy || !value;
+  const CredentialField = walletPin ? PinField : NoteBackupPasswordField;
   return <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen footer={<Button title={busy ? 'Working…' : button} onPress={submit} disabled={disabled} variant={disabled ? 'secondary' : 'primary'} />}>
       {header}
       {children}
       <Text style={styles.muted}>{detail}</Text>
-      <NoteBackupPasswordField label={label} value={value} onChange={changeValue} busy={busy} />
+      <CredentialField label={label} value={value} onChange={changeValue} busy={busy} />
       {feedback}
     </Screen>
   </KeyboardAvoidingView>;

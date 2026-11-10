@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -24,10 +25,12 @@ import { metadata } from './publicWatchFixtures.ts';
 import { resolveUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const softwarePsbtHandoff = { id: 'software-fixture', expiresAt: Number.MAX_SAFE_INTEGER, beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public Sentry runtime password 1!';
+const PASSWORD = '123456';
 
 test('actual native runtime binds encrypted Sentry approvals to topic lifetime, selected account, chain and lock session', async (t) => {
   t.mock.method(globalThis, 'fetch', () => {
@@ -72,7 +75,7 @@ test('actual native runtime binds encrypted Sentry approvals to topic lifetime, 
   };
   let signatures = 0,
     posts = 0;
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: () =>
@@ -205,7 +208,7 @@ test('actual runtime carries a disclosed Sentry operation into one child fee PSB
   let funding: InstanceType<typeof bitcoin.Transaction>, address = '', xpub = '', posts = 0, roleSignatures = 0;
   let held: { entered: ReturnType<typeof Promise.withResolvers<void>>; release: ReturnType<typeof Promise.withResolvers<void>>; signal?: AbortSignal } | undefined;
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Ambient transport forbidden'); });
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
     openStorage: () => SqliteWalletStorage.open(connection, digest, INSTALLATION, true),
     deriveSentryPublicKey: createSentryClassicalExecutor(deriveSentryClassicalPublicKey),
     runSentryCrypto: createSentryCryptoExecutor(async () => async (job, check) => {

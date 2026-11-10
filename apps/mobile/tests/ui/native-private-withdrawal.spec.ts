@@ -1,3 +1,4 @@
+import { pinField, fillPinField } from './operationAuthentication';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 const baseURL = process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
@@ -46,7 +47,7 @@ test('saved note opens direct by default and requires confirmation after proof',
   await expect(
     page.getByRole('radio', { name: 'Direct', exact: true })
   ).toBeChecked();
-  await expect(page.getByLabel('Confirm your wallet password')).toHaveCount(0);
+  await expect(pinField(page, 'Confirm your wallet PIN')).toHaveCount(0);
   await page.getByRole('radio', { name: 'Direct', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
   await expect(
@@ -420,16 +421,16 @@ test('restored prerequisite clears password and returns to ordinary explicit rev
   page,
 }) => {
   await open(page, '&restored');
-  const password = page.getByLabel('Confirm your wallet password');
-  await password.fill('wrong');
+  const password = pinField(page, 'Confirm your wallet PIN');
+  await fillPinField(password, '000000');
   await page
     .getByRole('button', { name: 'Review restored note', exact: true })
     .click();
-  await expect(password).toHaveValue('');
+  await expect(password).toHaveText('Enter PIN');
   await expect(page.getByRole('alert')).toHaveText(
-    'Could not review this restored note. Confirm your password and try again.'
+    'Could not review this restored note. Confirm your PIN and try again.'
   );
-  await password.fill('Fixture password 1!');
+  await fillPinField(password, '123456');
   await page
     .getByRole('button', { name: 'Review restored note', exact: true })
     .click();

@@ -1,3 +1,4 @@
+import { pinField, fillPinField } from './operationAuthentication';
 import { expect, test } from '@playwright/test';
 test.use({ baseURL: 'http://127.0.0.1:4179' });
 
@@ -8,7 +9,7 @@ for (const viewport of [{ width: 320, height: 480 }, { width: 390, height: 844 }
     await page.goto('/?sentry-consent');
     await expect(page.getByText('https://app.example.test', { exact: true })).toBeVisible();
     await expect(page.getByText('new.example.test:8369', { exact: true })).toBeVisible();
-    await page.getByLabel('Wallet password', { exact: true }).fill('public-fixture-password');
+    await fillPinField(pinField(page, 'Wallet PIN'), '123456');
     const confirm = page.getByRole('button', { name: 'Authorize Sentry update', exact: true });
     await confirm.scrollIntoViewIfNeeded(); await expect(confirm).toBeInViewport();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

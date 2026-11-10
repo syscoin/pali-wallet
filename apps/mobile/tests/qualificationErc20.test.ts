@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,9 +23,11 @@ import { readSignedRecordEvidence } from '../qualification/signed-record-evidenc
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC ERC20 native qualification test password!';
+const PASSWORD = '123456';
 const report = (phase: 'create' | 'restart') => ({
   status: 'passed',
   phase,
@@ -128,7 +131,7 @@ for (const scenario of ['import', 'generate'] as const)
       let initialized = false;
       let runtime!: KeyringRuntime;
       let storage!: SqliteWalletStorage;
-      const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+      const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
         ensureCryptoReady: async () => undefined,
         openStorage: async () => {
           storage = await SqliteWalletStorage.open(

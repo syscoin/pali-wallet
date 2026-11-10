@@ -14,13 +14,13 @@ function fixture(backupConfirmed: boolean) {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../custody/walletRemoval': { WalletRemovalError: class extends Error {} },
     '../ui': { styles: {}, colors: {}, ...Object.fromEntries(['Button', 'Header', 'Icon', 'Notice', 'Screen', 'Text'].map(name => [name, name])) },
-    './NoteBackupPasswordField': { NoteBackupPasswordField: 'Password' },
+    './PinEntry': { PinField: 'PinField' },
   }, {
     setTimeout(callback: () => void, milliseconds: number) { assert.equal(milliseconds, 30_000); timers.set(++sequence, callback); return sequence; },
     clearTimeout(id: number) { timers.delete(id); },
   });
   const props = { backupConfirmed, isCurrent: () => true,
-    removal: { async authorize(password: string, check: () => void) { check(); assert.equal(password, 'public-password'); authorizations++; return ticket; }, cancel() {} },
+    removal: { async authorize(password: string, check: () => void) { check(); assert.equal(password, '123456'); authorizations++; return ticket; }, cancel() {} },
     async confirm(received: object, check: () => void) { check(); assert.strictEqual(received, ticket); confirmations++; return 'removed' as const; },
     onBack() { backs++; }, async onContinue() { continuations++; } };
   return { render: () => f.render(props), close: f.close,
@@ -35,7 +35,7 @@ function button(tree: ScreenElement, title: string) {
 }
 const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 async function authorize(f: ReturnType<typeof fixture>) {
-  element(f.render(), 'Password').props.onChange('public-password');
+  element(f.render(), 'PinField').props.onChange('123456');
   button(f.render(), 'Continue').props.onPress(); await settle(); return f.render();
 }
 
@@ -47,7 +47,7 @@ for (const backupConfirmed of [false, true]) test(`removal footer keeps two-stag
     assert.equal(screenElements(screen.children).some(node => node.type === 'Button'), false);
     tree = await authorize(f); screen = element(tree, 'Screen');
     assert.equal(f.counts().authorizations, 1); assert.equal(f.counts().confirmations, 0);
-    assert.equal(screenElements(tree).some(node => node.type === 'Password'), false);
+    assert.equal(screenElements(tree).some(node => node.type === 'PinField'), false);
     assert(screenElements(tree).some(node => node.type === 'Icon' && node.props.name === 'trash'));
     assert.equal(screenElements(tree).some(node => node.type === 'Notice' && node.props.title === 'Backup not verified'), !backupConfirmed);
     assert(button(screen.props.footer, 'Remove wallet')); assert(button(screen.props.footer, 'Cancel'));
@@ -64,7 +64,7 @@ test('the existing 30-second timer retires confirmation before a stale Remove ca
   try {
     const review = await authorize(f), stale = button(review, 'Remove wallet');
     f.expire(); const tree = f.render();
-    assert.equal(element(tree, 'Password').props.value, '');
+    assert.equal(element(tree, 'PinField').props.value, '');
     assert.equal(screenElements(tree).some(node => node.props.title === 'Remove wallet' && node.type === 'Button'), false);
     stale.props.onPress(); await settle(); assert.equal(f.counts().confirmations, 0);
   } finally { f.close(); }

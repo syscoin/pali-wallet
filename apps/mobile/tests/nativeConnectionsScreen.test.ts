@@ -72,12 +72,12 @@ function fixture() {
 const click = (element: ScreenElement) => element.props.onPress();
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
 
-test('always shows active connections and an empty state, with scan primary and quiet tap-only clipboard', async () => {
+test('always shows active connections and an empty state, with scan primary and tap-only clipboard', async () => {
   const f = fixture();
   assert.match(f.text(), /Active connections.*No active connections/);
   assert.equal(f.reads, 0);
   assert.equal(f.button('Scan QR code').props.variant, undefined);
-  assert.equal(f.button('Paste connection link').props.variant, 'quiet');
+  assert.equal(f.button('Paste connection link').props.variant, 'secondary');
   await click(f.button('Paste connection link'));
   assert.equal(f.reads, 1);
   assert.deepEqual(f.calls, [{ method: 'pair', args: ['wc:clipboard-link'] }]);

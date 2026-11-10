@@ -5,10 +5,11 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import type { NativeRecipientResolver, NativeRecipientResolution } from '../src/portfolio/nativeRecipientResolver.ts';
+import type { NativeUnsignedSendDraft } from '../src/screens/sendNetworkDraft.ts';
 
 type Element = { type: unknown; props: Record<string, any>; children: unknown[] };
 type Cell = { value?: any; deps?: readonly unknown[]; cleanup?: () => void; setter?: (next: unknown) => void };
-function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: () => void, onViewTransaction?: (hash: string) => void) {
+function setup(token?: { contractAddress: string; decimals: number; symbol: string; name: string }, beforeClose?: () => Promise<void>, recipientResolver?: NativeRecipientResolver, onChangeNetwork?: (draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>) => void, onViewTransaction?: (hash: string) => void) {
   const cells: Cell[] = [], effects: (() => void)[] = []; let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
   const react = {
@@ -30,7 +31,7 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './RecipientQrScanner': { RecipientQrScanner: 'RecipientQrScanner' },
     './NativeLedger': { NativeLedgerConnectionModal: 'NativeLedgerConnectionModal' },
-    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum' },
+    './NativeTokenMaximum': { NativeTokenMaximum: 'TokenMaximum', nativeTokenAvailableAmount: (token: { balance?: string }) => token.balance },
     react,'react-native':native,'react-native-safe-area-context':{SafeAreaView:'SafeAreaView'},'../ui':ui,
     './IdleActivityBoundary':{IdlePressable:'IdlePressable',IdleTextInput:'IdleTextInput'},
     '../core/amounts':{formatBaseUnits:()=>''},
@@ -65,13 +66,13 @@ function setup(token?: { contractAddress: string; decimals: number; symbol: stri
     holdConfirmation(wait: Promise<void>) { confirmationGate = wait; }, signatures: () => signatures,
     changeAccount(){account={...account,revision:2};},hardware:()=>{assert.ok(hardware);return hardware();},counts:()=>({backs,cancels}),dispose:()=>cells.forEach(c=>c.cleanup?.())};
 }
-function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all),...all(e.props.footer)];}
+function all(node: unknown): Element[] {if(!node||typeof node!=='object'||!('children' in node))return [];const e=node as Element;return [e,...e.children.flat(Infinity).flatMap(all),...all(e.props.footer),...all(e.props.trailing)];}
 function one(tree:Element,type:string,predicate:(e:Element)=>boolean=()=>true) {const matches=all(tree).filter(e=>e.type===type&&predicate(e));assert.equal(matches.length,1);return matches[0]!;}
 function modal(tree:Element){return one(tree,'Modal');}
 function button(tree:Element,title:string){return one(tree,'Button',e=>e.props.title===title);}
 function headerBack(tree:Element){one(tree,'Header').props.onBack();}
 function authenticateSend(f: ReturnType<typeof setup>) {
-  one(f.render(), 'TransactionAuthentication').props.onConfirm({ method: 'password', password: 'public-password' });
+  one(f.render(), 'TransactionAuthentication').props.onConfirm({ method: 'pin', pin: '123456' });
 }
 function openRecipientScanner(f: ReturnType<typeof setup>) {
   const field = all(f.render()).find(node => node.props.label === 'Ethereum address'); assert(field);
@@ -146,6 +147,17 @@ test('draft network card exposes Change only when the parent provides it', () =>
   assert.equal(all(unavailable.render()).some(node => node.props.title === 'Change'), false); unavailable.dispose();
 });
 
+test('network Change captures unsigned form text without preparing or authorizing a transfer', () => {
+  const captured: NativeUnsignedSendDraft[] = [];
+  const f = setup(undefined, undefined, undefined, draft => captured.push(draft)); f.snapshot.phase = 'idle';
+  editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
+  editSend(f, 'Amount in ETH', '1.234567890123456789');
+  button(f.render(), 'Change').props.onPress();
+  assert.equal(captured.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(captured[0])), { kind: 'evm', recipient: '0x2222222222222222222222222222222222222222', amount: '1.234567890123456789', nonce: '', tokenId: '', max: false, advanced: false });
+  assert.deepEqual(f.prepared, []); assert.deepEqual(f.confirmed, []); f.dispose();
+});
+
 test('review has one primary action and Header Back returns to the unchanged draft', async () => {
   const f = setup(); f.snapshot.phase = 'idle';
   editSend(f, 'Ethereum address', '0x2222222222222222222222222222222222222222');
@@ -170,7 +182,7 @@ test('send review opens authentication without confirming and cancellation prese
   authentication.props.onCancel();
   assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
   assert.strictEqual(f.snapshot.review, review); assert.equal(f.counts().cancels, 0);
-  authentication.props.onConfirm({ method: 'password', password: 'stale' }); await settle();
+  authentication.props.onConfirm({ method: 'pin', pin: 'stale' }); await settle();
   assert.deepEqual(f.confirmed, []); f.dispose();
 });
 
@@ -181,7 +193,7 @@ test('authentication captured for a replaced review cannot confirm its successor
   button(f.render(), 'Confirm and send').props.onPress();
   const authentication = one(f.render(), 'TransactionAuthentication');
   f.setSnapshot({ ...f.snapshot, review: { ...f.snapshot.review } }); f.render();
-  authentication.props.onConfirm({ method: 'password', password: 'stale' }); await settle();
+  authentication.props.onConfirm({ method: 'pin', pin: 'stale' }); await settle();
   assert.deepEqual(f.confirmed, []); f.dispose();
 });
 
@@ -192,7 +204,7 @@ test('Back in a held authentication cancels the controller and discards its late
     editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
     f.holdConfirmation(held.promise); button(f.render(), 'Confirm and send').props.onPress();
     const authentication = one(f.render(), 'TransactionAuthentication');
-    authentication.props.onConfirm({ method: 'password', password: 'public-password' });
+    authentication.props.onConfirm({ method: 'pin', pin: '123456' });
     assert.equal(one(f.render(), 'TransactionAuthentication').props.busy, true);
     authentication.props.onCancel();
     assert.equal(f.counts().cancels, 1); assert.equal(f.snapshot.review, null);
@@ -210,7 +222,7 @@ test('signing and submitting retire authentication so submission Back uses the e
     editSend(f, 'Amount in ETH', '1'); reviewSend(f); await settle();
     f.holdConfirmation(held.promise); button(f.render(), 'Confirm and send').props.onPress();
     const authentication = one(f.render(), 'TransactionAuthentication');
-    authentication.props.onConfirm({ method: 'password', password: 'public-password' });
+    authentication.props.onConfirm({ method: 'pin', pin: '123456' });
     f.snapshot.phase = 'signing';
     assert.equal(all(f.render()).some(node => node.type === 'TransactionAuthentication'), false);
     f.snapshot.phase = 'submitting'; let tree = f.render();

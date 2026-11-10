@@ -155,7 +155,7 @@ export function NativeSmartAccountOperationRoute({
         )}
         <Button
           title="Close"
-          variant="quiet" size="compact"
+          variant="secondary" size="compact"
           disabled={current?.closing}
           onPress={() => back()}
         />
@@ -233,6 +233,7 @@ export function NativeSmartAccountOperationContent({
 }) {
   const { t } = useNativeTranslation();
   const [details, setDetails] = useState(false);
+  const [authorityDetails, setAuthorityDetails] = useState(false);
   type RiskAcknowledgement = Readonly<{ intent: NativeSmartAccountOperationSnapshot['intent']; hash: string | null }>;
   const [riskAcknowledgement, setRiskAcknowledgement] = useState<RiskAcknowledgement | null>(null);
   const risk = useRef<RiskAcknowledgement | null>(null), live = useRef(false);
@@ -290,6 +291,7 @@ export function NativeSmartAccountOperationContent({
   const authenticator =
     state.intent.kind === 'authenticator' ? state.intent.command : null;
   const modules = state.intent.kind === 'modules' ? state.intent.command : null;
+  const methodName = (id: string) => id === 'ecdsa' ? 'Wallet owners' : id === 'p256-webauthn' ? 'Passkey' : id === 'slh-dsa' ? 'Post-quantum key' : id === 'composite' ? 'Combined approval methods' : 'Custom approval method';
   const transfer =
     state.intent.kind !== 'deploy' &&
     state.intent.kind !== 'dapp-batch' &&
@@ -307,7 +309,7 @@ export function NativeSmartAccountOperationContent({
                 modules
                   ? t('mobile.smartAccountModules.authorize')
                   : authenticator
-                  ? 'Authorize authenticator change'
+                  ? 'Authorize approval change'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Authorize removal'
@@ -331,7 +333,7 @@ export function NativeSmartAccountOperationContent({
                   : modules
                   ? t('mobile.smartAccountModules.confirm')
                   : authenticator
-                  ? 'Confirm authenticator change'
+                  ? 'Change approval method'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Confirm removal'
@@ -350,14 +352,14 @@ export function NativeSmartAccountOperationContent({
   ) : null;
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}<Button title="Close" variant="quiet" size="compact" onPress={close} /></>}>
+      <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}<Button title="Close" variant="secondary" size="compact" onPress={close} /></>}>
         <Header
           title={
             state.phase === 'authorize'
               ? modules
                 ? t('mobile.smartAccountModules.review')
                 : authenticator
-                ? t('settings.smartAccountCurrentApprovalMethod')
+                ? 'Change approval method'
                 : guardian
                 ? guardian.kind === 'remove'
                   ? 'Review guardian removal'
@@ -374,7 +376,7 @@ export function NativeSmartAccountOperationContent({
               : modules
               ? t('mobile.smartAccountModules.title')
               : authenticator
-              ? t(authenticator.targetModule.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : 'settings.ecdsaAuthenticator')
+              ? 'Change approval method'
               : guardian
               ? guardian.kind === 'remove'
                 ? 'Guardian removal'
@@ -412,21 +414,37 @@ export function NativeSmartAccountOperationContent({
             </>}
           </Card>
         )}
-        {authenticator && (
+        {authenticator && <>
+          <Text style={s.label}>Replace how this account approves transactions. Review the new owners or approval method before authorizing the change.</Text>
           <Card style={s.card}>
-            <Text style={s.label}>{t(authenticator.targetModule.id === 'slh-dsa' ? 'settings.slhDsaAuthenticator' : authenticator.targetModule.id === 'ecdsa' ? 'settings.ecdsaAuthenticator' : 'settings.compositeAuthenticator')}</Text>
-            <Text selectable style={s.address}>{authenticator.target.validator}</Text>
+            <Text style={s.label}>Current approval method</Text>
+            <Text style={s.value}>{methodName(authenticator.sourceModule)}</Text>
+          </Card>
+          <Card style={s.card}>
+            <Text style={s.label}>New approval method</Text>
+            <Text style={s.value}>{methodName(authenticator.targetModule.id)}</Text>
             {authenticator.targetModule.id === 'ecdsa' && <>
-              {authenticator.targetModule.config.owners.map(owner => <Text key={owner} selectable style={s.address}>{owner}</Text>)}
-              <Text style={s.label}>{t('smartAccountHub.compositeThreshold')}</Text><Text>{authenticator.targetModule.config.threshold}</Text>
+              <Text>{`${authenticator.targetModule.config.threshold} of ${authenticator.targetModule.config.owners.length} owners can approve`}</Text>
+              {authenticator.targetModule.config.owners.map((owner, index) => <View key={owner}>
+                <Text style={s.label}>Owner {index + 1}</Text><Text selectable style={s.address}>{owner}</Text>
+              </View>)}
             </>}
+            {authenticator.targetModule.id === 'composite' && <Text>{`${authenticator.targetModule.config.threshold} of ${authenticator.targetModule.config.childValidators.length} approval methods can approve`}</Text>}
+            {authenticator.targetModule.id === 'p256-webauthn' && <Text>{authenticator.targetModule.config.passkeyName || 'Use the configured passkey to approve.'}</Text>}
+            {authenticator.targetModule.id === 'slh-dsa' && <Text>Use the configured post-quantum key to approve.</Text>}
+          </Card>
+          <Button title={authorityDetails ? 'Hide approval details' : 'View approval details'} variant="quiet" size="compact" expanded={authorityDetails} onPress={() => setAuthorityDetails(!authorityDetails)} />
+          {authorityDetails && <Card style={s.card}>
+            <Text style={s.label}>New validator contract</Text><Text selectable style={s.address}>{authenticator.target.validator}</Text>
             {authenticator.targetModule.id === 'slh-dsa' && <>
-              <Text selectable style={s.address}>{authenticator.targetModule.config.pkSeed}</Text>
-              <Text selectable style={s.address}>{authenticator.targetModule.config.pkRoot}</Text>
+              <Text style={s.label}>Public key seed</Text><Text selectable style={s.address}>{authenticator.targetModule.config.pkSeed}</Text>
+              <Text style={s.label}>Public key root</Text><Text selectable style={s.address}>{authenticator.targetModule.config.pkRoot}</Text>
               <Text style={s.label}>{t('settings.slhDsaModuleHint')}</Text>
             </>}
-          </Card>
-        )}
+            {authenticator.targetModule.id === 'composite' && authenticator.targetModule.config.childValidators.map(address => <Text key={address} selectable style={s.address}>{address}</Text>)}
+            <Text style={s.label}>New approval configuration</Text><Text selectable style={s.address}>{authenticator.target.data}</Text>
+          </Card>}
+        </>}
         {guardian && (
           <Card style={s.card}>
             <Text style={s.label}>
@@ -547,7 +565,7 @@ export function NativeSmartAccountOperationContent({
                 modules
                   ? t('mobile.smartAccountModules.authorize')
                   : authenticator
-                  ? t('settings.useSmartAccountValidator')
+                  ? 'Authorize approval change'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Authorize guardian removal'
@@ -644,7 +662,7 @@ export function NativeSmartAccountOperationContent({
                   : modules
                   ? t('mobile.smartAccountModules.submit')
                   : authenticator
-                  ? 'Submit the authorized authenticator change'
+                  ? 'Change approval method'
                   : guardian
                   ? guardian.kind === 'remove'
                     ? 'Submit the authorized removal'
@@ -731,7 +749,7 @@ export function NativeSmartAccountOperationContent({
                 ? t('mobile.smartAccountModules.confirmed')
                 : authenticator
                 ? state.transactionHash
-                  ? 'Authenticator transaction confirmed'
+                  ? 'Approval method changed'
                   : t('settings.smartAccountAuthenticatorConfigured')
                 : guardian
                 ? guardian.kind === 'remove'

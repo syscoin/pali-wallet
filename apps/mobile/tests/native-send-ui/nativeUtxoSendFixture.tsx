@@ -78,7 +78,7 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
 export function NativeUtxoSendFixture() {
   return (
     <NativeUtxoSendScreen
-      authenticationMethod="password"
+      authenticationMethod="pin"
       ledgerConnection={ledgerConnection}
       accountLabel="Account 1"
       network={network}

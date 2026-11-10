@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   BackHandler,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   StyleSheet,
@@ -92,6 +93,12 @@ export function NativeLedger({
     (snapshot.phase === 'connected' || importing) && !!snapshot.address;
   const canScan = !busy && !connecting && !importing;
   const feedback = snapshot.error || error;
+  const retryLabel =
+    snapshot.failure === 'disconnected'
+      ? 'Reconnect Ledger'
+      : snapshot.phase === 'error'
+      ? 'Try again'
+      : 'Find Ledger';
   let actionLabel = 'Done';
   if (importingAccount)
     actionLabel = importing ? 'Adding account…' : 'Add Ledger account';
@@ -126,6 +133,30 @@ export function NativeLedger({
                   );
                 }}
               />
+            ) : snapshot.phase !== 'scanning' ? (
+              <>
+                {snapshot.failure === 'permission' &&
+                  (Platform.OS === 'ios' || Platform.OS === 'android') &&
+                  typeof Linking.openSettings === 'function' && (
+                    <Button
+                      title="Open Settings"
+                      disabled={busy}
+                      onPress={() => void run(() => Linking.openSettings())}
+                    />
+                  )}
+                {snapshot.failure !== 'unsupported' && (
+                  <Button
+                    title={retryLabel}
+                    variant={
+                      snapshot.failure === 'permission'
+                        ? 'secondary'
+                        : 'primary'
+                    }
+                    disabled={!canScan}
+                    onPress={() => void run(() => controller.start())}
+                  />
+                )}
+              </>
             ) : undefined
           }
         >
@@ -183,22 +214,14 @@ export function NativeLedger({
                 <Button
                   key={device.id}
                   title={`${device.name} · ${device.model}`}
-                  variant="secondary" size="compact"
+                  variant="secondary"
+                  size="compact"
                   disabled={busy || connecting || importing}
                   onPress={() => {
                     void run(() => controller.select(device.id));
                   }}
                 />
               ))}
-              {snapshot.phase !== 'scanning' && (
-                <Button
-                  title="Find Ledger"
-                  disabled={!canScan}
-                  onPress={() => {
-                    void run(() => controller.start());
-                  }}
-                />
-              )}
             </>
           )}
         </Screen>

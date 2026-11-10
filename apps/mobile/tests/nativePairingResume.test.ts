@@ -131,8 +131,17 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
       entry.value ??= { current: initial };
       return entry.value;
     },
+    useSyncExternalStore(_subscribe: unknown, getSnapshot: () => unknown) { return getSnapshot(); },
     useEffect: effect,
     useLayoutEffect: effect,
+    useMemo(create: () => unknown, dependencies: readonly unknown[] = []) {
+      const entry = cell();
+      if (!entry.dependencies || dependencies.length !== entry.dependencies.length ||
+          dependencies.some((value, index) => !Object.is(value, entry.dependencies![index]))) {
+        entry.value = create(); entry.dependencies = dependencies;
+      }
+      return entry.value;
+    },
     useCallback(callback: unknown, dependencies: readonly unknown[] = []) {
       const entry = cell();
       if (
@@ -195,6 +204,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
         lifecycleEvents.push('lock');
         change('locked');
       },
+      async getAuthenticationStatus() { return { pinConfigured: true, biometricsAvailable: false, biometricsEnabled: false }; },
       async unlock() {
         change('ready');
       },
@@ -318,7 +328,11 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './BackupIntroduction': { BackupIntroduction: 'BackupIntroduction' },
     './TransactionAuthentication': { TransactionAuthentication: 'TransactionAuthentication' },
     './NativeImportWallet': { NativeImportWallet: 'NativeImportWallet' },
+    './PinEntry': { PinEntryScreen: 'PinEntryScreen', PinSetup: 'PinSetup', isWalletPin: (pin: unknown) => typeof pin === 'string' && /^\d{6}$/.test(pin) },
+    './NativeOperationAuthentication': { NativeOperationAuthentication: 'NativeOperationAuthentication' },
+    '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
+    '../portfolio/nativePortfolio': { NativePortfolioController: class { getSnapshot = () => null; subscribe = () => () => {}; connect() { return () => {}; } }, sameNativePortfolioAccount: () => false },
     '../../../../source/shared/smartAccountLinks.ts': { PALI_RECOVERY_ALERTS_URL },
     '../smartAccount/guardianRecovery': { getNativeGuardianRecoveryChoices },
     react,
@@ -363,6 +377,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './NativeSmartAccountAuthenticator': { NativeSmartAccountAuthenticator: 'NativeSmartAccountAuthenticator' },
     './NativeSmartAccountSend': { NativeSmartAccountSend: 'NativeSmartAccountSend' },
     './NativePortfolio': { NativePortfolio: 'NativePortfolio' },
+    './RealAppShell': { RealAppShell: 'RealAppShell' },
     './NativeSmartAccountOperation': {
       NativeSmartAccountOperationRoute: 'NativeSmartAccountOperationRoute',
     },
@@ -380,7 +395,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
     './RealTools': { RealTools: 'RealTools' },
   });
   const module = {
-    exports: {} as { NativeWalletScreen(props: object): Element },
+    exports: {} as { NativeWalletScreen(props: object): Element; NativeWalletContent(props: object): Element },
   };
   runInNewContext(code, {
     module,
@@ -401,7 +416,7 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   });
   const render = () => {
     cursor = 0;
-    const tree = module.exports.NativeWalletScreen({
+    const tree = module.exports.NativeWalletContent({
       onExit() {
         exits++;
       },
@@ -416,6 +431,8 @@ function harness(ready = false, smartAccount = false, withPairing = true, canMan
   };
   return {
     render,
+    wrapper: () => module.exports.NativeWalletScreen({ onExit() {} }),
+    content: module.exports.NativeWalletContent,
     lifecycle: () => lifecycleEvents,
     resumedSmart: () => resumedSmart,
     showTools() { shellTab = 'tools'; },
@@ -496,16 +513,21 @@ async function mounted(ready = false, smartAccount = false, withPairing = true, 
   return f;
 }
 
+test('wallet wrapper retains the live content and operation authentication sibling', () => {
+  const f = harness();
+  const tree = f.wrapper();
+  assert.equal(tree.type, 'Fragment');
+  assert.equal((tree.children[0] as Element).type, f.content);
+  assert.equal((tree.children[1] as Element).type, 'NativeOperationAuthentication');
+  f.dispose();
+});
+
 test('an incoming pairing waits for unlock and never applies the saved account hint', async () => {
   const f = await mounted();
   try {
     let tree = f.render();
-    assert.equal(tree.type, 'SafeAreaView');
-    const input = find(tree, (node) => node.props.label === 'Password');
-    assert.ok(input);
-    input.props.onChange('public fixture password');
-    tree = f.render();
-    find(tree, (node) => node.props.title === 'Unlock wallet')!.props.onPress();
+    assert.equal(tree.type, 'PinEntryScreen');
+    tree.props.onComplete('123456');
     await settle();
     f.render();
     await settle();

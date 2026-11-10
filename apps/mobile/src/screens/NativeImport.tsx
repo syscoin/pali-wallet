@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
+import { PinField } from './PinEntry';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -147,12 +148,8 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
             <View style={[s.checkbox, acknowledged && s.checked]}><Text style={s.checkmark}>{acknowledged ? '✓' : ''}</Text></View>
             <Text style={s.checkLabel}>{t('mobile.importAccount.backupAcknowledgementBody')}</Text>
           </IdlePressable>
-          <View style={s.field}><Text style={s.label}>{t('mobile.accounts.confirmPassword')}</Text><IdleTextInput
-            accessibilityLabel={t('mobile.accounts.confirmPassword')} value={password} onChangeText={setPassword} editable={!busy} secureTextEntry
-            autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off" textContentType="none"
-            importantForAutofill="noExcludeDescendants" maxLength={1024} style={s.input} />
-          </View>
-          {!busy && <Button title={t('mobile.importAccount.editKey')} variant="quiet" onPress={() => { setAddress(null); setPassword(''); setAcknowledged(false); setError(''); }} />}
+          <PinField label={t('mobile.accounts.confirmPassword')} value={password} onChange={setPassword} busy={busy} />
+          {!busy && <Button title={t('mobile.importAccount.editKey')} variant="secondary" onPress={() => { setAddress(null); setPassword(''); setAcknowledged(false); setError(''); }} />}
         </> : <>
           <View style={s.field}><Text style={s.label}>{t('mobile.accounts.accountName')}</Text><IdleTextInput accessibilityLabel={t('mobile.accounts.accountName')} value={name} onChangeText={setName}
             editable={!busy} maxLength={64} autoCorrect={false} autoComplete="off" style={s.input} /></View>

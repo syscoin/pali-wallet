@@ -5,7 +5,7 @@ import type { IPrivateNoteView } from '../../../../source/utils/privacy/privateV
 import type { NativeNoteMaintenanceRuntime } from '../custody/noteBackupRuntime';
 import { useNativeTranslation } from '../platform/localization';
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
-import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 type Props = {
   open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeNoteMaintenanceRuntime>;
@@ -106,14 +106,14 @@ export function NativeNoteMaintenance({ open, onBack }: Props) {
             onPress={() => { setConfirmClear(true); setError(null); }} /> : <>
             <Text style={styles.muted}>{t('privacy.capacity.clearHelp')}</Text>
             <Button title={t('privacy.capacity.confirmClear')} disabled={busy} onPress={() => { void act('clear'); }} />
-            <Button title={t('buttons.cancel')} variant="quiet" disabled={busy} onPress={() => setConfirmClear(false)} />
+            <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={() => setConfirmClear(false)} />
           </>)}
         </>}
         {recovering && <>
           <Text style={styles.muted}>{t('privacy.recovery.help')}</Text><Text style={styles.muted}>{t('privacy.recovery.disclosure')}</Text>
-          <NoteBackupPasswordField label={t('privacy.recovery.password')} value={password} onChange={setPassword} busy={busy} />
+          <PinField label="Wallet PIN" value={password} onChange={setPassword} busy={busy} />
           <Button title={t('privacy.recovery.confirm')} disabled={busy || !password} onPress={() => { void act('recover'); }} />
-          <Button title={t('buttons.cancel')} variant="quiet" disabled={busy} onPress={() => { setSelected(null); setPassword(''); setError(null); }} />
+          <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={() => { setSelected(null); setPassword(''); setError(null); }} />
         </>}
         {progress && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('privacy.capacity.clearProgress', progress)}</Text>}
         {result && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('privacy.capacity.clearResult', result)}</Text>}

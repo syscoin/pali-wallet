@@ -3,7 +3,7 @@ import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleS
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeNoteInventory, NativeSavedNote } from '../custody/noteBackupRuntime';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
-import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 type Props = {
   inventory: NativeNoteInventory;
@@ -94,23 +94,25 @@ export function NativeNoteReveal({ inventory, note, onBack, onLock }: Props) {
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen footer={<Button title="Lock wallet" variant="secondary" onPress={() => { clear(); onLock(); }} />}>
+      <Screen footer={<>
+        {state.phase === 'shown' ? <Button title="Hide note" icon="eye" onPress={back} /> :
+          <Button title={state.phase === 'working' ? 'Confirming PIN…' : 'Reveal private note'}
+            disabled={state.phase !== 'password' || !password} onPress={() => void reveal()} />}
+        <Button title="Lock wallet" icon="lock" variant="secondary" onPress={() => { clear(); onLock(); }} />
+      </>}>
         <Header title="Back up this note" onBack={back} />
         <Notice title="Anyone with this note can withdraw" body="Keep your backup private. Your recovery phrase can’t restore this note." tone="amber" />
         {state.phase === 'shown' ? <>
           <Card style={s.secret}><Text style={s.note}>{state.secret}</Text></Card>
           <Text style={styles.muted}>This note is hidden after 30 seconds.</Text>
-          <Button title="Hide note" onPress={back} />
         </> : <>
-          <NoteBackupPasswordField label="Confirm your wallet password" value={password}
+          <PinField label="Confirm your wallet PIN" value={password}
             onChange={setPassword} busy={state.phase !== 'password'} />
-          <Button title={state.phase === 'working' ? 'Confirming password…' : 'Reveal private note'}
-            disabled={state.phase !== 'password' || !password} onPress={() => void reveal()} />
           {state.phase === 'password' && state.feedback === 'failed' && <Text accessibilityRole="alert" style={s.error}>
-            Could not show this note. Confirm your wallet password and try again.
+            Could not show this note. Confirm your wallet PIN and try again.
           </Text>}
           {state.phase === 'password' && state.feedback === 'expired' && <Text accessibilityLiveRegion="polite" style={styles.muted}>
-            Private note hidden. Confirm your password to view it again.
+            Private note hidden. Confirm your PIN to view it again.
           </Text>}
         </>}
       </Screen>

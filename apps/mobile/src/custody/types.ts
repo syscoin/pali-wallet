@@ -37,7 +37,7 @@ export type CustodyErrorCode =
 
 /** Explicit host errors; untyped SDK errors must never supply UI classifications. */
 export class CustodyRuntimeError extends Error {
-  readonly code: 'NOT_READY' | 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED' | 'BUSY' | 'ACCOUNT_LIMIT' | 'ACCOUNT_NOT_REMOVABLE' | 'PENDING_TRANSFER' | 'DUPLICATE_ACCOUNT';
+  readonly code: 'NOT_READY' | 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED' | 'BUSY' | 'ACCOUNT_LIMIT' | 'ACCOUNT_NOT_REMOVABLE' | 'PENDING_TRANSFER' | 'DUPLICATE_ACCOUNT' | 'DEVICE_UNLOCK_UNAVAILABLE';
   constructor(code: CustodyRuntimeError['code']) {
     super(code);
     this.name = 'CustodyRuntimeError';
@@ -58,8 +58,21 @@ export type CustodyStoredState =
  * never rebinds its store, and exposes only the selected public address here.
  */
 export type NativeOperationCredential = Readonly<
-  { method: 'biometric' } | { method: 'password'; password: string }
+  { method: 'biometric' } | { method: 'pin'; pin: string }
 >;
+export type NativeOperationCredentialRequest = Readonly<{
+  id: string;
+  purpose: 'transaction' | 'message' | 'account-change' | 'secret-read' | 'private-reconciliation';
+  biometricsEnabled: boolean;
+}>;
+export type NativeOperationCredentialRequester = (
+  request: NativeOperationCredentialRequest,
+  signal: AbortSignal,
+  assertCurrent: () => void
+) => Promise<NativeOperationCredential>;
+declare const nativeOperationAuthorizationBrand: unique symbol;
+/** Private one-use capability; only its owning runtime can recognize a receipt. */
+export type NativeOperationAuthorization = Readonly<{ [nativeOperationAuthorizationBrand]: true }>;
 
 export interface CustodyRuntime {
   readonly previewPhrase?: (phrase: string, assertCurrent: () => void) => Promise<readonly Readonly<{ label: string; address: string }>[]>;
@@ -67,6 +80,8 @@ export interface CustodyRuntime {
   readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
   readonly security?: {
+    changePin(currentPin: string, nextPin: string, assertCurrent: () => void): Promise<void>;
+    authenticationStatus(): Promise<Readonly<{ pinConfigured: boolean; biometricsAvailable: boolean; biometricsEnabled: boolean }>>;
     reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void>;
     authenticateOperation(credential: NativeOperationCredential, assertCurrent: () => void): Promise<void>;
   };

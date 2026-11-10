@@ -153,7 +153,7 @@ function fixture() {
 function nodes(value: any): Element[] {
   if (Array.isArray(value)) return value.flatMap(nodes);
   if (!value || typeof value !== 'object' || !('children' in value)) return [];
-  return [value, ...value.children.flatMap(nodes)];
+  return [value, ...value.children.flatMap(nodes), ...nodes(value.props.footer)];
 }
 const button = (tree: Element, title: string) =>
   nodes(tree).find(

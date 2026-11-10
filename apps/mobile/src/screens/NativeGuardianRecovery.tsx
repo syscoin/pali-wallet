@@ -1,3 +1,4 @@
+import { guardianRecoveryTerminalNotice } from '../../../../source/utils/smartAccount/guardianRecoveryLifecycle';
 import React, {
   useCallback,
   useEffect,
@@ -164,7 +165,15 @@ export function NativeGuardianRecovery({
         if (current.live) setBusy(false);
       }
     },
-    [port, lifetime, policySupported, observation, setBusy, setController, setError]
+    [
+      port,
+      lifetime,
+      policySupported,
+      observation,
+      setBusy,
+      setController,
+      setError,
+    ]
   );
   useEffect(() => {
     if (port.hasIntent) void open({ kind: 'resume' });
@@ -265,7 +274,38 @@ export function NativeGuardianRecovery({
     );
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <Screen>
+      <Screen
+        footer={
+          <>
+            {!port.hasIntent && (
+              <Button
+                title="Review recovery"
+                disabled={
+                  busy ||
+                  !policySupported ||
+                  !guardianId ||
+                  !replacementId ||
+                  !payerId
+                }
+                onPress={() =>
+                  void open({
+                    kind: 'start',
+                    guardianId,
+                    replacementId,
+                    payerId,
+                  })
+                }
+              />
+            )}{' '}
+            <Button
+              title="Close"
+              variant="secondary"
+              size="compact"
+              onPress={onBack}
+            />
+          </>
+        }
+      >
         <Header
           title="Recover smart account"
           subtitle={networkLabel}
@@ -313,7 +353,8 @@ export function NativeGuardianRecovery({
                 {guardians.length > 1 && (
                   <Button
                     title="Choose guardian account"
-                    variant="secondary" size="compact"
+                    variant="secondary"
+                    size="compact"
                     disabled={busy}
                     onPress={() => setChoosing('guardian')}
                   />
@@ -347,7 +388,8 @@ export function NativeGuardianRecovery({
             )}
             <Button
               title="Choose replacement owner"
-              variant="secondary" size="compact"
+              variant="secondary"
+              size="compact"
               disabled={busy}
               onPress={() => setChoosing('replacement')}
             />
@@ -367,22 +409,10 @@ export function NativeGuardianRecovery({
             )}
             <Button
               title="Choose fee payer"
-              variant="secondary" size="compact"
+              variant="secondary"
+              size="compact"
               disabled={busy}
               onPress={() => setChoosing('payer')}
-            />
-            <Button
-              title="Review recovery"
-              disabled={
-                busy ||
-                !policySupported ||
-                !guardianId ||
-                !replacementId ||
-                !payerId
-              }
-              onPress={() =>
-                void open({ kind: 'start', guardianId, replacementId, payerId })
-              }
             />
           </>
         )}
@@ -407,7 +437,9 @@ export function NativeGuardianRecovery({
         {observation?.exists && (
           <Button
             title={t('settings.smartAccountRecoveryEmailAlerts')}
-            variant="quiet" size="compact"
+            variant="secondary"
+            size="compact"
+            icon="external"
             onPress={() => {
               if (!owner.current.live || lifetime.aborted) return;
               void openRecoveryAlerts().catch(() => {
@@ -417,7 +449,6 @@ export function NativeGuardianRecovery({
             }}
           />
         )}
-        <Button title="Close" variant="quiet" size="compact" onPress={onBack} />
       </Screen>
     </SafeAreaView>
   );
@@ -502,6 +533,9 @@ export function NativeGuardianRecoveryView({
       <Text style={s.label}>{currency}</Text>
     </>
   );
+  const terminalNotice = state.terminalReason
+    ? guardianRecoveryTerminalNotice(state.terminalReason)
+    : null;
   const pending = state.phase === 'preparing' || state.phase === 'submitting';
   const clear = async () => {
     if (!acknowledged) return;
@@ -509,7 +543,55 @@ export function NativeGuardianRecoveryView({
   };
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <Screen>
+      <Screen
+        footer={
+          <>
+            {(state.phase === 'authorize' || state.phase === 'ready') && (
+              <Button
+                title={
+                  state.action === 'finalize'
+                    ? 'Review finalization fee'
+                    : 'Authorize recovery'
+                }
+                onPress={() => void controller.review()}
+              />
+            )}
+            {state.phase === 'review' && state.feeReview && (
+              <Button
+                title={
+                  state.action === 'finalize'
+                    ? 'Confirm finalization'
+                    : 'Confirm schedule'
+                }
+                onPress={() => void controller.confirm(state.feeReview!.id)}
+              />
+            )}
+            {state.phase === 'complete' &&
+              state.metadataRefresh === 'failed' && (
+                <Button
+                  title="Refresh account metadata"
+                  onPress={() =>
+                    void controller.retryMetadata().catch(() => undefined)
+                  }
+                />
+              )}
+            {['waiting', 'unknown', 'failed'].includes(state.phase) && (
+              <Button
+                title={
+                  terminalNotice ? 'Refresh current policy' : 'Check status'
+                }
+                onPress={() => void controller.refresh()}
+              />
+            )}
+            <Button
+              title={terminalNotice ? 'Return to account' : 'Close'}
+              variant="secondary"
+              size="compact"
+              onPress={onBack}
+            />
+          </>
+        }
+      >
         <Header
           title={
             state.phase === 'cleared'
@@ -523,6 +605,13 @@ export function NativeGuardianRecoveryView({
           subtitle={networkLabel}
           onBack={onBack}
         />
+        {terminalNotice && (
+          <Notice
+            title={terminalNotice.title}
+            body={terminalNotice.body}
+            tone="amber"
+          />
+        )}
         <Card style={s.card}>
           <Text style={s.label}>Smart account · Chain ID {chainId}</Text>
           <Text selectable style={s.address}>
@@ -574,14 +663,6 @@ export function NativeGuardianRecoveryView({
                   : 'Authorize the guardian and replacement-key proofs for this exact recovery. Review the paying account and fee next.'
               }
             />
-            <Button
-              title={
-                state.action === 'finalize'
-                  ? 'Review finalization fee'
-                  : 'Authorize recovery'
-              }
-              onPress={() => void controller.review()}
-            />
           </>
         )}
         {state.phase === 'review' && state.feeReview && (
@@ -611,20 +692,14 @@ export function NativeGuardianRecoveryView({
                   : 'View transaction details'
               }
               expanded={details}
-              variant="quiet" size="compact"
+              variant="secondary"
+              size="compact"
+              icon={details ? 'chevron-up' : 'chevron-down'}
               onPress={() => setDetails(!details)}
             />
             {details && (
               <TransactionDetails transaction={state.feeReview.transaction} />
             )}
-            <Button
-              title={
-                state.action === 'finalize'
-                  ? 'Confirm finalization'
-                  : 'Confirm schedule'
-              }
-              onPress={() => void controller.confirm(state.feeReview!.id)}
-            />
           </>
         )}
         {state.phase === 'waiting' && (
@@ -676,7 +751,8 @@ export function NativeGuardianRecoveryView({
         {state.transactionHash && state.intent && (
           <Button
             title="View saved transaction"
-            variant="secondary" size="compact"
+            variant="secondary"
+            size="compact"
             disabled={activityBusy}
             onPress={() => {
               if (!live.current) return;
@@ -726,24 +802,13 @@ export function NativeGuardianRecoveryView({
             }
           />
         )}
-        {state.phase === 'complete' && state.metadataRefresh === 'failed' && (
-          <Button
-            title="Refresh account metadata"
-            onPress={() =>
-              void controller.retryMetadata().catch(() => undefined)
-            }
-          />
-        )}
-        {['waiting', 'unknown', 'failed'].includes(state.phase) && (
-          <Button
-            title="Check status"
-            onPress={() => void controller.refresh()}
-          />
-        )}
+
         {state.canAbandon && !forget && (
           <Button
             title="Clear local recovery tracking"
-            variant="quiet" size="compact"
+            variant="danger"
+            size="compact"
+            icon="trash"
             onPress={() => setForget(true)}
           />
         )}
@@ -773,7 +838,8 @@ export function NativeGuardianRecoveryView({
             />
             <Button
               title="Keep tracking"
-              variant="quiet" size="compact"
+              variant="secondary"
+              size="compact"
               onPress={() => {
                 setForget(false);
                 setAcknowledged(false);
@@ -784,7 +850,9 @@ export function NativeGuardianRecoveryView({
         {state.observation?.exists && (
           <Button
             title={t('settings.smartAccountRecoveryEmailAlerts')}
-            variant="quiet" size="compact"
+            variant="secondary"
+            size="compact"
+            icon="external"
             onPress={() => {
               if (!live.current) return;
               void openRecoveryAlerts().catch(() => {
@@ -796,7 +864,6 @@ export function NativeGuardianRecoveryView({
             }}
           />
         )}
-        <Button title="Close" variant="quiet" size="compact" onPress={onBack} />
       </Screen>
     </SafeAreaView>
   );

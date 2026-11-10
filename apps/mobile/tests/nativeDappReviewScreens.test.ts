@@ -22,10 +22,11 @@ function fixture(kind: 'control' | 'sentry') {
       'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
       '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
       './DappSiteStatus': { DappSiteStatus: 'SiteStatus' }, './IdleActivityBoundary': { IdleTextInput: 'Input' },
+      './PinEntry': { PinField: 'Input' },
     }, { Date: class extends Date { static now() { return clock; } },
       setTimeout(callback: () => void) { timers.set(++serial, callback); return serial; }, clearTimeout(id: number) { timers.delete(id); } });
   const render = () => screenElements(f.render({ review, controller }));
-  const button = () => render().find(e => e.type === 'Button' && e.props.title !== 'Reject')!;
+  const button = () => screenElements(render().find(e => e.type === 'Screen')!.props.footer).find(e => e.type === 'Button' && e.props.title !== 'Reject')!;
   const password = () => render().find(e => e.type === 'Input')!;
   const tick = async () => { await Promise.resolve(); await Promise.resolve(); };
   return { review, controller, render, button, password, approvals, rejections, tick,
@@ -48,20 +49,20 @@ test('expired control cannot become a new asset consent without a new current re
   f.review.id = 'request-2'; f.review.expiresAt = 2000; f.render(); assert(!f.button().props.disabled); f.close();
 });
 
-test('Sentry signature uses the displayed role/slot and clears password before asynchronous signing', async () => {
+test('Sentry signature uses the displayed role/slot and clears PIN before asynchronous signing', async () => {
   const f = fixture('sentry'); f.render(); f.render().find(e => e.type === 'Row' && e.props.title.startsWith('New owner'))!.props.onPress();
-  f.password().props.onChangeText('fresh-password'); const submit = f.button().props.onPress;
+  f.password().props.onChange('123456'); const submit = f.button().props.onPress;
   submit(); submit(); await f.tick();
-  assert.deepEqual(f.approvals, [['request-1', 1, { kind: 'operation', password: 'fresh-password', keyId: 'new', authorizationId: 'newOwner' }]]);
+  assert.deepEqual(f.approvals, [['request-1', 1, { kind: 'operation', password: '123456', keyId: 'new', authorizationId: 'newOwner' }]]);
   assert.equal(f.password().props.value, ''); assert(f.button().props.disabled); f.close();
 });
 
-test('Sentry expiry, background, review replacement and authority-key edits require fresh password entry', () => {
+test('Sentry expiry, background, review replacement and authority-key edits require fresh PIN entry', () => {
   const f = fixture('sentry'); f.render();
-  f.password().props.onChangeText('secret'); f.expire(); assert.equal(f.password().props.value, ''); assert(f.button().props.disabled);
+  f.password().props.onChange('654321'); f.expire(); assert.equal(f.password().props.value, ''); assert(f.button().props.disabled);
   f.review.id = 'request-2'; f.review.expiresAt = 2000; f.render(); assert.equal(f.password().props.value, '');
-  f.password().props.onChangeText('secret'); f.background(); assert.equal(f.password().props.value, '');
-  f.password().props.onChangeText('secret'); f.render().find(e => e.type === 'Row')!.props.onPress(); assert.equal(f.password().props.value, '');
+  f.password().props.onChange('654321'); f.background(); assert.equal(f.password().props.value, '');
+  f.password().props.onChange('654321'); f.render().find(e => e.type === 'Row')!.props.onPress(); assert.equal(f.password().props.value, '');
   assert.equal(f.back(), true); f.close();
 });
 
@@ -74,9 +75,19 @@ test('linking uses no password and sends no UI-authored node or transaction payl
 test('a produced signature with uncertain response delivery cannot be retried as a password failure', async () => {
   const f = fixture('sentry');
   f.controller.approveSentry = async () => { f.review.error = 'DELIVERY_UNCERTAIN'; throw Error('Lost response'); };
-  f.render(); f.password().props.onChangeText('fresh-password'); f.button().props.onPress(); await f.tick();
+  f.render(); f.password().props.onChange('123456'); f.button().props.onPress(); await f.tick();
   assert(f.button().props.disabled);
   assert(f.render().some(e => e.type === 'Notice' && e.props.title === 'Authorization delivery uncertain'));
   assert(!f.render().some(e => e.type === 'Notice' && e.props.title === 'Authorization unsuccessful'));
   assert.equal(f.password().props.value, ''); f.close();
+});
+
+
+test('a replacement Sentry review revision remounts its PIN entry', () => {
+  const f = fixture('sentry');
+  try {
+    const original = f.password().props.key;
+    f.review.revision++;
+    assert.notEqual(f.password().props.key, original);
+  } finally { f.close(); }
 });

@@ -13,7 +13,7 @@ import { NativeSmartDappFixture } from './nativeSmartDappFixture';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
-import React, { useSyncExternalStore } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { NativeNetworkPortfolioFixture } from './nativeNetworkPortfolioFixture';
 import { NativeFaucetFixture } from './nativeFaucetFixture';
 import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
@@ -38,7 +38,8 @@ import {
 } from '../../src/custody/networkContext';
 import { NativeCustodyFeedback } from '../../src/screens/NativeCustodyFeedback';
 import type { CustodyErrorCode } from '../../src/custody/types';
-import { Text } from '../../src/ui';
+import { Header, Screen, Text } from '../../src/ui';
+import { TransactionDetailLayout } from '../../src/screens/TransactionDetailLayout';
 import { NativeAccounts } from '../../src/screens/NativeAccounts';
 import type {
   NativeAccountView,
@@ -46,7 +47,7 @@ import type {
 } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import { NativeSend, type NativeRecipientPicker } from '../../src/screens/NativeSend';
-import { parseDecimalAmount } from '../../src/core/amounts';
+import { formatBaseUnits, parseDecimalAmount } from '../../src/core/amounts';
 import type {
   NativeTransferSnapshot,
   NativeTransferView,
@@ -82,6 +83,7 @@ const idle = (): NativeTransferSnapshot => ({
   intent: null,
 });
 let snapshot = idle();
+let submittedReview: NativeTransferSnapshot['review'] = null;
 let sequence = 0;
 let expiry: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<(value: NativeTransferSnapshot) => void>();
@@ -144,7 +146,7 @@ const controller: NativeTransferView = {
     publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
   async confirm(id, credential) {
-    if (!(credential.method === 'password' && credential.password === 'public-password') &&
+    if (!(credential.method === 'pin' && credential.pin === '123456') &&
         !(biometricAuth && credential.method === 'biometric')) throw Error('INVALID_CREDENTIAL');
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
     if (route.has('storage-full')) {
@@ -181,6 +183,7 @@ const controller: NativeTransferView = {
       throw Error(expired ? 'EXPIRED' : 'FAILED');
     }
     confirmations.push({ id });
+    submittedReview = snapshot.review;
     const { context, collectible } = snapshot.review;
     clearTimeout(expiry);
     publish({
@@ -384,6 +387,7 @@ window.__nativeAccountsFixture = {
 };
 
 function Fixture() {
+  const [viewedTransaction, setViewedTransaction] = useState<string | null>(null);
   const failure = useSyncExternalStore(
     accountController.subscribe,
     () => accountFailure,
@@ -396,7 +400,17 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {route.has('smart-modules') ? (
+      {viewedTransaction && submittedReview ? (
+        <Screen><Header title="Transaction details" subtitle={`Account 1 · ${sendContext.name}`} onBack={() => setViewedTransaction(null)} />
+          <TransactionDetailLayout amount={`${formatBaseUnits(submittedReview.amountUnits, 18)} ${sendContext.symbol}`}
+            direction="Sent" status="Pending" tone="pending" rows={[
+              { label: 'Network', value: sendContext.name },
+              { label: 'From', value: submittedReview.from },
+              { label: 'To', value: submittedReview.recipient },
+              { label: 'Transaction ID', value: viewedTransaction },
+            ]} />
+        </Screen>
+      ) : route.has('smart-modules') ? (
         <NativeSmartManagementFixture kind="modules" />
       ) : route.has('smart-authenticator') ? (
         <NativeSmartManagementFixture kind="authenticator" />
@@ -470,7 +484,7 @@ function Fixture() {
         )
       ) : (
         <NativeSend
-          authenticationMethod={biometricAuth ? 'biometric' : 'password'}
+          authenticationMethod={biometricAuth ? 'biometric' : 'pin'}
           account={{ address: sender, network: sendContext.networkId, revision: 1 }}
           savedHash={route.has('ledger-replay') ? '0x' + '3'.repeat(64) : undefined}
           controller={controller}
@@ -479,6 +493,8 @@ function Fixture() {
           replacement={replacement}
           recipientPicker={recipientPicker}
           collectible={collectible}
+          availableAmount="1"
+          onViewTransaction={setViewedTransaction}
           onBack={() => undefined}
         />
       )}

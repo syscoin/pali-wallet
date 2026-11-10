@@ -20,6 +20,7 @@ import {
 } from '../../../wallet/importedAccountRecovery';
 import {
   PRIVATE_VAULT_STORAGE_PREFIX,
+  createPrivateVaultSession,
   readPrivateVaultBundle,
 } from '../../../wallet/privateVaultInspection';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
@@ -142,11 +143,14 @@ export async function prepareExtensionAccountRecovery(
           if (key.startsWith(PRIVATE_VAULT_STORAGE_PREFIX)) {
             if (key !== `${PRIVATE_VAULT_STORAGE_PREFIX}${profileId}`)
               return invalid();
-            await readPrivateVaultBundle(value, {
-              keyring,
-              assertCurrent,
-              generation: 0,
-            });
+            await readPrivateVaultBundle(
+              value,
+              createPrivateVaultSession({
+                keyring,
+                assertCurrent,
+                generation: 0,
+              })
+            );
           }
           if (key.startsWith(EVM_SIGNED_RECORD_PREFIX)) {
             if (

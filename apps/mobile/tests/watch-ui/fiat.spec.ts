@@ -1,3 +1,4 @@
+import { enterPin } from '../ui/operationAuthentication';
 import { expect, test } from '@playwright/test';
 
 test('display currency saves explicitly and quotes never relabel the exact balance', async ({ page, baseURL }, testInfo) => {
@@ -14,7 +15,7 @@ test('display currency saves explicitly and quotes never relabel the exact balan
   await page.goto('/?fiat-fixture');
   await button('Accounts').click();
   await button('Open wallet').click();
-  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
+  await enterPin(page, '123456');
   await button('Unlock wallet').click();
   const quote = page.getByTestId('native-portfolio-quote');
   await expect(quote).toHaveText(/^≈ .+ USD$/);

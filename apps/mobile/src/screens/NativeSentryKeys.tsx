@@ -25,6 +25,7 @@ import type {
 import { Button, Card, colors, Header, Row, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 type Role = SentryKeySummary['role'];
 type Key = Readonly<SentryKeySummary>;
@@ -82,7 +83,7 @@ function errorText(cause: unknown) {
     case 'DUPLICATE':
       return 'This key is already saved for this role.';
     case 'INVALID_CREDENTIAL':
-      return 'Incorrect password. Start a new review to try again.';
+      return 'Incorrect PIN. Start a new review to try again.';
     case 'AUTH_THROTTLED':
       return 'Too many attempts. Wait before trying again.';
     case 'CANCELLED':
@@ -440,7 +441,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         navigate(owner, { kind: 'list' });
         const code = errorCode(cause);
         if (code === 'INVALID_INPUT')
-          return 'This password could not be used. Start a new review to try again.';
+          return 'This PIN could not be used. Start a new review to try again.';
         if (code !== 'INVALID_CREDENTIAL' && code !== 'AUTH_THROTTLED')
           setKeys(null);
       }
@@ -503,7 +504,22 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         style={s.fill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen gap={16} scrollResetKey={step.kind}>
+        <Screen gap={16} scrollResetKey={step.kind} footer={previewKeys.length > 0 ? (<Button
+                title={
+                  busy
+                    ? 'Confirming…'
+                    : step.kind === 'remove'
+                    ? 'Remove key'
+                    : previewKeys.length > 1
+                    ? 'Save keys'
+                    : 'Save key'
+                }
+                variant={step.kind === 'remove' ? 'danger' : 'primary'}
+                disabled={
+                  busy || !password || (step.kind === 'remove' && !backedUp)
+                }
+                onPress={confirm}
+              />) : undefined}>
           <Header title={title} subtitle={networkLabel} onBack={back} />
           {step.kind === 'list' && (
             <>
@@ -534,7 +550,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               )}
               {keys !== null && (
                 <>
-                  <Button
+                  <Button icon="settings"
                     title="Service settings"
                     variant="secondary" size="compact"
                     disabled={busy}
@@ -557,12 +573,12 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                       }
                     }}
                   />
-                  <Button
+                  <Button icon="plus"
                     title="Import key"
                     disabled={busy}
                     onPress={() => startDraft(false)}
                   />
-                  <Button
+                  <Button icon="plus"
                     title="Import multiple keys"
                     variant="secondary" size="compact"
                     disabled={busy}
@@ -571,7 +587,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 </>
               )}
               {canRetry && !busy && (
-                <Button title="Try again" variant="secondary" size="compact" onPress={load} />
+                <Button icon="refresh" title="Try again" variant="secondary" size="compact" onPress={load} />
               )}
             </>
           )}
@@ -585,9 +601,9 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 disabled={busy}
                 onPress={copy}
               />
-              <Button
+              <Button icon="trash"
                 title="Remove key"
-                variant="quiet" size="compact"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={startRemoval}
               />
@@ -633,7 +649,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                   <Text style={s.label}>
                     Copy up to 20 lines using Label | Private key.
                   </Text>
-                  <Button
+                  <Button icon="copy"
                     title="Paste and review keys"
                     disabled={busy}
                     onPress={pasteBatch}
@@ -717,30 +733,15 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                   </Text>
                 </IdlePressable>
               )}
-              <NoteBackupPasswordField
-                label="Wallet password"
+              <PinField
+                label="Wallet PIN"
                 value={password}
                 onChange={(value) => {
                   if (editable()) setPassword(value);
                 }}
                 busy={busy}
               />
-              <Button
-                title={
-                  busy
-                    ? 'Confirming…'
-                    : step.kind === 'remove'
-                    ? 'Remove key'
-                    : previewKeys.length > 1
-                    ? 'Save keys'
-                    : 'Save key'
-                }
-                variant={step.kind === 'remove' ? 'danger' : 'primary'}
-                disabled={
-                  busy || !password || (step.kind === 'remove' && !backedUp)
-                }
-                onPress={confirm}
-              />
+
             </>
           )}
           {notice && (

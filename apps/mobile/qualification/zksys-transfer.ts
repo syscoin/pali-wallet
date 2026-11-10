@@ -255,6 +255,8 @@ export async function qualifyNativeZksysTransfer(
   let expectedRaw: string | undefined, expectedHash: string | undefined;
   const wrapped: NativeTransferRuntime = {
     authenticateOperation: (...args) => transfer.authenticateOperation(...args),
+    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
     journal: (checkCurrent) => transfer.journal(checkCurrent),
@@ -411,7 +413,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               review.totalUnits === '900789'
           );
-          await controller.confirm(review.id, { method: 'password', password: password });
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(controller.getSnapshot().phase === 'unknown');
         }
@@ -431,7 +433,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               controller.getSnapshot().hash === entry.hash
           );
-          await controller.confirm(review.id, { method: 'password', password: password });
+          await controller.confirm(review.id, { method: 'pin', pin: password });
           guard();
           expect(controller.getSnapshot().phase === 'pending');
         }

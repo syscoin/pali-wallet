@@ -38,7 +38,7 @@ async function noSigning(page: Page) {
       name: /Review resend|Confirm and send|Unlock wallet/,
     })
   ).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: /password/i })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'PIN digit 1', exact: true })).toHaveCount(0);
   const audit = await page.evaluate(() => window.__watchFixture.audit());
   expect(audit.unlocks).toBe(0);
   expect(audit.signs).toBe(0);

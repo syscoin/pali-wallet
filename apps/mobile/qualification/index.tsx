@@ -45,7 +45,7 @@ import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts
 // qualification configuration and never imported by the production entry.
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026!';
+const PUBLIC_PASSWORD = '123456';
 const EXPECTED_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 const EXPECTED_HD_ADDRESS = '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0';
 const EXPECTED_ERC20_HD_ADDRESS = '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A';
@@ -378,9 +378,12 @@ function QualificationApp() {
         const { createNativeSentryCryptoExecutor } = await import('../src/crypto/sentryCrypto.native');
         await check(SENTRY_APPROVAL_CHECK, () => qualifyNativeSentryApprovals(qualificationLifetime.signal,
           createNativeSentryCryptoExecutor(null)));
-        const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+        const { paliQuickCryptoSentryIdentity, paliQualificationSdkVersion, paliQualificationSdkIdentity, paliQualificationSdkDigest } = Constants.expoConfig?.extra ?? {};
+        const sdkIdentity = paliQualificationSdkDigest === undefined ? paliQualificationSdkVersion
+          : typeof paliQualificationSdkDigest === 'string' && /^[0-9a-f]{64}$/.test(paliQualificationSdkDigest)
+          ? `${paliQualificationSdkVersion}.sdk-${paliQualificationSdkDigest}` : null;
         expect(typeof paliQuickCryptoSentryIdentity === 'string' && paliQuickCryptoSentryIdentity.length > 0 &&
-          paliQualificationSdkIdentity === `${paliQualificationSdkVersion}.${paliQuickCryptoSentryIdentity}`);
+          sdkIdentity !== null && paliQualificationSdkIdentity === `${sdkIdentity}.${paliQuickCryptoSentryIdentity}`);
         verifiedQuickCryptoIdentity = paliQuickCryptoSentryIdentity;
         if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
           stage = 'public pool configuration';
@@ -493,16 +496,19 @@ function QualificationApp() {
           { createKeyringRuntimeFactory },
           { SeedBackupFlow },
           { openNativeWalletStorage },
+          { createNativePinCredentialPort },
           bip39,
         ] = await Promise.all([
           import('../src/custody/authority.ts'),
           import('../src/custody/keyringRuntime.ts'),
           import('../src/custody/seedBackup.ts'),
           import('../src/storage/native'),
+          import('../src/platform/pinCredential.native'),
           import('bip39'),
         ]);
         const qualificationSlhExecution = null;
-        const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: qualificationSlhExecution, readEvmRetirement: null,
+        const qualificationPinCredential = createNativePinCredentialPort();
+        const factory = createKeyringRuntimeFactory({ pinCredential: qualificationPinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PUBLIC_PASSWORD }; }, privacyServiceSettings: null, slhExecution: qualificationSlhExecution, readEvmRetirement: null,
           ensureCryptoReady: async () => {
             await ensureNativeCryptoReady();
           },
@@ -613,14 +619,14 @@ function QualificationApp() {
             }
             let rejected = false;
             try {
-              await backup!.acknowledge(`${presentation.id}-stale`);
+              await backup!.confirm(`${presentation.id}-stale`, presentation.words);
             } catch {
               rejected = true;
             }
             expect(
               rejected && authority!.getSnapshot().backup === 'unconfirmed'
             );
-            await backup!.acknowledge(presentation.id);
+            await backup!.confirm(presentation.id, presentation.words);
             expect(authority!.getSnapshot().phase === 'ready');
           });
         } else {
@@ -646,7 +652,7 @@ function QualificationApp() {
           const assertCurrent = () => {
             if (owner.signal.aborted || qualificationLifetime.signal.aborted || AppState.currentState !== 'active' ||
                 capturedHost !== ring || storage !== opened || runtime !== activeRuntime || custody.getSnapshot() !== snapshot ||
-                snapshot.phase !== 'ready' || custody.getCatalogue() !== catalogue || !ring.isUnlocked())
+                snapshot.phase !== 'ready' || custody.getCatalogue() !== catalogue || !ring.hasPublicSession())
               throw Error('FULL_SLH_QUALIFICATION_RETIRED');
           };
           try {
@@ -664,7 +670,8 @@ function QualificationApp() {
             }
             const { requireNativeModule } = await import('expo-modules-core');
             fullSlh = await check(FULL_SLH_CHECK, () => qualifyNativeSlhFull({
-              phase: parameters!.phase as Phase, build, keyring: ring, storage: opened,
+              phase: parameters!.phase as Phase, build, keyring: ring, storage: opened, pin: PUBLIC_PASSWORD,
+              pinCredential: qualificationPinCredential, signal: owner.signal,
               productionCapability: qualificationSlhExecution, nativeModule: requireNativeModule('PaliWalletCrypto'), previous,
               assertCurrent, onStorageFault: () => { custody.lock(); },
               randomFill: bytes => { nativeCrypto.getRandomValues(bytes); },

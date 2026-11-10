@@ -1,3 +1,5 @@
+import { signTestTransfer } from './fixtures/operationAuthorization.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -18,9 +20,11 @@ import {
 } from '../../../source/shared/nftTransfer.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const password = 'Public collectible fixture password 2!';
+const password = '123456';
 const wallet = Wallet.fromPhrase(phrase);
 const from = wallet.address;
 const contractAddress = '0x2222222222222222222222222222222222222222';
@@ -96,7 +100,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
   let authority: NativeCustodyAuthority | undefined;
   let held: { entered: PromiseWithResolvers<string>; release: PromiseWithResolvers<void> } | undefined;
   let heldRegistryWrite: { entered: PromiseWithResolvers<void>; release: PromiseWithResolvers<void> } | undefined;
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: password }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() { assert.ok(globalThis.crypto.subtle); },
     async openStorage() {
       const fresh = !existsSync(file);
@@ -237,11 +241,11 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
       { ...approved, chainId: '57' },
       { ...approved, data: approved.data + '00' },
     ])
-      await assert.rejects(transfers.sign(altered, { assertCurrent: current, signal: new AbortController().signal }, intent), { code: 'INVALID_INPUT' });
-    await assert.rejects(transfers.sign(approved, { assertCurrent: current, signal: new AbortController().signal }), { code: 'INVALID_INPUT' });
+      await assert.rejects(signTestTransfer(transfers, password, altered, { assertCurrent: current, signal: new AbortController().signal }, intent), { code: 'INVALID_INPUT' });
+    await assert.rejects(signTestTransfer(transfers, password, approved, { assertCurrent: current, signal: new AbortController().signal }), { code: 'INVALID_INPUT' });
     assert.equal(owner.getSnapshot().phase, 'ready');
 
-    const signed = await transfers.sign(approved, { assertCurrent: currentSingle, signal: new AbortController().signal }, intent);
+    const signed = await signTestTransfer(transfers, password, approved, { assertCurrent: currentSingle, signal: new AbortController().signal }, intent);
     const expected = await wallet.signTransaction({ ...approved, nonce: 0 });
     assert.equal(signed.rawTransaction, expected);
     assert.equal(Transaction.from(signed.rawTransaction).from, from);
@@ -290,7 +294,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
     assert.equal(sent, 1);
 
     const multiple = fixture('ERC-1155', '1');
-    const signed1155 = await transfers.sign(multiple.approved, { assertCurrent: currentMulti, signal: new AbortController().signal }, multiple.intent);
+    const signed1155 = await signTestTransfer(transfers, password, multiple.approved, { assertCurrent: currentMulti, signal: new AbortController().signal }, multiple.intent);
     assert.equal(signed1155.rawTransaction, await wallet.signTransaction({ ...multiple.approved, nonce: 1 }));
     const gate = { entered: Promise.withResolvers<string>(), release: Promise.withResolvers<void>() };
     held = gate;
@@ -311,7 +315,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
     gate.release.resolve();
     held = undefined;
     await assert.rejects(pending);
-    await assert.rejects(transfers.sign(multiple.approved, { assertCurrent: current, signal: new AbortController().signal }, multiple.intent), { code: 'CANCELLED' });
+    await assert.rejects(signTestTransfer(transfers, password, multiple.approved, { assertCurrent: current, signal: new AbortController().signal }, multiple.intent), { code: 'CANCELLED' });
     await owner.dispose();
 
     const reopened = await open();

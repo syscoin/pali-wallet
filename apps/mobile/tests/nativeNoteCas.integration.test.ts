@@ -15,6 +15,7 @@ import { AsyncMutex } from '../../../source/utils/asyncMutex.ts';
 import { identifyClassicNote } from '../../../source/utils/privacy/note.ts';
 import {
   createPrivateVaultController,
+  createPrivateVaultSession,
   PRIVATE_VAULT_STORAGE_PREFIX,
   type IPrivateVaultSession,
 } from '../../../source/wallet/privateVault.ts';
@@ -98,14 +99,14 @@ test('real SDK note restore revokes a locked write, consumes an uncertain commit
   const captureSession = (): IPrivateVaultSession => {
     const captured = generation;
     const ring = keyring!;
-    return {
+    return createPrivateVaultSession({
       generation: captured,
       keyring: ring,
       assertCurrent() {
         if (generation !== captured || keyring !== ring || !ring.isUnlocked())
           throw new WalletStorageError('STORAGE_CHANGED');
       },
-    };
+    });
   };
   try {
     storage = await SqliteWalletStorage.open(

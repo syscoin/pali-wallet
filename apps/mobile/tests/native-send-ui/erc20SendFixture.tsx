@@ -1,3 +1,5 @@
+import { unsignedTransferBytes } from '../../src/custody/evmFeeContracts.ts';
+import { createTestOperationAuthorizer } from '../fixtures/operationAuthorization.ts';
 import { authorizePrivateNoteReplay } from '../../../../source/wallet/privateNoteReplay.ts';
 import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networkContext';
 // Synthetic public wallet only. Production never imports this fixture.
@@ -161,10 +163,13 @@ const rpc = new NativeTransferRpc({
     );
   },
 });
+const operationAuthorization = createTestOperationAuthorizer((credential, check) => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
 const runtime: NativeTransferRuntime = {
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
   async authenticateOperation(credential, check) {
     check();
-    if (credential.method !== 'password' || credential.password !== 'public-password') throw Error('INVALID_CREDENTIAL');
+    if (credential.method !== 'pin' || credential.pin !== '123456') throw Error('INVALID_CREDENTIAL');
   },
   replay(guard, transport, options) {
     return new EvmSignedReplay(signedRecords, () => ({authorizeReplay: (entry) => authorizePrivateNoteReplay(entry, guard, async () => { throw Error('Unexpected private replay'); }, async () => { throw new Error('Unexpected private withdrawal'); }),recordSession:signedRecordTestSession(guard),assertCurrent:guard,
@@ -187,6 +192,7 @@ const runtime: NativeTransferRuntime = {
   },
   async sign(transaction: EvmUnsignedTransfer, authority, intent) {
     const guard = authority.assertCurrent;
+    operationAuthorization.consume(authority.authorization, transaction, guard);
     guard();
     assertTransferIntentEnvelope(transaction, intent);
     const rawTransaction = await wallet.signTransaction({
@@ -359,7 +365,7 @@ export function Erc20SendFixture() {
     }} />
   </> : <Text>Wallet closed</Text>;
   return <NativeSend
-    authenticationMethod="password"
+    authenticationMethod="pin"
     account={{ address: wallet.address, network: 'ethereum', revision: state.revision }}
     key={snapshot.revision}
     controller={controller.view}

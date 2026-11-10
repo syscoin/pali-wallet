@@ -1,3 +1,5 @@
+import { unsignedTransferBytes } from '../src/custody/evmFeeContracts.ts';
+import { createTestOperationAuthorizer } from './fixtures/operationAuthorization.ts';
 import { authorizePrivateNoteReplay } from '../../../source/wallet/privateNoteReplay.ts';
 import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import assert from 'node:assert/strict';
@@ -19,7 +21,7 @@ const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
 const to = '0x1111111111111111111111111111111111111111';
-const OPERATION_CREDENTIAL = { method: 'password', password: 'public-password' } as const;
+const OPERATION_CREDENTIAL = { method: 'pin', pin: '123456' } as const;
 const token = Object.freeze({
   contractAddress: '0x3333333333333333333333333333333333333333',
   name: 'Public fixture token',
@@ -98,10 +100,13 @@ function fixture() {
       records[profile] = value; return true;
     },
   });
+  const operationAuthorization = createTestOperationAuthorizer((credential, check): Promise<void> => runtime.authenticateOperation(credential, check), unsignedTransferBytes);
   const runtime = {
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
     async authenticateOperation(credential: NativeOperationCredential, guard: () => void) {
       guard(); authentications++;
-      if (!credential || credential.method === 'password' && credential.password !== OPERATION_CREDENTIAL.password)
+      if (!credential || credential.method === 'pin' && credential.pin !== OPERATION_CREDENTIAL.pin)
         throw Error('INVALID_CREDENTIAL');
       if (authenticationGate) await authenticationGate;
       guard();
@@ -133,9 +138,10 @@ function fixture() {
     assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
       transaction: EvmUnsignedTransfer,
-      authority: Readonly<{ assertCurrent(): void; signal: AbortSignal }>
+      authority: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['sign']>[1]
     ) {
       const guard = authority.assertCurrent;
+      operationAuthorization.consume(authority.authorization, transaction, guard);
       guard();
       signatures++;
       if (signGate) await signGate;
@@ -694,7 +700,7 @@ test('operation authentication is required and a rejected credential preserves o
     const approved = await review(f);
     assert.equal(f.authentications(), 0);
     await assert.rejects(Reflect.apply(f.transfers.confirm, f.transfers, [approved.id]), { code: 'INVALID_CREDENTIAL' });
-    await assert.rejects(f.transfers.confirm(approved.id, { method: 'password', password: 'wrong' }), { code: 'INVALID_CREDENTIAL' });
+    await assert.rejects(f.transfers.confirm(approved.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
     assert.strictEqual(f.transfers.getSnapshot().review, approved);
     assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0); assert.equal(Object.keys(f.records).length, 0);
     await f.transfers.confirm(approved.id, OPERATION_CREDENTIAL);
@@ -843,7 +849,7 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     await f.transfers.recover(true);
     const retry = f.transfers.getSnapshot().review;
     assert(retry?.retry);
-    await assert.rejects(f.transfers.confirm(retry.id, { method: 'password', password: 'wrong' }), { code: 'INVALID_CREDENTIAL' });
+    await assert.rejects(f.transfers.confirm(retry.id, { method: 'pin', pin: '000000' }), { code: 'INVALID_CREDENTIAL' });
     assert.equal(f.broadcasts.length, 1);
     await f.transfers.confirm(retry.id, OPERATION_CREDENTIAL);
     assert.equal(f.authentications(), 3);

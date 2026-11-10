@@ -1,3 +1,4 @@
+import { enterPin } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 import { SENTRY_COLLATERAL_TXID, SENTRY_TXID } from '../sentryNodeFixtures';
 const ID = (n: number) => n.toString(16).padStart(64, '0');
@@ -87,8 +88,7 @@ test('seeded UTXO Activity uses the shared list and detail at 320 pixels', async
   await page.goto('/?hd-utxo-send=1');
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
-  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await enterPin(page, '123456');
   await page.getByRole('tab', { name: 'Activity', exact: true }).click();
   await load(page);
   await expect(page.getByText('Account 1 · Bitcoin', { exact: true })).toBeVisible();

@@ -32,5 +32,7 @@ for (const watchOnly of [false, true]) test(`actual ${watchOnly ? 'watch' : 'cus
     ? 'Transaction history for this watch account is not available on the selected network yet. Balance and receive remain available.'
     : 'Transaction history is unavailable right now. Your account and receive address remain available.');
   assert.doesNotMatch(notice.props.body, /Ethereum|no transactions|empty/i);
-  assert.equal(header.props.subtitle, 'Current account · Current network'); header.props.onBack(); assert.equal(back, 1);
+  assert.equal(header.props.subtitle, 'Current account · Current network');
+  assert.equal(header.props.onBack, undefined, 'Activity is a bottom-tab root');
+  assert.equal(back, 0);
 });

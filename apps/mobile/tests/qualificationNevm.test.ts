@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -22,9 +23,11 @@ import { readSignedRecordEvidence, retainedSignedEntries } from '../qualificatio
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC NEVM native qualification test password 1!';
+const PASSWORD = '123456';
 const FOURTH_ADDRESS = '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
@@ -122,7 +125,7 @@ async function sqliteDisk() {
   let initialized = false;
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => { assert(globalThis.crypto.subtle); },
     async openStorage() {
       storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);

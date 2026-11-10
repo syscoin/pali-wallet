@@ -357,6 +357,12 @@ test('native factory explicitly wires one owned transport to all network consume
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
     './walletConnectRuntime': { prepareWalletConnectRuntime },
+    './pinCredential.native': {
+      createNativePinCredentialPort: () => ({ read: unexpectedFeature, stage: unexpectedFeature, remove: unexpectedFeature }),
+    },
+    './operationAuthentication': {
+      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
+    },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability: () => ({
         prompt: { cancel() { retired.push('authentication'); } },
@@ -602,6 +608,7 @@ test('public platform and native Portfolio fallback bind platform-owned fetch; N
   const react = {
     createElement: (...args: unknown[]) => args,
     useMemo: (work: () => unknown) => work(),
+    useCallback: (callback: unknown) => callback,
     useLayoutEffect() {},
     useSyncExternalStore: () => ({ account: null }),
   };

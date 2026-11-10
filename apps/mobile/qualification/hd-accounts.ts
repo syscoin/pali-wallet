@@ -1,3 +1,4 @@
+import { signQualificationTransfer } from './authorized-transfer.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -109,7 +110,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
     return stored.hash;
   };
   const sign = async (address: string, index: number) => {
-    const signed = await transfer.sign({
+    const signed = await signQualificationTransfer(transfer, password, {
       type: 2, accessList: [], from: address, to: '0x1111111111111111111111111111111111111111',
       chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x',
       maxFeePerGas: '3', maxPriorityFeePerGas: '1',

@@ -4,7 +4,7 @@ import { NativeRecoveryFlow, type RecoveryOutcome } from '../src/custody/recover
 import type { RecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import type { RecoveryProof } from '../src/custody/recovery.ts';
 
-const phrase = Array(12).fill('publicfixture').join(' '), password = 'Public fixture password 1!';
+const phrase = Array(12).fill('publicfixture').join(' '), pin = '123456';
 const counts = { hdAccounts: 2, importedKeys: 1, retiredHdAccounts: 1, retiredImportedAccounts: 1, retainedSignedTransactions: 3, tokenEntries: 1, historySummaries: 4, cachedTransactions: 5, activityPreferences: 1 };
 const inventory: RecoveryInventory = Object.freeze({ status: 'needs-matching-phrase-verification', reason: null, backup: 'confirmed', counts: Object.freeze(counts), privateNotes: 'not-supported' });
 const proof = Object.freeze({}) as RecoveryProof;
@@ -17,23 +17,23 @@ function fixture() {
   let read = async () => inventory, prepare = async () => proof, commit = async () => 'committed-locked' as const, finish = async (_value: RecoveryOutcome) => {};
   const outcomes: RecoveryOutcome[] = [];
   const flow = new NativeRecoveryFlow({ readInventory: () => read(), isCurrent: () => current, now: () => time,
-    createCoordinator() { created++; return { async prepare(p, pass, guard) { calls++; assert.equal(p, phrase); assert.equal(pass, password); guard(); return prepare(); }, async commit(p) { commits++; assert.equal(p, proof); return commit(); }, cancel() { cancelled++; } }; },
+    createCoordinator() { created++; return { async prepare(p, credential, guard) { calls++; assert.equal(p, phrase); assert.equal(credential, pin); guard(); return prepare(); }, async commit(p) { commits++; assert.equal(p, proof); return commit(); }, cancel() { cancelled++; } }; },
     async finish(value) { outcomes.push(value); await finish(value); } }); flows.push(flow);
   return { flow, outcomes, created: () => created, calls: () => calls, commits: () => commits, cancelled: () => cancelled,
     time(value: number) { time = value; }, current(value: boolean) { current = value; }, read(value: typeof read) { read = value; }, prepare(value: typeof prepare) { prepare = value; }, commit(value: typeof commit) { commit = value; }, finish(value: typeof finish) { finish = value; } };
 }
 async function enter(f: ReturnType<typeof fixture>) { f.flow.start(); await tick(); assert.equal(f.flow.getSnapshot().phase, 'scope'); f.flow.enter(); }
-const submit = (f: ReturnType<typeof fixture>) => f.flow.submit({ phrase, password, confirmation: password });
+const submit = (f: ReturnType<typeof fixture>) => f.flow.submit({ phrase, pin });
 
 test('scope reads once without creating recovery authority; no private data enters snapshots', async () => {
   const f = fixture(); f.flow.start(); f.flow.start(); await tick(); assert.equal(f.created(), 0);
   assert.equal(f.flow.getSnapshot().inventory, inventory); f.flow.enter(); assert(submit(f)); await tick();
-  assert.equal(f.flow.getSnapshot().phase, 'review'); assert(!JSON.stringify(f.flow.getSnapshot()).includes(password)); assert(!JSON.stringify(f.flow.getSnapshot()).includes(phrase));
+  assert.equal(f.flow.getSnapshot().phase, 'review'); assert(!JSON.stringify(f.flow.getSnapshot()).includes(pin)); assert(!JSON.stringify(f.flow.getSnapshot()).includes(phrase));
 });
 test('invalid input is field-associated and never retires or invokes the coordinator', async () => {
   const f = fixture(); await enter(f);
-  assert.equal(f.flow.submit({ phrase: 'few words', password: 'short', confirmation: 'different' }), false);
-  assert.deepEqual(Object.keys(f.flow.getSnapshot().fieldErrors).sort(), ['confirmation', 'password', 'phrase']); assert.equal(f.created(), 0);
+  assert.equal(f.flow.submit({ phrase: 'few words', pin: 'short' }), false);
+  assert.deepEqual(Object.keys(f.flow.getSnapshot().fieldErrors).sort(), ['phrase', 'pin']); assert.equal(f.created(), 0);
 });
 test('wrong phrase can deliberately retry on the same original coordinator', async () => {
   const f = fixture(); await enter(f); f.prepare(async () => { throw new Error('WRONG_PHRASE'); });
@@ -78,11 +78,11 @@ test('Back before preparation clears entry without retiring; Back after wrong ph
   f.flow.enter(); f.prepare(async () => { throw new Error('AUTH_THROTTLED'); }); submit(f); await tick(); f.flow.back(); await tick(); assert.equal(f.outcomes[0]?.kind, 'cancelled'); assert.equal(f.created(), 1);
 });
 
-test('shared password rule rejects weak recovery input before creating a coordinator', async () => {
+test('recovery accepts only a six-digit PIN before creating a coordinator', async () => {
   const f = fixture(); await enter(f);
-  for (const weak of ['only twelve lowercase letters', 'Abcdefghijk1', 'Abcdefghijk!']) {
-    assert.equal(f.flow.submit({ phrase, password: weak, confirmation: weak }), false);
-    assert.match(f.flow.getSnapshot().fieldErrors.password!, /uppercase and lowercase.*number.*symbol/);
+  for (const invalid of ['12345', '1234567', 'abcdef', '１２３４５６', '1 3456', 'Old password 1!']) {
+    assert.equal(f.flow.submit({ phrase, pin: invalid }), false);
+    assert.match(f.flow.getSnapshot().fieldErrors.pin!, /6-digit PIN/);
     assert.equal(f.created(), 0); assert.equal(f.calls(), 0);
   }
   assert.equal(submit(f), true); await tick();

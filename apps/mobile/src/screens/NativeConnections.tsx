@@ -99,7 +99,7 @@ export function NativeCallsStatus({
             <Text>{t('mobile.connections.block', { blockNumber: BigInt(receipt.blockNumber).toString() })}</Text>
           </Card>
         ))}
-        <Button title={t('buttons.close')} variant="quiet" size="compact" onPress={close} />
+        <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} />
       </Screen>
     </SafeAreaView>
   );
@@ -237,7 +237,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
         <View style={[s.fact, s.factBorder]}><Text style={s.factLabel}>{t('settings.permissions')}</Text><View style={s.factContent}>{permissionRows(selectedSession.methods).map(({ key }) => <Text key={key} style={s.factValue}>{t(`mobile.connections.${key}`)}</Text>)}</View></View>
         <View style={[s.fact, s.factBorder]}><Text style={s.factLabel}>{t('mobile.connections.expires')}</Text><Text style={s.factValue}>{new Date(selectedSession.expiresAt).toLocaleString()}</Text></View>
       </Card>
-      {selectedSession.returnTarget && <Button title={t('mobile.connections.openWebsite')} icon="external" variant="quiet" size="compact"
+      {selectedSession.returnTarget && <Button title={t('mobile.connections.openWebsite')} icon="external" variant="secondary" size="compact"
         onPress={() => { if (current()) invoke(() => controller.returnToDapp(selectedSession.id, snapshot.revision)); }} />}
     </Screen></SafeAreaView>;
   }
@@ -267,7 +267,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
           <Text selectable accessibilityLabel={`${t('mobile.connections.reportedWebsite')}: ${proposal.origin}`} style={s.heroOrigin}>{proposal.origin}</Text>
           {countdown !== null && <View style={s.countdown}><Icon name="clock" size={16} color={colors.muted} /><Text style={s.caption}>{t('mobile.connections.requestExpires', { time: countdown })}</Text></View>}
         </View>
-        {renderPermissions(proposal.methodsByAccount.find(account => account.accountId === selectedAccountId)?.methods ?? [], proposal)}
+        <Card style={s.verification}><DappSiteStatus verification={proposal.verification} /></Card>
         {snapshot.network && <Card style={s.facts}><View style={s.fact}><View style={s.inlineLabel}><Icon name="globe" size={18} color={colors.blue} /><Text style={s.factLabel}>{t('mobile.connections.connectionNetwork')}</Text></View><Text style={s.factValue}>{snapshot.network.label}</Text></View></Card>}
         <Text style={s.cardTitle}>{t('mobile.connections.account')}</Text>
         <View accessibilityRole="radiogroup" accessibilityLabel={t('mobile.connections.account')} style={s.accounts}>
@@ -280,7 +280,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
             {account.id === selectedAccountId && <Icon name="check" color={colors.blue} size={20} />}
           </IdlePressable>)}
         </View>
-        <Card style={s.verification}><DappSiteStatus verification={proposal.verification} /></Card>
+        {renderPermissions(proposal.methodsByAccount.find(account => account.accountId === selectedAccountId)?.methods ?? [], proposal)}
         {!proposal.canApprove && proposal.verification.validation !== 'INVALID' && !proposal.verification.isScam && <Notice title={t('mobile.connections.unsupportedTitle')} body={t('mobile.connections.unsupportedBody')} />}
       </> : <Card style={s.card}>
         <View style={s.connectHeading}><Icon name={busy ? 'clock' : 'scan'} size={23} color={colors.blue} />
@@ -294,7 +294,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
           ? <Button title={t('mobile.connections.tryAgain')} onPress={() => invoke(() => controller.retry())} />
           : <><Button title={t('mobile.connections.scan')} icon="scan" disabled={!snapshot.network}
             onPress={() => { lifetime.current.revision++; onScanStarted?.(); setScanning(true); }} />
-            <Button title={t('mobile.connections.paste')} icon="copy" variant="quiet" size="compact" disabled={!snapshot.network} onPress={paste} /></>}
+            <Button title={t('mobile.connections.paste')} icon="copy" variant="secondary" size="compact" disabled={!snapshot.network} onPress={paste} /></>}
       </Card>}
       {(snapshot.error || clipboardError) && <Notice title={t('mobile.connections.unavailableTitle')}
         body={snapshot.error ? t(ERRORS[snapshot.error]) : t('mobile.connections.clipboard')} />}

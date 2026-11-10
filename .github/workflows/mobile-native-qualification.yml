@@ -37,6 +37,7 @@ on:
       - 'apps/mobile/scripts/qualification-sdk.cjs'
       - 'apps/mobile/scripts/register-shared-test-dependencies.mjs'
       - 'apps/mobile/vendor/*.tgz'
+      - 'vendor/sysweb3-operation/**'
       - 'source/shared/**'
       - 'source/scripts/privacyProver/**'
       - 'source/utils/privacy/prover*'

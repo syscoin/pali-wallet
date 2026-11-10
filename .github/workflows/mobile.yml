@@ -9,6 +9,7 @@ on:
       - 'scripts/apply-quickcrypto-sentry.cjs'
       - 'scripts/quickcrypto-sentry.json'
       - 'apps/mobile/**'
+      - 'vendor/sysweb3-operation/**'
       - '.github/workflows/mobile-native-qualification.yml'
       - 'source/shared/**'
       - 'source/scripts/privacyProver/**'

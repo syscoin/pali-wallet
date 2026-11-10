@@ -1,4 +1,5 @@
 import { assertSynchronousEvmFeeGuard } from '../../../source/shared/evmFeeGuard.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { createNativePrivacyServiceSettings } from '../src/platform/privacyServiceSettings.native.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -82,6 +83,7 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
   });
   class PassiveController { readonly view = {}; dispose() {} }
   const unexpectedFeature = () => assert.fail('unexpected feature operation in native factory fixture');
+  const pinCredential = createTestPinCredentialPort();
   const dependencies: Record<string, unknown> = {
     './privacyServiceSettings.native': { createNativePrivacyServiceSettings },
     '../../../../source/shared/evmFeeGuard': { assertSynchronousEvmFeeGuard },
@@ -106,6 +108,10 @@ async function fixture(existing = true, noteInventory?: NativeNoteInventory) {
     },
     '../portfolio/nativeRecipientResolver': { createNativeRecipientResolver: () => ({ resolve: unexpectedFeature }) },
     './security': security,
+    './pinCredential.native': { createNativePinCredentialPort: () => pinCredential },
+    './operationAuthentication': {
+      nativeOperationAuthentication: { request: unexpectedFeature, cancel() {} },
+    },
     './deviceUnlockCredential.native': {
       createNativeDeviceUnlockCapability() {
         return { credentials: {}, prompt: { cancel() {} } };

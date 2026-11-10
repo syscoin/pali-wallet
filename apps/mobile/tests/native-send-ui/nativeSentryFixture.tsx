@@ -51,7 +51,7 @@ const manager: NativeSentryKeyManagement = {
       await holdSettings('auth');
       check();
       guard();
-      if (password !== 'Fixture password 1!')
+      if (password !== '123456')
         throw new Error('Invalid fixture confirmation');
       await holdSettings('write');
       check();
@@ -92,7 +92,7 @@ const manager: NativeSentryKeyManagement = {
   },
   async confirmImport(current, password) {
     check();
-    if (current !== review || password !== 'Fixture password 1!')
+    if (current !== review || password !== '123456')
       throw new Error('Invalid fixture confirmation');
     calls.push({ method: 'confirmImport', count: current.keys.length });
     saved = current.keys.map((key, index) => ({
@@ -110,7 +110,7 @@ const manager: NativeSentryKeyManagement = {
   },
   async confirmRemoval(current, password, backedUp) {
     check();
-    if (password !== 'Fixture password 1!' || !backedUp)
+    if (password !== '123456' || !backedUp)
       throw new Error('Invalid fixture confirmation');
     saved = saved.filter((key) => key.id !== current.key.id);
     return { removedKeyId: current.key.id };

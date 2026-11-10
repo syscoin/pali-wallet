@@ -18,7 +18,7 @@ import type {
 import type { SentryCollateralReservation } from '../../../../source/wallet/sentryCollateral';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
-import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 type Snapshot = Awaited<ReturnType<NativeSentryNodeManagement['list']>>;
 type Step =
@@ -264,9 +264,9 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                       {outpoint(node.collateralOutpoint)}
                     </Text>
                     {reservation && (
-                      <Button
+                      <Button icon="shield"
                         title="Release collateral"
-                        variant="quiet" size="compact"
+                        variant="secondary" size="compact"
                         disabled={busy}
                         onPress={() => {
                           clear();
@@ -293,9 +293,9 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                     <Text selectable style={s.identifier}>
                       {outpoint(reservation)}
                     </Text>
-                    <Button
+                    <Button icon="shield"
                       title="Release collateral"
-                      variant="quiet" size="compact"
+                      variant="secondary" size="compact"
                       disabled={busy}
                       onPress={() => {
                         clear();
@@ -306,7 +306,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                     />
                   </Card>
                 ))}
-              <Button
+              <Button icon="plus"
                 title="Link a node"
                 disabled={busy || !snapshot}
                 onPress={() => {
@@ -316,7 +316,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                   if (owner && !owner.busy) navigate(owner, { kind: 'draft' });
                 }}
               />
-              <Button
+              <Button icon="refresh"
                 title="Refresh"
                 variant="secondary" size="compact"
                 disabled={busy}
@@ -434,8 +434,8 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                   disabled={busy}
                 />
               </View>
-              <NoteBackupPasswordField
-                label="Wallet password"
+              <PinField
+                label="Wallet PIN"
                 value={password}
                 onChange={setPassword}
                 busy={busy}

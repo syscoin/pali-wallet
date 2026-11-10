@@ -16,11 +16,16 @@ import {
 } from '../src/crypto/slhDsaNativeExecution.ts';
 import {
   createNativeSlhDsaRuntime,
+  readNativeSlhPublicStates,
   type NativeSlhInstalledKey,
   type NativeSlhPublicState,
 } from '../src/smartAccount/slhDsaRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import type { NativeKeyringSdk } from '../src/custody/keyringSdk.ts';
+import { createNativePinVault, type NativePinCredentialPort } from '../src/custody/pinVault.ts';
+import { decodeStorageValue } from '../src/storage/json.ts';
+import { parseSLHDSAStateStorageKey } from '../../../source/wallet/slhDsaState.ts';
+import { SLH_DSA_PROFILE_STATE_DOMAIN } from '../../../source/wallet/slhDsaStateCrypto.ts';
 import { httpBuild } from './http-contract.ts';
 
 export const FULL_SLH_PHASE_TIMEOUT_MS = 1_800_000;
@@ -129,7 +134,7 @@ function signed(input: unknown, count: number, fallback: boolean): boolean {
     n.finish === (fallback ? 0 : 1) &&
     n.cached === (fallback ? 1 : 0) &&
     n.forced === (fallback ? 1 : 0) &&
-    n.loads === (fallback ? 0 : 1)
+    n.loads === 1
   );
 }
 
@@ -242,6 +247,9 @@ export async function qualifyNativeSlhFull(
     phase: Phase;
     build: Build;
     keyring: Keyring;
+    pin: string;
+    pinCredential: NativePinCredentialPort;
+    signal: AbortSignal;
     storage: OpenWalletStorage;
     productionCapability: null;
     nativeModule: NativeSlhExecutionModule;
@@ -265,23 +273,43 @@ export async function qualifyNativeSlhFull(
     fail();
   const check = () => assertSynchronousEvmFeeGuard(ports.assertCurrent);
   check();
-  const unlocked = ports.keyring.captureUnlockedSessionGuard();
+  const unlocked = ports.keyring.capturePublicSessionGuard();
   const owner = () => {
     check();
     assertSynchronousEvmFeeGuard(unlocked);
-    if (!ports.keyring.isUnlocked()) fail();
+    if (!ports.keyring.hasPublicSession()) fail();
   };
-  owner();
-  const namespace = await ports.keyring.getPrivateRecordProfileId();
   owner();
   const identity = await ports.storage.recovery?.readIdentity();
   owner();
+  const namespace = identity?.root?.profileId;
   if (
     !identity?.root ||
     identity.root.profileId !== namespace ||
+    typeof namespace !== 'string' ||
     !/^0x[0-9a-f]{64}$/.test(namespace)
   )
     fail();
+  const vault = createNativePinVault(ports.storage.pin, ports.pinCredential);
+  const withSecret = async <T>(signal: AbortSignal, guard: () => void, work: () => Promise<T>): Promise<T> => {
+    let authenticated: (() => Promise<void>) | undefined;
+    const result = await ports.keyring.withSecretOperation({ async withSecret(sdkCheck, consume) {
+      const check = () => { owner(); assertSynchronousEvmFeeGuard(guard); assertSynchronousEvmFeeGuard(sdkCheck); };
+      await vault.withVerifiedSecret(ports.pin, check, async (secret, complete) => { authenticated = complete; await consume(secret); });
+    } }, { signal, assertCurrent: () => { owner(); assertSynchronousEvmFeeGuard(guard); } }, async () => {
+      if (!authenticated) fail();
+      await authenticated(); owner();
+      return work();
+    });
+    owner(); if (ports.keyring.isUnlocked()) fail();
+    return result;
+  };
+  const publicStates = await withSecret(ports.signal, owner, async () => {
+    if (await ports.keyring.getPrivateRecordProfileId() !== namespace) fail();
+    const snapshot = await ports.storage.recovery!.readSnapshot(); owner();
+    return readNativeSlhPublicStates(snapshot.records.filter(row => parseSLHDSAStateStorageKey(row.key) !== null)
+      .map(row => ({ key: row.key, value: decodeStorageValue(row.value) })), ports.keyring, owner);
+  });
   const digest = async (bytes: Uint8Array) => {
     owner();
     const result = await ports.digest(bytes);
@@ -367,8 +395,7 @@ export async function qualifyNativeSlhFull(
     });
   };
   let deriveCalls = 0;
-  const keyring = {
-    async deriveSLHDSASetupSecretForAccount(request: { accountIndex: number }) {
+  const derive = async (request: { accountIndex: number }) => {
       owner();
       if (
         ports.phase !== 'create' ||
@@ -384,18 +411,21 @@ export async function qualifyNativeSlhFull(
       deriveSetupSecretMs = elapsed(start);
       owner();
       return result;
-    },
-    encryptPrivateRecord: ports.keyring.encryptPrivateRecord.bind(
-      ports.keyring
-    ),
-    decryptPrivateRecord: ports.keyring.decryptPrivateRecord.bind(
-      ports.keyring
-    ),
   };
   const create = () =>
     createNativeSlhDsaRuntime({
       namespace,
-      keyring,
+      publicStates,
+      async authorize(_purpose, accountIndex, signal, guard) {
+        let access: Awaited<ReturnType<Keyring['createPrivateRecordAccess']>> | undefined;
+        try {
+          return await withSecret(signal, guard, async () => {
+            access = await ports.keyring.createPrivateRecordAccess([SLH_DSA_PROFILE_STATE_DOMAIN], { transferable: false });
+            const setup = accountIndex === null ? null : await derive({ accountIndex });
+            return Object.freeze({ setup, crypto: access, dispose() { access?.dispose(); access = undefined; } });
+          });
+        } catch (error) { access?.dispose(); throw error; }
+      },
       storage: ports.storage.keyringStorage,
       assertCurrent: owner,
       openExecution,
@@ -410,7 +440,7 @@ export async function qualifyNativeSlhFull(
       // Includes SDK/seed derivation, XMSS cache generation and durable setup.
       state = await runtime.prepareFresh(0, owner, () => {
         owner();
-      });
+      }, ports.signal);
       prepareFreshMs = elapsed(start);
       owner();
       if (
@@ -429,7 +459,8 @@ export async function qualifyNativeSlhFull(
         .signActionHash(
           { ...key, actionHash: `0x${'09'.repeat(32)}` },
           null,
-          owner
+          owner,
+          ports.signal
         )
         .then(
           () => {
@@ -488,7 +519,8 @@ export async function qualifyNativeSlhFull(
       const signatureHex = await runtime.signActionHash(
         { ...key, actionHash },
         null,
-        owner
+        owner,
+        ports.signal
       );
       // Includes signer state/cache I/O and usage persistence; excludes the
       // following verifier calls, mutation checks, readback and report digest.
@@ -496,7 +528,9 @@ export async function qualifyNativeSlhFull(
       owner();
       const signature = hexToBytes(signatureHex),
         action = hexToBytes(actionHash);
-      const verifier = native;
+      const verifier = createNativeSlhExecution(ports.nativeModule, { namespace, signal: ports.signal,
+        assertCurrent: owner, randomFill: ports.randomFill, yield: ports.yield });
+      try {
       if (
         signature.length !== 3856 ||
         !verifier ||
@@ -512,6 +546,7 @@ export async function qualifyNativeSlhFull(
       wrongAction[0] = wrongAction[0]! ^ 1;
       if (await verifier.verify(publicBytes, wrongAction, signature)) fail();
       owner();
+      } finally { await verifier.retire(); }
       state = await runtime.hydrateInstalled(key, owner);
       owner();
       if (state.signatureCount !== expected) fail();

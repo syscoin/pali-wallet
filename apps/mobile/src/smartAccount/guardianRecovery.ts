@@ -1,3 +1,7 @@
+import {
+  guardianRecoveryTerminalReason,
+  type GuardianRecoveryTerminalReason,
+} from '../../../../source/utils/smartAccount/guardianRecoveryLifecycle.ts';
 import { assertSynchronousEvmFeeGuard } from '../../../../source/shared/evmFeeGuard.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 import type { NativePreparedConnectionTransaction } from '../connections/transactionRuntime.ts';
@@ -97,6 +101,7 @@ export type NativeGuardianRecoverySnapshot = Readonly<{
   error: string | null;
   canAbandon: boolean;
   metadataRefresh: 'complete' | 'failed' | null;
+  terminalReason: Exclude<GuardianRecoveryTerminalReason, 'executed'> | null;
 }>;
 type Host = Readonly<{
   assertCurrent(): void;
@@ -143,6 +148,7 @@ export class NativeGuardianRecoveryController {
     error: null,
     canAbandon: false,
     metadataRefresh: null,
+    terminalReason: null,
   });
   private readonly listeners = new Set<() => void>();
   private readonly lifetime = new AbortController();
@@ -212,7 +218,16 @@ export class NativeGuardianRecoveryController {
   private async observe() {
     const status = await this.host.observe(this.lifetime.signal);
     this.check();
+    const terminal =
+      status.terminal === 'obsolete'
+        ? guardianRecoveryTerminalReason(
+            status.intent.operation,
+            status.observation,
+            status.transactionHash
+          )
+        : null;
     this.publish({
+      terminalReason: terminal === 'executed' ? null : terminal,
       intent: status.intent,
       observation: status.observation,
       action: status.action,
@@ -383,6 +398,7 @@ export class NativeGuardianRecoveryController {
       await this.host.abandon(this.lifetime.signal);
       this.publish({
         phase: 'cleared',
+        terminalReason: null,
         feeReview: null,
         canAbandon: false,
         error: null,

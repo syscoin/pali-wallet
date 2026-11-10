@@ -163,18 +163,20 @@ export class HdKeyExportFlow {
       return presentation;
     } catch (error) {
       this.cancel();
+      const refusal = error instanceof CustodyRuntimeError &&
+        (error.code === 'INVALID_CREDENTIAL' || error.code === 'AUTH_THROTTLED' || error.code === 'DEVICE_UNLOCK_UNAVAILABLE');
       // A failing current runtime may have already cleared its catalogue. Use
       // its captured public authority identity to reflect that lock, but never
       // revoke a replacement context when obsolete work eventually settles.
       const now = this.authority.getSnapshot();
       let sameRuntime = false;
       try { sameRuntime = !!runtime && this.runtime() === runtime; } catch { /* No authority over an unavailable replacement. */ }
-      if (!this.disposed && scope && sameRuntime &&
+      if (!refusal && !this.disposed && scope && sameRuntime &&
           now.revision === scope.authorityRevision && now.phase === 'ready' &&
           now.account?.address === scope.address && now.account.network === scope.networkId)
         this.authority.lock();
       if (error instanceof Error && error.message === 'CANCELLED') throw new Error('CANCELLED');
-      if (error instanceof CustodyRuntimeError && (error.code === 'INVALID_CREDENTIAL' || error.code === 'AUTH_THROTTLED'))
+      if (refusal)
         throw new Error(error.code);
       throw new Error('KEY_EXPORT_UNAVAILABLE');
     } finally { this.busy = false; }

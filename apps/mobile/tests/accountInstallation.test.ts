@@ -1,3 +1,4 @@
+import { createTestPinRecord } from './fixtures/pinRecord.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -41,6 +42,7 @@ async function fixture() {
     return {
       vault: pair.vault,
       keys: pair['vault-keys'],
+      pin: await createTestPinRecord(store, { vault: pair.vault, keys: pair['vault-keys'] }, await store.recovery.fingerprintPair!({ vault: pair.vault, keys: pair['vault-keys'] })),
       accountRecords: {
         version: 1,
         walletFingerprint: await store.recovery.fingerprintPair!({

@@ -1,3 +1,4 @@
+import { pinField, fillPinField } from './operationAuthentication';
 import { expect, test } from '@playwright/test';
 test.use({
   baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
@@ -33,15 +34,15 @@ test('linked-node review and release remain reachable on a narrow, short screen'
   await expect(
     page.getByRole('heading', { name: 'Release collateral', exact: true })
   ).toBeInViewport({ ratio: 1 });
-  const password = page.getByLabel('Wallet password', { exact: true });
-  await expect(password).toHaveAttribute('type', 'password');
+  const password = pinField(page, 'Wallet PIN');
+  await expect(password).toHaveText('Enter PIN');
   const release = page.getByRole('button', {
     name: 'Release collateral',
     exact: true,
   });
   await expect(release).toBeDisabled();
   await page.getByLabel('Allow collateral spending', { exact: true }).check();
-  await password.fill('Fixture password 1!');
+  await fillPinField(password, '123456');
   await release.scrollIntoViewIfNeeded();
   await expect(release).toBeInViewport({ ratio: 1 });
   await page.screenshot({

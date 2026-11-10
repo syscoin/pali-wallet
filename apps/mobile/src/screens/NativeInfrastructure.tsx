@@ -21,6 +21,14 @@ const emptySnapshot = () => empty;
 const emptySubscribe = () => () => {};
 
 /** Each presentation owns one bounded host; no pending open can adopt a replacement mount. */
+const setupPurpose: Record<string, string> = {
+  entryPoint: 'Process smart-account transactions', accountImplementation: 'Create smart accounts',
+  ecdsaValidator: 'Approve with wallet owners', p256WebAuthnValidator: 'Approve with passkeys',
+  slhDsaVerifier: 'Verify post-quantum approvals', slhDsaValidator: 'Use post-quantum approval keys',
+  compositeValidator: 'Combine approval methods', guardianRecoveryModule: 'Recover accounts with a guardian',
+  factory: 'Deploy smart accounts', multicall3: 'Read account data efficiently',
+};
+
 export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) {
   const { t } = useNativeTranslation();
   const scope = useMemo<Scope>(() => ({ source: open }), [open]);
@@ -78,6 +86,10 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
   };
   const busy = ['loading', 'preparing', 'submitting'].includes(state.phase);
   const review = state.feeReview;
+  const [setupDetails, setSetupDetails] = useState(false);
+  const required = state.status?.observation.contracts.filter(contract => !contract.optional) ?? [];
+  const completed = required.filter(contract => contract.deployed).length;
+  const next = state.status?.observation.contracts.find(contract => !contract.deployed && !contract.optional) ?? state.status?.observation.contracts.find(contract => !contract.deployed);
   const pending = state.status?.pending;
   // Adapt once for this immutable quote. Monotonic checks below remain the authority.
   const connectionDeadline = useMemo(() => review
@@ -110,30 +122,39 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
       : readyToReview
       ? <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
       : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" size="compact" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
-    <Button title={t('buttons.close')} variant="quiet" size="compact" onPress={close} />
+    <Button title={t('buttons.close')} variant="secondary" size="compact" onPress={close} />
   </>}>
     <Header title={t('settings.smartAccountInfrastructure')} onBack={close} />
+    {state.status && state.phase !== 'review' && <Card style={s.card}>
+      <Text accessibilityRole="header">{state.status.observation.ready && !create2Missing ? 'Required setup complete' : 'Set up smart-account support'}</Text>
+      <Text>{`${completed} of ${required.length} required setup contracts available`}</Text>
+      {next && <>
+        <Text style={s.label}>{next.optional ? t('settings.optional') : 'Next step'}</Text>
+        <Text>{setupPurpose[next.id] ?? next.displayName}</Text>
+      </>}
+      {!state.status.observation.ready && <Text style={s.label}>Review and confirm one setup transaction at a time. Each step adds shared smart-account support on this network.</Text>}
+    </Card>}
     {controller && <Card style={s.card}>
       <Text accessibilityRole="header">{controller.networkLabel}</Text>
       <Text style={s.label}>{t('mobile.infrastructure.feePayer')}</Text>
       <Text>{controller.payerLabel}</Text>
       <Text selectable style={s.address}>{controller.payerAddress}</Text>
     </Card>}
-    {readyToReview && <Button title={t('mobile.infrastructure.refresh')} variant="quiet" size="compact" onPress={() => act(() => controller!.refresh(state.revision))} />}
+    {readyToReview && <Button title={t('mobile.infrastructure.refresh')} icon="refresh" variant="secondary" size="compact" onPress={() => act(() => controller!.refresh(state.revision))} />}
     {busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('buttons.loading')} />}
     {review && state.phase === 'review' && <>
       <Card style={s.card}>
         <Text accessibilityRole="header">{review.contract.displayName}</Text>
         {review.contract.optional && <Text style={s.label}>{t('settings.optional')}</Text>}
-        <Text selectable style={s.address}>{review.contract.address}</Text>
+        <Text>{setupPurpose[review.contract.id] ?? review.contract.displayName}</Text>
         <Text style={s.label}>{t('transactions.replay.maximumFee')}</Text>
         <Text selectable style={s.amount}>{formatBaseUnits(review.maximumFeeUnits, 18)} {controller?.currencySymbol}</Text>
         <Text style={s.label}>{t('mobile.infrastructure.maximumTotal')}</Text>
         <Text selectable style={s.amount}>{formatBaseUnits(review.maximumTotalUnits, 18)} {controller?.currencySymbol}</Text>
       </Card>
-      <Button title={t(detailsId === review.id ? 'send.hideDetails' : 'send.showDetails')} variant="quiet" size="compact" expanded={detailsId === review.id}
+      <Button title={t(detailsId === review.id ? 'send.hideDetails' : 'send.showDetails')} icon={detailsId === review.id ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsId === review.id}
         onPress={() => { if (current && isCurrent(current) && controller?.getSnapshot().feeReview?.id === review.id) setDetailsId(detailsId === review.id ? null : review.id); }} />
-      {detailsId === review.id && <TransactionDetails key={review.id} transaction={review.transaction} />}
+      {detailsId === review.id && <><Text style={s.label}>Contract address</Text><Text selectable style={s.address}>{review.contract.address}</Text><TransactionDetails key={review.id} transaction={review.transaction} /></>}
     </>}
     {(pending || state.phase === 'unknown') && <Notice title={t('settings.smartAccountInfrastructure')} tone="amber"
       body={t(state.phase === 'unknown' ? 'mobile.infrastructure.unknown' : 'mobile.infrastructure.pending')} />}
@@ -145,7 +166,8 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
       {t(create2Missing ? 'settings.smartAccountCreate2Missing' : 'settings.smartAccountInfrastructureReady')}
     </Text>}
     {(openingError === scope || state.error) && <Text accessibilityRole="alert" style={s.error}>{t(openingError === scope ? 'mobile.infrastructure.unavailable' : state.error!)}</Text>}
-    {state.status && state.phase !== 'review' && <Card style={s.card}>
+    {state.status && state.phase !== 'review' && <Button title={setupDetails ? 'Hide setup details' : 'View setup details'} variant="quiet" size="compact" expanded={setupDetails} onPress={() => setSetupDetails(!setupDetails)} />}
+    {state.status && state.phase !== 'review' && setupDetails && <Card style={s.card}>
       <Text style={s.label}>{t('mobile.infrastructure.create2Deployer')}</Text>
       <Text selectable style={s.address}>{state.status.observation.create2Deployer.address}</Text>
       <Text>{t(state.status.observation.create2Deployer.deployed ? 'mobile.infrastructure.codePresent' : 'mobile.infrastructure.codeMissing')}</Text>

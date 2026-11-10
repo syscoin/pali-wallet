@@ -74,8 +74,7 @@ function renderer() {
   const idle = createIdleComponentFixture(hook, native);
   const common = { '../../../../source/shared/sentryNetworks': { SENTRY_NETWORKS }, react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui, './IdleActivityBoundary': idle.components };
   const load = (name: string, additional: Record<string, unknown> = {}) => evaluate(readFileSync(new NodeURL(`../src/screens/${name}.tsx`, import.meta.url), 'utf8'), { ...common, ...additional });
-  const password = load('NoteBackupPasswordField').NoteBackupPasswordField;
-  const nodes = load('NativeSentryNodes', { './NoteBackupPasswordField': { NoteBackupPasswordField: password } }).NativeSentryNodes as Component;
+  const nodes = load('NativeSentryNodes', { './PinEntry': { PinField: 'PinField' } }).NativeSentryNodes as Component;
   const hub = load('NativeSentryHub', { './NativeSentryKeys': { NativeSentryKeys: 'NativeSentryKeys' }, './NativeSentryNodes': { NativeSentryNodes: 'NativeSentryNodes' } }).NativeSentryHub as Component;
   const expand = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map(expand);
@@ -104,7 +103,7 @@ function find(tree: Element, type: string, property?: string, value?: string) {
   assert.ok(result, `Missing ${type} ${value ?? ''}`); return result;
 }
 const button = (tree: Element, title: string) => find(tree, 'Button', 'title', title);
-const field = (tree: Element, label: string) => find(tree, 'TextInput', 'accessibilityLabel', label);
+const field = (tree: Element, label: string) => label === 'Wallet PIN' ? find(tree, 'PinField', 'label', label) : find(tree, 'TextInput', 'accessibilityLabel', label);
 const press = (element: Element) => element.props.onPress({ nativeEvent: {} });
 const goBack = (tree: Element) => find(tree, 'Header').props.onBack();
 
@@ -142,7 +141,7 @@ async function reviewNode(f: ReturnType<typeof fixture>) {
 async function releaseForm(f: ReturnType<typeof fixture>) {
   let tree = await ready(f); press(button(tree, 'Release collateral')); tree = f.render();
   find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.onValueChange(true);
-  field(tree, 'Wallet password').props.onChangeText('synthetic-password-fixture'); return f.render();
+  field(tree, 'Wallet PIN').props.onChange('123456'); return f.render();
 }
 
 test('hub routes node/key ports separately and keeps pane-close callback stable for leaf ownership', () => {
@@ -174,14 +173,14 @@ test('node link displays exact reviewed fields, confirms that same object and re
   assert.equal(f.calls.list, 3); f.dispose();
 });
 
-test('release clears its bounded secure password and acknowledgement before awaiting authentication; double tap admits once', async () => {
+test('release clears its PIN and acknowledgement before awaiting authentication; double tap admits once', async () => {
   const pending = deferred<void>(); const f = fixture({ initial: { ...empty, collateral: [reservation] }, releasing: pending.promise });
-  let tree = await releaseForm(f); const password = field(tree, 'Wallet password');
-  assert.equal(password.props.secureTextEntry, true); assert.equal(password.props.maxLength, 1024); assert.equal(password.props.autoComplete, 'off');
+  let tree = await releaseForm(f); const password = field(tree, 'Wallet PIN');
+  assert.equal(password.type, 'PinField'); assert.equal(password.props.busy, false);
   const submit = button(tree, 'Release collateral'); assert.equal(submit.props.disabled, false); press(submit); press(submit);
-  tree = f.render(); assert.equal(field(tree, 'Wallet password').props.value, '');
+  tree = f.render(); assert.equal(field(tree, 'Wallet PIN').props.value, '');
   assert.equal(find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.value, false);
-  assert.equal(f.calls.release.length, 1); assert.equal(f.calls.release[0]!.password, 'synthetic-password-fixture');
+  assert.equal(f.calls.release.length, 1); assert.equal(f.calls.release[0]!.password, '123456');
   assert.equal(f.calls.release[0]!.reservation, reservation); assert.equal(f.calls.release[0]!.acknowledgeNodeStops, true);
   assert.equal(button(tree, 'Releasing…').props.disabled, true); assert.equal(f.calls.list, 1); assert.ok(f.dismisses());
   pending.resolve(); await settle(); tree = f.render(); assert.equal(f.calls.list, 2); assert.match(text(tree), /Collateral protection released\./); f.dispose();
@@ -208,14 +207,14 @@ test('Back from a reviewed node retires its manager and rejects the prior confir
 test('Back clears a release password and rejects its prior submit under the replacement owner', async () => {
   const f = fixture({ initial: { ...empty, collateral: [reservation] } }); let tree = await releaseForm(f); const stale = button(tree, 'Release collateral');
   goBack(tree); await settle(); tree = f.render(); press(stale); await settle(); assert.equal(f.calls.release.length, 0);
-  press(button(tree, 'Release collateral')); tree = f.render(); assert.equal(field(tree, 'Wallet password').props.value, '');
+  press(button(tree, 'Release collateral')); tree = f.render(); assert.equal(field(tree, 'Wallet PIN').props.value, '');
   assert.equal(find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.value, false); f.dispose();
 });
 
 for (const event of ['background', 'inactive', 'blur'] as const) test(`${event} closes the release pane, clears credentials and rejects late actions after focus`, async () => {
   const f = fixture({ initial: { ...empty, collateral: [reservation] } }); let tree = await releaseForm(f); const stale = button(tree, 'Release collateral');
   if (event === 'blur') f.emit('blur'); else f.emit('change', event);
-  tree = f.render(); assert.ok(all(tree).filter(element => element.type === 'TextInput').every(element => element.props.value !== 'synthetic-password-fixture')); assert.equal(f.calls.dispose, 1); assert.equal(f.backs(), 1);
+  tree = f.render(); assert.ok(all(tree).filter(element => element.type === 'TextInput').every(element => element.props.value !== '123456')); assert.equal(f.calls.dispose, 1); assert.equal(f.backs(), 1);
   f.emit('change', 'active'); press(stale); await settle(); assert.equal(f.calls.release.length, 0); assert.equal(f.calls.writes, 0);
   f.dispose(); assert.equal(f.listeners(), 0);
 });
@@ -265,6 +264,6 @@ test('a refused release clears credentials and a new release form requires passw
   pending.reject(new Error('Private password error')); await settle(); tree = f.render();
   assert.match(text(tree), /Could not complete the action/); assert.doesNotMatch(text(tree), /Private password error|Collateral protection released\./);
   press(stale); await settle(); assert.equal(f.calls.release.length, 1); assert.equal(f.calls.writes, 0);
-  press(button(tree, 'Release collateral')); tree = f.render(); assert.equal(field(tree, 'Wallet password').props.value, '');
+  press(button(tree, 'Release collateral')); tree = f.render(); assert.equal(field(tree, 'Wallet PIN').props.value, '');
   assert.equal(find(tree, 'Switch', 'accessibilityLabel', 'Allow collateral spending').props.value, false); assert.equal(button(tree, 'Release collateral').props.disabled, true); f.dispose();
 });

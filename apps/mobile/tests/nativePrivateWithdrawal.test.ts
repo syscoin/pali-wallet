@@ -1,3 +1,6 @@
+import { createPrivateVaultSession } from '../../../source/wallet/privateVault.ts';
+import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -30,10 +33,12 @@ import { PRIVACY_SERVICE_ORIGIN_STORAGE_KEY } from '../../../source/shared/priva
 import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
 import { readPrivateVaultBundle } from '../../../source/wallet/privateVaultInspection.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const sdk = await loadNativeKeyringSdk();
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public deposit fixture password 1!';
+const PASSWORD = '123456';
 const noop = () => undefined;
 const depositAbi = new Interface([
   'function deposit(bytes32) payable',
@@ -153,7 +158,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: { getOrigin: () => privacySettings.getOrigin(), changeOrigin: (...args) => privacySettings.changeOrigin(...args) }, slhExecution: null,
     readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -333,13 +338,13 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       return (
         await readPrivateVaultBundle(
           row.value,
-          {
+          createPrivateVaultSession({
             generation: 0,
-            keyring,
+            keyring: createTestPinRecordKeyring(storage.pin, pinCredential, keyring, () => PASSWORD, () => { assert(keyring.hasPublicSession()); }),
             assertCurrent() {
-              assert(keyring.isUnlocked());
+              assert(keyring.hasPublicSession());
             },
-          },
+          }),
           undefined,
           'serialized'
         )
@@ -351,6 +356,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       await runtime.session.unlock(PASSWORD);
     },
     async restore() {
+      const backupPassword = 'Private note backup fixture';
       const codec = createNoteBackupCodec({
         crypto: globalThis.crypto,
         assertCurrent: noop,
@@ -364,11 +370,11 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
             { note: `tornado-eth-1-1-0x${'02'.repeat(62)}`, createdAt: 10 },
           ],
         },
-        PASSWORD
+        backupPassword
       );
       const backup = await runtime.openNoteBackup!(noop);
       const id = backup.begin();
-      await backup.prepareImport(id, bytes, PASSWORD);
+      await backup.prepareImport(id, bytes, backupPassword);
       await backup.commitImport(id, PASSWORD);
       noteStatus = { phase: 'verified' };
       return runtime.readNoteInventory!(noop);
@@ -1043,7 +1049,7 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
   } });
   const route = new AbortController();
   let recoveryOpens = 0, proof: unknown;
-  const recovery = new NativeRecoveryCoordinator({
+  const recovery = new NativeRecoveryCoordinator({ pinCredential,
     owner: {
       getSnapshot: () => ({ phase: 'locked', revision: 1, presence: 'existing', backup: 'unconfirmed', account: null, error: null }),
       retireForRecovery: () => f.runtime.storage.retireForRecovery!(),
@@ -1068,7 +1074,7 @@ for (const fault of ['release', 'quarantine-and-release'] as const) for (const r
     }
     const previousDisposals = f.disposed; f.failPoolCleanup();
     if (retirement === 'close') await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });
-    await assert.rejects(recovery.prepare(PHRASE, PASSWORD + 'new', noop).then(value => { proof = value; }), { code: 'UNAVAILABLE' });
+    await assert.rejects(recovery.prepare(PHRASE, '654321', noop).then(value => { proof = value; }), { code: 'UNAVAILABLE' });
     assert.equal(proof, undefined); assert.equal(recoveryOpens, 0, 'failed retirement never grants a new storage/snapshot lease');
     await assert.rejects(f.runtime.storage.retireForRecovery!(), { code: 'CLEANUP_FAILED' });
     await assert.rejects(f.runtime.storage.close(), { code: 'CLEANUP_FAILED' });

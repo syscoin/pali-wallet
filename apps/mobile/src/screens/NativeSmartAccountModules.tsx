@@ -101,7 +101,13 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const blocked = busy || closing;
   return <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <Screen scrollResetKey={mode} footer={<Button title={t('buttons.close')} variant="quiet" size="compact" disabled={closing} onPress={close} />}>
+    <Screen scrollResetKey={mode} footer={<>
+{!closing && metadata && mode === 'custom' && (<Button title={t('smartAccountHub.install')} disabled={blocked || !checked?.ok || !validInit} onPress={() => {
+            if (checked?.ok && validInit) review({ kind: 'install-custom', address: address.trim(), name: name.trim(), initData: initData.trim() });
+          }} />)}
+{!closing && metadata && mode === 'composite' && (<Button title={t('smartAccountHub.compositeSavePolicy')} disabled={blocked || !validComposite} onPress={() => { if (validComposite) review({ kind: 'composite', children: [...children], threshold: Number(threshold) }); }} />)}
+<Button title={t('buttons.close')} variant="secondary" size="compact" disabled={closing} onPress={close} />
+</>}>
       <Header title={t(mode === 'custom' ? 'smartAccountHub.customModule' : mode === 'composite' ? 'settings.compositeAuthenticator' : 'mobile.smartAccountModules.title')}
         onBack={() => { if (shownOwner) navigateBack(shownOwner); }} />
       {manager && <Card style={s.card}><Text>{manager.networkName}</Text><Text selectable style={s.address}>{manager.accountAddress}</Text></Card>}
@@ -113,7 +119,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
           {validators.map(module => <Card key={module.address} style={s.card}>
             <Text>{label(module)}</Text><Text selectable style={s.address}>{module.address}</Text>
             <Text>{t(module.address.toLowerCase() === metadata.auth?.validator.toLowerCase() ? 'smartAccountHub.active' : 'smartAccountHub.installed')}</Text>
-            {canRemoveValidatorModule(metadata, module.address, 'all-installed-composites') && <Button title={t('smartAccountHub.uninstall')} variant="quiet" size="compact" disabled={blocked} onPress={() => {
+            {canRemoveValidatorModule(metadata, module.address, 'all-installed-composites') && <Button title={t('smartAccountHub.uninstall')} variant="secondary" size="compact" disabled={blocked} onPress={() => {
               if (canRemoveValidatorModule(metadata, module.address, 'all-installed-composites')) review({ kind: 'uninstall', address: module.address });
             }} />}
           </Card>)}
@@ -134,9 +140,7 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
             {checked.failures.map(failure => <Text key={failure}>{t(failure === 'already-installed' ? 'smartAccountHub.preflightAlreadyInstalled' : failure === 'no-contract-code' ? 'smartAccountHub.preflightNoCode' : 'smartAccountHub.preflightNotValidator')}</Text>)}
           </>}
           {!validInit && <Text>{t('smartAccountHub.invalidInitData')}</Text>}
-          <Button title={t('smartAccountHub.install')} disabled={blocked || !checked?.ok || !validInit} onPress={() => {
-            if (checked?.ok && validInit) review({ kind: 'install-custom', address: address.trim(), name: name.trim(), initData: initData.trim() });
-          }} />
+
         </Card>}
         {metadata && mode === 'composite' && <Card style={s.card}>
           <Text>{t('smartAccountHub.compositeBuilderHint')}</Text><Text>{t('smartAccountHub.compositeMethods')}</Text>
@@ -148,10 +152,10 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
           <NativeSendInput label={t('smartAccountHub.compositeThreshold')} keyboardType="number-pad" max={3} value={threshold} busy={blocked} onChange={setThreshold} />
           {validComposite ? <Text>{t('smartAccountHub.compositeThresholdSummary', { required: Number(threshold), total: children.length })}</Text> : <Text>{t('smartAccountHub.compositeInvalid')}</Text>}
           <Text>{t('smartAccountHub.compositeLockout')}</Text><Text>{t('smartAccountHub.compositeOnchainHint')}</Text>
-          <Button title={t('smartAccountHub.compositeSavePolicy')} disabled={blocked || !validComposite} onPress={() => { if (validComposite) review({ kind: 'composite', children: [...children], threshold: Number(threshold) }); }} />
+
         </Card>}
-        {metadata && mode !== 'installed' && <Button title={t('smartAccountHub.installedModules')} variant="quiet" size="compact" disabled={blocked} onPress={() => setMode('installed')} />}
-        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} variant="quiet" size="compact" disabled={blocked} onPress={() => action(owner => load(owner))} />}
+        {metadata && mode !== 'installed' && <Button title={t('smartAccountHub.installedModules')} variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('installed')} />}
+        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} variant="secondary" size="compact" disabled={blocked} onPress={() => action(owner => load(owner))} />}
       </>}
     </Screen>
     </KeyboardAvoidingView>

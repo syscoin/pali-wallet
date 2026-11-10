@@ -241,7 +241,7 @@ export function NativePrivateWithdrawalFixture() {
               check();
               events.push('restore:review');
               publish(
-                password === 'Fixture password 1!'
+                password === '123456'
                   ? { restored: false, error: null }
                   : { error: 'restored' }
               );

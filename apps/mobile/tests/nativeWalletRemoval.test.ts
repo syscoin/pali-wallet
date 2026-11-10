@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { signingFixtureHost } from './unsupportedDappPorts.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -16,12 +17,14 @@ import type { WalletConnectTransport } from '../src/connections/walletConnect.ts
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { openWalletStorage, type NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
+
+const pinCredential = createTestPinCredentialPort();
 const sdk = await loadNativeKeyringSdk();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public fixture wallet removal password 1!';
+const PASSWORD = '123456';
 const FILE_PASSWORD = 'Public fixture wallet removal backup password!';
-const WRONG = 'Public wrong wallet removal password!';
+const WRONG = '000000';
 const NOTE = { note: `tornado-eth-1-1-0x${'01'.repeat(62)}`, createdAt: 10 };
 const NATIVE_HINT = JSON.stringify({ kind: 'hd', id: 'hd:60:0' });
 const WATCH_HINT = JSON.stringify({ kind: 'watch', id: 'independent-watch' });
@@ -49,12 +52,6 @@ async function fixture(withSlhCache = false) {
   const statements: string[] = [];
   class ObservedRing extends sdk.HostKeyring {
     constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) { super(...options); rings.push(this); }
-    override async unlock(password: string) {
-      unlocks++;
-      const gate = pauseUnlock; pauseUnlock = undefined;
-      if (gate) await gate.hold();
-      return super.unlock(password);
-    }
   }
   const ports: NativeStoragePorts = {
     digest,
@@ -90,8 +87,18 @@ async function fixture(withSlhCache = false) {
       }).connection;
     },
   };
-  const storage = await openWalletStorage(ports);
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: withSlhCache ? {
+  const underlyingStorage = await openWalletStorage(ports);
+  const pin = underlyingStorage.pin;
+  const storage: OpenWalletStorage = Object.freeze({ ...underlyingStorage, pin: Object.freeze({ ...pin,
+    async beginAttempt(...args: Parameters<typeof pin.beginAttempt>) {
+      const attempt = await pin.beginAttempt(...args);
+      unlocks++;
+      const gate = pauseUnlock; pauseUnlock = undefined;
+      if (gate) await gate.hold();
+      return attempt;
+    },
+  }) });
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: withSlhCache ? {
     open() { throw Error('No signing context belongs to this removal fixture'); },
     async purgePublicCache(namespace, guard) {
       guard(); assert.equal(owner.getSnapshot().phase, 'disposed'); assert.equal(rings.some(ring => ring.isUnlocked()), false);
@@ -258,7 +265,7 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
         assert.equal(created, 2);
         const authority = new NativeCustodyAuthority({ async open() {
           nextStorage = await openWalletStorage(f.ports);
-          nextRuntime = await createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+          nextRuntime = await createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
             ensureCryptoReady: async () => undefined, openStorage: async () => nextStorage!,
           }).open() as KeyringRuntime;
           return nextRuntime;
@@ -328,7 +335,7 @@ test('authenticated producer cleanup finishes before the exact removal snapshot 
     f.beforeSnapshot(async (check) => {
       check();
       assert.equal(f.unlocks, unlocks + 1);
-      assert.equal(f.unlocked, true);
+      assert.equal(f.unlocked, false, 'public cleanup must not retain a software signer');
       cleanupCalls++;
       await f.storage.keyringStorage.set('utf8Error', { hasUtf8Error: false });
       check();

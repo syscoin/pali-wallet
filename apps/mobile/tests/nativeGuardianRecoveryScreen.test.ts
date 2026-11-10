@@ -1,3 +1,7 @@
+import {
+  guardianRecoveryTerminalNotice,
+  guardianRecoveryTerminalReason,
+} from '../../../source/utils/smartAccount/guardianRecoveryLifecycle.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { GuardianRecoveryObservation } from '../../../source/utils/smartAccount/guardianStatus.ts';
@@ -74,6 +78,9 @@ const intent: NativeGuardianRecoveryIntent = {
 };
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const imports = {
+  '../../../../source/utils/smartAccount/guardianRecoveryLifecycle': {
+    guardianRecoveryTerminalNotice,
+  },
   '../platform/localization': nativeTranslationFixture,
   'react-native': {
     ActivityIndicator: 'ActivityIndicator',
@@ -437,3 +444,128 @@ test('saved review and Activity use the captured payer while proofs and submissi
     controller.dispose();
   }
 });
+
+for (const [status, reason, title] of [
+  ['expired', 'expired', 'Recovery expired'],
+  ['canceled', 'cancelled', 'Recovery was cancelled'],
+  ['policy-changed', 'policy-changed', 'Guardian policy changed'],
+  ['inactive', 'inactive', 'Recovery is no longer active'],
+] as const)
+  test(`terminal ${reason} recovery preserves its reason and offers safe next actions`, async () => {
+    const currentObservation: GuardianRecoveryObservation = {
+      ...observation,
+      policyEpoch: status === 'policy-changed' ? '2' : '1',
+      knownOperation:
+        status === 'policy-changed'
+          ? null
+          : {
+              operationId: hash,
+              status,
+              executableAt: 1,
+              expiresAt: 2,
+              scheduledAt: 1,
+            },
+    };
+    assert.equal(
+      guardianRecoveryTerminalReason(
+        intent.operation,
+        currentObservation,
+        null
+      ),
+      reason
+    );
+    assert.equal(
+      guardianRecoveryTerminalReason(
+        intent.operation,
+        currentObservation,
+        hash
+      ),
+      null,
+      'unresolved signed transaction retains tracking'
+    );
+    let prepared = 0,
+      refreshed = 0,
+      returned = 0;
+    const lifetime = new AbortController();
+    const controller = new NativeGuardianRecoveryController(
+      {
+        assertCurrent() {},
+        dispose() {},
+        submissionFailure() {
+          return undefined;
+        },
+        async observe() {
+          refreshed++;
+          return {
+            intent,
+            observation: currentObservation,
+            action: null,
+            terminal: 'obsolete',
+            transactionHash: null,
+            canAbandon: true,
+          };
+        },
+        async prepare() {
+          prepared++;
+          throw Error('terminal recovery must not prepare');
+        },
+        async reconcile() {},
+        async abandon() {},
+      },
+      lifetime.signal
+    );
+    const f = screen('NativeGuardianRecoveryView');
+    const props = {
+      controller,
+      address,
+      chainId: 1,
+      currency: 'ETH',
+      networkLabel: 'Ethereum',
+      onActivity: async () => undefined,
+      openRecoveryAlerts: async () => undefined,
+      onBack() {
+        returned++;
+      },
+    };
+    try {
+      f.render(props);
+      await tick();
+      let tree = screenElements(f.render(props));
+      assert.equal(controller.getSnapshot().terminalReason, reason);
+      assert(
+        tree.some(
+          (element) =>
+            element.type === 'Notice' && element.props.title === title
+        )
+      );
+      assert(
+        !tree.some(
+          (element) =>
+            element.type === 'Button' &&
+            /Confirm schedule|Authorize recovery/.test(element.props.title)
+        )
+      );
+      button(tree, 'Refresh current policy').props.onPress();
+      await tick();
+      tree = screenElements(f.render(props));
+      button(tree, 'Return to account').props.onPress();
+      assert.equal(returned, 1);
+      assert(refreshed >= 2);
+      await controller.review();
+      assert.equal(prepared, 0);
+      button(tree, 'Clear local recovery tracking').props.onPress();
+      const confirm = screenElements(f.render(props));
+      assert(
+        confirm.some(
+          (element) =>
+            element.type === 'Notice' &&
+            /does not cancel transactions or recovery scheduled/.test(
+              element.props.body
+            )
+        )
+      );
+    } finally {
+      f.close();
+      controller.dispose();
+    }
+  });

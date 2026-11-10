@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,13 +11,16 @@ import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDe
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import type { createNativePrivacyPoolSync } from '../src/privacy/nativePrivacyPoolSync.ts';
+
+const pinCredential = createTestPinCredentialPort();
 const sdk = await loadNativeKeyringSdk();
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC fixture wallet password 1!';
+const PASSWORD = '123456';
 const BACKUP_PASSWORD = 'PUBLIC fixture file password 2!';
 const NOTE = { note: `tornado-eth-1-1-0x${'01'.repeat(62)}`, createdAt: 10 };
 const WRONG_PASSWORD = 'PUBLIC wrong password 3!';
+const WRONG_PIN = '000000';
 const current = () => undefined;
 
 const codec = () => createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent: current });
@@ -44,26 +48,44 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
   let initialized = false;
-  let lostAck = false, noteWrite = false, noteWrites = 0, unlockCalls = 0;
+  let lostAck = false, noteWrite = false, noteWrites = 0, unlockCalls = 0, secretWorks = 0;
   let loseAuthCommit = false, authWrite = false, lostAuthAcks = 0;
   let beforeUnlock: ReturnType<typeof pause> | undefined, afterUnlock: ReturnType<typeof pause> | undefined;
+  let afterPinRead: ReturnType<typeof pause> | undefined;
   let beforeNoteInsert: ReturnType<typeof pause> | undefined;
   let afterNoteRead: ReturnType<typeof pause> | undefined;
   let noteCommits = 0;
+  let latestPrivateAccess: Awaited<ReturnType<InstanceType<typeof sdk.HostKeyring>['createPrivateRecordAccess']>> | undefined;
   const owners: InstanceType<typeof sdk.HostKeyring>[] = [];
   class ObservedKeyring extends sdk.HostKeyring {
     constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) { super(...options); owners.push(this); }
-    override async unlock(password: string) {
+    override async withSecretOperation<T>(
+      credential: Parameters<InstanceType<typeof sdk.HostKeyring>['withSecretOperation']>[0],
+      options: Parameters<InstanceType<typeof sdk.HostKeyring>['withSecretOperation']>[1],
+      work: (secret: string) => T | Promise<T>
+    ): Promise<T> {
       unlockCalls++;
       const before = beforeUnlock, after = afterUnlock;
       beforeUnlock = afterUnlock = undefined;
       if (before) await before.wait();
-      const result = await super.unlock(password);
-      if (after) await after.wait();
-      return result;
+      return super.withSecretOperation(credential, options, async secret => {
+        secretWorks++;
+        if (after) await after.wait();
+        return work(secret);
+      });
+    }
+    override async createPrivateRecordAccess(...args: Parameters<InstanceType<typeof sdk.HostKeyring>['createPrivateRecordAccess']>) {
+      const access = await super.createPrivateRecordAccess(...args);
+      if (args[0].includes('org.syscoin.pali.privacy.notes.v1')) latestPrivateAccess = access;
+      return access;
     }
   }
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const credentials = { ...pinCredential, async read(...args: Parameters<typeof pinCredential.read>) {
+    const value = await pinCredential.read(...args), gate = afterPinRead; afterPinRead = undefined;
+    if (gate) await gate.wait();
+    return value;
+  } };
+  const factory = createKeyringRuntimeFactory({ pinCredential: credentials, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     openPrivacyPool,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, HostKeyring: ObservedKeyring }),
@@ -118,8 +140,10 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
   };
   return {
     get runtime() { return runtime; }, get storage() { return storage; },
-    get unlocked() { return owners.some((owner) => owner.isUnlocked()); },
+    get unlocked() { return owners.some((owner) => owner.hasPublicSession()); },
     get unlockCalls() { return unlockCalls; }, get noteWrites() { return noteWrites; },
+    get secretWorks() { return secretWorks; },
+    get latestPrivateAccess() { return latestPrivateAccess; },
     get lostAuthAcks() { return lostAuthAcks; },
     failures,
     holdUnlock(when: 'before' | 'after') {
@@ -131,6 +155,7 @@ async function fixture(openPrivacyPool?: KeyringRuntimeDependencies['openPrivacy
     get noteCommits() { return noteCommits; },
     holdNoteInsert() { return beforeNoteInsert = pause(); },
     holdNoteRead() { return afterNoteRead = pause(); },
+    holdPinRead() { return afterPinRead = pause(); },
     loseAck() { lostAck = true; },
     loseAuthAck() { loseAuthCommit = true; },
     async reopen(unlock = true) {
@@ -203,7 +228,7 @@ test('actual native owner imports and verifies an exact encrypted backup, with e
     assert.deepEqual({ ...(await preview), expiresAt: undefined }, { id, added: 1, duplicates: 0, guarded: 1, expiresAt: undefined });
     await f.runtime.session.readSelectedAddress(); // Metadata refresh leaves this exact owner live.
     assert.deepEqual(await f.storage.notes.read(), []);
-    await assert.rejects(view.commitImport(id, WRONG_PASSWORD), { code: 'BACKUP_AUTHENTICATION_FAILED' });
+    await assert.rejects(view.commitImport(id, WRONG_PIN), { code: 'BACKUP_AUTHENTICATION_FAILED' });
     assert.equal(await f.failures(), 1);
     assert.equal(f.unlocked, true);
     await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_STALE' });
@@ -230,12 +255,33 @@ test('actual native owner imports and verifies an exact encrypted backup, with e
 
     id = view.begin();
     await view.prepareImport(id, file, BACKUP_PASSWORD);
+    const beforeRetirement = f.unlockCalls;
     const catalogue = f.runtime.catalogue.getSnapshot()!;
     const selection = f.runtime.accounts!.reserve({ kind: 'select', id: catalogue.active.accountId }, catalogue.revision);
     selection.cancel();
     await assert.rejects(view.commitImport(id, PASSWORD), { code: 'BACKUP_CANCELLED' });
-    assert.equal(f.unlockCalls, unlocks + 3);
+    assert.equal(f.unlockCalls, beforeRetirement, 'retired preview cannot request another credential');
     assert.equal(f.noteWrites, 1);
+  } finally { await f.dispose(); }
+});
+
+test('restore preview retires its codec and commit captures fresh authorized codec', async () => {
+  const f = await fixture();
+  try {
+    const view = await f.runtime.openNoteBackup!(current);
+    let id = view.begin();
+    await view.prepareImport(id, await encrypted(), BACKUP_PASSWORD);
+    await view.commitImport(id, PASSWORD);
+    id = view.begin();
+    const next = { note: `tornado-eth-1-1-0x${'02'.repeat(62)}`, createdAt: 11 };
+    await view.prepareImport(id, await encrypted([NOTE, next]), BACKUP_PASSWORD);
+    const previewCodec = f.latestPrivateAccess;
+    assert(previewCodec);
+    await assert.rejects(previewCodec.getPrivateRecordProfileId());
+    const receipt = await view.commitImport(id, PASSWORD);
+    assert.equal(receipt.added, 1);
+    assert.notEqual(f.latestPrivateAccess, previewCodec);
+    assert.equal(f.noteWrites, 2);
   } finally { await f.dispose(); }
 });
 
@@ -265,7 +311,7 @@ test('saved inventory projects only local metadata from a restored encrypted SQL
       { amount: '1', createdAt: 10, reconciliation: 'restored-note' },
     ]);
     assert.ok(Object.isFrozen(notes) && notes.every(Object.isFrozen));
-    assert.equal(f.unlockCalls, unlocks);
+    assert.equal(f.unlockCalls, unlocks + 1, 'private inventory obtains one fresh record capability');
     assert.equal(f.noteCommits, commits);
     assert.deepEqual(await f.storage.notes.read(), stored);
   } finally { await f.dispose(); }
@@ -329,7 +375,7 @@ test('individual reveal requires fresh credentials and resolves only the exact s
     assert.equal(await inventory.revealNote(first, PASSWORD, current), NOTE.note);
     assert.equal(await inventory.revealNote(second, PASSWORD, current), twin.note);
     assert.equal(f.unlockCalls, unlocks + 2);
-    await assert.rejects(inventory.revealNote(second, WRONG_PASSWORD, current));
+    await assert.rejects(inventory.revealNote(second, WRONG_PIN, current));
     assert.equal(f.unlockCalls, unlocks + 3);
     assert.equal(await f.failures(), 1);
     assert.equal(f.noteWrites, 1);
@@ -401,8 +447,8 @@ test('revocation accounts a definitive wallet credential failure and retires a l
     let view = await f.runtime.openNoteBackup!(current);
     let id = view.begin();
     await view.prepareImport(id, file, BACKUP_PASSWORD);
-    const wrong = f.holdUnlock('after');
-    const wrongCommit = view.commitImport(id, WRONG_PASSWORD);
+    const wrong = f.holdPinRead();
+    const wrongCommit = view.commitImport(id, WRONG_PIN);
     try {
       await wrong.entered;
       assert.throws(() => view.begin(), { code: 'BUSY' });
@@ -536,16 +582,18 @@ for (const valid of [true, false]) {
       const id = view.begin();
       await view.prepareImport(id, file, BACKUP_PASSWORD);
       const unlocks = f.unlockCalls;
+      const works = f.secretWorks;
       f.loseAuthAck();
-      await assert.rejects(view.commitImport(id, valid ? PASSWORD : WRONG_PASSWORD), { code: 'BACKUP_COMMIT_UNCONFIRMED' });
+      await assert.rejects(view.commitImport(id, valid ? PASSWORD : WRONG_PIN), { code: 'BACKUP_COMMIT_UNCONFIRMED' });
       assert.equal(f.lostAuthAcks, 1);
       assert.equal(f.unlockCalls, unlocks + 1);
+      assert.equal(f.secretWorks, works, 'failed durable attempt admission precedes SDK secret release');
       assert.equal(f.unlocked, false, 'the SDK owner must already be retired');
       assert.equal(f.noteWrites, 0);
       await assert.rejects(f.storage.notes.read(), { code: 'STORAGE_REOPEN_REQUIRED' });
       await assert.rejects(f.runtime.openNoteBackup!(current), { code: 'CLEANUP_FAILED' });
       await f.reopen(false);
-      assert.equal(await f.failures(), valid ? 0 : 2);
+      assert.equal(await f.failures(), 2, 'the committed attempt survives whether its PIN would have matched or not');
       assert.deepEqual(await f.storage.notes.read(), []);
       assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
       const reopened = await f.runtime.openNoteBackup!(current);
@@ -587,7 +635,7 @@ test('native note capacity is numeric, preserves the shared default, and survive
       storedBytes: new TextEncoder().encode(row!.value).byteLength,
       bundleLimitBytes: 16 * 1024 * 1024,
     });
-    assert.equal(f.unlockCalls, unlocks);
+    assert.equal(f.unlockCalls, unlocks + 1, 'changing encrypted capacity obtains a fresh record capability');
     assert.equal(f.noteCommits, 1);
 
     await f.reopen();
@@ -626,7 +674,7 @@ test('native note capacity cannot lower the limit below 129 encrypted notes', as
     assert.deepEqual(await capacity.getCapacity(), fits);
     assert.deepEqual(await f.storage.notes.read(), before);
     assert.equal(f.noteCommits, commits);
-    assert.equal(f.unlockCalls, unlocks);
+    assert.equal(f.unlockCalls, unlocks + 3, 'each private capacity action obtains its own record capability');
   } finally { await f.dispose(); }
 });
 

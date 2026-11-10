@@ -1,4 +1,4 @@
-import { isNativeNewPassword, NEW_PASSWORD_HELP } from './password.ts';
+import { isNativePin } from './pinVault.ts';
 import type { RecoveryInventory } from './recoveryInventory.ts';
 import type { NativeRecoveryCoordinator, RecoveryProof } from './recovery.ts';
 
@@ -6,11 +6,11 @@ export type RecoveryOutcome = Readonly<{ kind: 'success' | 'cancelled' | 'expire
 export type RecoveryFlowSnapshot = Readonly<{
   phase: 'reading' | 'scope' | 'entry' | 'verifying' | 'review' | 'committing' | 'reopening' | 'closed' | 'blocked';
   inventory: RecoveryInventory | null; error: string;
-  fieldErrors: Readonly<{ phrase?: string; password?: string; confirmation?: string }>;
+  fieldErrors: Readonly<{ phrase?: string; pin?: string }>;
 }>;
 type Coordinator = Pick<NativeRecoveryCoordinator, 'prepare' | 'commit' | 'cancel'>;
 const SAVED = 'Your saved wallet could not be verified for this recovery. Nothing has been reset.';
-const UNCERTAIN = 'We could not confirm the password change. It may have completed. Unlock with your new password first; if it does not work, try your previous password.';
+const UNCERTAIN = 'We could not confirm the PIN change. It may have completed. Unlock with your new PIN first; if it does not work, try your previous unlock method.';
 const UNAVAILABLE = 'Recovery could not be completed. Your saved wallet was not reset. Close and reopen Pali before trying again.';
 const safeCode = (cause: unknown): string => cause instanceof Error && ['BUSY', 'NOT_READY', 'INVALID_INPUT', 'WRONG_PHRASE', 'INVALID_SAVED_DATA', 'AUTH_THROTTLED', 'CANCELLED', 'EXPIRED', 'STATE_CHANGED', 'UNAVAILABLE', 'REOPEN_REQUIRED'].includes(cause.message) ? cause.message : 'UNAVAILABLE';
 
@@ -63,14 +63,12 @@ export class NativeRecoveryFlow {
     if (!this.ended && !this.working && this.state.phase === 'entry' && !this.coordinator) this.publish({ phase: 'scope', error: '', fieldErrors: Object.freeze({}) });
     else this.cancel();
   }
-  submit(input: { phrase: string; password: string; confirmation: string }): boolean {
+  submit(input: { phrase: string; pin: string }): boolean {
     if (this.ended || this.working || this.state.phase !== 'entry') return false;
-    const fieldErrors: { phrase?: string; password?: string; confirmation?: string } = {};
+    const fieldErrors: { phrase?: string; pin?: string } = {};
     const phrase = typeof input.phrase === 'string' && input.phrase.isWellFormed() ? input.phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ') : '';
     if (!phrase || input.phrase.length > 4096 || ![12, 24].includes(phrase.split(' ').length)) fieldErrors.phrase = 'Enter your 12 or 24 recovery words in order.';
-    if (!isNativeNewPassword(input.password))
-      fieldErrors.password = NEW_PASSWORD_HELP;
-    if (input.password !== input.confirmation) fieldErrors.confirmation = 'Your passwords do not match.';
+    if (!isNativePin(input.pin)) fieldErrors.pin = 'Enter a 6-digit PIN.';
     if (Object.keys(fieldErrors).length) { this.publish({ fieldErrors: Object.freeze(fieldErrors), error: '' }); return false; }
     this.working = true; const request = ++this.request;
     try {
@@ -82,14 +80,14 @@ export class NativeRecoveryFlow {
     this.publish({ phase: 'verifying', error: '', fieldErrors: Object.freeze({}) });
     void (async () => {
       try {
-        this.check(request); const proof = await this.coordinator!.prepare(phrase, input.password, () => this.check(request)); this.check(request);
+        this.check(request); const proof = await this.coordinator!.prepare(phrase, input.pin, () => this.check(request)); this.check(request);
         this.proof = proof; this.publish({ phase: 'review' });
       } catch (cause) {
         if (this.ended || request !== this.request) return;
         const code = safeCode(cause);
         if (['WRONG_PHRASE', 'AUTH_THROTTLED', 'INVALID_INPUT'].includes(code)) {
           this.clearTimer(); this.deadline = null;
-          this.publish({ phase: 'entry', error: code === 'WRONG_PHRASE' ? 'This recovery phrase does not match this wallet.' : code === 'AUTH_THROTTLED' ? 'Too many unsuccessful attempts. Wait a few minutes before trying again.' : 'Check the recovery phrase and new password.' });
+          this.publish({ phase: 'entry', error: code === 'WRONG_PHRASE' ? 'This recovery phrase does not match this wallet.' : code === 'AUTH_THROTTLED' ? 'Too many unsuccessful attempts. Wait a few minutes before trying again.' : 'Check the recovery phrase and new PIN.' });
         } else if (code === 'CANCELLED' || code === 'EXPIRED') this.cancel(code === 'EXPIRED' ? 'expired' : 'cancelled');
         else this.finish({ kind: 'failed', operationPhase: 'prepare', code, message: ['STATE_CHANGED', 'INVALID_SAVED_DATA'].includes(code) ? SAVED : UNAVAILABLE });
       } finally { this.working = false; }
@@ -104,7 +102,7 @@ export class NativeRecoveryFlow {
     void (async () => {
       try {
         await this.coordinator!.commit(proof);
-        this.finish({ kind: 'success', operationPhase: 'commit', code: 'committed-locked', message: 'Password changed. Unlock with your new password.' });
+        this.finish({ kind: 'success', operationPhase: 'commit', code: 'committed-locked', message: 'PIN changed. Unlock with your new PIN.' });
       } catch (cause) {
         this.finish({ kind: 'uncertain', operationPhase: 'commit', code: safeCode(cause), message: UNCERTAIN });
       } finally { this.working = false; }

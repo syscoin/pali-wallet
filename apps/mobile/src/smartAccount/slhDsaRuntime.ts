@@ -6,7 +6,7 @@ import { getSLHDSADerivationLabel } from '../../../../source/utils/slhDsa/deriva
 import { createSlhDsaExecution } from '../../../../source/wallet/slhDsaExecution.ts';
 import { createSlhDsaSigner } from '../../../../source/wallet/slhDsaSigner.ts';
 import { createSlhDsaStateStore, parseSLHDSAStateStorageKey, type SlhDsaStateStorage } from '../../../../source/wallet/slhDsaState.ts';
-import { createSlhDsaProfileStateCrypto } from '../../../../source/wallet/slhDsaStateCrypto.ts';
+import { createSlhDsaProfileStateCrypto, type SlhDsaStateCrypto } from '../../../../source/wallet/slhDsaStateCrypto.ts';
 import { NativeOperationDrain } from '../custody/operationDrain.ts';
 import type { NativeSlhExecutionOptions, OwnedNativeSlhExecution } from '../crypto/slhDsaNativeExecution.ts';
 import { encodeStorageValue } from '../storage/json.ts';
@@ -25,12 +25,49 @@ export type NativeSlhInstalledKey = Readonly<Pick<SLHDSASignActionHashParams, 'k
 type Progress = Parameters<ReturnType<typeof createSlhDsaExecution>['prepareKeypair']>[2];
 type SlhKeyring = Pick<IKeyringManager,
   'deriveSLHDSASetupSecretForAccount' | 'encryptPrivateRecord' | 'decryptPrivateRecord'>;
+export type NativeSlhPublicStates = Map<string, Readonly<{ state: NativeSlhPublicState; seal: string }>>;
+export type NativeSlhActionSecrets = Readonly<{
+  setup: Awaited<ReturnType<SlhKeyring['deriveSLHDSASetupSecretForAccount']>> | null;
+  crypto: Pick<SlhKeyring, 'encryptPrivateRecord' | 'decryptPrivateRecord'>;
+  dispose(): void;
+}>;
 
 const publicState = (state: SLHDSAProvisionedState): NativeSlhPublicState => Object.freeze({
   accountIndex: state.accountIndex, derivationLabel: state.derivationLabel,
   keyId: state.keyId, parameterSet: state.parameterSet, pkRoot: state.pkRoot, pkSeed: state.pkSeed,
   signatureCount: state.signatureCount, signatureLimit: state.signatureLimit,
 });
+const checkedPublicState = (state: SLHDSAProvisionedState): NativeSlhPublicState => {
+  if (!Number.isSafeInteger(state.accountIndex) || state.accountIndex < 0 || !state.secretKeyHex ||
+      state.derivationLabel !== getSLHDSADerivationLabel(state.accountIndex) ||
+      state.keyId !== getSLHDSAKeyId({ pkRoot: normalizeSLHDSAPublicKeyField(state.pkRoot), pkSeed: normalizeSLHDSAPublicKeyField(state.pkSeed) }))
+    throw new Error('SLH_DSA_SAVED_DERIVATION_UNAVAILABLE');
+  return publicState(state);
+};
+
+/** Called only inside initial vault authentication; only public state survives. */
+export async function readNativeSlhPublicStates(
+  records: readonly Readonly<{ key: string; value: unknown }>[],
+  keyring: Pick<SlhKeyring, 'encryptPrivateRecord' | 'decryptPrivateRecord'>,
+  assertCurrent: () => void
+): Promise<NativeSlhPublicStates> {
+  const entries = new Map(records.map(row => [row.key, row.value]));
+  const store = createSlhDsaStateStore({
+    async read(key) { assertSynchronousEvmFeeGuard(assertCurrent); return entries.has(key) ? { present: true, value: entries.get(key) } : { present: false }; },
+    async mutate() { throw new Error('SLH_DSA_READ_ONLY'); },
+  });
+  const crypto = createSlhDsaProfileStateCrypto(keyring, assertCurrent);
+  const result: NativeSlhPublicStates = new Map();
+  for (const row of records) {
+    const keyId = parseSLHDSAStateStorageKey(row.key);
+    if (keyId === null) continue;
+    const state = await store.load({ keyId, crypto, assertOwner: assertCurrent });
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    if (!state) throw new Error('SLH_DSA_INSTALLED_STATE_MISSING');
+    result.set(keyId, Object.freeze({ state: checkedPublicState(state), seal: encodeStorageValue(row.value) }));
+  }
+  return result;
+}
 const captureInstalled = (input: NativeSlhInstalledKey): NativeSlhInstalledKey => {
   const key = Object.freeze({ keyId: input.keyId, parameterSet: input.parameterSet,
     pkRoot: normalizeSLHDSAPublicKeyField(input.pkRoot), pkSeed: normalizeSLHDSAPublicKeyField(input.pkSeed) });
@@ -42,19 +79,19 @@ const captureInstalled = (input: NativeSlhInstalledKey): NativeSlhInstalledKey =
 /** Private custody composition. Public methods never return the prepared secret or storage. */
 export function createNativeSlhDsaRuntime(ports: Readonly<{
   namespace: string;
-  keyring: SlhKeyring;
+  publicStates: NativeSlhPublicStates;
+  authorize(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, assertCurrent: () => void): Promise<NativeSlhActionSecrets>;
   storage: KeyringStoragePort;
   assertCurrent(): void;
   openExecution: NativeSlhExecutionFactory;
   onStorageFault(): void;
   now(): number;
 }>) {
-  const { namespace, keyring, storage, assertCurrent, openExecution, onStorageFault, now } = ports;
+  const { namespace, publicStates, authorize, storage, assertCurrent, openExecution, onStorageFault, now } = ports;
   if (!/^0x[0-9a-f]{64}$/.test(namespace) ||
         [assertCurrent, openExecution, onStorageFault, now, storage?.get,
-        storage?.compareAndSetMany, keyring?.deriveSLHDSASetupSecretForAccount].some(value => typeof value !== 'function'))
+        storage?.compareAndSetMany, authorize].some(value => typeof value !== 'function'))
     throw new Error('SLH_DSA_NATIVE_HOST_UNAVAILABLE');
-  const derive = keyring.deriveSLHDSASetupSecretForAccount.bind(keyring);
   const drain = new NativeOperationDrain();
   const lifetime = new AbortController();
   let closed = false;
@@ -87,6 +124,10 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
       // Only our acknowledged CAS + exact readback advances an observation.
       // Concurrent hydration must not adopt a newer counter while old state encrypts.
       if (previous && previous.seal !== observed.seal)
+        return fault(new WalletStorageError('STORAGE_CHANGED'));
+      const keyId = parseSLHDSAStateStorageKey(key);
+      const authenticated = keyId === null ? undefined : publicStates.get(keyId);
+      if (!previous && authenticated && authenticated.seal !== observed.seal)
         return fault(new WalletStorageError('STORAGE_CHANGED'));
       if (!previous) observations.set(key, observed);
       return observed;
@@ -126,7 +167,6 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
     },
   };
   const stored = createSlhDsaStateStore(stateStorage);
-  const crypto = createSlhDsaProfileStateCrypto(keyring, wallet);
   type Execution = Readonly<{ engine: ReturnType<typeof createSlhDsaExecution>; native: OwnedNativeSlhExecution }>;
   let execution: Execution | undefined;
   let executionEpoch = 0;
@@ -174,14 +214,20 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
   let progress: Progress = () => undefined;
   let setupCheck = wallet;
   let preparing = false;
-  const signer = createSlhDsaSigner({
+  const createSigner = (crypto: SlhDsaStateCrypto) => {
+    const signer = createSlhDsaSigner({
     now,
     stateStore: {
       async load(request) {
         try { return await stored.load(request); } catch (error) { return fault(error); }
       },
       async save(state, stateCrypto, owner) {
-        try { await stored.save(state, stateCrypto, owner); } catch (error) { return fault(error); }
+        try {
+          await stored.save(state, stateCrypto, owner);
+          const observed = observations.get(getSLHDSAStateStorageKey(state.keyId));
+          if (!observed?.seal) throw new Error('SLH_DSA_INSTALLED_STATE_MISSING');
+          publicStates.set(state.keyId, Object.freeze({ state: checkedPublicState(state), seal: observed.seal }));
+        } catch (error) { return fault(error); }
       },
     },
     execution: {
@@ -200,15 +246,51 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
         return (await captured.engine.signActionHash(request, () => { checkExecution(captured); assertSynchronousEvmFeeGuard(owner); })).signature;
       },
     },
-  });
-  signer.configureSLHDSASessionStateCrypto(crypto);
-  const generation = signer.getSLHDSASessionGeneration();
-  const owned = async <T>(operation: () => Promise<T>) => {
+    });
+    signer.configureSLHDSASessionStateCrypto(crypto);
+    return signer;
+  };
+  type Signer = ReturnType<typeof createSigner>;
+  let actionTail: Promise<void> = Promise.resolve();
+  const owned = <T>(purpose: 'setup' | 'sign', accountIndex: number | null, signal: AbortSignal, assertRequest: () => void,
+    operation: (signer: Signer, crypto: SlhDsaStateCrypto, setup: NativeSlhActionSecrets['setup']) => Promise<T>): Promise<T> => {
     wallet();
     const finish = drain.begin();
-    try { await refreshRetiredExecution(); return await operation(); } finally { finish(); }
+    const work = actionTail.then(async () => {
+      wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+      await refreshRetiredExecution();
+      let secrets: NativeSlhActionSecrets | null = null;
+      let signer: Signer | undefined;
+      let result: T;
+      const authorization = new AbortController();
+      const abort = () => authorization.abort();
+      signal.addEventListener('abort', abort, { once: true });
+      lifetime.signal.addEventListener('abort', abort, { once: true });
+      if (signal.aborted || lifetime.signal.aborted) abort();
+      try {
+        if (authorization.signal.aborted) throw new Error('SLH_DSA_SESSION_RETIRED');
+        secrets = await authorize(purpose, accountIndex, authorization.signal, () => { wallet(); assertSynchronousEvmFeeGuard(assertRequest); });
+        wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+        const crypto = createSlhDsaProfileStateCrypto(secrets.crypto, wallet);
+        signer = createSigner(crypto);
+        result = await operation(signer, crypto, secrets.setup);
+      } finally {
+        signal.removeEventListener('abort', abort);
+        lifetime.signal.removeEventListener('abort', abort);
+        signer?.clearRuntimeSLHDSAStates();
+        const previous = execution; execution = undefined; executionEpoch++;
+        try { if (previous) await previous.native.retire(); }
+        catch (error) { fault(error); }
+        finally { secrets?.dispose(); secrets = null; }
+      }
+      wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+      if (signal.aborted) throw new Error('SLH_DSA_SESSION_RETIRED');
+      return result;
+    });
+    actionTail = work.then(() => undefined, () => undefined);
+    return work.finally(finish);
   };
-  const loadInstalled = async (key: NativeSlhInstalledKey, assertRequest: () => void) => {
+  const loadInstalled = async (key: NativeSlhInstalledKey, assertRequest: () => void, signer: Signer, crypto: SlhDsaStateCrypto) => {
     let state: SLHDSAProvisionedState | null;
     try { state = await stored.load({ crypto, keyId: key.keyId, assertOwner: wallet }); }
     catch (error) { return fault(error); }
@@ -216,23 +298,23 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
     if (!state || !state.secretKeyHex) throw new Error('SLH_DSA_INSTALLED_STATE_MISSING');
     if (normalizeSLHDSAPublicKeyField(state.pkRoot) !== key.pkRoot || normalizeSLHDSAPublicKeyField(state.pkSeed) !== key.pkSeed)
       throw new Error('SLH_DSA_INSTALLED_KEY_CHANGED');
-    return signer.putRuntimeSLHDSAState(state, generation);
+    return signer.putRuntimeSLHDSAState(state, signer.getSLHDSASessionGeneration());
   };
   return Object.freeze({
-    prepareFresh(accountIndex: number, assertRequest: () => void, onProgress: Progress): Promise<NativeSlhPublicState> {
+    prepareFresh(accountIndex: number, assertRequest: () => void, onProgress: Progress, signal: AbortSignal): Promise<NativeSlhPublicState> {
       if (!Number.isSafeInteger(accountIndex) || accountIndex < 0) return Promise.reject(new Error('SLH_DSA_ACCOUNT_CHANGED'));
       assertSynchronousEvmFeeGuard(assertRequest);
       if (preparing) return Promise.reject(new Error('SLH_DSA_SETUP_BUSY'));
       preparing = true;
       const capturedProgress = onProgress;
-      return owned(async () => {
+      return owned('setup', accountIndex, signal, assertRequest, async (signer, _crypto, setup) => {
         try {
           const admittedEpoch = executionEpoch;
           setupCheck = () => { wallet(); assertSynchronousEvmFeeGuard(assertRequest); if (admittedEpoch !== executionEpoch) throw new Error('SLH_DSA_EXECUTION_RETIRED'); };
-          const setup = await derive({ accountIndex });
+          if (!setup) throw new Error('SLH_DSA_SAVED_DERIVATION_UNAVAILABLE');
           wallet(); assertSynchronousEvmFeeGuard(assertRequest);
           progress = value => { wallet(); assertSynchronousEvmFeeGuard(assertRequest); assertSynchronousEvmFeeGuard(() => capturedProgress(value)); };
-          const state = await signer.provisionRuntimeSLHDSAStateFromSetupSecret({ accountIndex, ...setup }, generation);
+          const state = await signer.provisionRuntimeSLHDSAStateFromSetupSecret({ accountIndex, ...setup }, signer.getSLHDSASessionGeneration());
           wallet(); assertSynchronousEvmFeeGuard(assertRequest);
           return publicState(state);
         } finally { progress = () => undefined; setupCheck = wallet; }
@@ -241,43 +323,51 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
     inspectPrepared(keyId: string, accountIndex: number, assertRequest: () => void): Promise<NativeSlhPublicState | null> {
       wallet(); assertSynchronousEvmFeeGuard(assertRequest);
       if (!Number.isSafeInteger(accountIndex) || accountIndex < 0 || typeof keyId !== 'string' || parseSLHDSAStateStorageKey(getSLHDSAStateStorageKey(keyId)) !== keyId) throw new Error('SLH_DSA_ACCOUNT_CHANGED');
-      // Status decrypts through the same observed-row store, without loading a
-      // signer key or opening any native execution context.
+      // Authentication captured this public projection. Status verifies its
+      // exact encrypted row, without decrypting signing material again.
       const finish = drain.begin();
       return (async () => {
-        let state: SLHDSAProvisionedState | null;
-        try { state = await stored.load({ crypto, keyId, assertOwner: wallet }); }
-        catch (error) { return fault(error); }
+        const row = await inspect(getSLHDSAStateStorageKey(keyId));
         wallet(); assertSynchronousEvmFeeGuard(assertRequest);
-        if (!state || state.accountIndex !== accountIndex) return null;
-        if (!state.secretKeyHex || state.derivationLabel !== getSLHDSADerivationLabel(accountIndex) ||
-            state.keyId !== getSLHDSAKeyId({ pkRoot: normalizeSLHDSAPublicKeyField(state.pkRoot), pkSeed: normalizeSLHDSAPublicKeyField(state.pkSeed) }))
-          throw new Error('SLH_DSA_SAVED_DERIVATION_UNAVAILABLE');
-        return publicState(state);
+        const saved = publicStates.get(keyId);
+        if (!saved && row.value === undefined) return null;
+        if (!saved || saved.seal !== row.seal) return fault(new WalletStorageError('STORAGE_CHANGED'));
+        return saved.state.accountIndex === accountIndex ? saved.state : null;
       })().finally(finish);
     },
     hydrateInstalled(input: NativeSlhInstalledKey, assertRequest: () => void): Promise<NativeSlhPublicState> {
       const key = captureInstalled(input);
       assertSynchronousEvmFeeGuard(assertRequest);
-      return owned(async () => publicState(await loadInstalled(key, assertRequest)));
+      const finish = drain.begin();
+      return (async () => {
+        const row = await inspect(getSLHDSAStateStorageKey(key.keyId));
+        wallet(); assertSynchronousEvmFeeGuard(assertRequest);
+        const saved = publicStates.get(key.keyId);
+        if (!saved && row.value === undefined) throw new Error('SLH_DSA_INSTALLED_STATE_MISSING');
+        if (!saved || saved.seal !== row.seal) return fault(new WalletStorageError('STORAGE_CHANGED'));
+        if (saved.state.pkRoot !== key.pkRoot || saved.state.pkSeed !== key.pkSeed) throw new Error('SLH_DSA_INSTALLED_KEY_CHANGED');
+        return saved.state;
+      })().finally(finish);
     },
-    rebuildInstalled(input: NativeSlhInstalledKey, assertRequest: () => void, onProgress: Progress): Promise<NativeSlhPublicState> {
+    rebuildInstalled(input: NativeSlhInstalledKey, assertRequest: () => void, onProgress: Progress, signal: AbortSignal): Promise<NativeSlhPublicState> {
       const key = captureInstalled(input);
       assertSynchronousEvmFeeGuard(assertRequest);
       if (preparing) return Promise.reject(new Error('SLH_DSA_SETUP_BUSY'));
       preparing = true;
-      return owned(async () => {
+      const savedPublic = publicStates.get(key.keyId)?.state;
+      if (!savedPublic) { preparing = false; return Promise.reject(new Error('SLH_DSA_INSTALLED_STATE_MISSING')); }
+      return owned('setup', savedPublic.accountIndex, signal, assertRequest, async (signer, crypto, setup) => {
         try {
           const admittedEpoch = executionEpoch;
           setupCheck = () => { wallet(); assertSynchronousEvmFeeGuard(assertRequest); if (admittedEpoch !== executionEpoch) throw new Error('SLH_DSA_EXECUTION_RETIRED'); };
-          const saved = await loadInstalled(key, assertRequest);
+          const saved = await loadInstalled(key, assertRequest, signer, crypto);
           if (!Number.isSafeInteger(saved.accountIndex) || saved.accountIndex < 0 || typeof saved.derivationLabel !== 'string')
             throw new Error('SLH_DSA_SAVED_DERIVATION_UNAVAILABLE');
-          const setup = await derive({ accountIndex: saved.accountIndex });
+          if (!setup) throw new Error('SLH_DSA_SAVED_DERIVATION_UNAVAILABLE');
           setupCheck();
           if (setup.derivationLabel !== saved.derivationLabel) throw new Error('SLH_DSA_SAVED_DERIVATION_UNAVAILABLE');
           progress = value => { setupCheck(); assertSynchronousEvmFeeGuard(() => onProgress(value)); };
-          const restored = await signer.provisionRuntimeSLHDSAState({ ...key, ...setup, accountIndex: saved.accountIndex }, generation);
+          const restored = await signer.provisionRuntimeSLHDSAState({ ...key, ...setup, accountIndex: saved.accountIndex }, signer.getSLHDSASessionGeneration());
           setupCheck();
           if (restored.keyId !== saved.keyId || restored.signatureCount < saved.signatureCount)
             throw new Error('SLH_DSA_INSTALLED_STATE_CHANGED');
@@ -285,11 +375,11 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
         } finally { progress = () => undefined; setupCheck = wallet; }
       }).finally(() => { preparing = false; });
     },
-    signActionHash(input: SLHDSASignActionHashParams, approval: SLHDSADispatchApproval | null, assertDelivery: () => void): Promise<string> {
+    signActionHash(input: SLHDSASignActionHashParams, approval: SLHDSADispatchApproval | null, assertDelivery: () => void, signal: AbortSignal): Promise<string> {
       const request = Object.freeze({ ...input });
       const approved = approval && Object.freeze({ assertCurrent: approval.assertCurrent.bind(approval), checkDocument: approval.checkDocument.bind(approval) });
       assertSynchronousEvmFeeGuard(assertDelivery);
-      return owned(async () => {
+      return owned('sign', null, signal, () => { assertSynchronousEvmFeeGuard(assertDelivery); if (approved) assertSynchronousEvmFeeGuard(approved.assertCurrent); }, async (signer, crypto) => {
         const admittedEpoch = executionEpoch;
         const review = () => {
           assertSynchronousEvmFeeGuard(assertDelivery);
@@ -299,7 +389,8 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
           assertCurrent() { review(); if (approved) assertSynchronousEvmFeeGuard(approved.assertCurrent); },
           async checkDocument(recheckSite) { review(); if (approved) await approved.checkDocument(recheckSite); review(); },
         });
-        const signature = await signer.signSLHDSAActionHashLocal(request, generation, assent);
+        await loadInstalled(captureInstalled(request), assertDelivery, signer, crypto);
+        const signature = await signer.signSLHDSAActionHashLocal(request, signer.getSLHDSASessionGeneration(), assent);
         wallet(); assertSynchronousEvmFeeGuard(assertDelivery);
         return signature;
       });
@@ -309,7 +400,6 @@ export function createNativeSlhDsaRuntime(ports: Readonly<{
       return drain.close(() => {
         closed = true;
         lifetime.abort();
-        signer.clearRuntimeSLHDSAStates();
         observations.clear();
         closing = Promise.all([contextRetirement, execution?.native.retire()]).then(() => undefined);
       }, [() => closing]);

@@ -459,7 +459,7 @@ export function NativeSmartAccountSend({
           {!token && !collectible && (
             <Button
               title={maximum ? 'MAX selected' : 'MAX'}
-              variant="quiet" size="compact"
+              variant="secondary" size="compact"
               disabled={
                 busy ||
                 balance.status !== 'available' ||

@@ -3,7 +3,7 @@ import { ActivityIndicator, AppState, BackHandler, Linking, Platform, StyleSheet
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, CameraView } from 'expo-camera';
 import type { PermissionResponse } from 'expo';
-import { Button, colors, Header, Notice, Screen, Text } from '../ui';
+import { Button, colors, Header, IconButton, Notice, Screen, Text } from '../ui';
 import type { QrScannerProps } from './QrScanner.types';
 
 /** Camera ownership and permission are scoped to this explicitly opened scanner. */
@@ -11,6 +11,8 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
   const [permission, setPermission] = useState<PermissionResponse | null>(null);
   const [failure, setFailure] = useState(false);
   const [invalidCode, setInvalidCode] = useState(false);
+  const [torch, setTorch] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
   const [foreground, setForeground] = useState(AppState.currentState === 'active');
   const owner = useRef({ active: true, completed: false, enabled: false, foreground: AppState.currentState === 'active' });
 
@@ -19,10 +21,12 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
     owner.current = current;
     const change = AppState.addEventListener('change', (state) => {
       current.foreground = state === 'active';
+      if (!current.foreground) { setTorch(false); setCameraReady(false); }
       if (current.active) setForeground(current.foreground);
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => {
       current.foreground = false;
+      setTorch(false); setCameraReady(false);
       if (current.active) setForeground(false);
     }) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => {
@@ -64,26 +68,31 @@ export function QrScanner<T>({ parse, copy, onScan, onClose }: QrScannerProps<T>
   }); };
 
   return <SafeAreaView edges={['top']} style={s.container}><Screen>
-    <Header title={copy.title} onBack={close} />
+    <Header title={copy.title} right={<IconButton label="Close scanner" icon="close" onPress={close} />} />
     {failure ? <Notice title="Camera unavailable" body={copy.unavailable} />
       : permission === null ? <ActivityIndicator color={colors.blue} accessibilityLabel="Requesting camera access" />
       : permission.granted ? <>
         {foreground && <View style={s.camera}>
-          <CameraView style={StyleSheet.absoluteFill} facing="back" autofocus="on" active={foreground}
+          <CameraView style={StyleSheet.absoluteFill} facing="back" autofocus="on" active={foreground} enableTorch={torch}
+            onCameraReady={() => { if (owner.current.active && !owner.current.completed && owner.current.foreground) setCameraReady(true); }}
             barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scan}
             onMountError={() => {
               const current = owner.current;
-              if (current.active && !current.completed) { current.enabled = false; setFailure(true); }
+              if (current.active && !current.completed) { current.enabled = false; setTorch(false); setCameraReady(false); setFailure(true); }
             }} />
           <View pointerEvents="none" style={s.target} />
         </View>}
         <Text style={s.caption}>{copy.instructions}</Text>
+        {foreground && cameraReady && <Button title={torch ? 'Turn off flashlight' : 'Turn on flashlight'} icon="torch" variant="secondary" size="compact" onPress={() => {
+          if (owner.current.active && !owner.current.completed && owner.current.foreground) setTorch(value => !value);
+        }} />}
+        <Text style={s.caption}>Scanning never signs a transaction. You review requests before approving them.</Text>
         {invalidCode && <Notice title={copy.invalidTitle} body={copy.invalidBody} />}
       </> : <>
         <Notice title="Camera access needed" body={copy.permission} />
-        <Button title="Open Settings" onPress={openSettings} />
+        <Button icon="settings" title="Open Settings" onPress={openSettings} />
       </>}
-    <Button title={copy.manualAction} variant="quiet" onPress={close} />
+    <Button title={copy.manualAction} variant="secondary" onPress={close} />
   </Screen></SafeAreaView>;
 }
 

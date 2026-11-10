@@ -181,6 +181,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
       } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
       owner = 'child'; let tree = render.render(child, leaf, props()); render.flush(child);
+      if (kind === 'activity') assert.equal(get(tree, element => element.type === 'Header').props.onBack, undefined);
       if (kind !== 'activity') {
         privacyHidden = true;
         tree = render.render(child, leaf, props()); render.flush(child);
@@ -261,6 +262,24 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         press(get(tree, (element) => element.props.title === 'Receive'));
         tree = render.render(child, leaf, props()); render.flush(child);
         if (kind === 'smart') assert.equal(get(tree, (element) => element.type === 'QRCode').props.value, account.addresses.ethereum);
+      }
+      if (kind === 'native') {
+        const originalBackup = backupRequired;
+        backupRequired = true;
+        const continuation = { account: { address: account.addresses.ethereum, network: 'ethereum', revision: accountRevision }, backupAcknowledged: true };
+        const resumed = render.instance(), captured: unknown[] = [];
+        const resumedProps = { ...props(), initialReceive: continuation, onChangeReceiveNetwork(value: unknown) { captured.push(value); } };
+        let resumedTree = render.render(resumed, leaf, resumedProps); render.flush(resumed);
+        assert.equal(get(resumedTree, element => element.type === 'QRCode').props.value, account.addresses.ethereum);
+        const change = get(resumedTree, element => element.props.title === 'Change');
+        press(change);
+        assert.deepEqual(JSON.parse(JSON.stringify(captured)), [continuation]);
+        render.dispose(resumed); press(change); assert.equal(captured.length, 1, 'retired receive cannot open a selector');
+        const stale = render.instance(); accountRevision++;
+        resumedTree = render.render(stale, leaf, { ...props(), initialReceive: continuation }); render.flush(stale);
+        assert.equal(find(resumedTree, element => element.type === 'QRCode'), undefined, 'acknowledgement is bound to the exact old scope');
+        render.dispose(stale); accountRevision--; backupRequired = originalBackup;
+        tree = render.render(child, leaf, props()); render.flush(child);
       }
       const active = subscriptions.filter((subscription) => !subscription.removed);
       active.forEach((subscription) => subscription.actual.remove());

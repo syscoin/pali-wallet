@@ -27,12 +27,13 @@ function assetQuantity(row: UtxoActivityRow): string | null {
   return `${direction}${formatted} ${value.symbol ?? 'SPT'}`;
 }
 /** The active screen follows the account-owned history capability. */
-export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, navigation, onBack }: {
+export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, navigation, onBack, initialHash }: {
   authority: UtxoActivityOwner;
   selectedNetwork: Pick<UtxoNetwork, 'id' | 'name' | 'symbol' | 'decimals'>;
   accountLabel: string;
   navigation: ShellLeafNavigation;
   onBack(): void;
+  initialHash?: string;
 }) {
   const { hidden: hideBalances } = useBalancePrivacy();
   const lifetime = useRef({ alive: true, busy: false, action: 0, selected: null as string | null, pending: null as object | null, nodeRequest: null as AbortController | null });
@@ -59,6 +60,13 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const detail = state.detail?.txid === selected ? state.detail : null;
   const chosen = detail?.row ?? summaryChosen;
   const network = state.context?.networkId === selectedNetwork.id ? selectedNetwork : null;
+  const openedInitial = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (initialHash && initialHash !== openedInitial.current && network && state.rows.some(row => row.txid === initialHash)) {
+      openedInitial.current = initialHash;
+      selectTransaction(initialHash);
+    }
+  }, [initialHash, network, state.rows, selectTransaction]);
   useLayoutEffect(() => {
     const life = lifetime.current; life.alive = true;
     let observedContext = '';
@@ -145,7 +153,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const rows = state.rows.filter(row => filter === 'all' || rowDirection(row) === filter || rowDirection(row) === 'self' || rowDirection(row) === 'unknown');
   const dateOf = (row: UtxoActivityRow) => row.block ? activityDate(row.block.timestamp === null ? null : row.block.timestamp * 1000) : { key: 'pending', label: 'Pending', time: '' };
   return <SafeAreaView edges={chosen ? ['top', 'bottom'] : ['top']} style={s.root}>
-    <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Activity'} subtitle={network ? `${accountLabel} · ${network.name}` : undefined} onBack={back}
+    <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Activity'} subtitle={network ? `${accountLabel} · ${network.name}` : undefined} onBack={chosen ? back : undefined}
       right={!chosen && network ? <IconButton label="Refresh activity" icon="refresh" disabled={state.status === 'loading'} onPress={() => void refresh()} /> : undefined} /></View>
     {!network || !state.context ? <ScrollView contentContainerStyle={s.content}><Notice title="Activity unavailable" body="Choose an account to view its activity." /></ScrollView> : <View style={s.body}>
       <View aria-hidden={!!chosen} accessibilityElementsHidden={!!chosen} importantForAccessibility={chosen ? 'no-hide-descendants' : 'auto'} pointerEvents={chosen ? 'none' : 'auto'} style={[s.list, chosen && s.obscured]}>
@@ -207,7 +215,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
           <Text style={styles.muted}>Couldn’t load full details.</Text>
           <Button title="Try again" variant="secondary" onPress={() => controller.retryDetail()} />
         </View>}
-        <Button title="Details" variant="quiet" size="compact" expanded={detailsFor === chosen.txid}
+        <Button title="Details" icon={detailsFor === chosen.txid ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsFor === chosen.txid}
           onPress={() => setDetailsFor(detailsFor === chosen.txid ? null : chosen.txid)} />
         {detailsFor === chosen.txid && <>
         <Text selectable style={s.hash}>{detailAmount}</Text>

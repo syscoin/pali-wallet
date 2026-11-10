@@ -38,6 +38,7 @@ test('custody and watch auto-lock resize Android for the keyboard and preserve i
       '../../../../source/shared/idleLockPolicy': idlePolicy,
       '../platform/security': { securityPreferences: { getSnapshot: () => ({ value: { custodyIdleMinutes: 5, watchIdleMinutes: 5 } }) } },
       './IdleActivityBoundary': { IdleTextInput: 'IdleTextInput', IdlePressable: 'IdlePressable' },
+      './PinEntry': { PinField: 'PinField' },
       '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {}, styles: { screen: screenStyle } },
     };
     const module = { exports: {} as { AutoLockSettings(props: object): Element } };

@@ -145,7 +145,7 @@ export function NativeSmartAccountAuthenticator({ open, onBack, ledgerConnection
         footer={
           <Button
             title="Close"
-            variant="quiet" size="compact"
+            variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />

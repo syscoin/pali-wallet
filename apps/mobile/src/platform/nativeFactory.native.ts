@@ -21,6 +21,8 @@ import type { NativeTrezorSessions } from '../hardware/trezorSessions';
 import type { NativeTrezorView, NativeTrezorSnapshot } from '../custody/trezorAccounts';
 import { prepareWalletConnectRuntime } from './walletConnectRuntime';
 import { createNativeDeviceUnlockCapability } from './deviceUnlockCredential.native';
+import { createNativePinCredentialPort } from './pinCredential.native';
+import { nativeOperationAuthentication } from './operationAuthentication';
 import { NativeConnectionsController } from '../connections/controller.ts';
 import { blacklistService } from '../../../../source/utils/security/blacklistService';
 import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
@@ -90,6 +92,8 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     slhExecution: null,
     assertActive,
     deviceUnlock,
+    pinCredential: createNativePinCredentialPort(),
+    requestOperationCredential: nativeOperationAuthentication.request,
     deriveSentryPublicKey: createNativeSentryPublicKeyDeriver(),
     runSentryCrypto: createNativeSentryCryptoExecutor(null),
     trezorSessions,
@@ -178,7 +182,7 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
 export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
   return new NativeRecoveryCoordinator({ owner: controllers.authority,
     async retireControllers() { controllers.authentication.cancel(); controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); await controllers.disposeConnections(); },
-    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage, assertActive: custodyGuard() });
+    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage, assertActive: custodyGuard(), pinCredential: createNativePinCredentialPort() });
 }
 
 export function createNativeCustodyAuthority(): NativeCustodyAuthority {
@@ -562,7 +566,7 @@ export function createNativeWalletControllers() {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const check = () => { assertSynchronousEvmFeeGuard(assertCurrent); if (signal.aborted) throw Error('CANCELLED'); };
     check();
-    const account = await selected.openSlhDsaAccount(check); check();
+    const account = await selected.openSlhDsaAccount(check, signal); check();
     const catalogue = authority.getCatalogue(), snapshot = authority.getSnapshot();
     if (!catalogue || !snapshot.account) throw Error('CANCELLED');
     const network = catalogue.networks.find(network => network.id === catalogue.active.networkId);

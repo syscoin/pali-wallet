@@ -182,9 +182,10 @@ test('the real controller screen separates Review from Confirm and displays the 
     tree = screen.render(props);
     assert.equal(value.counts.submissions, 0);
     assert.match(text(tree), /0\.000000000000042\s+ETH/);
-    assert.match(text(tree), new RegExp(PALI_INFRASTRUCTURE_METADATA[0]!.address));
+    assert(!text(tree).includes(PALI_INFRASTRUCTURE_METADATA[0]!.address));
     button(tree, 'send.showDetails').props.onPress();
     tree = screen.render(props);
+    assert.match(text(tree), new RegExp(PALI_INFRASTRUCTURE_METADATA[0]!.address));
     assert.equal(tree.find(node => node.type === 'TransactionDetails')!.props.transaction, value.transaction);
     button(tree, 'buttons.confirm').props.onPress(); await tick();
     tree = screen.render(props);
@@ -232,7 +233,8 @@ test('the review keeps its sole primary action in the fixed footer for a short 3
     assert.equal(scrolling.some(node => node.type === 'Button' && node.props.title === title('buttons.close')), false);
     assert.doesNotMatch(text(scrolling), new RegExp(PALI_INFRASTRUCTURE_METADATA[1]!.address));
     assert.doesNotMatch(text(scrolling), /0x4e59b44847b379578588920cA78FbF26c0B4956C/);
-    assert.match(text(scrolling), new RegExp(PALI_INFRASTRUCTURE_METADATA[0]!.address));
+    assert.doesNotMatch(text(scrolling), new RegExp(PALI_INFRASTRUCTURE_METADATA[0]!.address));
+    assert.match(text(scrolling), /Process smart-account transactions/);
     assert.match(text(scrolling), /Ethereum/); assert.match(text(scrolling), /Fee wallet/);
     assert.match(text(scrolling), /0\.000000000000042\s+ETH/);
     button(fixed, 'buttons.confirm').props.onPress(); await tick();
@@ -256,6 +258,9 @@ test('status and result actions stay in a two-button footer and failure text pre
     assert.equal(footer(tree).filter(node => node.type === 'Button').length, 2);
     button(footer(tree), 'mobile.infrastructure.refresh'); button(footer(tree), 'buttons.close');
     assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title('mobile.infrastructure.reviewNext')), false);
+    assert.equal(tree.some(node => node.children.includes(title('mobile.infrastructure.create2Deployer'))), false);
+    tree.find(node => node.type === 'Button' && node.props.title === 'View setup details')!.props.onPress();
+    tree = screen.render(props);
     const alert = tree.findIndex(node => node.props.accessibilityRole === 'alert');
     const inventory = tree.findIndex(node => node.children.includes(title('mobile.infrastructure.create2Deployer')));
     assert(alert >= 0 && inventory > alert);
@@ -293,11 +298,14 @@ for (const mode of ['missing', 'optional-only', 'all-present', 'pending-optional
     const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, mode, false); return value.controller; }, onBack() {} };
     try {
       screen.render(props); await tick();
-      const tree = screen.render(props), fixed = screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
+      let tree = screen.render(props); const fixed = screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
       assert.equal(value.controller.getSnapshot().status!.observation.create2Deployer.deployed, false);
       assert.equal(value.controller.getSnapshot().status!.observation.ready, mode !== 'missing');
       assert(text(tree).includes(title('settings.smartAccountCreate2Missing')));
       assert.equal(text(tree).includes(title('settings.smartAccountInfrastructureReady')), false);
+      assert.equal(text(tree).includes('Required setup complete'), false);
+      tree.find(node => node.type === 'Button' && node.props.title === 'View setup details')!.props.onPress();
+      tree = screen.render(props);
       const explanation = tree.findIndex(node => node.children.includes(title('settings.smartAccountCreate2Missing')));
       const inventory = tree.findIndex(node => node.children.includes(title('mobile.infrastructure.create2Deployer')));
       assert(explanation >= 0 && inventory > explanation);
@@ -317,7 +325,7 @@ for (const mode of ['missing', 'all-present', 'pending-optional'] as const)
     const props = { async open(signal: AbortSignal, check: () => void) { value = runtime(signal, check, mode); return value.controller; }, onBack() {} };
     try {
       screen.render(props); await tick();
-      const tree = screen.render(props), fixed = screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
+      let tree = screen.render(props); const fixed = screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
       assert.equal(fixed.filter(node => node.type === 'Button').length, 2);
       button(fixed, mode === 'missing' ? 'mobile.infrastructure.reviewNext' : 'mobile.infrastructure.refresh');
       assert.equal(tree.some(node => node.type === 'Button' && node.props.title === title('mobile.infrastructure.reviewOptional')), false);

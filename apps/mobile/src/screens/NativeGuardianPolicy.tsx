@@ -269,7 +269,28 @@ export function NativeGuardianPolicy({
         style={s.safe}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen>
+        <Screen footer={<>
+          {(action === 'set' || inspection?.status === 'retry-ready') && (
+            <Button
+              title={
+                busy
+                  ? 'Preparing policy…'
+                  : action === 'remove'
+                  ? 'Review removal'
+                  : 'Review policy'
+              }
+              disabled={
+                busy ||
+                !acknowledged ||
+                (action === 'remove' && !recoveryLossAcknowledged)
+              }
+              onPress={() => {
+                void review();
+              }}
+            />
+          )}
+          <Button title="Cancel" variant="secondary" size="compact" onPress={back} />
+        </>}>
           <Header
             title={
               action === 'remove'
@@ -389,7 +410,7 @@ export function NativeGuardianPolicy({
               )}
               <Button
                 title={busy ? 'Checking status…' : 'Check removal status'}
-                variant="quiet" size="compact"
+                variant="secondary" size="compact" icon="refresh"
                 disabled={busy}
                 onPress={() => {
                   void inspect();
@@ -452,26 +473,7 @@ export function NativeGuardianPolicy({
           {!!error && (
             <Notice title="Check guardian policy" body={error} tone="amber" />
           )}
-          {(action === 'set' || inspection?.status === 'retry-ready') && (
-            <Button
-              title={
-                busy
-                  ? 'Preparing policy…'
-                  : action === 'remove'
-                  ? 'Review removal'
-                  : 'Review policy'
-              }
-              disabled={
-                busy ||
-                !acknowledged ||
-                (action === 'remove' && !recoveryLossAcknowledged)
-              }
-              onPress={() => {
-                void review();
-              }}
-            />
-          )}
-          <Button title="Cancel" variant="quiet" size="compact" onPress={back} />
+
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -96,6 +96,8 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     let expectedRaw: string | undefined, requests = 0;
     const wrapped: NativeTransferRuntime = {
     authenticateOperation: (...args) => transfer.authenticateOperation(...args),
+    authorizeOperation: (...args) => transfer.authorizeOperation(...args),
+    releaseOperationAuthorization: (...args) => transfer.releaseOperationAuthorization(...args),
     replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
       journal: (assertCurrent) => transfer.journal(assertCurrent),
@@ -146,7 +148,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         }
         guard(); const review = controller.getSnapshot().review;
         expect(review && review.retry === (phase === 'restart') && review.context.chainId === registration.chainId);
-        await controller.confirm(review.id, { method: 'password', password: password }); guard();
+        await controller.confirm(review.id, { method: 'pin', pin: password }); guard();
         expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending'));
         const saved = await (await transfer.journal(guard)).load(); guard();
         expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'signed' : 'submitted'));

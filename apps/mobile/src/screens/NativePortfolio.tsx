@@ -51,17 +51,20 @@ type Props = {
   accountLabel?: string;
   onManageAccounts?(): void;
   onManageNetworks?(): void;
+  onChangeReceiveNetwork?(continuation: NativeReceiveContinuation): void;
+  initialReceive?: NativeReceiveContinuation;
   onActivity?(): void;
   tokenView?: NativeTokenView;
   navigation?: ShellLeafNavigation;
 };
+export type NativeReceiveContinuation = Readonly<{ account: NativePortfolioAccount; backupAcknowledged: boolean }>;
 type Feedback = { scope: string; text: string; failed?: boolean } | null;
 type ReceiveAcknowledgement = Readonly<{ model: NativePortfolioController; scope: string }>;
 type ReceiveWarning = ReceiveAcknowledgement & Readonly<{ account: NativePortfolioAccount; epoch: number }>;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
+export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onActivity, tokenView, navigation }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch, registrations: () => source.getCatalogue?.()?.networks }), [reader, source]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -71,20 +74,22 @@ export function NativePortfolio({ hardwareRequest, source, smartAccount, onDeplo
   const requiresBackup = useCallback(() => source.getSnapshot().backup !== 'confirmed', [source]);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} onManageSmartAccountModules={onManageSmartAccountModules} key={scope} model={model} snapshot={snapshot} backupRequired={custody.backup === 'unconfirmed'} requiresBackup={requiresBackup} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onBackup={onBackup} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
+  return <NativePortfolioContent initialReceive={initialReceive} onChangeReceiveNetwork={onChangeReceiveNetwork} hardwareRequest={hardwareRequest} smartAccount={smartAccount} onDeploySmartAccount={onDeploySmartAccount} onUseWalletAuthenticator={onUseWalletAuthenticator} onManageSlhDsa={onManageSlhDsa} onManageSmartAccountModules={onManageSmartAccountModules} key={scope} model={model} snapshot={snapshot} backupRequired={custody.backup === 'unconfirmed'} requiresBackup={requiresBackup} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onBackup={onBackup} onSecurity={onSecurity} onSend={onSend} onSendSpt={onSendSpt} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequired, requiresBackup, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
+function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequired, requiresBackup, smartAccount, onDeploySmartAccount, onUseWalletAuthenticator, onManageSlhDsa, onManageSmartAccountModules, onExit, onLock, onViewRecovery, onBackup, onSecurity, onSend, onSendSpt, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onChangeReceiveNetwork, initialReceive, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot; accountLabel: string;
   backupRequired: boolean; requiresBackup(): boolean;
 }) {
   const { t } = useNativeTranslation();
   const { hidden: hideBalances } = useBalancePrivacy();
-  const [receiveScope, setReceiveScope] = useState<string | null>(null);
+  const initialReceiveScope = initialReceive && snapshot.account && scopeOf(initialReceive.account) === scopeOf(snapshot.account) ? scopeOf(snapshot.account) : null;
+  const initialReceiveAcknowledgement = initialReceiveScope && initialReceive?.backupAcknowledged ? { model, scope: initialReceiveScope } : null;
+  const [receiveScope, setReceiveScope] = useState<string | null>(initialReceiveScope);
   const [receiveWarning, setReceiveWarning] = useState<ReceiveWarning | null>(null);
-  const [acknowledgedReceiveScope, setAcknowledgedReceiveScope] = useState<ReceiveAcknowledgement | null>(null);
+  const [acknowledgedReceiveScope, setAcknowledgedReceiveScope] = useState<ReceiveAcknowledgement | null>(initialReceiveAcknowledgement);
   const receiveWarningOwner = useRef<ReceiveWarning | null>(null);
-  const receiveAcknowledgement = useRef<ReceiveAcknowledgement | null>(null);
+  const receiveAcknowledgement = useRef<ReceiveAcknowledgement | null>(initialReceiveAcknowledgement);
   const [tokenTitle, setTokenTitle] = useState<string | null>(null);
   const [nativeDetailScope, setNativeDetailScope] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -121,7 +126,8 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
   }, []);
   useLayoutEffect(() => {
     lifecycle.current.epoch++; lifecycle.current.busy = false;
-    receiveWarningOwner.current = null; receiveAcknowledgement.current = null;
+    receiveWarningOwner.current = null;
+    if (receiveAcknowledgement.current?.model !== model || receiveAcknowledgement.current?.scope !== scope) receiveAcknowledgement.current = null;
   }, [model, scope]);
   useLayoutEffect(() => {
     const current = lifecycle.current;
@@ -230,12 +236,17 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
       {account && backupRequired && !receiving && !tokenTitle && <IdlePressable accessibilityRole="button"
         accessibilityLabel="Back up your wallet. Protect access if this phone is lost."
         onPress={() => { if (model.isCurrent(account) && requiresBackup()) (onBackup ?? onViewRecovery)(); }} style={s.backupBadge}>
-        <View style={s.backupIcon}><Icon name="shield" size={19} color={colors.amber} /></View>
+        <View style={s.backupIcon}><Icon name="shield-warning" size={19} color={colors.amber} /></View>
         <View style={s.backupText}><Text style={s.backupTitle}>Back up your wallet</Text><Text style={s.backupBody}>Protect access if this phone is lost.</Text></View>
         <Icon name="chevron-right" size={17} color={colors.amber} />
       </IdlePressable>}
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its account." /> : receiving ? <>
-        <View style={s.identity}><Coin id={network.networkId} size={36} /><Text style={s.network}>{networkName}</Text></View>
+        <View style={s.identity}><Coin id={network.networkId} size={36} /><Text style={s.network}>{networkName}</Text>
+          {onChangeReceiveNetwork && <Button title="Change" variant="secondary" size="compact" onPress={() => {
+            if (!account || !lifecycle.current.alive || lifecycle.current.busy || AppState.currentState !== 'active' || !model.isCurrent(account)) return;
+            const acknowledged = receiveAcknowledgement.current;
+            onChangeReceiveNetwork(Object.freeze({ account: Object.freeze({ ...account }), backupAcknowledged: !!acknowledged && acknowledged.model === model && acknowledged.scope === scopeOf(account) }));
+          }} />}</View>
         <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${networkName} address ${account.address}`} testID="native-receive-qr">
           <QRCode value={account.address} size={receiveQrSize} quietZone={16} backgroundColor="#ffffff" color={colors.bg} ecl="M" />
         </View>
@@ -292,7 +303,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
           onSendCollectible={account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) { if (requiresBackup()) (onBackup ?? onViewRecovery)(); else onSendCollectible(collectible); } } : undefined}
           onReceive={requestReceive} />}
         </View>
-        {!nativeDetail && !tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
+        {!nativeDetail && !tokenTitle && onActivity && <Card style={s.tools}><Row title="Activity" subtitle="View transactions for this account" icon="clock" onPress={onActivity} last /></Card>}
       </>}
       {!receiving && feedbackView}
       {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>Development build · Use a test wallet</Text>}
@@ -304,11 +315,11 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, backupRequir
         <SafeAreaView edges={['bottom']} style={s.warningSheet} accessibilityViewIsModal>
           <ScrollView contentContainerStyle={s.warningContent} showsVerticalScrollIndicator={false}>
             <View style={s.warningHandle} />
-            <View style={s.warningIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon name="shield" size={34} color={colors.blue} /></View>
+            <View style={s.warningIcon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon name="shield-warning" size={36} color={colors.amber} /></View>
             <Text accessibilityRole="header" style={s.warningTitle}>Back up before receiving</Text>
             <Text style={s.warningBody}>If this phone is lost or erased, you could lose access to received funds.</Text>
             <Button title="Back Up Now" onPress={() => backUpNow(warning)} />
-            <Button title="Receive Anyway" variant="quiet" onPress={() => receiveAnyway(warning)} />
+            <Button title="Receive Anyway" variant="secondary" onPress={() => receiveAnyway(warning)} />
           </ScrollView>
         </SafeAreaView>
       </View>
@@ -324,6 +335,7 @@ const s = StyleSheet.create({
   warningContent: { paddingHorizontal: 20, paddingBottom: 12, gap: 20 },
   warningHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: colors.muted, alignSelf: 'center', marginTop: 8 },
   warningIcon: { width: 64, height: 64, borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginTop: 2 },
+  warningGlyph: { color: colors.blue, fontSize: 38, lineHeight: 44, fontWeight: '700' },
   warningTitle: { color: colors.text, fontSize: 24, lineHeight: 32, fontWeight: '600', textAlign: 'center' },
   warningBody: { color: colors.muted, fontSize: 16, lineHeight: 25, textAlign: 'center' },
   backupBadge: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#6c5734', backgroundColor: '#29251f', minHeight: 60 },

@@ -5,6 +5,7 @@ import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLo
 import type { IdleMode, SecurityPreferenceSnapshot } from '../core/securityPreferences';
 import { securityPreferences } from '../platform/security';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
+import { PinField } from './PinEntry';
 import { Button, Card, Header, Icon, Notice, Screen, Text, colors, styles } from '../ui';
 export type IdlePreferenceSave = (expected: SecurityPreferenceSnapshot, minutes: number, password: string, assertCurrent: () => void) => Promise<unknown>;
 export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save: IdlePreferenceSave; onBack(): void }) {
@@ -32,7 +33,7 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
   };
   return <SafeAreaView edges={['top', 'bottom']} style={styles.screen}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : Platform.OS === 'android' ? 'height' : undefined}><Screen gap={16} footer={<>
     <Button title={busy ? 'Saving auto-lock…' : 'Save auto-lock'} disabled={busy || minutes === null || minutes === current || minutes === 0 && !confirmed || mode === 'custody' && weakening && !password} onPress={() => void submit()} />
-    <Button title="Cancel" variant="quiet" onPress={back} />
+    <Button title="Cancel" variant="secondary" onPress={back} />
   </>}>
     <Header title="Auto-lock" subtitle={mode === 'custody' ? 'Native wallet' : 'Watch accounts'} onBack={back} />
     <Text style={styles.muted}>{mode === 'custody' ? 'Lock wallet' : 'Hide watch accounts'} after foreground inactivity. Current: {current === 0 ? 'Off while open' : `${current ?? '—'} minutes`}.</Text>
@@ -49,8 +50,8 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     </IdlePressable>)}</Card>
     <Text>Custom minutes (5–120, or 0 for Off)</Text><IdleTextInput accessibilityLabel="Auto-lock minutes" value={draft} onChangeText={change} keyboardType="number-pad" maxLength={3} editable={!busy} style={{ borderWidth: 1, borderColor: colors.border, color: colors.text, borderRadius: 12, padding: 16 }} />
     {minutes === null && <Text accessibilityRole="alert">Enter 0 or a whole number from 5 to 120.</Text>}
-    {minutes === 0 && <><Notice title="Off while the app is open" body="This session can remain visible indefinitely without interaction. Background locking and password confirmations still apply." tone="amber" /><Button title={confirmed ? 'Off consequence acknowledged' : 'I understand the Off setting'} variant="secondary" disabled={busy} onPress={() => setConfirmed(true)} /></>}
-    {mode === 'custody' && weakening && <><Text>Confirm your wallet password to lengthen or disable foreground auto-lock.</Text><IdleTextInput accessibilityLabel="Confirm auto-lock password" secureTextEntry autoCapitalize="none" autoComplete="off" textContentType="none" autoCorrect={false} spellCheck={false} importantForAutofill="noExcludeDescendants" value={password} onChangeText={setPassword} editable={!busy} maxLength={1024} style={{ borderWidth: 1, borderColor: colors.border, color: colors.text, borderRadius: 12, padding: 16 }} /></>}
+    {minutes === 0 && <><Notice title="Off while the app is open" body="This session can remain visible indefinitely without interaction. Background locking and PIN confirmations still apply." tone="amber" /><Button title={confirmed ? 'Off consequence acknowledged' : 'I understand the Off setting'} variant="secondary" disabled={busy} onPress={() => setConfirmed(true)} /></>}
+    {mode === 'custody' && weakening && <><Text>Confirm your wallet PIN to lengthen or disable foreground auto-lock.</Text><PinField label="Confirm auto-lock PIN" value={password} onChange={setPassword} busy={busy} /></>}
     <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>Pali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock.</Text>
     {!!feedback && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
   </Screen></KeyboardAvoidingView></SafeAreaView>;

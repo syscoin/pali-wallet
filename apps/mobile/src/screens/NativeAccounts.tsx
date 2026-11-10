@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next';
 import { useNativeTranslation } from '../platform/localization';
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
+import { PinField } from './PinEntry';
 import React, {
   useCallback,
   useEffect,
@@ -445,8 +446,7 @@ export function NativeAccounts({
                   )}
                 </>
               )}
-              {needsPassword &&
-                field(t('mobile.accounts.confirmPassword'), password, setPassword, true)}
+              {needsPassword && <PinField label={t('mobile.accounts.confirmPassword')} value={password} onChange={setPassword} busy={busy} />}
             </>
           ) : null}
           {!!error && (

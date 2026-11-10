@@ -3,6 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime, type KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -10,7 +11,7 @@ import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCr
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public device unlock fixture 1!';
+const PASSWORD = '123456';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
@@ -28,7 +29,7 @@ async function fixture(trezorSessions?: KeyringRuntimeDependencies['trezorSessio
     async write(name, value) { protectedItems.set(name, value); },
     async remove(name) { protectedItems.delete(name); },
   });
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential: createTestPinCredentialPort(), requestOperationCredential: async () => ({ method: 'pin', pin: PASSWORD }), privacyServiceSettings: null, slhExecution: null,
     ensureCryptoReady: async () => undefined, readEvmRetirement: null,
     trezorSessions,
     async openStorage() {
@@ -62,7 +63,7 @@ test('published SDK device unlock survives cold reopen and keeps backup gating a
     assert.equal((await f.owner.getDeviceUnlockStatus())?.enabled, true);
     assert.equal(f.protectedItems.size, 1);
     for (const value of f.protectedItems.values()) {
-      assert.equal(value.includes(PASSWORD), false);
+      assert.equal(value.includes('"pin"'), false);
       assert.equal(value.includes(PHRASE), false);
     }
     await f.reopen();
@@ -118,7 +119,7 @@ test('enrollment requires the actual password and retains the original enrollmen
   try {
     await f.owner.setDeviceUnlock(true, PASSWORD, () => undefined);
     const original = await f.store.deviceUnlockEnrollment.read();
-    await assert.rejects(f.owner.setDeviceUnlock(true, 'Incorrect password 1!', () => undefined), { code: 'INVALID_CREDENTIAL' });
+    await assert.rejects(f.owner.setDeviceUnlock(true, '000000', () => undefined), { code: 'INVALID_CREDENTIAL' });
     assert.equal(f.owner.getSnapshot().phase, 'locked');
     assert.deepEqual(await f.store.deviceUnlockEnrollment.read(), original);
     assert.equal(f.protectedItems.size, 1);
@@ -197,15 +198,16 @@ test('operation authentication reuses device enrollment without changing the liv
     const before = f.owner.getSnapshot(), catalogue = f.owner.getCatalogue();
     const auth = f.runtime.security!.authenticateOperation;
     await auth({ method: 'biometric' }, () => { assert.equal(f.owner.getSnapshot(), before); });
+    assert.equal((await f.runtime.backup.readPhrase({ method: 'biometric' })).join(' '), PHRASE);
     assert.equal(f.owner.getSnapshot(), before);
     assert.equal(f.owner.getCatalogue(), catalogue);
     f.afterRead(async () => { throw Error('cancelled OS prompt'); });
     await assert.rejects(auth({ method: 'biometric' }, () => undefined), /DEVICE_UNLOCK_UNAVAILABLE/);
     assert.equal(f.owner.getSnapshot(), before);
     f.afterRead(async () => undefined);
-    await assert.rejects(auth({ method: 'password', password: 'Wrong public password 1!' }, () => undefined), /INVALID_CREDENTIAL/);
+    await assert.rejects(auth({ method: 'pin', pin: '000000' }, () => undefined), /INVALID_CREDENTIAL/);
     assert.equal(f.owner.getSnapshot(), before);
-    await auth({ method: 'password', password: PASSWORD }, () => undefined);
+    await auth({ method: 'pin', pin: PASSWORD }, () => undefined);
     assert.equal(f.owner.getSnapshot(), before);
     assert.equal(f.owner.getCatalogue(), catalogue);
   } finally { await f.close(); }

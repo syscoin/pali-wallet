@@ -17,6 +17,7 @@ import {
   importedRecoveryStorageKey,
 } from '../../../wallet/importedAccountRecovery';
 import {
+  createPrivateVaultSession,
   envelopeHash,
   readPrivateVaultBundle,
   PRIVATE_VAULT_STORAGE_PREFIX,
@@ -383,7 +384,11 @@ it('matching-phrase reset preserves full account metadata, imported profile copi
       (
         await readPrivateVaultBundle(
           mockRecords[PRIVATE_VAULT_STORAGE_PREFIX + f.profile],
-          { keyring: f.keyring, generation: 0, assertCurrent: () => undefined }
+          createPrivateVaultSession({
+            keyring: f.keyring,
+            generation: 0,
+            assertCurrent: () => undefined,
+          })
         )
       ).manifest.notes
     ).toHaveLength(17);

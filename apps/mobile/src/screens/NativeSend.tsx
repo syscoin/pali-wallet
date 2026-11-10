@@ -1,9 +1,10 @@
 import type { NativePortfolioAccount } from '../portfolio/nativePortfolio';
+import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 import type { NativeOperationCredential } from '../custody/types';
 import { TransactionAuthentication } from './TransactionAuthentication';
 import { RecipientQrScanner } from './RecipientQrScanner';
 import type { NativeRecipientResolution, NativeRecipientResolver } from '../portfolio/nativeRecipientResolver';
-import { NativeTokenMaximum } from './NativeTokenMaximum';
+import { NativeTokenMaximum, nativeTokenAvailableAmount } from './NativeTokenMaximum';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import { NativeLedgerConnectionModal } from './NativeLedger';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
@@ -40,7 +41,7 @@ import {
   type EvmRecipientChoice,
 } from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
-import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, type NativeTransferView } from '../custody/transfers';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, type NativeTransferReview, type NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
@@ -70,9 +71,9 @@ export const nativeTransferFailure = (
   const code = error instanceof Error ? error.message : '';
   if (code === 'ENS_UNAVAILABLE') return 'This ENS name could not be resolved. Check the name and try again.';
   if (code === 'RECIPIENT_EXPIRED') return 'The recipient lookup expired or changed. Review the transfer again.';
-  if (code === 'INVALID_CREDENTIAL') return 'That password is incorrect. Please try again.';
-  if (code === 'AUTH_THROTTLED') return 'Too many incorrect passwords. Wait a few minutes before trying again.';
-  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Biometric confirmation was not completed. Try again or use your password.';
+  if (code === 'INVALID_CREDENTIAL') return 'That PIN is incorrect. Please try again.';
+  if (code === 'AUTH_THROTTLED') return 'Too many incorrect PINs. Wait a few minutes before trying again.';
+  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Biometric confirmation was not completed. Try again or use your PIN.';
   if (code === 'SIGNED_STORAGE_FULL') return hasSavedTransaction ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE;
   if (code === 'CANCELLATION_QUEUED')
     return hasSavedTransaction
@@ -182,6 +183,8 @@ export type NativeSendInitialDraft = Readonly<{
   amount: string;
   tokenId?: string;
   nonce: string;
+  max?: boolean;
+  advanced?: boolean;
 }>;
 
 export function NativeSend({
@@ -202,12 +205,16 @@ export function NativeSend({
   recipientResolver,
   authenticationMethod,
   onChangeNetwork,
+  draftNotice,
   onViewTransaction,
+  availableAmount,
 }: {
   controller: NativeTransferView;
   authenticationMethod: NativeOperationCredential['method'];
-  onChangeNetwork?(): void;
+  onChangeNetwork?(draft: Extract<NativeUnsignedSendDraft, { kind: 'evm' }>): void;
+  draftNotice?: string;
   onViewTransaction?(hash: string): void;
+  availableAmount?: string;
   ledgerConnection?: NativeLedgerConnectionView;
   initialDraft?: NativeSendInitialDraft;
   beforeClose?(): Promise<void>;
@@ -237,7 +244,9 @@ export function NativeSend({
     () => token ? tokenView?.connect() : undefined,
     [token, tokenView]
   );
-  const [maximum, setMaximum] = useState(false);
+  const [maximum, setMaximum] = useState(initialDraft?.max ?? false);
+  const [tokenDetails, setTokenDetails] = useState(false);
+  const [receipt, setReceipt] = useState<Readonly<{ controller: NativeTransferView; hash: string; review: NativeTransferReview }> | null>(null);
   const [ledgerPicker, setLedgerPicker] = useState<NativeLedgerConnectionView | null>(null);
   const ledgerReady = useSyncExternalStore(
     (listener) => ledgerConnection?.subscribe(listener) ?? (() => undefined),
@@ -267,14 +276,14 @@ export function NativeSend({
   }, []);
   const [amount, setAmountState] = useState(initialDraft?.amount ?? initialAmount);
   const [tokenId, setTokenIdState] = useState(initialDraft?.tokenId ?? '');
-  const [advanced, setAdvancedState] = useState(!!initialDraft);
+  const [advanced, setAdvancedState] = useState(initialDraft?.advanced ?? !!initialDraft);
   const [nonce, setNonceState] = useState(initialDraft?.nonce ?? '');
   const [error, setError] = useState('');
   const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
   const leaving = useRef(false);
   const lifetime = useRef({ alive: true, epoch: 0 });
   type AuthenticationReview = { review: NonNullable<typeof snapshot.review>; epoch: number;
-    account: NativePortfolioAccount; registrationHash: string; submitted: boolean };
+    account: NativePortfolioAccount; registrationHash: string; submitted: boolean; method: NativeOperationCredential['method'] };
   const [authentication, setAuthentication] = useState<AuthenticationReview | null>(null);
   const authenticationOwner = useRef<AuthenticationReview | null>(null);
   const [authenticationBusy, setAuthenticationBusy] = useState(false);
@@ -352,18 +361,15 @@ export function NativeSend({
     : '';
   const tokenIdentity = (asset: Erc20Metadata) => (
     <Card style={s.summary}>
-      <Text style={s.label}>
-        TOKEN CONTRACT · {capturedContext.name.toUpperCase()}
-      </Text>
-      <Text selectable style={s.address} testID="native-send-token-contract">
-        {asset.contractAddress}
-      </Text>
-      <Text style={s.hint}>
-        {asset.name} · {asset.symbol}
-      </Text>
-      <Text style={s.label}>DECIMALS</Text>
-      <Text testID="native-send-token-decimals">{asset.decimals}</Text>
+      <View style={s.networkCard}>
+        <Coin id="custom-token" fallbackSymbol={asset.symbol} size={32} />
+        <View style={s.networkDescription}><Text numberOfLines={1}>{asset.name}</Text><Text style={s.hint}>{asset.symbol} · {capturedContext.name}</Text></View>
+        <Button title="Details" variant="quiet" size="compact" expanded={tokenDetails} onPress={() => setTokenDetails(value => !value)} />
+      </View>
       <Text style={s.hint}>Custom token · Unverified issuer metadata</Text>
+      {tokenDetails && <><Text style={s.label}>TOKEN CONTRACT</Text>
+        <Text selectable style={s.address} testID="native-send-token-contract">{asset.contractAddress}</Text>
+        <Text style={s.label}>DECIMALS</Text><Text testID="native-send-token-decimals">{asset.decimals}</Text></>}
     </Card>
   );
   const collectibleIdentity = (asset: {
@@ -501,7 +507,7 @@ export function NativeSend({
     }
     if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
   }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
-  const submit = () => {
+  const submit = (method: NativeOperationCredential['method'] = authenticationMethod) => {
     if (!review || controller.getSnapshot().review !== review || busy ||
         !review.retry && ledgerConnection && !ledgerConnection.isConnected()) return;
     const held = resolution.current;
@@ -518,7 +524,7 @@ export function NativeSend({
     }
     Keyboard.dismiss();
     const next = { review, epoch: lifetime.current.epoch, account,
-      registrationHash: context.registrationHash, submitted: false };
+      registrationHash: context.registrationHash, submitted: false, method };
     authenticationOwner.current = next;
     setError('');
     setAuthentication(next);
@@ -541,8 +547,19 @@ export function NativeSend({
     }
     held.submitted = true;
     setAuthenticationBusy(true);
-    await run(() => controller.confirm(held.review.id, credential), () => authenticationOwner.current === held);
+    await run(async () => {
+      try { await controller.confirm(held.review.id, credential); }
+      catch (cause) {
+        if (credential.method === 'biometric' && cause instanceof Error && cause.message === 'DEVICE_UNLOCK_UNAVAILABLE' && authenticationOwner.current === held) {
+          authenticationOwner.current = null; setAuthentication(null); setAuthenticationBusy(false);
+        }
+        throw cause;
+      }
+    }, () => authenticationOwner.current === held);
     if (!lifetime.current.alive || authenticationOwner.current !== held || lifetime.current.epoch !== held.epoch) return;
+    const result = controller.getSnapshot();
+    if (result.hash && result.context?.registrationHash === held.review.context.registrationHash)
+      setReceipt({ controller, hash: result.hash, review: held.review });
     held.submitted = false;
     setAuthenticationBusy(false);
     if (!authenticationCurrent(held)) { authenticationOwner.current = null; setAuthentication(null); }
@@ -655,9 +672,10 @@ export function NativeSend({
               <Button
                 title={reviewCancellation ? 'Submit cancellation' : review.replacement ? 'Submit Speed Up' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
                 disabled={busy || !review.retry && !ledgerReady}
-                onPress={submit}
+                onPress={() => submit()}
                 testID="native-send-confirm"
               />
+              {authenticationMethod === 'biometric' && <Button title="Use PIN instead" variant="secondary" icon="lock" disabled={busy} onPress={() => submit('pin')} />}
   </> : hasOutcome && knownOutcome ? <>
     {onViewTransaction && <Button title="View transaction" onPress={() => {
       if (lifetime.current.alive && snapshot.hash && controller.getSnapshot().hash === snapshot.hash) onViewTransaction(snapshot.hash);
@@ -754,7 +772,7 @@ export function NativeSend({
                 {review.replay.predecessors.map(candidate => <Button key={candidate.hash} variant="secondary"
                   title={`${candidate.operation === 'cancel' ? 'Cancellation' : candidate.operation === 'speed-up' ? 'Replacement' : 'Transaction'} ${candidate.hash.slice(0, 10)}…`}
                   onPress={() => void run(() => controller.recover(true, candidate.hash))} />)}
-                {review.replay.predecessors.length < review.replay.predecessorCount && <Button title="Load more saved transactions" variant="quiet" disabled={busy}
+                {review.replay.predecessors.length < review.replay.predecessorCount && <Button title="Load more saved transactions" variant="secondary" size="compact" disabled={busy}
                   onPress={() => void run(() => controller.loadMorePredecessors())} />}
               </Card>}
               <Card style={s.summary}>
@@ -783,9 +801,6 @@ export function NativeSend({
                   {formatBaseUnits(review.maximumFeeUnits, 18)}{' '}
                   {capturedContext.symbol}
                 </Text>
-                <Text style={s.hint}>
-                  The final fee depends on network execution. This review limits the gas price and gas used by this transaction.
-                </Text>
                 {!reviewedToken && !reviewedCollectible && !reviewCancellation && (
                   <>
                     <View style={s.separator} />
@@ -796,6 +811,9 @@ export function NativeSend({
                     </Text>
                   </>
                 )}
+                <Text style={s.hint}>
+                  The final fee depends on network execution. This review limits the gas price and gas used by this transaction.
+                </Text>
               </Card>
               {reviewedToken && tokenIdentity(reviewedToken)}
               {reviewedToken && (
@@ -860,9 +878,18 @@ export function NativeSend({
                     ? snapshot.message === SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE ? 'Check earlier transaction' : snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'Saved, not submitted' : 'Checking submission'
                     : snapshot.phase === 'unavailable'
                     ? 'Status unavailable'
-                    : 'Transaction submitted'}
+                    : cancellation ? 'Cancellation submitted' : replacementHash ? 'Replacement submitted' : 'Transaction submitted'}
                 </Text>
               </View>
+              {receipt?.controller === controller && receipt.hash === snapshot.hash && <Card style={s.summary}>
+                <Text style={s.label}>AMOUNT</Text>
+                <Text testID="native-send-receipt-amount">{receipt.review.collectible
+                  ? `${receipt.review.collectible.amountUnits} collectible${receipt.review.collectible.amountUnits === '1' ? '' : 's'}`
+                  : `${receipt.review.intent ? formatTokenUnits(receipt.review.amountUnits, receipt.review.intent.token.decimals) : formatBaseUnits(receipt.review.amountUnits, 18)} ${receipt.review.intent?.token.symbol ?? capturedContext.symbol}`}</Text>
+                <Text style={s.label}>TO</Text>
+                <Text selectable style={s.address}>{receipt.review.collectible?.recipient ?? receipt.review.recipient}</Text>
+                <Text style={s.hint}>{capturedContext.name}</Text>
+              </Card>}
               {outcomeToken && tokenIdentity(outcomeToken)}
               {outcomeCollectible && collectibleIdentity(outcomeCollectible)}
               <View
@@ -919,11 +946,12 @@ export function NativeSend({
                 <Coin id={capturedContext.networkId} size={32} />
                 <View style={s.networkDescription}><Text style={s.networkName}>{capturedContext.name}</Text>
                   <Text style={styles.muted}>{capturedContext.symbol}{capturedContext.testnet ? ' · Test network' : ''}</Text></View>
-                {onChangeNetwork && <Button title="Change" variant="quiet" size="compact" disabled={busy} onPress={() => {
+                {onChangeNetwork && <Button title="Change" variant="secondary" size="compact" disabled={busy} onPress={() => {
                   if (busy || !lifetime.current.alive) return;
-                  closeScanner(); onChangeNetwork();
+                  closeScanner(); onChangeNetwork(Object.freeze({ kind: 'evm', recipient, amount, nonce, tokenId, max: maximum, advanced }));
                 }} />}
               </Card>
+              {draftNotice && <Text accessibilityLiveRegion="polite" style={styles.muted}>{draftNotice}</Text>}
               <NativeSendInput
                 label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}
                 value={recipient}
@@ -943,7 +971,7 @@ export function NativeSend({
                 <>
                   <Button
                     title={picker ? 'Hide accounts' : 'Choose account'}
-                    variant="quiet"
+                    variant="secondary"
                     disabled={busy}
                     onPress={() => {
                       if (picker) {
@@ -1006,9 +1034,8 @@ export function NativeSend({
                 <>
                   {token && tokenIdentity(token)}
                   <NativeSendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
-                    onChange={(value) => { setMaximum(false); setAmount(value); }} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
-                  {token && (
-                    <NativeTokenMaximum
+                    onChange={(value) => { setMaximum(false); setAmount(value); }} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100}
+                    trailing={token ? <NativeTokenMaximum
                       owner={account}
                       token={token}
                       snapshot={tokenSnapshot}
@@ -1019,11 +1046,13 @@ export function NativeSend({
                         setMaximum(true);
                         setAmount(value);
                       }}
-                    />
-                  )}
+                    /> : undefined} />
+                  <Text style={styles.muted} accessibilityLabel="Available balance">
+                    Available {token ? nativeTokenAvailableAmount(token, account, tokenSnapshot) ?? '—' : availableAmount ?? '—'} {token?.symbol ?? capturedContext.symbol}
+                  </Text>
                 </>
               )}
-              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
+              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="secondary" icon={advanced ? 'chevron-up' : 'chevron-down'} size="compact"
                 disabled={busy} expanded={advanced} onPress={() => {
                   if (advanced) {
                     setNonce('');
@@ -1062,7 +1091,7 @@ export function NativeSend({
         authentication.account.network === account.network && authentication.account.revision === account.revision &&
         authentication.registrationHash === context.registrationHash && <TransactionAuthentication
           identity={`${authentication.registrationHash}:${authentication.review.id}:${authentication.account.revision}`}
-          method={authenticationMethod} busy={authenticationBusy} error={error || undefined}
+          method={authentication.method} autoBiometric busy={authenticationBusy} error={error || undefined}
           onConfirm={credential => { void confirmAuthentication(authentication, credential); }}
           onCancel={() => {
             if (!authenticationCurrent(authentication)) return;

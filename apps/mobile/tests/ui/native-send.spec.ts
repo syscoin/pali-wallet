@@ -1,4 +1,4 @@
-import { authenticateNativeOperation } from './operationAuthentication';
+import { authenticateNativeOperation, pinField } from './operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 
 test.use({
@@ -6,7 +6,7 @@ test.use({
 });
 const recipient = '0x1111111111111111111111111111111111111111';
 const passwordInput = (page: Page) =>
-  page.getByLabel('Confirm your wallet password', { exact: true });
+  pinField(page, 'Confirm your wallet PIN');
 
 async function prepare(page: Page) {
   await page.getByLabel('Ethereum address', { exact: true }).fill(recipient);

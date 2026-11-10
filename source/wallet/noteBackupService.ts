@@ -343,6 +343,12 @@ export function createNoteBackupService(
         keyring: base.keyring,
         generation: base.generation,
         assertCurrent: () => assertOperation(operation),
+        captureOperation: (guard) =>
+          base.captureOperation(() => {
+            assertOperation(operation);
+            synchronous(guard);
+            assertOperation(operation);
+          }),
       };
       assertOperation(operation);
       const cancelTimer = ports.scheduleExpiry(() => {

@@ -21,7 +21,7 @@ import type { NativePrivateWithdrawalView as WithdrawalView } from '../custody/p
 import { formatBaseUnits } from '../core/amounts';
 import { Button, Card, colors, Header, Screen, styles, Text } from '../ui';
 import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
-import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 type Props = {
   note: NativeSavedNote;
@@ -133,7 +133,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
         footer={
           <Button
             title="Cancel"
-            variant="quiet" size="compact"
+            variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
@@ -307,7 +307,7 @@ function WithdrawalContent({
       : state.error === 'verification'
       ? 'Check the pool data before preparing this withdrawal.'
       : state.error === 'restored'
-      ? 'Could not review this restored note. Confirm your password and try again.'
+      ? 'Could not review this restored note. Confirm your PIN and try again.'
       : state.error === 'unavailable'
       ? 'This withdrawal is unavailable in the current account or network.'
       : state.error === 'failed'
@@ -360,7 +360,7 @@ function WithdrawalContent({
             <>
               {primary}
               {!submitted && (
-                <Button title="Cancel" variant="quiet" size="compact" onPress={onBack} />
+                <Button title="Cancel" variant="secondary" size="compact" onPress={onBack} />
               )}
             </>
           }
@@ -378,8 +378,8 @@ function WithdrawalContent({
               <Text style={styles.muted}>
                 Review this restored note before withdrawing.
               </Text>
-              <NoteBackupPasswordField
-                label="Confirm your wallet password"
+              <PinField
+                label="Confirm your wallet PIN"
                 value={password}
                 onChange={setPassword}
                 busy={busy}
@@ -486,9 +486,9 @@ function WithdrawalContent({
                       onPress={() => setRelayerId(relayer.id)}
                     />
                   ))}
-                  <Button
+                  <Button icon="refresh"
                     title="Refresh relayers"
-                    variant="quiet" size="compact"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
                       setRelayerId('');
@@ -573,9 +573,9 @@ function WithdrawalContent({
                   This review expired. Prepare a fresh review before confirming.
                 </Text>
               )}
-              <Button
+              <Button icon="edit"
                 title="Edit withdrawal"
-                variant="quiet" size="compact"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => setEditing(true)}
               />

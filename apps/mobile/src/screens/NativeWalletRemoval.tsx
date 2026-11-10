@@ -3,7 +3,7 @@ import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleS
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WalletRemovalError, type NativeWalletRemoval as Removal, type WalletRemovalTicket } from '../custody/walletRemoval';
 import { Button, colors, Header, Icon, Notice, Screen, styles, Text } from '../ui';
-import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 export type RemovalScreenOutcome = 'removed' | 'unchanged' | 'unconfirmed';
 type Props = {
@@ -22,9 +22,9 @@ type Owner = { live: boolean; attempt?: Attempt; finishing: boolean };
 const CONFIRM_MS = 30_000;
 const failure = (cause: unknown) => {
   const code = cause instanceof WalletRemovalError ? cause.code : undefined;
-  if (code === 'INVALID_CREDENTIAL') return 'That password is incorrect.';
-  if (code === 'AUTH_THROTTLED') return 'Too many incorrect passwords. Wait before trying again.';
-  return 'Could not verify your password for removal.';
+  if (code === 'INVALID_CREDENTIAL') return 'That PIN is incorrect.';
+  if (code === 'AUTH_THROTTLED') return 'Too many incorrect PINs. Wait before trying again.';
+  return 'Could not verify your PIN for removal.';
 };
 
 function discardTicket(attempt: Attempt) {
@@ -96,7 +96,7 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
       attempt.timer = setTimeout(() => {
         if (!current() || attempt.confirming) return;
         cancel(owner);
-        setStep({ phase: 'password', error: 'Confirmation expired. Enter your password again.' });
+        setStep({ phase: 'password', error: 'Confirmation expired. Enter your PIN again.' });
       }, CONFIRM_MS);
       setStep({ phase: 'review' });
     } catch (cause) {
@@ -155,11 +155,11 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
           <Text>Removing this wallet deletes its accounts, Sentry keys, private notes, and saved transaction records from this device.</Text>
           <Notice title="Check your backups" body="Your recovery phrase restores derived accounts. Imported accounts, Sentry keys, and private notes need their own backups." tone="amber" />
           <Text style={styles.muted}>Transfers already sent can still complete. Watch accounts and device settings stay saved.</Text>
-          <NoteBackupPasswordField label="Confirm your wallet password" value={password} onChange={setPassword} busy={false} />
+          <PinField label="Confirm your wallet PIN" value={password} onChange={setPassword} busy={false} />
           {step.error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{step.error}</Text>}
         </>}
         {step.phase === 'authorizing' && <>
-          <Text accessibilityLiveRegion="polite">Confirming your password…</Text>
+          <Text accessibilityLiveRegion="polite">Confirming your PIN…</Text>
         </>}
         {step.phase === 'review' && <>
           <View style={s.reviewHero}>

@@ -96,14 +96,14 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
     {!state && <Text>{t('settings.slhDsaLocalSignerMissing')}</Text>}
     {state && <View style={s.actions}>
       <Button title={t('settings.useSmartAccountValidator')} disabled={busy || closing || !manager?.isDeployed} onPress={() => install(keyId)} />
-      <Button title={t('settings.slhDsaRegenerateLocalSigner')} variant="quiet" disabled={busy || closing} onPress={() => action(async (owner, value) => {
+      <Button title={t('settings.slhDsaRegenerateLocalSigner')} variant="secondary" disabled={busy || closing} onPress={() => action(async (owner, value) => {
         if (installed) await value.rebuildInstalled(keyId, reportProgress(owner)); else await value.rebuildPrepared(keyId, reportProgress(owner));
         check(owner); await load(owner);
       })} />
     </View>}
   </Card>;
   return <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-    <Screen footer={<Button title={t('buttons.close')} variant="quiet" disabled={closing} onPress={close} />}>
+    <Screen footer={<Button title={t('buttons.close')} variant="secondary" disabled={closing} onPress={close} />}>
       <Header title={t('settings.slhDsaAuthenticator')} onBack={close} />
       {manager && <Card style={s.card}><Text>{manager.networkName}</Text><Text selectable style={s.key}>{manager.accountAddress}</Text><Text>{t('settings.slhDsaModuleHint')}</Text>{!manager.isDeployed && <Text>{t('settings.smartAccountUndeployedNotice')}</Text>}</Card>}
       {closing ? <ActivityIndicator accessibilityLabel={t('buttons.close')} color={colors.pink} /> : <>
@@ -115,7 +115,7 @@ export function NativeSlhDsaManagementScreen({ open, onBack, ledgerConnection }:
         {snapshot && !snapshot.installed.length && !snapshot.prepared.length && <Button title={t('buttons.create')} disabled={busy} onPress={() => action(async (owner, value) => {
           await value.prepareFresh(reportProgress(owner)); check(owner); await load(owner);
         })} />}
-        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} variant="quiet" disabled={busy} onPress={() => action(owner => load(owner))} />}
+        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} variant="secondary" disabled={busy} onPress={() => action(owner => load(owner))} />}
       </>}
     </Screen>
   </SafeAreaView>;

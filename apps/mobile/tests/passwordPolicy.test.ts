@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { isStrongWalletPassword } from '../../../source/shared/passwordPolicy.ts';
@@ -50,9 +51,10 @@ test('native input bounds remain separate from shared password strength', () => 
   assert.equal(isNativeNewPassword('old password'), false);
 });
 
-test('recovery rejects a weak new password before retiring the wallet or opening storage', async () => {
+test('recovery rejects invalid PIN input before retiring the wallet or opening storage', async () => {
   let externalCalls = 0;
   const coordinator = new NativeRecoveryCoordinator({
+    pinCredential: createTestPinCredentialPort(),
     owner: {
       getSnapshot: () => ({ phase: 'locked', revision: 1 } as never),
       retireForRecovery: async () => { externalCalls++; throw new Error('Must not retire'); },

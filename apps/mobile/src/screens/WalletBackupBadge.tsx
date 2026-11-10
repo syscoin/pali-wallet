@@ -5,7 +5,7 @@ import { IdlePressable } from './IdleActivityBoundary';
 
 export function WalletBackupBadge({ onPress }: { onPress?(): void }) {
   const content = <>
-    <View style={s.icon}><Icon name="shield" size={19} color={colors.amber} /></View>
+    <View style={s.icon}><Icon name="shield-warning" size={19} color={colors.amber} /></View>
     <View style={s.text}><Text style={s.title}>Back up your wallet</Text><Text style={s.body}>Protect access if this phone is lost.</Text></View>
     {onPress && <Icon name="chevron-right" size={17} color={colors.amber} />}
   </>;

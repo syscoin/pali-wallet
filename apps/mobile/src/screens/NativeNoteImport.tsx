@@ -137,7 +137,13 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
         style={s.fill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen>
+        <Screen footer={state.phase === 'saved' ? <Button title="Done" onPress={back} /> : <> <Button
+                title={
+                  state.phase === 'working' ? 'Checking pool…' : 'Import note'
+                }
+                disabled={state.phase !== 'entry' || !note.trim()}
+                onPress={() => void submit()}
+              /> <Button title="Cancel" variant="secondary" onPress={back} /> </>}>
           <Header title="Import private note" onBack={back} />
           {state.phase === 'saved' ? (
             <>
@@ -151,7 +157,7 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
                     : 'Status needs another check'
                 }`}
               />
-              <Button title="Done" onPress={back} />
+
             </>
           ) : (
             <>
@@ -187,14 +193,8 @@ export function NativeNoteImport({ openImport, onBack }: Props) {
                   {state.error}
                 </Text>
               )}
-              <Button
-                title={
-                  state.phase === 'working' ? 'Checking pool…' : 'Import note'
-                }
-                disabled={state.phase !== 'entry' || !note.trim()}
-                onPress={() => void submit()}
-              />
-              <Button title="Cancel" variant="quiet" onPress={back} />
+
+
             </>
           )}
         </Screen>

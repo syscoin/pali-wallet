@@ -48,9 +48,9 @@ export function HelpAbout({ onBack }: { onBack(): void }) {
       <Text style={{ color: colors.muted, lineHeight: 22 }}>Native features are under qualification. Use only test wallets and testnet funds.</Text></Card>
     <View style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>Support</Text>
       <Text selectable>{PALI_INFORMATION.supportUrl}</Text>
-      <Button title="Get support" disabled={busy} onPress={() => void act('support')} />{feedbackFor('support')}
-      <Button title="Copy support link" variant="secondary" disabled={busy} onPress={() => void act('copy')} />{feedbackFor('copy')}
-      <Button title="Pali documentation" variant="secondary" disabled={busy} onPress={() => void act('documentation')} />{feedbackFor('documentation')}</View>
+      <Button icon="help" title="Get support" disabled={busy} onPress={() => void act('support')} />{feedbackFor('support')}
+      <Button icon="copy" title="Copy support link" variant="secondary" disabled={busy} onPress={() => void act('copy')} />{feedbackFor('copy')}
+      <Button icon="external" title="Pali documentation" variant="secondary" disabled={busy} onPress={() => void act('documentation')} />{feedbackFor('documentation')}</View>
     <View style={{ gap: 12 }}><Text accessibilityRole="header" style={{ fontSize: 18, fontWeight: '600' }}>Data provider</Text>
       <Button title={PALI_INFORMATION.dataProvider.name} variant="quiet" disabled={busy} onPress={() => void act('provider')} />{feedbackFor('provider')}</View>
   </Screen></SafeAreaView>;

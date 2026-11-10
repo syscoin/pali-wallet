@@ -44,7 +44,7 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
   if (guardian && guardianRecovery) return <WatchGuardianRecovery key={guardian.scope} address={guardianRecovery.address}
     networkLabel={networkLabel} onBack={closePane} registerBack={registerGuardianBack} lifetime={guardian.lifetime.signal} read={guardianRecovery.read} manage={guardianRecovery.manage} recovery={guardianRecovery.recovery} initialRecovery={guardian.resumeRecovery} />;
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen>
-    <Header title={t('mobile.tools.title')} subtitle={`${accountLabel} · ${networkLabel}`} onBack={onBack} />
+    <Header title={t('mobile.tools.title')} subtitle={`${accountLabel} · ${networkLabel}`} />
     <Card><Row title={t('mobile.accounts.title')} subtitle={watchOnly ? t('mobile.tools.watchAccounts') : t('mobile.tools.walletAccounts')} icon="wallet" onPress={onAccounts} />
       {onNetworks && <Row title={t('mobile.tools.network')} subtitle={t('mobile.tools.chooseNetwork')} icon="globe" onPress={onNetworks} />}
       {connections && <Row title={t('mobile.tools.connections')} subtitle={t('mobile.tools.connectionsBody')} icon="globe" onPress={() => setPane({ kind: 'connections' })} />}

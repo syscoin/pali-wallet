@@ -1,3 +1,4 @@
+import { createTestPinRecord } from './fixtures/pinRecord.ts';
 import {
   createNativeSentryNodeManagement,
   createNativeSentryCollateral,
@@ -342,7 +343,7 @@ test('matching recovery preserves both domains, stale removal refuses, and Forge
       current
     );
     const candidate = validPair(2),
-      pair = { vault: candidate.vault, keys: candidate['vault-keys'] },
+      pair = { vault: candidate.vault, keys: candidate['vault-keys'], pin: await createTestPinRecord(f.storage, { vault: candidate.vault, keys: candidate['vault-keys'] }, (await f.storage.recovery.readIdentity())!.walletBindingId) },
       snapshot = await f.storage.recovery.readSnapshot();
     await assert.rejects(
       f.storage.recovery.prepareReplacement!(snapshot, pair, {

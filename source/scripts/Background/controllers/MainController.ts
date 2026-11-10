@@ -125,6 +125,7 @@ import {
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
 import { authorizePrivateNoteReplay } from '../../../wallet/privateNoteReplay.ts';
+import { createPrivateVaultSession } from '../../../wallet/privateVaultInspection';
 import {
   signVerifiedPsbt,
   verifyPsbtEnvelope,
@@ -3113,7 +3114,7 @@ class MainController {
     const generation = this.walletSessionGeneration;
     const keyring = this.getActiveKeyring();
     if (!keyring.isUnlocked()) throw new Error('privacy_vault_locked');
-    return {
+    return createPrivateVaultSession({
       generation,
       keyring,
       assertCurrent: () => {
@@ -3125,7 +3126,7 @@ class MainController {
           throw new Error('privacy_vault_session_changed');
         }
       },
-    };
+    });
   }
 
   private capturePrivateVaultAcknowledgementSession(
@@ -3147,7 +3148,7 @@ class MainController {
         throw new Error('privacy_vault_session_changed');
     };
     assertCurrent();
-    return Object.freeze({
+    return createPrivateVaultSession({
       generation: session.generation,
       keyring,
       assertCurrent,

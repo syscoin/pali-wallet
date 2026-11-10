@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { qualifyNativeImportedEvm, matchesImportedRestartEvidence, isImportedQualificationReport } from '../qualification/imported-evm.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -24,9 +25,11 @@ import { readSignedRecordEvidence, retainedSignedEntries } from '../qualificatio
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC zkSYS native qualification password 1!';
+const PASSWORD = '123456';
 const FIFTH_ADDRESS = '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
@@ -108,7 +111,7 @@ async function sqliteDisk() {
   let initialized = false;
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     ensureCryptoReady: async () => { assert(globalThis.crypto.subtle); },
     async openStorage() {
       storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);

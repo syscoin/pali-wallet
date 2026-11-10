@@ -119,7 +119,7 @@ export function SettingsScreen({
       <View style={localStyles.exit}>
         <Button
           title={preview ? 'Leave preview' : 'Hide accounts'}
-          variant="quiet"
+          variant="secondary"
           onPress={onExit}
         />
         <Text style={localStyles.caption}>

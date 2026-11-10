@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -15,8 +16,10 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { deferred, metadata } from './publicWatchFixtures.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public activity fixture password 1!';
+const PASSWORD = '123456';
 const TXID = 'a'.repeat(64), BLOCK = 'b'.repeat(64);
 const statusPath = '/api/v2/', genesisPath = '/api/v2/block-index/0';
 
@@ -60,7 +63,7 @@ test('seeded UTXO Activity reuses bounded Blockbook history and retires old rows
     Object.defineProperty(response, 'url', { value: url });
     return response;
   });
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null, ensureCryptoReady: async () => undefined,
     openStorage: () => SqliteWalletStorage.open(connection, digest, INSTALLATION, true),
     async utxoFetch() { throw Error('Activity does not use signing transport'); },
     async readUtxoBalance() { throw Error('Activity does not fetch balances'); },

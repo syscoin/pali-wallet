@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -8,13 +9,17 @@ import { isHdQualificationReport, matchesHdRestartEvidence, qualifyNativeHdAccou
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../src/custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
+import type { NativeOperationAuthorization } from '../src/custody/types.ts';
+import type { NativeTransferRuntime } from '../src/custody/transfers.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { readSignedRecordEvidence } from '../qualification/signed-record-evidence.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC native HD qualification test password 1!';
+const PASSWORD = '123456';
 
 test('HD restart matching rejects failed and empty reports', () => {
   assert.equal(matchesHdRestartEvidence({ status: 'failed' }, { status: 'failed' }), false);
@@ -25,6 +30,8 @@ test('HD restart matching rejects failed and empty reports', () => {
 test('HD fixture guard rejects A-B-A revisions even when address and readiness match', async () => {
   const address = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
   let revision = 0;
+  const authorizations = new Set<NativeOperationAuthorization>();
+  let signingAttempts = 0;
   const authority = {
     supportsAccountManagement: () => true,
     getCatalogue: () => ({ accounts: [{ index: 0, id: 'hd:60:0', address }] }),
@@ -32,7 +39,16 @@ test('HD fixture guard rejects A-B-A revisions even when address and readiness m
   } as unknown as NativeCustodyAuthority;
   const runtime = {
     transfers: {
-      async sign(_transaction: unknown, authority: Readonly<{ assertCurrent(): void; signal: AbortSignal }>) {
+      async authorizeOperation(_credential: Parameters<NativeTransferRuntime['authorizeOperation']>[0], _transaction: Parameters<NativeTransferRuntime['authorizeOperation']>[1], check: () => void) {
+        check();
+        const receipt = Object.freeze({}) as NativeOperationAuthorization;
+        authorizations.add(receipt);
+        return receipt;
+      },
+      releaseOperationAuthorization(receipt: NativeOperationAuthorization) { authorizations.delete(receipt); },
+      async sign(_transaction: unknown, authority: Parameters<NativeTransferRuntime['sign']>[1]) {
+        assert(authorizations.delete(authority.authorization), 'signing requires the current one-use receipt');
+        signingAttempts++;
         revision += 2;
         authority.assertCurrent();
         throw Error('UNREACHABLE_STALE_FIXTURE_GUARD');
@@ -44,6 +60,8 @@ test('HD fixture guard rejects A-B-A revisions even when address and readiness m
     expectedSecondAddress: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0',
     check: async (_name, operation) => operation(),
   }), /QUALIFICATION_HD_ASSERTION_FAILED/);
+  assert.equal(signingAttempts, 1, 'the stale guard must be exercised at signing');
+  assert.equal(authorizations.size, 0);
 });
 
 for (const scenario of ['import', 'generate'] as const) {
@@ -53,7 +71,7 @@ for (const scenario of ['import', 'generate'] as const) {
     let initialized = false;
     let runtime!: KeyringRuntime;
     let physicalStorage!: SqliteWalletStorage;
-    const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+    const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
       ensureCryptoReady: async () => undefined,
       openStorage: async () => {
         physicalStorage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);

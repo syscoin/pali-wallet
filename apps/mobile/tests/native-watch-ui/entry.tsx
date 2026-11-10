@@ -151,7 +151,7 @@ window.__watchFixture = {
   oldPhases: () => retiredAuthorities.map((authority) => authority.getSnapshot().phase),
   transferPhase: () => latestTransfers?.getSnapshot().phase ?? null,
   reviewId: () => latestTransfers?.getSnapshot().review?.id ?? null,
-  async confirmReview(id) { try { await latestTransfers!.view.confirm(id, { method: 'password', password: visualReviewFixture.enabled ? visualReviewFixture.password : 'public-password' }); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
+  async confirmReview(id) { try { await latestTransfers!.view.confirm(id, { method: 'pin', pin: visualReviewFixture.enabled ? visualReviewFixture.password : '123456' }); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
   recoveryAudit: () => ({ ...recoveryAudit }), holdRecovery, releaseRecovery,
 };
 registerRootComponent(() => new URLSearchParams(window.location.search).has('slh-fixture') ? <SlhManagementFixture /> : new URLSearchParams(window.location.search).has('watch-receive-fixture') ? <WatchReceiveFixture /> : <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);

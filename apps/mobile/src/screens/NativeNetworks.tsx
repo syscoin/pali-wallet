@@ -8,6 +8,7 @@ import { rankChainSuggestions } from '../../../../source/shared/chainCatalogue';
 import type { NativeNetworkSuggestion } from '../custody/networkCatalogue';
 import { createNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
+import type { NativeNetworkSelectionReceipt } from '../custody/accounts';
 import { Button, colors, Header, Notice, Screen, Text } from '../ui';
 
 function failure(error: unknown, t: TFunction): string {
@@ -109,9 +110,14 @@ function NetworkSuggestions({ query, onQuery, load, networks, busy, onChoose }: 
 }
 
 /** Switching requests a guarded context change; this screen never grants signing authority. */
-export function NativeNetworks<Id extends string>({ controller, onBack }: {
+export function NativeNetworks<Id extends string>({ controller, onBack, selection }: {
   controller: NativeNetworkView<Id>;
   onBack(): void;
+  selection?: Readonly<{
+    purpose: 'send' | 'receive';
+    assertCurrent(): void;
+    onSelected(receipt: NativeNetworkSelectionReceipt): void;
+  }>;
 }) {
   const { t } = useNativeTranslation();
   const [query, setQuery] = useState('');
@@ -200,14 +206,22 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   };
 
   const handleSelect = useCallback(async (id: Id) => {
-    if (!snapshot || working.current || id === snapshot.selectedId) return;
+    if (!snapshot || working.current || !lifetime.current.alive) return;
+    try { selection?.assertCurrent(); } catch { return; }
+    if (id === snapshot.selectedId) { if (selection) close(); return; }
     const contextRevision = controller.getContextRevision();
     const catalogueRevision = snapshot.revision;
     const epoch = lifetime.current.epoch;
     const operation = {};
     working.current = operation;
     setUi({ owner: controller, busy: true, error: '' }); Keyboard.dismiss();
-    try { await controller.select(id, contextRevision, catalogueRevision, () => {}); }
+    try {
+      const receipt = await controller.select(id, contextRevision, catalogueRevision, () => {});
+      if (selection && working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) {
+        receipt.assertCurrent();
+        selection.onSelected(receipt);
+      }
+    }
     catch (cause) {
       // Accepted operations may revoke this screen. Only an unchanged context owns inline feedback.
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&
@@ -220,7 +234,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           setUi((previous) => previous.owner === controller ? { ...previous, busy: false } : previous);
       }
     }
-  }, [controller, snapshot, t]);
+  }, [controller, snapshot, t, selection, close]);
 
   const save = async (remove = false) => {
     if (!form || !snapshot || working.current) return;
@@ -294,15 +308,16 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     form.contextRevision === controller.getContextRevision();
   const search = query.trim().toLocaleLowerCase();
   const matches = snapshot?.networks.filter((network) =>
-    !search || network.name.toLocaleLowerCase().includes(search) || network.symbol.toLocaleLowerCase().includes(search)) ?? [];
+    (selection?.purpose !== 'send' || network.canSign) &&
+    (!search || network.name.toLocaleLowerCase().includes(search) || network.symbol.toLocaleLowerCase().includes(search))) ?? [];
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen key={form ? 'network-form' : 'network-list'} gap={16} footer={form ? <>
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         <Button title={form.utxo && form.id ? busy ? t('mobile.networks.saving') : t('mobile.networks.saveChanges') : busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy} onPress={() => { void save(); }} />
-        <Button title={t('buttons.cancel')} variant="quiet" disabled={busy} onPress={discardForm} />
-      </> : undefined}>
-        <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.networks.title')} subtitle={form ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
+        <Button title={t('buttons.cancel')} variant="secondary" disabled={busy} onPress={discardForm} />
+      </> : selection ? <Button title={t('buttons.cancel')} variant="secondary" onPress={close} /> : undefined}>
+        <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : selection ? selection.purpose === 'send' ? 'Choose send network' : 'Choose receive network' : t('mobile.networks.title')} subtitle={form ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
         {form ? <>
           {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (
             <NetworkSuggestions query={catalogueQuery} onQuery={setCatalogueQuery}
@@ -318,7 +333,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
             <Text style={{ flex: 1 }}>{form.testnet ? '✓ ' : ''}{t('mobile.networks.testNetwork')}</Text>
           </IdlePressable></>}
           {!form.utxo && <Text style={s.help}>{t('mobile.networks.rpcChanges')}</Text>}
-          {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title={t('mobile.networks.remove')} variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
+          {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title={t('mobile.networks.remove')} variant="secondary" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {form.id && form.id === snapshot?.selectedId && <Text style={s.help}>
             {form.utxo ? t('mobile.networks.removeUnused') : t('mobile.networks.switchBeforeRemove')}
           </Text>}
@@ -338,12 +353,12 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
               {networks.map((network) => {
                 const canEdit = network.registration ? controller.save : controller.editUtxo && network.customUtxoEndpoint;
                 return <NetworkOption key={network.id} network={network}
-                  selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={canEdit ? editSaved : undefined} />;
+                  selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={!selection && canEdit ? editSaved : undefined} />;
               })}
             </View>;
           })}
-          {controller.save && <Button title={t('mobile.networks.add')} variant="quiet" disabled={busy} onPress={() => edit()} />}
-          {controller.addUtxo && <Button title={t('mobile.networks.addUtxo')} variant="quiet" disabled={busy} onPress={() => {
+          {!selection && controller.save && <Button title={t('mobile.networks.add')} variant="secondary" disabled={busy} onPress={() => edit()} />}
+          {!selection && controller.addUtxo && <Button title={t('mobile.networks.addUtxo')} variant="secondary" disabled={busy} onPress={() => {
             setUi({ owner: controller, busy: false, error: '' });
             setForm({ utxo: true, name: '', rpcUrl: 'https://', chainId: '', symbol: '', testnet: false });
           }} />}

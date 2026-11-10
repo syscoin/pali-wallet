@@ -23,7 +23,7 @@ const all = (node: any): Element[] =>
   Array.isArray(node)
     ? node.flatMap(all)
     : node && typeof node === 'object' && 'children' in node
-    ? [node, ...node.children.flatMap(all)]
+    ? [node, ...node.children.flatMap(all), ...all(node.props.footer)]
     : [];
 const source = readFileSync(
   new URL('../src/screens/NativeSmartAccountSend.tsx', import.meta.url),

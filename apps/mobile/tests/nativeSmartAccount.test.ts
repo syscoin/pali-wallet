@@ -1,3 +1,5 @@
+import { createTestPinRecordKeyring } from './fixtures/pinOperation.ts';
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { normalizeSmartAccountModuleRequest } from '../../../source/shared/smartAccountModuleRequest.ts';
 import type { NativeSmartCreationAllocation } from '../src/smartAccount/preparation.ts';
 import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
@@ -50,8 +52,10 @@ import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICA
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
 
+const pinCredential = createTestPinCredentialPort();
+
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public smart account fixture 1!';
+const PASSWORD = '123456';
 const coder = AbiCoder.defaultAbiCoder();
 const moduleTuple = 'tuple(address module,bytes data)';
 process.env.NODE_ENV = 'production';
@@ -66,6 +70,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let storage!: SqliteWalletStorage;
   const calls: string[] = [];
   const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
+  let currentPin = PASSWORD;
   const submitted: string[] = [];
   const payerSignatures: string[] = [];
   const infrastructureBroadcasts: { rawTransaction: string; pending: NativeInfrastructurePending }[] = [];
@@ -101,6 +106,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   const customValidators = new Map<string, { installed: boolean; compatible: boolean }>();
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
   const slhDerivations: number[] = [];
+  const sdkInstances: { isUnlocked(): boolean }[] = [];
   let captureJournal: (() => ReturnType<EvmSignedRecords['captureSmartAccountPendingRecords']>) | undefined;
   let readPreparedRecord: ((chainId: string, from: string, hash: string) => Promise<string | null>) | undefined;
   let mutateSelectedSmart: ((mutate: (account: IKeyringAccountState) => void) => void) | undefined;
@@ -271,13 +277,14 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         } else assert.fail(`Unexpected RPC ${request.method}`);
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: slhFactory, ...(trezorSessions ? {trezorSessions} : {}), ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: currentPin }; }, privacyServiceSettings: null, slhExecution: slhFactory, ...(trezorSessions ? {trezorSessions} : {}), ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
     ...(recordSignatures || slhFactory !== null ? { loadSdk: async () => {
       const sdk = await loadNativeKeyringSdk();
       const Base = sdk.HostKeyring;
       return { ...sdk, HostKeyring: class extends Base {
         constructor(...args: ConstructorParameters<typeof Base>) {
           super(...args);
+          sdkInstances.push(this);
           const deriveSlh = this.deriveSLHDSASetupSecretForAccount.bind(this);
           this.deriveSLHDSASetupSecretForAccount = async (...input: Parameters<typeof deriveSlh>) => {
             slhDerivations.push(input[0].accountIndex);
@@ -288,7 +295,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
             setState(getter);
             captureJournal = () => {
               const selected = getter().accounts.SmartAccount[getter().activeAccount.id]; assert(selected?.smartAccount);
-              return new EvmSignedRecords(storage.signedRecords).captureSmartAccountPendingRecords({keyring:this,assertCurrent:()=>{assert(this.isUnlocked());}},'1',selected.address);
+              return new EvmSignedRecords(storage.signedRecords).captureSmartAccountPendingRecords({keyring:createTestPinRecordKeyring(storage.pin, pinCredential, this, () => currentPin, () => { assert(this.hasPublicSession()); }),assertCurrent:()=>{assert(this.hasPublicSession());}},'1',selected.address);
             };
             mutateLedgerOwner = (index, mutate) => {const account = getter().accounts.Ledger[index]; assert(account); mutate(account);};
             mutateSelectedSmart = mutate => {
@@ -319,7 +326,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const signPrepared = this.signPreparedEvmTransaction.bind(this);
           readPreparedRecord = async (chainId, from, hash) => {
             const entry = await new EvmSignedRecords(storage.signedRecords).readExact(
-              { keyring: this, assertCurrent: () => { assert(this.isUnlocked()); } }, chainId, from, hash);
+              { keyring: createTestPinRecordKeyring(storage.pin, pinCredential, this, () => currentPin, () => { assert(this.hasPublicSession()); }), assertCurrent: () => { assert(this.hasPublicSession()); } }, chainId, from, hash);
             return entry?.rawTransaction ?? null;
           };
           this.signPreparedEvmTransaction = (...input: Parameters<typeof signPrepared>) => {
@@ -348,6 +355,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   await owner.refreshAuthenticatedMetadata();
   return {
     slhDerivations,
+    assertNoSigningKeys() { for (const instance of sdkInstances) assert.equal(instance.isUnlocked(), false); },
     mutateLedgerOwner(index: number, mutate: (account: IKeyringAccountState) => void) {assert(mutateLedgerOwner); mutateLedgerOwner(index, mutate);},
     mutateSelectedSmart(mutate: (account: IKeyringAccountState) => void) { assert(mutateSelectedSmart); mutateSelectedSmart(mutate); },
     installSlh() { assert(installSlh); installSlh(); },
@@ -408,11 +416,12 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
     },
     async resetPassword(password: string) {
       owner.lock();
-      const recovery = new NativeRecoveryCoordinator({ owner, async retireControllers() {},
+      const recovery = new NativeRecoveryCoordinator({ pinCredential, owner, async retireControllers() {},
         ensureCryptoReady: async () => undefined, openStorage });
       try {
         const proof = await recovery.prepare(PHRASE, password, () => undefined);
         assert.equal(await recovery.commit(proof), 'committed-locked');
+        currentPin = password;
       } finally { await recovery.dispose(); }
       owner = await open();
       await owner.unlock(password);
@@ -1153,7 +1162,7 @@ test('recovery lists smart accounts on every saved chain and preserves their met
     const smart = before.accounts.filter(account => account.type === 'SmartAccount');
     assert.deepEqual(smart.map(account => account.smartAccount!.chainId).sort((a, b) => a - b), [1, 57]);
     const smartRecords = (before.record as any).groups[0].accounts.SmartAccount;
-    await f.resetPassword('Public replacement smart account password 2!');
+    await f.resetPassword('654321');
     const after = await f.inspectRecovery();
     assert.deepEqual(after.accounts.filter(account => account.type === 'SmartAccount'), smart);
     assert.deepEqual((after.record as any).groups[0].accounts.SmartAccount, smartRecords);
@@ -3165,7 +3174,7 @@ test('native SLH stays explicitly unavailable until full primitive/cache qualifi
   const f = await fixture();
   try {
     await f.change({ kind: 'create-smart', label: 'SLH qualification gate', password: PASSWORD });
-    await assert.rejects(f.runtime.openSlhDsaAccount(() => undefined), { code: 'NOT_READY' });
+    await assert.rejects(f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), { code: 'NOT_READY' });
   } finally { await f.close(); }
 });
 
@@ -3187,7 +3196,7 @@ test('real selected Smart metadata prevents fresh SLH setup over an installed ke
   try {
     await f.change({ kind: 'create-smart', label: 'Installed SLH', password: PASSWORD });
     f.installSlh();
-    const account = await f.runtime.openSlhDsaAccount(() => undefined);
+    const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.equal(account.installedKeys.length, 1);
     assert.throws(() => account.prepareFresh(() => undefined), { code: 'NOT_READY' });
     await assert.rejects(account.hydrateInstalled(account.installedKeys[0]!.keyId), /INSTALLED_STATE_MISSING/);
@@ -3204,7 +3213,7 @@ test('fresh SLH setup derives only the verified descriptor index, independently 
   try {
     await f.change({ kind: 'create-smart', label: 'Explicit SLH descriptor index', password: PASSWORD });
     f.mutateSelectedSmart(account => { assert.equal(account.smartAccount!.descriptor!.accountIndex, 0); account.id = 91; });
-    const account = await f.runtime.openSlhDsaAccount(() => undefined);
+    const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     await assert.rejects(account.prepareFresh(() => undefined));
     assert.deepEqual(f.slhDerivations, [0]);
     assert.equal(executionCalls, 1);
@@ -3216,7 +3225,7 @@ for (const mutation of ['missing', 'index', 'anchor'] as const) test(`fresh SLH 
   const f = await fixture({}, false, { open() { executionCalls++; throw Error('native crypto must not start'); }, async purgePublicCache(_namespace, check) { check(); } });
   try {
     await f.change({ kind: 'create-smart', label: 'Captured SLH descriptor', password: PASSWORD });
-    const account = await f.runtime.openSlhDsaAccount(() => undefined);
+    const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     f.mutateSelectedSmart(selected => {
       if (mutation === 'missing') delete selected.smartAccount!.descriptor;
       else if (mutation === 'index') selected.smartAccount!.descriptor!.accountIndex++;
@@ -3234,7 +3243,7 @@ test('fresh SLH setup refuses a missing descriptor at facade admission before SD
   try {
     await f.change({ kind: 'create-smart', label: 'No inferred SLH index', password: PASSWORD });
     f.mutateSelectedSmart(account => { delete account.smartAccount!.descriptor; });
-    await assert.rejects(f.runtime.openSlhDsaAccount(() => undefined), /Smart account address could not be verified/);
+    await assert.rejects(f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), /Smart account address could not be verified/);
     assert.deepEqual(f.slhDerivations, []);
     assert.equal(executionCalls, 0);
   } finally { await f.close(); }
@@ -3245,9 +3254,11 @@ test('fresh SLH setup refuses a missing descriptor at facade admission before SD
 function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) {
   const roots = new WeakMap<NativeSlhTree, Uint8Array>(), cached = new Map<string, Uint8Array>();
   const actions: string[] = [];
-  let opened = 0;
+  let opened = 0, closed = 0, setups = 0, cacheLoads = 0;
+  let assertPublic: () => void = () => undefined;
   const capability: NativeSlhExecutionCapability = {
     open(owner) {
+      assertPublic();
       owner.assertCurrent();
       opened++;
       let retired = false;
@@ -3257,26 +3268,27 @@ function slhSmartBackend(onRetire: () => Promise<void> = async () => undefined) 
         allocateTree: tree, releaseTree: (value, erase) => value.release(erase),
         readTree(value, offset, length) { assert.equal(offset, 134217696); assert.equal(length, 16); return roots.get(value)!.slice(); },
         writeTree() { throw Error('No parallel leaf lane'); },
-        async loadTree(keyId) { if (!cached.has(keyId)) return null; const value = tree(); roots.set(value, cached.get(keyId)!.slice()); return { tree: value, keyId, bytes: 134217712 }; },
+        async loadTree(keyId) { if (!cached.has(keyId)) return null; cacheLoads++; const value = tree(); roots.set(value, cached.get(keyId)!.slice()); return { tree: value, keyId, bytes: 134217712 }; },
         async saveTree(keyId, value) { cached.set(keyId, roots.get(value)!.slice()); },
-        openSetup() { return { buildChunk: (_value, _level, _start, count) => count, dispose() {} }; },
+        openSetup() { assertPublic(); setups++; return { buildChunk: (_value, _level, _start, count) => { assertPublic(); return count; }, dispose() {} }; },
         createLeafLanes() { throw Error('No parallel leaf lane'); },
         importKey() { return { destroy() {} }; }, releaseKey: value => value.destroy(),
-        signPrelude(_key, message) { assert.deepEqual([...message.subarray(0, 2)], [0, 0]); actions.push(hexlify(message.subarray(2))); return new Uint8Array(46); },
+        signPrelude(_key, message) { assertPublic(); assert.deepEqual([...message.subarray(0, 2)], [0, 0]); actions.push(hexlify(message.subarray(2))); return new Uint8Array(46); },
         async signForsTree(_key, _prefix, treeIndex) { return { treeIndex, shard: new Uint8Array(416) }; },
         finishSignature() { return new Uint8Array(3856).fill(9); },
         signCached() { throw Error('No fallback expected'); },
         randomFill: bytes => { bytes.fill(7); }, yield: async () => undefined,
       };
-      return { host, isRetired: () => retired, async retire() { retired = true; await onRetire(); }, async verify() { throw Error('Native crypto remains unqualified'); } };
+      let retirement: Promise<void> | undefined;
+      return { host, isRetired: () => retired, retire() { retired = true; return retirement ??= onRetire().finally(() => { closed++; }); }, async verify() { throw Error('Native crypto remains unqualified'); } };
     },
     async purgePublicCache(_namespace, check) { check(); cached.clear(); },
   };
-  return { capability, actions, get opened() { return opened; }, forgetCache() { cached.clear(); } };
+  return { capability, actions, get opened() { return opened; }, get active() { return opened - closed; }, get setups() { return setups; }, get cacheLoads() { return cacheLoads; }, checkPublic(check: () => void) { assertPublic = check; }, forgetCache() { cached.clear(); } };
 }
 async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
   await f.change({ kind: 'create-smart', label: 'Owned SLH signer', password: PASSWORD });
-  const account = await f.runtime.openSlhDsaAccount(() => undefined);
+  const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
   const key = await account.prepareFresh(() => undefined);
   f.observedSlh(key); f.guardianStatus('no-policy');
   await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
@@ -3285,16 +3297,18 @@ async function provisionSlhSmart(f: Awaited<ReturnType<typeof fixture>>) {
 
 test('prepared uninstalled SLH status survives cold unlock without rederivation or native execution', async () => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  backend.checkPublic(() => f.assertNoSigningKeys());
   try {
     await f.change({ kind: 'create-smart', label: 'Prepared signer', password: PASSWORD });
-    let facade = await f.runtime.openSlhDsaAccount(() => undefined);
+    let facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     const key = await facade.prepareFresh(() => undefined);
+    assert.equal(backend.active, 0, 'setup releases its native context before returning');
     const row = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
     assert.deepEqual(await facade.readPrepared(), [key]);
     assert.equal(f.runtime.canManageSlhDsa(), true); assert.equal(f.runtime.canSignSmartAccount(), true);
     await f.reopen(); await f.owner.unlock(PASSWORD);
     const opened = backend.opened;
-    facade = await f.runtime.openSlhDsaAccount(() => undefined);
+    facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.deepEqual(await facade.readPrepared(), [key]);
     assert.equal(backend.opened, opened, 'status must not create a native context');
     assert.deepEqual(f.slhDerivations, [0]);
@@ -3303,6 +3317,31 @@ test('prepared uninstalled SLH status survives cold unlock without rederivation 
     await assert.rejects(Promise.resolve().then(() => facade.readPrepared()), /CANCELLED/);
     assert.deepEqual(f.slhDerivations, [0]); assert.equal(backend.actions.length, 0);
   } finally { await f.close(); }
+});
+
+test('SLH repeated signing and cold status retain only encrypted state and public metadata between actions', async () => {
+  const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
+  backend.checkPublic(() => f.assertNoSigningKeys());
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    const key = await provisionSlhSmart(f);
+    assert.equal(backend.active, 0); f.assertNoSigningKeys();
+    connection = await smartMessageApproval(f);
+    for (const message of ['First bounded SLH action', 'Second bounded SLH action']) {
+      await connection.host.signMessage({ handoff: nonSuiteSigningHandoff, accountId: connection.selected.id, networkId: 'ethereum', approval: connection.approval,
+        request: { method: 'personal_sign', address: connection.selected.address, message } });
+      assert.equal(backend.active, 0, 'no reusable native signer remains'); f.assertNoSigningKeys();
+    }
+    connection.approval.dispose(); connection = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    const opened = backend.opened;
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
+    assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 2);
+    assert.equal(backend.opened, opened); assert.equal(backend.active, 0); f.assertNoSigningKeys();
+    assert.deepEqual(f.slhDerivations, [0]);
+    assert.equal(backend.setups, 1, 'later signatures reuse the published tree without rebuilding it');
+    assert.equal(backend.cacheLoads, 2, 'each new action opens the existing public tree');
+  } finally { connection?.approval.dispose(); await f.close(); }
 });
 
 test('previously used uninstalled SLH key explicitly rebuilds missing cache without resetting usage', async () => {
@@ -3317,7 +3356,7 @@ test('previously used uninstalled SLH key explicitly rebuilds missing cache with
     f.clearObservedSlh();
     await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
     await f.reopen(); await f.owner.unlock(PASSWORD); backend.forgetCache();
-    const facade = await f.runtime.openSlhDsaAccount(() => undefined), opened = backend.opened;
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), opened = backend.opened;
     const [saved] = await facade.readPrepared(); assert(saved);
     assert.equal(saved.signatureCount, 1); assert.equal(backend.opened, opened);
     const rebuilt = await facade.rebuildPrepared(key.keyId, () => undefined);
@@ -3332,7 +3371,7 @@ for (const delayedMetadata of [false, true]) test(`SLH installation uses exact p
   let operation: NativeSmartAccountOperation | undefined;
   try {
     await f.change({ kind: 'create-smart', label: 'Install prepared signer', password: PASSWORD });
-    const facade = await f.runtime.openSlhDsaAccount(() => undefined), key = await facade.prepareFresh(() => undefined);
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), key = await facade.prepareFresh(() => undefined);
     f.guardianStatus('no-policy'); f.fundedSmart();
     operation = await f.runtime.openSlhDsaInstallation(key.keyId, new AbortController().signal, () => undefined);
     const intent = operation.getSnapshot().intent;
@@ -3357,7 +3396,7 @@ for (const delayedMetadata of [false, true]) test(`SLH installation uses exact p
       assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 1);
     }
     assert.equal(f.runtime.canSignSmartAccount(), true); assert.equal(f.runtime.canUseWalletAuthenticator(), true);
-    const installed = await f.runtime.openSlhDsaAccount(() => undefined);
+    const installed = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.equal((await installed.hydrateInstalled(key.keyId)).signatureCount, 0);
     await assert.rejects(Promise.resolve().then(() => installed.prepareFresh(() => undefined)), /NOT_READY/);
   } finally { await operation?.dispose(); await f.close(); }
@@ -3368,7 +3407,7 @@ test('SLH installation refuses a missing saved key and retains uncertain submiss
   let operation: NativeSmartAccountOperation | undefined;
   try {
     await f.change({ kind: 'create-smart', label: 'Uncertain signer installation', password: PASSWORD });
-    const facade = await f.runtime.openSlhDsaAccount(() => undefined), key = await facade.prepareFresh(() => undefined);
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal), key = await facade.prepareFresh(() => undefined);
     f.guardianStatus('no-policy'); f.fundedSmart();
     const missing = getSLHDSAKeyId({ pkSeed: key.pkSeed, pkRoot: `0x${'55'.repeat(16)}${'00'.repeat(16)}` });
     await assert.rejects(f.runtime.openSlhDsaInstallation(missing, new AbortController().signal, () => undefined), /NOT_READY/);
@@ -3387,24 +3426,31 @@ test('SLH installation refuses a missing saved key and retains uncertain submiss
 
 test('healthy wallet lock waits for the captured SLH execution to drain', async () => {
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
-  const backend = slhSmartBackend(async () => { entered.resolve(); await release.promise; });
+  let armed = false;
+  const backend = slhSmartBackend(async () => { if (armed) { entered.resolve(); await release.promise; } });
   const f = await fixture({}, true, backend.capability);
   try {
-    await provisionSlhSmart(f);
+    const key = await provisionSlhSmart(f);
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
+    armed = true;
+    const signing = facade.signActionHash({ ...key, actionHash: `0x${'42'.repeat(32)}` }, null, () => undefined);
+    const rejected = assert.rejects(signing);
+    await entered.promise;
     let settled = false;
     const locked = f.runtime.session.lock().finally(() => { settled = true; });
     await entered.promise;
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(settled, false, 'healthy lock must retain the native drain barrier');
     await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
-    release.resolve(); await locked;
+    release.resolve(); await locked; await rejected;
     assert.equal(settled, true);
   } finally { release.resolve(); await f.close(); }
 });
 
 test('lost storage acknowledgement quarantines before held SLH drainage and still drains before close', async () => {
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>(), fault = Promise.withResolvers<void>();
-  const backend = slhSmartBackend(async () => { entered.resolve(); await release.promise; });
+  let holdRetirement = false;
+  const backend = slhSmartBackend(async () => { if (holdRetirement) { entered.resolve(); await release.promise; } });
   let armed = false;
   const f = await fixture({ after: (kind, sql) => {
     if (armed && kind === 'exec' && sql === 'COMMIT') {
@@ -3413,6 +3459,11 @@ test('lost storage acknowledgement quarantines before held SLH drainage and stil
   } }, true, backend.capability);
   try {
     const key = await provisionSlhSmart(f);
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
+    holdRetirement = true;
+    const signing = facade.signActionHash({ ...key, actionHash: `0x${'42'.repeat(32)}` }, null, () => undefined);
+    const signingRejected = assert.rejects(signing);
+    await entered.promise;
     const retained = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
     armed = true;
     const change = f.change({ kind: 'select', id: 'hd:60:0' });
@@ -3428,7 +3479,7 @@ test('lost storage acknowledgement quarantines before held SLH drainage and stil
     const closeRejected = assert.rejects(close, /CLEANUP_FAILED/);
     await new Promise<void>(resolve => setImmediate(resolve));
     assert.equal(closed, false, 'quarantined close must still join the native drain');
-    release.resolve(); await closeRejected;
+    release.resolve(); await closeRejected; await signingRejected;
     await f.reopenQuarantined(); await f.owner.unlock(PASSWORD);
     assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), retained);
     assert.deepEqual(f.slhDerivations, [0]);
@@ -3438,8 +3489,11 @@ test('lost storage acknowledgement quarantines before held SLH drainage and stil
 for (const method of ['personal_sign', 'eth_signTypedData_v4'] as const) test(`actual Smart ${method} withholds the SLH envelope until encrypted usage COMMIT`, async () => {
   const backend = slhSmartBackend();
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
-  let armed = false;
-  const f = await fixture({ before: async (kind, sql) => { if (armed && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await release.promise; } } }, true, backend.capability);
+  let armed = false, signerWrite = false;
+  const f = await fixture({ before: async (kind, sql) => {
+    if (armed && kind === 'run' && /^(?:INSERT INTO|UPDATE) keyring_records /.test(sql)) signerWrite = true;
+    if (armed && signerWrite && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await release.promise; }
+  } }, true, backend.capability);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
     const key = await provisionSlhSmart(f);
@@ -3456,7 +3510,7 @@ for (const method of ['personal_sign', 'eth_signTypedData_v4'] as const) test(`a
     assert.equal(f.submitted.length, 0); assert.equal(f.signatures.length, 0);
     release.resolve();
     assert.equal(await work, encodeSmartAccountMessageSignature(prepared, { validator: getConfiguredAuthenticatorAddress(1, 'slh-dsa'), signature: hexlify(new Uint8Array(3856).fill(9)) }));
-    const facade = await f.runtime.openSlhDsaAccount(() => undefined);
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 1);
     assert.equal(f.submitted.length, 0);
   } finally { release.resolve(); connection?.approval.dispose(); await f.close(); }
@@ -3465,8 +3519,11 @@ for (const method of ['personal_sign', 'eth_signTypedData_v4'] as const) test(`a
 for (const retire of [false, true]) test(`actual Smart UserOperation releases no payer approval before SLH usage COMMIT (retire ${retire})`, async () => {
   const backend = slhSmartBackend();
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
-  let armed = false;
-  const f = await fixture({ before: async (kind, sql) => { if (armed && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await release.promise; } } }, true, backend.capability);
+  let armed = false, signerWrite = false;
+  const f = await fixture({ before: async (kind, sql) => {
+    if (armed && kind === 'run' && /^(?:INSERT INTO|UPDATE) keyring_records /.test(sql)) signerWrite = true;
+    if (armed && signerWrite && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await release.promise; }
+  } }, true, backend.capability);
   let operation: NativeSmartAccountOperation | undefined;
   try {
     const key = await provisionSlhSmart(f); f.fundedSmart();
@@ -3485,7 +3542,7 @@ for (const retire of [false, true]) test(`actual Smart UserOperation releases no
       operation.cancel();
     }
     await work;
-    const facade = await f.runtime.openSlhDsaAccount(() => undefined);
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 1);
     assert.equal(f.submitted.length, 0); assert.equal(f.signatures.length, 0);
   } finally { release.resolve(); operation?.dispose(); await f.close(); }
@@ -3516,8 +3573,11 @@ for (const method of ['message', 'operation'] as const) test(`actual Smart ${met
 for (const retirement of ['revoke-before', 'network-before', 'lock-before', 'revoke-after-dispatch'] as const) test(`actual SLH Smart message preserves original approval lifetime (${retirement})`, async () => {
   const backend = slhSmartBackend();
   const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
-  let armed = false;
-  const f = await fixture({ before: async (kind, sql) => { if (armed && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await release.promise; } } }, true, backend.capability);
+  let armed = false, signerWrite = false;
+  const f = await fixture({ before: async (kind, sql) => {
+    if (armed && kind === 'run' && /^(?:INSERT INTO|UPDATE) keyring_records /.test(sql)) signerWrite = true;
+    if (armed && signerWrite && kind === 'exec' && sql === 'COMMIT') { armed = false; entered.resolve(); await release.promise; }
+  } }, true, backend.capability);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
   try {
     const key = await provisionSlhSmart(f);
@@ -3538,7 +3598,7 @@ for (const retirement of ['revoke-before', 'network-before', 'lock-before', 'rev
     if (retirement === 'revoke-after-dispatch') {
       await f.reopen();
       await f.owner.unlock(PASSWORD);
-      const account = await f.runtime.openSlhDsaAccount(() => undefined);
+      const account = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
       assert.equal((await account.hydrateInstalled(key.keyId)).signatureCount, 1);
     }
   } finally { release.resolve(); connection?.approval.dispose(); await f.close(); }
@@ -3548,7 +3608,7 @@ for (const retirement of ['revoke-before', 'network-before', 'lock-before', 'rev
 test('actual Smart password reset preserves SLH encrypted high-water state and signing without rederivation', async () => {
   const backend = slhSmartBackend(), f = await fixture({}, true, backend.capability);
   let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
-  const password = 'Preserved public SLH fixture 2!';
+  const password = '123456';
   try {
     const key = await provisionSlhSmart(f);
     connection = await smartMessageApproval(f);
@@ -3557,7 +3617,7 @@ test('actual Smart password reset preserves SLH encrypted high-water state and s
     const before = await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId));
     await f.resetPassword(password);
     assert.deepEqual(await f.storage.keyringStorage.get(getSLHDSAStateStorageKey(key.keyId)), before);
-    const facade = await f.runtime.openSlhDsaAccount(() => undefined);
+    const facade = await f.runtime.openSlhDsaAccount(() => undefined, new AbortController().signal);
     assert.equal((await facade.hydrateInstalled(key.keyId)).signatureCount, 1);
     assert.deepEqual(f.slhDerivations, [0]);
     connection.approval.dispose(); connection = await smartMessageApproval(f);
@@ -3577,7 +3637,7 @@ test('actual Smart password reset authenticates retained SLH ciphertext before a
     inner.ciphertext = (inner.ciphertext[0] === 'A' ? 'B' : 'A') + inner.ciphertext.slice(1);
     await f.storage.keyringStorage.set(storageKey, { ...saved, cipherText: JSON.stringify(inner) });
     const before = await f.storage.recovery.readSnapshot();
-    await assert.rejects(f.resetPassword('Reject corrupted SLH reset 2!'), { code: 'INVALID_SAVED_DATA' });
+    await assert.rejects(f.resetPassword('654321'), { code: 'INVALID_SAVED_DATA' });
     await f.reopen();
     assert.deepEqual(await f.storage.recovery.readSnapshot(), before);
     assert.deepEqual(f.slhDerivations, [0]); assert.deepEqual(backend.actions, []); assert.equal(f.submitted.length, 0);
@@ -4041,7 +4101,7 @@ for(const action of ['guardian-policy','wallet-authenticator','slh-installation'
       f.onSmartCodeRead(()=>undefined);
     }
     else{
-      const signer=await f.runtime.openSlhDsaAccount(()=>undefined),key=await signer.prepareFresh(()=>undefined);
+      const signer=await f.runtime.openSlhDsaAccount(()=>undefined,new AbortController().signal),key=await signer.prepareFresh(()=>undefined);
       original=await f.runtime.openSlhDsaInstallation(key.keyId,new AbortController().signal,()=>undefined);
     }
     await original.prepare();assert.equal(original.getSnapshot().phase,'authorize');

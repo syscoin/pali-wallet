@@ -74,7 +74,7 @@ function fixture(
         state.value,
         (value: unknown) => {
           stateWrites++;
-          state.value = value;
+          state.value = typeof value === 'function' ? value(state.value) : value;
         },
       ];
     },
@@ -137,6 +137,7 @@ function fixture(
     '../ui': {
       Button: 'Button',
       Header: 'Header',
+      IconButton: 'IconButton',
       Notice: 'Notice',
       Screen: 'Screen',
       Text: 'Text',
@@ -224,6 +225,23 @@ const notice = (tree: Element, title: string) =>
   elements(tree).some(
     (element) => element.type === 'Notice' && element.props.title === title
   );
+
+test('flashlight is explicit, waits for the camera and resets after focus loss', async () => {
+  const f = fixture(async () => ({ granted: true }));
+  try {
+    await settle();
+    let tree = f.render();
+    assert.equal(elements(tree).some(node => node.props.title === 'Turn on flashlight'), false);
+    find(tree, 'CameraView')!.props.onCameraReady();
+    tree = f.render();
+    elements(tree).find(node => node.props.title === 'Turn on flashlight')!.props.onPress();
+    assert.equal(find(f.render(), 'CameraView')!.props.enableTorch, true);
+    f.emit('blur');
+    assert.equal(find(f.render(), 'CameraView'), undefined);
+    f.emit('focus');
+    assert.equal(find(f.render(), 'CameraView')!.props.enableTorch, false);
+  } finally { f.unmount(); }
+});
 
 test('denied camera permission offers Settings and failed permission requests show an error without mounting a camera', async () => {
   const denied = fixture(async () => ({ granted: false }));
@@ -362,7 +380,7 @@ test('a delayed permission response after Close cannot publish camera state or a
   const permission = deferred<{ granted: boolean }>();
   const f = fixture(() => permission.promise);
   await settle();
-  find(f.render(), 'Header')!.props.onBack();
+  find(f.render(), 'Header')!.props.right.props.onPress();
   const writes = f.stateWrites;
   permission.resolve({ granted: true });
   await settle();
@@ -389,7 +407,7 @@ test('a delayed permission response after unmount cannot update the scanner', as
 for (const boundary of ['close', 'unmount'] as const) {
   test(`camera permission is not requested after ${boundary} before the scheduled call`, async () => {
     const f = fixture(async () => ({ granted: true }));
-    if (boundary === 'close') find(f.render(), 'Header')!.props.onBack();
+    if (boundary === 'close') find(f.render(), 'Header')!.props.right.props.onPress();
     else f.unmount();
     await settle();
     assert.equal(f.permissionRequests, 0);

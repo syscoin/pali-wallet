@@ -133,7 +133,7 @@ export function ApprovalReview({
       {summary.canEditAmount && token && !editing && (
         <Button
           title="Edit spending limit"
-          variant="quiet"
+          variant="secondary"
           disabled={disabled}
           onPress={() => {
             onEditingChange(true);
@@ -170,7 +170,7 @@ export function ApprovalReview({
           <Button title="Apply limit" disabled={disabled} onPress={apply} />
           <Button
             title="Keep current limit"
-            variant="quiet"
+            variant="secondary"
             disabled={disabled}
             onPress={() => {
               onEditingChange(false);

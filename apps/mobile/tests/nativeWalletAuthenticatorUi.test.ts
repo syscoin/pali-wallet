@@ -441,24 +441,27 @@ function operationState(): NativeSmartAccountOperationSnapshot {
 test('authenticator review discloses full owner, threshold and rotation before authorization', () => {
   const f = harness('NativeSmartAccountOperation');
   let authorized = 0;
-  const tree = f.render('NativeSmartAccountOperationContent', {
+  const props = {
     state: operationState(),
     onBack() {},
     authorize() {
       authorized++;
     },
     confirmPayer() {},
-  });
+  };
+  let tree = f.render('NativeSmartAccountOperationContent', props);
   const text = all(tree)
     .flatMap((node) => node.children)
     .filter((value) => typeof value === 'string')
     .join(' ');
   assert.match(text, new RegExp(owner));
-  assert.match(text, /Approvals required/);
-  assert(all(tree).some(node => node.type === 'Text' && node.children.includes(1)));
-  assert.match(text, /0x3333333333333333333333333333333333333333/);
-  assert.match(one(tree, 'Notice', 'Use this method').props.body, /owner and threshold shown above/);
-  one(tree, 'Button', 'Authorize authenticator change').props.onPress();
+  assert.match(text, /1 of 1 owners can approve/);
+  assert.match(text, /Current approval method.*New approval method/);
+  one(tree, 'Button', 'View approval details').props.onPress();
+  tree = f.render('NativeSmartAccountOperationContent', props);
+  assert.match(all(tree).flatMap(node => node.children).join(' '), /0x3333333333333333333333333333333333333333/);
+  assert.match(one(tree, 'Notice', 'Authorize approval change').props.body, /owner and threshold shown above/);
+  one(tree, 'Button', 'Authorize approval change').props.onPress();
   assert.equal(authorized, 1);
   assert(
     !all(tree).some((node) =>
@@ -489,7 +492,7 @@ test('confirmed authenticator with stale metadata exposes its hash and refresh-o
       refreshed++;
     },
   });
-  one(tree, 'Notice', 'Authenticator transaction confirmed');
+  one(tree, 'Notice', 'Approval method changed');
   assert(all(tree).some((node) => node.children.includes(hash)));
   assert(
     all(tree).some((node) => node.children.includes('Confirmed transaction'))
@@ -500,7 +503,7 @@ test('confirmed authenticator with stale metadata exposes its hash and refresh-o
     all(tree)
       .filter((node) => node.type === 'Button')
       .map((node) => node.props.title),
-    ['Refresh account status', 'Close']
+    ['View approval details', 'Refresh account status', 'Close']
   );
   f.dispose();
 });
@@ -526,7 +529,7 @@ test('already-configured authenticator reports its owner without a transaction',
     all(tree)
       .filter((node) => node.type === 'Button')
       .map((node) => node.props.title),
-    ['Close']
+    ['View approval details', 'Close']
   );
   f.dispose();
 });
@@ -753,11 +756,14 @@ test('SLH target review discloses exact public fields without an ECDSA owner cla
   const f = harness('NativeSmartAccountOperation'), state = operationState();
   if (state.intent.kind !== 'authenticator') throw Error('Wrong fixture');
   const root = `0x${'44'.repeat(32)}`, seed = `0x${'33'.repeat(32)}`;
-  const tree = f.render('NativeSmartAccountOperationContent', { state: { ...state, intent: { ...state.intent, command: { ...state.intent.command,
-    target: { module:'slh-dsa',validator: account,data:'0x' }, targetModule: {id:'slh-dsa',type:'validator',address:account,config:{pkRoot:root,pkSeed:seed}} } } }, onBack() {}, authorize() {}, confirmPayer() {} });
+  const props = { state: { ...state, intent: { ...state.intent, command: { ...state.intent.command,
+    target: { module:'slh-dsa',validator: account,data:'0x' }, targetModule: {id:'slh-dsa',type:'validator',address:account,config:{pkRoot:root,pkSeed:seed}} } } }, onBack() {}, authorize() {}, confirmPayer() {} };
+  let tree = f.render('NativeSmartAccountOperationContent', props);
+  one(tree, 'Button', 'View approval details').props.onPress();
+  tree = f.render('NativeSmartAccountOperationContent', props);
   const text = all(tree).flatMap(node => node.children).filter(value => typeof value === 'string').join(' ');
   assert(text.includes(root)); assert(text.includes(seed)); assert(!text.includes(owner));
-  assert.match(one(tree, 'Notice', 'Use this method').props.body, /post-quantum approval/); f.dispose();
+  assert.match(one(tree, 'Notice', 'Authorize approval change').props.body, /post-quantum approval/); f.dispose();
 });
 
 for (const language of ['en','es','pt','fr','de','zh','ja','ko','ru']) test(`SLH management uses the canonical packaged ${language} dictionary`, async () => {
@@ -778,9 +784,9 @@ test('SLH payer review describes the exact approved target without claiming ECDS
   if (state.intent.kind !== 'authenticator') throw Error('Wrong fixture');
   const tree = f.render('NativeSmartAccountOperationContent', {state:{...state,phase:'review-fee',payerReview:{id:1,purpose:'submit-operation',transaction:{from:owner,to:account,value:'0',data:'0x',chainId:'1',nonce:'0',gasLimit:'21000',type:2,maxFeePerGas:'2',maxPriorityFeePerGas:'1'},maximumFeeUnits:'42000',coveredFeeUnits:'0',maximumTotalUnits:'42000'},
     intent:{...state.intent,command:{...state.intent.command,target:{module:'slh-dsa',validator:account,data:'0x'},targetModule:{id:'slh-dsa',type:'validator',address:account,config:{pkRoot:hash,pkSeed:hash}}}}},onBack(){},authorize(){},confirmPayer(){} });
-  const notice = one(tree,'Notice','Submit the authorized authenticator change');
+  const notice = one(tree,'Notice','Change approval method');
   assert.equal(notice.props.body,'Saving updates your account on-chain and may require a network fee.');
-  assert(!notice.props.body.includes('Pali wallet owner')); one(tree,'Button','Confirm authenticator change'); f.dispose();
+  assert(!notice.props.body.includes('Pali wallet owner')); one(tree,'Button','Change approval method'); f.dispose();
 });
 
 

@@ -1,5 +1,6 @@
 import type { SentryNodeStorage } from './sentryNodeDomain.ts';
 import type { DeviceUnlockEnrollmentPort } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
+import type { NativePinRecord, NativePinStorage } from '../custody/pinVault.ts';
 import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { UtxoRecordStorage } from '../../../../source/wallet/utxoSignedRecords.ts';
 import type { ISentryKeyVaultHost } from '../../../../source/wallet/sentryKeyVault.ts';
@@ -114,6 +115,7 @@ export type SentryStorageScope = Readonly<{
 }>;
 
 export interface OpenWalletStorage {
+  readonly pin: NativePinStorage;
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
   readonly utxoSignedRecords?: UtxoRecordStorage;
@@ -161,6 +163,7 @@ export interface OpenWalletStorage {
         vault: unknown;
         keys: unknown;
         accountRecords: unknown;
+        pin: NativePinRecord;
       }>,
       root: RecoveryRoot
     ): Promise<RecoveryWritePlan>;
@@ -168,7 +171,7 @@ export interface OpenWalletStorage {
     readSnapshot(): Promise<RecoveryStorageSnapshot>;
     /** Called only after the SDK authenticates the root/profile for this exact pair. */
     bindIdentity(expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void): Promise<void>;
-    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown;
+    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown; pin: NativePinRecord;
         accountRecords?: unknown;
       }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
     plannedSnapshot?(plan: RecoveryWritePlan): RecoveryStorageSnapshot;

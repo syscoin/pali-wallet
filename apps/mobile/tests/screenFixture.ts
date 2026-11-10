@@ -14,7 +14,7 @@ export function screenElements(value: unknown): ScreenElement[] {
 }
 
 /** Execute actual screen handlers/effects with public DTOs and explicit native ports. */
-export function screenFixture(file: URL, exported: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}) {
+export function screenFixture(file: URL, exported: string, imports: Record<string, unknown>, globals: Record<string, unknown> = {}, compilerOptions: Pick<ts.CompilerOptions, 'target'> = {}) {
   const cells: Cell[] = [], effects: (() => void)[] = [];
   let cursor = 0;
   const cell = () => cells[cursor++] ?? (cells[cursor - 1] = {});
@@ -42,7 +42,7 @@ export function screenFixture(file: URL, exported: string, imports: Record<strin
     useEffect(callback: () => void | (() => void), deps?: readonly unknown[]) { react.useLayoutEffect(callback, deps); },
   };
   const module = { exports: {} as Record<string, (props: any) => ScreenElement> };
-  const code = ts.transpileModule(readFileSync(new NodeURL(file.href), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
+  const code = ts.transpileModule(readFileSync(new NodeURL(file.href), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, esModuleInterop: true, ...compilerOptions } }).outputText;
   runInNewContext(code, { module, exports: module.exports, Error, Date, setTimeout, clearTimeout, ...globals,
     require(name: string) { if (name === 'react') return react; assert(Object.hasOwn(imports, name), `Missing screen port: ${name}`); return imports[name]; } });
   return {

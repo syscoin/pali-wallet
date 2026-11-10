@@ -1,3 +1,4 @@
+import { createTestPinCredentialPort } from './fixtures/pinCredential.ts';
 import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -18,6 +19,8 @@ import type { TransferJournalEntry } from '../src/custody/transferJournal.ts';
 import { inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
+
+const pinCredential = createTestPinCredentialPort();
 
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
@@ -41,7 +44,7 @@ async function expectUnavailable(authority: NativeCustodyAuthority, action: () =
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public native transfer fixture password 1!';
+const PASSWORD = '123456';
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
 
 test('shared SDK and SQLite admit a different pending nonce and retain reorg predecessors across restart', async () => {
@@ -62,7 +65,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
   let authority: NativeCustodyAuthority | undefined;
   let transfers: NativeTransfers | undefined;
   const submitted: string[] = [];
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const factory = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     async ensureCryptoReady() {
       assert.ok(globalThis.crypto.subtle);
     },
@@ -154,7 +157,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
     assert.equal(authority!.getSnapshot().phase, 'ready');
     await transfers!.prepare(RECIPIENT, '0.001');
     const review = transfers!.getSnapshot().review!;
-    await transfers!.confirm(review.id, { method: 'password', password: PASSWORD });
+    await transfers!.confirm(review.id, { method: 'pin', pin: PASSWORD });
     assert.equal(transfers!.getSnapshot().phase, 'unknown');
     const firstHash = transfers!.getSnapshot().hash;
     assert.equal(Transaction.from(submitted[0]!).to, RECIPIENT);
@@ -169,7 +172,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
     await transfers!.prepare(RECIPIENT, '0.002');
     const successor = transfers!.getSnapshot().review!;
     assert.equal(successor.nonce, '1');
-    await transfers!.confirm(successor.id, { method: 'password', password: PASSWORD });
+    await transfers!.confirm(successor.id, { method: 'pin', pin: PASSWORD });
     const secondHash = transfers!.getSnapshot().hash!;
     assert.equal(transfers!.getSnapshot().phase, 'pending');
     assert.equal(submitted.length, 2);
@@ -199,7 +202,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
     const retry = transfers!.getSnapshot().review!;
     assert.equal(retry.retry, true);
     assert.equal(retry.replay?.hash, firstHash);
-    await transfers!.confirm(retry.id, { method: 'password', password: PASSWORD });
+    await transfers!.confirm(retry.id, { method: 'pin', pin: PASSWORD });
     assert.equal(submitted.length, 3);
     assert.equal(submitted[2], submitted[0]);
     assert.equal(transfers!.getSnapshot().phase, 'pending');
@@ -245,8 +248,8 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       await current.release;
     }
   };
-  // Keep the real SDK signer; pause storage/RPC boundaries after each review's
-  // password authentication, which preserves the existing account hydration.
+  // Keep the real SDK signer and observe PIN admission separately from the
+  // short-lived signing lease; public RPC work must not retain that lease.
   class ControlledKeyring extends sdk.HostKeyring {
     constructor(...options: ConstructorParameters<typeof sdk.HostKeyring>) {
       super(...options);
@@ -258,13 +261,6 @@ async function cancellationFixture(type: 0 | 2 = 2) {
         return result;
       };
     }
-    async unlock(password: string) {
-      authentications++;
-      const result = await super.unlock(password);
-      const held = authenticationGate;
-      if (held) { held.entered(); await held.release; }
-      return result;
-    }
     signPreparedEvmTransaction(
       ...args: Parameters<
         InstanceType<typeof sdk.HostKeyring>['signPreparedEvmTransaction']
@@ -274,7 +270,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       return super.signPreparedEvmTransaction(...args);
     }
   }
-  const base = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
+  const base = createKeyringRuntimeFactory({ pinCredential, requestOperationCredential: async (_request, _signal, check) => { check(); return { method: 'pin', pin: PASSWORD }; }, privacyServiceSettings: null, slhExecution: null, readEvmRetirement: null,
     async observeActivity(_network, expected, signal, guard) {
       guard();
       const result = await rpc.observation(
@@ -328,11 +324,18 @@ async function cancellationFixture(type: 0 | 2 = 2) {
         INSTALLATION,
         fresh
       );
-      const authGuard = storage.authGuard;
-      Object.defineProperty(storage, 'authGuard', { value: Object.freeze({ ...authGuard,
-        async recordSuccess() {
+      const pin = storage.pin;
+      Object.defineProperty(storage, 'pin', { value: Object.freeze({ ...pin,
+        async beginAttempt(...args: Parameters<typeof pin.beginAttempt>) {
+          authentications++;
+          const attempt = await pin.beginAttempt(...args);
+          const held = authenticationGate;
+          if (held) { held.entered(); await held.release; }
+          return attempt;
+        },
+        async completeAttempt(...args: Parameters<typeof pin.completeAttempt>) {
           if (authenticationStorageFailure) throw Error('Synthetic authentication storage failure');
-          await authGuard.recordSuccess();
+          await pin.completeAttempt(...args);
         },
       }) });
       return storage;
@@ -510,6 +513,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
     get sdkUnlocked() {
       return sdkInstances.some((instance) => instance.isUnlocked());
     },
+    get sdkPublic() { return sdkInstances.some(instance => instance.hasPublicSession()); },
     expireReview() { clockOffset += 100_000; },
     failAuthenticationStorage() { authenticationStorageFailure = true; },
     holdAuthentication() {
@@ -625,7 +629,7 @@ for (const fault of ['expiry', 'storage'] as const) test(`real SDK authenticatio
     unsubscribe = f.authority.subscribe(state => { if (state.phase === 'locked') locks++; });
     if (fault === 'expiry') held = f.holdAuthentication();
     else f.failAuthenticationStorage();
-    const pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    const pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const rejected = assert.rejects(pending, { code: 'CANCELLED' });
     if (held) { await held.started; f.expireReview(); held.finish(); }
     await rejected;
@@ -642,7 +646,7 @@ test('queued pending cancellation reports the earlier nonce without signing', as
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001', '1');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const originalHash = f.transfers.getSnapshot().hash!;
     f.replacement.pending = true;
     await assert.rejects(f.transfers.prepareCancellation(originalHash), { code: 'CANCELLATION_QUEUED' });
@@ -657,7 +661,7 @@ test('queued pending cancellation reports the earlier nonce without signing', as
 
 async function prepareSavedCancellation(f: Awaited<ReturnType<typeof cancellationFixture>>) {
   await f.transfers.prepare(RECIPIENT, '0.001');
-  await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+  await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
   const originalHash = f.transfers.getSnapshot().hash!;
   f.replacement.pending = true;
   await f.transfers.prepareCancellation(originalHash);
@@ -668,7 +672,7 @@ test('an acknowledged ordinary send can be followed by the next nonce while pend
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     assert.equal(f.transfers.getSnapshot().phase, 'pending');
 
     // The same captured endpoint still reports zero for both counts and has
@@ -676,7 +680,7 @@ test('an acknowledged ordinary send can be followed by the next nonce while pend
     await f.transfers.prepare(RECIPIENT, '0.002');
     const review = f.transfers.getSnapshot().review!;
     assert.equal(review.nonce, '1');
-    await f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
     assert.equal(f.transfers.getSnapshot().phase, 'pending');
     assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
     const saved = JSON.parse((await f.readDurableJournal())!);
@@ -691,7 +695,7 @@ for (const type of [0, 2] as const) {
     const f = await cancellationFixture(type);
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
       const originalHash = f.transfers.getSnapshot().hash!;
       const original = Transaction.from(f.broadcasts[0]!);
       f.replacement.pending = true;
@@ -707,7 +711,7 @@ for (const type of [0, 2] as const) {
       assert.equal(review.replacement?.originalMaximumFeeUnits, (original.gasLimit * originalFee).toString());
       assert(BigInt(review.maximumFeeUnits) > original.gasLimit * originalFee);
       const gate = f.hold('cancellation-original');
-      const submit = f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+      const submit = f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
       try {
         await Promise.race([gate.started, submit.then(() => assert.fail('POST preflight was not held'))]);
         assert.equal(f.broadcasts.length, 1);
@@ -737,12 +741,12 @@ test('Speed Up refuses POST when the saved original disappears after the new sig
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const originalHash = f.transfers.getSnapshot().hash!;
     f.replacement.pending = true;
     await f.transfers.prepareSpeedUp(originalHash);
     const gate = f.hold('cancellation-original');
-    const refused = assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD }), { code: 'EXPIRED' });
+    const refused = assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD }), { code: 'EXPIRED' });
     try {
       await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
       f.replacement.pending = false;
@@ -762,12 +766,12 @@ test('a saved Speed Up blocked by a higher base fee can be reviewed again after 
   const f = await cancellationFixture(2);
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const originalHash = f.transfers.getSnapshot().hash!;
     f.replacement.pending = true;
     await f.transfers.prepareSpeedUp(originalHash);
     const gate = f.hold('cancellation-original');
-    const refused = assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD }), { code: 'EXPIRED' });
+    const refused = assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD }), { code: 'EXPIRED' });
     try {
       await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
       f.replacement.baseFee = '0x3e8';
@@ -783,7 +787,7 @@ test('a saved Speed Up blocked by a higher base fee can be reviewed again after 
     assert.equal(saved.phase, 'signed');
     assert.equal((await journal.load())?.hash, savedHash);
     await f.transfers.recover(true, savedHash);
-    await assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD }), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD }), { code: 'EXPIRED' });
     assert.equal(f.broadcasts.length, 1);
     assert.equal(f.signatures, 2);
 
@@ -800,14 +804,14 @@ test('a saved Speed Up blocked by a higher base fee can be reviewed again after 
     assert.equal(f.signatures, 2);
 
     f.replacement.baseFee = '0x3e9';
-    await assert.rejects(f.transfers.confirm(review.id, { method: 'password', password: PASSWORD }), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD }), { code: 'EXPIRED' });
     assert.equal(f.signatures, 2);
     assert.equal(f.broadcasts.length, 1);
     f.replacement.baseFee = '0x3e8';
     await f.transfers.prepareSpeedUp(originalHash);
     const renewed = f.transfers.getSnapshot().review!;
     f.replacement.baseFee = '0x3e7';
-    await f.transfers.confirm(renewed.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(renewed.id, { method: 'pin', pin: PASSWORD });
     assert.equal(f.broadcasts.length, 2);
     assert.equal(f.signatures, 3);
     const repriced = Transaction.from(f.broadcasts[1]!);
@@ -829,7 +833,7 @@ test('new cancellation signs the saved nonce once and persists both linked exact
     assert.equal(f.signatures, 1);
     assert.equal(f.broadcasts.length, 1);
     const gate = f.hold('cancellation-dispatch');
-    const submit = f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+    const submit = f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
     try {
       await Promise.race([gate.started, submit.then(() => assert.fail('POST preflight was not held'))]);
       assert.equal(f.broadcasts.length, 1);
@@ -838,7 +842,7 @@ test('new cancellation signs the saved nonce once and persists both linked exact
       assert.equal(stored.entries[0].hash, originalHash);
       assert.equal(stored.entries[1].operation, 'cancel');
       assert.equal(stored.entries[1].originalHash, originalHash);
-      await assert.rejects(f.transfers.confirm(review.id, { method: 'password', password: PASSWORD }), { code: 'BUSY' });
+      await assert.rejects(f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD }), { code: 'BUSY' });
     } finally {
       gate.finish();
       await submit;
@@ -867,7 +871,7 @@ test('new cancellation refuses a missing original or increased fee without creat
   try {
     const { originalHash, review } = await prepareSavedCancellation(f);
     f.replacement.baseFee = '0x100';
-    await assert.rejects(f.transfers.confirm(review.id, { method: 'password', password: PASSWORD }), { code: 'EXPIRED' });
+    await assert.rejects(f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD }), { code: 'EXPIRED' });
     f.replacement.pending = false;
     await assert.rejects(f.transfers.prepareCancellation(originalHash), { code: 'EXPIRED' });
     assert.equal(f.signatures, 1);
@@ -883,7 +887,7 @@ test('new cancellation keeps signed evidence and sends nothing when payer delega
   try {
     const { originalHash, review } = await prepareSavedCancellation(f);
     const gate = f.hold('cancellation-dispatch');
-    const submit = f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+    const submit = f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
     const refused = assert.rejects(submit, { code: 'EXPIRED' });
     try {
       await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
@@ -909,7 +913,7 @@ for (const change of ['dropped', 'replaced'] as const) {
     try {
       const { originalHash, review } = await prepareSavedCancellation(f);
       const gate = f.hold('cancellation-dispatch');
-      const submit = f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+      const submit = f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
       try {
         await Promise.race([gate.started, submit.then(() => assert.fail('POST preflight was not held'))]);
         if (change === 'dropped') f.replacement.pending = false;
@@ -935,7 +939,7 @@ test('new cancellation rechecks payer delegation after the final original observ
   try {
     const { originalHash, review } = await prepareSavedCancellation(f);
     const gate = f.hold('cancellation-original');
-    const submit = f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+    const submit = f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
     try {
       await Promise.race([gate.started, submit.then(() => assert.fail('Original observation was not held'))]);
       f.replacement.delegated = true;
@@ -958,7 +962,7 @@ test('a previously confirmed saved transaction can be canceled after a fresh reo
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const original = Transaction.from(f.broadcasts[0]!);
     const blockHash = '0x' + '8'.repeat(64);
     f.setRecovery({
@@ -976,7 +980,7 @@ test('a previously confirmed saved transaction can be canceled after a fresh reo
     const review = f.transfers.getSnapshot().review!;
     assert.equal(review.replacement?.mode, 'cancel');
     assert.equal(review.replacement?.originalHash, original.hash);
-    await f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
     assert.equal(f.broadcasts.length, 2);
     assert.equal(Transaction.from(f.broadcasts[1]!).nonce, original.nonce);
   } finally {
@@ -989,7 +993,7 @@ test('locking during the final cancellation preflight prevents POST and keeps bo
   try {
     const { review } = await prepareSavedCancellation(f);
     const gate = f.hold('cancellation-dispatch');
-    const refused = assert.rejects(f.transfers.confirm(review.id, { method: 'password', password: PASSWORD }), { code: 'CANCELLED' });
+    const refused = assert.rejects(f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD }), { code: 'CANCELLED' });
     try {
       await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
       f.authority.lock();
@@ -1015,7 +1019,7 @@ test('wall-clock rollback cannot hide an unresolved signed transfer after a cold
   try {
     f = await cancellationFixture();
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const older = (await f.readJournal()) as TransferJournalEntry;
     const first = Transaction.from(older.rawTransaction);
     f.setRecovery({
@@ -1042,7 +1046,7 @@ test('wall-clock rollback cannot hide an unresolved signed transfer after a cold
       canonicalHash: '0x' + '1'.repeat(64),
     });
     await f.transfers.prepare(RECIPIENT, '0.002');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const unresolvedHash = f.transfers.getSnapshot().hash!;
     assert.equal(f.transfers.getSnapshot().phase, 'pending');
     assert.equal(Transaction.from(f.broadcasts.at(-1)!).nonce, 1);
@@ -1117,7 +1121,7 @@ for (const retry of [false, true]) {
         await f.transfers.prepare(RECIPIENT, '0.001');
         if (retry) {
           f.loseResponse();
-          await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+          await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
           await f.transfers.recover(true);
         }
         const initialSignatures = f.signatures;
@@ -1125,7 +1129,7 @@ for (const retry of [false, true]) {
         const credentials = [f.authentications, f.hydrations] as const;
         const journal = await f.readDurableJournal();
         hold = f.hold(retry ? 'storage-read' : 'requote');
-        pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+        pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
         const rejected = assert.rejects(pending, { code: 'CANCELLED' });
         await hold.started;
         if (cancellation === 'dispose') f.transfers.dispose();
@@ -1138,7 +1142,8 @@ for (const retry of [false, true]) {
           f.authority.getSnapshot().phase,
           cancellation === 'lock' ? 'locked' : 'ready'
         );
-        assert.equal(f.sdkUnlocked, cancellation !== 'lock');
+        assert.equal(f.sdkUnlocked, false);
+        assert.equal(f.sdkPublic, cancellation !== 'lock');
         assert.equal(f.signatures, initialSignatures);
         assert.equal(f.broadcasts.length, initialBroadcasts);
         assert.equal(await f.readDurableJournal(), journal);
@@ -1148,7 +1153,7 @@ for (const retry of [false, true]) {
         await f.transfers.recover(retry);
         if (!retry) await f.transfers.prepare(RECIPIENT, '0.001');
         const before = [f.authentications, f.hydrations] as const;
-        await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+        await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
         assert.equal(f.signatures, initialSignatures + (retry ? 0 : 1));
         assert.equal(f.broadcasts.length, initialBroadcasts + 1);
         assert.deepEqual([f.authentications, f.hydrations], [before[0] + 1, before[1]]);
@@ -1169,7 +1174,7 @@ test('background lock during final fee check invalidates review without signing 
     await f.transfers.prepare(RECIPIENT, '0.001');
     const credentials = [f.authentications, f.hydrations] as const;
     hold = f.hold('requote');
-    const pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    const pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const rejected = assert.rejects(pending, { code: 'CANCELLED' });
     await hold.started;
     f.authority.lock();
@@ -1194,7 +1199,7 @@ for (const repeated of [false, true]) {
     const f = await cancellationFixture();
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
       f.recovery.oversized = true;
       f.recovery.repeated = repeated;
       if (repeated) {
@@ -1257,7 +1262,7 @@ for (const repeated of [false, true]) {
       assert.equal(after.rawTransaction, retained.rawTransaction);
       await f.transfers.prepare(RECIPIENT, '0.002');
       assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
       assert.equal(f.signatures, 2);
       assert.equal(f.broadcasts.length, 2);
       assert.equal(Transaction.from(f.broadcasts[1]!).nonce, 1);
@@ -1275,11 +1280,12 @@ for (const phase of ['signed', 'submitted'] as const) {
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
       hold = f.holdJournal(phase);
-      pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+      pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
       const rejected = assert.rejects(pending, { code: 'CANCELLED' });
       await hold.started;
       assert.equal(f.signatures, 1);
-      assert.equal(f.sdkUnlocked, true);
+      assert.equal(f.sdkUnlocked, false);
+      assert.equal(f.sdkPublic, true);
       const before = f.authority.getSnapshot();
       const retained = await f.readDurableJournal();
       assert(retained);
@@ -1348,7 +1354,7 @@ for (const phase of ['signed', 'submitted'] as const) {
     try {
       await transfers.prepare(RECIPIENT, '0.001');
       hold = old.holdJournal(phase);
-      pending = transfers.confirm(transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+      pending = transfers.confirm(transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
       const rejected = assert.rejects(pending, { code: 'CANCELLED' });
       await hold.started;
       const retained = await old.readDurableJournal();
@@ -1365,7 +1371,8 @@ for (const phase of ['signed', 'submitted'] as const) {
         'late failure must not forward a lock to a different runtime'
       );
       assert.equal(replacement.authority.getSnapshot(), before);
-      assert.equal(replacement.sdkUnlocked, true);
+      assert.equal(replacement.sdkUnlocked, false);
+      assert.equal(replacement.sdkPublic, true);
       assert.equal(
         await replacement.runtime.session.readSelectedAddress(),
         before.account!.address
@@ -1395,7 +1402,7 @@ for (const [status, phase] of [
     const f = await cancellationFixture();
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
       const saved = (await f.readJournal()) as TransferJournalEntry;
       const entry = saved;
       const tx = Transaction.from(entry.rawTransaction);
@@ -1430,7 +1437,7 @@ for (const [status, phase] of [
     const f = await cancellationFixture();
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
       const saved = (await f.readJournal()) as TransferJournalEntry;
       const entry = saved;
       f.setRecovery({
@@ -1462,7 +1469,7 @@ test('missing receipt with a consumed nonce records only nonce-consumed', async 
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const before = (await f.readJournal()) as TransferJournalEntry;
     f.setRecovery({
       receipt: null,
@@ -1483,7 +1490,7 @@ test('canonical receipt confirms without an advanced nonce or settlement-tag rea
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const saved = (await f.readJournal()) as TransferJournalEntry;
     const entry = saved;
     f.setRecovery({
@@ -1531,7 +1538,7 @@ test('explicit predecessor replay survives a reorg and cold restart without anot
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const first = (await f.readJournal())!;
     const receipt = (entry: TransferJournalEntry) => ({
       transactionHash: entry.hash,
@@ -1548,7 +1555,7 @@ test('explicit predecessor replay survives a reorg and cold restart without anot
     });
     await f.transfers.recover();
     await f.transfers.prepare(RECIPIENT, '0.002');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const second = (await f.readJournal())!,
       signatures = f.signatures;
     assert.equal(second.nonce, 1);
@@ -1569,7 +1576,7 @@ test('explicit predecessor replay survives a reorg and cold restart without anot
     await f.transfers.recover(true, first.hash);
     const review = f.transfers.getSnapshot().review!;
     assert.equal(review.replay!.hash, first.hash);
-    await f.transfers.confirm(review.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(review.id, { method: 'pin', pin: PASSWORD });
     assert.equal(f.signatures, signatures);
     assert.equal(f.broadcasts.length, 3);
     assert.equal(f.broadcasts[2], first.rawTransaction);
@@ -1605,7 +1612,7 @@ test('actual SDK custody activity observes only its retained tuple through the c
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const tx = Transaction.from(f.broadcasts[0]!),
       before = f.signatures;
     const activity = f.runtime.activity!;
@@ -1666,7 +1673,7 @@ test('lost retained-observation phase acknowledgement locks the actual SDK and p
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, { method: 'pin', pin: PASSWORD });
     const tx = Transaction.from(f.broadcasts[0]!);
     const activity = f.runtime.activity!, local = (await activity.load(() => undefined)).locals[0]!;
     f.setRecovery({receipt:{transactionHash:tx.hash,from:tx.from,to:tx.to,status:'0x1',blockNumber:'0xa',blockHash:'0x'+'8'.repeat(64)},nonce:'0x1',canonicalHash:'0x'+'8'.repeat(64)});
@@ -1692,7 +1699,7 @@ test('manual native gap filling obeys the same retained spend budget as automati
     await f.transfers.prepare(RECIPIENT, '0.0000000000007', '1');
     const first = f.transfers.getSnapshot().review!;
     assert.equal(first.nonce, '1');
-    await f.transfers.confirm(first.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(first.id, { method: 'pin', pin: PASSWORD });
     assert.equal(f.signatures, 1);
     assert.equal(f.broadcasts.length, 1);
     for (const nonce of [undefined, '0']) {
@@ -1703,7 +1710,7 @@ test('manual native gap filling obeys the same retained spend budget as automati
     await f.transfers.prepare(RECIPIENT, '0.0000000000001', '0');
     const next = f.transfers.getSnapshot().review!;
     assert.equal(next.nonce, '0');
-    await f.transfers.confirm(next.id, { method: 'password', password: PASSWORD });
+    await f.transfers.confirm(next.id, { method: 'pin', pin: PASSWORD });
     assert.equal(f.signatures, 2);
     assert.deepEqual(f.broadcasts.map(raw => Transaction.from(raw).nonce), [1, 0]);
   } finally { await f.close(); }

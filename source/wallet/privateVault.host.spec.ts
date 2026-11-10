@@ -67,15 +67,19 @@ function fixture() {
       records[key] = structuredClone(value);
     }),
   };
+  const guardOverrides = new WeakMap<IPrivateVaultSession, () => void>();
   const captureSession = (): IPrivateVaultSession => {
     const captured = generation;
-    return {
+    const session = core.createPrivateVaultSession({
       keyring,
       generation: captured,
       assertCurrent: () => {
+        const override = guardOverrides.get(session);
+        if (override) return override();
         if (generation !== captured) throw new Error(sessionError);
       },
-    };
+    });
+    return session;
   };
   const revalidate = jest.fn(async () => undefined);
   const host: IPrivateVaultHost = {
@@ -103,6 +107,9 @@ function fixture() {
   };
   return {
     host,
+    setSessionGuard: (session: IPrivateVaultSession, guard: () => void) => {
+      guardOverrides.set(session, guard);
+    },
     dependencies,
     storage,
     records,
@@ -393,12 +400,13 @@ test('guarded storage rejects an asynchronous session guard before storage I/O',
   const vault = core.createPrivateVaultController(
     {
       ...f.host,
-      captureSession: () => ({
-        ...session,
-        assertCurrent: async () => {
-          throw new Error('Detached guard failure');
-        },
-      }),
+      captureSession: () =>
+        core.createPrivateVaultSession({
+          ...session,
+          assertCurrent: async () => {
+            throw new Error('Detached guard failure');
+          },
+        }),
     },
     { ...f.dependencies, storage: { ...f.storage, compareAndSet } }
   );
@@ -439,7 +447,7 @@ test.each(['prepare', 'receipt', 'commit plan', 'commit session'] as const)(
     const session = f.host.captureSession();
     let run: Promise<unknown>;
     if (operation === 'prepare' || operation === 'receipt') {
-      session.assertCurrent = guard;
+      f.setSessionGuard(session, guard);
       run =
         operation === 'prepare'
           ? vault.prepareRestore(entries, session)
@@ -447,7 +455,10 @@ test.each(['prepare', 'receipt', 'commit plan', 'commit session'] as const)(
     } else {
       const plan = await vault.prepareRestore(entries, admitted);
       f.storage.getItem.mockClear();
-      (operation === 'commit plan' ? admitted : session).assertCurrent = guard;
+      f.setSessionGuard(
+        operation === 'commit plan' ? admitted : session,
+        guard
+      );
       run = vault.commitRestore(plan, entries, 'synthetic-password', session);
     }
 
@@ -472,7 +483,7 @@ test('guarded pruning consumes a rejected guard and retires its restore plan', a
   const stale = f.host.captureSession();
   const oldPlan = await vault.prepareRestore(entries, stale);
   const { guard, sinks } = rejectingGuard();
-  stale.assertCurrent = guard;
+  f.setSessionGuard(stale, guard);
   const current = f.host.captureSession();
   await expect(vault.prepareRestore(entries, current)).resolves.toBeDefined();
   expect(sinks).toHaveLength(1);
@@ -482,6 +493,38 @@ test('guarded pruning consumes a rejected guard and retires its restore plan', a
   ).rejects.toThrow('privacy_restore_stale');
   expect(f.host.authenticate).not.toHaveBeenCalled();
   expect(compareAndSet).not.toHaveBeenCalled();
+});
+
+test('a second preview preserves an earlier plan after only its operation codec retires', async () => {
+  const f = fixture();
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  const owner = f.host.captureSession();
+  let operation = {};
+  const session: IPrivateVaultSession = Object.freeze({
+    ...owner,
+    captureOperation(check: () => void) {
+      const captured = operation;
+      return core.createPrivateVaultSession({
+        generation: owner.generation,
+        keyring: owner.keyring,
+        assertCurrent() {
+          owner.assertCurrent();
+          check();
+          if (operation !== captured)
+            throw new Error('expired operation codec');
+        },
+      });
+    },
+  });
+  const entries = [{ note: NOTE, createdAt: 10 }];
+  const first = await vault.prepareRestore(entries, session);
+  operation = {};
+  await vault.prepareRestore(entries, session);
+  operation = {};
+  await expect(
+    vault.commitRestore(first, entries, 'synthetic-password', session)
+  ).resolves.toMatchObject({ added: 1 });
+  expect(f.host.authenticate).toHaveBeenCalledTimes(1);
 });
 
 test('guarded bundle inspection clears plaintext when its guard stops being synchronous', async () => {
@@ -501,7 +544,7 @@ test('guarded bundle inspection clears plaintext when its guard stops being sync
     .spyOn(f.keyring, 'decryptPrivateRecord')
     .mockImplementationOnce(async (input) => {
       plaintext = await decrypt(input);
-      session.assertCurrent = guard;
+      f.setSessionGuard(session, guard);
       return plaintext;
     });
 
@@ -914,7 +957,7 @@ test('deposit replay requires a synchronous session guard before private I/O', a
 test('an issued deposit replay lease rejects a newly asynchronous guard before private I/O', async () => {
   const f = await replayFixture();
   const lease = await f.vault.authorizeDepositReplay(f.attempt, f.session);
-  f.session.assertCurrent = (async () => undefined) as unknown as () => void;
+  f.setSessionGuard(f.session, async () => undefined);
   f.storage.getItem.mockClear();
   await expect(
     lease.withAdmission(async () => ({ result: 'never' }))

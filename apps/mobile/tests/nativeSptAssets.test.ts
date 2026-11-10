@@ -11,7 +11,7 @@ function fixture() {
   const f = screenFixture(new URL('../src/screens/NativeSptAssets.tsx', import.meta.url), 'NativeSptAssets', {
     '../platform/balancePrivacy': { HIDDEN_BALANCE: '••••', useBalancePrivacy: () => ({ hidden, status: 'ready' }) },
     'react-native': { View: 'View', StyleSheet: { create: (v: unknown) => v } },
-    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Row', 'Text'].map(name => [name, name])), colors: {} },
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Row', 'Text'].map(name => [name, name])), colors: {} },
     '../core/amounts': { formatBalanceDelta, formatBaseUnits },
     '../../../../source/shared/sptInventory': inventory, './IdleActivityBoundary': { IdleTextInput: 'Input' },
   });

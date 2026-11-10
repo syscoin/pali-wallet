@@ -70,7 +70,11 @@ import {
   captureGuardianRecoveryIntent,
   type GuardianRecoveryIntent,
 } from 'utils/smartAccount/guardianRecoveryIntent';
-import { guardianRecoveryIntentResolved } from 'utils/smartAccount/guardianRecoveryLifecycle';
+import {
+  guardianRecoveryIntentResolved,
+  guardianRecoveryTerminalReason,
+  guardianRecoveryTerminalNotice,
+} from 'utils/smartAccount/guardianRecoveryLifecycle';
 import {
   getGuardianRecoveryOperationId,
   GuardianRecoveryObservation,
@@ -794,6 +798,18 @@ const SmartAccountPolicy = () => {
             knownLocalObservation.status
           ))
   );
+  const localTerminalReason =
+    localRecoveryResolved && localRecoveryIntent && guardianStatus
+      ? guardianRecoveryTerminalReason(
+          localRecoveryIntent.operation,
+          guardianStatus,
+          guardianStatus.recoveryTransactionHash
+        )
+      : null;
+  const localTerminalNotice =
+    localTerminalReason && localTerminalReason !== 'executed'
+      ? guardianRecoveryTerminalNotice(localTerminalReason)
+      : null;
   const localRecoveryRetryReady = Boolean(
     localRecoveryIntent &&
       !guardianStatusError &&
@@ -987,7 +1003,13 @@ const SmartAccountPolicy = () => {
           </p>
         </>
       )}
-      {localRecoveryResolved && (
+      {localTerminalNotice && (
+        <p role="status" className="text-brand-yellowInfo">
+          <strong>{localTerminalNotice.title}</strong>{' '}
+          {localTerminalNotice.body}
+        </p>
+      )}
+      {localRecoveryResolved && !localTerminalNotice && (
         <p>{t('settings.smartAccountGuardianLocalResolved')}</p>
       )}
       {guardianStatus?.observedBlock && (

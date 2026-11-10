@@ -19,6 +19,7 @@ export const colors = {
   surface: '#111e33',
   raised: '#162742',
   border: '#263950',
+  controlBorder: '#657d9b',
   text: '#f5f7fb',
   muted: '#9caec5',
   pink: '#ff3e91',
@@ -55,8 +56,8 @@ export function WelcomeBackdrop() {
           <Ellipse cx="195" cy="336" rx="143" ry="205" fill="url(#welcome-dot-fade)" />
         </Mask>
       </Defs>
-      <Ellipse cx="170" cy="300" rx="140" ry="260" fill="url(#welcome-glow)" />
-      <Ellipse cx="205" cy="295" rx="85" ry="230" fill="url(#welcome-blue-glow)" />
+      <Ellipse cx="195" cy="340" rx="140" ry="260" fill="url(#welcome-glow)" />
+      <Ellipse cx="195" cy="340" rx="85" ry="230" fill="url(#welcome-blue-glow)" />
       <Rect width="390" height="844" fill="url(#welcome-dots)" mask="url(#welcome-mask)" />
     </Svg>
   </View>;
@@ -105,8 +106,13 @@ const iconPaths: Record<string, string[]> = {
   ],
   check: ['m5 12 4 4L19 6'],
   lock: ['M7 10V7a5 5 0 0 1 10 0v3', 'M5 10h14v11H5z', 'M12 14v3'],
+  key: ['M14 4a6 6 0 1 1-4.6 9.9L3 20v-4l3-3h3.2A6 6 0 0 1 14 4Z', 'M16 8h.01'],
+  backspace: ['M9 5h11a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-7-7 7-7Z', 'm12 9 6 6', 'm18 9-6 6'],
+  'face-id': ['M4 9V5a1 1 0 0 1 1-1h4', 'M15 4h4a1 1 0 0 1 1 1v4', 'M20 15v4a1 1 0 0 1-1 1h-4', 'M9 20H5a1 1 0 0 1-1-1v-4', 'M8 9v2', 'M16 9v2', 'M12 9v5h-1', 'M8 16c2 2 6 2 8 0'],
   fingerprint: ['M4 9a8 8 0 0 1 16 0', 'M7 21c2-3 2-6 2-9a3 3 0 0 1 6 0c0 4-1 7-2 10', 'M3 16c1-1 1-3 1-4', 'M6 17c1-2 0-4 0-5a6 6 0 0 1 12 0c0 3 0 5-1 8', 'M10 22c2-4 2-6 2-10', 'M21 12c0 2 0 3-1 5'],
   shield: ['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z', 'm8 12 3 3 5-6'],
+  'shield-warning': ['M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6z', 'M12 8v5', 'M12 16h.01'],
+  torch: ['M8 3h8v4l-2 3v10h-4V10L8 7V3Z', 'M8 7h8', 'M10 13h4'],
   eye: [
     'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12',
     'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0',
@@ -327,7 +333,7 @@ export function Button({
         variant === 'secondary' && {
           backgroundColor: colors.raised,
           borderWidth: 1,
-          borderColor: colors.border,
+          borderColor: colors.controlBorder,
         },
         variant === 'quiet' && [styles.compactButton, { backgroundColor: 'transparent' }],
         variant === 'danger' && {
@@ -696,7 +702,7 @@ export const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     color: colors.text,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.controlBorder,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 15,

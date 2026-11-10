@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryAssent, NativeSentryReview as Review } from '../connections/sentryRequests';
 import type { NativeConnectionsView } from '../connections/types';
 import { Button, Card, colors, Header, Notice, Row, Screen, Text } from '../ui';
-import { IdleTextInput } from './IdleActivityBoundary';
+import { PinField } from './PinEntry';
 import { DappSiteStatus } from './DappSiteStatus';
 
 function Field({ name, value }: { name: string; value: string }) {
@@ -23,11 +23,15 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
   const busy = useRef(false), alive = useRef(true), attempt = useRef<object | null>(null);
   const password = credential.id === identity && credential.approval === review.details ? credential.value : '';
   const details = review.details;
+  const [expandedReview, setExpandedReview] = useState<string | null>(null);
+  const showDetails = expandedReview === identity;
   const operation = details?.kind === 'operation' ? details.approval : null;
   const vote = details?.kind === 'vote' ? details.approval : null;
   const link = details?.kind === 'link' ? details.approval : null;
   const key = operation?.keys[selection.id === identity ? selection.index : 0];
-  const title = link ? 'Link Sentry Node' : vote ? 'Approve governance vote' : 'Authorize Sentry update';
+  const title = link ? 'Link Sentry node' : vote ? 'Approve governance vote' : operation?.review.operation === 'updateService' ? 'Update node service' : operation?.review.operation === 'updateRegistrar' ? 'Update node registration' : 'Authorize Sentry update';
+  const fieldNames: Record<string, string> = { service: 'Service address', nevmAddress: 'NEVM address', operatorPayoutScript: 'Operator payout script' };
+  const fieldName = (name: string) => fieldNames[name] ?? name.replace(/([A-Z])/g, ' $1');
   const unavailable = !details || !!review.error || expired;
   const blocked = unavailable || review.busy || submitting || (details?.kind !== 'link' && !password) ||
     !!operation && !key || !!vote && (!vote.nodes.length || !!vote.missingVotingKeys.length);
@@ -49,7 +53,7 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
         ...(key!.authorizationId ? { authorizationId: key!.authorizationId } : {}) };
     setCredential({ id: identity, approval: details, value: '' });
     try { await controller.approveSentry(review.id, review.revision, assent); }
-    catch { if (alive.current && attempt.current === ticket) setError('Could not authorize this request. Check your password and try again.'); }
+    catch { if (alive.current && attempt.current === ticket) setError('Could not authorize this request. Check your PIN and try again.'); }
     finally { if (attempt.current === ticket) { attempt.current = null; busy.current = false; if (alive.current) setPendingIdentity(null); } }
   };
   return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
@@ -72,26 +76,33 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
     </Card>}
     {operation && <>
       <Card style={s.card}>
-        <Field name="Operation" value={operation.review.operation} /><Field name="Registered node" value={operation.review.proTxHash ?? 'New registration'} />
-        <Field name="State source" value={operation.serviceUrl} /><Field name="Transaction fee" value={`${operation.review.feeSatoshis} satoshis`} />
-        {'changes' in operation.review ? Object.entries(operation.review.changes).map(([name, change]) =>
-          <Card key={name} style={s.change}><Text style={s.title}>{name.replace(/([A-Z])/g, ' $1')}</Text>
-            <Field name="Current" value={change.previous} /><Field name="Proposed" value={change.next || (change.previous ? 'Remove registration' : '')} /></Card>) :
-          Object.entries(operation.review.fields).map(([name, value]) => <Field key={name} name={name.replace(/([A-Z])/g, ' $1')} value={value} />)}
-        {'authorizations' in operation.review && operation.review.authorizations.map(auth => <Text key={auth.id}>
-          {auth.id} · {auth.scheme} · {auth.signed ? 'Already signed' : 'Signature required'}
-        </Text>)}
+        <Text style={s.title}>{title}</Text>
+        <Text style={s.muted}>{operation.review.operation === 'updateService' ? 'Change the service information for this node using the selected authority key.' : 'Authorize the node changes shown below using the selected authority key.'}</Text>
+        <Field name="Registered node" value={operation.review.proTxHash ?? 'New registration'} />
+        {key && <><Field name="Authority" value={key.label} /><Text style={s.muted}>{key.role} · {key.scheme}</Text></>}
+        {'changes' in operation.review && Object.entries(operation.review.changes).filter(([name]) => !/script/i.test(name)).map(([name, change]) =>
+          <Card key={name} style={s.change}><Text style={s.title}>{fieldName(name)}</Text><Field name="Current" value={change.previous} /><Field name="Proposed" value={change.next || 'Not set'} /></Card>)}
+        <Field name="Transaction fee" value={`${operation.review.feeSatoshis} satoshis`} />
       </Card>
-      <Card style={s.card}><Text style={s.title}>Fee transaction outputs</Text>
-        {operation.review.outputs.filter(output => !output.isPayload).map((output, i) => <Field key={i}
-          name={`${output.valueSatoshis} satoshis`} value={output.scriptHex} />)}
-      </Card>
-      {!!operation.keys.length && <Card><Text style={s.keyHeading}>Authority key</Text>{operation.keys.map((item, index) => <Row
+      {!!operation.keys.length && <Card><Text style={s.keyHeading}>Choose authority key</Text>{operation.keys.map((item, index) => <Row
         key={`${item.id}:${item.authorizationId ?? ''}`} title={`${item.label} · ${item.authorizationId ?? item.role}`}
         subtitle={`${item.scheme}${key === item ? ' · Selected' : ''}`} onPress={review.busy ? undefined : () => {
           setCredential({ id: identity, approval: details, value: '' }); setSelection({ id: identity, index });
         }} last={index === operation.keys.length - 1} />)}</Card>}
       {!operation.keys.length && <Notice title="Authority key unavailable" body="Import the matching node authority key in Sentry settings before approving this request." />}
+      <Button title={showDetails ? 'Hide request details' : 'View request details'} variant="quiet" size="compact" expanded={showDetails} onPress={() => setExpandedReview(showDetails ? null : identity)} />
+      {showDetails && <>
+        <Card style={s.card}>
+          <Field name="Operation" value={operation.review.operation} /><Field name="State source" value={operation.serviceUrl} />
+          {'changes' in operation.review ? Object.entries(operation.review.changes).filter(([name]) => /script/i.test(name)).map(([name, change]) =>
+            <Card key={name} style={s.change}><Text style={s.title}>{fieldName(name)}</Text><Field name="Current" value={change.previous} /><Field name="Proposed" value={change.next || 'Not set'} /></Card>) :
+            Object.entries(operation.review.fields).map(([name, value]) => <Field key={name} name={fieldName(name)} value={value} />)}
+          {'authorizations' in operation.review && operation.review.authorizations.map(auth => <Text key={auth.id}>{auth.id} · {auth.scheme} · {auth.signed ? 'Already signed' : 'Signature required'}</Text>)}
+        </Card>
+        <Card style={s.card}><Text style={s.title}>Fee transaction outputs</Text>
+          {operation.review.outputs.filter(output => !output.isPayload).map((output, i) => <Field key={i} name={`${output.valueSatoshis} satoshis`} value={output.scriptHex} />)}
+        </Card>
+      </>}
     </>}
     {vote && <Card style={s.card}>
       <Text style={s.title}>{vote.proposal?.name ?? 'Governance proposal'}</Text>
@@ -102,10 +113,8 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
       {vote.nodes.map(node => <Field key={node.proTxHash} name={node.keyLabel} value={node.proTxHash} />)}
       {!!vote.missingVotingKeys.length && <Notice title="Voting keys unavailable" body="Import the matching voting keys in Sentry settings before approving this request." />}
     </Card>}
-    {details && details.kind !== 'link' && <IdleTextInput accessibilityLabel="Wallet password" placeholder="Wallet password"
-      placeholderTextColor={colors.muted} value={password} onChangeText={value => setCredential({ id: identity, approval: details, value })}
-      secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="off" textContentType="none" maxLength={1024}
-      editable={!unavailable && !review.busy && !submitting} style={s.input} />}
+    {details && details.kind !== 'link' && <PinField key={`${identity}:${review.revision}`} label="Wallet PIN" value={password} onChange={value => setCredential({ id: identity, approval: details, value })}
+      busy={unavailable || review.busy || submitting} />}
     {!details && !review.error && <Text accessibilityLiveRegion="polite">Checking node state…</Text>}
     {review.error === 'BLOCKED_SITE' && !review.verification.isScam && <Notice title="Known security risk" body="Pali flagged this website. This request is blocked." />}
     {review.error === 'SENTRY_UNAVAILABLE' && <Notice title="Request unavailable" body="Pali could not verify this node request. Ask the app to try again." />}

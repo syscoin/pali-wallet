@@ -86,17 +86,17 @@ export function NativePrivacyControls({ open, onBack }: Props) {
   };
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen><Header title={t('privacy.serviceSettings')} onBack={close} />
+      <Screen footer={<Button title={t('buttons.save')} disabled={!active || busy || origin === savedOrigin} onPress={() => { void action('save'); }} />}><Header title={t('privacy.serviceSettings')} onBack={close} />
         <Text style={styles.muted}>{t('privacy.serviceHelp')}</Text>
         <IdleTextInput accessibilityLabel={t('privacy.serviceOrigin')} value={origin} onChangeText={setOrigin} editable={!!active && !busy}
           autoCapitalize="none" autoCorrect={false} keyboardType="url" maxLength={2048} style={s.input} />
-        <Button title={t('buttons.save')} disabled={!active || busy || origin === savedOrigin} onPress={() => { void action('save'); }} />
+
         {saved && <Text accessibilityLiveRegion="polite" style={styles.muted}>{t('privacy.serviceSaved')}</Text>}
         <Text style={s.title}>{t('privacy.poolData')}</Text>
         <Card>{PRIVACY_POOLS.map(pool => <Row key={pool.id} title={`${pool.amount} ETH`} right={<Text>{pool.id === poolId ? '✓' : ''}</Text>}
           onPress={busy ? undefined : () => { void selectPool(pool.id); }} />)}</Card>
         <Text accessibilityLiveRegion="polite" style={styles.muted}>{t(`privacy.${running ? 'syncing' : status.phase}`)}</Text>
-        <Button title={t(status.phase === 'paused' ? 'privacy.resume' : 'privacy.refresh')} disabled={!active || busy}
+        <Button title={t(status.phase === 'paused' ? 'privacy.resume' : 'privacy.refresh')} icon="refresh" variant="secondary" disabled={!active || busy}
           onPress={() => { void action('refresh'); }} />
         {running && <Button title={t('privacy.pause')} variant="secondary" onPress={() => { void action('pause'); }} />}
         <Button title={t('privacy.clear')} variant="secondary" disabled={!active || busy} onPress={() => { void action('clear'); }} />

@@ -13,6 +13,12 @@ import type {
 } from '../portfolio/nativeTokens';
 import { Button } from '../ui';
 
+export function nativeTokenAvailableAmount(token: Erc20Metadata, owner: NativePortfolioAccount, snapshot: NativeTokenSnapshot | null): string | null {
+  const item = snapshot?.items.find(candidate => candidate.metadata.contractAddress === token.contractAddress && candidate.metadata.decimals === token.decimals);
+  if (snapshot?.status !== 'ready' || !sameNativePortfolioAccount(snapshot.account, owner) || item?.status !== 'available' || item.units === null) return null;
+  try { return formatTokenUnits(item.units, token.decimals); } catch { return null; }
+}
+
 /** Token MAX fills the existing exact-amount form. Network fees remain native currency. */
 export function NativeTokenMaximum({
   token,
@@ -39,29 +45,13 @@ export function NativeTokenMaximum({
       if (lifetime.current === rendering) lifetime.current = null;
     };
   });
-  const item = snapshot?.items.find(
-    (candidate) =>
-      candidate.metadata.contractAddress === token.contractAddress &&
-      candidate.metadata.decimals === token.decimals
-  );
-  let amount: string | null = null;
-  if (
-    snapshot?.status === 'ready' &&
-    sameNativePortfolioAccount(snapshot.account, owner) &&
-    item?.status === 'available' &&
-    item.units !== null
-  ) {
-    try {
-      if (BigInt(item.units) > BigInt(0))
-        amount = formatTokenUnits(item.units, token.decimals);
-    } catch {
-      /* An unavailable balance cannot populate MAX. */
-    }
-  }
+  const available = nativeTokenAvailableAmount(token, owner, snapshot);
+  const amount = available !== null && /[1-9]/.test(available) ? available : null;
   return (
     <Button
       title={selected ? 'MAX selected' : 'MAX'}
-      variant="quiet"
+      variant="secondary"
+      size="compact"
       disabled={disabled || amount === null}
       onPress={() => {
         if (

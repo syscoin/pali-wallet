@@ -1,3 +1,5 @@
+import { unsignedTransferBytes } from '../../src/custody/evmFeeContracts.ts';
+import { createTestOperationAuthorizer } from '../fixtures/operationAuthorization.ts';
 import { activityFetch } from './utxoActivityFixture';
 import { createNativeUtxoActivity } from '../../src/custody/utxoActivity';
 import { createUtxoActivityReader } from '../../src/core/utxoActivity';
@@ -116,7 +118,7 @@ const fingerprint = '1'.repeat(64);
 export const visualReviewFixture = Object.freeze({
   enabled: visualReviewEnabled,
   label: 'Simulated wallet and device authentication. No real keys or OS biometric prompt.',
-  password: 'Public-password1!',
+  password: '123456',
   phrase: publicBackupWords.join(' '),
   state: () => ({ present: visualWalletPresent, deviceUnlockEnabled: visualDeviceUnlockEnabled, backupConfirmed }),
 });
@@ -175,7 +177,7 @@ export let latestAuthority: NativeCustodyAuthority | null = null;
 export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
 let sessionUnlocked = false;
-let fixturePassword = visualReviewEnabled ? visualReviewFixture.password : 'public-password';
+let fixturePassword: string = visualReviewEnabled ? visualReviewFixture.password : '123456';
 export function recreateRemovalWallet(accountId: 'hd:60:0' | 'hd:60:1') {
   if (!removalFixtureEnabled || fixtureWalletPresent || !catalogue.accounts.some(({ id }) => id === accountId))
     throw Error('Unexpected fixture wallet recreation');
@@ -236,7 +238,7 @@ export function createNativeWalletControllers() {
       await authentication.run(async () => { await unlockGate(); check(); });
     } else {
       await unlockGate();
-      if (credential.password !== fixturePassword) throw new Error('INVALID_CREDENTIAL');
+      if (credential.pin !== fixturePassword) throw new Error('INVALID_CREDENTIAL');
     }
     check();
   };
@@ -269,7 +271,12 @@ export function createNativeWalletControllers() {
         return { authenticated: true };
       },
     } satisfies NonNullable<CustodyRuntime['deviceUnlock']> } : {}),
-    security: { authenticateOperation, async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
+    security: {
+      authenticateOperation,
+      async authenticationStatus() { return { pinConfigured: true, biometricsAvailable: !!authentication, biometricsEnabled: visualDeviceUnlockEnabled }; },
+      async changePin(current, next, check) { check(); if (current !== fixturePassword || !/^\d{6}$/.test(next)) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); fixturePassword = next; check(); },
+      async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); },
+    },
     networks: {
       getSelectedId: () => catalogue.active.networkId,
       reserve(id, expectedRevision) {
@@ -303,7 +310,7 @@ export function createNativeWalletControllers() {
             let active = catalogue.active.accountId;
             let items = [...catalogue.accounts];
             if (request.kind === 'create') {
-              if (request.password !== (visualReviewEnabled ? fixturePassword : 'public-password')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              if (request.password !== (visualReviewEnabled ? fixturePassword : '123456')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
               const index = nextAccountIndex('HDAccount');
               const account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label,
                 address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
@@ -314,7 +321,7 @@ export function createNativeWalletControllers() {
               if (request.kind === 'select') active = account.id;
               else if (request.kind === 'rename') items = items.map((item) => item.id === account.id ? { ...item, label: request.label } : item);
               else if (request.kind === 'remove') {
-                if (request.password !== (visualReviewEnabled ? fixturePassword : 'public-password')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                if (request.password !== (visualReviewEnabled ? fixturePassword : '123456')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
                 if (account.id === active || account.type === 'HDAccount' && account.index === 0) throw new KeyringRuntimeError('ACCOUNT_NOT_REMOVABLE');
                 items = items.filter((item) => item.id !== account.id); importedKeys.delete(account.id);
               } else throw new KeyringRuntimeError('INVALID_INPUT');
@@ -348,7 +355,7 @@ export function createNativeWalletControllers() {
           guard(); audit.importAttempts++; events.push('import:start');
           await importGate();
           if (importFailure) throw new KeyringRuntimeError(importFailure);
-          if (password !== (visualReviewEnabled ? fixturePassword : 'public-password')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+          if (password !== (visualReviewEnabled ? fixturePassword : '123456')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
           guard();
           importedKeys.set(identity.id, key);
           const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: fixture ? 0 : 60, label: input.label, address: identity.address,
@@ -404,7 +411,10 @@ export function createNativeWalletControllers() {
   });
   latestAuthority = authority;
   retiredAuthorities.push(authority);
+  const operationAuthorization = createTestOperationAuthorizer(authenticateOperation, unsignedTransferBytes);
   const transferRuntime: NativeTransferRuntime = {
+    authorizeOperation: operationAuthorization.authorizeOperation,
+    releaseOperationAuthorization: operationAuthorization.releaseOperationAuthorization,
     authenticateOperation,
     replay() { throw Error("Fixture has no retained signed transactions"); },
     async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
@@ -414,7 +424,7 @@ export function createNativeWalletControllers() {
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
       async transition() { throw Error('Fixture does not submit signatures'); } }; },
     assertUnlocked(guard) { guard(); },
-    async sign(_transaction, authority) { audit.signs++; events.push('sign:start'); await signGate(); authority.assertCurrent(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
+    async sign(_transaction, authority) { operationAuthorization.consume(authority.authorization, _transaction, authority.assertCurrent); audit.signs++; events.push('sign:start'); await signGate(); authority.assertCurrent(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
   const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fixtureFetch }) });
   latestTransfers = transfers;
@@ -458,9 +468,10 @@ export function createNativeWalletControllers() {
     execute: (...args) => authority.manageAccounts(...args), cancel: () => authority.cancelAccountOperation(),
   };
   const backupRuntime: KeyringRuntime['backup'] = {
-    async readPhrase(password) {
+    async readPhrase(credential) {
+      const password = typeof credential === 'string' ? credential : credential.method === 'pin' ? credential.pin : visualDeviceUnlockEnabled ? fixturePassword : '';
       if (!sessionUnlocked) throw Error('Locked fixture session');
-      if (password !== (visualReviewEnabled ? fixturePassword : 'public-password')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+      if (password !== (visualReviewEnabled ? fixturePassword : '123456')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
       return publicBackupWords;
     },
     async fingerprint() {
@@ -479,11 +490,11 @@ export function createNativeWalletControllers() {
       guard();
       if (!sessionUnlocked) throw Error('Locked fixture session');
       audit.keyAttempts++;
-      if (password === 'public-password') audit.keyReads++;
+      if (password === '123456') audit.keyReads++;
       events.push('key:start');
       await keyReadGate();
       if (keyFailure) throw new KeyringRuntimeError(keyFailure);
-      if (password !== (visualReviewEnabled ? fixturePassword : 'public-password')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+      if (password !== (visualReviewEnabled ? fixturePassword : '123456')) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
       guard();
       events.push('key:finish');
       if (wifFixtureEnabled && scope.accountId.startsWith('hd:0:')) return `zprv${'A'.repeat(107)}`;

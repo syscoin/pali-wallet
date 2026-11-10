@@ -308,6 +308,10 @@ export class EvmSignedReplay {
     this.ownerId = null;
     return true;
   }
+  /** Join only the status inspection's existing private receipt reconciliation. */
+  waitForReconciliation(): Promise<void> {
+    return this.reconciliation ?? Promise.resolve();
+  }
   private time(): number {
     const value = this.now();
     if (!Number.isFinite(value) || value < 0)

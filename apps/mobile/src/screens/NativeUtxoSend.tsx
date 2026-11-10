@@ -4,6 +4,7 @@ import {
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   StyleSheet,
   View,
@@ -20,6 +21,7 @@ import {
   Coin,
   colors,
   Header,
+  IconButton,
   Notice,
   Screen,
   styles,
@@ -29,7 +31,9 @@ import { NativeLedgerConnectionModal } from './NativeLedger';
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { IdleTextInput } from './IdleActivityBoundary';
 import { TransactionAuthentication } from './TransactionAuthentication';
+import { UtxoRecipientQrScanner } from './UtxoRecipientQrScanner';
 import type { NativeOperationCredential } from '../custody/types';
+import type { NativeUnsignedSendDraft } from './sendNetworkDraft';
 
 import type { UtxoNetwork } from '../core/utxoNetworks';
 import type {
@@ -45,9 +49,9 @@ type Outcome = Readonly<{
 
 function describe(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'INVALID_CREDENTIAL') return 'That password is incorrect. Please try again.';
-  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Biometric confirmation was not completed. Try again or use your password.';
-  if (code === 'AUTH_THROTTLED') return 'Too many incorrect passwords. Unlock your wallet again after waiting.';
+  if (code === 'INVALID_CREDENTIAL') return 'That PIN is incorrect. Please try again.';
+  if (code === 'DEVICE_UNLOCK_UNAVAILABLE') return 'Biometric confirmation was not completed. Try again or use your PIN.';
+  if (code === 'AUTH_THROTTLED') return 'Too many incorrect PINs. Wait a few minutes, then try again. Your review remains available until it expires.';
   if (code === 'INVALID_INPUT')
     return 'Enter a valid address and amount for this network.';
   if (code === 'CANCELLED' || code === 'NOT_READY')
@@ -72,13 +76,21 @@ export function NativeUtxoSendScreen({
   initialDraft,
   beforeClose,
   maximumAmount,
+  availableAmount,
+  onChangeNetwork,
+  draftNotice,
+  onViewTransaction,
   authenticationMethod,
 }: {
-  authenticationMethod: 'biometric' | 'password';
+  authenticationMethod: NativeOperationCredential['method'];
   accountLabel: string;
   ledgerConnection?: NativeLedgerConnectionView;
   initialDraft?: Readonly<{ recipient: string; amount: string; max?: boolean; rbf?: boolean }>;
   maximumAmount?: string;
+  availableAmount?: string;
+  onChangeNetwork?(draft: Extract<NativeUnsignedSendDraft, { kind: 'utxo' }>): void;
+  draftNotice?: string;
+  onViewTransaction?(txid: string): void;
   beforeClose?(): Promise<void>;
   asset?: NativeUtxoAsset;
   network: UtxoNetwork;
@@ -110,17 +122,30 @@ export function NativeUtxoSendScreen({
   >([]);
   const [savedLimit, setSavedLimit] = useState(6);
   const [error, setError] = useState('');
-  const [authenticationOpen, setAuthenticationOpen] = useState(false);
+  const [authentication, setAuthentication] = useState<{ review: NativeUtxoReview; identity: string; method: NativeOperationCredential['method'] } | null>(null);
+  if (authentication && authentication.review !== review) setAuthentication(null);
   const currentReview = useRef<NativeUtxoReview | null>(null);
   useLayoutEffect(() => {
     currentReview.current = review;
-    setAuthenticationOpen(false);
     return () => { currentReview.current = null; };
   }, [review]);
+  const currentOutcome = useRef(outcome);
+  useLayoutEffect(() => { currentOutcome.current = outcome; }, [outcome]);
   const owner = useRef({ revision: 0 });
   const draftRevision = useRef(0);
   const inFlight = useRef(false);
   const closing = useRef(false);
+  type ScanOwner = { network: UtxoNetwork; open: typeof open; revision: number; draft: number };
+  const [scanner, setScanner] = useState<ScanOwner | null>(null);
+  const scannerOwner = useRef<ScanOwner | null>(null);
+  const currentNetwork = useRef({ network, open });
+  const screenActive = useRef(false);
+  useLayoutEffect(() => {
+    screenActive.current = true;
+    return () => { screenActive.current = false; scannerOwner.current = null; };
+  }, [open]);
+  useLayoutEffect(() => { currentNetwork.current = { network, open }; }, [network, open]);
+  const closeScanner = () => { scannerOwner.current = null; setScanner(null); };
   useEffect(() => {
     const lifetime = owner.current;
     const revision = ++lifetime.revision;
@@ -147,34 +172,36 @@ export function NativeUtxoSendScreen({
         if (lifetime.revision === revision) setBusy(false);
       });
     return () => {
+      scannerOwner.current = null;
       lifetime.revision++;
       local?.cancel();
     };
   }, [open]);
-  const close = () => {
-    setAuthenticationOpen(false);
+  const leave = (done: () => void) => {
     if (closing.current) return;
-    Keyboard.dismiss();
-    if (review && !busy) {
-      send?.cancel();
-      setReview(null);
-      setError('');
-      return;
-    }
+    closeScanner(); setAuthentication(null); Keyboard.dismiss();
+    screenActive.current = false;
     send?.cancel();
-    if (!beforeClose) { onBack(); return; }
+    if (!beforeClose) { done(); return; }
     closing.current = true;
     setClosingHardware(true);
     const revision = owner.current.revision;
     void Promise.resolve().then(beforeClose).then(() => {
-      if (owner.current.revision === revision) onBack();
+      if (owner.current.revision === revision) done();
     }, () => {
       if (owner.current.revision === revision) {
+        screenActive.current = true;
         closing.current = false;
         setClosingHardware(false);
         setError('The hardware request is still closing. Try again.');
       }
     });
+  };
+  const close = () => {
+    if (review && !busy) {
+      closeScanner(); setAuthentication(null); send?.cancel(); setReview(null); setError(''); return;
+    }
+    leave(onBack);
   };
   useEffect(() => {
     const subscription = BackHandler.addEventListener(
@@ -216,6 +243,7 @@ export function NativeUtxoSendScreen({
       });
   };
   const invalidateDraft = () => {
+    closeScanner();
     draftRevision.current++;
     send?.cancel();
     setReview(null);
@@ -254,11 +282,12 @@ export function NativeUtxoSendScreen({
     run(async (current) => {
       try {
         const { txid } = await send.confirm(approved, credential);
-        if (current()) { setAuthenticationOpen(false); setReview(null); setOutcome({ txid, phase: 'submitted' }); }
+        if (current()) { setAuthentication(null); setReview(null); setOutcome({ txid, phase: 'submitted' }); }
       } catch (cause) {
         const code = cause instanceof Error ? cause.message : '';
-        if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE'].includes(code)) {
-          setAuthenticationOpen(false); setReview(null);
+        if (current() && credential.method === 'biometric' && code === 'DEVICE_UNLOCK_UNAVAILABLE') setAuthentication(null);
+        if (current() && !['INVALID_CREDENTIAL', 'DEVICE_UNLOCK_UNAVAILABLE', 'AUTH_THROTTLED'].includes(code)) {
+          setAuthentication(null); setReview(null);
           void send.list().then(records => { if (current()) setSaved([...records].reverse()); }).catch(() => undefined);
         }
         throw cause;
@@ -271,14 +300,23 @@ export function NativeUtxoSendScreen({
       disabled={busy || !review.retryTxid && !ledgerReady}
       onPress={() => {
         if (!review.retryTxid && ledgerConnection && !ledgerConnection.isConnected()) return;
-        setError(''); setAuthenticationOpen(true);
+        setError(''); setAuthentication({ review, identity: `${owner.current.revision}:${draftRevision.current}:${review.retryTxid ?? 'new'}`, method: authenticationMethod });
       }}
       testID="native-utxo-confirm"
     />
   );
   const footer = outcome ? (
-    <Button title="Done" onPress={close} />
-  ) : review ? confirm : (
+    <View style={s.card}>
+      {onViewTransaction && outcome.phase !== 'unknown' && <Button title="View transaction" disabled={busy} onPress={() => {
+        if (!screenActive.current || inFlight.current || currentOutcome.current !== outcome || currentNetwork.current.network !== network) return;
+        onViewTransaction(outcome.txid);
+      }} />}
+      <Button title="Done" variant={onViewTransaction && outcome.phase !== 'unknown' ? 'secondary' : 'primary'} onPress={close} />
+    </View>
+  ) : review ? <>{confirm}{authenticationMethod === 'biometric' && <Button title="Use PIN instead" variant="secondary" icon="lock" disabled={busy} onPress={() => {
+    if (currentReview.current !== review || !review.retryTxid && !ledgerReady) return;
+    setError(''); setAuthentication({ review, identity: `${owner.current.revision}:${draftRevision.current}:${review.retryTxid ?? 'new'}`, method: 'pin' });
+  }} />}</> : (
     <Button
       title="Review transfer"
       disabled={!send || busy || !address.trim() || !(amount || max)}
@@ -361,7 +399,7 @@ export function NativeUtxoSendScreen({
               {outcome.phase === 'unknown' && (
                 <Button
                   title="Review saved transfer"
-                  variant="quiet"
+                variant="secondary" size="compact"
                   disabled={busy}
                   onPress={() => {
                     run(async (current) => {
@@ -454,8 +492,20 @@ export function NativeUtxoSendScreen({
             </>
           ) : (
             <>
+              <Card style={s.networkCard}>
+                <Coin id={network.id} size={32} />
+                <View style={s.networkText}><Text style={s.networkName}>{network.name}</Text><Text style={s.available}>{network.symbol}</Text></View>
+                {onChangeNetwork && <Button title="Change" variant="secondary" size="compact" disabled={busy}
+                  onPress={() => {
+                    if (!screenActive.current || currentNetwork.current.network !== network || currentNetwork.current.open !== open || inFlight.current || closing.current) return;
+                    const draft = Object.freeze({ kind: 'utxo' as const, recipient: address, amount, max, rbf });
+                    leave(() => onChangeNetwork(draft));
+                  }} />}
+              </Card>
+              {draftNotice && <Text accessibilityLiveRegion="polite" style={styles.muted}>{draftNotice}</Text>}
               <Card style={s.insetCard}>
                 <Text style={styles.muted}>Recipient address</Text>
+                <View style={s.recipientField}>
                 <IdleTextInput
                   accessibilityLabel="Recipient address"
                   value={address}
@@ -466,11 +516,34 @@ export function NativeUtxoSendScreen({
                   spellCheck={false}
                   autoComplete="off"
                   maxLength={128}
-                  style={s.input}
+                  style={s.recipientInput}
                   returnKeyType="done"
                   onSubmitEditing={() => Keyboard.dismiss()}
                 />
-                <Text style={styles.muted}>Amount in {symbol}</Text>
+                <IconButton label="Scan recipient address" icon="scan" disabled={busy || !send}
+                  onPress={() => {
+                    if (!screenActive.current || currentNetwork.current.network !== network || currentNetwork.current.open !== open || busy || !send || inFlight.current || closing.current) return;
+                    const next = { network, open, revision: owner.current.revision, draft: draftRevision.current };
+                    scannerOwner.current = next; setScanner(next);
+                  }} />
+                </View>
+                <View style={s.amountRow}>
+                  <Text style={styles.muted}>Amount in {symbol}</Text>
+                  {(!asset || maximumAmount !== undefined) && <Button
+                    title={max ? 'Enter amount' : 'MAX'} variant="secondary" size="compact"
+                    disabled={busy || !!asset && !assetMaximumAvailable}
+                    onPress={() => {
+                      invalidateDraft();
+                      if (asset && !max) {
+                        if (!assetMaximumAvailable || maximumAmount === undefined) return;
+                        setAmount(maximumAmount);
+                      }
+                      setMax(!max);
+                    }} />}
+                </View>
+                <Text style={s.available} numberOfLines={1} accessibilityLabel={`Available ${availableAmount ?? 'unavailable'} ${symbol}`}>
+                  Available {availableAmount ?? '—'} {symbol}
+                </Text>
                 <IdleTextInput
                   accessibilityLabel={`Amount in ${symbol}`}
                   value={max && !asset ? 'Max' : amount}
@@ -487,27 +560,12 @@ export function NativeUtxoSendScreen({
                   returnKeyType="done"
                   onSubmitEditing={() => Keyboard.dismiss()}
                 />
-                {(!asset || maximumAmount !== undefined) && (
-                  <Button
-                    title={max ? 'Enter amount' : 'Use maximum'}
-                    variant="quiet"
-                    disabled={busy || !!asset && !assetMaximumAvailable}
-                    onPress={() => {
-                      invalidateDraft();
-                      if (asset && !max) {
-                        if (!assetMaximumAvailable || maximumAmount === undefined) return;
-                        setAmount(maximumAmount);
-                      }
-                      setMax(!max);
-                    }}
-                  />
-                )}
               </Card>
-              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
+              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="secondary" size="compact" icon={advanced ? 'chevron-up' : 'chevron-down'}
                 disabled={busy} expanded={advanced} onPress={() => setAdvanced(!advanced)} />
               {advanced && <Card style={s.insetCard}>
                 <Button title={asset ? `Z-DAG ${rbf ? 'disabled' : 'enabled'}` : `Replace-by-fee ${rbf ? 'enabled' : 'disabled'}`}
-                  variant="quiet" disabled={busy}
+                  variant="secondary" size="compact" disabled={busy}
                   onPress={() => { invalidateDraft(); setRbf(!rbf); }} />
                 <Text style={styles.muted}>{asset
                   ? 'Enable Z-DAG for faster asset transfers. Avoid using it for large amounts. Z-DAG disables replace-by-fee.'
@@ -522,7 +580,7 @@ export function NativeUtxoSendScreen({
                       title={`${
                         accepted ? 'Submitted' : 'Check transfer'
                       } ${txid.slice(0, 8)}…`}
-                      variant="quiet"
+                      variant="secondary" size="compact"
                       disabled={busy}
                       onPress={() => checkStatus(txid)}
                     />
@@ -530,7 +588,7 @@ export function NativeUtxoSendScreen({
                   {saved.length > savedLimit && (
                     <Button
                       title="Show more"
-                      variant="quiet"
+                      variant="secondary" size="compact"
                       disabled={busy}
                       onPress={() => setSavedLimit(savedLimit + 6)}
                     />
@@ -541,13 +599,21 @@ export function NativeUtxoSendScreen({
           )}
         </Screen>
       </KeyboardAvoidingView>
-      {authenticationOpen && review && <TransactionAuthentication
-        identity={`${owner.current.revision}:${draftRevision.current}:${review.retryTxid ?? 'new'}`}
-        method={authenticationMethod} busy={busy} error={error}
+      {scanner && scanner.network === network && scanner.open === open && !review && !outcome && <Modal
+        visible animationType="slide" onRequestClose={closeScanner}>
+        <UtxoRecipientQrScanner network={scanner.network} onClose={closeScanner} onScan={value => {
+          if (!screenActive.current || scannerOwner.current !== scanner || currentNetwork.current.network !== scanner.network || currentNetwork.current.open !== scanner.open ||
+              owner.current.revision !== scanner.revision || draftRevision.current !== scanner.draft || inFlight.current || closing.current) return;
+          invalidateDraft(); setAddress(value);
+        }} />
+      </Modal>}
+      {authentication && authentication.review === review && review && <TransactionAuthentication
+        identity={authentication.identity}
+        method={authentication.method} autoBiometric busy={busy} error={error}
         onConfirm={confirmAuthenticated} onCancel={() => {
           if (currentReview.current !== review) return;
           if (inFlight.current) { close(); return; }
-          setAuthenticationOpen(false); setError('');
+          setAuthentication(null); setError('');
         }}
       />}
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
@@ -566,6 +632,13 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   card: { gap: 12 },
   insetCard: { gap: 12, padding: 16 },
+  networkCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14 },
+  networkText: { flex: 1, minWidth: 0, gap: 3 },
+  networkName: { fontSize: 15, lineHeight: 21, fontWeight: '600' },
+  available: { fontSize: 13, lineHeight: 19, color: colors.muted },
+  amountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  recipientField: { flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingRight: 2 },
+  recipientInput: { flex: 1, minWidth: 0, minHeight: 48, color: colors.text, padding: 12 },
   hero: { alignItems: 'center', gap: 8, paddingVertical: 4 },
   amount: { textAlign: 'center', fontSize: 28, fontWeight: '700' },
   address: {

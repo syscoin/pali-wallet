@@ -93,7 +93,7 @@ const open = async (
       check();
       if (
         !input.acknowledgeNodeStops ||
-        input.password !== 'Fixture password 1!'
+        input.password !== '123456'
       )
         throw new Error('Invalid fixture confirmation');
       calls.push('release');

@@ -4,9 +4,9 @@ import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { useFiatCurrency } from '../platform/fiatPreferences';
 import { walletFetch } from '../platform/http';
 import { createNativeCoinQuoteReader, nativeCoinQuoteSource, type NativeCoinQuote } from './nativeCoinQuote.ts';
+import { formatIndicativeFiat } from './fiatDisplay.ts';
 
 const read = createNativeCoinQuoteReader(walletFetch);
-const displayPrice = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
 
 /** Display only: the exact on-chain balance and send arithmetic stay separate. */
 export function useNativeCoinQuote(id: string | null, amount: string | null, registration?: NativeNetworkRegistration | null): Readonly<{
@@ -53,6 +53,5 @@ export function useNativeCoinQuote(id: string | null, amount: string | null, reg
   if (!supported || !available || !currency || !sourceKey || quote?.key !== sourceKey)
     return { supported, quote: null };
   const value = Number(amount) * quote.value.price;
-  if (!Number.isFinite(value)) return { supported, quote: null };
-  return { supported, quote: `≈ ${displayPrice.format(value)} ${currency.toUpperCase()}` };
+  return { supported, quote: formatIndicativeFiat(value, currency) };
 }

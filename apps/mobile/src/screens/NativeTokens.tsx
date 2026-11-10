@@ -27,7 +27,7 @@ import type {
   NativeTokenView,
 } from '../portfolio/nativeTokens';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
-import { Button, Card, Coin, colors, IconButton, Notice, styles, Text } from '../ui';
+import { Button, Card, Coin, colors, Icon, IconButton, Notice, styles, Text } from '../ui';
 import { AssetMarketCard } from '../portfolio/AssetMarketCard';
 import type { NativeNetworkRegistration } from '../custody/networkContext';
 
@@ -267,7 +267,7 @@ function TokenContent({
           </Text>
           {route.kind === 'list' && hasNativeAsset && (
             <View style={s.actionRow}>
-              <Button title="Import token" icon="plus" size="compact" variant="quiet"
+              <Button title="Import token" icon="plus" size="compact" variant="secondary"
                 disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
               <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
                 disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
@@ -276,7 +276,7 @@ function TokenContent({
           {route.kind !== 'list' && (
             <Button
               title={route.kind === 'collectible' ? 'Back to collectibles' : 'Back to tokens'}
-              variant="quiet"
+              variant="secondary" size="compact" icon="arrow-left"
               disabled={snapshot.busy}
               onPress={() => {
                 back();
@@ -308,7 +308,7 @@ function TokenContent({
                   tone="amber"
                 />
               ) : snapshot.status === 'ready' && snapshot.items.length === 0 ? (
-                <Notice
+                hasNativeAsset ? <Text style={s.provenance}>No custom tokens added</Text> : <Notice
                   title="No custom tokens added"
                   body="Add a token by its contract address on this network."
                 />
@@ -377,7 +377,7 @@ function TokenContent({
                         style={s.collectibleLink}
                         onPress={() => openCollectible({ source: 'saved', item })}
                       >
-                        <Text style={s.provenance}>View collectible ›</Text>
+                        <Text style={s.collectibleAction}>View collectible</Text><Icon name="chevron-right" size={18} color={colors.text} />
                       </IdlePressable>
                     </Card>
                   );
@@ -411,7 +411,7 @@ function TokenContent({
                   {snapshot.canCheckCollectible && <IdlePressable accessibilityRole="button"
                     accessibilityLabel={`View ${name} ${tokenId === undefined ? 'collection' : `token ${tokenId}`}`}
                     style={s.collectibleLink}
-                    onPress={() => openCollectible({ source: 'explorer', item })}><Text style={s.provenance}>View collectible ›</Text></IdlePressable>}
+                    onPress={() => openCollectible({ source: 'explorer', item })}><Text style={s.collectibleAction}>View collectible</Text><Icon name="chevron-right" size={18} color={colors.text} /></IdlePressable>}
                 </Card>;
               })}
               {discovery?.limited && <Text style={styles.muted}>Showing up to 20 results.</Text>}
@@ -714,7 +714,7 @@ function TokenContent({
                   />
                   <Button
                     title="Remove token"
-                    variant="quiet"
+                    variant="danger" size="compact" icon="trash"
                     disabled={busy}
                     onPress={() =>
                       setRoute({
@@ -914,8 +914,8 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
     {onRemove && (confirmRemove ? <>
       <Notice title="Remove this collectible?" body="It will be removed from your saved list. Its ownership won’t change." />
       <Button title="Remove from saved list" variant="danger" disabled={busy} onPress={() => void onRemove()} />
-      <Button title="Cancel" variant="quiet" disabled={busy} onPress={() => setConfirmRemove(false)} />
-    </> : <Button title="Remove collectible" variant="quiet" disabled={busy} onPress={() => {
+      <Button title="Cancel" variant="secondary" size="compact" disabled={busy} onPress={() => setConfirmRemove(false)} />
+    </> : <Button title="Remove collectible" variant="danger" size="compact" icon="trash" disabled={busy} onPress={() => {
       cancel();
       setResult({ kind: 'idle' });
       setConfirmRemove(true);
@@ -973,7 +973,8 @@ const s = StyleSheet.create({
   identityTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { fontSize: 17, lineHeight: 25, fontWeight: '600', flexShrink: 1 },
   tokenRow: { padding: 14, gap: 8 },
-  collectibleLink: { minHeight: 44, justifyContent: 'center' },
+  collectibleLink: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 14, backgroundColor: colors.raised },
+  collectibleAction: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: '600' },
   tokenName: { gap: 3, flex: 1 },
   contract: { fontSize: 13, lineHeight: 22 },
   rowContract: { fontSize: 11, lineHeight: 18, color: colors.muted },

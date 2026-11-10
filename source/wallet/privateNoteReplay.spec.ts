@@ -22,6 +22,7 @@ import {
 } from './evmSignedRecords';
 import { EvmSignedReplay } from './evmSignedReplay';
 import { authorizePrivateNoteReplay } from './privateNoteReplay';
+import { createPrivateVaultSession } from './privateVault';
 import { createPrivateVaultController } from './privateVault';
 import type { IPrivacyDepositAttempt } from '../utils/privacy/transactionTypes';
 import type { IPrivacyWithdrawalAttempt } from '../utils/privacy/withdrawalTransactionTypes';
@@ -59,13 +60,13 @@ async function fixture(
     sequence = 1;
   const session = () => {
     const captured = generation;
-    return {
+    return createPrivateVaultSession({
       keyring,
       generation,
       assertCurrent() {
         if (captured !== generation) throw Error('retired');
       },
-    };
+    });
   };
   const dependencies = {
     mutex,

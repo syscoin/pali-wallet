@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryKeyManagement } from '../custody/sentryKeyManagement';
 import { Button, colors, Header, Screen, styles, Text } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
-import { NoteBackupPasswordField } from './NoteBackupPasswordField';
+import { PinField } from './PinEntry';
 
 type Props = {
   manager: Pick<NativeSentryKeyManagement, 'getSettings' | 'saveSettings'>;
@@ -143,7 +143,7 @@ export function NativeSentrySettings({
     } catch {
       if (current.live && current.request === request)
         setNotice(
-          'Could not save settings. Check the service origin, fee limit and wallet password.'
+          'Could not save settings. Check the service origin, fee limit and wallet PIN.'
         );
     } finally {
       current.busy = false;
@@ -181,7 +181,7 @@ export function NativeSentrySettings({
                   void save();
                 }}
               />
-              <Button title="Cancel" variant="quiet" size="compact" onPress={back} />
+              <Button title="Cancel" variant="secondary" size="compact" onPress={back} />
             </>
           }
         >
@@ -221,8 +221,8 @@ export function NativeSentrySettings({
             maxLength={8}
             style={s.input}
           />
-          <NoteBackupPasswordField
-            label="Confirm wallet password"
+          <PinField
+            label="Confirm wallet PIN"
             value={password}
             onChange={setPassword}
             busy={busy || !loaded}

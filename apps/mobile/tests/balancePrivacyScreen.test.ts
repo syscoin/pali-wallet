@@ -4,25 +4,26 @@ import { createBalancePrivacy } from '../src/core/balancePrivacy.ts';
 import { nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
 
-async function fixture(failSave = false) {
+async function fixture(failSave = false, changePinAvailable = false) {
   let raw: string | null = null;
   const preference = createBalancePrivacy({ async get() { return raw; }, async set(value) { if (failSave) throw Error('unavailable'); raw = value; } });
   await preference.reload();
-  let autoLock = 0, recovery = 0;
+  let autoLock = 0, recovery = 0, changePin = 0, cancelled = 0;
   const f = screenFixture(new URL('../src/screens/NativeSecurity.tsx', import.meta.url), 'NativeSecurity', {
     '../platform/balancePrivacy': { useBalancePrivacy: preference.getSnapshot, saveBalancePrivacy: preference.save, reloadBalancePrivacy: preference.reload },
+    '../platform/useBiometricPresentation': { useBiometricPresentation: () => ({ label: 'biometrics', icon: 'fingerprint' }) },
     '../platform/localization': nativeTranslationFixture,
-    './IdleActivityBoundary': { IdleTextInput: 'Input' },
+    './PinEntry': { PinField: 'PinField' },
     'react-native': { ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Switch', 'View'].map(name => [name, name])),
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, Platform: { OS: 'ios' }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
   });
-  const props = { keyExport: { onClear: () => () => {}, cancel() {}, isCurrent: () => false }, keyFormat: null,
+  const props = { keyExport: { onClear: () => () => {}, cancel() { cancelled++; }, isCurrent: () => false }, keyFormat: null,
     accountId: 'hd:60:0', accountType: 'HDAccount', accountLabel: 'Account 1', address: '0x1111111111111111111111111111111111111111',
-    onViewRecovery() { recovery++; }, onAutoLock() { autoLock++; }, onLock() {}, onBack() {}, captureFailureHandler: () => () => {} };
+    onViewRecovery() { recovery++; }, onAutoLock() { autoLock++; }, ...(changePinAvailable ? { onChangePin() { changePin++; } } : {}), onLock() {}, onBack() {}, captureFailureHandler: () => () => {} };
   return { preference, render(backupConfirmed = true) { return screenElements(f.render({ ...props, backupConfirmed })); }, close: f.close,
-    counts: () => ({ autoLock, recovery }), raw: () => raw };
+    counts: () => ({ autoLock, recovery }), pinCounts: () => ({ changePin, cancelled }), raw: () => raw };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
@@ -59,5 +60,15 @@ test('failed privacy save stays hidden and Security offers an honest reload acti
     assert.equal(rows.find(row => row.type === 'Row' && row.props.title === 'Privacy mode')?.props.right.props.disabled, true);
     rows.find(row => row.type === 'Button' && row.props.title === 'Retry privacy setting')!.props.onPress();
     await settle(); assert.deepEqual(f.preference.getSnapshot(), { status: 'ready', hidden: false });
+  } finally { f.close(); }
+});
+
+
+test('Security exposes Change PIN only with a real action and clears private presentation before navigation', async () => {
+  const f = await fixture(false, true);
+  try {
+    const row = f.render().find(element => element.type === 'Row' && element.props.title === 'Change PIN'); assert(row);
+    row.props.onPress();
+    assert.deepEqual(f.pinCounts(), { changePin: 1, cancelled: 1 });
   } finally { f.close(); }
 });

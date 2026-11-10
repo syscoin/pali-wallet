@@ -24,13 +24,16 @@ import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { recordIdleActivity } from '../platform/security';
 import { IdlePressable } from './IdleActivityBoundary';
 
+export type NativePrivateDepositTask = Readonly<{ poolId: PrivacyPoolId; noteId: string }>;
+
 type Props = {
   open(
     signal: AbortSignal,
     assertCurrent: () => void
   ): Promise<DepositController>;
   onBack(): void;
-  onBackup(): void;
+  onBackup(task?: NativePrivateDepositTask): void;
+  initialTask?: NativePrivateDepositTask;
   onActivity?(hash: string): void;
 };
 type Owner = {
@@ -53,6 +56,7 @@ export function NativePrivateDeposit({
   onBack,
   onBackup,
   onActivity,
+  initialTask,
 }: Props) {
   const owner = useRef<Owner | undefined>(undefined);
   const [opened, setOpened] = useState<{
@@ -84,8 +88,9 @@ export function NativePrivateDeposit({
   const back = useCallback(() => {
     leave(callbacks.current.onBack);
   }, [leave]);
-  const backup = useCallback(() => {
-    leave(callbacks.current.onBackup);
+  const backup = useCallback((task?: NativePrivateDepositTask) => {
+    const captured = task && Object.freeze({ poolId: task.poolId, noteId: task.noteId });
+    leave(() => callbacks.current.onBackup(captured));
   }, [leave]);
   const activity = useCallback(
     (hash: string) => {
@@ -145,6 +150,7 @@ export function NativePrivateDeposit({
         controller={current.controller}
         onBack={back}
         onBackup={backup}
+        initialTask={initialTask}
         onActivity={onActivity ? activity : undefined}
       />
     );
@@ -154,7 +160,7 @@ export function NativePrivateDeposit({
         footer={
           <Button
             title="Close"
-            variant="quiet" size="compact"
+            variant="secondary" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
@@ -184,10 +190,12 @@ function DepositContent({
   onBack,
   onBackup,
   onActivity,
+  initialTask,
 }: {
   controller: DepositController;
   onBack(): void;
-  onBackup(): void;
+  onBackup(task?: NativePrivateDepositTask): void;
+  initialTask?: NativePrivateDepositTask;
   onActivity?: Props['onActivity'];
 }) {
   const state = useSyncExternalStore(
@@ -195,7 +203,7 @@ function DepositContent({
     controller.getSnapshot,
     controller.getSnapshot
   );
-  const [poolId, setPoolId] = useState<PrivacyPoolId>(PRIVACY_POOLS[0]!.id);
+  const [poolId, setPoolId] = useState<PrivacyPoolId>(initialTask?.poolId ?? PRIVACY_POOLS[0]!.id);
   const [choosing, setChoosing] = useState(false);
   const [acknowledged, setAcknowledged] = useState<string | null>(null);
   const [details, setDetails] = useState<string | null>(null);
@@ -203,6 +211,9 @@ function DepositContent({
   const options = useRef(
     new Map<PrivacyPoolId, React.ComponentRef<typeof IdlePressable>>()
   );
+  useEffect(() => {
+    if (initialTask) void controller.prepare({ poolId: initialTask.poolId, noteId: initialTask.noteId }).catch(() => undefined);
+  }, [controller, initialTask]);
   const review = state.review;
   const result = state.result;
   const busy =
@@ -221,7 +232,7 @@ function DepositContent({
   const prepare = () => {
     setChoosing(false);
     setAcknowledged(null);
-    void controller.prepare({ poolId }).catch(() => undefined);
+    void controller.prepare({ poolId, ...(initialTask?.poolId === poolId ? { noteId: initialTask.noteId } : {}) }).catch(() => undefined);
   };
   const refresh = () => {
     setAcknowledged(null);
@@ -305,7 +316,7 @@ function DepositContent({
           <>
             {primary}
             {!result && (
-              <Button title="Close" variant="quiet" size="compact" onPress={onBack} />
+              <Button title="Close" variant="secondary" size="compact" onPress={onBack} />
             )}
           </>
         }
@@ -439,11 +450,14 @@ function DepositContent({
                 Keep a private backup of this note. Your recovery phrase cannot
                 restore it.
               </Text>
-              <Button
+              <Button icon="shield"
                 title="Back up private notes"
-                variant="quiet" size="compact"
+                variant="secondary" size="compact"
                 disabled={busy}
-                onPress={onBackup}
+                onPress={() => {
+                  if (busy || controller.getSnapshot().review !== review || controller.getSnapshot().phase !== 'review') return;
+                  onBackup(Object.freeze({ poolId: review.poolId, noteId: review.noteId }));
+                }}
               />
               <IdlePressable
                 accessibilityRole="checkbox"
@@ -483,9 +497,9 @@ function DepositContent({
               </IdlePressable>
             </View>
             {!busy && (
-              <Button
+              <Button icon="edit"
                 title="Change amount"
-                variant="quiet" size="compact"
+                variant="secondary" size="compact"
                 onPress={() => {
                   setChoosing(true);
                   setAcknowledged(null);
@@ -548,17 +562,17 @@ function DepositContent({
             />
             {feedback}
             {hash && onActivity && (
-              <Button
+              <Button icon="activity"
                 title="View in Activity"
-                variant="quiet" size="compact"
+                variant="secondary" size="compact"
                 onPress={() => onActivity(hash)}
               />
             )}
-            <Button
+            <Button icon="shield"
               title="Back up private notes"
-              variant="quiet" size="compact"
+              variant="secondary" size="compact"
               disabled={busy}
-              onPress={onBackup}
+              onPress={() => onBackup()}
             />
           </>
         )}

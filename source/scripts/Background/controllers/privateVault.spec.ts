@@ -3,6 +3,7 @@ import { webcrypto } from 'crypto';
 import { Interface, keccak256, parseEther, toUtf8Bytes } from 'ethers';
 
 import { createPrivacyTransactionsController } from '../../../wallet/privacyTransactions';
+import { createPrivateVaultSession } from '../../../wallet/privateVault';
 import { KeyringAccountType } from 'types/network';
 import { AsyncMutex } from 'utils/asyncMutex';
 import { identifyClassicNote } from 'utils/privacy/note';
@@ -179,7 +180,7 @@ function fixture(
     if (!unlocked) throw new Error('privacy_vault_locked');
     const capturedKeyring = keyring;
     const capturedGeneration = generation;
-    return {
+    return createPrivateVaultSession({
       keyring,
       generation,
       assertCurrent: () => {
@@ -190,7 +191,7 @@ function fixture(
         )
           throw new Error('privacy_vault_session_changed');
       },
-    };
+    });
   };
   const authenticate = jest.fn(
     async (

@@ -1,3 +1,4 @@
+import { enterPin, pinField, fillPinField, revealBackupPhrase, confirmFixtureBackup } from '../ui/operationAuthentication';
 import { test, expect, type Page } from '@playwright/test';
 
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -5,8 +6,7 @@ const SECOND = '0x1111111111111111111111111111111111111111';
 const PUBLIC_TEST_KEY = `0x${'1'.repeat(64)}`;
 
 async function unlock(page: Page) {
-  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
-  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await enterPin(page, '123456');
   await expect(page.getByRole('button', { name: 'Security & backups', exact: false })).toBeVisible();
 }
 async function openSecurity(page: Page, query = '') {
@@ -18,11 +18,11 @@ async function openSecurity(page: Page, query = '') {
 }
 async function openKey(page: Page) {
   await page.getByRole('button', { name: 'Reveal account private key', exact: false }).click();
-  await expect(page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true })).toHaveValue('');
+  await expect(pinField(page, 'Confirm your wallet PIN')).toHaveText('Enter PIN');
   await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
 }
-async function reveal(page: Page, password = 'public-password') {
-  await page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true }).fill(password);
+async function reveal(page: Page, password = '123456') {
+  await fillPinField(pinField(page, 'Confirm your wallet PIN'), password);
   await page.getByRole('button', { name: 'Reveal private key', exact: true }).click();
 }
 
@@ -54,7 +54,7 @@ test('selected-account reveal stays hidden until fresh auth and clears on Hide a
   expect((await page.evaluate(() => window.__watchFixture.audit())).keyReads).toBe(1);
   await page.getByRole('button', { name: 'Hide private key', exact: true }).click();
   await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true })).toHaveValue('');
+  await expect(pinField(page, 'Confirm your wallet PIN')).toHaveText('Enter PIN');
   await expect(page.getByRole('button', { name: 'Reveal private key', exact: true })).toBeDisabled();
   await reveal(page);
   await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toBeVisible();
@@ -69,17 +69,14 @@ test('Security uses the actual seed backup flow and offers no reset or clipboard
   await openSecurity(page);
   await expect(page.getByText('Recovery phrase backed up', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Recovery guide', exact: false }).click();
-  await expect(page.getByText(/lock your wallet and choose Forgot password/)).toBeVisible();
+  await expect(page.getByText(/lock your wallet and choose Forgot PIN/)).toBeVisible();
   await expect(page.getByRole('button', { name: /Reset|Restore|Import|Copy|Share/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'View recovery phrase', exact: false }).click();
-  await page.getByRole('textbox', { name: 'Confirm your password', exact: true }).fill('public-password');
-  await page.getByRole('button', { name: 'Show recovery phrase', exact: true }).click();
+  await revealBackupPhrase(page);
   await expect(page.getByText('abandon', { exact: true })).toHaveCount(11);
   await expect(page.getByRole('button', { name: /Copy|Share/ })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Done', exact: true })).toBeDisabled();
-  await page.getByRole('checkbox', { name: 'I have written down my recovery phrase and stored it safely', exact: true }).click();
-  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await confirmFixtureBackup(page);
   await expect(page.getByText('Backup complete', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Security & backups', exact: false })).toBeVisible();
@@ -94,7 +91,7 @@ for (const event of ['background', 'inactive', 'blur'] as const) {
     await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toBeVisible();
     await page.evaluate((state) => state === 'blur' ? window.__watchFixture.blur() : window.__watchFixture.lifecycle(state), event);
     await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
     await page.evaluate(() => window.__watchFixture.lifecycle('active'));
     await unlock(page);
     await page.getByRole('button', { name: 'Security & backups', exact: false }).click();
@@ -102,10 +99,10 @@ for (const event of ['background', 'inactive', 'blur'] as const) {
     await page.evaluate(() => window.__watchFixture.delayKeyRead(true));
     await reveal(page);
     await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().keyReads)).toBe(2);
-    await expect(page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true })).toHaveValue('');
+    await expect(pinField(page, 'Confirm your wallet PIN')).toHaveText('Enter PIN');
     await page.evaluate((state) => state === 'blur' ? window.__watchFixture.blur() : window.__watchFixture.lifecycle(state), event);
     await page.evaluate(() => { window.__watchFixture.lifecycle('active'); window.__watchFixture.releaseKeyRead(); });
-    await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
     await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
     await expect(page.getByText(/could not be shown/)).toHaveCount(0);
     expect(await page.evaluate(() => window.__watchFixture.events().filter((entry) => entry === 'key:finish').length)).toBe(1);
@@ -131,12 +128,12 @@ for (const failure of ['password', 'throttle'] as const) {
     page.on('pageerror', (error) => failures.push(error.message));
     await openSecurity(page); await openKey(page);
     if (failure === 'throttle') await page.evaluate(() => window.__watchFixture.keyFailure('AUTH_THROTTLED'));
-    await reveal(page, failure === 'password' ? 'wrong-password' : 'public-password');
-    await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
-    await expect(page.getByText(failure === 'password' ? 'That password is incorrect. Please try again.' :
-      'Too many incorrect passwords. Wait a few minutes before trying again.', { exact: true })).toBeVisible();
+    await reveal(page, failure === 'password' ? '000000' : '123456');
+    await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+    await expect(page.getByText(failure === 'password' ? 'That PIN is incorrect. Please try again.' :
+      'Too many incorrect PINs. Wait a few minutes before trying again.', { exact: true })).toBeVisible();
     await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
-    await expect(page.getByRole('textbox', { name: 'Password', exact: true })).toHaveValue('');
+    await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('locked');
     expect(await page.evaluate(() => window.__watchFixture.events().includes('key:finish'))).toBe(false);
     expect(failures).toEqual([]);
@@ -144,25 +141,25 @@ for (const failure of ['password', 'throttle'] as const) {
 }
 
 for (const departure of ['back', 'background', 'new-unlock'] as const) {
-  test(`late wrong-password feedback is suppressed after ${departure}`, async ({ page }) => {
+  test(`late 000000 feedback is suppressed after ${departure}`, async ({ page }) => {
     await openSecurity(page); await openKey(page);
     await page.evaluate(() => window.__watchFixture.delayKeyRead(true));
-    await reveal(page, 'wrong-password');
+    await reveal(page, '000000');
     await expect.poll(() => page.evaluate(() => window.__watchFixture.audit().keyAttempts)).toBe(1);
     if (departure === 'back') {
       await page.getByRole('button', { name: 'Back', exact: true }).click();
       await expect(page.getByText('Recovery phrase backed up', { exact: true })).toBeVisible();
     } else {
       await page.evaluate(() => { window.__watchFixture.lifecycle('background'); window.__watchFixture.lifecycle('active'); });
-      await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
       if (departure === 'new-unlock') await unlock(page);
     }
     await page.evaluate(() => window.__watchFixture.releaseKeyRead());
     if (departure === 'new-unlock') {
       await expect(page.getByRole('button', { name: 'Security & backups', exact: false })).toBeVisible();
       expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
-    } else await expect(page.getByRole('button', { name: 'Unlock wallet', exact: true })).toBeVisible();
-    await expect(page.getByText('That password is incorrect. Please try again.', { exact: true })).toHaveCount(0);
+    } else await expect(page.getByRole('heading', { name: 'Welcome back', exact: true })).toBeVisible();
+    await expect(page.getByText('That PIN is incorrect. Please try again.', { exact: true })).toHaveCount(0);
     await expect(page.getByText(PUBLIC_TEST_KEY, { exact: true })).toHaveCount(0);
     expect(await page.evaluate(() => window.__watchFixture.events().includes('key:finish'))).toBe(false);
   });

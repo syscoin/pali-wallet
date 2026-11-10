@@ -41,7 +41,7 @@ function ResetActivity({ accountLabel, target, onBack }: {
   };
   return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen gap={16} footer={<>
     <Button title={busy ? t('mobile.resetActivity.working') : t('mobile.resetActivity.title')} variant="danger" disabled={busy} onPress={() => void reset()} />
-    <Button title={t('buttons.back')} variant="quiet" onPress={onBack} />
+    <Button title={t('buttons.back')} variant="secondary" onPress={onBack} />
   </>}>
     <Header title={t('mobile.resetActivity.title')} subtitle={`${accountLabel} · ${target.networkLabel}`} onBack={onBack} />
     <Notice title={t('mobile.resetActivity.question')} body={t('mobile.resetActivity.description')} />
@@ -50,8 +50,8 @@ function ResetActivity({ accountLabel, target, onBack }: {
   </Screen></SafeAreaView>;
 }
 
-export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, onInfrastructure, activityReset, onLock, onBack, navigation, backupRequired = false, onBackup }: {
-  accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
+export function RealSettings({ accountLabel, watchOnly, onSecurity, onConnections, onInfrastructure, activityReset, onLock, onBack, navigation, backupRequired = false, onBackup }: {
+  accountLabel: string; watchOnly: boolean; navigation?: ShellLeafNavigation; onSecurity?: () => void; onAutoLock?: () => void; onConnections?: () => void; onInfrastructure?: () => void; onLock(): void; onBack(): void;
   backupRequired?: boolean; onBackup?(): void;
   activityReset?: ActivityResetTarget;
 }) {
@@ -73,10 +73,10 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
     <Button title={watchOnly ? t('mobile.settings.hide') : t('mobile.settings.lock')} icon="lock" size="compact" variant="secondary" onPress={onLock} />
   }>
     <Header title={t('mobile.settings.title')} subtitle={accountLabel} onBack={navigation ? undefined : onBack} />
-    {backupRequired && <WalletBackupBadge onPress={onBackup} />}
-    {(onSecurity || onAutoLock || onInfrastructure || activityReset) && <Card>
-      {onSecurity && <Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} dense last={!onAutoLock && !onInfrastructure && !activityReset} />}
-      {onAutoLock && <Row title={t('mobile.settings.autoLockTitle')} subtitle={t('mobile.settings.autoLockSubtitle')} icon="lock" onPress={onAutoLock} dense last={!onInfrastructure && !activityReset} />}
+    {backupRequired && onBackup && <WalletBackupBadge onPress={onBackup} />}
+    {(onSecurity || onConnections || onInfrastructure || activityReset) && <Card>
+      {onSecurity && <Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} dense last={!onConnections && !onInfrastructure && !activityReset} />}
+      {onConnections && <Row title={t('mobile.tools.connections')} subtitle={t('mobile.tools.connectionsBody')} icon="globe" onPress={onConnections} dense last={!onInfrastructure && !activityReset} />}
       {onInfrastructure && <Row title={t('settings.smartAccountInfrastructure')} subtitle={t('settings.smartAccountInfrastructureCheckStatus')} icon="shield" onPress={onInfrastructure} dense last={!activityReset} />}
       {activityReset && <Row title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} icon="activity" onPress={() => setOpened({ leaf: 'activity', scope: activityReset.scope })} dense last />}
     </Card>}

@@ -80,7 +80,7 @@ export type NativeSmartOperationPorts = Readonly<{
   background(): void;
   signingOwners: readonly NativeSmartAccountSigningOwner[];
   assertOwnerCurrent(owner: NativeSmartAccountSigningOwner): void;
-  slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
+  slhDsa: ((metadata: ISmartAccountMetadata, actionHash: string, assertCurrent: () => void, signal: AbortSignal) => NonNullable<SmartAccountAuthenticatorPorts['slhDsa']>) | null;
   checkAddress(address: string): Promise<IBlacklistCheckResult>;
   signOwner(
     address: string,
@@ -420,7 +420,7 @@ export function createNativeSmartOperation(
         actionHash: prepared.actionHash,
         accountId: account.id,
         allowReservedSLHDSASignature: canUseReservedSLHDSASignature({ accountAddress: account.address, executions: prepared.executions, smartAccount: metadata }),
-        slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, prepared.actionHash, assertCurrent),
+        slhDsa: ports.slhDsa === null ? null : ports.slhDsa(metadata, prepared.actionHash, assertCurrent, signal),
         localOwners: ports.signingOwners,
         assertCurrent,
         assertOwnerCurrent: ports.assertOwnerCurrent,

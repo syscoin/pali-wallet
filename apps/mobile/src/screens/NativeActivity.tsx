@@ -470,7 +470,7 @@ function NativeActivityContent({
           subtitle={`${accountLabel}${
             snapshot.networkName ? ` · ${snapshot.networkName}` : ''
           }`}
-          onBack={close}
+          onBack={!navigation || chosen || savedPending || copyAddress ? close : undefined}
           right={!chosen ? <View style={s.toolbar}>
             <IconButton label="Refresh activity" icon="refresh"
               disabled={snapshot.status === 'loading' || snapshot.loadingMore || savedPending?.status === 'loading'}
@@ -518,7 +518,7 @@ function NativeActivityContent({
                 }} />
               <View style={s.listHeading}>
                 <Text style={s.caption}>Recent activity</Text>
-                {snapshot.canViewSavedPending && <Button title="Saved pending" variant="quiet" size="compact"
+                {snapshot.canViewSavedPending && <Button icon="clock" title="Saved pending" variant="secondary" size="compact"
                   onPress={() => void afterPositionSaved(() => {
                     setFeedback('');
                     list.current?.scrollToOffset({ offset: 0, animated: false });
@@ -616,7 +616,7 @@ function NativeActivityContent({
             ]}
             {...(snapshot.explorerUrl ? { onExplorer: () => { void Linking.openURL(`${snapshot.explorerUrl!.replace(/\/$/, '')}/tx/${chosen.hash}`).catch(() => setFeedback('Could not open the explorer.')); } } : {})}
           />
-          <Button title="Details" variant="quiet" size="compact" expanded={detailsFor === chosen.hash}
+          <Button title="Details" icon={detailsFor === chosen.hash ? 'chevron-up' : 'chevron-down'} variant="quiet" size="compact" expanded={detailsFor === chosen.hash}
             onPress={() => setDetailsFor(detailsFor === chosen.hash ? null : chosen.hash)} />
           {detailsFor === chosen.hash && <>
           <Text selectable style={s.full}>{amount(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
@@ -712,16 +712,16 @@ function NativeActivityContent({
               <Text>Raw token units: {event.amountUnits}</Text>
               <Text style={s.label}>FROM</Text>
               <Text style={s.full}>{event.from}</Text>
-              <Button
+              <Button icon="copy"
                 title="Copy event sender"
-                variant="quiet"
+                variant="secondary"
                 onPress={() => setCopyAddress(event.from)}
               />
               <Text style={s.label}>TO</Text>
               <Text style={s.full}>{event.to}</Text>
-              <Button
+              <Button icon="copy"
                 title="Copy event recipient"
-                variant="quiet"
+                variant="secondary"
                 onPress={() => setCopyAddress(event.to)}
               />
             </Card>
@@ -731,12 +731,13 @@ function NativeActivityContent({
             body="Incoming activity and token metadata can be created by anyone. A transfer event does not prove a token is trustworthy or that its balance changed by the same amount."
             tone="amber"
           />
+          </>}
           <Button
             title="Check transaction again"
             variant="secondary"
             onPress={() => controller.inspect(chosen.hash)}
           />
-          {original && <Button title="View original transaction" variant="quiet" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
+          {original && <Button icon="arrow-left" title="View original transaction" variant="secondary" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
           {replacement && <Button title={replacement.local?.operation === 'cancel' ? 'View cancellation attempt' : 'View Speed Up attempt'} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
           {canReplace && chosen.local?.speedUpEligible && onSpeedUpPending && (
             <Button title="Speed Up" variant="secondary" onPress={() => void afterPositionSaved(() => onSpeedUpPending(chosen.hash))} />
@@ -753,7 +754,6 @@ function NativeActivityContent({
               onPress={() => onReplay(chosen.hash)}
             />
           )}
-          </>}
           {!!feedback && (
             <Text accessibilityLiveRegion="polite" style={styles.muted}>
               {feedback}
@@ -771,7 +771,7 @@ function NativeActivityContent({
               {hiddenCount > 0 && <Text style={styles.muted}>{hiddenCount} zero-value token transaction{hiddenCount === 1 ? '' : 's'} hidden.</Text>}
               <Button title={snapshot.view.showZero ? 'Hide zero-value token activity' : 'Show zero-value token activity'} variant="secondary"
                 onPress={() => { controller.setView({ showZero: !snapshot.view.showZero }); setOptionsOpen(false); }} />
-              <Button title="Done" variant="quiet" onPress={() => setOptionsOpen(false)} />
+              <Button title="Done" variant="secondary" onPress={() => setOptionsOpen(false)} />
             </Card>
           </ScrollView>
         </SafeAreaView>
