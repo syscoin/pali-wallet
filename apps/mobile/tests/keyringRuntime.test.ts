@@ -2660,20 +2660,17 @@ test('imported credential rejection shares persistent throttle after lifecycle c
   } finally { hold.finish(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('full imported account restoration performs one unlock and stops at a revoked record read', async () => {
+test('imported account public restore decrypts no signing keys and stops at a revoked PIN read', { timeout: 10000 }, async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
     await importTestKey(f); await importTestKey(f, '0x' + '2'.padStart(64, '0'));
     f.authority.lock(); const before = sdk.unlocks;
-    await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 1);
+    await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 0);
     assert.equal(sdk.exports, 0, 'complete encrypted SDK maps avoid per-account key exports');
     const importedBefore = sdk.imports;
-    f.authority.lock(); const entered = deferredAccount(), release = deferredAccount();
-    f.disk.onRecord(async (kind, key) => {
-      if (kind === 'get' && key === WALLET_CATALOGUE_KEY) { entered.resolve(); await release.promise; }
-    });
-    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await entered.promise;
-    f.authority.lock(); f.disk.onRecord(); release.resolve(); await assert.rejects(pending, /CANCELLED/);
+    f.authority.lock(); const held = f.disk.holdPinRead();
+    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await held.started;
+    f.authority.lock(); held.finish(); await assert.rejects(pending, /CANCELLED/);
     assert.equal(sdk.imports, importedBefore, 'restore never reimports saved scalars');
     assert.equal(f.authority.getSnapshot().account, null); assert.equal(f.runtime.catalogue.getSnapshot(), null);
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
