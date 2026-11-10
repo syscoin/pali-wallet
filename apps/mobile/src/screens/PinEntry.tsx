@@ -56,23 +56,24 @@ export function PinPad({ onComplete, disabled = false, resetKey = '', error, spa
   </View>;
 }
 
-export function PinEntryScreen({ title, description, onComplete, onBack, footer, error, busy = false, resetKey = '', step, brand = false }: {
+export function PinEntryScreen({ title, description, onComplete, onBack, footer, error, busy = false, resetKey = '', step, brand = false, notice }: {
   title: string; description?: string; onComplete(pin: string): void; onBack?(): void; footer?: React.ReactNode;
-  error?: string; busy?: boolean; resetKey?: string | number; step?: string; brand?: boolean;
+  error?: string; busy?: boolean; resetKey?: string | number; step?: string; brand?: boolean; notice?: React.ReactNode;
 }) {
   const { height, fontScale } = useWindowDimensions();
   const compact = height < 700;
   // Reserve space for retry actions and multi-line errors before expanding the hero.
-  const spacious = height >= 800 && fontScale <= 1.2 && !footer && !error;
+  const spacious = height >= 800 && fontScale <= 1.2 && !footer && !error && !notice;
   useLayoutEffect(() => { const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack?.(); return true; }); return () => back.remove(); }, [onBack]);
   return <SafeAreaView style={s.root} edges={['top', 'bottom']}>
-    <Screen footer={footer} gap={compact ? 12 : 20}>
+    <Screen footer={footer} gap={compact ? notice ? 8 : 12 : 20}>
       {brand ? <View style={[s.brand, compact && s.brandCompact]}><PaliMark size={compact ? 32 : 44} /><Text style={s.brandName}>Pali Wallet</Text></View> :
         <Header title="" onBack={onBack} right={step ? <Text style={s.step}>{step}</Text> : undefined} />}
       <View style={[s.intro, spacious && s.introSpacious, compact && s.introCompact]}>
         <Text accessibilityRole="header" style={[s.title, compact && s.titleCompact]}>{title}</Text>
         {!!description && <Text style={[s.description, compact && s.descriptionCompact]}>{description}</Text>}
       </View>
+      {notice}
       <PinPad onComplete={onComplete} disabled={busy} resetKey={resetKey} error={error} spacious={spacious} />
     </Screen>
   </SafeAreaView>;

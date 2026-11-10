@@ -27,7 +27,6 @@ test.beforeEach(async ({ page, baseURL }) => {
 
 async function unlock(page: Page) {
   await enterPin(page, PASSWORD);
-  await button(page, 'Unlock wallet').click();
   await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toBeVisible();
 }
 
@@ -45,7 +44,7 @@ async function openRemoval(page: Page) {
   await page.getByRole('tab', { name: 'Settings', exact: true }).click();
   await button(page, /^Security & backups/).click();
   await button(page, /^Remove wallet from this device/).click();
-  await expect(title(page, 'Remove wallet from this device')).toBeVisible();
+  await expect(title(page, 'Remove wallet')).toBeVisible();
 }
 
 async function authorize(page: Page) {
@@ -102,7 +101,8 @@ test('actual removal route separates password from destructive confirmation at 3
   await fillPinField(password(page), PASSWORD);
   await button(page, 'Continue').click();
   await expect(button(page, 'Remove wallet')).toBeVisible();
-  await expect(page.locator('body')).toContainText(/saved pending transactions/i);
+  await expect(page.getByText('Remove wallet from this phone?', { exact: true })).toBeVisible();
+  await expect(page.locator('body')).toContainText(/separate key or note backups.*cannot be undone/i);
   await expect(password(page)).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
   expect((await audit(page)).confirmationAttempts).toBe(0);
@@ -111,7 +111,7 @@ test('actual removal route separates password from destructive confirmation at 3
   await button(page, 'Cancel').click();
   // Authorization retired the old producers before taking the snapshot.
   // Cancelling preserves the wallet and reopens a locked controller bundle.
-  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(button(page, 'PIN digit 1')).toBeVisible();
   expect((await audit(page)).commits).toBe(0);
   await unlock(page);
   await page.getByRole('tab', { name: 'Settings', exact: true }).click();
@@ -134,7 +134,7 @@ test('late authorization after Back and a backgrounded ticket cannot reach confi
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
   await authorize(page);
   await page.evaluate(() => window.__watchFixture.blur());
-  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(button(page, 'PIN digit 1')).toBeVisible();
   await expect(button(page, 'Remove wallet')).toHaveCount(0);
   expect((await audit(page)).confirmationAttempts).toBe(0);
   expect((await audit(page)).commits).toBe(0);
@@ -176,7 +176,7 @@ test('verified removal dispatches once, survives background reconciliation, and 
   await expect(button(page, 'Create wallet')).toBeVisible();
   expect(await selection(page)).toBeNull();
   await button(page, 'Create wallet').click();
-  await expect(title(page, 'Protect your wallet')).toBeVisible();
+  await expect(title(page, 'Create a 6-digit PIN')).toBeVisible();
   expect((await audit(page)).reopens).toBe(1);
 });
 
@@ -189,7 +189,7 @@ test('known unchanged removal returns to the existing wallet, never setup', asyn
   await expect(title(page, 'Wallet kept')).toBeVisible();
   await expect(button(page, 'Create wallet')).toHaveCount(0);
   await button(page, /Return to wallet|Back to unlock/).click();
-  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(button(page, 'PIN digit 1')).toBeVisible();
   await unlock(page);
   expect((await audit(page)).commits).toBe(1);
 });
@@ -223,7 +223,7 @@ for (const nextId of ['hd:60:0', 'hd:60:1'] as const) {
 
     await page.evaluate((id) => window.__watchFixture.removal.recreate(id), nextId);
     await button(page, 'Open wallet').click();
-    await expect(button(page, 'Unlock wallet')).toBeVisible();
+    await expect(button(page, 'PIN digit 1')).toBeVisible();
     expect(await selection(page)).toBeNull();
     await unlock(page);
     const label = nextId === 'hd:60:0' ? 'Account 1' : 'Account 2';

@@ -1,4 +1,4 @@
-import { enterPin, pinField, fillPinField } from '../ui/operationAuthentication';
+import { enterPin } from '../ui/operationAuthentication';
 import { expect, test, type Page } from '@playwright/test';
 
 const heading = (page: Page, name: string) => page.getByRole('heading', { name, exact: true });
@@ -14,7 +14,6 @@ test.beforeEach(async ({ page, baseURL }) => {
 
 async function unlock(page: Page) {
   await enterPin(page, '123456');
-  await button(page, 'Unlock wallet').click();
   await page.getByRole('tab', { name: 'Tools', exact: true }).click();
   await button(page, /^Private notes/).click();
 }
@@ -89,7 +88,7 @@ test('saved-note detail shows unchecked status and separate local hints at 320px
   expect(audit.unlocks).toBe(1);
   expect(audit.keyReads + audit.signs + audit.broadcasts).toBe(0);
   await button(page, 'Lock wallet').click();
-  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(heading(page, 'Welcome back')).toBeVisible();
   await expect(page.getByText('Status not checked', { exact: true })).toHaveCount(0);
 });
 
@@ -131,7 +130,7 @@ test('Back and Android blur suppress late results after reopening the same walle
   await button(page, /^Saved notes/).click();
   await expect(page.getByText('Loading saved notes…', { exact: true })).toBeVisible();
   await page.evaluate(() => window.__watchFixture.blur());
-  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(heading(page, 'Welcome back')).toBeVisible();
   await unlock(page);
   await button(page, /^Saved notes/).click();
   await expect(page.getByText('No saved notes', { exact: true })).toBeVisible();
@@ -148,7 +147,7 @@ test('an authority-owned lock closes note details and does not reopen them on un
   await button(page, /^1 ETH pool.*Note 1/).click();
   await expect(heading(page, 'Note details')).toBeVisible();
   await page.evaluate(() => window.__watchFixture.notes.lockAuthority());
-  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(heading(page, 'Welcome back')).toBeVisible();
   await expect(heading(page, 'Note details')).toHaveCount(0);
   await expect(page.getByText('Restored note needs review', { exact: true })).toHaveCount(0);
   await unlock(page);
@@ -158,7 +157,12 @@ test('an authority-owned lock closes note details and does not reopen them on un
 
 const fixtureNote = (position: 1 | 2) => `tornado-eth-1-1-0x${`0${position}`.repeat(62)}`;
 const shownNote = (page: Page, position: 1 | 2) => page.getByText(fixtureNote(position), { exact: true });
-const revealPassword = (page: Page) => pinField(page, 'Confirm your wallet PIN');
+const authentication = (page: Page) => heading(page, 'Unlock private information');
+async function reveal(page: Page) {
+  await button(page, 'Reveal private note').click();
+  await enterPin(page, '123456');
+  await expect(authentication(page)).toHaveCount(0);
+}
 
 async function openTwinNotes(page: Page) {
   await page.evaluate(() => window.__watchFixture.notes.next('twins'));
@@ -182,30 +186,34 @@ test('individual backup authenticates once and reveals only the exact selected n
   const rpcBefore = await page.evaluate(() => window.__watchFixture.notes.rpcCalls());
   await openTwinNotes(page);
   await selectTwin(page, 1);
-  await expect(revealPassword(page)).toHaveText('Enter PIN');
+  await expect(authentication(page)).toHaveCount(0);
   await expect(shownNote(page, 1)).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath('individual-note-backup-320.png') });
   await page.evaluate(() => window.__watchFixture.notes.holdReveal());
-  await fillPinField(revealPassword(page), '000000');
   await button(page, 'Reveal private note').evaluate((element) => {
     if (!(element instanceof HTMLElement)) throw Error('Expected a reveal button');
     element.click();
     element.click();
   });
   await expect.poll(() => page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1]);
-  await page.evaluate(() => window.__watchFixture.notes.releaseReveal());
-  await expect(page.getByRole('alert')).toHaveText('Could not show this note. Confirm your wallet PIN and try again.');
+  await enterPin(page, '000000');
+  await expect(page.getByText('PIN not accepted. Try again.', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('PIN, 0 of 6 digits entered', { exact: true })).toBeVisible();
   await expect(page.getByText('Synthetic private authentication diagnostic')).toHaveCount(0);
   await expect(shownNote(page, 1)).toHaveCount(0);
-  await expect(revealPassword(page)).toHaveText('Enter PIN');
-
-  await fillPinField(revealPassword(page), '123456');
-  await button(page, 'Reveal private note').click();
+  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit())).toEqual({ attempts: [1], settled: 0, revoked: 0 });
+  expect(await page.evaluate(() => window.__watchFixture.nativePhase())).toBe('ready');
+  await enterPin(page, '123456');
+  await expect(authentication(page)).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => {
+    window.__watchFixture.notes.releaseReveal();
+    return window.__watchFixture.notes.revealAudit().settled;
+  })).toBe(1);
   await expect(shownNote(page, 1)).toBeVisible();
   await expect(shownNote(page, 2)).toHaveCount(0);
   await expect(page.getByText(/Anyone with this note can withdraw/)).toBeVisible();
-  await expect(revealPassword(page)).toHaveCount(0);
+  await expect(authentication(page)).toHaveCount(0);
   await expect(page.getByRole('button', { name: /copy|share|download/i })).toHaveCount(0);
   expect(await shownNote(page, 1).evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
@@ -214,12 +222,11 @@ test('individual backup authenticates once and reveals only the exact selected n
   await expect(shownNote(page, 1)).toHaveCount(0);
   await button(page, 'Back').click();
   await selectTwin(page, 2);
-  await expect(revealPassword(page)).toHaveText('Enter PIN');
-  await fillPinField(revealPassword(page), '123456');
-  await button(page, 'Reveal private note').click();
+  await expect(authentication(page)).toHaveCount(0);
+  await reveal(page);
   await expect(shownNote(page, 2)).toBeVisible();
   await expect(shownNote(page, 1)).toHaveCount(0);
-  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit())).toEqual({ attempts: [1, 1, 2], settled: 3, revoked: 0 });
+  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit())).toEqual({ attempts: [1, 2], settled: 2, revoked: 0 });
   expect(await page.evaluate(() => window.__watchFixture.notes.rpcCalls())).toBe(rpcBefore);
   expect(await page.evaluate(() => window.__watchFixture.shares())).toEqual([]);
   await expect(page.locator('html')).not.toHaveAttribute('data-note-clipboard', 'used');
@@ -230,15 +237,20 @@ test('the revealed note expires and requires fresh authentication', async ({ pag
   await openNoteTools(page);
   await openTwinNotes(page);
   await selectTwin(page, 1);
-  await fillPinField(revealPassword(page), '123456');
-  await button(page, 'Reveal private note').click();
+  await reveal(page);
   await expect(shownNote(page, 1)).toBeVisible();
   await page.clock.fastForward(30_100);
   await expect(shownNote(page, 1)).toHaveCount(0);
-  await expect(page.getByText('Private note hidden. Confirm your PIN to view it again.', { exact: true })).toBeVisible();
-  await expect(revealPassword(page)).toHaveText('Enter PIN');
-  await expect(button(page, 'Reveal private note')).toBeDisabled();
+  await expect(page.getByText('Private note hidden. Authorize again to view it.', { exact: true })).toBeVisible();
+  await expect(authentication(page)).toHaveCount(0);
+  await expect(button(page, 'Reveal private note')).toBeEnabled();
   expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1]);
+  await button(page, 'Reveal private note').click();
+  await expect(authentication(page)).toBeVisible();
+  await expect(shownNote(page, 1)).toHaveCount(0);
+  await enterPin(page, '123456');
+  await expect(shownNote(page, 1)).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1, 1]);
 });
 
 test('leaving rejects a late reveal and Android blur clears the current secret', async ({ page }) => {
@@ -246,22 +258,20 @@ test('leaving rejects a late reveal and Android blur clears the current secret',
   await openTwinNotes(page);
   await selectTwin(page, 1);
   await page.evaluate(() => window.__watchFixture.notes.holdReveal());
-  await fillPinField(revealPassword(page), '123456');
-  await button(page, 'Reveal private note').click();
+  await reveal(page);
   await expect.poll(() => page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1]);
   await button(page, 'Back').click();
   await expect(heading(page, 'Note details')).toBeVisible();
   await button(page, 'Back').click();
   await selectTwin(page, 2);
-  await fillPinField(revealPassword(page), '123456');
-  await button(page, 'Reveal private note').click();
+  await reveal(page);
   await expect(shownNote(page, 2)).toBeVisible();
   await page.evaluate(() => window.__watchFixture.notes.releaseReveal());
   await expect.poll(() => page.evaluate(() => window.__watchFixture.notes.revealAudit())).toEqual({ attempts: [1, 2], settled: 2, revoked: 1 });
   await expect(shownNote(page, 1)).toHaveCount(0);
   await expect(shownNote(page, 2)).toBeVisible();
   await page.evaluate(() => window.__watchFixture.blur());
-  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(heading(page, 'Welcome back')).toBeVisible();
   await expect(heading(page, 'Back up this note')).toHaveCount(0);
   await expect(shownNote(page, 2)).toHaveCount(0);
   await unlock(page);

@@ -111,6 +111,9 @@ test('real watch Activity renders indexed native and ERC20 amounts without eager
   await expect(
     page.getByRole('heading', { name: 'Transaction details', exact: true })
   ).toBeVisible();
+  await expect(page.getByLabel(`+${LARGE} RAW`, { exact: true })).toBeVisible();
+  await expect(page.getByLabel(hash(OWNER, 3), { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(
     page.getByText(`Raw token units: ${LARGE}`, { exact: true }).first()
   ).toBeVisible();
@@ -159,11 +162,8 @@ test('selected detail wrong chain preserves indexed facts and feed failure remai
   await expect(
     page.getByRole('heading', { name: 'Transaction details', exact: true })
   ).toBeVisible();
-  await expect(
-    page
-      .getByText('1.000000000000000001 ETH', { exact: true })
-      .filter({ visible: true })
-  ).toBeVisible();
+  await expect(page.getByLabel('-1.000000000000000001 ETH', { exact: true })).toBeVisible();
+  await expect(page.getByLabel(hash(OWNER, 1), { exact: true })).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -204,6 +204,7 @@ test('Base and Arbitrum report missing discovery without inventing a watch histo
   await loaded(page);
   for (const name of ['Base', 'Arbitrum One']) {
     await network(page, name);
+    await page.getByRole('button', { name: 'Activity options', exact: true }).click();
     await expect(
       page.getByText('Activity discovery is unavailable for this network.', {
         exact: true,
@@ -213,6 +214,7 @@ test('Base and Arbitrum report missing discovery without inventing a watch histo
       row(page, OWNER, 1)
     ).toHaveCount(0);
     await expect(page.getByText(/Saved transfers only/)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Close activity options', exact: true }).click();
   }
   await noSigning(page);
 });
@@ -317,13 +319,10 @@ test('320px large-text Activity keeps keyboard detail and address copy navigatio
   await expect(
     page.getByRole('heading', { name: 'Transaction details', exact: true })
   ).toBeVisible();
-  await expect(
-    page
-      .getByText('1.000000000000000001 ETH', { exact: true })
-      .filter({ visible: true })
-  ).toBeVisible();
+  await expect(page.getByLabel('-1.000000000000000001 ETH', { exact: true })).toBeVisible();
+  await expect(page.getByLabel(hash(OWNER, 1), { exact: true })).toBeVisible();
   await page
-    .getByRole('button', { name: 'Copy sender address', exact: true })
+    .getByRole('button', { name: `Copy sender address: ${OWNER}`, exact: true })
     .click();
   await expect(page.getByText(OWNER, { exact: true }).last()).toBeVisible();
   expect(
@@ -373,7 +372,7 @@ test('same-address network change closes old details and pending copy feedback',
     page.getByRole('heading', { name: 'Transaction details', exact: true })
   ).toBeVisible();
   await page
-    .getByRole('button', { name: 'Copy sender address', exact: true })
+    .getByRole('button', { name: `Copy sender address: ${OWNER}`, exact: true })
     .click();
   await expect(
     page.getByText('Copy this address?', { exact: true })
@@ -401,9 +400,8 @@ test('same-address network change closes old details and pending copy feedback',
   ]);
   await page.evaluate(() => window.__watchFixture.selectWatchNetwork('rollux'));
   // The existing shell deliberately returns to Wallet when network identity changes.
-  await expect(
-    page.getByRole('heading', { name: 'Wallet', exact: true })
-  ).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Wallet', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('heading', { name: 'Pali Wallet', exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Network Rollux', exact: true })
   ).toBeVisible();
@@ -449,6 +447,8 @@ for (const mode of ['missing','invalid','malformed']) test(`watch ${mode} token 
   await expect(item).not.toContainText(LARGE+' RAW');
   await item.click();
   await expect(page.getByText(amount,{exact:true}).last()).toBeVisible();
+  await expect(page.getByLabel(hash(OWNER, 3), { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
   await expect(page.getByText(mode==='malformed'?'Raw token units: Unavailable':'Raw token units: '+LARGE,{exact:true}).first()).toBeVisible();
 });
 

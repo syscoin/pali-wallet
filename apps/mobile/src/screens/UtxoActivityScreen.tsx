@@ -207,7 +207,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
             { label: 'From', value: detail?.status === 'ready' && detail.from.length ? detail.from.join('\n') : 'Not available' },
             { label: 'To', value: detail?.status === 'ready' && detail.to.length ? detail.to.join('\n') : 'Not available' },
             { label: 'Network fee', value: units(chosen.transactionFeeUnits) },
-            { label: 'Transaction ID', value: chosen.txid, actionLabel: 'Copy transaction ID', onPress: () => { if (!busy) void act('copy'); } },
+            { label: 'Transaction ID', value: chosen.txid, actionLabel: 'Copy transaction ID', disabled: busy, onPress: () => { if (!busy) void act('copy'); } },
           ]} onExplorer={() => void act('explorer')} explorerDisabled={busy} />
         {state.status === 'stale' && <Notice title="Previously loaded activity" body="Refresh the list to check this transaction again." tone="amber" />}
         {detail?.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading transaction details" color={colors.pink} />}

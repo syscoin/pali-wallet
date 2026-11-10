@@ -17,7 +17,6 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
     page.getByRole('heading', { name, exact: true });
   const unlock = async () => {
     await enterPin(page, '123456');
-    await button('Unlock wallet').click();
     await expect(page.getByRole('button', { name: /^SYSX(?:\s|$)/ })).toBeVisible();
   };
   await button('Accounts').click();
@@ -84,7 +83,7 @@ test('320px SYSX review preserves exact amounts and leaves on Back, lock, accoun
   await expect(confirm).toBeVisible();
   await page.evaluate(() => window.__watchFixture.lifecycle('background'));
   await expect(confirm).toHaveCount(0);
-  await expect(button('Unlock wallet')).toBeVisible();
+  await expect(button('PIN digit 1')).toBeVisible();
   await page.evaluate(() => window.__watchFixture.lifecycle('active'));
   await unlock();
 
