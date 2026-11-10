@@ -67,7 +67,7 @@ export function NativeSmartTransactionReviewScreen({
       }}
       before={
         <>
-          {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
+          {ledger.showConnect && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}
           {ledger.modal}
           <Card style={styles.site}>
             <Text>{review.appName}</Text>
@@ -174,4 +174,4 @@ export function NativeSmartTransactionReviewScreen({
   );
 }
 
-const styles = StyleSheet.create({ site: { padding: 20, gap: 8 } });
+const styles = StyleSheet.create({ site: { padding: 16, gap: 8 } });

@@ -164,6 +164,8 @@ test('actual Activity uses indexed values without RPC, filters zero-value events
   page,
 }) => {
   await page.goto('/');
+  await expect(page.getByRole('tab', { name: 'All', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await expect(
     page.getByText('1 zero-value token transaction hidden.')
   ).toBeVisible();

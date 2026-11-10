@@ -21,7 +21,10 @@ export function NativeDappControlReview({ review, controller }: { review: Review
   const title = asset ? 'Add asset' : network?.kind === 'network-add' ? 'Add network' : 'Switch network';
   const blocked = expired || !!review.error || !details || review.busy;
   const reject = () => { void controller.rejectControl(review.id).catch(() => undefined); };
-  return <SafeAreaView edges={['top']} style={s.root}><Screen key={review.id}>
+  return <SafeAreaView edges={['top', 'bottom']} style={s.root}><Screen key={review.id} footer={<>
+    <Button title={review.busy ? 'Applying…' : title} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => undefined); }} />
+    <Button title="Reject" variant="quiet" size="compact" onPress={reject} />
+  </>}>
     <Header title={title} onBack={reject} />
     <Card style={s.card}>
       <Text style={s.title}>{review.appName}</Text>
@@ -45,8 +48,6 @@ export function NativeDappControlReview({ review, controller }: { review: Review
     {review.error === 'BLOCKED_SITE' && !review.verification.isScam && <Notice title="Known security risk" body="Pali flagged this website. This request is blocked." />}
     {review.error === 'SITE_MISMATCH' && review.verification.validation !== 'INVALID' && <Notice title="Website mismatch" body="The requesting website does not match the app’s claimed address. This request is blocked." />}
     {expired && <Notice title="Request expired" body="Ask the app to send a new request." />}
-    <Button title={review.busy ? 'Applying…' : title} disabled={blocked} onPress={() => { if (!blocked && Date.now() < review.expiresAt) void controller.approveControl(review.id, review.revision).catch(() => undefined); }} />
-    <Button title="Reject" variant="secondary" onPress={reject} />
   </Screen></SafeAreaView>;
 }
-const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 18, gap: 12 }, title: { fontSize: 18, fontWeight: '700' }, muted: { color: colors.muted, lineHeight: 22 }, identifier: { fontSize: 13, lineHeight: 20 } });
+const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, title: { fontSize: 18, fontWeight: '700' }, muted: { color: colors.muted, lineHeight: 22 }, identifier: { fontSize: 13, lineHeight: 20 } });

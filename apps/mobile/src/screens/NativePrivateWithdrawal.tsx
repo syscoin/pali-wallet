@@ -133,7 +133,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
         footer={
           <Button
             title="Cancel"
-            variant="quiet"
+            variant="quiet" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
@@ -355,11 +355,12 @@ function WithdrawalContent({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <Screen
+          scrollResetKey={`${state.phase}:${showReview ? review?.intentId : submitted ? 'result' : 'draft'}`}
           footer={
             <>
               {primary}
               {!submitted && (
-                <Button title="Cancel" variant="quiet" onPress={onBack} />
+                <Button title="Cancel" variant="quiet" size="compact" onPress={onBack} />
               )}
             </>
           }
@@ -487,7 +488,7 @@ function WithdrawalContent({
                   ))}
                   <Button
                     title="Refresh relayers"
-                    variant="quiet"
+                    variant="quiet" size="compact"
                     disabled={busy}
                     onPress={() => {
                       setRelayerId('');
@@ -502,7 +503,7 @@ function WithdrawalContent({
                     title={
                       state.checking ? 'Checking pool…' : 'Check pool status'
                     }
-                    variant="secondary"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
                       void controller.refresh().catch(() => undefined);
@@ -574,7 +575,7 @@ function WithdrawalContent({
               )}
               <Button
                 title="Edit withdrawal"
-                variant="quiet"
+                variant="quiet" size="compact"
                 disabled={busy}
                 onPress={() => setEditing(true)}
               />
@@ -609,7 +610,7 @@ function WithdrawalContent({
               )}
               <Button
                 title={state.checking ? 'Checking status…' : 'Check status'}
-                variant="secondary"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => {
                   void controller.refresh().catch(() => undefined);

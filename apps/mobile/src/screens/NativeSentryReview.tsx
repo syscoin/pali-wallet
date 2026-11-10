@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, Keyboard, StyleSheet } from 'react-native';
+import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeSentryAssent, NativeSentryReview as Review } from '../connections/sentryRequests';
 import type { NativeConnectionsView } from '../connections/types';
@@ -52,7 +52,12 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
     catch { if (alive.current && attempt.current === ticket) setError('Could not authorize this request. Check your password and try again.'); }
     finally { if (attempt.current === ticket) { attempt.current = null; busy.current = false; if (alive.current) setPendingIdentity(null); } }
   };
-  return <SafeAreaView edges={['top']} style={s.root}><Screen key={review.id}>
+  return <SafeAreaView edges={['top', 'bottom']} style={s.root}>
+    <KeyboardAvoidingView style={s.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Screen key={review.id} footer={<>
+      <Button title={review.busy || submitting ? 'Authorizing…' : title} disabled={blocked} onPress={() => void approve()} />
+      <Button title="Reject" variant="quiet" size="compact" onPress={reject} />
+    </>}>
     <Header title={title} onBack={reject} />
     <Card style={s.card}>
       <Text style={s.title}>{review.appName}</Text><Field name="Reported website" value={review.origin} />
@@ -107,11 +112,9 @@ export function NativeSentryReview({ review, controller }: { review: Review; con
     {review.error === 'DELIVERY_UNCERTAIN' && <Notice title="Authorization delivery uncertain" body="Pali authorized this request, but could not confirm the app received it. Check the app before requesting another signature." />}
     {expired && <Notice title="Request expired" body="Ask the app to send a new request." />}
     {!!error && review.error !== 'DELIVERY_UNCERTAIN' && <Notice title="Authorization unsuccessful" body={error} />}
-    <Button title={review.busy || submitting ? 'Authorizing…' : title} disabled={blocked} onPress={() => void approve()} />
-    <Button title="Reject" variant="secondary" onPress={reject} />
-  </Screen></SafeAreaView>;
+  </Screen></KeyboardAvoidingView></SafeAreaView>;
 }
-const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 18, gap: 10 },
+const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 10 },
   title: { fontSize: 17, fontWeight: '700' }, muted: { color: colors.muted, lineHeight: 22 }, value: { fontSize: 13, lineHeight: 20 },
-  change: { padding: 12, gap: 8 }, keyHeading: { padding: 18, fontWeight: '700' },
+  change: { padding: 12, gap: 8 }, keyHeading: { padding: 16, fontWeight: '700' },
   input: { minHeight: 52, borderRadius: 14, paddingHorizontal: 16, backgroundColor: colors.surface, color: colors.text } });

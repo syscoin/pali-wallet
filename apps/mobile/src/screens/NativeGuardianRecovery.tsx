@@ -313,7 +313,7 @@ export function NativeGuardianRecovery({
                 {guardians.length > 1 && (
                   <Button
                     title="Choose guardian account"
-                    variant="secondary"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => setChoosing('guardian')}
                   />
@@ -347,7 +347,7 @@ export function NativeGuardianRecovery({
             )}
             <Button
               title="Choose replacement owner"
-              variant="secondary"
+              variant="secondary" size="compact"
               disabled={busy}
               onPress={() => setChoosing('replacement')}
             />
@@ -367,7 +367,7 @@ export function NativeGuardianRecovery({
             )}
             <Button
               title="Choose fee payer"
-              variant="secondary"
+              variant="secondary" size="compact"
               disabled={busy}
               onPress={() => setChoosing('payer')}
             />
@@ -407,7 +407,7 @@ export function NativeGuardianRecovery({
         {observation?.exists && (
           <Button
             title={t('settings.smartAccountRecoveryEmailAlerts')}
-            variant="quiet"
+            variant="quiet" size="compact"
             onPress={() => {
               if (!owner.current.live || lifetime.aborted) return;
               void openRecoveryAlerts().catch(() => {
@@ -417,7 +417,7 @@ export function NativeGuardianRecovery({
             }}
           />
         )}
-        <Button title="Close" variant="quiet" onPress={onBack} />
+        <Button title="Close" variant="quiet" size="compact" onPress={onBack} />
       </Screen>
     </SafeAreaView>
   );
@@ -611,7 +611,7 @@ export function NativeGuardianRecoveryView({
                   : 'View transaction details'
               }
               expanded={details}
-              variant="quiet"
+              variant="quiet" size="compact"
               onPress={() => setDetails(!details)}
             />
             {details && (
@@ -676,7 +676,7 @@ export function NativeGuardianRecoveryView({
         {state.transactionHash && state.intent && (
           <Button
             title="View saved transaction"
-            variant="secondary"
+            variant="secondary" size="compact"
             disabled={activityBusy}
             onPress={() => {
               if (!live.current) return;
@@ -743,7 +743,7 @@ export function NativeGuardianRecoveryView({
         {state.canAbandon && !forget && (
           <Button
             title="Clear local recovery tracking"
-            variant="quiet"
+            variant="quiet" size="compact"
             onPress={() => setForget(true)}
           />
         )}
@@ -773,7 +773,7 @@ export function NativeGuardianRecoveryView({
             />
             <Button
               title="Keep tracking"
-              variant="quiet"
+              variant="quiet" size="compact"
               onPress={() => {
                 setForget(false);
                 setAcknowledged(false);
@@ -784,7 +784,7 @@ export function NativeGuardianRecoveryView({
         {state.observation?.exists && (
           <Button
             title={t('settings.smartAccountRecoveryEmailAlerts')}
-            variant="quiet"
+            variant="quiet" size="compact"
             onPress={() => {
               if (!live.current) return;
               void openRecoveryAlerts().catch(() => {
@@ -796,14 +796,14 @@ export function NativeGuardianRecoveryView({
             }}
           />
         )}
-        <Button title="Close" variant="quiet" onPress={onBack} />
+        <Button title="Close" variant="quiet" size="compact" onPress={onBack} />
       </Screen>
     </SafeAreaView>
   );
 }
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  card: { padding: 18, gap: 8 },
+  card: { padding: 16, gap: 8 },
   label: { color: colors.muted, fontSize: 14, lineHeight: 21 },
   heading: { color: colors.text, fontSize: 17, fontWeight: '600' },
   address: { color: colors.text, fontSize: 14, lineHeight: 21 },

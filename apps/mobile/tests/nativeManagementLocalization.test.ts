@@ -45,7 +45,7 @@ async function fixture(language = 'en') {
       Platform: { OS: 'ios' }, AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
       BackHandler: { addEventListener: () => ({ remove() {} }) }, Keyboard: { dismiss() {} }, StyleSheet: { create: (value: unknown) => value } },
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
-    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
+    '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Icon', 'IconButton', 'Notice', 'Row', 'Screen', 'Text'].map(name => [name, name])), colors: {}, styles: {} },
     'expo-clipboard': {}, './DappSiteStatus': { DappSiteStatus: 'DappSiteStatus' }, './ConnectionQrScanner': { ConnectionQrScanner: 'ConnectionQrScanner' },
     './IdleActivityBoundary': { IdleTextInput: 'Input', IdlePressable: 'Pressable' },
     '../custody/importedAccounts': { isUtxoAccountPrivateKey: () => false },
@@ -83,7 +83,8 @@ test('language changes preserve exact Open website session and review revision',
 
 test('translated account creation retains the original password, name and catalogue scope', async () => {
   const f = await fixture('fr'), screen = f.screen('NativeAccounts');
-  screen.render().find(element => element.type === 'Button' && element.props.title === f.engine.t('buttons.addAccount'))!.props.onPress();
+  screen.render().find(element => element.type === 'Header')!.props.right.props.onPress();
+  screen.render().find(element => element.type === 'Row' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();
   const inputs = screen.render().filter(element => element.type === 'Input');
   inputs[0]!.props.onChangeText('Exact account'); inputs[1]!.props.onChangeText('exact password');
   screen.render().find(element => element.type === 'Button' && element.props.title === f.engine.t('mobile.accounts.create'))!.props.onPress();

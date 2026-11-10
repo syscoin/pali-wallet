@@ -81,6 +81,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
   const pending = state.status?.pending;
   // Adapt once for this immutable quote. Monotonic checks below remain the authority.
   const connectionDeadline = useMemo(() => review
+    // eslint-disable-next-line react-hooks/purity -- Snapshot the wall-clock adapter once; the monotonic guard below owns authorization.
     ? Date.now() + Math.max(0, review.expiresAtMonotonicMilliseconds - performance.now())
     : 0, [review]);
   const isReviewCurrent = useCallback(() => {
@@ -89,6 +90,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
     return latest.revision === state.revision && latest.phase === 'review' && latest.feeReview === review &&
       !latest.status?.pending && !latest.error;
   }, [controller, current, isCurrent, review, state.revision]);
+  // eslint-disable-next-line react-hooks/refs -- Hide expired/retired approvals as well as rejecting them in the event handler.
   const reviewAvailable = state.phase === 'review' && isReviewCurrent();
   const ledger = useOwnedLedgerConnection({ owner: controller ?? empty, revision: state.revision,
     expiresAt: connectionDeadline, available: reviewAvailable,
@@ -101,14 +103,14 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><Screen key={review && state.phase === 'review' ? `review:${review.id}` : 'status'} footer={<>
     {review && state.phase === 'review'
       ? ledger.showConnect
-        ? <Button title={t('mobile.accounts.connectLedger')} variant="secondary" onPress={ledger.connect} />
+        ? <Button title={t('mobile.accounts.connectLedger')} variant="secondary" size="compact" onPress={ledger.connect} />
         : <Button title={t('buttons.confirm')} disabled={busy || ledger.blocked || !reviewAvailable} onPress={() => {
           if (!ledger.blocked && isReviewCurrent() && ledger.canApprove()) act(() => controller!.confirm(review.id));
         }} />
       : readyToReview
       ? <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
-      : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
-    <Button title={t('buttons.close')} variant="quiet" onPress={close} />
+      : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" size="compact" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
+    <Button title={t('buttons.close')} variant="quiet" size="compact" onPress={close} />
   </>}>
     <Header title={t('settings.smartAccountInfrastructure')} onBack={close} />
     {controller && <Card style={s.card}>
@@ -117,7 +119,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
       <Text>{controller.payerLabel}</Text>
       <Text selectable style={s.address}>{controller.payerAddress}</Text>
     </Card>}
-    {readyToReview && <Button title={t('mobile.infrastructure.refresh')} variant="quiet" onPress={() => act(() => controller!.refresh(state.revision))} />}
+    {readyToReview && <Button title={t('mobile.infrastructure.refresh')} variant="quiet" size="compact" onPress={() => act(() => controller!.refresh(state.revision))} />}
     {busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('buttons.loading')} />}
     {review && state.phase === 'review' && <>
       <Card style={s.card}>
@@ -129,7 +131,7 @@ export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) 
         <Text style={s.label}>{t('mobile.infrastructure.maximumTotal')}</Text>
         <Text selectable style={s.amount}>{formatBaseUnits(review.maximumTotalUnits, 18)} {controller?.currencySymbol}</Text>
       </Card>
-      <Button title={t(detailsId === review.id ? 'send.hideDetails' : 'send.showDetails')} variant="quiet" expanded={detailsId === review.id}
+      <Button title={t(detailsId === review.id ? 'send.hideDetails' : 'send.showDetails')} variant="quiet" size="compact" expanded={detailsId === review.id}
         onPress={() => { if (current && isCurrent(current) && controller?.getSnapshot().feeReview?.id === review.id) setDetailsId(detailsId === review.id ? null : review.id); }} />
       {detailsId === review.id && <TransactionDetails key={review.id} transaction={review.transaction} />}
     </>}

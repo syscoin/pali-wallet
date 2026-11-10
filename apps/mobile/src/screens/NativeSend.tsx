@@ -152,6 +152,8 @@ export function NativeSendInput({ label, value, onChange, onEdit, busy, keyboard
         importantForAutofill="noExcludeDescendants"
         textContentType="none"
         keyboardType={keyboardType}
+        returnKeyType="done"
+        onSubmitEditing={() => Keyboard.dismiss()}
         maxLength={max}
         placeholder={placeholder}
         placeholderTextColor={colors.muted}
@@ -585,14 +587,27 @@ export function NativeSend({
       'nonce-consumed',
       'unavailable',
     ].includes(snapshot.phase);
-  const footer = !review && !hasOutcome && !replacementHash ? (
-    <Button
-      title="Review transfer"
-      disabled={busy || !recipient.trim() ||
-        (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount)}
-      onPress={prepare}
-      testID="native-send-review"
-    />
+  const footer = review ? <>
+              <Button
+                title={reviewCancellation ? 'Submit cancellation' : review.replacement ? 'Submit Speed Up' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
+                disabled={busy || !review.retry && !ledgerReady}
+                onPress={submit}
+                testID="native-send-confirm"
+              />
+              <Button
+                title={review.retry || review.replacement ? 'Close review' : 'Edit transfer'}
+                variant="quiet"
+                disabled={busy}
+                onPress={() => {
+                  if (replacementHash) close();
+                  else if (reviewedCollectible && review.replay) void run(() => controller.recover(false, review.replay?.hash));
+                  else controller.cancel();
+                }}
+              />
+  </> : hasOutcome ? <Button title={replacementHash ? 'Back to Activity' : 'Back to wallet'} variant="secondary" onPress={close} /> : !replacementHash ? (
+    <Button title="Review transfer" disabled={busy || !recipient.trim() ||
+      (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount)}
+      onPress={prepare} testID="native-send-review" />
   ) : undefined;
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
@@ -600,7 +615,7 @@ export function NativeSend({
         style={s.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen footer={footer}>
+        <Screen footer={footer} scrollResetKey={review ? `review:${review.id}` : hasOutcome ? `outcome:${snapshot.hash}` : 'draft'} gap={16}>
           <Header
             title={
               cancellation
@@ -620,6 +635,32 @@ export function NativeSend({
             subtitle={`${accountLabel} · ${networkLabel}`}
             onBack={close}
           />
+          {busy && (
+            <View style={s.progress}>
+              <ActivityIndicator color={colors.pink} />
+              <Text style={styles.muted}>
+                {resolving ? 'Resolving ENS recipient…' : snapshot.phase === 'signing'
+                  ? 'Authenticating and signing…'
+                  : snapshot.phase === 'submitting'
+                  ? 'Submitting the transaction…'
+                  : 'Checking the network…'}
+              </Text>
+            </View>
+          )}
+          {!!error && !(hasOutcome && [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(error) && error === snapshot.message) && (
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              style={s.error}
+            >
+              {error}
+            </Text>
+          )}
+          {!error && snapshot.message && !hasOutcome && !review && (
+            <Text accessibilityRole="alert" style={s.error}>
+              {snapshot.message}
+            </Text>
+          )}
           {capturedContext.testnet && (
             <Notice
               title="Test network"
@@ -735,22 +776,7 @@ export function NativeSend({
                 title="Connect Ledger" disabled={busy}
                 onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
               />}
-              <Button
-                title={reviewCancellation ? 'Submit cancellation' : review.replacement ? 'Submit Speed Up' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
-                disabled={busy || !review.retry && !ledgerReady}
-                onPress={submit}
-                testID="native-send-confirm"
-              />
-              <Button
-                title={review.retry || review.replacement ? 'Close review' : 'Edit transfer'}
-                variant="quiet"
-                disabled={busy}
-                onPress={() => {
-                  if (replacementHash) close();
-                  else if (reviewedCollectible && review.replay) void run(() => controller.recover(false, review.replay?.hash));
-                  else controller.cancel();
-                }}
-              />
+
             </>
           ) : hasOutcome ? (
             <>
@@ -840,7 +866,6 @@ export function NativeSend({
                   }}
                 />
               )}
-              <Button title={replacementHash ? 'Back to Activity' : 'Back to wallet'} variant="quiet" onPress={close} />
             </>
           ) : replacementHash ? (
             !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
@@ -955,35 +980,9 @@ export function NativeSend({
               </>}
             </>
           )}
-          {busy && (
-            <View style={s.progress}>
-              <ActivityIndicator color={colors.pink} />
-              <Text style={styles.muted}>
-                {resolving ? 'Resolving ENS recipient…' : snapshot.phase === 'signing'
-                  ? 'Authenticating and signing…'
-                  : snapshot.phase === 'submitting'
-                  ? 'Submitting the transaction…'
-                  : 'Checking the network…'}
-              </Text>
-            </View>
-          )}
-          {!!error && !(hasOutcome && [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(error) && error === snapshot.message) && (
-            <Text
-              accessibilityRole="alert"
-              accessibilityLiveRegion="polite"
-              style={s.error}
-            >
-              {error}
-            </Text>
-          )}
-          {!error && snapshot.message && !hasOutcome && !review && (
-            <Text accessibilityRole="alert" style={s.error}>
-              {snapshot.message}
-            </Text>
-          )}
-          <Text style={s.buildLabel}>
+          {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>
             Development build · Use a test wallet
-          </Text>
+          </Text>}
         </Screen>
       </KeyboardAvoidingView>
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
@@ -1039,10 +1038,10 @@ const s = StyleSheet.create({
     minHeight: 56,
     fontSize: 16,
   },
-  summary: { padding: 18, gap: 10 },
+  summary: { padding: 16, gap: 8 },
   address: { fontSize: 14, lineHeight: 24 },
   hint: { color: colors.muted, fontSize: 12, lineHeight: 19 },
-  hero: { alignItems: 'center', gap: 12, paddingVertical: 8 },
+  hero: { alignItems: 'center', gap: 8, paddingVertical: 4 },
   amount: {
     fontSize: 29,
     lineHeight: 39,
@@ -1060,7 +1059,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
   separator: { height: 1, backgroundColor: colors.border, marginVertical: 4 },
-  progress: { alignItems: 'center', gap: 12, paddingVertical: 18 },
+  progress: { alignItems: 'center', gap: 8, paddingVertical: 8 },
   error: { color: colors.red, fontSize: 13, lineHeight: 21 },
   buildLabel: {
     color: colors.muted,

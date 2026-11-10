@@ -19,7 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
-import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
+import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
 import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory';
@@ -232,6 +232,7 @@ function NativeActivityContent({
   const arrival = useRef<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [optionsOpen, setOptionsOpen] = useState(false);
   const [copying, setCopying] = useState(false);
   const lifetime = useRef({ epoch: 0 });
   useEffect(() => {
@@ -370,6 +371,7 @@ function NativeActivityContent({
     }
   };
   const close = () => {
+    if (optionsOpen) { setOptionsOpen(false); return; }
     setCopyAddress(null);
     if (selected) setSelected(null);
     else if (savedPending) {
@@ -457,6 +459,16 @@ function NativeActivityContent({
             snapshot.networkName ? ` · ${snapshot.networkName}` : ''
           }`}
           onBack={close}
+          right={!chosen ? <View style={s.toolbar}>
+            <IconButton label="Refresh activity" icon="refresh"
+              disabled={snapshot.status === 'loading' || snapshot.loadingMore || savedPending?.status === 'loading'}
+              onPress={() => {
+                if (savedPending) void controller.loadSavedPending();
+                else { restored.current = false; void controller.refresh(); }
+              }} />
+            {!savedPending && <IconButton label="Activity options" icon="settings"
+              selected={optionsOpen} onPress={() => setOptionsOpen(true)} />}
+          </View> : undefined}
         />
       </View>
       <View ref={listBounds} style={[s.list, chosen && s.hidden]}>
@@ -486,79 +498,28 @@ function NativeActivityContent({
               {savedPending.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading saved transfers" color={colors.pink} />}
               {savedPending.status === 'unavailable' && <Notice title="Could not load saved transfers" body="Your saved transfers are unchanged. Try again." tone="amber" />}
             </View> : <View style={s.section}>
-              <Text style={styles.muted}>{snapshot.coverage}</Text>
-              <View style={s.filters}>
-                {(['all', 'sent', 'received'] as const).map((filter) => (
-                  <Button
-                    key={filter}
-                    title={
-                      filter === 'all'
-                        ? 'All activity'
-                        : filter === 'sent'
-                        ? 'Sent'
-                        : 'Received'
-                    }
-                    variant={
-                      snapshot.view.filter === filter ? 'primary' : 'secondary'
-                    }
-                    onPress={() => {
-                      controller.setView({ filter, anchor: null, offset: 0 });
-                      list.current?.scrollToOffset({ offset: 0 });
-                    }}
-                  />
-                ))}
+              <SegmentedControl label="Activity filter" value={snapshot.view.filter}
+                options={[{ value: 'all', label: 'All' }, { value: 'sent', label: 'Sent' }, { value: 'received', label: 'Received' }]}
+                onChange={(filter) => {
+                  controller.setView({ filter, anchor: null, offset: 0 });
+                  list.current?.scrollToOffset({ offset: 0 });
+                }} />
+              <View style={s.listHeading}>
+                <Text style={s.caption}>Recent activity</Text>
+                {snapshot.canViewSavedPending && <Button title="Saved pending" variant="quiet" size="compact"
+                  onPress={() => void afterPositionSaved(() => {
+                    setFeedback('');
+                    list.current?.scrollToOffset({ offset: 0, animated: false });
+                    void controller.loadSavedPending();
+                  })} />}
               </View>
-              {snapshot.canViewSavedPending && <Button title="Saved pending" variant="quiet"
-                onPress={() => void afterPositionSaved(() => {
-                  setFeedback('');
-                  list.current?.scrollToOffset({ offset: 0, animated: false });
-                  void controller.loadSavedPending();
-                })} />}
-              {snapshot.truncated && (
-                <Notice
-                  title="Activity history is limited"
-                  body="This view and its saved history have limits. Older records may be omitted; the explorer may have additional indexed activity."
-                />
-              )}
-              {!!snapshot.error && (
-                <Notice
-                  title="Some activity is unavailable"
-                  body={snapshot.error}
-                  tone="amber"
-                />
-              )}
-              <Button
-                title="Refresh activity"
-                variant="quiet"
-                disabled={snapshot.status === 'loading' || snapshot.loadingMore}
-                onPress={() => {
-                  restored.current = false;
-                  void controller.refresh();
-                }}
-              />
+              {!!snapshot.error && <Notice title="Some activity is unavailable" body={snapshot.error} tone="amber" />}
               {snapshot.status === 'loading' && (
                 <ActivityIndicator
                   accessibilityLabel="Loading activity"
                   color={colors.pink}
                 />
               )}
-              {hiddenCount > 0 && (
-                <Text style={styles.muted}>
-                  {hiddenCount} zero-value token transaction
-                  {hiddenCount === 1 ? '' : 's'} hidden.
-                </Text>
-              )}
-              <Button
-                title={
-                  snapshot.view.showZero
-                    ? 'Hide zero-value token activity'
-                    : 'Show zero-value token activity'
-                }
-                variant="quiet"
-                onPress={() =>
-                  controller.setView({ showZero: !snapshot.view.showZero })
-                }
-              />
             </View>
           }
           renderItem={({ item }) => (
@@ -631,13 +592,13 @@ function NativeActivityContent({
                   onPress={() => controller.loadMore()}
                 />
               )}
-              <Text style={s.build}>Development build · Use a test wallet</Text>
+              {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.build}>Development build · Use a test wallet</Text>}
             </View>
           }
         />
       </View>
       {chosen && (
-        <ScrollView contentContainerStyle={s.content}>
+        <ScrollView key={chosen.hash} contentContainerStyle={s.content}>
           <Text style={s.detailAmount}>
             {amount(chosen, snapshot.nativeSymbol ?? 'ETH')}
           </Text>
@@ -809,6 +770,21 @@ function NativeActivityContent({
           )}
         </ScrollView>
       )}
+      <Modal visible={optionsOpen} transparent animationType="fade" onRequestClose={() => setOptionsOpen(false)}>
+        <SafeAreaView style={s.modal} accessibilityViewIsModal>
+          <ScrollView contentContainerStyle={s.modalContent}>
+            <Card style={s.confirm}>
+              <Header title="Activity options" right={<IconButton label="Close activity options" icon="close" onPress={() => setOptionsOpen(false)} />} />
+              <Text style={styles.muted}>{snapshot.coverage}</Text>
+              {snapshot.truncated && <Notice title="Activity history is limited" body="Older records may be omitted. The explorer may have additional activity." />}
+              {hiddenCount > 0 && <Text style={styles.muted}>{hiddenCount} zero-value token transaction{hiddenCount === 1 ? '' : 's'} hidden.</Text>}
+              <Button title={snapshot.view.showZero ? 'Hide zero-value token activity' : 'Show zero-value token activity'} variant="secondary"
+                onPress={() => { controller.setView({ showZero: !snapshot.view.showZero }); setOptionsOpen(false); }} />
+              <Button title="Done" variant="quiet" onPress={() => setOptionsOpen(false)} />
+            </Card>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
       <Modal
         visible={copyAddress !== null}
         transparent
@@ -847,18 +823,24 @@ function NativeActivityContent({
 }
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: { paddingHorizontal: 24 },
+  header: { paddingHorizontal: 16 },
+  toolbar: { flexDirection: 'row' },
+  listHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  caption: { color: colors.muted, fontSize: 12, lineHeight: 18, flex: 1 },
   list: { flex: 1 },
   hidden: { display: 'none' },
-  content: { paddingHorizontal: 24, paddingBottom: 28, gap: 16 },
-  section: { gap: 14, paddingVertical: 12 },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  content: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 },
+  section: { gap: 8, paddingVertical: 8 },
   item: {
-    paddingVertical: 20,
-    gap: 7,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    marginBottom: 8,
+    gap: 5,
     borderBottomWidth: 1,
     borderColor: colors.border,
-    minHeight: 100,
+    minHeight: 88,
   },
   itemHeader: {
     flexDirection: 'row',
@@ -869,7 +851,7 @@ const s = StyleSheet.create({
   amount: { fontSize: 18, fontWeight: '600', flexShrink: 1 },
   direction: { color: colors.muted, fontSize: 13, textTransform: 'capitalize' },
   hash: { color: colors.muted, fontSize: 12 },
-  detail: { padding: 20, gap: 12 },
+  detail: { padding: 16, gap: 10 },
   detailAmount: { fontSize: 24, fontWeight: '600' },
   full: { fontSize: 14, lineHeight: 23, color: colors.text },
   label: { fontSize: 11, color: colors.muted, letterSpacing: 1 },

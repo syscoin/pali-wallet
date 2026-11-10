@@ -50,8 +50,8 @@ export function RealAppShell({ tab, onTab, immersive = false, children }: {
 const s = StyleSheet.create({
   shell: { flex: 1, backgroundColor: colors.bg }, content: { flex: 1, minHeight: 0 },
   safe: { backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
-  tabs: { flexDirection: 'row', alignItems: 'stretch', paddingHorizontal: 4, paddingVertical: 7 },
-  tab: { flex: 1, minWidth: 0, minHeight: 58, alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 2 },
+  tabs: { flexDirection: 'row', alignItems: 'stretch', paddingHorizontal: 4, paddingVertical: 6 },
+  tab: { flex: 1, minWidth: 0, minHeight: 52, alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: 2 },
   icon: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 12 }, selected: { backgroundColor: colors.raised },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted, textAlign: 'center', alignSelf: 'stretch', flexShrink: 1 },
   selectedLabel: { color: colors.blue, fontWeight: '600' }, pressed: { opacity: 0.7 },

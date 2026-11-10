@@ -297,8 +297,12 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     !search || network.name.toLocaleLowerCase().includes(search) || network.symbol.toLocaleLowerCase().includes(search)) ?? [];
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen key={form ? 'network-form' : 'network-list'}>
-        <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.networks.title')} subtitle={form?.utxo && form.id ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
+      <Screen key={form ? 'network-form' : 'network-list'} gap={16} footer={form ? <>
+        {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
+        <Button title={form.utxo && form.id ? busy ? t('mobile.networks.saving') : t('mobile.networks.saveChanges') : busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy} onPress={() => { void save(); }} />
+        <Button title={t('buttons.cancel')} variant="quiet" disabled={busy} onPress={discardForm} />
+      </> : undefined}>
+        <Header title={form ? form.utxo ? (form.id ? t('mobile.networks.editUtxo') : t('mobile.networks.addUtxo')) : form.id ? t('mobile.networks.edit') : t('mobile.networks.add') : t('mobile.networks.title')} subtitle={form ? undefined : t('mobile.networks.choose')} onBack={form ? discardForm : close} />
         {form ? <>
           {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (
             <NetworkSuggestions query={catalogueQuery} onQuery={setCatalogueQuery}
@@ -310,17 +314,14 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           {!form.utxo && <>{field('chainId', t('mobile.networks.chainId'))}{field('symbol', t('mobile.networks.currency'))}
           <IdlePressable accessibilityRole="checkbox" accessibilityLabel={t('mobile.networks.testNetwork')}
             accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
-            onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
+            onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.testRow}>
             <Text style={{ flex: 1 }}>{form.testnet ? '✓ ' : ''}{t('mobile.networks.testNetwork')}</Text>
           </IdlePressable></>}
-          {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
           {!form.utxo && <Text style={s.help}>{t('mobile.networks.rpcChanges')}</Text>}
-          <Button title={form.utxo && form.id ? busy ? t('mobile.networks.saving') : t('mobile.networks.saveChanges') : busy ? t('mobile.networks.checking') : t('mobile.networks.save')} disabled={busy} onPress={() => { void save(); }} />
           {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title={t('mobile.networks.remove')} variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {form.id && form.id === snapshot?.selectedId && <Text style={s.help}>
             {form.utxo ? t('mobile.networks.removeUnused') : t('mobile.networks.switchBeforeRemove')}
           </Text>}
-          <Button title={t('buttons.cancel')} variant="quiet" disabled={busy} onPress={discardForm} />
         </> : <>
         <IdleTextInput accessibilityLabel={t('mobile.networks.search')} placeholder={t('mobile.networks.search')} placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
@@ -348,7 +349,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           }} />}
         </>}
         {!form && !!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
-        <Text style={s.buildLabel}>{t('mobile.common.development')}</Text>
+        {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>{t('mobile.common.development')}</Text>}
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;
@@ -358,8 +359,9 @@ const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
   search: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 16, padding: 16, minHeight: 54, color: colors.text, fontSize: 16 },
   section: { gap: 10 }, sectionTitle: { fontSize: 14, fontWeight: '600', color: colors.muted },
-  network: { minHeight: 82, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 17, flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: colors.surface },
-  networkRow: { padding: 0, gap: 0 }, networkSelect: { flex: 1, minHeight: 82, padding: 17, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  testRow: { minHeight: 48, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 12, justifyContent: 'center' },
+  network: { minHeight: 72, borderWidth: 1, borderColor: colors.border, borderRadius: 16, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: colors.surface },
+  networkRow: { padding: 0, gap: 0 }, networkSelect: { flex: 1, minHeight: 72, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   suggestion: { minHeight: 50, justifyContent: 'center', gap: 3, borderRadius: 12, padding: 12, backgroundColor: colors.surface },
   retry: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 8 },
   retryLabel: { color: colors.blue, fontWeight: '600' },

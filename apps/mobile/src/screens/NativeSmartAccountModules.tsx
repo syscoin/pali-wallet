@@ -1,6 +1,6 @@
 import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ISmartAccountMetadata, SmartAccountValidatorModule } from '../../../../source/types/network';
 import { listCompositeChildCandidates, type CustomValidatorPreflightResult } from '../../../../source/utils/smartAccount/custom';
@@ -28,6 +28,8 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const [epoch, setEpoch] = useState(0), [manager, setManager] = useState<NativeSmartModuleManagement>(), [metadata, setMetadata] = useState<ISmartAccountMetadata>();
   const [operation, setOperation] = useState<NativeSmartAccountOperation>(), [busy, setBusy] = useState(false), [failure, setFailure] = useState<string>(), [closing, setClosing] = useState(false);
   const [mode, setMode] = useState<'installed' | 'custom' | 'composite'>('installed');
+  const modeRef = useRef(mode);
+  useLayoutEffect(() => { modeRef.current = mode; }, [mode]);
   const [address, setAddress] = useState(''), [name, setName] = useState(''), [initData, setInitData] = useState('0x');
   const [preflight, setPreflight] = useState<{ address: string; result: CustomValidatorPreflightResult }>();
   const [children, setChildren] = useState<readonly string[]>([]), [threshold, setThreshold] = useState('1');
@@ -39,6 +41,10 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
     setClosing(true);
     void retire(owner).then(() => { if (mounted.current && selected.current === owner) callbacks.current.onBack(); });
   }, []);
+  const navigateBack = useCallback((owner: Owner) => {
+    if (!owner.busy && !owner.operation && modeRef.current !== 'installed') { setMode('installed'); return; }
+    back(owner);
+  }, [back]);
   const load = useCallback(async (owner: Owner) => {
     check(owner); const value = await owner.manager!.read(); check(owner);
     setMetadata(value); setPreflight(undefined);
@@ -65,9 +71,9 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
     }));
     const change = AppState.addEventListener('change', state => { if (state !== 'active') back(owner); });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => back(owner)) : undefined;
-    const hardware = BackHandler.addEventListener('hardwareBackPress', () => { back(owner); return true; });
+    const hardware = BackHandler.addEventListener('hardwareBackPress', () => { navigateBack(owner); return true; });
     return () => { mounted.current = false; void retire(owner); change.remove(); blur?.remove(); hardware.remove(); };
-  }, [back, check, epoch, load, open, run]);
+  }, [back, check, epoch, load, navigateBack, open, run]);
   const returnToStatus = useCallback((owner: Owner, expected: NativeSmartAccountOperation) => {
     if (!current(owner) || owner.operation !== expected) return;
     setClosing(true);
@@ -94,8 +100,10 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
   const validComposite = children.length > 0 && /^\d+$/.test(threshold) && Number.isSafeInteger(Number(threshold)) && Number(threshold) >= 1 && Number(threshold) <= children.length;
   const blocked = busy || closing;
   return <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-    <Screen key={mode} footer={<Button title={t('buttons.close')} variant="quiet" disabled={closing} onPress={close} />}>
-      <Header title={t('mobile.smartAccountModules.title')} onBack={close} />
+    <KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <Screen scrollResetKey={mode} footer={<Button title={t('buttons.close')} variant="quiet" size="compact" disabled={closing} onPress={close} />}>
+      <Header title={t(mode === 'custom' ? 'smartAccountHub.customModule' : mode === 'composite' ? 'settings.compositeAuthenticator' : 'mobile.smartAccountModules.title')}
+        onBack={() => { if (shownOwner) navigateBack(shownOwner); }} />
       {manager && <Card style={s.card}><Text>{manager.networkName}</Text><Text selectable style={s.address}>{manager.accountAddress}</Text></Card>}
       {closing ? <ActivityIndicator accessibilityLabel={t('buttons.close')} color={colors.pink} /> : <>
         {failure && <Notice title={t('settings.unavailable')} body={t(failure)} />}
@@ -105,19 +113,19 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
           {validators.map(module => <Card key={module.address} style={s.card}>
             <Text>{label(module)}</Text><Text selectable style={s.address}>{module.address}</Text>
             <Text>{t(module.address.toLowerCase() === metadata.auth?.validator.toLowerCase() ? 'smartAccountHub.active' : 'smartAccountHub.installed')}</Text>
-            {canRemoveValidatorModule(metadata, module.address, 'all-installed-composites') && <Button title={t('smartAccountHub.uninstall')} variant="quiet" disabled={blocked} onPress={() => {
+            {canRemoveValidatorModule(metadata, module.address, 'all-installed-composites') && <Button title={t('smartAccountHub.uninstall')} variant="quiet" size="compact" disabled={blocked} onPress={() => {
               if (canRemoveValidatorModule(metadata, module.address, 'all-installed-composites')) review({ kind: 'uninstall', address: module.address });
             }} />}
           </Card>)}
-          <Button title={t('smartAccountHub.customModule')} variant="secondary" disabled={blocked} onPress={() => setMode('custom')} />
-          <Button title={t('settings.compositeAuthenticator')} variant="secondary" disabled={blocked} onPress={() => setMode('composite')} />
+          <Button title={t('smartAccountHub.customModule')} variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('custom')} />
+          <Button title={t('settings.compositeAuthenticator')} variant="secondary" size="compact" disabled={blocked} onPress={() => setMode('composite')} />
         </>}
         {metadata && mode === 'custom' && <Card style={s.card}>
           <Text>{t('smartAccountHub.customModuleHint')}</Text>
           <NativeSendInput label={t('smartAccountHub.moduleAddress')} value={address} busy={blocked} onChange={value => { setAddress(value); setPreflight(undefined); }} />
           <NativeSendInput label={t('smartAccountHub.moduleName')} value={name} busy={blocked} max={120} placeholder={t('smartAccountHub.moduleNamePlaceholder')} onChange={setName} />
           <NativeSendInput label={t('smartAccountHub.moduleInitData')} value={initData} busy={blocked} max={131074} onChange={setInitData} />
-          <Button title={t('smartAccountHub.checkModule')} variant="secondary" disabled={blocked || !address.trim()} onPress={() => action(async (owner, value) => {
+          <Button title={t('smartAccountHub.checkModule')} variant="secondary" size="compact" disabled={blocked || !address.trim()} onPress={() => action(async (owner, value) => {
             const checkedAddress = address.trim(); setPreflight(undefined);
             const result = await value.preflightCustom(checkedAddress); check(owner); setPreflight({ address: checkedAddress, result });
           })} />
@@ -142,10 +150,11 @@ export function NativeSmartAccountModulesScreen({ open, onBack, ledgerConnection
           <Text>{t('smartAccountHub.compositeLockout')}</Text><Text>{t('smartAccountHub.compositeOnchainHint')}</Text>
           <Button title={t('smartAccountHub.compositeSavePolicy')} disabled={blocked || !validComposite} onPress={() => { if (validComposite) review({ kind: 'composite', children: [...children], threshold: Number(threshold) }); }} />
         </Card>}
-        {metadata && mode !== 'installed' && <Button title={t('smartAccountHub.installedModules')} variant="quiet" disabled={blocked} onPress={() => setMode('installed')} />}
-        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} variant="quiet" disabled={blocked} onPress={() => action(owner => load(owner))} />}
+        {metadata && mode !== 'installed' && <Button title={t('smartAccountHub.installedModules')} variant="quiet" size="compact" disabled={blocked} onPress={() => setMode('installed')} />}
+        {manager && <Button title={t('settings.smartAccountInfrastructureCheckStatus')} variant="quiet" size="compact" disabled={blocked} onPress={() => action(owner => load(owner))} />}
       </>}
     </Screen>
+    </KeyboardAvoidingView>
   </SafeAreaView>;
 }
 const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, address: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, choice: { flexDirection: 'row', alignItems: 'center', gap: 12 }, choiceText: { flex: 1 }, candidate: { gap: 6 } });

@@ -371,7 +371,15 @@ export function NativeSmartAccountSend({
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen>
+        <Screen footer={
+          <Button
+            title="Review transfer"
+            disabled={
+              busy || !recipient || !amount || (!!collectible && !tokenId)
+            }
+            onPress={() => void review()}
+          />
+        }>
           <Header title="Send" onBack={back} />
           <Text style={styles.muted}>
             {accountLabel} · {context.name}
@@ -451,7 +459,7 @@ export function NativeSmartAccountSend({
           {!token && !collectible && (
             <Button
               title={maximum ? 'MAX selected' : 'MAX'}
-              variant="quiet"
+              variant="quiet" size="compact"
               disabled={
                 busy ||
                 balance.status !== 'available' ||
@@ -470,13 +478,7 @@ export function NativeSmartAccountSend({
             <Notice title="Check transfer" body={error} tone="amber" />
           ) : null}
           {busy ? <ActivityIndicator color={colors.pink} /> : null}
-          <Button
-            title="Review transfer"
-            disabled={
-              busy || !recipient || !amount || (!!collectible && !tokenId)
-            }
-            onPress={() => void review()}
-          />
+
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>

@@ -86,6 +86,8 @@ test('real watch Activity renders indexed native and ERC20 amounts without eager
   await expect(
     page.getByText(hashLabel(hash(OWNER, 4)), { exact: true })
   ).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: 'All', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('button', { name: 'Activity options', exact: true }).click();
   await page
     .getByRole('button', {
       name: 'Show zero-value token activity',
@@ -333,7 +335,7 @@ test('shared filters survive tab navigation without mixing received and sent row
 }) => {
   await open(page);
   await loaded(page);
-  await page.getByRole('button', { name: 'Received', exact: true }).click();
+  await page.getByRole('tab', { name: 'Received', exact: true }).click();
   await expect(row(page, OWNER, 2)).toBeVisible();
   await expect(
     page.getByText(hashLabel(hash(OWNER, 1)), { exact: true })

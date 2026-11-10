@@ -34,9 +34,9 @@ export function TransactionDetails({ transaction }: { transaction: object }) {
     {pages > 1 && <>
       <Text style={s.muted}>Page {page + 1} of {pages}</Text>
       <View style={s.pagination}>
-        <Button title="Previous page" variant="quiet" disabled={page === 0}
+        <Button title="Previous page" variant="quiet" size="compact" disabled={page === 0}
           onPress={() => setPage(page - 1)} style={s.pageButton} />
-        <Button title="Next page" variant="quiet" disabled={page + 1 === pages}
+        <Button title="Next page" variant="quiet" size="compact" disabled={page + 1 === pages}
           onPress={() => setPage(page + 1)} style={s.pageButton} />
       </View>
     </>}
@@ -138,16 +138,26 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
     !(review.error === 'BLOCKED_SITE' && review.verification.isScam);
   const amount = (units: string) => `${formatBaseUnits(units, review.decimals)} ${review.symbol}`;
 
-  return <SafeAreaView edges={['top']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
+  return <SafeAreaView edges={['top', 'bottom']} style={s.container}><KeyboardAvoidingView style={s.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen scrollResetKey={`${review.id}:${submitted ? 'result' : editingApproval ? 'edit' : 'review'}`} footer={<>
+    {ledger.showConnect && !submitted && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}
+    {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm transaction'}
+      disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
+        (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} />}
+    <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="quiet" size="compact" onPress={close} />
+  </>} gap={16}>
     <Header title={batch ? 'Review calls' : 'Review transaction'} onBack={close} />
     <Card style={s.card}>
+      <View style={s.identityGroup}>
       <Text style={s.appName}>{review.appName}</Text>
       <Text selectable style={s.origin}>{review.origin}</Text>
       <DappSiteStatus verification={review.verification} />
+      </View>
       <View style={s.divider} />
+      <View style={s.identityGroup}>
       <Text style={s.account}>{review.accountLabel}</Text>
       <Text selectable style={s.address}>{review.address}</Text>
       <Text style={s.muted}>{review.networkLabel} · Chain ID {review.chainId}</Text>
+      </View>
     </Card>
     {review.approval && transaction && <ApprovalReview summary={review.approval} transaction={transaction}
       onEditingChange={setApprovalEditing}
@@ -178,26 +188,26 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
           </Text>
           <Button
             title="Use dapp fee anyway"
-            variant="quiet"
+            variant="quiet" size="compact"
             disabled={feeChoicesDisabled}
             onPress={() => chooseFee('dapp')}
           />
           {comparison.recommendationOnly && (
             <Button
               title="Use network suggestion"
-              variant="quiet"
+              variant="quiet" size="compact"
               disabled={feeChoicesDisabled}
               onPress={() => chooseFee('network')}
             />
           )}
         </View>
       )}
-      <Button title={detailsVisible ? 'Hide transaction details' : 'View transaction details'} variant="quiet"
+      <Button title={detailsVisible ? 'Hide transaction details' : 'View transaction details'} variant="quiet" size="compact"
         expanded={detailsVisible} onPress={() => setDetailsRevision(detailsVisible ? null : review.revision)} />
     </Card>}
     {transaction && detailsVisible && <TransactionDetails key={`${review.id}:${review.revision}`} transaction={transaction} />}
     {batch && <Card style={s.card}>
-      <Button title={callsVisible ? 'Hide calls' : `View all ${batch.calls.length} calls`} variant="quiet"
+      <Button title={callsVisible ? 'Hide calls' : `View all ${batch.calls.length} calls`} variant="quiet" size="compact"
         expanded={callsVisible} onPress={() => setExpandedCalls(callsVisible ? null : callsKey)} />
       {callsVisible && batch.calls.map((call, index) => <View key={index} style={s.advisory}>
         <Text style={s.account}>{index + 1}. {call.status}</Text>
@@ -232,19 +242,15 @@ export function NativeTransactionReviewScreen({ review, controller, ledgerConnec
       <Text style={s.muted}>Switch to {review.accountLabel} to review this transaction.</Text>}
     {review.busy && <View style={s.progress}><ActivityIndicator color={colors.blue} />
       <Text>{submitted ? 'Sending transaction…' : transaction ? 'Please wait…' : 'Preparing transaction…'}</Text></View>}
-    {ledger.showConnect && !submitted && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}
-    {!submitted && <Button title={review.needsAccountSwitch ? 'Switch account' : retry ? `Retry call ${batch!.index + 1}/${batch!.calls.length}` : batch ? `Confirm call ${batch.index + 1}/${batch.calls.length}` : 'Confirm transaction'}
-      disabled={expired || editingApproval || review.error !== null || review.busy || !review.needsAccountSwitch &&
-        (ledger.blocked || !retry && (!prepared || review.requiresWarningAcknowledgement && !acknowledged))} onPress={approve} />}
-    <Button title={submitted || review.broadcastHash ? 'Close' : 'Reject'} variant="quiet" onPress={close} />
   </Screen></KeyboardAvoidingView>{ledger.modal}</SafeAreaView>;
 }
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  card: { gap: 10, padding: 20 },
-  appName: { fontSize: 22, lineHeight: 29, fontWeight: '700' },
-  origin: { fontSize: 16, lineHeight: 23, color: colors.blue },
+  card: { gap: 10, padding: 16 },
+  identityGroup: { gap: 4 },
+  appName: { fontSize: 20, lineHeight: 27, fontWeight: '700' },
+  origin: { fontSize: 14, lineHeight: 21, color: colors.blue },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border, marginVertical: 4 },
   account: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
   amount: { fontSize: 26, lineHeight: 34, fontWeight: '700' },

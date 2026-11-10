@@ -28,7 +28,9 @@ import {
   Card,
   colors,
   Header,
+  IconButton,
   Notice,
+  Row,
   Screen,
   styles,
   Text,
@@ -83,6 +85,7 @@ export function NativeAccounts({
 }) {
   const { t } = useNativeTranslation();
   const [form, setForm] = useState<Form | null>(null);
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -99,6 +102,7 @@ export function NativeAccounts({
       controller.subscribe(() => {
         setPassword('');
         setForm(null);
+        setAdding(false);
         setName('');
         setRemoveAcknowledged(false);
         listener();
@@ -134,6 +138,7 @@ export function NativeAccounts({
   const open = (value: Omit<Form, 'catalogueRevision' | 'contextRevision'>) => {
     if (!snapshot || working.current) return;
     setError('');
+    setAdding(false);
     setPassword('');
     setName(value.label);
     setRemoveAcknowledged(false);
@@ -248,24 +253,17 @@ export function NativeAccounts({
                 title={title}
                 subtitle={t('mobile.accounts.subtitle', { network: networkLabel })}
                 onBack={close}
+                right={<IconButton label={t('buttons.addAccount')} icon="plus" onPress={() => setAdding(value => !value)} selected={adding} />}
               />
               <Text style={styles.muted}>
                 {t('mobile.accounts.choose')}</Text>
-              <Button
-                title={t('buttons.addAccount')}
-                onPress={() => open({ kind: 'create', label: '' })}
-              />
-              {controller.supportsSmartAccounts?.() && <Button title={t('mobile.accounts.createSmart')} variant="secondary"
-                onPress={() => open({ kind: 'create-smart', label: '' })} />}
-              {onLedger && <Button title={t('mobile.accounts.connectLedger')} variant="secondary" onPress={onLedger} />}
-              {onTrezor && <Button title={t('mobile.accounts.connectTrezor')} variant="secondary" onPress={onTrezor} />}
-              {onImport && (
-                <Button
-                  title={t('mobile.accounts.importKey')}
-                  variant="secondary"
-                  onPress={onImport}
-                />
-              )}
+              {adding && <Card>
+                <Row title={t('mobile.accounts.create')} icon="plus" onPress={() => open({ kind: 'create', label: '' })} dense />
+                {controller.supportsSmartAccounts?.() && <Row title={t('mobile.accounts.createSmart')} icon="wallet" onPress={() => open({ kind: 'create-smart', label: '' })} dense />}
+                {onLedger && <Row title={t('mobile.accounts.connectLedger')} icon="shield" onPress={onLedger} dense />}
+                {onTrezor && <Row title={t('mobile.accounts.connectTrezor')} icon="shield" onPress={onTrezor} dense />}
+                {onImport && <Row title={t('mobile.accounts.importKey')} icon="wallet" onPress={onImport} dense last />}
+              </Card>}
               {!!error && (
                 <Text
                   accessibilityRole="alert"
@@ -280,6 +278,7 @@ export function NativeAccounts({
           renderItem={({ item: account }) => (
             <Card style={s.account}>
               <IdlePressable
+                style={s.accountContent}
                 accessibilityRole="button"
                 accessibilityLabel={t('mobile.accounts.select', { name: account.label })}
                 onPress={() => {
@@ -300,16 +299,16 @@ export function NativeAccounts({
                 <Text style={s.kind}>
                   {account.type === 'Imported' ? t('mobile.accounts.imported')
                     : account.type === 'SmartAccount' ? t('mobile.accounts.smart')
-                    : account.type === 'Ledger' ? t('mobile.accounts.ledger') : t('mobile.accounts.phrase')}
+                    : account.type === 'Ledger' ? t('mobile.accounts.ledger') : account.type === 'Trezor' ? 'Trezor' : t('mobile.accounts.phrase')}
                 </Text>
-                <Text selectable style={s.address}>
-                  {account.address}
+                <Text accessibilityLabel={account.address} style={[s.address, s.listAddress]}>
+                  {account.address.length > 20 ? `${account.address.slice(0, 10)}…${account.address.slice(-6)}` : account.address}
                 </Text>
               </IdlePressable>
               <View style={s.actions}>
-                <Button
-                  title={t('mobile.accounts.rename')}
-                  variant="quiet"
+                <IconButton
+                  label={`${t('mobile.accounts.rename')} ${account.label}`}
+                  icon="edit"
                   onPress={() =>
                     open({
                       kind: 'rename',
@@ -321,9 +320,9 @@ export function NativeAccounts({
                 />
                 {(account.type !== 'HDAccount' || account.index !== 0) &&
                   account.id !== snapshot.active.accountId && (
-                    <Button
-                      title={t('buttons.remove')}
-                      variant="quiet"
+                    <IconButton
+                      label={`${t('buttons.remove')} ${account.label}`}
+                      icon="trash"
                       onPress={() =>
                         open({
                           kind: 'remove',
@@ -340,8 +339,8 @@ export function NativeAccounts({
           )}
           ItemSeparatorComponent={() => <View style={s.separator} />}
           ListFooterComponent={
-            <Text style={s.buildLabel}>
-              {t('mobile.common.development')}</Text>
+            typeof __DEV__ !== 'undefined' && __DEV__ ? <Text style={s.buildLabel}>
+              {t('mobile.common.development')}</Text> : undefined
           }
         />
       </SafeAreaView>
@@ -459,8 +458,8 @@ export function NativeAccounts({
               {error}
             </Text>
           )}
-          <Text style={s.buildLabel}>
-            {t('mobile.common.development')}</Text>
+          {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>
+            {t('mobile.common.development')}</Text>}
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -469,8 +468,8 @@ export function NativeAccounts({
 const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
   list: { paddingHorizontal: 22, paddingTop: 10, paddingBottom: 26 },
-  listHeader: { gap: 22, paddingBottom: 22 },
-  separator: { height: 16 },
+  listHeader: { gap: 14, paddingBottom: 16 },
+  separator: { height: 10 },
   field: { gap: 10 },
   label: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   input: {
@@ -483,7 +482,8 @@ const s = StyleSheet.create({
     minHeight: 56,
     fontSize: 16,
   },
-  account: { padding: 18, gap: 8 },
+  account: { padding: 14, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  accountContent: { flex: 1, minWidth: 0, minHeight: 64, justifyContent: 'center' },
   identity: { padding: 18, gap: 12 },
   row: {
     flexDirection: 'row',
@@ -496,7 +496,8 @@ const s = StyleSheet.create({
   kind: { color: colors.muted, fontSize: 12, lineHeight: 20, marginTop: 6 },
   acknowledgement: { paddingVertical: 12 },
   address: { fontSize: 13, lineHeight: 22, color: colors.muted, marginTop: 10 },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
+  listAddress: { marginTop: 4 },
+  actions: { flexDirection: 'column', alignItems: 'center' },
   section: { fontSize: 20, fontWeight: '600' },
   error: { color: colors.red, fontSize: 14, lineHeight: 21 },
   buildLabel: { color: colors.muted, fontSize: 11, textAlign: 'center' },

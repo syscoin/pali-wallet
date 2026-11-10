@@ -208,7 +208,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
         style={s.root}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen key={step.kind}>
+        <Screen scrollResetKey={step.kind}>
           <Header
             title={
               step.kind === 'link'
@@ -266,7 +266,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                     {reservation && (
                       <Button
                         title="Release collateral"
-                        variant="quiet"
+                        variant="quiet" size="compact"
                         disabled={busy}
                         onPress={() => {
                           clear();
@@ -295,7 +295,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
                     </Text>
                     <Button
                       title="Release collateral"
-                      variant="quiet"
+                      variant="quiet" size="compact"
                       disabled={busy}
                       onPress={() => {
                         clear();
@@ -318,7 +318,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
               />
               <Button
                 title="Refresh"
-                variant="secondary"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={() => void run(load, step)}
               />
@@ -473,7 +473,7 @@ export function NativeSentryNodes({ networkLabel, open, onBack }: Props) {
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  card: { padding: 18, gap: 10 },
+  card: { padding: 16, gap: 10 },
   heading: { fontSize: 18, fontWeight: '700' },
   muted: { color: colors.muted, lineHeight: 22 },
   notice: { color: colors.blue, lineHeight: 22 },

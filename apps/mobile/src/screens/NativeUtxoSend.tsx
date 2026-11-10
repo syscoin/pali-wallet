@@ -233,27 +233,6 @@ export function NativeUtxoSendScreen({
       const phase = await send!.check(txid);
       if (current()) setOutcome({ txid, phase });
     });
-  const footer = outcome ? (
-    <Button title="Done" onPress={close} />
-  ) : review ? undefined : (
-    <Button
-      title="Review transfer"
-      disabled={!send || busy || !address.trim() || !(amount || max)}
-      onPress={() => {
-        run(async (current) => {
-          const next = await send!.prepare({
-            recipient: address,
-            amount,
-            max,
-            asset,
-            rbf,
-          });
-          if (current()) setReview(next);
-        });
-      }}
-      testID="native-utxo-review"
-    />
-  );
   const confirm = review && (
     <Button
       title={review.retryTxid ? 'Resend saved transfer' : 'Confirm and send'}
@@ -281,13 +260,34 @@ export function NativeUtxoSendScreen({
       testID="native-utxo-confirm"
     />
   );
+  const footer = outcome ? (
+    <Button title="Done" onPress={close} />
+  ) : review ? <>{confirm}<Button title="Edit transfer" variant="quiet" disabled={busy} onPress={close} /></> : (
+    <Button
+      title="Review transfer"
+      disabled={!send || busy || !address.trim() || !(amount || max)}
+      onPress={() => {
+        run(async (current) => {
+          const next = await send!.prepare({
+            recipient: address,
+            amount,
+            max,
+            asset,
+            rbf,
+          });
+          if (current()) setReview(next);
+        });
+      }}
+      testID="native-utxo-review"
+    />
+  );
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
       <KeyboardAvoidingView
         style={s.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen footer={footer}>
+        <Screen footer={footer} scrollResetKey={outcome ? `outcome:${outcome.txid}` : review ? `review:${review.retryTxid ?? 'new'}` : 'draft'} gap={16}>
           <Header
             title={
               outcome
@@ -299,6 +299,17 @@ export function NativeUtxoSendScreen({
             subtitle={subtitle}
             onBack={close}
           />
+          {busy && (
+            <ActivityIndicator
+              accessibilityLabel="Working"
+              color={colors.pink}
+            />
+          )}
+          {!!error && (
+            <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
+              {error}
+            </Text>
+          )}
           {ledgerConnection && !ledgerReady && review && !review.retryTxid && !outcome && <Button
             title="Connect Ledger" disabled={busy}
             onPress={() => { Keyboard.dismiss(); setLedgerPicker(ledgerConnection); }}
@@ -424,7 +435,6 @@ export function NativeUtxoSendScreen({
                   </View>
                 ))}
               </Card>
-              {confirm}
             </>
           ) : (
             <>
@@ -441,6 +451,8 @@ export function NativeUtxoSendScreen({
                   autoComplete="off"
                   maxLength={128}
                   style={s.input}
+                  returnKeyType="done"
+                  onSubmitEditing={() => Keyboard.dismiss()}
                 />
                 <Text style={styles.muted}>Amount in {symbol}</Text>
                 <IdleTextInput
@@ -456,6 +468,8 @@ export function NativeUtxoSendScreen({
                   autoComplete="off"
                   maxLength={40}
                   style={s.input}
+                  returnKeyType="done"
+                  onSubmitEditing={() => Keyboard.dismiss()}
                 />
                 {(!asset || maximumAmount !== undefined) && (
                   <Button
@@ -509,17 +523,6 @@ export function NativeUtxoSendScreen({
               )}
             </>
           )}
-          {busy && (
-            <ActivityIndicator
-              accessibilityLabel="Working"
-              color={colors.pink}
-            />
-          )}
-          {!!error && (
-            <Text accessibilityRole="alert" accessibilityLiveRegion="polite">
-              {error}
-            </Text>
-          )}
         </Screen>
       </KeyboardAvoidingView>
       {ledgerPicker && ledgerPicker === ledgerConnection && <NativeLedgerConnectionModal
@@ -538,7 +541,7 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   card: { gap: 12 },
   insetCard: { gap: 12, padding: 16 },
-  hero: { alignItems: 'center', gap: 12, paddingVertical: 12 },
+  hero: { alignItems: 'center', gap: 8, paddingVertical: 4 },
   amount: { textAlign: 'center', fontSize: 28, fontWeight: '700' },
   address: {
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',

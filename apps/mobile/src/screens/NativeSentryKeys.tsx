@@ -503,7 +503,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
         style={s.fill}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Screen gap={16}>
+        <Screen gap={16} scrollResetKey={step.kind}>
           <Header title={title} subtitle={networkLabel} onBack={back} />
           {step.kind === 'list' && (
             <>
@@ -536,7 +536,7 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                 <>
                   <Button
                     title="Service settings"
-                    variant="secondary"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => {
                       const owner = editable();
@@ -564,14 +564,14 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
                   />
                   <Button
                     title="Import multiple keys"
-                    variant="secondary"
+                    variant="secondary" size="compact"
                     disabled={busy}
                     onPress={() => startDraft(true)}
                   />
                 </>
               )}
               {canRetry && !busy && (
-                <Button title="Try again" variant="secondary" onPress={load} />
+                <Button title="Try again" variant="secondary" size="compact" onPress={load} />
               )}
             </>
           )}
@@ -581,13 +581,13 @@ export function NativeSentryKeys({ networkLabel, open, onBack }: Props) {
               <Button
                 title="Copy public key"
                 icon="copy"
-                variant="secondary"
+                variant="secondary" size="compact"
                 disabled={busy}
                 onPress={copy}
               />
               <Button
                 title="Remove key"
-                variant="quiet"
+                variant="quiet" size="compact"
                 disabled={busy}
                 onPress={startRemoval}
               />

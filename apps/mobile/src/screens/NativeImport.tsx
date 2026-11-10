@@ -132,7 +132,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
 
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen footer={address ? <Button title={t('mobile.importAccount.import')} disabled={busy || !password || !acknowledged} onPress={submit} /> :
+      <Screen gap={16} footer={address ? <Button title={t('mobile.importAccount.import')} disabled={busy || !password || !acknowledged} onPress={submit} /> :
         <Button title={t('mobile.importAccount.review')} disabled={busy || !privateKey || !name.trim()} onPress={() => void review()} />}>
         <Header title={address ? t('mobile.importAccount.reviewTitle') : t('mobile.accounts.importKey')} subtitle={utxo ? networkLabel : t('mobile.importAccount.evmAccount', { network: networkLabel })} onBack={back} />
         {!utxo && <Notice title={t('mobile.importAccount.separateTitle')} body={t('mobile.importAccount.separateBody')} tone="amber" />}
@@ -175,7 +175,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         </>}
         {busy && <ActivityIndicator accessibilityLabel={address ? t('mobile.importAccount.importing') : t('mobile.importAccount.checking')} color={colors.pink} />}
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
-        <Text style={s.buildLabel}>{t('mobile.common.development')}</Text>
+        {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>{t('mobile.common.development')}</Text>}
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;
@@ -189,7 +189,7 @@ const s = StyleSheet.create({
   selectedAddressOption: { borderColor: colors.pink, backgroundColor: colors.raised },
   selectedAddressLabel: { color: colors.text },
   label: { color: colors.muted, fontSize: 13, lineHeight: 20, fontWeight: '600' },
-  input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 17, minHeight: 56, fontSize: 16 },
+  input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 14, minHeight: 52, fontSize: 16 },
   identity: { padding: 18, gap: 10 }, address: { fontSize: 14, lineHeight: 23 },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   checkbox: { width: 24, height: 24, borderColor: colors.muted, borderWidth: 1, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },

@@ -4,7 +4,7 @@ import { ActivityIndicator, BackHandler, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import type { NativeConnectionError, NativeConnectionsView, NativeConnectionsSnapshot } from '../connections/types';
-import { Button, Card, colors, Header, Icon, Notice, Screen, Text } from '../ui';
+import { Button, Card, colors, Header, Icon, IconButton, Notice, Screen, Text } from '../ui';
 import { IdlePressable } from './IdleActivityBoundary';
 import { DappSiteStatus } from './DappSiteStatus';
 import { ConnectionQrScanner } from './ConnectionQrScanner';
@@ -64,14 +64,14 @@ export function NativeCallsStatus({
       <Screen>
         <Header title={t('mobile.connections.bundleStatus')} onBack={close} />
         <Text>{view.origin}</Text>
-        <Card style={{ padding: 20, gap: 12 }}>
+        <Card style={{ padding: 16, gap: 12 }}>
           <Text>{label}</Text>
           <Text>{t('mobile.connections.chain', { chainId: BigInt(status.chainId).toString() })}</Text>
           <Text>{status.atomic ? t('mobile.connections.atomic') : t('mobile.connections.sequential')}</Text>
           <Text selectable>{status.id}</Text>
         </Card>
         {status.receipts?.map((receipt) => (
-          <Card key={receipt.transactionHash} style={{ padding: 20, gap: 12 }}>
+          <Card key={receipt.transactionHash} style={{ padding: 16, gap: 12 }}>
             <Text>
               {receipt.status === '0x1'
                 ? t('mobile.connections.transactionConfirmed')
@@ -81,7 +81,7 @@ export function NativeCallsStatus({
             <Text>{t('mobile.connections.block', { blockNumber: BigInt(receipt.blockNumber).toString() })}</Text>
           </Card>
         ))}
-        <Button title={t('buttons.close')} variant="quiet" onPress={close} />
+        <Button title={t('buttons.close')} variant="quiet" size="compact" onPress={close} />
       </Screen>
     </SafeAreaView>
   );
@@ -196,18 +196,18 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
           onPress={() => {
             if (selectedAccountId && snapshot.network) invoke(() => controller.approve(proposal.id, selectedAccountId, snapshot.network!.id, snapshot.revision));
           }} />
-        <Button title={t('buttons.reject')} variant="quiet" onPress={() => invoke(() => controller.reject(proposal.id))} />
+        <Button title={t('buttons.reject')} variant="quiet" size="compact" onPress={() => invoke(() => controller.reject(proposal.id))} />
       </Card> : <Card style={s.card}>
         <View style={s.requestIcon}><Icon name="globe" size={26} color={colors.blue} /></View>
         <Text style={s.title}>{busy ? t('mobile.connections.waiting') : t('mobile.connections.connectWalletConnect')}</Text>
         <Text style={s.body}>{busy ? t('mobile.connections.reviewArrival') : t('mobile.connections.scanOrPaste')}</Text>
         {busy ? <><ActivityIndicator color={colors.blue} accessibilityLabel={t('mobile.connections.waitingRequest')} />
-          <Button title={t('buttons.cancel')} variant="secondary" onPress={() => controller.cancel()} /></>
+          <Button title={t('buttons.cancel')} variant="secondary" size="compact" onPress={() => controller.cancel()} /></>
           : snapshot.status === 'unavailable'
           ? <Button title={t('mobile.connections.tryAgain')} onPress={() => invoke(() => controller.retry())} />
           : <><Button title={t('mobile.connections.scan')} icon="scan" disabled={!snapshot.network}
             onPress={() => { lifetime.current.revision++; onScanStarted?.(); setScanning(true); }} />
-            <Button title={t('mobile.connections.paste')} icon="copy" variant="secondary" disabled={!snapshot.network} onPress={paste} /></>}
+            <Button title={t('mobile.connections.paste')} icon="copy" variant="secondary" size="compact" disabled={!snapshot.network} onPress={paste} /></>}
       </Card>}
       {(snapshot.error || clipboardError) && <Notice title={t('mobile.connections.unavailableTitle')}
         body={snapshot.error ? t(ERRORS[snapshot.error]) : t('mobile.connections.clipboard')} />}
@@ -217,11 +217,14 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
       {snapshot.sessions.length > 0 && <View style={s.sessions}>
         <Text accessibilityRole="header" style={s.sectionTitle}>{t('mobile.connections.yourConnections')}</Text>
         {snapshot.sessions.map((session) => <Card key={session.id} style={s.card}>
-          <Text style={s.accountLabel}>{session.name}</Text>
+          <View style={s.sessionHeading}>
+            <Text style={[s.accountLabel, s.sessionName]}>{session.name}</Text>
+            <IconButton label={t('mobile.connections.disconnect', { name: session.name })} icon="close"
+              onPress={() => invoke(() => controller.disconnect(session.id))} />
+          </View>
           <Text selectable style={s.origin}>{session.origin}</Text>
           <Text style={s.body}>{session.accountLabel} · {session.networkLabel}</Text>
-          {session.returnTarget && <Button title={t('mobile.connections.openWebsite')} variant="secondary" onPress={() => invoke(() => controller.returnToDapp(session.id, snapshot.revision))} />}
-          <Button title={t('mobile.connections.disconnect', { name: session.name })} variant="quiet" onPress={() => invoke(() => controller.disconnect(session.id))} />
+          {session.returnTarget && <Button title={t('mobile.connections.openWebsite')} variant="secondary" size="compact" onPress={() => invoke(() => controller.returnToDapp(session.id, snapshot.revision))} />}
         </Card>)}
       </View>}
     </>}
@@ -230,7 +233,7 @@ export function NativeConnections({ controller, onBack, incomingPairing, onPairi
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  card: { gap: 14, padding: 20 },
+  card: { gap: 12, padding: 16 },
   requestIcon: { width: 54, height: 54, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.raised },
   title: { fontSize: 22, lineHeight: 29, fontWeight: '700' },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted },
@@ -245,5 +248,7 @@ const s = StyleSheet.create({
   selected: { borderColor: colors.blue, backgroundColor: colors.raised },
   pressed: { opacity: 0.7 },
   sessions: { gap: 12 },
+  sessionHeading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sessionName: { flex: 1, minWidth: 0 },
   sectionTitle: { fontSize: 18, lineHeight: 25, fontWeight: '600' },
 });

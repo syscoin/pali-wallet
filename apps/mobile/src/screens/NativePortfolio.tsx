@@ -16,6 +16,7 @@ import type { NativeTokenView } from '../portfolio/nativeTokens';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { NativeTokens } from './NativeTokens';
 import { PortfolioQuote } from './PortfolioQuote';
+import { AssetMarketCard } from '../portfolio/AssetMarketCard';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
@@ -23,7 +24,7 @@ import { supportsSptUtxoChain, type SptBalance } from '../../../../source/shared
 import { NativeSptAssets } from './NativeSptAssets';
 import type { NativeCatalogueAccount } from '../custody/walletCatalogue';
 import type { NativePortfolioAccount, NativePortfolioSnapshot, PublicCustodySource } from '../portfolio/nativePortfolio';
-import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
+import { Button, Card, Coin, colors, Header, IconButton, Notice, Row, Screen, styles, Text } from '../ui';
 import { useNativeTranslation } from '../platform/localization';
 
 type Props = {
@@ -69,6 +70,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
   const { t } = useNativeTranslation();
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
   const [tokenTitle, setTokenTitle] = useState<string | null>(null);
+  const [nativeDetailScope, setNativeDetailScope] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingAction, setPendingAction] = useState<'copy' | 'share' | 'faucet' | null>(null);
   const { width, fontScale } = useWindowDimensions();
@@ -88,6 +90,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
   const scope = account ? scopeOf(account) : null;
   const canReceive = !!account && (!utxo || canUseUtxoCustodyAddress(account.address, utxo));
   const receiving = canReceive && receiveScope === scope;
+  const nativeDetail = scope !== null && nativeDetailScope === scope;
   const loading = snapshot.status === 'loading';
   const canSend = !!onSend && (utxo !== undefined ||
     !!registration && nativeSigningEnabled(registration.id, [registration]));
@@ -105,16 +108,17 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
   }, [invalidateActions]);
   useLayoutEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (!receiving) return false;
-      setReceiveScope(null); invalidateActions(); return true;
+      if (receiving) { setReceiveScope(null); invalidateActions(); return true; }
+      if (nativeDetail) { setNativeDetailScope(null); return true; }
+      return false;
     });
     return () => back.remove();
-  }, [receiving, invalidateActions]);
+  }, [receiving, nativeDetail, invalidateActions]);
 
-  const handleBack = () => { if (receiving) { setReceiveScope(null); invalidateActions(); return true; } return tokenBack.current?.() ?? false; };
+  const handleBack = () => { if (receiving) { setReceiveScope(null); invalidateActions(); return true; } if (nativeDetail) { setNativeDetailScope(null); return true; } return tokenBack.current?.() ?? false; };
   const back = () => { if (!handleBack()) onExit(); };
   useLayoutEffect(() => navigation?.registerBack(handleBack));
-  useLayoutEffect(() => { navigation?.setImmersive(receiving || !!tokenTitle); return () => navigation?.setImmersive(false); }, [navigation, receiving, tokenTitle]);
+  useLayoutEffect(() => { navigation?.setImmersive(receiving || nativeDetail || !!tokenTitle); return () => navigation?.setImmersive(false); }, [navigation, receiving, nativeDetail, tokenTitle]);
   const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
     const current = account;
     if (!canReceive || !current || !model.isCurrent(current) || lifecycle.current.busy) return;
@@ -155,25 +159,30 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
   const currentFeedback = feedback?.scope === scope ? feedback : null;
   const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const feedbackView = currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>;
-  const actions = receiving ? <><Text selectable style={s.receiveAddress} accessibilityLabel={`${networkName} address ${account?.address}`} testID="native-receive-address">{account?.address}</Text>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}>
-    <Button title="Copy address" icon="copy" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
-    <Button title="Share address" icon="share" variant="secondary" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
-  </View></> : undefined;
+  const actions = receiving ? <View style={[s.actions, stackActions && s.stackedActions]}>
+    <Button title="Copy address" icon="copy" style={actionStyle} size="compact" disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
+    <Button title="Share address" icon="share" variant="secondary" style={actionStyle} size="compact" disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
+  </View> : undefined;
 
-  return <SafeAreaView edges={navigation && !receiving && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
-    <Screen key={receiving ? 'receive' : 'portfolio'} footer={actions} footerScrollable={receiving} gap={receiving ? 12 : 22}>
-      <Header title={receiving ? `Receive ${symbol}` : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
+  return <SafeAreaView edges={navigation && !receiving && !nativeDetail && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
+    <Screen key={receiving ? 'receive' : 'portfolio'} scrollResetKey={nativeDetail ? 'native-asset' : tokenTitle ?? 'portfolio'} footer={actions} footerScrollable={receiving} gap={receiving ? 12 : 16}>
+      <Header title={receiving ? `Receive ${symbol}` : nativeDetail ? networkName : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle ? <View style={s.toolbar}>
+        {canSend && <IconButton label={loading ? 'Refreshing balance' : 'Refresh balance'} icon="refresh" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
+        {!nativeDetail && onManageAccounts && <IconButton label="Accounts" icon="wallet" onPress={onManageAccounts} />}
+      </View> : undefined} />
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its account." /> : receiving ? <>
-        <View style={s.identity}><Coin id={network.networkId} size={48} /><Text style={s.network}>{networkName}</Text><Text style={styles.muted}>{accountLabel}</Text></View>
+        <View style={s.identity}><Coin id={network.networkId} size={36} /><Text style={s.network}>{networkName}</Text></View>
         <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${networkName} address ${account.address}`} testID="native-receive-qr">
           <QRCode value={account.address} size={receiveQrSize} quietZone={16} backgroundColor="#ffffff" color={colors.bg} ecl="M" />
         </View>
+        <Text selectable style={s.receiveAddress} accessibilityLabel={`${networkName} address ${account.address}`} testID="native-receive-address">{account.address}</Text>
+        {feedbackView}
         <Notice title="Check the network" body={`Use ${networkName}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
         {faucetCard}
       </> : <>
         {!tokenTitle && <>
-        {hardwareRequest}
-        {onDeploySmartAccount && <Button title="Deploy smart account" variant="secondary" onPress={onDeploySmartAccount} />}
+        {!nativeDetail && hardwareRequest}
+        {!nativeDetail && onDeploySmartAccount && <Button title="Deploy smart account" variant="secondary" onPress={onDeploySmartAccount} />}
         <View style={s.hero}>
           <Coin id={network.networkId} size={46} />
           <Text style={s.label}>{networkName.toUpperCase()} {utxo ? 'CONFIRMED BALANCE' : 'BALANCE'}</Text>
@@ -185,7 +194,7 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
           {loading && <ActivityIndicator color={colors.pink} accessibilityLabel={`Loading ${networkName} balance`} />}
           {snapshot.status === 'available' && snapshot.updatedAt !== null && <Text style={s.freshness}>Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>}
         </View>
-        {smartAccount && <Card><Text style={s.label}>SMART ACCOUNT</Text>
+        {!nativeDetail && smartAccount && <Card style={{ padding: 16, gap: 10 }}><Text style={s.label}>SMART ACCOUNT</Text>
           <Text style={styles.muted}>Managed by {smartAccount.managementAddress}</Text>
           <Text style={styles.muted}>{smartAccount.isDeployed ? t(canSend ? 'settings.smartAccountInfrastructureReadyStatus' : 'settings.unavailable') : t('settings.smartAccountUndeployedNotice')}</Text>
           {smartAccount.isDeployed && onManageSmartAccountModules && <Button title={t('mobile.smartAccountModules.title')} variant="secondary" onPress={() => { if (account && model.isCurrent(account)) onManageSmartAccountModules(); }} />}
@@ -199,22 +208,33 @@ function NativePortfolioContent({ hardwareRequest, model, snapshot, smartAccount
           {canReceive && <Button title="Receive" variant={canSend ? 'secondary' : 'primary'} icon="arrow-down-left" style={actionStyle} testID="native-portfolio-receive" onPress={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
           {!canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="secondary" style={actionStyle} disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         </View>
-        {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
-        {canReceive && <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>}
+        {nativeDetail ? <>
+          <AssetMarketCard asset={{ kind: 'native', networkId: account.network, registration }} />
+          {canReceive && <Card style={s.assetAddress}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>}
+        </> : <View style={s.assetList}>
+          <Text accessibilityRole="header" style={s.assetHeading}>Assets</Text>
+          <Card><Row title={symbol} subtitle={networkName} icon={<Coin id={network.networkId} size={32} />}
+            right={<Text style={s.assetBalance}>{amount ?? '—'} {symbol}</Text>}
+            onPress={() => { if (model.isCurrent(account)) setNativeDetailScope(scopeOf(account)); }} last />
+          </Card>
+        </View>}
         {faucetCard}
         </>}
+        <View style={nativeDetail ? { display: 'none' } : s.assetList} accessibilityElementsHidden={nativeDetail} aria-hidden={nativeDetail}>
         {utxo && supportsSptUtxoChain(utxo.chainId) && <NativeSptAssets key={scope} holdings={snapshot.assets?.status === 'available' ? snapshot.assets.holdings : null} loading={loading}
           onModeChange={setTokenTitle} onBackHandlerChange={setTokenBack}
+          onReceive={canReceive ? () => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } } : undefined}
           onRefresh={() => { if (account && model.isCurrent(account)) void model.refresh(); }}
           onSend={account && onSendSpt ? asset => { if (model.isCurrent(account)) onSendSpt(asset); } : undefined} />}
-        {tokenView && !utxo && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
+        {tokenView && !utxo && <NativeTokens registration={registration} controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
           onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onSendCollectible={account && onSendCollectible ? (collectible) => { if (model.isCurrent(account)) onSendCollectible(collectible); } : undefined}
           onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
-        {!tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
+        </View>
+        {!nativeDetail && !tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
       </>}
       {!receiving && feedbackView}
-      <Text style={s.buildLabel}>Development build · Use a test wallet</Text>
+      {typeof __DEV__ !== 'undefined' && __DEV__ && <Text style={s.buildLabel}>Development build · Use a test wallet</Text>}
     </Screen>
   </SafeAreaView>;
 }
@@ -225,15 +245,16 @@ const s = StyleSheet.create({
   compactAction: { paddingHorizontal: 8 },
   stackedActions: { flexDirection: 'column' },
   stackedAction: { flex: 0 },
-  hero: { alignItems: 'center', gap: 9, paddingTop: 8, paddingBottom: 12 },
+  toolbar: { flexDirection: 'row' },
+  hero: { alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 4 },
   label: { color: colors.muted, fontSize: 11, lineHeight: 17, fontWeight: '600', letterSpacing: 1 },
   amount: { fontSize: 36, lineHeight: 46, fontWeight: '600', textAlign: 'center', letterSpacing: -1.1, alignSelf: 'stretch', flexShrink: 1 },
   unit: { color: colors.muted, fontSize: 15, lineHeight: 22 }, freshness: { color: colors.muted, fontSize: 11, lineHeight: 17 },
   privacy: { color: colors.muted, fontSize: 12, lineHeight: 19 },
-  accountCard: { padding: 18, gap: 10 }, address: { color: colors.text, fontSize: 14, lineHeight: 23 },
-  tools: { overflow: 'hidden' }, identity: { alignItems: 'center', gap: 8 }, network: { fontSize: 20, lineHeight: 28, fontWeight: '600' },
+  assetAddress: { padding: 16, gap: 8 }, assetList: { gap: 12 }, assetHeading: { fontSize: 18, lineHeight: 26, fontWeight: '600' }, assetBalance: { fontSize: 13, lineHeight: 20, fontWeight: '600', textAlign: 'right', flexShrink: 1, maxWidth: '45%' }, address: { color: colors.text, fontSize: 14, lineHeight: 23 },
+  tools: { overflow: 'hidden' }, identity: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 }, network: { fontSize: 17, lineHeight: 24, fontWeight: '600' },
   qr: { alignSelf: 'center', backgroundColor: '#ffffff', padding: 10, borderRadius: 20, maxWidth: '100%' },
-  receiveAddress: { color: colors.text, fontSize: 15, lineHeight: 25, textAlign: 'center', marginHorizontal: 4 },
+  receiveAddress: { color: colors.text, fontSize: 14, lineHeight: 22, textAlign: 'center', marginHorizontal: 4 },
   feedback: { color: colors.green, fontSize: 13, lineHeight: 21, textAlign: 'center' },
   buildLabel: { color: colors.muted, fontSize: 11, lineHeight: 18, textAlign: 'center' },
 });

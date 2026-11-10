@@ -81,12 +81,6 @@ export function Welcome({
           <View style={styles.heroPlate}>
             <BrandMark />
           </View>
-          <View style={[styles.orbitDot, styles.orbitDotBlue]} />
-          <View style={[styles.orbitDot, styles.orbitDotPink]} />
-          <View style={styles.heroChip}>
-            <Icon name="eye" size={16} color={colors.blue} />
-            <Text style={styles.heroChipText}>A little more clarity</Text>
-          </View>
         </View>
 
         <View style={styles.intro}>
@@ -235,7 +229,7 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
   if (managingNetworks && networkSettings && onNetworksChanged)
     return <WatchNetworks controller={networkSettings} onChanged={onNetworksChanged} onBack={closeNetworks} />;
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <ScrollView ref={scroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <ScrollView ref={scroll} style={{ flex: 1 }} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
         <IdlePressable accessibilityRole="button" accessibilityLabel="Back" disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>
         <Text style={styles.navigationLabel}>{review ? 'REVIEW ACCOUNT' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
@@ -276,18 +270,18 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetwor
         </View>
       </View>}
       {error && <View accessibilityLiveRegion="polite" style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text></View>}
+    </ScrollView>
       <View style={styles.formFooter}><IdlePressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
         onPress={() => review ? void confirm() : prepare()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, submitting && styles.disabled]}>
         {submitting ? <ActivityIndicator color={colors.bg} /> : <Icon name={review ? 'plus' : 'eye'} size={21} color={colors.bg} />}
         <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review account'}</Text>
       </IdlePressable><Text style={styles.footerNote}>Use public information only. Never enter a recovery phrase or private key.</Text></View>
-    </ScrollView>
   </KeyboardAvoidingView>;
 }
 
 const styles = StyleSheet.create({
-  networkChoices: { gap: 8 },
-  networkChoice: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 14, gap: 4 },
+  networkChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  networkChoice: { flexBasis: '47%', flexGrow: 1, minHeight: 48, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, gap: 4 },
   networkChoiceSelected: { borderColor: colors.blue, backgroundColor: colors.surface },
   networkChoiceTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
   reviewText: { color: colors.text, fontSize: 17, lineHeight: 26 },
@@ -365,7 +359,7 @@ const styles = StyleSheet.create({
     marginTop: 7,
     marginBottom: 8,
   },
-  heroCompact: { height: 180, transform: [{ scale: 0.75 }] },
+  heroCompact: { height: 160, transform: [{ scale: 0.75 }] },
   haloOuter: {
     position: 'absolute',
     width: 218,
@@ -525,7 +519,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   navigationBalance: { width: 38 },
-  formIntro: { paddingTop: 25, paddingBottom: 31 },
+  formIntro: { paddingTop: 12, paddingBottom: 18 },
   largeEye: {
     width: 61,
     height: 61,
@@ -550,7 +544,7 @@ const styles = StyleSheet.create({
     lineHeight: 25,
     marginTop: 10,
   },
-  fields: { gap: 24 },
+  fields: { gap: 16 },
   fieldGroup: { gap: 10 },
   fieldLabel: { color: colors.text, fontSize: 13, fontWeight: '600' },
   input: {
@@ -596,7 +590,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   errorText: { color: colors.red, fontSize: 13, lineHeight: 21 },
-  formFooter: { marginTop: 'auto', paddingTop: 32, gap: 15 },
+  formFooter: { paddingHorizontal: 24, paddingVertical: 14, gap: 10, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.bg },
   footerNote: {
     color: colors.muted,
     fontSize: 11,

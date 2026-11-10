@@ -154,7 +154,7 @@ export function NativePrivateDeposit({
         footer={
           <Button
             title="Close"
-            variant="quiet"
+            variant="quiet" size="compact"
             disabled={current?.closing}
             onPress={back}
           />
@@ -300,11 +300,12 @@ function DepositContent({
   return (
     <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
       <Screen
+        scrollResetKey={`${state.phase}:${showReview ? review?.intentId : result ? 'result' : 'pool'}`}
         footer={
           <>
             {primary}
             {!result && (
-              <Button title="Close" variant="quiet" onPress={onBack} />
+              <Button title="Close" variant="quiet" size="compact" onPress={onBack} />
             )}
           </>
         }
@@ -396,7 +397,7 @@ function DepositContent({
                     ? 'Hide transaction details'
                     : 'View transaction details'
                 }
-                variant="quiet"
+                variant="quiet" size="compact"
                 expanded={details === review.intentId}
                 onPress={() =>
                   setDetails(
@@ -440,7 +441,7 @@ function DepositContent({
               </Text>
               <Button
                 title="Back up private notes"
-                variant="quiet"
+                variant="quiet" size="compact"
                 disabled={busy}
                 onPress={onBackup}
               />
@@ -484,7 +485,7 @@ function DepositContent({
             {!busy && (
               <Button
                 title="Change amount"
-                variant="quiet"
+                variant="quiet" size="compact"
                 onPress={() => {
                   setChoosing(true);
                   setAcknowledged(null);
@@ -539,7 +540,7 @@ function DepositContent({
             )}
             <Button
               title={busy ? 'Checking pool…' : 'Check pool status'}
-              variant="secondary"
+              variant="secondary" size="compact"
               disabled={busy}
               onPress={() => {
                 void controller.refresh().catch(() => undefined);
@@ -549,13 +550,13 @@ function DepositContent({
             {hash && onActivity && (
               <Button
                 title="View in Activity"
-                variant="quiet"
+                variant="quiet" size="compact"
                 onPress={() => onActivity(hash)}
               />
             )}
             <Button
               title="Back up private notes"
-              variant="quiet"
+              variant="quiet" size="compact"
               disabled={busy}
               onPress={onBackup}
             />
@@ -622,7 +623,7 @@ const s = StyleSheet.create({
     letterSpacing: -0.7,
   },
   review: { gap: 8 },
-  card: { gap: 8, padding: 18 },
+  card: { gap: 8, padding: 16 },
   label: { fontSize: 12, lineHeight: 17, color: colors.muted },
   address: { fontSize: 13, lineHeight: 20 },
   value: { fontSize: 16, lineHeight: 23 },

@@ -26,9 +26,12 @@ import type {
   NativeTokenView,
 } from '../portfolio/nativeTokens';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
-import { Button, Card, Coin, colors, Notice, styles, Text } from '../ui';
+import { Button, Card, Coin, colors, IconButton, Notice, styles, Text } from '../ui';
+import { AssetMarketCard } from '../portfolio/AssetMarketCard';
+import type { NativeNetworkRegistration } from '../custody/networkContext';
 
 type Props = {
+  registration?: NativeNetworkRegistration | null;
   controller: NativeTokenView;
   onReceive(): void;
   onSend?(token: Erc20Metadata): void;
@@ -72,6 +75,7 @@ export function NativeTokens({ controller, ...props }: Props) {
 function TokenContent({
   controller,
   snapshot,
+  registration,
   onReceive,
   onSend,
   onSendCollectible,
@@ -277,9 +281,6 @@ function TokenContent({
         <>
           {route.kind === 'list' ? (
             <>
-              <Text style={styles.muted}>
-                Custom tokens for this account on {network.name}.
-              </Text>
               {snapshot.status === 'loading' && (
                 <ActivityIndicator
                   color={colors.pink}
@@ -314,41 +315,22 @@ function TokenContent({
                 >
                   <Card style={s.tokenRow}>
                     <View style={s.identityTop}>
-                      <View style={s.coin}>
-                        <Coin id="custom-token" size={32} />
-                      </View>
+                      <Coin id="custom-token" size={34} fallbackSymbol={item.metadata.symbol} />
                       <View style={s.tokenName}>
                         <Text style={s.name}>{item.metadata.name}</Text>
-                        <Text style={styles.muted}>
-                          {item.metadata.symbol} · {network.name}
-                        </Text>
+                        <Text style={s.provenance}>{item.metadata.symbol}</Text>
                       </View>
+                      <Text style={s.rowBalance} testID="native-token-row-balance">{balance(item)}</Text>
                     </View>
-                    <Text style={s.balance} testID="native-token-row-balance">
-                      {balance(item)}
-                    </Text>
-
                   </Card>
                 </IdlePressable>
               ))}
-              <Button
-                title="Import token"
-                icon="plus"
-                disabled={busy || snapshot.status !== 'ready'}
-                onPress={openImport}
-                testID="native-token-import"
-              />
-              <Button
-                title={
-                  snapshot.status === 'loading'
-                    ? 'Refreshing tokens…'
-                    : 'Refresh tokens'
-                }
-                icon="refresh"
-                variant="secondary"
-                disabled={busy || snapshot.status === 'loading'}
-                onPress={() => run(() => controller.refresh())}
-              />
+              <View style={s.actionRow}>
+                <Button title="Import token" icon="plus" size="compact" variant="secondary"
+                  style={s.action} disabled={busy || snapshot.status !== 'ready'} onPress={openImport} testID="native-token-import" />
+                <IconButton label={snapshot.status === 'loading' ? 'Refreshing tokens' : 'Refresh tokens'} icon="refresh"
+                  disabled={busy || snapshot.status === 'loading'} onPress={() => run(() => controller.refresh())} />
+              </View>
               {(discovery || snapshot.canCheckCollectible || !!snapshot.collectibles?.length) && (
                 <Button
                   title="Collectibles"
@@ -628,9 +610,9 @@ function TokenContent({
             />
           ) : (
             <>
-              {identity}
               {route.kind === 'remove' ? (
                 <>
+                  {identity}
                   <Notice
                     title="Remove from this token list?"
                     body="This removes the saved token entry for this account and network. Your funds stay at this address, and you can add the contract again."
@@ -670,6 +652,9 @@ function TokenContent({
                 </>
               ) : (
                 <>
+                  <View style={s.assetHero}>
+                    <Coin id="custom-token" size={44} fallbackSymbol={token.metadata.symbol} />
+                    <Text style={s.name}>{token.metadata.name}</Text>
                   <Text
                     style={s.balance}
                     accessibilityLabel={`Token balance ${balance(token)}`}
@@ -689,20 +674,21 @@ function TokenContent({
                       })}
                     </Text>
                   )}
+                  </View>
                   {!canSendToken && <Notice
                     title="Receive only"
                     body="Sending this token is not available in this build."
                   />}
-                  {canSendToken && <Button title="Send token" icon="arrow-up-right" disabled={busy}
-                    onPress={() => onSend?.(token.metadata)} />}
-                  <Button
-                    title="Receive token"
-                    icon="arrow-down-left"
-                    disabled={busy}
-                    onPress={onReceive}
-                  />
+                  <View style={s.actionRow}>
+                    {canSendToken && <Button title="Send" icon="arrow-up-right" size="compact" style={s.action} disabled={busy}
+                      onPress={() => onSend?.(token.metadata)} />}
+                    <Button title="Receive" icon="arrow-down-left" size="compact" style={s.action} variant="secondary" disabled={busy} onPress={onReceive} />
+                  </View>
+                  <AssetMarketCard asset={{ kind: 'token', networkId: snapshot.account.network, contractAddress: token.metadata.contractAddress, registration }} />
+                  {identity}
                   <Button
                     title="Refresh token balance"
+                    size="compact"
                     icon="refresh"
                     variant="secondary"
                     disabled={busy || token.status === 'loading'}
@@ -923,7 +909,11 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
 }
 
 const s = StyleSheet.create({
-  section: { gap: 16 },
+  section: { gap: 12 },
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  action: { flex: 1, minWidth: 0, paddingHorizontal: 10 },
+  assetHero: { alignItems: 'center', gap: 8, paddingVertical: 8 },
+  rowBalance: { fontSize: 14, lineHeight: 21, fontWeight: '600', textAlign: 'right', maxWidth: '45%', flexShrink: 1 },
   heading: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -967,12 +957,12 @@ const s = StyleSheet.create({
   identity: { padding: 18, gap: 10 },
   identityTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { fontSize: 17, lineHeight: 25, fontWeight: '600', flexShrink: 1 },
-  tokenRow: { padding: 16, gap: 9 },
+  tokenRow: { padding: 14, gap: 8 },
   collectibleLink: { minHeight: 44, justifyContent: 'center' },
   tokenName: { gap: 3, flex: 1 },
   contract: { fontSize: 13, lineHeight: 22 },
   rowContract: { fontSize: 11, lineHeight: 18, color: colors.muted },
-  balance: { fontSize: 22, lineHeight: 32, fontWeight: '600', flexShrink: 1 },
+  balance: { textAlign: 'center', fontSize: 26, lineHeight: 36, fontWeight: '600', flexShrink: 1 },
   provenance: { color: colors.muted, fontSize: 12, lineHeight: 19 },
   error: { color: colors.red, fontSize: 14, lineHeight: 22 },
 });

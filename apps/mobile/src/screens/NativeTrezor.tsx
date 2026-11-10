@@ -209,12 +209,12 @@ export function NativeTrezorResumeNotice({ controller, onResume }: {
     controller.subscribe, controller.getSnapshot, controller.getSnapshot
   );
   if (snapshot.phase !== 'resume') return null;
-  return <Button title="Continue Trezor request" variant="secondary" onPress={onResume} />;
+  return <Button title="Continue Trezor request" variant="secondary" size="compact" onPress={onResume} />;
 }
 
 const s = StyleSheet.create({
   fill: { flex: 1, backgroundColor: colors.bg },
-  card: { padding: 18 },
+  card: { padding: 16 },
   label: { ...styles.muted, marginBottom: 8 },
   input: { ...styles.text, borderWidth: 1, borderColor: colors.border,
     borderRadius: 12, padding: 14, minHeight: 48 },

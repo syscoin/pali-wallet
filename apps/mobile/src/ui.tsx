@@ -1,5 +1,5 @@
 import { IdlePressable } from './screens/IdleActivityBoundary';
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import {
   Image,
   ScrollView,
@@ -10,17 +10,18 @@ import {
   ViewProps,
   StyleProp,
   ViewStyle,
+  useWindowDimensions,
 } from 'react-native';
 import Svg, { Circle, G, Path, Polygon } from 'react-native-svg';
 
 export const colors = {
-  bg: '#071325',
-  surface: '#101f34',
-  raised: '#172940',
+  bg: '#07152a',
+  surface: '#111e33',
+  raised: '#162742',
   border: '#263950',
   text: '#f5f7fb',
   muted: '#9caec5',
-  pink: '#ff4797',
+  pink: '#ff3e91',
   blue: '#75c8ed',
   green: '#74d5b1',
   red: '#ff8a9a',
@@ -42,6 +43,11 @@ const iconPaths: Record<string, string[]> = {
   'arrow-down-left': ['M18 6 6 18', 'M6 6v12h12'],
   'chevron-right': ['m9 5 7 7-7 7'],
   'chevron-down': ['m6 9 6 6 6-6'],
+  'chevron-up': ['m6 15 6-6 6 6'],
+  edit: ['m16 3 5 5-12 12-6 1 1-6L16 3Z', 'm14 5 5 5'],
+  clock: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0', 'M12 7v5l3 2'],
+  filter: ['M4 6h16', 'M7 12h10', 'M10 18h4'],
+  more: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
   close: ['m6 6 12 12', 'M18 6 6 18'],
   plus: ['M12 5v14', 'M5 12h14'],
   wallet: [
@@ -249,6 +255,7 @@ type ButtonProps = {
   icon?: string | React.ReactNode;
   style?: StyleProp<ViewStyle>;
   testID?: string;
+  size?: 'regular' | 'compact';
 };
 
 export function Button({
@@ -260,6 +267,7 @@ export function Button({
   icon,
   style,
   testID,
+  size = 'regular',
 }: ButtonProps) {
   const foreground =
     variant === 'primary'
@@ -279,13 +287,14 @@ export function Button({
       testID={testID}
       style={({ pressed }) => [
         styles.button,
+        size === 'compact' && styles.compactButton,
         variant === 'primary' && { backgroundColor: colors.pink },
         variant === 'secondary' && {
           backgroundColor: colors.raised,
           borderWidth: 1,
           borderColor: colors.border,
         },
-        variant === 'quiet' && { backgroundColor: 'transparent' },
+        variant === 'quiet' && [styles.compactButton, { backgroundColor: 'transparent' }],
         variant === 'danger' && {
           backgroundColor: '#302032',
           borderWidth: 1,
@@ -318,6 +327,35 @@ export function Button({
   );
 }
 
+/** A mutually exclusive view filter, kept together even on narrow screens. */
+export function SegmentedControl<T extends string>({
+  label, value, options, onChange,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string }[];
+  onChange(value: T): void;
+}) {
+  return <View accessibilityRole="tablist" accessibilityLabel={label} style={styles.segments}>
+    {options.map((option) => <IdlePressable key={option.value} accessibilityRole="tab"
+      accessibilityLabel={option.label} accessibilityState={{ selected: value === option.value }}
+      aria-selected={value === option.value} onPress={() => onChange(option.value)}
+      style={({ pressed }) => [styles.segment, value === option.value && styles.segmentSelected, pressed && { opacity: 0.75 }]}>
+      <Text style={[styles.segmentLabel, value === option.value && { color: colors.bg }]}>{option.label}</Text>
+    </IdlePressable>)}
+  </View>;
+}
+
+export function IconButton({ label, icon, onPress, disabled = false, selected = false, testID }: {
+  label: string; icon: string; onPress(): void | Promise<void>; disabled?: boolean; selected?: boolean; testID?: string;
+}) {
+  return <IdlePressable accessibilityRole="button" accessibilityLabel={label}
+    accessibilityState={{ disabled, selected }} disabled={disabled} onPress={onPress} testID={testID}
+    style={({ pressed }) => [styles.iconButton, selected && { backgroundColor: colors.raised }, (pressed || disabled) && { opacity: disabled ? 0.42 : 0.7 }]}>
+    <Icon name={icon} color={selected ? colors.blue : colors.muted} size={21} />
+  </IdlePressable>;
+}
+
 export function Card({ children, style, ...props }: ViewProps) {
   return (
     <View {...props} style={[styles.card, style]}>
@@ -331,18 +369,25 @@ export function Screen({
   footer,
   footerScrollable = false,
   gap = 22,
+  scrollResetKey,
 }: {
   children: React.ReactNode;
   footer?: React.ReactNode;
   footerScrollable?: boolean;
   gap?: number;
+  scrollResetKey?: string;
 }) {
+  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  useLayoutEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [scrollResetKey]);
+  const { width } = useWindowDimensions();
+  const gutter = width < 370 ? 16 : 20;
   return (
     <View style={styles.screen}>
       <ScrollView
+        ref={scroll}
         style={{ flex: 1 }}
         contentContainerStyle={{
-          paddingHorizontal: 22,
+          paddingHorizontal: gutter,
           paddingTop: 10,
           paddingBottom: 26,
           gap,
@@ -357,12 +402,12 @@ export function Screen({
         footerScrollable ? (
           <ScrollView
             style={{ flexGrow: 0, maxHeight: '60%' }}
-            contentContainerStyle={styles.footer}
+            contentContainerStyle={[styles.footer, { paddingHorizontal: gutter }]}
             keyboardShouldPersistTaps="handled"
           >
             {footer}
           </ScrollView>
-        ) : <View style={styles.footer}>{footer}</View>
+        ) : <View style={[styles.footer, { paddingHorizontal: gutter }]}>{footer}</View>
       ) : null}
     </View>
   );
@@ -395,7 +440,7 @@ export function Header({
           <Icon name="arrow-left" />
         </IdlePressable>
       ) : null}
-      <View style={{ flex: 1, gap: 3 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <Text
           accessibilityRole="header"
           style={{
@@ -408,7 +453,7 @@ export function Header({
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ color: colors.muted, fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 19 }}>
             {subtitle}
           </Text>
         ) : null}
@@ -446,12 +491,12 @@ export function Row({
           )}
         </View>
       ) : null}
-      <View style={{ flex: 1, gap: 3 }}>
+      <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
         <Text style={{ fontSize: 15, lineHeight: 22, fontWeight: '500' }}>
           {title}
         </Text>
         {subtitle ? (
-          <Text style={{ fontSize: 12, lineHeight: 18, color: colors.muted }}>
+          <Text style={{ fontSize: 13, lineHeight: 19, color: colors.muted }}>
             {subtitle}
           </Text>
         ) : null}
@@ -543,24 +588,29 @@ export const styles = StyleSheet.create({
   walletBalancePrecise: { fontSize: 19, lineHeight: 29, letterSpacing: -0.2 },
   screen: { flex: 1, backgroundColor: colors.bg },
   button: {
-    minHeight: 54,
+    minHeight: 52,
     paddingHorizontal: 19,
-    paddingVertical: 15,
-    borderRadius: 16,
+    paddingVertical: 14,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 9,
   },
+  compactButton: { minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12 },
+  segments: { flexDirection: 'row', padding: 4, gap: 4, borderRadius: 16, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 },
+  segment: { flex: 1, minWidth: 0, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  segmentSelected: { backgroundColor: colors.blue },
+  segmentLabel: { fontSize: 14, lineHeight: 20, fontWeight: '600', textAlign: 'center' },
   card: {
     backgroundColor: colors.surface,
-    borderRadius: 22,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
     overflow: 'hidden',
   },
   footer: {
-    paddingHorizontal: 22,
+    paddingHorizontal: 20,
     paddingVertical: 16,
     borderTopWidth: 1,
     borderTopColor: colors.border,

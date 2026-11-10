@@ -8,7 +8,8 @@ import type { SentryNodeObservation } from '../../../../source/shared/sentryNode
 import { UtxoActivity, type UtxoActivityContext, type UtxoActivityOwner, type UtxoActivityRow } from '../core/utxoActivity';
 import type { UtxoNetwork } from '../core/utxoNetworks';
 import type { ShellLeafNavigation } from './RealAppShell';
-import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
+import { Button, Card, colors, Header, IconButton, Notice, SegmentedControl, styles, Text } from '../ui';
+import { IdlePressable } from './IdleActivityBoundary';
 
 function signed(units: string, decimals: number, symbol: string): string {
   const negative = units.startsWith('-');
@@ -34,6 +35,7 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   const controller = useMemo(() => new UtxoActivity(authority, () => AppState.currentState === 'active'), [authority]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'sent' | 'received'>('all');
   const [feedback, setFeedback] = useState('');
   const [confirmationOwner, setConfirmationOwner] = useState<UtxoActivityContext | null>(null);
   const [busy, setBusy] = useState(false);
@@ -131,15 +133,22 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
     : chosen?.nativeTransfer
       ? `${chosen.nativeTransfer.direction === 'sent' ? '−' : chosen.nativeTransfer.direction === 'received' ? '+' : ''}${units(chosen.nativeTransfer.amount)}`
       : chosen ? net(chosen.netUnits) : '';
+  const rowDirection = (row: UtxoActivityRow): 'sent' | 'received' | 'self' | 'unknown' => row.hasAssetData
+    ? row.assetAmount?.direction ?? 'unknown'
+    : row.nativeTransfer?.direction ?? (row.netUnits?.startsWith('-') ? 'sent' : row.netUnits && row.netUnits !== '0' ? 'received' : row.netUnits === '0' ? 'self' : 'unknown');
+  const rows = state.rows.filter(row => filter === 'all' || rowDirection(row) === filter || rowDirection(row) === 'self' || rowDirection(row) === 'unknown');
   return <SafeAreaView edges={chosen ? ['top', 'bottom'] : ['top']} style={s.root}>
-    <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Activity'} subtitle={network ? `${accountLabel} · ${network.name}` : undefined} onBack={back} /></View>
+    <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Activity'} subtitle={network ? `${accountLabel} · ${network.name}` : undefined} onBack={back}
+      right={!chosen && network ? <IconButton label="Refresh activity" icon="refresh" disabled={state.status === 'loading'} onPress={() => void refresh()} /> : undefined} /></View>
     {!network || !state.context ? <ScrollView contentContainerStyle={s.content}><Notice title="Activity unavailable" body="Choose an account to view its activity." /></ScrollView> : <View style={s.body}>
       <View aria-hidden={!!chosen} accessibilityElementsHidden={!!chosen} importantForAccessibility={chosen ? 'no-hide-descendants' : 'auto'} pointerEvents={chosen ? 'none' : 'auto'} style={[s.list, chosen && s.obscured]}>
-        <FlatList ref={list} testID="watch-activity-list" data={state.rows} keyExtractor={(row) => row.txid} contentContainerStyle={s.content}
+        <FlatList ref={list} testID="watch-activity-list" data={rows} keyExtractor={(row) => row.txid} contentContainerStyle={s.content}
           ListHeaderComponent={<View style={s.section}>
             {(state.status === 'unavailable' || state.status === 'stale') && <Notice title={state.status === 'stale' ? 'Could not refresh activity' : 'Activity unavailable'} body={state.status === 'stale' ? 'Showing previously loaded activity. Try refreshing again.' : 'Activity could not be loaded. Try again.'} tone="amber" />}
+            <SegmentedControl label="Activity filter" value={filter}
+              options={[{ value: 'all', label: 'All' }, { value: 'sent', label: 'Sent' }, { value: 'received', label: 'Received' }]}
+              onChange={value => { setFilter(value); list.current?.scrollToOffset({ offset: 0, animated: false }); }} />
             <View>
-              <Button title={state.status === 'unavailable' ? 'Try again' : 'Refresh activity'} variant="secondary" disabled={!!chosen || state.status === 'loading'} onPress={() => void refresh()} />
               <View role="status" accessibilityLiveRegion="polite">
                 {confirmationOwner === state.context && state.status === 'ready' && (
                   <Text style={[styles.muted, s.confirmation]}>Explorer reports a transaction now has confirmations.</Text>
@@ -148,12 +157,16 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
             </View>
             {state.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading activity" color={colors.pink} />}
           </View>}
-          renderItem={({ item }) => <View testID={`watch-activity-row-${item.txid}`} style={s.row}><Button title={item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : item.netUnits === null ? 'Amount unavailable' : `Net change ${net(item.netUnits)}`} variant="quiet" disabled={!!chosen || state.status === 'loading'} onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />
-            {item.hasAssetData && <Text style={styles.muted}>Native account change: {net(item.netUnits)}</Text>}
-            <Text style={styles.muted}>{status(item)}</Text>
-            <Text style={s.hash}>{item.txid.slice(0, 12)}…{item.txid.slice(-8)}</Text>
-          </View>}
-          ListEmptyComponent={state.status === 'ready' ? <Notice title="No activity yet" body="There are no transactions to show for this account." /> : undefined}
+          renderItem={({ item }) => <IdlePressable accessibilityRole="button"
+            accessibilityLabel={`${item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : net(item.netUnits)}, ${status(item)}. View transaction details`}
+            testID={`watch-activity-row-${item.txid}`} style={s.row} disabled={!!chosen || state.status === 'loading'}
+            onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }}>
+            <View style={s.rowHeading}><Text style={s.rowAmount}>{item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : net(item.netUnits)}</Text><Text style={s.direction}>{rowDirection(item)}</Text></View>
+            {item.hasAssetData && <Text style={s.caption}>Native account change: {net(item.netUnits)}</Text>}
+            <Text style={s.caption}>{status(item)}</Text>
+            <Text style={s.caption}>{item.txid.slice(0, 12)}…{item.txid.slice(-8)}</Text>
+          </IdlePressable>}
+          ListEmptyComponent={state.status === 'ready' ? <Notice title={state.rows.length ? "No matching activity" : "No activity yet"} body={state.rows.length ? "Try another filter or load another page." : "There are no transactions to show for this account."} /> : undefined}
           ListFooterComponent={<View style={s.section}>
             {state.status === 'ready' && (state.hasNewer || state.hasMore) && <View style={s.pageActions}>
               {state.hasNewer && <Button title="Newer activity" disabled={!!chosen} variant="secondary" style={s.pageButton} onPress={() => { selectTransaction(null); list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.loadNewer(); }} />}
@@ -205,6 +218,6 @@ export function UtxoActivityScreen({ authority, selectedNetwork, accountLabel, n
   </SafeAreaView>;
 }
 
-const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, header: { paddingHorizontal: 24 }, body: { flex: 1, minHeight: 0 }, list: { flex: 1 }, obscured: { opacity: 0 }, detailOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.bg },
-  pageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pageButton: { flexGrow: 1 }, content: { paddingHorizontal: 24, paddingBottom: 28, gap: 16 }, section: { gap: 14, paddingVertical: 12 }, row: { gap: 8, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, header: { paddingHorizontal: 16 }, body: { flex: 1, minHeight: 0 }, list: { flex: 1 }, obscured: { opacity: 0 }, detailOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.bg },
+  pageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pageButton: { flexGrow: 1 }, content: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 }, section: { gap: 8, paddingVertical: 8 }, row: { gap: 5, padding: 14, marginBottom: 8, borderRadius: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }, rowHeading: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 8 }, rowAmount: { fontSize: 17, fontWeight: '600', flexShrink: 1 }, direction: { color: colors.muted, fontSize: 12, textTransform: 'capitalize' }, caption: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   confirmation: { marginTop: 10 }, hash: { color: colors.text, fontSize: 13, lineHeight: 21 }, amount: { color: colors.text, fontSize: 26, lineHeight: 36 }, detail: { padding: 18, gap: 14 }, label: { color: colors.muted, fontSize: 11, letterSpacing: 1 } });

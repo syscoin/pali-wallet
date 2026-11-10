@@ -37,8 +37,8 @@ test('custody and watch auto-lock resize Android for the keyboard and preserve i
       'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
       '../../../../source/shared/idleLockPolicy': idlePolicy,
       '../platform/security': { securityPreferences: { getSnapshot: () => ({ value: { custodyIdleMinutes: 5, watchIdleMinutes: 5 } }) } },
-      './IdleActivityBoundary': { IdleTextInput: 'IdleTextInput' },
-      '../ui': { Button: 'Button', Header: 'Header', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {}, styles: { screen: screenStyle } },
+      './IdleActivityBoundary': { IdleTextInput: 'IdleTextInput', IdlePressable: 'IdlePressable' },
+      '../ui': { Button: 'Button', Card: 'Card', Header: 'Header', Icon: 'Icon', Notice: 'Notice', Screen: 'Screen', Text: 'Text', colors: {}, styles: { screen: screenStyle } },
     };
     const module = { exports: {} as { AutoLockSettings(props: object): Element } };
     runInNewContext(code, { module, exports: module.exports, require(name: string) {

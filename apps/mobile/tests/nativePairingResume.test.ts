@@ -478,7 +478,7 @@ function find(
   const node = tree as Element;
   return predicate(node)
     ? node
-    : node.children.flatMap((child) => find(child, predicate) ?? []).at(0);
+    : [...node.children, node.props.footer].flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
 async function mounted(ready = false, smartAccount = false, withPairing = true, canManage = true, handoff = false, slh = false) {

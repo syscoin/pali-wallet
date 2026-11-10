@@ -142,12 +142,12 @@ export function NativeSmartAccountOperationRoute({
   return (
     <SafeAreaView style={s.safe}>
       <Screen>
-        <Header title="Deploy smart account" onBack={() => back()} />
+        <Header title="Smart account request" onBack={() => back()} />
         {current?.closing ? (
-          <Text>Closing deployment review…</Text>
+          <Text>Closing review…</Text>
         ) : current?.failed ? (
           <Notice
-            title="Deployment unavailable"
+            title="Request unavailable"
             body="Return to your account and try again."
           />
         ) : (
@@ -155,7 +155,7 @@ export function NativeSmartAccountOperationRoute({
         )}
         <Button
           title="Close"
-          variant="quiet"
+          variant="quiet" size="compact"
           disabled={current?.closing}
           onPress={() => back()}
         />
@@ -196,7 +196,7 @@ export function NativeSmartAccountOperationScreen({
       state={state}
       onBack={onBack}
       disabled={state.phase === 'authorize' && ledger.blocked}
-      before={<>{ledger.showConnect && <Button title="Connect Ledger" variant="secondary" onPress={ledger.connect} />}{ledger.modal}</>}
+      before={<>{ledger.showConnect && <Button title="Connect Ledger" variant="secondary" size="compact" onPress={ledger.connect} />}{ledger.modal}</>}
       authorize={(acknowledgedCustomRisk) => {
         if (!ledger.canApprove()) return;
         if (state.intent.kind !== 'modules') { void controller.authorize(state.revision); return; }
@@ -301,9 +301,56 @@ export function NativeSmartAccountOperationContent({
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
     state.phase
   );
+  const primary = state.phase === 'authorize' ? (
+            <Button
+              title={
+                modules
+                  ? t('mobile.smartAccountModules.authorize')
+                  : authenticator
+                  ? 'Authorize authenticator change'
+                  : guardian
+                  ? guardian.kind === 'remove'
+                    ? 'Authorize removal'
+                    : 'Authorize policy'
+                  : batch
+                  ? 'Authorize calls'
+                  : transfer?.kind === 'dapp-call'
+                  ? 'Authorize transaction'
+                  : transfer
+                  ? 'Authorize transfer'
+                  : 'Authorize deployment'
+              }
+              disabled={disabled || customInstall && !riskAcknowledged}
+              onPress={authorizeCurrent}
+            />
+  ) : payer ? (
+            <Button
+              title={
+                payer.purpose === 'fund-account'
+                  ? 'Confirm funding'
+                  : modules
+                  ? t('mobile.smartAccountModules.confirm')
+                  : authenticator
+                  ? 'Confirm authenticator change'
+                  : guardian
+                  ? guardian.kind === 'remove'
+                    ? 'Confirm removal'
+                    : 'Confirm policy'
+                  : batch
+                  ? 'Confirm calls'
+                  : transfer
+                  ? transfer.kind === 'dapp-call'
+                    ? 'Confirm transaction'
+                    : 'Confirm transfer'
+                  : 'Confirm deployment'
+              }
+              disabled={disabled}
+              onPress={() => confirmPayer(payer.id)}
+            />
+  ) : null;
   return (
     <SafeAreaView style={s.safe} edges={['top', 'bottom']}>
-      <Screen>
+      <Screen scrollResetKey={`${state.phase}:${payer?.id ?? ''}`} footer={<>{primary}<Button title="Close" variant="quiet" size="compact" onPress={close} /></>}>
         <Header
           title={
             state.phase === 'authorize'
@@ -545,7 +592,7 @@ export function NativeSmartAccountOperationContent({
                     ? 'Hide authorization details'
                     : 'View authorization details'
                 }
-                variant="quiet"
+                variant="quiet" size="compact"
                 expanded={details}
                 onPress={() => setDetails(!details)}
               />
@@ -585,27 +632,7 @@ export function NativeSmartAccountOperationContent({
                 }} />
               </View>
             </Card>}
-            <Button
-              title={
-                modules
-                  ? t('mobile.smartAccountModules.authorize')
-                  : authenticator
-                  ? 'Authorize authenticator change'
-                  : guardian
-                  ? guardian.kind === 'remove'
-                    ? 'Authorize removal'
-                    : 'Authorize policy'
-                  : batch
-                  ? 'Authorize calls'
-                  : transfer?.kind === 'dapp-call'
-                  ? 'Authorize transaction'
-                  : transfer
-                  ? 'Authorize transfer'
-                  : 'Authorize deployment'
-              }
-              disabled={disabled || customInstall && !riskAcknowledged}
-              onPress={authorizeCurrent}
-            />
+
           </>
         )}
         {payer && (
@@ -670,29 +697,7 @@ export function NativeSmartAccountOperationContent({
               </Text>
               {amount(payer.maximumTotalUnits)}
             </Card>
-            <Button
-              title={
-                payer.purpose === 'fund-account'
-                  ? 'Confirm funding'
-                  : modules
-                  ? t('mobile.smartAccountModules.confirm')
-                  : authenticator
-                  ? 'Confirm authenticator change'
-                  : guardian
-                  ? guardian.kind === 'remove'
-                    ? 'Confirm removal'
-                    : 'Confirm policy'
-                  : batch
-                  ? 'Confirm calls'
-                  : transfer
-                  ? transfer.kind === 'dapp-call'
-                    ? 'Confirm transaction'
-                    : 'Confirm transfer'
-                  : 'Confirm deployment'
-              }
-              disabled={disabled}
-              onPress={() => confirmPayer(payer.id)}
-            />
+
           </>
         )}
         {waiting && (
@@ -819,14 +824,13 @@ export function NativeSmartAccountOperationContent({
             </Text>
           </Card>
         )}
-        <Button title="Close" variant="quiet" onPress={close} />
       </Screen>
     </SafeAreaView>
   );
 }
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  card: { padding: 20, gap: 10 },
+  card: { padding: 16, gap: 10 },
   label: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   address: { color: colors.text, fontSize: 13, lineHeight: 20 },
   amount: {
@@ -847,7 +851,7 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
   },
   riskChoice: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   riskText: { flex: 1 },

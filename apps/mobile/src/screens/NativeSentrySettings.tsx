@@ -181,7 +181,7 @@ export function NativeSentrySettings({
                   void save();
                 }}
               />
-              <Button title="Cancel" variant="quiet" onPress={back} />
+              <Button title="Cancel" variant="quiet" size="compact" onPress={back} />
             </>
           }
         >

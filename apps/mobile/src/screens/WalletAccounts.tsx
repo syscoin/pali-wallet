@@ -6,7 +6,7 @@ import { accountIdentity, projectAccounts, type AccountSelection } from '../core
 import type { WatchUtxoNetworksView } from '../core/publicAccountStorage';
 import type { WatchAccountState } from '../core/watchAccounts';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
-import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
+import { Button, Card, colors, Header, IconButton, Notice, Screen, styles, Text } from '../ui';
 import { AddWatchAccount } from './Onboarding';
 import type { WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { getNetwork } from '../core/networks';
@@ -69,7 +69,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
           <IdlePressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
-            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : entry.selection.kind === 'smart' ? 'Smart account' : entry.selection.kind === 'ledger' ? 'Ledger hardware wallet' : (() => {
+            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : entry.selection.kind === 'smart' ? 'Smart account' : entry.selection.kind === 'ledger' ? 'Ledger hardware wallet' : entry.selection.kind === 'trezor' ? 'Trezor' : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
               const network = getNetwork(Object.keys(watched.addresses)[0] as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks);
               return network.kind === 'utxo' ? `Watch-only · ${network.name}` : 'Watch-only · Public EVM address';
@@ -77,8 +77,8 @@ export function WalletAccounts(props: WalletAccountsProps) {
             <Text selectable style={s.address}>{entry.address}</Text>
           </IdlePressable>
           {entry.selection.kind === 'watch' && <View style={s.actions}>
-            <Button title={`Rename ${entry.name}`} variant="quiet" disabled={!canManageWatch} onPress={() => { setName(entry.name); setForm({ kind: 'rename', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
-            <Button title={`Remove ${entry.name}`} variant="quiet" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
+            <IconButton label={`Rename ${entry.name}`} icon="edit" disabled={!canManageWatch} onPress={() => { setName(entry.name); setForm({ kind: 'rename', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
+            <IconButton label={`Remove ${entry.name}`} icon="trash" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
           </View>}
         </Card>)}
         {props.onManageHd && <Button title="Manage wallet accounts" variant="secondary" disabled={busy} onPress={props.onManageHd} />}

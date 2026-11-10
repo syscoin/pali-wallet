@@ -78,7 +78,7 @@ export function NativeSmartPreparationReview({ review, controller }: { review: R
     {error}
     {review.busy && <ActivityIndicator color={colors.pink} accessibilityLabel={t('buttons.loading')} />}
     <Button title={t(review.canRetry ? 'settings.smartAccountMetadataRetry' : 'buttons.confirm')} disabled={blocked || !!review.error && !review.canRetry || !!review.externalOwners.length && !assent} onPress={approve} />
-    <Button title={t('buttons.reject')} variant="quiet" onPress={reject} />
+    <Button title={t('buttons.reject')} variant="quiet" size="compact" onPress={reject} />
   </Screen></SafeAreaView>;
 }
-const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 18, gap: 12 }, muted: { color: colors.muted }, address: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, choice: { flexDirection: 'row', alignItems: 'center', gap: 12 }, choiceText: { flex: 1 } });
+const s = StyleSheet.create({ safe: { flex: 1, backgroundColor: colors.bg }, card: { padding: 16, gap: 12 }, muted: { color: colors.muted }, address: { fontFamily: 'monospace', fontSize: 12, color: colors.muted }, choice: { flexDirection: 'row', alignItems: 'center', gap: 12 }, choiceText: { flex: 1 } });

@@ -101,15 +101,14 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} subtitle={t('mobile.common.development')} onBack={back} />
+      <Screen gap={16} footer={mode === 'key' ? <Button title={shown ? t('mobile.security.hide') : t('mobile.security.reveal')} disabled={!shown && (busy || !password)} onPress={shown ? hide : reveal} /> : mode === 'hub' ? <Button title={t('mobile.settings.lock')} variant="secondary" size="compact" icon="lock" onPress={() => { hide(); onLock(); }} /> : undefined}><Header title={mode === 'key' ? t('mobile.security.accountKey') : mode === 'recovery' ? t('mobile.security.recoveryGuide') : t('mobile.security.title')} onBack={back} />
         {mode === 'hub' ? <>
           <Notice title={backupTitle} body={backupBody} />
           <Card><Row title={accountType === 'Ledger' || accountType === 'Trezor' ? t('mobile.security.viewPaliPhrase') : t('mobile.security.viewPhrase')} subtitle={t('mobile.security.passwordWords')} icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             {keyFormat && (accountType === 'HDAccount' || accountType === 'Imported') && <Row title={t('mobile.security.revealAccountKey')} subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
             {onDeviceUnlock && <Row title={t('mobile.security.biometric')} subtitle={deviceUnlockEnabled ? t('mobile.security.on') : t('mobile.security.off')} icon="lock" onPress={() => { hide(); onDeviceUnlock(); }} />}
             <Row title={t('mobile.security.recoveryGuide')} subtitle={t('mobile.security.backupsRestore')} icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
-          <Button title={t('mobile.settings.lock')} variant="secondary" icon="lock" onPress={() => { hide(); onLock(); }} />
-          {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" onPress={() => { hide(); onRemoveWallet(); }} />}
+          {onRemoveWallet && <Button title={t('mobile.security.removeWallet')} variant="danger" size="compact" onPress={() => { hide(); onRemoveWallet(); }} />}
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>{t('mobile.security.keepPhraseOffline')}</Text>
           {(accountType === 'Ledger' || accountType === 'Trezor') && <Text style={styles.muted}>{t('mobile.security.hardwareGuide', { device: accountType })}</Text>}
@@ -127,7 +126,6 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
             : <Notice title={t('mobile.security.evmTitle')} body={t('mobile.security.evmBody')} tone="amber" />}
           {shown ? <>
             <View style={s.secret}><Text style={s.key}>{shown.privateKey}</Text></View>
-            <Button title={t('mobile.security.hide')} onPress={hide} />
             <Text style={styles.muted}>{t('mobile.security.sessionOnly')}</Text>
           </> : <>
             <View style={s.field}><Text style={s.label}>{t('mobile.security.confirmPassword')}</Text><IdleTextInput
@@ -136,7 +134,6 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
               importantForAutofill="noExcludeDescendants" textContentType="none" secureTextEntry contextMenuHidden={false}
               maxLength={1024} selectionColor={colors.pink} placeholderTextColor={colors.muted} style={s.input}
             /></View>
-            <Button title={t('mobile.security.reveal')} disabled={busy || !password} onPress={reveal} />
             {busy && <ActivityIndicator accessibilityLabel={t('mobile.security.confirming')} color={colors.pink} />}
           </>}
           {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}

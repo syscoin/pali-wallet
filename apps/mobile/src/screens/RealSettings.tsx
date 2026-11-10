@@ -5,7 +5,7 @@ import { NativePreferences } from './NativePreferences';
 import { useNativeTranslation } from '../platform/localization';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Button, Card, colors, Header, Notice, Row, Screen } from '../ui';
+import { Button, Card, colors, Header, Notice, Row, Screen, Text } from '../ui';
 
 export type ActivityResetTarget = Readonly<{
   scope: string;
@@ -38,13 +38,14 @@ function ResetActivity({ accountLabel, target, onBack }: {
       if (attempt.current === captured) { busyRef.current = false; setBusy(false); }
     }
   };
-  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen>
+  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen gap={16} footer={<>
+    <Button title={busy ? t('mobile.resetActivity.working') : t('mobile.resetActivity.title')} variant="danger" disabled={busy} onPress={() => void reset()} />
+    <Button title={t('buttons.back')} variant="quiet" onPress={onBack} />
+  </>}>
     <Header title={t('mobile.resetActivity.title')} subtitle={`${accountLabel} · ${target.networkLabel}`} onBack={onBack} />
     <Notice title={t('mobile.resetActivity.question')} body={t('mobile.resetActivity.description')} />
     <Notice title={t('mobile.resetActivity.pendingTitle')} body={t('mobile.resetActivity.pendingBody')} tone="amber" />
     {error && <Notice title={t('mobile.resetActivity.failedTitle')} body={t('mobile.resetActivity.failedBody')} tone="amber" />}
-    <Button title={busy ? t('mobile.resetActivity.working') : t('mobile.resetActivity.title')} variant="danger" disabled={busy} onPress={() => void reset()} />
-    <Button title={t('buttons.back')} variant="secondary" onPress={onBack} />
   </Screen></SafeAreaView>;
 }
 
@@ -66,21 +67,24 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onAutoLock, 
     if (languageOwner.current !== opened) throw new Error('CANCELLED');
   }} />;
   if (leaf === 'activity' && activityReset) return <ResetActivity key={activityReset.scope} accountLabel={accountLabel} target={activityReset} onBack={back} />;
-  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen>
+  return <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.bg }}><Screen gap={16} footer={
+    <Button title={watchOnly ? t('mobile.settings.hide') : t('mobile.settings.lock')} icon="lock" size="compact" variant="secondary" onPress={onLock} />
+  }>
     <Header title={t('mobile.settings.title')} subtitle={accountLabel} onBack={onBack} />
-    {onSecurity && <Card><Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} last /></Card>}
-    {onAutoLock && <Card><Row title={t('mobile.settings.autoLockTitle')} subtitle={t('mobile.settings.autoLockSubtitle')} icon="lock" onPress={onAutoLock} last /></Card>}
-    {onInfrastructure && <Card><Row title={t('settings.smartAccountInfrastructure')} subtitle={t('settings.smartAccountInfrastructureCheckStatus')} icon="shield" onPress={onInfrastructure} last /></Card>}
-    {activityReset && <Card><Row title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} icon="activity" onPress={() => setOpened({ leaf: 'activity', scope: activityReset.scope })} last /></Card>}
-    {watchOnly && <Notice title={t('mobile.settings.watchTitle')} body={t('mobile.settings.watchBody')} />}
-    <Notice title={t('mobile.settings.deviceTitle')} body={t('mobile.settings.deviceBody')} />
+    {(onSecurity || onAutoLock || onInfrastructure || activityReset) && <Card>
+      {onSecurity && <Row title={t('mobile.settings.securityTitle')} subtitle={t('mobile.settings.securitySubtitle')} icon="shield" onPress={onSecurity} dense last={!onAutoLock && !onInfrastructure && !activityReset} />}
+      {onAutoLock && <Row title={t('mobile.settings.autoLockTitle')} subtitle={t('mobile.settings.autoLockSubtitle')} icon="lock" onPress={onAutoLock} dense last={!onInfrastructure && !activityReset} />}
+      {onInfrastructure && <Row title={t('settings.smartAccountInfrastructure')} subtitle={t('settings.smartAccountInfrastructureCheckStatus')} icon="shield" onPress={onInfrastructure} dense last={!activityReset} />}
+      {activityReset && <Row title={t('mobile.settings.activityTitle')} subtitle={t('mobile.settings.activitySubtitle')} icon="activity" onPress={() => setOpened({ leaf: 'activity', scope: activityReset.scope })} dense last />}
+    </Card>}
     <Card>
-      <Row title={t('generalMenu.languages')} subtitle={t('settings.currentLanguage')} icon="globe" onPress={() => {
+      <Row title={t('generalMenu.languages')} subtitle={t('settings.currentLanguage')} icon="globe" dense onPress={() => {
         const next = { leaf: 'language' as const }; languageOwner.current = next; setOpened(next);
       }} />
-      <Row title={t('mobile.settings.currencyTitle')} subtitle={t('mobile.settings.currencySubtitle')} icon="globe" onPress={() => setOpened({ leaf: 'currency' })} />
-      <Row title={t('mobile.settings.helpTitle')} subtitle={t('mobile.settings.helpSubtitle')} icon="info" onPress={() => setOpened({ leaf: 'about' })} last />
+      <Row title={t('mobile.settings.currencyTitle')} subtitle={t('mobile.settings.currencySubtitle')} icon="globe" onPress={() => setOpened({ leaf: 'currency' })} dense />
+      <Row title={t('mobile.settings.helpTitle')} subtitle={t('mobile.settings.helpSubtitle')} icon="info" onPress={() => setOpened({ leaf: 'about' })} dense last />
     </Card>
-    <Button title={watchOnly ? t('mobile.settings.hide') : t('mobile.settings.lock')} icon="lock" variant="secondary" onPress={onLock} />
+    {watchOnly && <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>{t('mobile.settings.watchBody')}</Text>}
+    <Text style={{ color: colors.muted, fontSize: 13, lineHeight: 20 }}>{t('mobile.settings.deviceBody')}</Text>
   </Screen></SafeAreaView>;
 }

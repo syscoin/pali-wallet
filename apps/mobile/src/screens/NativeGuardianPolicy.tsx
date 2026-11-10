@@ -389,7 +389,7 @@ export function NativeGuardianPolicy({
               )}
               <Button
                 title={busy ? 'Checking status…' : 'Check removal status'}
-                variant="quiet"
+                variant="quiet" size="compact"
                 disabled={busy}
                 onPress={() => {
                   void inspect();
@@ -471,7 +471,7 @@ export function NativeGuardianPolicy({
               }}
             />
           )}
-          <Button title="Cancel" variant="quiet" onPress={back} />
+          <Button title="Cancel" variant="quiet" size="compact" onPress={back} />
         </Screen>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -480,7 +480,7 @@ export function NativeGuardianPolicy({
 
 const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
-  card: { padding: 20, gap: 10 },
+  card: { padding: 16, gap: 10 },
   label: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   address: { color: colors.text, fontSize: 13, lineHeight: 20 },
   body: { color: colors.muted, fontSize: 14, lineHeight: 22 },

@@ -18,6 +18,7 @@ import { UTXO_NETWORKS, findUtxoNetwork, getUtxoNetwork, isCustomUtxoNetworkId }
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
+import type { NativeActivitySnapshot } from '../src/activity/nativeActivity.ts';
 
 const require = createRequire(import.meta.url);
 // Use the declared Expo Babel preset's toolchain to strip the installed RN Flow
@@ -116,7 +117,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         useWindowDimensions: () => ({ width: 390, fontScale: 1 }),
         ...Object.fromEntries(['View', 'ActivityIndicator', 'FlatList', 'Modal', 'Pressable', 'ScrollView'].map((name) => [name, name])),
       };
-      const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
+      const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'IconButton', 'Notice', 'Row', 'Screen', 'SegmentedControl', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
       const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
       const idle = createIdleComponentFixture(render.api, native);
@@ -128,6 +129,7 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
         './PortfolioQuote': evaluate(load('src/screens/PortfolioQuote.tsx'), { react: render.api, 'react-native': native, '../ui': ui }),
         './NativeTokens': { NativeTokens: 'NativeTokens' }, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
+        '../portfolio/AssetMarketCard': { AssetMarketCard: 'AssetMarketCard' },
         '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
@@ -157,7 +159,10 @@ for (const kind of ['native', 'smart', 'smart-signable', 'watch', 'activity'] as
         ...((kind === 'smart' || kind === 'smart-signable') ? { smartAccount: { chainId: 1, isDeployed: true, localEcdsa: false, managementAddress: '0x2222222222222222222222222222222222222222' }, onSend() { if (kind !== 'smart-signable') assert.fail('Smart account must not enter EOA send'); sent++; },
           ...(kind === 'smart-signable' ? { tokenView: {}, onSendToken() { tokenSent++; }, onSendCollectible() { collectibleSent++; } } : {}) } : {}),
       } : kind === 'activity' ? { controller: { async setView() {} },
-        snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },
+        snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum!, view: { filter: 'all', showZero: false, anchor: null, offset: 0 },
+          scopeKey: 'public-back-fixture', chainId: '1', networkName: 'Ethereum', nativeSymbol: 'ETH', explorerUrl: null,
+          loadingMore: false, hasMore: false, error: null, coverage: 'Direct transactions and ERC20 transfer events from the selected network are included.',
+          truncated: false, canViewSavedPending: false, savedPending: undefined } satisfies NativeActivitySnapshot,
         accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
       } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
       owner = 'child'; let tree = render.render(child, leaf, props()); render.flush(child);
@@ -226,7 +231,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     return { remove() { registration.removed = true; registration.actual.remove(); } };
   } };
   const parent = render.instance(); const child = render.instance();
-  const ui = Object.fromEntries(['Icon', 'PaliMark', 'Button', 'Card', 'Header', 'Notice', 'Screen', 'Text', 'Row', 'Label', 'Coin'].map((name) => [name, name]));
+  const ui = Object.fromEntries(['Icon', 'PaliMark', 'Button', 'Card', 'Header', 'IconButton', 'Notice', 'Screen', 'Text', 'Row', 'Label', 'Coin'].map((name) => [name, name]));
   Object.assign(ui, { colors: {}, styles: {} });
   const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },

@@ -1112,21 +1112,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   }
   const restoreUnconfirmed = stage === 'restore-notes' && noteRestore.step.phase === 'unconfirmed';
   let body: React.ReactNode;
+  let footer: React.ReactNode;
   if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
     <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
   else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Unlocking your wallet securely…</Text></View>;
-  else if (locked) body = <>
-    {restoreUnconfirmed && <NoteRestoreUnconfirmedNotice />}
-    <Text style={styles.muted}>Enter your password to unlock this device.</Text>
-    <SecretInput label="Password" value={password} onChange={setPassword} disabled={busy} />
-    <Button title="Unlock wallet" disabled={busy || !password} onPress={() => {
-      const entered = password; setPassword(''); void perform(async (local) => {
-        await local.authority.unlock(entered);
-        await finishUnlock(local);
-      });
-    }} />
-    {deviceUnlockStatus?.available && deviceUnlockStatus.enabled && <Button title="Unlock with biometrics" disabled={busy} onPress={() => {
+  else if (locked) {
+    footer = <>
+      {deviceUnlockStatus?.available && deviceUnlockStatus.enabled && <Button title="Unlock with biometrics" disabled={busy} onPress={() => {
       clearSecrets();
       void perform(async (local) => {
         const captured = epoch.current;
@@ -1136,17 +1129,41 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         await finishUnlock(local);
       });
     }} />}
+      <Button title="Unlock wallet" variant={deviceUnlockStatus?.available && deviceUnlockStatus.enabled ? 'secondary' : 'primary'} disabled={busy || !password} onPress={() => {
+      const entered = password; setPassword(''); void perform(async (local) => {
+        await local.authority.unlock(entered);
+        await finishUnlock(local);
+      });
+    }} />
+    </>;
+    body = <>
+    {restoreUnconfirmed && <NoteRestoreUnconfirmedNotice />}
+    <Text style={styles.muted}>Enter your password to unlock this device.</Text>
+    <SecretInput label="Password" value={password} onChange={setPassword} disabled={busy} />
+
+
     <Button title="Forgot password?" variant="quiet" disabled={busy} onPress={openRecovery} />
     {accounts && !busy && <Button title="View watch accounts" variant="secondary" onPress={() => { cancelNoteRestore(); revoke(); setStage('accounts'); }} />}
   </>;
-  else if (snapshot.phase === 'empty' && stage === 'choose') body = <>
+  }
+  else if (snapshot.phase === 'empty' && stage === 'choose') {
+    footer = <>
+      <Button title="Create a wallet" onPress={() => setStage('create')} />
+      <Button title="I have a recovery phrase" variant="secondary" onPress={() => setStage('import')} />
+    </>;
+    body = <>
     <PaliMark size={72} /><Text style={styles.h1}>A wallet that stays yours.</Text>
     <Text style={styles.muted}>Create a recovery phrase, or bring one you already own.</Text>
-    <Button title="Create a wallet" onPress={() => setStage('create')} />
-    <Button title="I have a recovery phrase" variant="secondary" onPress={() => setStage('import')} />
+
+
     {accounts && <Button title="View watch accounts" variant="quiet" onPress={() => setStage('accounts')} />}
   </>;
-  else if (snapshot.phase === 'empty') body = <>
+  }
+  else if (snapshot.phase === 'empty') {
+    footer = <>
+      <Button title={stage === 'import' ? 'Restore wallet' : 'Create wallet'} disabled={busy || !password || !confirmation || stage === 'import' && !phrase} onPress={createOrImport} />
+    </>;
+    body = <>
     {stage === 'import' && <SecretInput label="Recovery phrase" multiline value={phrase} onChange={setPhrase} disabled={busy} />}
     <Text style={styles.muted}>{stage === 'import' ? 'Enter your 12 or 24 words in order.' : 'Pali will create a new 12-word recovery phrase.'} {NEW_PASSWORD_HELP}</Text>
     <SecretInput label="New password" value={password} onChange={setPassword} disabled={busy} />
@@ -1156,13 +1173,12 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       <View style={{ flex: 1 }}><Text>Use biometric unlock</Text><Text style={styles.muted}>Your password remains available.</Text></View>
       <Switch accessibilityLabel="Use biometric unlock" value={enrollDeviceUnlock} onValueChange={setEnrollDeviceUnlock} disabled={busy} trackColor={{ true: colors.pink }} />
     </View>}
-    <Button title={stage === 'import' ? 'Restore wallet' : 'Create wallet'} disabled={busy || !password || !confirmation || stage === 'import' && !phrase} onPress={createOrImport} />
+
   </>;
-  else if (stage === 'device-unlock' && deviceUnlockStatus) body = <>
-    <Text style={{ fontSize: 22, fontWeight: '600' }}>Biometric unlock is {deviceUnlockStatus.enabled ? 'on' : 'off'}</Text>
-    <Text style={styles.muted}>{deviceUnlockStatus.enabled ? 'Confirm your wallet password to turn off biometric unlock.' : 'Confirm your wallet password and device biometrics to enable faster unlock.'} Your password remains available.</Text>
-    <SecretInput label="Wallet password" value={password} onChange={setPassword} disabled={busy} />
-    <Button title={deviceUnlockStatus.enabled ? 'Turn off biometric unlock' : 'Enable biometric unlock'} disabled={busy || !password || !deviceUnlockStatus.enabled && !deviceUnlockStatus.available} onPress={() => {
+  }
+  else if (stage === 'device-unlock' && deviceUnlockStatus) {
+    footer = <>
+      <Button title={deviceUnlockStatus.enabled ? 'Turn off biometric unlock' : 'Enable biometric unlock'} disabled={busy || !password || !deviceUnlockStatus.enabled && !deviceUnlockStatus.available} onPress={() => {
       const entered = password, enabled = !deviceUnlockStatus.enabled;
       setPassword('');
       void perform(async (local) => {
@@ -1173,33 +1189,56 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         if (local.authority.getSnapshot().phase === 'ready') setStage('security');
       });
     }} />
-    <Button title="Cancel" variant="secondary" onPress={closeDeviceUnlock} />
+      <Button title="Cancel" variant="secondary" onPress={closeDeviceUnlock} />
+    </>;
+    body = <>
+    <Text style={{ fontSize: 22, fontWeight: '600' }}>Biometric unlock is {deviceUnlockStatus.enabled ? 'on' : 'off'}</Text>
+    <Text style={styles.muted}>{deviceUnlockStatus.enabled ? 'Confirm your wallet password to turn off biometric unlock.' : 'Confirm your wallet password and device biometrics to enable faster unlock.'} Your password remains available.</Text>
+    <SecretInput label="Wallet password" value={password} onChange={setPassword} disabled={busy} />
+
+
   </>;
-  else if (stage === 'words' && presentation) body = <>
+  }
+  else if (stage === 'words' && presentation) {
+    footer = <>
+      <Button title="I've written them down" onPress={() => setStage('challenge')} />
+    </>;
+    body = <>
     <Notice title="Write these words down in order" body="Anyone with these words can control your wallet. Keep them offline. Pali support will never ask for them." tone="amber" />
     <View style={s.wordGrid}>{presentation.words.map((word, index) => <View key={index} style={s.word}><Text style={s.wordNumber}>{index + 1}</Text><Text style={s.wordText}>{word}</Text></View>)}</View>
-    <Button title="I've written them down" onPress={() => setStage('challenge')} />
+
   </>;
-  else if (stage === 'challenge' && presentation) body = <>
-    <Text style={styles.muted}>Use your written backup to fill in these words.</Text>
-    {presentation.positions.map((position, index) => <SecretInput key={position} label={`Word ${position + 1}`} value={answers[index]!} disabled={busy} onChange={(value) => setAnswers((old) => old.map((answer, i) => i === index ? value : answer))} />)}
-    <Button title="Confirm backup" disabled={busy || answers.some((answer) => !answer.trim())} onPress={() => {
+  }
+  else if (stage === 'challenge' && presentation) {
+    footer = <>
+      <Button title="Confirm backup" disabled={busy || answers.some((answer) => !answer.trim())} onPress={() => {
       const id = presentation.id; const entered = [...answers];
       void perform(async ({ authority, backup }) => { await backup.confirm(id, entered); if (authority.getSnapshot().phase === 'ready') { clearSecrets(); closeStage(); } });
     }} />
+    </>;
+    body = <>
+    <Text style={styles.muted}>Use your written backup to fill in these words.</Text>
+    {presentation.positions.map((position, index) => <SecretInput key={position} label={`Word ${position + 1}`} value={answers[index]!} disabled={busy} onChange={(value) => setAnswers((old) => old.map((answer, i) => i === index ? value : answer))} />)}
+
   </>;
-  else if (snapshot.phase === 'backup-required' || stage === 'backup-auth' || stage === 'words' || stage === 'challenge') body = <>
-    <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts if you lose your phone. Imported accounts need their original private keys backed up separately.</Text>
-    <SecretInput label="Confirm your password" value={password} onChange={setPassword} disabled={busy} />
-    <Button title="Show recovery phrase" disabled={busy || !password} onPress={() => {
+  }
+  else if (snapshot.phase === 'backup-required' || stage === 'backup-auth' || stage === 'words' || stage === 'challenge') {
+    footer = <>
+      <Button title="Show recovery phrase" disabled={busy || !password} onPress={() => {
       const entered = password; setPassword('');
       void perform(async ({ backup, authority }) => {
         const shown = await backup.begin(entered);
         if (AppState.currentState === 'active' && ['ready', 'backup-required'].includes(authority.getSnapshot().phase)) { setPresentation(shown); setStage('words'); }
       });
     }} />
+    </>;
+    body = <>
+    <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts if you lose your phone. Imported accounts need their original private keys backed up separately.</Text>
+    <SecretInput label="Confirm your password" value={password} onChange={setPassword} disabled={busy} />
+
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
+  }
   else if (snapshot.phase === 'ready' && stage === 'slh-dsa' && openSlhDsaManagement) return <NativeSlhDsaManagementScreen ledgerConnection={ledgerConnection ?? undefined} open={openSlhDsaManagement} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && stage === 'smart-infrastructure' && openSmartInfrastructure) return <NativeInfrastructureScreen ledgerConnection={selectedAccountType === 'Ledger' ? ledgerConnection ?? undefined : undefined} open={openSmartInfrastructure} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && stage === 'smart-modules' && openSmartAccountModules) return <NativeSmartAccountModulesScreen ledgerConnection={ledgerConnection ?? undefined} open={openSmartAccountModules} onBack={closeStage} />;
@@ -1303,7 +1342,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     error === message(new Error(snapshot.error));
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen><Header title={title} onBack={stage === 'device-unlock' ? closeDeviceUnlock : exit} subtitle="Development build · Use a test wallet" />
+      <Screen footer={footer} gap={16}><Header title={title} onBack={stage === 'device-unlock' ? closeDeviceUnlock : exit} subtitle={typeof __DEV__ !== 'undefined' && __DEV__ ? 'Development build · Use a test wallet' : undefined} />
         {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
         {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
         {snapshot.error && !duplicateAuthenticationError && <NativeCustodyFeedback error={snapshot.error} />}
@@ -1317,11 +1356,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
 
 const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
-  field: { gap: 10 }, label: { color: colors.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.8 },
-  input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 17, minHeight: 56, fontSize: 16 },
+  field: { gap: 10 }, label: { color: colors.muted, fontSize: 13, fontWeight: '500', letterSpacing: 0.2 },
+  input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 14, minHeight: 52, fontSize: 16 },
   phraseInput: { minHeight: 120, textAlignVertical: 'top', lineHeight: 26 }, center: { gap: 18, alignItems: 'center', paddingVertical: 50 },
-  wordGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, word: { width: '47%', borderRadius: 14, backgroundColor: colors.surface, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  wordNumber: { color: colors.muted, fontSize: 12, minWidth: 18 }, wordText: { fontSize: 16, fontWeight: '600' },
+  wordGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, word: { width: '47%', borderRadius: 14, backgroundColor: colors.surface, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  wordNumber: { color: colors.muted, fontSize: 12, minWidth: 18 }, wordText: { fontSize: 15, fontWeight: '600', flexShrink: 1 },
   address: { fontSize: 15, lineHeight: 24, marginTop: 12, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   error: { color: colors.red, fontSize: 14, lineHeight: 21 },
 });

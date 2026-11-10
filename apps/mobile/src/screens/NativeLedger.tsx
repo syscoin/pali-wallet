@@ -183,7 +183,7 @@ export function NativeLedger({
                 <Button
                   key={device.id}
                   title={`${device.name} · ${device.model}`}
-                  variant="secondary"
+                  variant="secondary" size="compact"
                   disabled={busy || connecting || importing}
                   onPress={() => {
                     void run(() => controller.select(device.id));
@@ -235,7 +235,7 @@ export function NativeLedgerConnectionModal({
 const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
   description: { color: colors.muted, fontSize: 16, lineHeight: 24 },
-  card: { gap: 12, padding: 18 },
+  card: { gap: 12, padding: 16 },
   heading: { fontSize: 20, fontWeight: '600' },
   label: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   address: {
