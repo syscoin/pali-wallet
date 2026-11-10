@@ -16,6 +16,13 @@ import { isAllowedSentryKeyRoleScheme, type SentryKeySummary } from '../../../so
 import { containsSentryPrivateKey, parseSentryKeyBatch } from '../../../source/utils/sentry/importBatch.ts';
 import type { NativeSentryKeyManagement } from '../src/custody/sentryKeyManagement.ts';
 import type { NativeConnectionsView } from '../src/connections/types.ts';
+import type { NativeTrezorView } from '../src/custody/trezorAccounts.ts';
+
+function trezorLifecycle() {
+  return {background() {}, async cancel() {}, subscribe: () => () => undefined,
+    getSnapshot: () => ({phase: 'idle', operation: null, networkLabel: '', accountLabel: '', address: null, error: null}),
+  } satisfies Pick<NativeTrezorView, 'background' | 'cancel' | 'subscribe' | 'getSnapshot'>;
+}
 
 function psbtLifecycle(events: string[] = []) {
   return {
@@ -214,7 +221,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
       async initialize() {}, subscribe: () => () => {}, lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
-    connections: { ...psbtLifecycle(), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    trezor: trezorLifecycle(), connections: { ...psbtLifecycle(), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {}, async readRecoveryInventory() { return inventory; },
@@ -308,7 +315,7 @@ async function walletFeedbackFixture(deviceUnlock = false, empty = false, settin
         publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
       } },
     accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
-    connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
+    trezor: trezorLifecycle(), connections: { ...psbtLifecycle(lifecycle), getSnapshot: () => ({ status: 'ready', signingReview: null, proposals: [] }), subscribe: () => () => {}, cancel() {} },
     removal: { requiresControllerReopen: () => false, cancel() {}, async dispose() {}, hasVerifiedRemoval: () => false },
     keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
     disposeTokens() {}, disposeTransfers() {}, async disposeConnections() {},
@@ -496,7 +503,7 @@ for (const exit of ['back', 'background', 'working-lock', 'blur-before-drain', '
     async openSlhDsaManagement() { throw Error('SLH is outside this fixture'); },
     canUseWalletAuthenticator: () => false,
     guardianRecovery: { hasIntent: () => false, async open() { throw Error('Unavailable in this fixture'); } },
-      connections,
+      trezor: trezorLifecycle(), connections,
       markPrepared() { prepared = true; },
       authority: { getSnapshot: () => state, getCatalogue: () => catalogue, supportsAccountManagement: () => false,
         async initialize() {}, subscribe(listener: (snapshot: typeof state) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },

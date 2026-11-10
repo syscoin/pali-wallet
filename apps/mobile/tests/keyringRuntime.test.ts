@@ -29,7 +29,7 @@ import { createDappSigningApproval } from '../../../source/wallet/dappSigningApp
 import { readDappMessageRequest, type DappMessageRequest } from '../../../source/shared/dappMessageRequest.ts';
 import { encrypt, recoverPersonalSignature, recoverTypedSignature, signTypedData, SignTypedDataVersion } from '@metamask/eth-sig-util';
 
-const softwarePsbtHandoff = { id: 'software-fixture', beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
+const softwarePsbtHandoff = { id: 'software-fixture', expiresAt: Number.MAX_SAFE_INTEGER, beforeSuiteOpen() { throw Error('Unexpected hardware handoff'); }, beforeSignature() { throw Error('Unexpected hardware signature'); }, isSuspended: () => false };
 // Custody revokes synchronously; quarantine is published after cleanup drains.
 async function expectUnavailable(authority: NativeCustodyAuthority, action: () => Promise<unknown>): Promise<void> {
   let resolve!: () => void, reject!: (error: Error) => void;

@@ -1,6 +1,13 @@
+import type { NativeSmartAccountIntent, NativeGuardianPolicyDraft } from '../smartAccount/operation.ts';
 import type { NativeAssetTransferIntent } from './transferIntent.ts';
 import type { NativeReplacementMode } from './transferRpc.ts';
 import type { NativeUtxoAsset } from './utxoSend.ts';
+
+export type NativeSmartLocalAction =
+  | Readonly<{kind:'operation';intent:Exclude<NativeSmartAccountIntent,{kind:'guardian-policy' | 'authenticator' | 'dapp-call' | 'dapp-batch'}>}>
+  | Readonly<{kind:'guardian-policy';draft:NativeGuardianPolicyDraft}>
+  | Readonly<{kind:'wallet-authenticator'}>
+  | Readonly<{kind:'slh-installation';keyId:string}>;
 
 export type NativeTrezorResumeIntent = Readonly<{
   id: string;
@@ -18,6 +25,7 @@ export type NativeTrezorResumeIntent = Readonly<{
     }>
   | Readonly<{ kind: 'external-psbt' }>
   | Readonly<{ kind: 'external-signing' }>
+  | Readonly<{kind:'smart-operation'}>
   | Readonly<{
       kind: 'utxo';
       recipient: string;
@@ -30,7 +38,7 @@ export type NativeTrezorResumeIntent = Readonly<{
 
 export type NativeTrezorSnapshot = Readonly<{
   phase: 'idle' | 'opening' | 'waiting' | 'resume' | 'importing' | 'error';
-  operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | null;
+  operation: 'import' | 'send' | 'utxo-send' | 'external-psbt' | 'external-signing' | 'smart-operation' | null;
   networkLabel: string;
   accountLabel: string;
   address: string | null;
@@ -45,5 +53,6 @@ export interface NativeTrezorView {
   resumeImport(): Promise<void>;
   /** Returns a draft for a new normal review; never signs or broadcasts. */
   resumeSend(): Promise<NativeTrezorResumeIntent>;
+  background(): void;
   cancel(): Promise<void>;
 }

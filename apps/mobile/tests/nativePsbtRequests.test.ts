@@ -46,7 +46,7 @@ function fixture(method: PsbtApprovalMethod = 'sys_sign') {
     },
   });
   const enqueue = () => manager.enqueue(wire, { order: 1, accountLabel: 'Account', address: 'stable-address', networkLabel: 'Bitcoin',
-    chainId: wire.chainId, symbol: 'BTC', decimals: 8, resumeScope: { adapter: 1, wallet: 'public-wallet', unlockGeneration: 1, accountId: 'hd:0:0', address: 'stable-address', type: 'HDAccount', xpub: 'public-xpub', registration: 'public-registration', grant: 'public-grant' }, assertCurrent: check, assertSessionCurrent: check });
+    chainId: wire.chainId, symbol: 'BTC', decimals: 8, resumeScope: { adapter: 1, wallet: 'public-wallet', unlockGeneration: 1, accountId: 'hd:0:0', address: 'stable-address', type: 'HDAccount', trezor: false, signing: 'software-fixture', xpub: 'public-xpub', registration: 'public-registration', grant: 'public-grant' }, assertCurrent: check, assertSessionCurrent: check });
   return { manager, wire, details, enqueue, requests, responses, handoffs, lifetime,
     review: () => manager.review(7), preparations: () => preparations, signatures: () => signatures, disposals: () => disposals,
     retire: () => { current = false; manager.revalidate(); }, setForeground: (value: boolean) => { foreground = value; },
@@ -127,7 +127,7 @@ test('malformed envelope and missing required ports fail before host or signing 
   const f = fixture();
   try {
     for (const params of [envelope, [envelope, envelope], [{ psbt: 'invalid', assets: '[]' }], [{ ...envelope, sentryFeeAuthorization: 'untrusted tag' }]]) {
-      assert.throws(() => f.manager.enqueue({ ...f.wire, params }, { order: 1, accountLabel: '', address: '', networkLabel: '', chainId: '', symbol: '', decimals: 8, resumeScope: { adapter: 1, wallet: 'public-wallet', unlockGeneration: 1, accountId: 'hd:0:0', address: '', type: 'HDAccount', xpub: 'public-xpub', registration: 'public-registration', grant: 'public-grant' }, assertSessionCurrent() {}, assertCurrent() {} }));
+      assert.throws(() => f.manager.enqueue({ ...f.wire, params }, { order: 1, accountLabel: '', address: '', networkLabel: '', chainId: '', symbol: '', decimals: 8, resumeScope: { adapter: 1, wallet: 'public-wallet', unlockGeneration: 1, accountId: 'hd:0:0', address: '', type: 'HDAccount', trezor: false, signing: 'software-fixture', xpub: 'public-xpub', registration: 'public-registration', grant: 'public-grant' }, assertSessionCurrent() {}, assertCurrent() {} }));
     }
     assert.equal(f.preparations(), 0); assert.equal(f.signatures(), 0);
     // @ts-expect-error Required host callbacks are also enforced for JavaScript callers.

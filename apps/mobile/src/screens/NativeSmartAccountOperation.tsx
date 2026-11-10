@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   AppState,
   BackHandler,
+  Platform,
   StyleSheet,
   View,
 } from 'react-native';
@@ -34,6 +35,7 @@ import { guardianDelayLabel } from './guardianPolicyLabels';
 type DeploymentOwner = {
   live: boolean;
   returning: boolean;
+  lifetime: AbortController;
   operation?: NativeSmartAccountOperation;
   opening?: Promise<void>;
   disposing?: Promise<void>;
@@ -51,7 +53,7 @@ export function NativeSmartAccountOperationRoute({
   ledgerConnection,
 }: {
   ledgerConnection?: NativeLedgerConnectionView;
-  open(assertCurrent: () => void): Promise<NativeSmartAccountOperation>;
+  open(assertCurrent: () => void, signal: AbortSignal): Promise<NativeSmartAccountOperation>;
   onBack(): void;
 }) {
   const owner = useRef<DeploymentOwner | undefined>(undefined);
@@ -65,11 +67,15 @@ export function NativeSmartAccountOperationRoute({
   useLayoutEffect(() => {
     callbacks.current = { onBack };
   }, [onBack]);
-  const back = useCallback(() => {
+  const back = useCallback((background = false) => {
     const current = owner.current;
     if (!current?.live) return;
+    // Capture a verified local Suite departure before revoking this route.
+    try { if (background === true) current.operation?.background(); }
+    catch { /* A failed suspension still retires this route's custody. */ }
     current.live = false;
     current.returning = true;
+    current.lifetime.abort();
     const close = callbacks.current.onBack;
     setOpened({ source: open, closing: true });
     void disposeDeployment(current)
@@ -79,12 +85,13 @@ export function NativeSmartAccountOperationRoute({
       });
   }, [open]);
   useEffect(() => {
-    const current: DeploymentOwner = { live: true, returning: false };
+    const current: DeploymentOwner = { live: true, returning: false, lifetime: new AbortController() };
     owner.current = current;
     const check = () => {
       if (
         owner.current !== current ||
         !current.live ||
+        current.lifetime.signal.aborted ||
         AppState.currentState !== 'active'
       )
         throw new Error('DEPLOYMENT_EXPIRED');
@@ -92,7 +99,7 @@ export function NativeSmartAccountOperationRoute({
     current.opening = Promise.resolve()
       .then(() => {
         check();
-        return open(check);
+        return open(check, current.lifetime.signal);
       })
       .then((operation) => {
         current.operation = operation;
@@ -108,11 +115,18 @@ export function NativeSmartAccountOperationRoute({
       back();
       return true;
     });
+    const appState = AppState.addEventListener('change', state => {
+      if (state !== 'active') back(true);
+    });
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => back(true)) : undefined;
     return () => {
       current.live = false;
       current.returning = false;
+      current.lifetime.abort();
       void disposeDeployment(current).catch(() => undefined);
       hardware.remove();
+      appState.remove();
+      blur?.remove();
     };
   }, [back, open]);
   const current = opened?.source === open ? opened : undefined;
@@ -121,13 +135,13 @@ export function NativeSmartAccountOperationRoute({
       <NativeSmartAccountOperationScreen
         controller={current.controller}
         ledgerConnection={ledgerConnection}
-        onBack={back}
+        onBack={() => back()}
       />
     );
   return (
     <SafeAreaView style={s.safe}>
       <Screen>
-        <Header title="Deploy smart account" onBack={back} />
+        <Header title="Deploy smart account" onBack={() => back()} />
         {current?.closing ? (
           <Text>Closing deployment review…</Text>
         ) : current?.failed ? (
@@ -142,7 +156,7 @@ export function NativeSmartAccountOperationRoute({
           title="Close"
           variant="quiet"
           disabled={current?.closing}
-          onPress={back}
+          onPress={() => back()}
         />
       </Screen>
     </SafeAreaView>

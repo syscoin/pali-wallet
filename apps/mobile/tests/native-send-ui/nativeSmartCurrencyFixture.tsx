@@ -1,3 +1,4 @@
+import { freshSmartOperationDeadline } from '../nonSuiteSigningHandoff.ts';
 import { buildSmartAccountNftTransfer } from '../../../../source/utils/smartAccount/nftTransfer';
 import { snapshotNftTransferIntent } from '../../../../source/shared/nftTransfer';
 import type { SavedCollectible } from '../../src/portfolio/tokenRegistry';
@@ -122,7 +123,7 @@ function open(
       : null;
     calls.push({ method: 'open', value: amountUnits ?? 'maximum' });
     return Promise.resolve(
-      new NativeSmartAccountOperation({
+      new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
         account,
         network,
         intent:

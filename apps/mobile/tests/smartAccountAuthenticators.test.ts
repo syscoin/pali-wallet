@@ -24,7 +24,7 @@ import type {
 } from '../../../source/types/network.ts';
 import {
   signNativeSmartAccountActionHash,
-  canSignNativeSmartAccountActionHash,
+  canSignNativeSmartAccountActionHash, getNativeSmartAccountSigningPlan,
   type NativeSmartAccountSigningOwner,
 } from '../src/smartAccount/authenticatorSigning.ts';
 
@@ -133,7 +133,7 @@ function fixture() {
       );
       if (
         index < 0 ||
-        (owner.type === 'Ledger' ? undefined : accounts[owner.type][owner.id]) !== records[index] ||
+        (owner.type === 'Ledger' || owner.type === 'Trezor' ? undefined : accounts[owner.type][owner.id]) !== records[index] ||
         records[index]!.address !== owner.address
       )
         throw Error('OWNER_CHANGED');
@@ -693,4 +693,15 @@ test('an ECDSA-satisfied composite does not touch an unused injected SLH key', a
   });
   assert.equal(calls, 0); assert.equal(f.calls.length, 1);
   assert.equal(result.signature, coder.encode(['bytes[]'], [['0x', f.calls[0]!.signature, '0x']]));
+});
+
+
+test('native ordered plan permits one exact Trezor signature and refuses multiple Trezor terminal steps',()=>{
+  const f=fixture(), one=f.localOwners.map((owner,index)=>index===0?{...owner,type:'Trezor' as const}:owner);
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(1),one,{slhDsa:false}));
+  assert(canSignNativeSmartAccountActionHash(f.ecdsa(2),one,{slhDsa:false}));
+  const two=one.map((owner,index)=>index===1?{...owner,type:'Trezor' as const}:owner);
+  assert.equal(canSignNativeSmartAccountActionHash(f.ecdsa(2),two,{slhDsa:false}),false);
+  const plan=getNativeSmartAccountSigningPlan(f.ecdsa(2),one,{slhDsa:false});assert(plan);
+  assert.deepEqual(plan.authenticators[0]!.owners.map(owner=>owner.type),['Trezor','HDAccount']);
 });

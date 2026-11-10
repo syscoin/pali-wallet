@@ -1,4 +1,6 @@
+import { NativeSigningHandoffs, type NativeSigningHandoff } from '../src/connections/signingHandoff.ts';
 import assert from 'node:assert/strict';
+import { snapshotNativeSmartLocalAction } from '../src/smartAccount/localAction.ts';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { URL as NodeURL } from 'node:url';
@@ -557,7 +559,7 @@ for (const route of [
       let finishDisposal!: () => void;
       let guard!: () => void;
       const open = (...args: unknown[]) => {
-        guard = args.at(-1) as () => void;
+        guard = (route === 'deployment' ? args[0] : args.at(-1)) as () => void;
         return new Promise<object>((resolve) => {
           resolveOpen = resolve;
         });
@@ -625,6 +627,48 @@ for (const route of [
     });
   }
 }
+
+for (const action of ['back', 'background', 'blur', 'unmount'] as const)
+  for (const pendingOpen of [false, true])
+    test(`Smart operation ${action} aborts its real route signal and drains ${pendingOpen ? 'late' : 'opened'} controllers`, async () => {
+      const f = harness('NativeSmartAccountOperation'), events: string[] = [];
+      let signal!: AbortSignal, check!: () => void;
+      let release!: (operation: object) => void, finishDisposal!: () => void;
+      const controller = {
+        background() {assert.equal(signal.aborted, false); events.push('background');},
+        dispose() {
+          assert.equal(signal.aborted, true);
+          events.push('dispose');
+          return new Promise<void>(resolve => {finishDisposal = resolve;});
+        },
+        prepare() {assert.fail('The route must render the separate review screen');},
+        authorize() {assert.fail('Continuing must not authorize');},
+      };
+      const props = {
+        open(guard: () => void, lifetime: AbortSignal) {
+          check = guard; signal = lifetime;
+          return new Promise<object>(resolve => {release = resolve;});
+        },
+        onBack() {events.push('back');},
+      };
+      f.render('NativeSmartAccountOperationRoute', props);
+      await settle();
+      assert.equal(signal.aborted, false); check();
+      if (!pendingOpen) {release(controller); await settle(); f.render('NativeSmartAccountOperationRoute', props);}
+      if (action === 'back') f.back();
+      else if (action === 'background') f.event('change', 'background');
+      else if (action === 'blur') f.event('blur');
+      else f.dispose();
+      assert.equal(signal.aborted, true);
+      assert.throws(check, /DEPLOYMENT_EXPIRED/);
+      if (pendingOpen) release(controller);
+      await settle();
+      const captured = !pendingOpen && (action === 'background' || action === 'blur');
+      assert.deepEqual(events, [...(captured ? ['background'] : []), 'dispose']);
+      finishDisposal(); await settle();
+      assert.deepEqual(events, [...(captured ? ['background'] : []), 'dispose', ...(action === 'unmount' ? [] : ['back'])]);
+      f.dispose();
+    });
 
 function slhManager(overrides: Record<string, unknown> = {}) {
   const key = { keyId: 'exact-prepared-key', pkRoot: `0x${'44'.repeat(32)}`, pkSeed: `0x${'33'.repeat(32)}`, signatureCount: 7, signatureLimit: 4096 };
@@ -738,3 +782,48 @@ test('SLH payer review describes the exact approved target without claiming ECDS
   assert.equal(notice.props.body,'Saving updates your account on-chain and may require a network fee.');
   assert(!notice.props.body.includes('Pali wallet owner')); one(tree,'Button','Confirm authenticator change'); f.dispose();
 });
+
+
+for (const action of ['header-event', 'close-event', 'review-event', 'app-background', 'android-blur'] as const)
+  test(`Smart route ${action} distinguishes a real press payload from an explicit Suite departure`, async () => {
+    const f = harness('NativeSmartAccountOperation'), job = {}, canceled: object[] = [], events: string[] = [];
+    let signal!: AbortSignal, release!: (operation: object) => void, handoff!: NativeSigningHandoff;
+    const manager = new NativeSigningHandoffs({ async cancel(value) { canceled.push(value); }, changed() {} });
+    const controller = {
+      background() { assert.equal(signal.aborted, false); events.push('background'); assert(manager.background(handoff)); },
+      async dispose() {
+        assert.equal(signal.aborted, true); events.push('dispose');
+        if (!handoff.isSuspended()) canceled.push(job);
+      },
+      prepare() { assert.fail('The route must render a separate review'); },
+      authorize() { assert.fail('Back and Continue must not sign'); },
+    };
+    const props = {
+      open(_check: () => void, lifetime: AbortSignal) { signal = lifetime; return new Promise<object>(resolve => { release = resolve; }); },
+      onBack() { events.push('back'); },
+    };
+    try {
+      const pending = f.render('NativeSmartAccountOperationRoute', props); await settle();
+      handoff = manager.captureLocal({ id: 'event-owned-request', expiresAt: Date.now() + 60000, order: 0,
+        action: { kind: 'operation', intent: { kind: 'deploy' } },
+        scope: { wallet: 'public-wallet', unlockGeneration: 1, accountId: 'smart:60:0', address: account, type: 'SmartAccount', xpub: 'public-xpub', registration: 'full-network', signing: 'public-owner-policy', trezor: true },
+        assertCurrent() { assert.equal(signal.aborted, false); }, eligible: () => true, drain: async () => undefined, retire() {},
+      }, snapshotNativeSmartLocalAction);
+      // A real Suite launch is armed before either a manual press or AppState event.
+      handoff.beforeSuiteOpen(Date.now() + 45000, job)(true);
+      release(controller); await settle();
+      const loaded = f.render('NativeSmartAccountOperationRoute', props);
+      const press = { nativeEvent: { locationX: 12, locationY: 13, pageX: 24, pageY: 25, target: 7, timestamp: Date.now(), touches: [], changedTouches: [] },
+        currentTarget: 7, target: 7, preventDefault() {}, stopPropagation() {}, persist() {} };
+      if (action === 'header-event') one(pending, 'Header').props.onBack(press);
+      else if (action === 'close-event') one(pending, 'Button', 'Close').props.onPress(press);
+      else if (action === 'review-event') loaded.props.onBack(press);
+      else if (action === 'app-background') f.event('change', 'background');
+      else f.event('blur');
+      await settle(); assert.equal(signal.aborted, true);
+      const background = action === 'app-background' || action === 'android-blur';
+      assert.deepEqual(events, [...(background ? ['background'] : []), 'dispose', 'back']);
+      assert.equal(manager.localDescriptor(handoff.id) !== null, background);
+      assert.deepEqual(canceled, background ? [] : [job]);
+    } finally { manager.cancelLocal(); await manager.retired(); f.dispose(); }
+  });

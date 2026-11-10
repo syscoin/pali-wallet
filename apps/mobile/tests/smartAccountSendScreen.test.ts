@@ -1,3 +1,4 @@
+import { freshSmartOperationDeadline } from './nonSuiteSigningHandoff.ts';
 import { normalizeNftTokenId } from '../../../source/utils/nftTokenId.ts';
 import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
 import { parseErc20Units, formatTokenUnits, type Erc20Metadata } from '../../../source/shared/erc20.ts';
@@ -396,7 +397,7 @@ async function ensOperation(fundFirst = false, loseReply = false) {
         preVerificationGas: '1', paymasterAndData: '0x',
       },
     } as PreparedSmartAccountOperation;
-    model = new NativeSmartAccountOperation({
+    model = new NativeSmartAccountOperation({ background() {}, authorizationExpiresAt: freshSmartOperationDeadline(),
       account: '0x1111111111111111111111111111111111111111',
       network: getNativeNetwork('ethereum'), intent, assertCurrent,
       async prepare() { return { kind: 'authorization', intent, operation: prepared }; },

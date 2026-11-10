@@ -1,3 +1,4 @@
+import { nativeSmartTrezorDevice } from './nativeSmartTrezorDevice.ts';
 import { nonSuiteSigningHandoff } from './nonSuiteSigningHandoff.ts';
 import { NativeLedgerAccounts } from '../src/custody/ledgerAccounts.ts';
 import { nativeSmartLedgerDevice } from './nativeSmartLedgerDevice.ts';
@@ -21,7 +22,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { AbiCoder, Interface } from 'ethers/abi';
 import { Transaction, recoverAddress } from 'ethers/transaction';
-import { inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
 import type { NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import { getCreate2Address } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
@@ -51,7 +52,7 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, recordSignatures = false, slhFactory: NativeSlhExecutionCapability | null = null, ledgerFactory?: KeyringRuntimeDependencies['createLedgerTransport']) {
+async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, recordSignatures = false, slhFactory: NativeSlhExecutionCapability | null = null, ledgerFactory?: KeyringRuntimeDependencies['createLedgerTransport'], trezorSessions?: KeyringRuntimeDependencies['trezorSessions']) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-smart-account-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   let initialized = false, substituteAddress = false, hold: (() => Promise<void>) | undefined;
@@ -85,6 +86,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   let composite: { threshold: number; ecdsaFirst: boolean } | undefined;
   let observedSlh: Pick<NativeSlhPublicState, 'pkRoot' | 'pkSeed'> | undefined;
   const slhDerivations: number[] = [];
+  let captureJournal: (() => ReturnType<EvmSignedRecords['captureSmartAccountPendingRecords']>) | undefined;
   let mutateSelectedSmart: ((mutate: (account: IKeyringAccountState) => void) => void) | undefined;
   let mutateLedgerOwner: ((index: number, mutate: (account: IKeyringAccountState) => void) => void) | undefined;
   let installSlh: (() => void) | undefined;
@@ -227,7 +229,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
         } else assert.fail(`Unexpected RPC ${request.method}`);
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
   };
-  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: slhFactory, ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
+  const factory = createKeyringRuntimeFactory({ privacyServiceSettings: null, slhExecution: slhFactory, ...(trezorSessions ? {trezorSessions} : {}), ...(ledgerFactory ? {createLedgerTransport: ledgerFactory} : {}),
     ...(recordSignatures || slhFactory !== null ? { loadSdk: async () => {
       const sdk = await loadNativeKeyringSdk();
       const Base = sdk.HostKeyring;
@@ -242,6 +244,10 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
           const setState = this.setVaultStateGetter.bind(this);
           this.setVaultStateGetter = getter => {
             setState(getter);
+            captureJournal = () => {
+              const selected = getter().accounts.SmartAccount[getter().activeAccount.id]; assert(selected?.smartAccount);
+              return new EvmSignedRecords(storage.signedRecords).captureSmartAccountPendingRecords({keyring:this,assertCurrent:()=>{assert(this.isUnlocked());}},'1',selected.address);
+            };
             mutateLedgerOwner = (index, mutate) => {const account = getter().accounts.Ledger[index]; assert(account); mutate(account);};
             mutateSelectedSmart = mutate => {
               const current = getter(), account = current.accounts.SmartAccount[current.activeAccount.id];
@@ -358,6 +364,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
       finally { await retired.connection.closeAsync(); }
       owner = await open(); await owner.unlock(PASSWORD);
     },
+    async captureOriginalJournal() { assert(captureJournal); return captureJournal(); },
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
 }
@@ -2966,4 +2973,243 @@ for (const mutation of ['Ledger public key', 'Smart policy'] as const) test(`Led
     assert.equal(owned.connection.isConnected(), false);
     assert.equal(owned.device.signatures.length, 0); assert.equal(f.submitted.length, 0);
   } finally {await owned.close();}
+});
+
+
+async function readyTrezorSmartOwner(slhFactory: NativeSlhExecutionCapability | null = null) {
+  const device = nativeSmartTrezorDevice(), f = await fixture({}, true, slhFactory, undefined, device.sessions);
+  try {
+    await f.runtime.trezor.startImport('Trezor owner');
+    await f.change({kind:'import-trezor',label:'Trezor owner'});
+    await f.change({kind:'create-smart',label:'Trezor Smart account',password:PASSWORD});
+    f.guardianStatus('no-policy'); f.fundedSmart(); f.observedEcdsaOwners([device.wallets[0]!.address],1);
+    await f.runtime.refreshSmartAccountMetadata(new AbortController().signal,()=>undefined);
+    return {f,device,async close(){await f.close();await device.dispose();}};
+  } catch(error) {await f.close();await device.dispose();throw error;}
+}
+
+
+for (const ownerKind of ['software', 'external'] as const)
+  test(`an unrelated saved Trezor account does not own the ${ownerKind} Smart operation lifecycle`, async () => {
+    const { f, device, close } = await readyTrezorSmartOwner();
+    let operation: NativeSmartAccountOperation | undefined;
+    try {
+      const owner = ownerKind === 'software'
+        ? f.owner.getCatalogue()!.accounts.find(account => account.type === 'HDAccount')!.address
+        : '0x' + '66'.repeat(20);
+      f.observedEcdsaOwners([owner], 1);
+      await f.runtime.refreshSmartAccountMetadata(new AbortController().signal, () => undefined);
+      f.deployed(); f.fundedSmart();
+      operation = await f.runtime.openSmartAccountSend('0x' + '44'.repeat(20), { kind: 'exact', amount: '0.001' }, () => undefined);
+      await operation.prepare();
+      assert.equal(operation.getSnapshot().phase, 'authorize');
+      const signing = operation.authorize(operation.getSnapshot().revision);
+      if (ownerKind === 'software') {
+        for (let attempt = 0; attempt < 300 && !operation.getSnapshot().payerReview && operation.getSnapshot().phase !== 'failed'; attempt++)
+          await new Promise(resolve => setTimeout(resolve, 5));
+        const review = operation.getSnapshot().payerReview;
+        assert(review);
+        f.owner.lock();
+        operation.confirmPayer(review.id);
+      }
+      await signing;
+      assert.equal(operation.getSnapshot().phase, 'failed');
+      assert.equal(device.signatures.length, 0);
+      assert.equal(f.submitted.length, 0);
+      await assert.rejects(f.runtime.trezor.resumeSend());
+    } finally { await operation?.dispose(); await close(); }
+  });
+
+test('native Smart Trezor dapp typed signing preserves selected Smart and the original journal capability', async () => {
+  const {f,device,close} = await readyTrezorSmartOwner();
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined;
+  try {
+    connection = await smartMessageApproval(f);
+    const selected = f.owner.getCatalogue()!.active.accountId, journal = await f.captureOriginalJournal();
+    const host = connection.host, signing = host.signingContext(selected);
+    assert.equal(signing.trezor,true); assert.equal(host.supportsSmartAccountMessages(selected),true);
+    let fences=0;
+    const handoff = {id:'fresh-smart-dapp',expiresAt:Date.now()+60000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    const request = readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
+    const signature=await host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
+    assert.match(signature,/^0x[0-9a-f]+$/i); assert.equal(fences,1); assert.equal(device.signatures.length,1);
+    assert.equal(f.owner.getCatalogue()!.active.accountId,selected); assert.equal(host.context().activeAccountId,selected);
+    assert.deepEqual(await journal.read(true),[]); assert.equal(f.submitted.length,0);
+    assert.equal(device.sessions.getSnapshot(),null); assert(device.counts().disposals>0);
+  } finally {connection?.approval.dispose();await close();}
+});
+
+test('native Smart Trezor UserOperation keeps original expiry and requires payer consent after verified proof', async () => {
+  const {f,device,close} = await readyTrezorSmartOwner();
+  let connection: Awaited<ReturnType<typeof smartMessageApproval>> | undefined, operation: NativeSmartAccountOperation | undefined;
+  try {
+    connection=await smartMessageApproval(f); const selected=f.owner.getCatalogue()!.active.accountId, journal=await f.captureOriginalJournal();
+    let fences=0; const deadline=Date.now()+60000;
+    const handoff={id:'fresh-smart-uo',expiresAt:deadline,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    const result=await connection.host.prepareTransaction({handoff,accountId:selected,networkId:'ethereum',transaction:{from:connection.selected.address,to:'0x'+'55'.repeat(20),value:'0x1',data:'0x'},approval:connection.approval},connection.approval.assertCurrent);
+    assert('operation' in result); operation=result.operation;
+    await operation.prepare(); assert.equal(operation.getSnapshot().phase,'authorize'); assert(operation.authorizationExpiresAt<=deadline);
+    const signing=operation.authorize(operation.getSnapshot().revision);
+    for(let i=0;i<1000&&operation.getSnapshot().phase!=='review-fee'&&!['failed','complete'].includes(operation.getSnapshot().phase);i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(operation.getSnapshot().phase,'review-fee'); assert.equal(fences,1); assert.equal(device.signatures.length,1); assert.equal(f.submitted.length,0);
+    assert.equal(f.owner.getCatalogue()!.active.accountId,selected); assert.deepEqual(await journal.read(true),[]);
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id); await signing;
+    assert.equal(operation.getSnapshot().phase,'complete'); assert.equal(f.submitted.length,1); assert((await journal.read(true)).length>0);
+    assert.equal(device.sessions.getSnapshot(),null);
+  } finally {await operation?.dispose();connection?.approval.dispose();await close();}
+});
+
+for(const failure of ['wrong key','changed policy','cancelled raw callback'] as const) test(`native Smart Trezor ${failure} cannot release a proof or prefund`,async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),released=Promise.withResolvers<void>();
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined;
+  try{
+    connection=await smartMessageApproval(f);let fences=0;
+    const handoff={id:'fresh-refusal',expiresAt:Date.now()+60000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>false};
+    if(failure==='wrong key')device.wrongKey(0);
+    if(failure==='changed policy')device.onBeforeCallback(request=>{
+      if(request.method==='ethereumGetPublicKey')f.mutateSelectedSmart(account=>{account.smartAccount!.auth={...account.smartAccount!.auth!,data:encodeEcdsaValidatorInitData([device.wallets[1]!.address],1)};});
+    });
+    if(failure==='cancelled raw callback')device.onBeforeCallback(async request=>{
+      if(request.method==='ethereumSignTypedData'){entered.resolve();await released.promise;}
+    });
+    const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
+    const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
+    if(failure==='cancelled raw callback'){
+      await entered.promise;f.owner.lock();await new Promise(resolve=>setImmediate(resolve));
+      assert.equal(fences,0);released.resolve();
+    }
+    await rejected;
+    assert.equal(fences,0);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+    assert(device.counts().disposals>0);
+  }finally{released.resolve();connection?.approval.dispose();await close();}
+});
+
+test('native Smart Trezor return creates a fresh private message approval after unlock and replays only after separate Confirm',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,suspended=false,fences=0;
+  const deadline=Date.now()+120000;
+  const handoff={id:'original-smart-message',expiresAt:deadline,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>suspended};
+  try{
+    connection=await smartMessageApproval(f);const selected=connection.selected.id;
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
+    const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
+    const signing=connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
+    await entered.promise;suspended=true;f.owner.lock();await rejected;
+    release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');assert.equal(fences,0);
+    connection.approval.dispose();await f.owner.unlock(PASSWORD);connection=await smartMessageApproval(f);
+    const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'external-signing');assert.equal(resume.accountId,selected);assert.equal(resume.id,handoff.id);
+    assert.equal(fences,0);const opened=device.urls.length;suspended=false;
+    const result=await connection.host.signMessage({handoff,accountId:selected,networkId:'ethereum',request,approval:connection.approval});
+    assert.match(result,/^0x[0-9a-f]+$/i);assert.equal(fences,1);assert.equal(device.urls.length,opened);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
+    assert.equal(device.sessions.getSnapshot(),null);assert.equal(f.submitted.length,0);
+  }finally{release.resolve();connection?.approval.dispose();await close();}
+});
+
+
+test('native Smart Trezor return after network change discards the old public transcript',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let connection:Awaited<ReturnType<typeof smartMessageApproval>>|undefined,suspended=false,fences=0;
+  const handoff={id:'network-bound-smart-message',expiresAt:Date.now()+120000,beforeSuiteOpen(){return ()=>undefined;},beforeSignature(){fences++;},isSuspended:()=>suspended};
+  try{
+    connection=await smartMessageApproval(f);
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
+    const request=readDappMessageRequest('personal_sign',['0x6162',connection.selected.address],connection.selected.address)!;
+    const signing=connection.host.signMessage({handoff,accountId:connection.selected.id,networkId:'ethereum',request,approval:connection.approval}),rejected=assert.rejects(signing);
+    await entered.promise;suspended=true;f.owner.lock();await rejected;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    connection.approval.dispose();await f.owner.unlock(PASSWORD);await f.selectNetwork('base');
+    await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(fences,0);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+  }finally{release.resolve();connection?.approval.dispose();await close();}
+});
+
+test('local Smart Trezor wallet send resumes through a fresh operation and separate signing/payer reviews',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner(),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let original:NativeSmartAccountOperation|undefined,resumed:NativeSmartAccountOperation|undefined;
+  try{
+    assert.equal(f.runtime.canSignSmartAccount(),true);const selected=f.owner.getCatalogue()!.active.accountId;
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
+    original=await f.runtime.openSmartAccountSend('0x'+'55'.repeat(20),{kind:'exact',amount:'0.000001'},()=>undefined);
+    await original.prepare();assert.equal(original.getSnapshot().phase,'authorize');
+    const signing=original.authorize(original.getSnapshot().revision);await entered.promise;const suiteDeadline=device.sessions.getSnapshot()!.expiresAt;
+    original.background();f.runtime.trezor.background();f.owner.lock();await signing;
+    release.resolve();await new Promise(resolve=>setImmediate(resolve));assert.equal(device.sessions.getSnapshot()?.phase,'response-ready');
+    await f.owner.unlock(PASSWORD);const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');assert.equal(draft.accountId,selected);
+    resumed=await f.runtime.resumeSmartAccountOperation(draft.id,new AbortController().signal,()=>undefined);assert.notEqual(resumed,original);
+    await resumed.prepare();assert.equal(resumed.getSnapshot().phase,'authorize');assert(resumed.authorizationExpiresAt<=suiteDeadline);
+    assert.equal(device.signatures.length,1);assert.equal(f.submitted.length,0);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
+    const confirmed=resumed.authorize(resumed.getSnapshot().revision);
+    for(let i=0;i<1000&&resumed.getSnapshot().phase!=='review-fee'&&!['complete','failed'].includes(resumed.getSnapshot().phase);i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(resumed.getSnapshot().phase,'review-fee');assert.equal(f.submitted.length,0);
+    resumed.confirmPayer(resumed.getSnapshot().payerReview!.id);await confirmed;assert.equal(resumed.getSnapshot().phase,'complete');assert.equal(f.submitted.length,1);
+  }finally{release.resolve();await original?.dispose();await resumed?.dispose();await close();}
+});
+
+
+async function suspendedLocalTrezorSend(bundle:Awaited<ReturnType<typeof readyTrezorSmartOwner>>){
+  const {f,device}=bundle,entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let operation:NativeSmartAccountOperation|undefined;
+  try{
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
+    operation=await f.runtime.openSmartAccountSend('0x'+'55'.repeat(20),{kind:'exact',amount:'0.000001'},()=>undefined);
+    await operation.prepare();const hash=operation.getSnapshot().userOperationHash;
+    const signing=operation.authorize(operation.getSnapshot().revision);
+    await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite signing launch');})]);
+    operation.background();f.runtime.trezor.background();f.owner.lock();await signing;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    await f.owner.unlock(PASSWORD);const resume=await f.runtime.trezor.resumeSend();assert.equal(resume.kind,'smart-operation');
+    return {operation,resume,hash};
+  }catch(error){await operation?.dispose();throw error;}finally{release.resolve();}
+}
+
+for(const change of ['nonce','owner policy','cancel'] as const)test(`local Smart Trezor ${change} after unlock cannot reuse the old approval or signed callback`,async()=>{
+  const bundle=await readyTrezorSmartOwner(),{f,device}=bundle;let suspended:Awaited<ReturnType<typeof suspendedLocalTrezorSend>>|undefined,resumed:NativeSmartAccountOperation|undefined;
+  try{
+    suspended=await suspendedLocalTrezorSend(bundle);const before=device.signatures.length;
+    if(change==='owner policy')f.mutateSelectedSmart(account=>{account.smartAccount!.auth={...account.smartAccount!.auth!,data:encodeEcdsaValidatorInitData([device.wallets[1]!.address],1)};});
+    if(change==='cancel')await f.runtime.trezor.cancel();
+    if(change!=='nonce')await assert.rejects(f.runtime.resumeSmartAccountOperation(suspended.resume.id,new AbortController().signal,()=>undefined));
+    else{
+      f.advanceSmartNonce();resumed=await f.runtime.resumeSmartAccountOperation(suspended.resume.id,new AbortController().signal,()=>undefined);
+      await resumed.prepare();assert.equal(resumed.getSnapshot().phase,'authorize');assert.notEqual(resumed.getSnapshot().userOperationHash,suspended.hash);
+      await resumed.authorize(resumed.getSnapshot().revision);assert.equal(resumed.getSnapshot().phase,'failed');
+    }
+    for(let i=0;i<10&&device.sessions.getSnapshot();i++)await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(device.signatures.length,before);assert.equal(f.submitted.length,0);assert.equal(device.sessions.getSnapshot(),null);
+  }finally{await suspended?.operation.dispose();await resumed?.dispose();await bundle.close();}
+});
+
+test('an accepted local Smart Trezor signature cannot become resumable during payer consent',async()=>{
+  const {f,device,close}=await readyTrezorSmartOwner();let operation:NativeSmartAccountOperation|undefined;
+  try{
+    operation=await f.runtime.openSmartAccountSend('0x'+'55'.repeat(20),{kind:'exact',amount:'0.000001'},()=>undefined);await operation.prepare();
+    const signing=operation.authorize(operation.getSnapshot().revision);
+    for(let i=0;i<1000&&operation.getSnapshot().phase!=='review-fee'&&!['complete','failed'].includes(operation.getSnapshot().phase);i++)await new Promise(resolve=>setTimeout(resolve,5));
+    assert.equal(operation.getSnapshot().phase,'review-fee');assert.equal(device.signatures.length,1);
+    operation.background();f.owner.lock();await signing;await f.owner.unlock(PASSWORD);
+    await assert.rejects(f.runtime.trezor.resumeSend());assert.equal(device.sessions.getSnapshot(),null);assert.equal(f.submitted.length,0);
+  }finally{await operation?.dispose();await close();}
+});
+
+
+for(const action of ['guardian-policy','wallet-authenticator','slh-installation'] as const)test(`local Smart Trezor ${action} rebuilds with the original validated builder and durable records`,async()=>{
+  const backend=action==='slh-installation'?slhSmartBackend():null;
+  const {f,device,close}=await readyTrezorSmartOwner(backend?.capability??null),entered=Promise.withResolvers<void>(),release=Promise.withResolvers<void>();
+  let original:NativeSmartAccountOperation|undefined,resumed:NativeSmartAccountOperation|undefined;
+  try{
+    const selected=f.owner.getCatalogue()!.active.accountId;
+    device.onBeforeCallback(async request=>{if(request.method==='ethereumSignTypedData'){entered.resolve();await release.promise;}});
+    if(action==='guardian-policy')original=await f.runtime.openGuardianPolicy({action:'set',guardian:'0x'+'77'.repeat(20),delaySeconds:259200,acknowledgedPendingOperationId:null},new AbortController().signal,()=>undefined);
+    else if(action==='wallet-authenticator')original=await f.runtime.openWalletAuthenticator(new AbortController().signal,()=>undefined);
+    else{
+      const signer=await f.runtime.openSlhDsaAccount(()=>undefined),key=await signer.prepareFresh(()=>undefined);
+      original=await f.runtime.openSlhDsaInstallation(key.keyId,new AbortController().signal,()=>undefined);
+    }
+    await original.prepare();assert.equal(original.getSnapshot().phase,'authorize');
+    const signing=original.authorize(original.getSnapshot().revision);await Promise.race([entered.promise,signing.then(()=>{throw Error('Expected Suite authorization');})]);
+    const deadline=device.sessions.getSnapshot()!.expiresAt;original.background();f.owner.lock();await signing;release.resolve();await new Promise(resolve=>setImmediate(resolve));
+    await f.owner.unlock(PASSWORD);const draft=await f.runtime.trezor.resumeSend();assert.equal(draft.kind,'smart-operation');
+    resumed=await f.runtime.resumeSmartAccountOperation(draft.id,new AbortController().signal,()=>undefined);await resumed.prepare();
+    assert.equal(resumed.getSnapshot().phase,'authorize');assert(resumed.authorizationExpiresAt<=deadline);assert.equal(f.owner.getCatalogue()!.active.accountId,selected);
+    assert.equal(device.signatures.length,1);assert.equal(f.submitted.length,0);
+    assert.equal(resumed.getSnapshot().intent.kind,action==='guardian-policy'?'guardian-policy':'authenticator');
+    if(action==='slh-installation')assert.equal(backend!.actions.length,0,'restoring review does not use a private SLH signing capability');
+  }finally{release.resolve();await original?.dispose();await resumed?.dispose();await close();}
 });

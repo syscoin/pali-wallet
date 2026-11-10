@@ -64,3 +64,9 @@ test('Trezor replacement and UTXO drafts retain the corresponding normal review 
   assert.equal(retainedOption.kind, 'utxo');
   if (retainedOption.kind === 'utxo') assert.equal(retainedOption.draft.rbf, false);
 });
+
+test('Smart operation resume IDs cannot be interpreted as a transfer draft', () => {
+  const resume: NativeTrezorResumeIntent = Object.freeze({...scope, kind: 'smart-operation'});
+  assert.throws(() => trezorResumeDraft(resume), /fresh operation review/);
+  assert.deepEqual(Object.keys(resume).sort(), ['accountId', 'id', 'kind', 'networkId']);
+});
