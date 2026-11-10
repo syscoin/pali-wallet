@@ -434,6 +434,183 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, record
   };
 }
 
+async function readyLedgerInfrastructure(hooks: {before?: SqlHook; after?: SqlHook} = {}) {
+  const device = nativeSmartLedgerDevice(), deviceTransactions: string[] = [];
+  let f!: Awaited<ReturnType<typeof fixture>>;
+  let beforeDevice: (() => Promise<void>) | undefined;
+  let disconnect: (() => Promise<void>) | undefined;
+  let failRetirement = false;
+  const factory: NonNullable<KeyringRuntimeDependencies['createLedgerTransport']> = async scope => {
+    const transport = await device.factory(scope);
+    disconnect = () => transport.host.disconnect();
+    return {...transport, async dispose() {
+      await transport.dispose();
+      if (failRetirement) {failRetirement = false; throw Object.assign(Error('Ledger retirement not proven'), {transactionNotBroadcast: true});}
+    }, host: {...transport.host, evm: {...transport.host.evm,
+      async signTransaction(request, authority) {
+        assert(authority?.assertCurrent); authority.assertCurrent();
+        const unsigned = Transaction.from(`0x${request.unsignedTxHex}`);
+        const record = (await f.inspectRecovery()).record as {infrastructurePending?: readonly NativeInfrastructurePending[]};
+        const pending = record.infrastructurePending?.[0];
+        assert(pending, 'the exact reservation must be durable before any Ledger device signing');
+        assert.equal(pending.payer.id, 'ledger:60:0'); assert.equal(pending.entry.nonce, unsigned.nonce);
+        assert.equal(pending.entry.payerAddress, request.expectedAddress);
+        assert.equal(pending.entry.transactionHash, undefined);
+        assert.equal(f.runtime.ledger.isConnected(), true, 'pending-only catalogue publication must retain verified device ownership');
+        deviceTransactions.push(unsigned.unsignedSerialized);
+        await beforeDevice?.(); authority.assertCurrent();
+        const signature = device.wallets[request.accountIndex]!.signingKey.sign(unsigned.unsignedHash);
+        return {r: signature.r.slice(2), s: signature.s.slice(2), v: signature.v.toString(16)};
+      },
+    }}};
+  };
+  f = await fixture(hooks, true, null, factory);
+  const picker = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'import');
+  let connection: NativeLedgerAccounts<'connect'> | undefined;
+  try {
+    await picker.start(); await picker.select(picker.getSnapshot().devices[0]!.id); await picker.importAccount('Infrastructure Ledger');
+    const catalogue = f.owner.getCatalogue()!;
+    if (catalogue.active.accountId !== 'ledger:60:0') await f.change({kind: 'select', id: 'ledger:60:0'});
+    return {f, device, deviceTransactions,
+      beforeDevice(hook: () => Promise<void>) {beforeDevice = hook;},
+      failRetirement() {failRetirement = true;},
+      async disconnect() {assert(disconnect); await disconnect();},
+      async connect() {
+        await connection?.dispose();
+        connection = new NativeLedgerAccounts(f.owner, () => f.runtime.ledger, 'connect');
+        await connection.start(); await connection.select(connection.getSnapshot().devices[0]!.id); await connection.finishConnection();
+      },
+      async close() {await connection?.dispose(); await picker.dispose(); await f.close();},
+    };
+  } catch (error) {await connection?.dispose(); await picker.dispose(); await f.close(); throw error;}
+}
+
+for (const uncertain of [false, true]) test(`Ledger infrastructure private SDK preserves reservation, exact signed bytes and reopen reconciliation (${uncertain})`, async () => {
+  const owned = await readyLedgerInfrastructure(), {f} = owned;
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.initialEoaNonce(7); f.infrastructureCode('ecdsaValidator', false); f.infrastructureCode('factory', false); f.holdReceipts();
+    if (uncertain) f.infrastructureResponseLost();
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review, JSON.stringify(controller.getSnapshot()));
+    assert.equal(Number(review.transaction.nonce), 7); assert.equal(owned.deviceTransactions.length, 0);
+    const before = f.runtime.catalogue.getSnapshot()!, payer = before.accounts.find(account => account.id === before.active.accountId)!;
+    await owned.connect();
+    f.onBroadcast(() => {
+      const current = f.runtime.catalogue.getSnapshot()!;
+      assert.equal(current.accounts.find(account => account.id === current.active.accountId), payer);
+      assert.equal(f.runtime.ledger.isConnected(), true);
+    });
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, uncertain ? 'unknown' : 'pending', JSON.stringify(controller.getSnapshot()));
+    assert.equal(owned.deviceTransactions.length, 1); assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 1);
+    const transaction = Transaction.from(f.submitted[0]);
+    assert.equal(transaction.from, owned.device.wallets[0]!.address); assert.equal(transaction.unsignedSerialized, owned.deviceTransactions[0]);
+    assert.equal(transaction.nonce, 7); assert.equal(transaction.data, review.transaction.data);
+    assert.equal(f.infrastructureBroadcasts[0]!.pending.entry.nonce, 7);
+    assert.equal(f.infrastructureBroadcasts[0]!.pending.payer.xpub, owned.device.wallets[0]!.signingKey.publicKey.toLowerCase());
+    assert.equal(f.runtime.ledger.isConnected(), true, 'hash acknowledgement must preserve only this owned Ledger proof');
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(owned.deviceTransactions.length, 1); assert.equal(f.submitted.length, 1);
+    controller.dispose(); controller = undefined; f.onBroadcast(() => undefined);
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(owned.deviceTransactions.length, 1); assert.equal(f.submitted.length, 1);
+    f.showReceipts(); await controller.refresh(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'ready', JSON.stringify(controller.getSnapshot()));
+    assert.deepEqual(((await f.inspectRecovery()).record as {infrastructurePending: unknown[]}).infrastructurePending, []);
+    f.infrastructureCode('ecdsaValidator', true);
+    await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().feeReview!.contract.id, 'factory'); assert.equal(Number(controller.getSnapshot().feeReview!.transaction.nonce), 8);
+    assert.equal(owned.deviceTransactions.length, 1);
+  } finally {controller?.dispose(); await owned.close();}
+});
+
+for (const failure of ['disconnected', 'rejected', 'disconnect-during-device'] as const) test(`Ledger infrastructure private SDK ${failure} cannot broadcast and clears its exact unsent attempt`, async () => {
+  const owned = await readyLedgerInfrastructure(), {f} = owned;
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.infrastructureCode('factory', false);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review);
+    if (failure !== 'disconnected') await owned.connect();
+    if (failure === 'rejected') owned.beforeDevice(async () => {throw Error('Ledger user rejected');});
+    if (failure === 'disconnect-during-device') owned.beforeDevice(() => owned.disconnect());
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, 'failed', JSON.stringify(controller.getSnapshot()));
+    assert.equal(owned.deviceTransactions.length, failure === 'disconnected' ? 0 : 1);
+    assert.equal(f.payerSignatures.length, 0); assert.equal(f.submitted.length, 0);
+    assert.equal(f.runtime.ledger.isConnected(), false, 'a rejected or disconnected device must lose its verified proof');
+    if (failure === 'disconnected') assert.equal(f.runtime.catalogue.getSnapshot(), null, 'unadmitted hardware still follows the generic locking policy');
+    else assert(f.runtime.catalogue.getSnapshot(), 'an SDK-proven signing refusal must leave the current custody session available');
+    assert.deepEqual(((await f.inspectRecovery()).record as {infrastructurePending: unknown[]}).infrastructurePending, []);
+  } finally {controller?.dispose(); await owned.close();}
+});
+
+for (const failure of ['context-retired', 'unproven-retirement'] as const) test(`Ledger infrastructure private SDK ${failure} keeps an uncertain attempt and never trusts public failure flags`, async () => {
+  const owned = await readyLedgerInfrastructure(), {f} = owned;
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  try {
+    f.infrastructureCode('factory', false); f.holdReceipts();
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review); await owned.connect();
+    owned.beforeDevice(async () => {
+      if (failure === 'context-retired') f.owner.lock();
+      else {owned.failRetirement(); throw Error('Ledger user rejected');}
+    });
+    await controller.confirm(review.id);
+    assert.equal(controller.getSnapshot().phase, 'unknown', JSON.stringify(controller.getSnapshot()));
+    assert.equal(f.runtime.catalogue.getSnapshot(), null); assert.equal(f.runtime.ledger.isConnected(), false);
+    assert.equal(owned.deviceTransactions.length, 1); assert.equal(f.submitted.length, 0);
+    controller.dispose(); controller = undefined;
+    if (failure === 'unproven-retirement') await f.reopenQuarantined(); else await f.reopen();
+    await f.owner.unlock(PASSWORD);
+    const stored = (await f.inspectRecovery()).record as {infrastructurePending: readonly NativeInfrastructurePending[]};
+    assert.equal(stored.infrastructurePending.length, 1); assert.equal(stored.infrastructurePending[0]!.entry.transactionHash, undefined);
+    controller = await f.runtime.openSmartInfrastructure(new AbortController().signal, () => undefined);
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    assert.equal(controller.getSnapshot().phase, 'pending', JSON.stringify(controller.getSnapshot()));
+    assert.equal(owned.deviceTransactions.length, 1); assert.equal(f.submitted.length, 0);
+  } finally {controller?.dispose(); await owned.close();}
+});
+
+test('Ledger infrastructure private SDK drains retired pre-signer cleanup before physical storage closes', async () => {
+  const lifetime = new AbortController(), cleanup = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+  let armed = false, retired = false, beforeRevision = -1;
+  const owned = await readyLedgerInfrastructure({before: async (kind, sql) => {
+    if (retired && kind === 'run' && sql.startsWith('UPDATE keyring_records')) {cleanup.resolve(); await release.promise;}
+  }}), {f} = owned;
+  let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;
+  let confirmation: Promise<void> | undefined, closing: Promise<void> | undefined;
+  try {
+    f.infrastructureCode('factory', false);
+    controller = await f.runtime.openSmartInfrastructure(lifetime.signal, () => {
+      if (armed && (f.runtime.catalogue.getSnapshot()?.revision ?? -1) > beforeRevision) {armed = false; retired = true; lifetime.abort();}
+    });
+    await controller.refresh(controller.getSnapshot().revision); await controller.reviewNext(controller.getSnapshot().revision);
+    const review = controller.getSnapshot().feeReview!; assert(review); await owned.connect();
+    beforeRevision = f.runtime.catalogue.getSnapshot()!.revision;
+    const closes = f.physicalStorageCloses; armed = true;
+    confirmation = controller.confirm(review.id);
+    await Promise.race([cleanup.promise, confirmation.then(() => {throw Error('confirmation settled without Ledger unsigned cleanup');})]);
+    let closed = false; closing = f.owner.dispose().then(() => {closed = true;});
+    await new Promise<void>(resolve => setImmediate(resolve));
+    assert.equal(closed, false); assert.equal(f.physicalStorageCloses, closes);
+    assert.equal(owned.deviceTransactions.length, 0); assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    release.resolve(); await confirmation; await closing;
+    assert.equal(f.physicalStorageCloses, closes + 1);
+    controller = undefined; await f.reopen(); await f.owner.unlock(PASSWORD);
+    assert.deepEqual(((await f.inspectRecovery()).record as {infrastructurePending: unknown[]}).infrastructurePending, []);
+    assert.equal(f.submitted.length, 0);
+  } finally {release.resolve(); await confirmation?.catch(() => undefined); await closing?.catch(() => undefined); controller?.dispose(); await owned.close();}
+});
+
 for (const uncertain of [false, true]) test(`native infrastructure private SDK reserves the reviewed nonce and reconciles after reopen without duplicate submission (${uncertain})`, async () => {
   const f = await fixture({}, true);
   let controller: Awaited<ReturnType<KeyringRuntime['openSmartInfrastructure']>> | undefined;

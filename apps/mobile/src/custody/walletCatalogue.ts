@@ -247,6 +247,22 @@ function recoveryAccountReference(value: unknown, record: NativeAccountRecord, r
   return Object.freeze({ id: identity.id, address: publicKey.address, xpub: publicKey.publicKey });
 }
 
+/** Exact EVM infrastructure payer identity; guardian eligibility is a separate policy. */
+export function captureNativeInfrastructurePayerReference(value: unknown, record: NativeAccountRecord): NativeGuardianRecoveryAccountRef {
+  const raw = object(value, ['id', 'address', 'xpub']);
+  const identity = parseNativeAccountId(raw.id);
+  if (identity.slip44 !== 60 || !['HDAccount', 'Imported', 'Ledger'].includes(identity.type)) return invalid();
+  const account = softwareGroup(record).accounts[identity.type]?.[identity.index];
+  const publicKey = publicIdentity({ address: raw.address, publicKey: typeof raw.xpub === 'string' ? `0x${raw.xpub.replace(/^0x/, '')}` : raw.xpub });
+  if (!account || account.id !== identity.index || account.address.toLowerCase() !== publicKey.address.toLowerCase() ||
+      `0x${account.xpub.replace(/^0x/, '')}`.toLowerCase() !== publicKey.publicKey || account.isTrezorWallet || account.isSmartAccount)
+    return invalid();
+  if (identity.type === 'Ledger') {
+    if (!account.isLedgerWallet || account.isImported || account.xprv !== '') return invalid();
+  } else if (!account.xprv || account.isLedgerWallet || Boolean(account.isImported) !== (identity.type === 'Imported')) return invalid();
+  return Object.freeze({ id: identity.id, address: publicKey.address, xpub: publicKey.publicKey });
+}
+
 function snapshotGuardianRecoveryIntent(value: unknown, record: NativeAccountRecord): NativeGuardianRecoveryIntent {
   const raw = object(value, ['accountId', 'operation', 'target', 'guardian', 'replacement', 'payer']);
   const identity = parseNativeAccountId(raw.accountId);
@@ -274,7 +290,7 @@ function snapshotInfrastructurePending(value: unknown, record: NativeAccountReco
   const entry = parseInfrastructureJournalEntry(fields, true);
   if (!entry?.attemptId || entry.nonce === undefined || !entry.payerAddress || entry.rpcUrl !== network.rpcUrl ||
       !Object.hasOwn(PALI_INFRASTRUCTURE_METADATA_BY_ID, entry.contractId)) return invalid();
-  const payer = recoveryAccountReference(raw.payer, record, 'software', Number(network.chainId));
+  const payer = captureNativeInfrastructurePayerReference(raw.payer, record);
   if (getAddress(entry.payerAddress) !== payer.address) return invalid();
   return Object.freeze({ chainId: network.chainId, networkId: network.id, registrationHash: network.registrationHash, payer,
     entry: Object.freeze({ attemptId: entry.attemptId.toLowerCase(), contractId: entry.contractId, nonce: entry.nonce,

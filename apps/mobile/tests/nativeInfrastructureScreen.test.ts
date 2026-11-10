@@ -3,7 +3,9 @@ import test from 'node:test';
 import { PALI_INFRASTRUCTURE_METADATA } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { projectSmartAccountInfrastructureObservation } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
 import type { NativePreparedConnectionTransaction } from '../src/connections/transactionRuntime.ts';
+import type { NativeLedgerConnectionView, NativeLedgerSnapshot } from '../src/custody/ledgerAccounts.ts';
 import { formatBaseUnits } from '../src/core/amounts.ts';
+import type { useOwnedLedgerConnection } from '../src/screens/useDappLedgerConnection';
 import { NativeInfrastructureController } from '../src/smartAccount/infrastructure.ts';
 import { englishI18n, nativeTranslationFixture } from './localizationFixture.ts';
 import { screenElements, screenFixture } from './screenFixture.ts';
@@ -17,13 +19,25 @@ function deferred<T>() {
   const promise = new Promise<T>(complete => { resolve = complete; });
   return { promise, resolve };
 }
-function nativeScreen() {
+function nativeScreen(clock = { wall: 100_000, monotonic: 0 }) {
   const events = new Map<string, Set<(...values: any[]) => unknown>>();
   const add = (name: string, listener: (...values: any[]) => unknown) => {
     const listeners = events.get(name) ?? new Set(); listeners.add(listener); events.set(name, listeners);
     return { remove() { listeners.delete(listener); } };
   };
   const appState = { currentState: 'active', addEventListener: add };
+  const timers = new Set<() => void>();
+  const globals = {
+    AbortController,
+    Date: class extends Date { static now() { return clock.wall; } },
+    performance: { now: () => clock.monotonic },
+    setTimeout(callback: () => void) { timers.add(callback); return callback; },
+    clearTimeout(callback: () => void) { timers.delete(callback); },
+  };
+  const hook = screenFixture(new URL('../src/screens/useDappLedgerConnection.tsx', import.meta.url), 'useOwnedLedgerConnection', {
+    './NativeLedger': { NativeLedgerConnectionModal: 'LedgerModal' },
+  }, globals);
+  let connectionProps: Parameters<typeof useOwnedLedgerConnection>[0] | undefined;
   const fixture = screenFixture(new URL('../src/screens/NativeInfrastructure.tsx', import.meta.url), 'NativeInfrastructure', {
     '../platform/localization': nativeTranslationFixture,
     '../core/amounts': { formatBaseUnits },
@@ -31,14 +45,19 @@ function nativeScreen() {
     'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     '../ui': { ...Object.fromEntries(['Button', 'Card', 'Header', 'Notice', 'Screen', 'Text'].map(name => [name, name])), colors: {} },
     './NativeTransactionReview': { TransactionDetails: 'TransactionDetails' },
-  }, { AbortController });
+    './useDappLedgerConnection': { useOwnedLedgerConnection(props: Parameters<typeof useOwnedLedgerConnection>[0]) {
+      connectionProps = props;
+      return hook.render(props);
+    } },
+  }, globals);
   return {
     render: (props: Parameters<typeof fixture.render>[0]) => screenElements(fixture.render(props)),
     emit(name: string, value?: unknown) {
       if (name === 'change') appState.currentState = value as string;
       for (const listener of events.get(name) ?? []) listener(value);
     },
-    close: fixture.close,
+    get connectionDeadline() { return connectionProps?.expiresAt; },
+    close() { fixture.close(); hook.close(); },
   };
 }
 function button(elements: ReturnType<typeof screenElements>, key: string) {
@@ -47,7 +66,7 @@ function button(elements: ReturnType<typeof screenElements>, key: string) {
   return element;
 }
 const text = (elements: ReturnType<typeof screenElements>) => elements.flatMap(node => node.children.filter(value => typeof value === 'string')).join(' ');
-function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing', create2Deployed = true) {
+function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing' | 'optional-only' | 'all-present' | 'pending-optional' = 'missing', create2Deployed = true, now = () => 0) {
   const transaction = Object.freeze({ chainId: '1', from: payer, to: '0x4e59b44847b379578588920cA78FbF26c0B4956C', nonce: '0', value: '0', data: '0xab', gasLimit: '21000', type: 2 as const, maxFeePerGas: '2', maxPriorityFeePerGas: '1', accessList: [] });
   let signatures = 0, wires = 0, submissions = 0, disposed = 0;
   let refuseSubmission = false;
@@ -75,7 +94,7 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
     submissionFailure(error: unknown) {
       return error && typeof error === 'object' && 'transactionNotBroadcast' in error ? { transactionNotBroadcast: true } : undefined;
     },
-  }, signal, () => 0);
+  }, signal, now);
   return {
     controller, transaction,
     holdQuote(promise: Promise<void>) { quoteWait = promise; },
@@ -84,6 +103,32 @@ function runtime(signal: AbortSignal, assertCurrent: () => void, mode: 'missing'
     failSubmission() { refuseSubmission = true; },
     get counts() { return { disposed, signatures, wires, submissions }; },
   };
+}
+
+function ledgerConnection(connected = false) {
+  let closes = 0;
+  const actions: string[] = [];
+  const snapshot: NativeLedgerSnapshot = Object.freeze({ phase: 'idle', networkId: 'ethereum', networkLabel: 'Ethereum',
+    address: payer, devices: [], selectedName: null, error: null });
+  const source: NativeLedgerConnectionView = {
+    purpose: 'connect', getSnapshot: () => snapshot, subscribe: () => () => {}, isConnected: () => connected,
+    async start() { actions.push('start'); },
+    async select(id) { actions.push(`select:${id}`); },
+    async finishConnection() { actions.push('finish'); connected = true; },
+    async close() { closes++; },
+  };
+  return { source, actions, disconnect() { connected = false; }, get closes() { return closes; } };
+}
+const footer = (tree: ReturnType<typeof screenElements>) => screenElements(tree.find(node => node.type === 'Screen')!.props.footer);
+function connectLedger(tree: ReturnType<typeof screenElements>) {
+  const action = footer(tree).find(node => node.type === 'Button' && node.props.title === 'Connect Ledger');
+  assert(action, 'Missing Connect Ledger');
+  return action;
+}
+function ledgerPicker(tree: ReturnType<typeof screenElements>) {
+  const modal = tree.find(node => node.type === 'LedgerModal');
+  assert(modal, 'Missing Ledger picker');
+  return modal;
 }
 
 for (const action of ['close', 'back', 'background', 'blur', 'unmount'] as const)
@@ -300,4 +345,158 @@ for (const stage of ['quote', 'signing', 'broadcast'] as const)
       assert.equal(value.counts.signatures, stage === 'broadcast' ? 1 : 0);
       assert.equal(value.controller.getSnapshot().feeReview, null);
     } finally { held.resolve(); screen.close(); }
+  });
+
+test('infrastructure connects Ledger in the fixed footer and requires a separate fresh Confirm', async () => {
+  const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
+  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    let tree = screen.render(props);
+    assert.equal(tree.some(node => node.props.title === 'Connect Ledger'), false);
+    button(tree, 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    tree = screen.render(props);
+    assert.equal(footer(tree).filter(node => node.type === 'Button').length, 2);
+    button(footer(tree), 'buttons.close');
+    assert.equal(tree.some(node => node.props.title === title('buttons.confirm')), false);
+    assert.equal(screenElements(tree.find(node => node.type === 'Screen')!.children).some(node => node.props.title === 'Connect Ledger'), false);
+    connectLedger(tree).props.onPress();
+    const picker = ledgerPicker(screen.render(props)), owned = picker.props.controller;
+    await owned.start(); await owned.select('verified-device'); await owned.finishConnection();
+    tree = screen.render(props);
+    assert.equal(button(footer(tree), 'buttons.confirm').props.disabled, true, 'the picker must finish before confirmation');
+    button(footer(tree), 'buttons.confirm').props.onPress(); await tick();
+    assert.equal(value.counts.submissions, 0);
+    picker.props.onFinished(); tree = screen.render(props);
+    assert.equal(button(footer(tree), 'buttons.confirm').props.disabled, false);
+    assert.equal(value.counts.signatures, 0); assert.equal(value.counts.wires, 0);
+    assert.deepEqual(ledger.actions, ['start', 'select:verified-device', 'finish']);
+    button(footer(tree), 'buttons.confirm').props.onPress(); await tick();
+    assert.equal(value.counts.submissions, 1); assert.equal(value.counts.signatures, 1); assert.equal(value.counts.wires, 1);
+    assert.equal(screen.render(props).some(node => node.props.title === 'Connect Ledger'), false);
+  } finally { screen.close(); }
+});
+
+test('Ledger disconnect makes a held infrastructure Confirm inert and restores Connect', async () => {
+  const screen = nativeScreen(), ledger = ledgerConnection(true); let value!: ReturnType<typeof runtime>;
+  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    const confirm = button(footer(screen.render(props)), 'buttons.confirm');
+    assert.equal(confirm.props.disabled, false);
+    ledger.disconnect(); confirm.props.onPress(); await tick();
+    assert.equal(value.counts.submissions, 0);
+    const tree = screen.render(props);
+    connectLedger(tree); button(footer(tree), 'buttons.close');
+    assert.equal(footer(tree).filter(node => node.type === 'Button').length, 2);
+  } finally { screen.close(); }
+});
+
+test('a replacement infrastructure review retires its old Ledger picker without closing its successor', async () => {
+  const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
+  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    const connect = connectLedger(screen.render(props)); connect.props.onPress();
+    const original = ledgerPicker(screen.render(props)), owned = original.props.controller;
+    await value.controller.refresh(value.controller.getSnapshot().revision); screen.render(props);
+    assert.equal(ledger.closes, 1);
+    button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    let tree = screen.render(props);
+    connect.props.onPress();
+    assert.equal(screen.render(props).some(node => node.type === 'LedgerModal'), false);
+    await assert.rejects(owned.start()); await assert.rejects(owned.select('stale-device')); await assert.rejects(owned.finishConnection());
+    connectLedger(tree).props.onPress(); tree = screen.render(props);
+    const successor = ledgerPicker(tree);
+    original.props.onFinished();
+    assert.equal(ledgerPicker(screen.render(props)).props.controller, successor.props.controller);
+    assert.equal(ledger.closes, 1); assert.deepEqual(ledger.actions, []);
+    assert.equal(value.counts.submissions, 0);
+  } finally { screen.close(); }
+});
+
+test('monotonic quote expiry rejects held Ledger callbacks before any expiry timer runs', async () => {
+  const clock = { wall: 100_000, monotonic: 100 }, screen = nativeScreen(clock), ledger = ledgerConnection();
+  let value!: ReturnType<typeof runtime>;
+  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check, 'missing', true, () => clock.monotonic); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    connectLedger(screen.render(props)).props.onPress();
+    const owned = ledgerPicker(screen.render(props)).props.controller;
+    const deadline = screen.connectionDeadline;
+    clock.wall += 10_000; clock.monotonic += 1_000; screen.render(props);
+    assert.equal(screen.connectionDeadline, deadline, 'rerenders must not renew the wall-clock adaptation');
+    clock.wall = 1; clock.monotonic = 60_000;
+    await assert.rejects(owned.start()); await assert.rejects(owned.finishConnection());
+    const tree = screen.render(props);
+    assert.equal(screen.connectionDeadline, deadline);
+    assert.equal(tree.some(node => node.type === 'LedgerModal'), false);
+    assert.equal(tree.some(node => node.props.title === 'Connect Ledger'), false);
+    const confirm = button(footer(tree), 'buttons.confirm'); assert.equal(confirm.props.disabled, true);
+    confirm.props.onPress(); await tick();
+    assert.equal(value.counts.submissions, 0); assert.deepEqual(ledger.actions, []); assert.equal(ledger.closes, 1);
+  } finally { screen.close(); }
+});
+
+test('a connected Ledger cannot use a held Confirm after monotonic expiry even if the wall clock moves backwards', async () => {
+  const clock = { wall: 100_000, monotonic: 0 }, screen = nativeScreen(clock), ledger = ledgerConnection(true);
+  let value!: ReturnType<typeof runtime>;
+  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check, 'missing', true, () => clock.monotonic); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    const confirm = button(footer(screen.render(props)), 'buttons.confirm');
+    assert.equal(confirm.props.disabled, false);
+    clock.wall = 1; clock.monotonic = 60_000;
+    confirm.props.onPress(); await tick();
+    assert.equal(value.counts.submissions, 0); assert.equal(value.counts.signatures, 0); assert.equal(value.counts.wires, 0);
+    assert.equal(button(footer(screen.render(props)), 'buttons.confirm').props.disabled, true);
+  } finally { screen.close(); }
+});
+
+test('background retires infrastructure and its Ledger picker before retained device callbacks can act', async () => {
+  const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
+  const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+    value = runtime(signal, check); return value.controller;
+  }, onBack() {} };
+  try {
+    screen.render(props); await tick();
+    button(screen.render(props), 'mobile.infrastructure.reviewNext').props.onPress(); await tick();
+    const connect = connectLedger(screen.render(props)); connect.props.onPress();
+    const owned = ledgerPicker(screen.render(props)).props.controller;
+    screen.emit('change', 'background');
+    await assert.rejects(owned.start()); await assert.rejects(owned.select('late-device')); await assert.rejects(owned.finishConnection());
+    connect.props.onPress(); screen.render(props);
+    assert.equal(ledger.closes, 1); assert.deepEqual(ledger.actions, []);
+    assert.equal(value.counts.disposed, 1); assert.equal(value.counts.submissions, 0);
+  } finally { screen.close(); }
+});
+
+for (const mode of ['all-present', 'pending-optional', 'missing-create2'] as const)
+  test(`Ledger connection is not offered for ${mode} infrastructure status`, async () => {
+    const screen = nativeScreen(), ledger = ledgerConnection(); let value!: ReturnType<typeof runtime>;
+    const props = { ledgerConnection: ledger.source, async open(signal: AbortSignal, check: () => void) {
+      value = runtime(signal, check, mode === 'missing-create2' ? 'optional-only' : mode, mode !== 'missing-create2'); return value.controller;
+    }, onBack() {} };
+    try {
+      screen.render(props); await tick();
+      const tree = screen.render(props);
+      assert.equal(tree.some(node => node.props.title === 'Connect Ledger' || node.type === 'LedgerModal'), false);
+      assert.equal(footer(tree).filter(node => node.type === 'Button').length, 2);
+      button(footer(tree), 'mobile.infrastructure.refresh'); button(footer(tree), 'buttons.close');
+      assert.equal(value.counts.submissions, 0);
+    } finally { screen.close(); }
   });

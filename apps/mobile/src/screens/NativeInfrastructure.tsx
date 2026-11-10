@@ -2,14 +2,17 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSync
 import { ActivityIndicator, AppState, BackHandler, Platform, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
+import type { NativeLedgerConnectionView } from '../custody/ledgerAccounts';
 import { useNativeTranslation } from '../platform/localization';
 import type { NativeInfrastructureController, NativeInfrastructureSnapshot } from '../smartAccount/infrastructure';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 import { TransactionDetails } from './NativeTransactionReview';
+import { useOwnedLedgerConnection } from './useDappLedgerConnection';
 
 type Props = {
   open(signal: AbortSignal, assertCurrent: () => void): Promise<NativeInfrastructureController>;
   onBack(): void;
+  ledgerConnection?: NativeLedgerConnectionView;
 };
 type Scope = Readonly<{ source: Props['open'] }>;
 type Owner = { scope: Scope; live: boolean; abort: AbortController; controller?: NativeInfrastructureController };
@@ -18,7 +21,7 @@ const emptySnapshot = () => empty;
 const emptySubscribe = () => () => {};
 
 /** Each presentation owns one bounded host; no pending open can adopt a replacement mount. */
-export function NativeInfrastructure({ open, onBack }: Props) {
+export function NativeInfrastructure({ open, onBack, ledgerConnection }: Props) {
   const { t } = useNativeTranslation();
   const scope = useMemo<Scope>(() => ({ source: open }), [open]);
   const owner = useRef<Owner | null>(null);
@@ -76,6 +79,20 @@ export function NativeInfrastructure({ open, onBack }: Props) {
   const busy = ['loading', 'preparing', 'submitting'].includes(state.phase);
   const review = state.feeReview;
   const pending = state.status?.pending;
+  // Adapt once for this immutable quote. Monotonic checks below remain the authority.
+  const connectionDeadline = useMemo(() => review
+    ? Date.now() + Math.max(0, review.expiresAtMonotonicMilliseconds - performance.now())
+    : 0, [review]);
+  const isReviewCurrent = useCallback(() => {
+    if (!controller || !current || !isCurrent(current) || !review || performance.now() >= review.expiresAtMonotonicMilliseconds) return false;
+    const latest = controller.getSnapshot();
+    return latest.revision === state.revision && latest.phase === 'review' && latest.feeReview === review &&
+      !latest.status?.pending && !latest.error;
+  }, [controller, current, isCurrent, review, state.revision]);
+  const reviewAvailable = state.phase === 'review' && isReviewCurrent();
+  const ledger = useOwnedLedgerConnection({ owner: controller ?? empty, revision: state.revision,
+    expiresAt: connectionDeadline, available: reviewAvailable,
+    isReviewCurrent, ledgerConnection });
   const create2Missing = state.status?.observation.create2Deployer.deployed === false;
   const canReview = !!controller && !busy && !pending && !['review', 'unknown'].includes(state.phase) &&
     !!state.status?.observation.create2Deployer.deployed && !!state.status.observation.missing.length;
@@ -83,7 +100,11 @@ export function NativeInfrastructure({ open, onBack }: Props) {
   const reviewLabel = state.status?.observation.ready ? 'mobile.infrastructure.reviewOptional' : 'mobile.infrastructure.reviewNext';
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><Screen key={review && state.phase === 'review' ? `review:${review.id}` : 'status'} footer={<>
     {review && state.phase === 'review'
-      ? <Button title={t('buttons.confirm')} disabled={busy} onPress={() => act(() => controller!.confirm(review.id))} />
+      ? ledger.showConnect
+        ? <Button title={t('mobile.accounts.connectLedger')} variant="secondary" onPress={ledger.connect} />
+        : <Button title={t('buttons.confirm')} disabled={busy || ledger.blocked || !reviewAvailable} onPress={() => {
+          if (!ledger.blocked && isReviewCurrent() && ledger.canApprove()) act(() => controller!.confirm(review.id));
+        }} />
       : readyToReview
       ? <Button title={t(reviewLabel)} onPress={() => act(() => controller!.reviewNext(state.revision))} />
       : <Button title={t('mobile.infrastructure.refresh')} variant="secondary" disabled={!controller || busy} onPress={() => act(() => controller!.refresh(state.revision))} />}
@@ -133,7 +154,7 @@ export function NativeInfrastructure({ open, onBack }: Props) {
         <Text>{t(contract.deployed ? 'mobile.infrastructure.codePresent' : 'mobile.infrastructure.codeMissing')}</Text>
       </Card>)}
     </Card>}
-  </Screen></SafeAreaView>;
+  </Screen>{ledger.modal}</SafeAreaView>;
 }
 
 const s = StyleSheet.create({

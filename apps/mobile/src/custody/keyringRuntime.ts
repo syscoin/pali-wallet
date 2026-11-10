@@ -158,6 +158,7 @@ import { NativeWalletCatalogue, WalletCatalogueError,
   catalogueAccountGroup,
   catalogueEvmNetworks,
   catalogueUtxoNetworks,
+  captureNativeInfrastructurePayerReference,
   previewNativeNetworkSelection,
   createNativeAccountRecord,
   recoveryVerificationRecords,
@@ -199,7 +200,7 @@ import { createNativeSentryCollateral, createNativeSentryNodeManagement, type Na
 import { createNativeSentryApprovals, createNativeSentryJsonReader, type NativeSentryApprovals } from './sentryApprovals.ts';
 import { createNativeSentryWalletAuthority } from './sentryWalletAuthority.ts';
 import type { RunSentryCrypto } from '../../../../source/wallet/sentryCryptoJobs.ts';
-import { createNativeHardwareDappSigning, type NativeHardwareDappAccount, type NativeHardwareDappSigning } from '../hardware/dappSigning.ts';
+import { createNativeHardwareDappSigning, type NativeHardwareDappAccount, type NativeHardwareDappSigning, type NativeHardwareDappSession } from '../hardware/dappSigning.ts';
 import { createOwnedKeyringTransfer } from '../hardware/ownedKeyringTransfer.ts';
 import { withOwnedLedgerConnection } from '../hardware/withOwnedLedgerConnection.ts';
 import type { createDappSigningApproval } from '../../../../source/wallet/dappSigningApproval.ts';
@@ -456,7 +457,7 @@ export function createKeyringRuntimeFactory(
         type State = ReturnType<typeof initialState>;
         let ledgerTransport: NativeLedgerTransport | undefined;
         let ledgerLifetime: AbortController | undefined;
-        let ledgerVerified: { accountId: string; targetIds: readonly string[]; assertCurrent(): void; generation: number; snapshot: NativeWalletCatalogueSnapshot; transport: NativeLedgerTransport } | undefined;
+        let ledgerVerified: { accountId: string; targetIds: readonly string[]; assertCurrent(): void; prepareInfrastructureAdoption(next: NativeWalletCatalogueSnapshot): () => void; generation: number; snapshot: NativeWalletCatalogueSnapshot; transport: NativeLedgerTransport } | undefined;
         let ledgerCleanup: Promise<void> | undefined;
         let ledgerOpening: { retire(): Promise<void> } | undefined;
         let ledgerScanOrdinal = 0;
@@ -947,7 +948,7 @@ export function createKeyringRuntimeFactory(
         const enteredPrivateSubmissions = new WeakSet<object>();
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
           selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding, gasPolicy: EvmGasPolicy,
-          hardwareSigner: (NativeHardwareDappSigning & {keyring(): IndexedKeyring}) | null,
+          hardwareSigner: (Pick<NativeHardwareDappSigning, 'signTransaction'> & {keyring(): IndexedKeyring}) | null,
           validateSigningAndBroadcast: (() => Promise<void>) | null) {
           check();
           if (validateSigningAndBroadcast !== null && typeof validateSigningAndBroadcast !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
@@ -972,13 +973,28 @@ export function createKeyringRuntimeFactory(
             readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
               network, owner: selected.address, contract, signal, assertCurrent, fetch,
             }),
-            sign(transaction, assertSigningCurrent) {
-              return run(async (ownerGeneration) => {
+            async sign(transaction, assertSigningCurrent) {
+              const result = await run(async (ownerGeneration) => {
                 const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
                 guard();
                 if (validateSigningAndBroadcast !== null) await validateSigningAndBroadcast();
                 guard();
-                if (hardwareSigner) return hardwareSigner.signTransaction(serializePreparedEvmTransaction(transaction), {signal, assertCurrent: guard});
+                if (hardwareSigner) {
+                  const transport = ledgerTransport, proof = ledgerVerified;
+                  try {
+                    const signed = await hardwareSigner.signTransaction(serializePreparedEvmTransaction(transaction), {signal, assertCurrent: guard});
+                    return {kind: 'signed' as const, signed};
+                  } catch (error) {
+                    if (selected.type !== 'Ledger' || sdk.evmSubmissionFailure(error)?.transactionNotBroadcast !== true) throw error;
+                    guard();
+                    if (!transport || !proof || ledgerTransport !== transport || (ledgerVerified !== proof && ledgerVerified !== undefined))
+                      throw new KeyringRuntimeError('CANCELLED');
+                    // Trusted SDK evidence proves this signing call did not broadcast.
+                    // Retire its device before allowing the still-current caller to clear an unsent attempt.
+                    await retireLedger(); guard();
+                    return {kind: 'ledger-signing-failure' as const, error};
+                  }
+                }
                 if (selected.type !== 'HDAccount' && selected.type !== 'Imported') throw new KeyringRuntimeError('INVALID_INPUT');
                 const signed = ring.signPreparedEvmTransaction({
                   selectedAccount: { id: selectedContext.index, type: selectedContext.type, expectedAddress: selectedContext.address },
@@ -987,8 +1003,13 @@ export function createKeyringRuntimeFactory(
                   transaction,
                 }, { assertCurrent: guard });
                 guard();
-                return Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash });
+                return {kind: 'signed' as const, signed: Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash })};
               });
+              if (result.kind === 'ledger-signing-failure') {
+                check(); checkGuard(assertSigningCurrent);
+                throw result.error;
+              }
+              return result.signed;
             },
             async submit(transaction, signed, assertSubmittingCurrent, verifyDispatch, onBroadcast, submission) {
               if (active || reserved) return Promise.reject(new KeyringRuntimeError('BUSY'));
@@ -2967,6 +2988,15 @@ export function createKeyringRuntimeFactory(
           }
           return Object.freeze([...result]);
         };
+        const withLedgerSigningSession = <T>(ring: IndexedKeyring, signal: AbortSignal, assertCurrent: () => void,
+          operation: (session: Extract<NativeHardwareDappSession, {kind: 'Ledger'}>, check: () => void) => Promise<T>): Promise<T> => {
+          checkGuard(assertCurrent);
+          const signer = ring.ledgerSigner;
+          if (!signer) throw new KeyringRuntimeError('NOT_READY');
+          return withOwnedLedgerConnection({ signal, assertCurrent,
+            connected: () => ledger.isConnected(), current: () => ledgerTransport, retire: retireLedger,
+          }, check => operation({kind: 'Ledger', signer, transactions: ring.ethereumTransaction}, check));
+        };
         const ledger: NativeLedgerRuntime = {
           subscribeStatus(listener) {
             ledgerStatusListeners.add(listener);
@@ -3000,11 +3030,11 @@ export function createKeyringRuntimeFactory(
                 Object.keys(request).sort().join() !== 'accountIds,purpose' || !Array.isArray(request.accountIds))
             )
               throw new KeyringRuntimeError('INVALID_INPUT');
-            const before = catalogueSnapshot,
-              ring = keyring,
+            let before = catalogueSnapshot;
+            const ring = keyring,
               captured = generation;
             const selected = selectedAccount();
-            const selectedRecord = state.accounts[selected.type][selected.index];
+            let selectedRecord = state.accounts[selected.type][selected.index];
             const selectedAddress = selectedRecord?.address, selectedPublicKey = selectedRecord?.xpub;
             const selectedPolicy = JSON.stringify(selectedRecord?.smartAccount);
             const networkIdentity = JSON.stringify(state.activeNetwork);
@@ -3239,14 +3269,39 @@ export function createKeyringRuntimeFactory(
                   )
                     throw new KeyringRuntimeError('NOT_READY');
                   handedOff = true;
-                  ledgerVerified = {
+                  const connection: NonNullable<typeof ledgerVerified> = {
                     accountId: selected.id,
                     targetIds,
                     assertCurrent: assertWallet,
+                    prepareInfrastructureAdoption(next) {
+                      assertWallet();
+                      if (ledgerVerified !== connection || selected.type !== 'Ledger' ||
+                          targetIds.length !== 1 || targetIds[0] !== selected.id ||
+                          JSON.stringify({...next, revision: 0}) !== JSON.stringify({...before, revision: 0}))
+                        throw new KeyringRuntimeError('CANCELLED');
+                      const nextState = stateFor(catalogue.privateRecords);
+                      if (JSON.stringify(nextState.accounts.Ledger[selected.index]) !== JSON.stringify(selectedRecord) ||
+                          JSON.stringify(nextState.activeNetwork) !== networkIdentity)
+                        throw new KeyringRuntimeError('CANCELLED');
+                      return () => {
+                        current(captured);
+                        if (ledgerVerified !== connection || catalogueSnapshot !== next || keyring !== ring ||
+                            JSON.stringify(state.accounts.Ledger[selected.index]) !== JSON.stringify(selectedRecord) ||
+                            JSON.stringify(state.activeNetwork) !== networkIdentity)
+                          throw new KeyringRuntimeError('CANCELLED');
+                        // Only the caller's guarded infrastructure-pending CAS may adopt this proof.
+                        before = next;
+                        selectedRecord = state.accounts.Ledger[selected.index];
+                        for (const target of targets) target.saved = state.accounts.Ledger[target.target.index]!;
+                        connection.snapshot = next;
+                        assertWallet();
+                      };
+                    },
                     generation: captured,
                     snapshot: before!,
                     transport,
                   };
+                  ledgerVerified = connection;
                   publishLedgerStatus();
                 },
                 async close() {
@@ -3538,17 +3593,25 @@ export function createKeyringRuntimeFactory(
           const captured = generation, ring = keyring;
           let snapshot = catalogueSnapshot;
           const selected = selectedAccount();
-          if (!snapshot || selected.slip44 !== 60 || (selected.type !== 'HDAccount' && selected.type !== 'Imported'))
+          if (!snapshot || selected.slip44 !== 60 || !['HDAccount', 'Imported', 'Ledger'].includes(selected.type))
             throw new KeyringRuntimeError('NOT_READY');
           const network = getNativeNetwork(snapshot.active.networkId, snapshot.networks);
           let payer = state.accounts[selected.type][selected.index];
           if (!payer) throw new KeyringRuntimeError('NOT_READY');
-          const identity = Object.freeze({ id: selected.id, label: selected.label, address: payer.address, xpub: payer.xpub });
+          const publicKey = payer.xpub, address = payer.address, encryptedKey = payer.xprv;
+          const role = {ledger: payer.isLedgerWallet, imported: payer.isImported, trezor: payer.isTrezorWallet, smart: payer.isSmartAccount};
+          const payerReference = captureNativeInfrastructurePayerReference({id: selected.id, address, xpub: publicKey}, catalogue.privateRecords);
+          const identity = Object.freeze({ ...payerReference, label: selected.label });
           const check = () => {
             checkGuard(assertOwner); current(captured);
             if (signal.aborted || !ring.isUnlocked() || keyring !== ring || catalogueSnapshot !== snapshot ||
                 selectedAccount() !== selected || state.accounts[selected.type][selected.index] !== payer || !payer ||
-                payer.address !== identity.address || payer.xpub !== identity.xpub ||
+                payer.id !== selected.index || payer.address !== address || payer.xpub !== publicKey || payer.xprv !== encryptedKey ||
+                payer.isLedgerWallet !== role.ledger || payer.isImported !== role.imported ||
+                payer.isTrezorWallet !== role.trezor || payer.isSmartAccount !== role.smart ||
+                Boolean(payer.isLedgerWallet) !== (selected.type === 'Ledger') || Boolean(payer.isImported) !== (selected.type === 'Imported') ||
+                payer.isTrezorWallet || payer.isSmartAccount ||
+                (selected.type === 'Ledger' ? encryptedKey !== '' : !encryptedKey) ||
                 state.activeNetwork.slip44 !== 60 || state.activeNetwork.chainId !== Number(network.chainId) || state.activeNetwork.url !== network.rpcUrl)
               throw new KeyringRuntimeError('CANCELLED');
           };
@@ -3586,10 +3649,10 @@ export function createKeyringRuntimeFactory(
                   throw new KeyringRuntimeError('CLEANUP_FAILED');
                 const record = catalogue.privateRecords;
                 const registered = catalogueEvmNetworks(record).find(candidate => candidate.id === network.id);
-                const account = record.groups.find(group => group.activeNetwork.kind === 'ethereum' && group.activeNetwork.slip44 === 60)?.accounts[selected.type]?.[selected.index];
+                const account = captureNativeInfrastructurePayerReference(payerReference, record);
                 if (record.walletFingerprint !== walletFingerprint || !registered || registered.registrationHash !== network.registrationHash ||
                     registered.chainId !== network.chainId || registered.rpcUrl !== network.rpcUrl ||
-                    !account?.xprv || account.address !== identity.address || account.xpub !== identity.xpub)
+                    account.id !== identity.id || account.address !== identity.address || account.xpub !== identity.xpub)
                   throw new KeyringRuntimeError('CANCELLED');
                 return record;
               };
@@ -3611,7 +3674,10 @@ export function createKeyringRuntimeFactory(
                     throw new KeyringRuntimeError('CANCELLED');
                   // Only pending metadata changed: retain live SDK/public identities, never revive a locked view.
                   const adopted = Object.freeze({ ...next, accounts: before.accounts, networks: before.networks, utxoNetworks: before.utxoNetworks, active: before.active });
+                  const adoptLedger = selected.type === 'Ledger' && ledger.isConnected()
+                    ? ledgerVerified!.prepareInfrastructureAdoption(adopted) : undefined;
                   catalogueSnapshot = adopted;
+                  adoptLedger?.();
                   if (snapshot === before && generation === captured && keyring === ring && !signal.aborted) snapshot = adopted;
                 }
               } catch (error) {
@@ -3634,7 +3700,10 @@ export function createKeyringRuntimeFactory(
                 if (JSON.stringify({ ...next, revision: 0 }) !== JSON.stringify({ ...before, revision: 0 }))
                   throw new KeyringRuntimeError('CANCELLED');
                 const adopted = Object.freeze({ ...next, accounts: before.accounts, networks: before.networks, utxoNetworks: before.utxoNetworks, active: before.active });
+                const adoptLedger = selected.type === 'Ledger' && ledger.isConnected()
+                  ? ledgerVerified!.prepareInfrastructureAdoption(adopted) : undefined;
                 publishAccounts(adopted); snapshot = adopted; payer = state.accounts[selected.type][selected.index];
+                adoptLedger?.();
                 check();
               });
             },
@@ -3642,7 +3711,18 @@ export function createKeyringRuntimeFactory(
             readReceipt: (hash, requestSignal) => rpc.infrastructureAttemptRead('eth_getTransactionReceipt', [hash], requestSignal, check),
             readLatestNonce: (address, requestSignal) => rpc.infrastructureAttemptRead('eth_getTransactionCount', [address, 'latest'], requestSignal, check),
             prepare: (request, requestSignal, validateAuthority, deployment) => prepareOwnedEvmTransaction(request, selected, selected, requestSignal, check,
-              { smartAccountInfrastructureDeployment: true, smartAccountInfrastructureId: deployment.contractId, smartAccountInfrastructureAttemptId: deployment.attemptId, smartAccountInfrastructureRpcUrl: network.rpcUrl }, NATIVE_EVM_FEE_FUNDING, { kind: 'estimate' }, null, validateAuthority),
+              { smartAccountInfrastructureDeployment: true, smartAccountInfrastructureId: deployment.contractId, smartAccountInfrastructureAttemptId: deployment.attemptId, smartAccountInfrastructureRpcUrl: network.rpcUrl }, NATIVE_EVM_FEE_FUNDING, { kind: 'estimate' }, selected.type === 'Ledger' ? {
+                keyring: () => { check(); return ring; },
+                signTransaction(unsignedTransaction, authority) {
+                  const guard = () => { check(); checkGuard(authority.assertCurrent); };
+                  return withLedgerSigningSession(ring, authority.signal, guard, (session, assertConnected) => sdk.signLedgerEvmTransaction(session.signer,
+                    { accountIndex: selected.index, expectedAddress: identity.address, unsignedTransaction }, {signal: authority.signal, assertCurrent: assertConnected}));
+                },
+              } : null, async () => {
+                check();
+                if (selected.type === 'Ledger' && !ledger.isConnected()) throw new KeyringRuntimeError('NOT_READY');
+                await validateAuthority();
+              }),
             randomId() {
               preparedAttemptId = `0x${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('')}`;
               return preparedAttemptId;
@@ -4714,11 +4794,7 @@ export function createKeyringRuntimeFactory(
                   if (requested.id !== selected.id || requested.index !== selected.index || requested.type !== selected.type ||
                       requested.address !== selected.address) throw new KeyringRuntimeError('CANCELLED');
                   if (requested.type === 'Ledger') {
-                    const ring = binding.current(), signer = ring.ledgerSigner;
-                    if (!signer) throw new KeyringRuntimeError('NOT_READY');
-                    return withOwnedLedgerConnection({ signal: approval.signal, assertCurrent: assertSigningCurrent,
-                      connected: () => ledger.isConnected(), current: () => ledgerTransport, retire: retireLedger,
-                    }, () => operation({kind: 'Ledger', signer, transactions: ring.ethereumTransaction}));
+                    return withLedgerSigningSession(binding.current(), approval.signal, assertSigningCurrent, operation);
                   }
                   if (trezorSession) throw new KeyringRuntimeError('NOT_READY');
                   const captured = generation, admittedEpoch = trezorEpoch;
