@@ -76,6 +76,7 @@ export function NativeInfrastructure({ open, onBack }: Props) {
   const busy = ['loading', 'preparing', 'submitting'].includes(state.phase);
   const review = state.feeReview;
   const pending = state.status?.pending;
+  const create2Missing = state.status?.observation.create2Deployer.deployed === false;
   const canReview = !!controller && !busy && !pending && !['review', 'unknown'].includes(state.phase) &&
     !!state.status?.observation.create2Deployer.deployed && !!state.status.observation.missing.length;
   const readyToReview = (state.phase === 'ready' || state.phase === 'complete') && canReview;
@@ -117,7 +118,9 @@ export function NativeInfrastructure({ open, onBack }: Props) {
       <Text>{state.status?.observation.contracts.find(contract => contract.id === pending.contractId)?.displayName}</Text>
       {pending.transactionHash && <><Text style={s.label}>{t('transactions.replay.hash')}</Text><Text selectable style={s.address}>{pending.transactionHash}</Text></>}
     </Card>}
-    {state.phase === 'complete' && <Text accessibilityLiveRegion="polite">{t('settings.smartAccountInfrastructureReady')}</Text>}
+    {(create2Missing || state.phase === 'complete') && <Text accessibilityLiveRegion="polite">
+      {t(create2Missing ? 'settings.smartAccountCreate2Missing' : 'settings.smartAccountInfrastructureReady')}
+    </Text>}
     {(openingError === scope || state.error) && <Text accessibilityRole="alert" style={s.error}>{t(openingError === scope ? 'mobile.infrastructure.unavailable' : state.error!)}</Text>}
     {state.status && state.phase !== 'review' && <Card style={s.card}>
       <Text style={s.label}>{t('mobile.infrastructure.create2Deployer')}</Text>
