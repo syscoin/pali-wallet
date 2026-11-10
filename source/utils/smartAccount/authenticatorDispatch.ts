@@ -1,3 +1,5 @@
+import { recoverAddress } from 'ethers/transaction';
+
 import { defaultAbiCoder, getAddress, isHexString } from '../ethersV6Compat.ts';
 import { SLH_DSA_SIGNATURE_HEX_LENGTH } from '../slhDsa/constants.ts';
 
@@ -204,13 +206,42 @@ const p256WebAuthnDriver: SmartAccountAuthenticatorDriver<
 const localEcdsaOwners = (
   validator: Extract<SmartAccountValidatorModule, { id: 'ecdsa' }>,
   inventory: readonly SmartAccountLocalOwner[] | null
-) =>
-  (inventory ?? []).filter((owner) =>
-    validator.config.owners.some(
-      (configuredOwner) =>
-        configuredOwner.toLowerCase() === owner.address.toLowerCase()
-    )
+) => {
+  const seen = new Set<string>();
+  const configured = new Set(
+    validator.config.owners.map((owner) => getAddress(owner))
   );
+  return (inventory ?? [])
+    .filter((owner) => {
+      const address = getAddress(owner.address);
+      if (seen.has(address) || !configured.has(address)) return false;
+      seen.add(address);
+      return true;
+    })
+    .map((owner) =>
+      Object.freeze({ address: owner.address, id: owner.id, type: owner.type })
+    );
+};
+
+/** Match the contract's exact 65-byte ECDSA proof; never normalize wire bytes. */
+function assertEcdsaOwnerSignature(
+  actionHash: string,
+  owner: string,
+  signature: string
+): void {
+  try {
+    // ethers accepts normalized recovery ids 0/1; OpenZeppelin requires 27/28.
+    if (
+      !isHexString(signature, 65) ||
+      !['1b', '1c'].includes(signature.slice(-2).toLowerCase()) ||
+      getAddress(recoverAddress(actionHash, signature)) !== getAddress(owner)
+    )
+      throw new Error('Invalid signature');
+    // recoverAddress uses ethers' canonical signature parser, including low-s.
+  } catch {
+    throw new Error('Smart account owner signature is invalid');
+  }
+}
 
 export type SmartAccountAuthenticatorAvailability = Readonly<{
   ecdsa: readonly SmartAccountLocalOwner[] | null;
@@ -278,16 +309,16 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
     if (runtimeContext?.signActionHash && localOwners.length >= threshold) {
       const signatures: string[] = [];
       for (const owner of localOwners.slice(0, threshold)) {
-        signatures.push(
-          await runtimeContext.signActionHash({
-            actionHash: context.actionHash,
-            ...(context.executionContextId
-              ? { executionContextId: context.executionContextId }
-              : {}),
-            owner,
-            validator: context.validator.address,
-          })
-        );
+        const signature = await runtimeContext.signActionHash({
+          actionHash: context.actionHash,
+          ...(context.executionContextId
+            ? { executionContextId: context.executionContextId }
+            : {}),
+          owner,
+          validator: context.validator.address,
+        });
+        assertEcdsaOwnerSignature(context.actionHash, owner.address, signature);
+        signatures.push(signature);
       }
 
       return {

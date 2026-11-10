@@ -1,6 +1,7 @@
 jest.unmock('crypto');
 
 import { webcrypto } from 'crypto';
+import { Wallet } from 'ethers/wallet';
 import React from 'react';
 import { useSelector } from 'react-redux';
 
@@ -75,7 +76,8 @@ jest.mock('utils/passkey', () => ({
 
 const CHAIN_ID = 57057;
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
-const OWNER = '0x2222222222222222222222222222222222222222';
+const mockOwnerWallet = new Wallet('0x' + '32'.repeat(32));
+const OWNER = mockOwnerWallet.address;
 const P256 = getPaliModuleAddress(CHAIN_ID, 'p256-webauthn');
 const COMPOSITE = getPaliModuleAddress(CHAIN_ID, 'composite');
 const ECDSA = getPaliModuleAddress(CHAIN_ID, 'ecdsa');
@@ -254,7 +256,7 @@ describe('SmartAccountPolicy passkey preservation', () => {
         };
       if (method === 'hydrateSmartAccount') return metadata;
       if (method === 'signSmartAccountActionDigestInternal')
-        return `0x${'88'.repeat(65)}`;
+        return mockOwnerWallet.signingKey.sign(params[0][1]).serialized;
       if (method === 'submitSmartAccountExecution')
         return { hash: `0x${'99'.repeat(32)}` };
       throw new Error(`Unexpected ${method}`);

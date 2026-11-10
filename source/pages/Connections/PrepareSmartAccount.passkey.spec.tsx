@@ -1,6 +1,7 @@
 jest.unmock('crypto');
 
 import { webcrypto } from 'crypto';
+import { Wallet } from 'ethers/wallet';
 import { createInstance } from 'i18next';
 import React from 'react';
 import { useSelector } from 'react-redux';
@@ -51,7 +52,8 @@ jest.mock('utils/passkey', () => ({
 }));
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
-const OWNER = '0x2222222222222222222222222222222222222222';
+const mockOwnerWallet = new Wallet('0x' + '32'.repeat(32));
+const OWNER = mockOwnerWallet.address;
 const CHAIN_ID = 57057;
 const PUBLIC_KEY = {
   x: '0x6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296',
@@ -202,7 +204,7 @@ describe('smart-account creation passkey ownership and retention', () => {
         return undefined;
       }
       if (method === 'signSmartAccountActionDigestInternal')
-        return `0x${'88'.repeat(65)}`;
+        return mockOwnerWallet.signingKey.sign(params[0][1]).serialized;
       if (method === 'submitSmartAccountExecution' && walletPasskeyFlow) {
         expect(
           getPasskeyAccountRecords(createdAccount).pending?.profile.credentialId
@@ -348,31 +350,34 @@ describe('smart-account creation passkey ownership and retention', () => {
     KeyringAccountType.HDAccount,
     KeyringAccountType.Ledger,
     KeyringAccountType.Trezor,
-  ])('keeps local ECDSA ownership working for %s', async (type) => {
-    walletPasskeyFlow = false;
-    (useSelector as jest.Mock).mockReturnValue({
-      accounts: { [type]: { 0: { id: 0, address: OWNER } } },
-      activeNetwork: { chainId: CHAIN_ID },
-    });
-    (useQueryData as jest.Mock).mockReturnValue({
-      host: 'example.test',
-      request: {
-        authenticator: {
-          id: 'ecdsa',
-          config: { owners: [OWNER], threshold: 1 },
+  ])(
+    'retains the exact %s owner for a supplied contract-valid raw proof',
+    async (type) => {
+      walletPasskeyFlow = false;
+      (useSelector as jest.Mock).mockReturnValue({
+        accounts: { [type]: { 0: { id: 0, address: OWNER } } },
+        activeNetwork: { chainId: CHAIN_ID },
+      });
+      (useQueryData as jest.Mock).mockReturnValue({
+        host: 'example.test',
+        request: {
+          authenticator: {
+            id: 'ecdsa',
+            config: { owners: [OWNER], threshold: 1 },
+          },
         },
-      },
-    });
-    expect(confirm().props.disabled).toBe(false);
-    await confirm().props.onClick();
-    expect(
-      emitter.mock.calls.some(
-        ([[, method]]) => method === 'submitSmartAccountExecution'
-      )
-    ).toBe(true);
-    expect(window.close).toHaveBeenCalledTimes(1);
-    expect(createPasskeyCredential).not.toHaveBeenCalled();
-  });
+      });
+      expect(confirm().props.disabled).toBe(false);
+      await confirm().props.onClick();
+      expect(
+        emitter.mock.calls.some(
+          ([[, method]]) => method === 'submitSmartAccountExecution'
+        )
+      ).toBe(true);
+      expect(window.close).toHaveBeenCalledTimes(1);
+      expect(createPasskeyCredential).not.toHaveBeenCalled();
+    }
+  );
 
   it('keeps the credential pending before verified hydration and preserves it through a different flow after restart', async () => {
     failHydration = true;

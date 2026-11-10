@@ -2,6 +2,7 @@ import { createSmartAccountPendingState } from '../../../source/utils/smartAccou
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { AbiCoder, Interface } from 'ethers/abi';
+import { Wallet } from 'ethers/wallet';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { encodeEcdsaValidatorInitData, getPaliSmartAccountDescriptor , getConfiguredAuthenticatorAddress, getSmartAccountUserOpRequiredPrefund, encodeERC7579Executions } from '../../../source/utils/smartAccount/account.ts';
 import { derivePaliSmartAccountDeployment } from '../../../source/utils/smartAccount/counterfactual.ts';
@@ -208,8 +209,18 @@ test('portable shared preparation uses the canonical deployment and local UserOp
 
 test('shared ECDSA operation signing rejects an owner change before releasing the signature', async () => {
   const f = fixture(); let current = true;
-  await assert.rejects(signSmartAccountEcdsaOperation({ metadata: f.metadata, actionHash: '0x' + 'ab'.repeat(32),
-    findOwner: () => payer, async signOwner() { current = false; return '0x1234'; }, assertCurrent() { assert(current, 'owner changed'); } }), /owner changed/);
+  const signer = new Wallet('0x' + '01'.padStart(64, '0'));
+  const metadata = { ...f.metadata, auth: { ...f.metadata.auth,
+    data: encodeEcdsaValidatorInitData([signer.address], 1) } };
+  let signCalls = 0;
+  await assert.rejects(signSmartAccountEcdsaOperation({ metadata, actionHash: '0x' + 'ab'.repeat(32),
+    findOwner: () => payer, async signOwner(address, digest) {
+      assert.equal(address, signer.address);
+      signCalls++;
+      current = false;
+      return signer.signingKey.sign(digest).serialized;
+    }, assertCurrent() { assert(current, 'owner changed'); } }), /owner changed/);
+  assert.equal(signCalls, 1);
 });
 
 test('shared payer policy keeps preferred and selected identities distinct from the smart account', () => {

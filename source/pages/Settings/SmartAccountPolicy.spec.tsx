@@ -1,3 +1,4 @@
+import { Wallet } from 'ethers/wallet';
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { acknowledgedGuardianRecoveryClaim } from 'tests/fixtures/guardianRecoveryClaim';
@@ -54,7 +55,8 @@ jest.mock('react-i18next', () => ({
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const GUARDIAN = '0x2222222222222222222222222222222222222222';
-const OWNER = '0x3333333333333333333333333333333333333333';
+const mockOwnerWallet = new Wallet('0x' + '32'.repeat(32));
+const OWNER = mockOwnerWallet.address;
 const VALIDATOR = '0x4444444444444444444444444444444444444444';
 const CHAIN_ID = 57057;
 const GUARDIAN_MODULE = getPaliModuleAddress(CHAIN_ID, 'guardian-recovery');
@@ -72,7 +74,13 @@ const OPERATION = buildSmartAccountGuardianRecoveryOperation({
     },
   },
 });
-const SIGNATURE = `0x${'77'.repeat(65)}`;
+const SIGNATURE = mockOwnerWallet.signingKey.sign(
+  getPaliErc7739PersonalSignHash({
+    accountAddress: GUARDIAN,
+    chainId: OPERATION.chainId,
+    hash: OPERATION.hash,
+  })
+).serialized;
 const RECOVERY_CONTEXT = 'prepared-guardian-recovery';
 const guardianObservation = () => ({
   account: ACCOUNT,
@@ -216,7 +224,7 @@ describe('SmartAccountPolicy guardian approval', () => {
             expect(payload).toEqual([RECOVERY_CONTEXT]);
             return undefined;
           case 'signSmartAccountActionDigestInternal':
-            return SIGNATURE;
+            return mockOwnerWallet.signingKey.sign(payload[0][1]).serialized;
           case 'submitPreparedSmartAccountGuardianStartRecovery':
             return { operation: OPERATION };
           default:
